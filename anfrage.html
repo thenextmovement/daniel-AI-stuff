@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anfrage stellen – NEONTRIP</title>
+  <meta name="description" content="Stellen Sie jetzt Ihre unverbindliche Anfrage für LED Neon Schilder, 3D Buchstaben und Leuchtreklame. Antwort in 24 Stunden.">
+  <meta name="robots" content="noindex, nofollow">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dark: '#0A0A0A',
+            accent: '#8B5CF6',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #ffffff;
+      color: #0A0A0A;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Splash Screen */
+    #splashScreen {
+      transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #splashScreen.exit {
+      transform: translateY(-100%);
+    }
+    #splashLogo.visible {
+      opacity: 1;
+    }
+
+    /* Exit Intent Popup */
+    #exitPopup.show {
+      display: flex;
+    }
+    @keyframes popupIn {
+      from { opacity: 0; transform: scale(0.95) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .animate-popup {
+      animation: popupIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes scaleIn {
+      from { transform: scale(0); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    @keyframes checkDraw {
+      from { stroke-dashoffset: 24; }
+      to { stroke-dashoffset: 0; }
+    }
+
+    .step { display: none; animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .step.active { display: block; }
+
+    .success-check { animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both; }
+    .success-check path { stroke-dasharray: 24; animation: checkDraw 0.4s ease-out 0.5s both; }
+
+    /* Product card hover */
+    .product-card {
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .product-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+    }
+    .product-card.selected {
+      border-color: #8B5CF6;
+      box-shadow: 0 0 0 2px #8B5CF6;
+      background: rgba(139, 92, 246, 0.03);
+    }
+    .product-card.flash {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
+      border-color: #8B5CF6;
+      box-shadow: 0 0 0 2px #8B5CF6, 0 8px 32px rgba(139, 92, 246, 0.25);
+    }
+    .product-card .check-icon {
+      opacity: 0;
+      transform: scale(0.5);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .product-card.selected .check-icon {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Option pill */
+    .option-pill {
+      transition: all 0.2s ease;
+    }
+    .option-pill:hover {
+      border-color: #737373;
+      background: #fafafa;
+    }
+    .option-pill.selected {
+      border-color: #8B5CF6;
+      background: #8B5CF6;
+      color: #ffffff;
+    }
+    .option-pill.flash {
+      border-color: #8B5CF6;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
+      box-shadow: 0 0 0 2px #8B5CF6;
+    }
+
+    /* Source pill (Woher kennst du uns) */
+    .source-pill {
+      transition: all 0.2s ease;
+    }
+    .source-pill.selected {
+      border-color: #8B5CF6;
+      background: #8B5CF6;
+      color: #ffffff;
+    }
+    .source-pill.flash {
+      box-shadow: 0 0 0 2px #8B5CF6;
+    }
+
+    /* Design option */
+    .design-option {
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .design-option:hover {
+      border-color: #a3a3a3;
+      background: #fafafa;
+    }
+    .design-option.selected {
+      border-color: #8B5CF6;
+      background: rgba(139, 92, 246, 0.05);
+    }
+    .design-option.selected .option-icon {
+      background: #8B5CF6;
+      color: #ffffff;
+    }
+    .design-option.flash {
+      border-color: #8B5CF6;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
+      box-shadow: 0 0 0 2px #8B5CF6;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      transition: all 0.3s ease;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: #0A0A0A;
+      background: #fafafa;
+    }
+    .upload-zone.has-file {
+      border-color: #22c55e;
+      background: #f0fdf4;
+    }
+
+    /* Input focus */
+    .form-input:focus {
+      border-color: #0A0A0A;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.1);
+    }
+
+    /* Progress dot */
+    .progress-dot {
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .progress-dot.active {
+      background: #0A0A0A;
+      color: #ffffff;
+      transform: scale(1.1);
+    }
+    .progress-dot.done {
+      background: #0A0A0A;
+      color: #ffffff;
+    }
+
+    .progress-line {
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .progress-line.done {
+      background: #0A0A0A;
+    }
+
+    /* Product card with image */
+    .product-card img.product-img {
+      width: 100%;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    /* Button states */
+    .btn-next:disabled {
+      background: #e5e5e5;
+      color: #a3a3a3;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .btn-next:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #f5f5f5; }
+    ::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a3a3a3; }
+
+    /* Info Button on product cards */
+    .info-btn {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.2s ease;
+      font-size: 11px;
+      font-weight: 600;
+      color: #525252;
+      line-height: 1;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .info-btn:hover {
+      background: #ffffff;
+      border-color: rgba(0, 0, 0, 0.25);
+      transform: scale(1.1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      color: #0A0A0A;
+    }
+
+    /* Product Modal */
+    #productModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #productModal.active {
+      display: flex;
+    }
+    #productModal .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+    }
+    #productModal .modal-content {
+      position: relative;
+      background: #ffffff;
+      border-radius: 20px;
+      max-width: 640px;
+      width: 100%;
+      max-height: 85vh;
+      overflow: hidden;
+      animation: modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.95) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    #productModal .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #productModal .modal-close {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    #productModal .modal-close:hover {
+      background: #f5f5f5;
+    }
+    #productModal .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      max-height: calc(85vh - 80px);
+    }
+    #productModal .modal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 480px) {
+      #productModal .modal-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    #productModal .modal-img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SPLASH SCREEN
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="splashScreen" class="fixed inset-0 z-[100] bg-[#0A0A0A] flex items-center justify-center">
+  <img id="splashLogo" src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" alt="NEONTRIP" class="h-10 sm:h-12 opacity-0 transition-opacity duration-500">
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HEADER (Fixed)
+     ═══════════════════════════════════════════════════════════════ -->
+<header class="fixed top-0 left-0 right-0 z-50 bg-white">
+  <div class="px-4 sm:px-6 py-3 flex items-center relative">
+    <!-- Logo (far left) -->
+    <a href="landing-new.html" id="headerLogo" class="flex items-center opacity-0">
+      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 sm:h-9">
+    </a>
+
+    <!-- Progress Bar (absolutely centered) -->
+    <div class="absolute left-1/2 -translate-x-1/2 max-w-xs sm:max-w-sm w-full px-4" id="progressBar">
+      <div class="flex items-center justify-between">
+        <!-- Step 1 -->
+        <div class="flex flex-col items-center">
+          <div class="progress-dot active w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="1">1</div>
+          <span class="text-[8px] sm:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+        </div>
+        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1 sm:mx-2" data-line="1"></div>
+        <!-- Step 2 -->
+        <div class="flex flex-col items-center">
+          <div class="progress-dot w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="2">2</div>
+          <span class="text-[8px] sm:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+        </div>
+        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1 sm:mx-2" data-line="2"></div>
+        <!-- Step 3 -->
+        <div class="flex flex-col items-center">
+          <div class="progress-dot w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="3">3</div>
+          <span class="text-[8px] sm:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+        </div>
+        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1 sm:mx-2" data-line="3"></div>
+        <!-- Step 4 -->
+        <div class="flex flex-col items-center">
+          <div class="progress-dot w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="4">4</div>
+          <span class="text-[8px] sm:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Close Button (far right) -->
+    <a href="landing-new.html" class="ml-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-black/10 flex items-center justify-center hover:bg-black/5 transition-colors" title="Schließen">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </a>
+  </div>
+  <!-- Divider -->
+  <div class="border-b border-black/5"></div>
+</header>
+
+<!-- Spacer for fixed header -->
+<div class="h-24 sm:h-28"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FORM CONTAINER
+     ═══════════════════════════════════════════════════════════════ -->
+<main class="pb-14 px-4 sm:px-6">
+  <div class="max-w-4xl mx-auto">
+
+    <!-- ═══════════════════════════════════════
+         STEP 1: Produkt-Auswahl
+         ═══════════════════════════════════════ -->
+    <div class="step active" data-step="1">
+      <div class="text-center mb-4">
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-1">Was möchtest du umsetzen?</h1>
+        <p class="text-sm text-black/50">Wähle das Produkt, das am besten passt.</p>
+      </div>
+
+      <!-- Product Grid - With Images -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+
+        <!-- Neonschild -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="neonschild">
+          <button class="info-btn" data-info="neonschild" title="Beispiele ansehen">?</button>
+          <img src="https://framerusercontent.com/images/8APo9u3MNpN0V7xSGkXKpFUm9rs.jpeg?scale-down-to=512" alt="Neonschild" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">Neonschild</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">LED Neon Flex</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+        <!-- 3D-Buchstaben -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="3d-buchstaben">
+          <button class="info-btn" data-info="3d-buchstaben" title="Beispiele ansehen">?</button>
+          <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" alt="3D-Buchstaben" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">3D-Buchstaben</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Front-/Rückbeleuchtet</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Leuchtkasten -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="leuchtkasten">
+          <button class="info-btn" data-info="leuchtkasten" title="Beispiele ansehen">?</button>
+          <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" alt="Leuchtkasten" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">Leuchtkasten</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Beleuchtete Fläche</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Unbeleuchtetes Schild -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="unbeleuchtet">
+          <button class="info-btn" data-info="unbeleuchtet" title="Beispiele ansehen">?</button>
+          <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" alt="Unbeleuchtet" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">Unbeleuchtet</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Fräsbuchstaben</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Sonderanfertigung -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="sonderanfertigung">
+          <button class="info-btn" data-info="sonderanfertigung" title="Beispiele ansehen">?</button>
+          <img src="https://framerusercontent.com/images/kB23JL9fB0OD84X1VxTA2NafQE.jpg?scale-down-to=512" alt="Sonderanfertigung" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">Sonder</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Individuelle Projekte</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Marquise-Buchstaben -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="marquise">
+          <button class="info-btn" data-info="marquise" title="Beispiele ansehen">?</button>
+          <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" alt="Marquise" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">Marquise</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Glühbirnen-Optik</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Halo-Lampe -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="halo-lampe">
+          <button class="info-btn" data-info="halo-lampe" title="Beispiele ansehen">?</button>
+          <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" alt="Halo-Lampe" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">Halo-Lampe</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Rundes LED-Schild</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+        <!-- Gesamtkonzept -->
+        <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="gesamtkonzept">
+          <button class="info-btn" data-info="gesamtkonzept" title="Beispiele ansehen">?</button>
+          <img src="assets/images/referenzen/alle-marken-logos.webp" alt="Gesamtkonzept" class="w-full h-44 sm:h-56 object-cover">
+          <div class="p-2.5 sm:p-3 text-center">
+            <h3 class="font-semibold text-sm sm:text-base mb-0.5">Gesamtkonzept</h3>
+            <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Innen + Außen</p>
+          </div>
+          <div class="check-icon absolute top-2 right-2 w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         STEP 2: Design
+         ═══════════════════════════════════════ -->
+    <div class="step" data-step="2">
+      <div class="text-center mb-8">
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-2">Hast du schon ein Design?</h1>
+        <p class="text-black/50">Logo, Schriftzug oder eine Skizze – alles hilft uns weiter.</p>
+      </div>
+
+      <!-- Design Options -->
+      <div class="space-y-3 mb-6">
+        <!-- Upload Option -->
+        <div class="design-option border-2 border-black/10 rounded-2xl p-5 cursor-pointer flex items-center gap-4" data-design="upload">
+          <div class="option-icon w-12 h-12 rounded-xl bg-black/5 flex items-center justify-center flex-shrink-0 transition-all">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="font-semibold">Ja, ich kann eine Datei hochladen</h3>
+            <p class="text-sm text-black/50">Logo, Foto, Skizze – PDF, PNG, JPG, AI, SVG</p>
+          </div>
+        </div>
+
+        <!-- Idea Option -->
+        <div class="design-option border-2 border-black/10 rounded-2xl p-5 cursor-pointer flex items-center gap-4" data-design="idea">
+          <div class="option-icon w-12 h-12 rounded-xl bg-black/5 flex items-center justify-center flex-shrink-0 transition-all">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/>
+              <path d="M9 21h6"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="font-semibold">Ich habe eine Idee im Kopf</h3>
+            <p class="text-sm text-black/50">Beschreib kurz, was du dir vorstellst</p>
+          </div>
+        </div>
+
+        <!-- Beratung Option -->
+        <div class="design-option border-2 border-black/10 rounded-2xl p-5 cursor-pointer flex items-center gap-4" data-design="beratung">
+          <div class="option-icon w-12 h-12 rounded-xl bg-black/5 flex items-center justify-center flex-shrink-0 transition-all">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/>
+              <rect width="18" height="18" x="3" y="4" rx="2"/>
+              <circle cx="12" cy="10" r="2"/>
+              <line x1="8" x2="8" y1="2" y2="4"/>
+              <line x1="16" x2="16" y1="2" y2="4"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="font-semibold">Nein, ich brauche Beratung</h3>
+            <p class="text-sm text-black/50">Wir helfen dir bei der Gestaltung</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload Zone (hidden by default) -->
+      <div class="upload-zone hidden border-2 border-dashed border-black/20 rounded-2xl p-8 text-center cursor-pointer" id="uploadZone">
+        <input type="file" id="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.ai,.svg,.eps">
+        <div class="upload-content">
+          <div class="w-14 h-14 rounded-full bg-black/5 flex items-center justify-center mx-auto mb-4">
+            <svg class="w-6 h-6 text-black/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <p class="font-medium mb-1">Datei hierher ziehen</p>
+          <p class="text-sm text-black/50 mb-3">oder <span class="text-dark underline">klicken zum Auswählen</span></p>
+          <p class="text-xs text-black/40">PDF, PNG, JPG, AI, SVG, EPS – max. 25 MB</p>
+        </div>
+        <div class="upload-success hidden">
+          <div class="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+            <svg class="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
+          </div>
+          <p class="font-medium mb-1" id="uploadFileName">Datei hochgeladen</p>
+          <p class="text-sm text-black/50">Du kannst eine andere Datei wählen, indem du hier klickst.</p>
+        </div>
+      </div>
+
+      <!-- Idea Textarea (hidden by default) -->
+      <div class="idea-field hidden" id="ideaField">
+        <textarea class="form-input w-full border-2 border-black/10 rounded-xl p-4 text-base resize-none h-32 transition-all" placeholder="Beschreib deine Idee... z.B. 'Unser Firmenlogo als Neonschild, ca. 1m breit, warmweiß'"></textarea>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         STEP 3: Details
+         ═══════════════════════════════════════ -->
+    <div class="step" data-step="3">
+      <div class="text-center mb-8">
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-2">Noch ein paar Details</h1>
+        <p class="text-black/50">Hilft uns, dir ein passendes Angebot zu machen. <span class="text-black/30">(Alles optional)</span></p>
+      </div>
+
+      <!-- Anbringungsort -->
+      <div class="mb-8">
+        <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-3">Wo soll es angebracht werden?</label>
+        <div class="flex flex-wrap gap-2">
+          <button class="option-pill border-2 border-black/10 rounded-full px-5 py-2.5 text-sm font-medium" data-group="ort" data-value="innen">Innenbereich</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-5 py-2.5 text-sm font-medium" data-group="ort" data-value="aussen">Außenbereich</button>
+        </div>
+      </div>
+
+      <!-- Größe -->
+      <div class="mb-8">
+        <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-3">Ungefähre Größe?</label>
+        <div class="grid grid-cols-4 gap-2 mb-3">
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="50">50 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="75">75 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="100">100 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="120">120 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="150">150 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="175">175 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="200">200 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="xl">über 200 cm</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-black/40">Andere Größe:</span>
+          <input type="text" id="customSize" class="form-input border-2 border-black/10 rounded-lg px-3 py-1.5 text-sm w-20" placeholder="z.B. 180">
+          <span class="text-xs text-black/40">cm</span>
+        </div>
+      </div>
+
+      <!-- Zeitrahmen -->
+      <div class="mb-8">
+        <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-3">Wann wird es benötigt?</label>
+        <div class="flex flex-wrap gap-2">
+          <button class="option-pill border-2 border-black/10 rounded-full px-5 py-2.5 text-sm font-medium" data-group="zeit" data-value="eilig">
+            <span class="inline-flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-orange-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              Eilig (1–4 Tage)
+            </span>
+          </button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-5 py-2.5 text-sm font-medium" data-group="zeit" data-value="express">Express (7–10 Tage)</button>
+          <button class="option-pill border-2 border-black/10 rounded-full px-5 py-2.5 text-sm font-medium" data-group="zeit" data-value="standard">Standard (2–3 Wochen)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         STEP 4: Kontakt
+         ═══════════════════════════════════════ -->
+    <div class="step" data-step="4">
+      <div class="text-center mb-8">
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-2">Fast geschafft!</h1>
+        <p class="text-black/50">Wie erreichen wir dich für das Angebot?</p>
+      </div>
+
+      <!-- Contact Form -->
+      <div class="space-y-4">
+        <!-- Name Row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Vorname *</label>
+            <input type="text" id="firstName" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base transition-all" placeholder="Max">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Nachname *</label>
+            <input type="text" id="lastName" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base transition-all" placeholder="Mustermann">
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div>
+          <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">E-Mail *</label>
+          <input type="email" id="email" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base transition-all" placeholder="max@firma.de">
+        </div>
+
+        <!-- Phone & Company Row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Telefon *</label>
+            <input type="tel" id="phone" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base transition-all" placeholder="+49 211 ..." required>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Firma <span class="text-black/30 normal-case">(optional)</span></label>
+            <input type="text" id="company" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base transition-all" placeholder="Firmenname">
+          </div>
+        </div>
+
+        <!-- Message -->
+        <div>
+          <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Nachricht <span class="text-black/30 normal-case">(optional)</span></label>
+          <textarea id="message" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base resize-none h-24 transition-all" placeholder="Weitere Details, spezielle Wünsche..."></textarea>
+        </div>
+
+        <!-- Woher kennst du uns? -->
+        <div>
+          <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Woher kennst du uns? <span class="text-black/30 normal-case">(optional)</span></label>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="google">Google</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="instagram">Instagram</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="facebook">Facebook</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="linkedin">LinkedIn</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="pinterest">Pinterest</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="empfehlung">Empfehlung</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="bestandskunde">Bereits Kunde</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="messe">Messe/Event</button>
+            <button type="button" class="source-pill border border-black/10 rounded-full px-3 py-1.5 text-xs font-medium hover:border-black/30 transition-all" data-source="sonstiges">Sonstiges</button>
+          </div>
+        </div>
+
+        <!-- Trust Section -->
+        <div class="mt-6 pt-6 border-t border-black/5">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+            <div class="flex flex-col items-center gap-1.5">
+              <div class="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="M9 12l2 2 4-4"/>
+                </svg>
+              </div>
+              <span class="text-xs text-black/50">DSGVO-konform</span>
+            </div>
+            <div class="flex flex-col items-center gap-1.5">
+              <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <span class="text-xs text-black/50">SSL-verschlüsselt</span>
+            </div>
+            <div class="flex flex-col items-center gap-1.5">
+              <div class="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+              </div>
+              <span class="text-xs text-black/50">4.9/5 Google</span>
+            </div>
+            <div class="flex flex-col items-center gap-1.5">
+              <div class="w-10 h-10 rounded-full bg-violet-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+              </div>
+              <span class="text-xs text-black/50">Antwort in 24h</span>
+            </div>
+          </div>
+          <p class="text-center text-xs text-black/40 mt-4">Unverbindlich & kostenlos · Über 2.000 Projekte realisiert</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SUCCESS STATE / THANK YOU PAGE
+         ═══════════════════════════════════════ -->
+    <div class="step" data-step="success" id="successState">
+      <div class="text-center py-8">
+        <!-- Success Icon -->
+        <div class="success-check w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mx-auto mb-6">
+          <svg class="w-10 h-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12l5 5L20 7"/>
+          </svg>
+        </div>
+
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-2">Anfrage erfolgreich gesendet!</h1>
+        <p class="text-black/50 max-w-md mx-auto mb-8">
+          Vielen Dank für dein Interesse an NEONTRIP.
+        </p>
+
+        <!-- Next Steps -->
+        <div class="bg-black/[0.02] rounded-2xl p-6 max-w-lg mx-auto mb-8 text-left">
+          <h2 class="font-semibold text-lg mb-4 text-center">Was passiert jetzt?</h2>
+
+          <div class="space-y-4">
+            <!-- Step 1 -->
+            <div class="flex gap-4">
+              <div class="w-8 h-8 rounded-full bg-dark text-white flex items-center justify-center text-sm font-semibold flex-shrink-0">1</div>
+              <div>
+                <h3 class="font-medium">Wir prüfen deine Anfrage</h3>
+                <p class="text-sm text-black/50">Unser Team schaut sich deine Angaben an und erstellt eine erste Einschätzung.</p>
+              </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="flex gap-4">
+              <div class="w-8 h-8 rounded-full bg-dark text-white flex items-center justify-center text-sm font-semibold flex-shrink-0">2</div>
+              <div>
+                <h3 class="font-medium">Kostenlose Visualisierung</h3>
+                <p class="text-sm text-black/50">Innerhalb von 24 Stunden erhältst du einen visuellen Entwurf und ein unverbindliches Angebot.</p>
+              </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="flex gap-4">
+              <div class="w-8 h-8 rounded-full bg-dark text-white flex items-center justify-center text-sm font-semibold flex-shrink-0">3</div>
+              <div>
+                <h3 class="font-medium">Persönliche Beratung</h3>
+                <p class="text-sm text-black/50">Bei Fragen rufen wir dich gerne an oder schreiben dir – ganz wie du möchtest.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contact Info -->
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+          <a href="tel:+4921154257240" class="inline-flex items-center gap-2 text-sm text-black/60 hover:text-dark transition-colors">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            +49 211 54257240
+          </a>
+          <span class="hidden sm:block text-black/20">|</span>
+          <a href="mailto:support@neontrip.de" class="inline-flex items-center gap-2 text-sm text-black/60 hover:text-dark transition-colors">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            support@neontrip.de
+          </a>
+        </div>
+
+        <a href="landing-new.html" class="inline-flex items-center gap-2 bg-dark text-white font-semibold text-sm px-6 py-3 rounded-full hover:bg-dark/90 transition-all">
+          Zurück zur Startseite
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     NAVIGATION BAR (Fixed at bottom)
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm" id="formNav">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 py-2">
+    <div class="flex items-center justify-between">
+      <!-- Back Button -->
+      <button class="btn-back hidden items-center gap-1.5 text-black/40 hover:text-dark font-medium text-xs transition-colors" id="btnBack">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Zurück
+      </button>
+
+      <!-- Contact Options (centered) -->
+      <div class="flex items-center gap-2 text-[10px] text-black/35">
+        <a href="https://wa.me/4921154257240" target="_blank" class="hover:text-black/60 transition-colors">WhatsApp</a>
+        <span class="text-black/15">·</span>
+        <a href="tel:+4921154257240" class="hover:text-black/60 transition-colors">Anrufen</a>
+        <span class="text-black/15">·</span>
+        <a href="mailto:support@neontrip.de" class="hover:text-black/60 transition-colors">E-Mail</a>
+        <span class="text-black/15">·</span>
+        <a href="impressum.html" class="hover:text-black/60 transition-colors">Impressum</a>
+        <span class="text-black/15">·</span>
+        <a href="datenschutz.html" class="hover:text-black/60 transition-colors">Datenschutz</a>
+      </div>
+
+      <!-- Next/Submit Button -->
+      <button class="btn-next flex items-center gap-1.5 bg-dark text-white font-semibold text-xs px-5 py-2.5 rounded-full transition-all" id="btnNext" disabled>
+        <span id="btnNextText">Weiter</span>
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     EXIT INTENT POPUP
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="exitPopup" class="fixed inset-0 z-[90] hidden items-center justify-center p-4">
+  <!-- Backdrop -->
+  <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeExitPopup()"></div>
+
+  <!-- Modal -->
+  <div class="relative bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-popup">
+    <!-- Close Button -->
+    <button onclick="closeExitPopup()" class="absolute top-4 right-4 w-8 h-8 rounded-full border border-black/10 flex items-center justify-center hover:bg-black/5 transition-colors">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+
+    <!-- Photo -->
+    <div class="flex justify-center mb-4">
+      <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-white shadow-lg">
+        <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=200&height=200" alt="Fabienne Trapp" class="w-full h-full object-cover">
+      </div>
+    </div>
+
+    <!-- Text -->
+    <div class="text-center mb-6">
+      <h3 class="text-lg font-semibold mb-2">Hast du noch Fragen?</h3>
+      <p class="text-sm text-black/60 mb-3">Lass uns kurz telefonieren – ich helfe dir gerne!</p>
+      <p class="text-xs font-medium text-black/40">Fabienne · Kundenberatung</p>
+    </div>
+
+    <!-- Buttons -->
+    <div class="space-y-2 mb-4">
+      <a href="tel:+4921154257240" class="flex items-center justify-center gap-2 w-full py-3 px-4 bg-dark text-white rounded-xl font-medium hover:bg-black transition-colors">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+        Jetzt anrufen
+      </a>
+      <a href="https://wa.me/4921154257240?text=Hallo%2C%20ich%20habe%20eine%20Frage%20zu%20meiner%20Anfrage." target="_blank" class="flex items-center justify-center gap-2 w-full py-3 px-4 border-2 border-black/10 rounded-xl font-medium hover:border-black/20 hover:bg-black/5 transition-colors">
+        <svg class="w-4 h-4 text-[#25D366]" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        WhatsApp schreiben
+      </a>
+    </div>
+
+    <!-- Close Link -->
+    <button onclick="closeExitPopup()" class="w-full text-center text-xs text-black/40 hover:text-black/60 transition-colors">
+      Weiter zum Formular →
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PRODUCT EXAMPLES MODAL
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="productModal">
+  <div class="modal-backdrop" onclick="closeProductModal()"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <div>
+        <h3 class="font-semibold text-lg" id="modalTitle">Beispiele</h3>
+        <p class="text-sm text-black/50" id="modalSubtitle">So könnte dein Projekt aussehen</p>
+      </div>
+      <button class="modal-close" onclick="closeProductModal()">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Info Section -->
+      <div class="flex flex-wrap gap-3 mb-4 pb-4 border-b border-black/5" id="modalInfo">
+        <!-- Info items will be inserted here by JavaScript -->
+      </div>
+      <!-- Images Grid -->
+      <div class="modal-grid" id="modalImages">
+        <!-- Images will be inserted here by JavaScript -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+  // ═══════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════
+  const state = {
+    currentStep: 1,
+    totalSteps: 4,
+    data: {
+      product: null,
+      design: null,
+      designText: '',
+      uploadedFile: null,
+      details: {
+        ort: null,
+        groesse: null,
+        zeit: null
+      },
+      contact: {
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        company: '',
+        message: ''
+      },
+      source: null
+    }
+  };
+
+  // ═══════════════════════════════════════
+  // DOM ELEMENTS
+  // ═══════════════════════════════════════
+  const btnNext = document.getElementById('btnNext');
+  const btnBack = document.getElementById('btnBack');
+  const btnNextText = document.getElementById('btnNextText');
+  const formNav = document.getElementById('formNav');
+  const uploadZone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+  const ideaField = document.getElementById('ideaField');
+
+  // ═══════════════════════════════════════
+  // NAVIGATION
+  // ═══════════════════════════════════════
+  function updateNav() {
+    let canProceed = false;
+
+    switch (state.currentStep) {
+      case 1:
+        canProceed = !!state.data.product;
+        break;
+      case 2:
+        canProceed = !!state.data.design;
+        break;
+      case 3:
+        canProceed = true; // All optional
+        break;
+      case 4:
+        const { firstName, lastName, email, phone } = state.data.contact;
+        canProceed = firstName.trim() && lastName.trim() && email.trim() && email.includes('@') && phone.trim();
+        break;
+    }
+
+    btnNext.disabled = !canProceed;
+
+    // Show/hide back button
+    if (state.currentStep === 1) {
+      btnBack.classList.add('hidden');
+      btnBack.classList.remove('flex');
+    } else {
+      btnBack.classList.remove('hidden');
+      btnBack.classList.add('flex');
+    }
+
+    // Update button text
+    btnNextText.textContent = state.currentStep === 4 ? 'Anfrage absenden' : 'Weiter';
+  }
+
+  function updateProgress() {
+    // Update dots
+    document.querySelectorAll('.progress-dot').forEach(dot => {
+      const step = parseInt(dot.dataset.step);
+      dot.classList.remove('active', 'done');
+      if (step === state.currentStep) {
+        dot.classList.add('active');
+      } else if (step < state.currentStep) {
+        dot.classList.add('done');
+      }
+    });
+
+    // Update lines
+    document.querySelectorAll('.progress-line').forEach(line => {
+      const lineNum = parseInt(line.dataset.line);
+      line.classList.toggle('done', lineNum < state.currentStep);
+    });
+
+    // Update labels
+    document.querySelectorAll('.step-label').forEach((label, i) => {
+      label.classList.toggle('active', i + 1 === state.currentStep);
+      if (i + 1 === state.currentStep) {
+        label.classList.remove('text-black/40');
+        label.classList.add('text-dark', 'font-semibold');
+      } else {
+        label.classList.add('text-black/40');
+        label.classList.remove('text-dark', 'font-semibold');
+      }
+    });
+  }
+
+  function goToStep(step) {
+    // Hide all steps
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+
+    // Show target step
+    const targetStep = document.querySelector(`.step[data-step="${step}"]`);
+    if (targetStep) {
+      targetStep.classList.add('active');
+    }
+
+    state.currentStep = step;
+    updateProgress();
+    updateNav();
+
+    // Smooth scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function showSuccess() {
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    document.getElementById('successState').classList.add('active');
+    formNav.style.display = 'none';
+
+    // Hide progress bar
+    document.getElementById('progressBar').style.display = 'none';
+
+    // Log form data
+    console.log('=== NEONTRIP Anfrage ===');
+    console.log('Produkt:', state.data.product);
+    console.log('Design:', state.data.design);
+    if (state.data.designText) console.log('Design-Idee:', state.data.designText);
+    if (state.data.uploadedFile) console.log('Datei:', state.data.uploadedFile.name);
+    console.log('Details:', state.data.details);
+    console.log('Kontakt:', state.data.contact);
+    if (state.data.source) console.log('Quelle:', state.data.source);
+    console.log('========================');
+  }
+
+  // ═══════════════════════════════════════
+  // EVENT LISTENERS
+  // ═══════════════════════════════════════
+
+  // Product selection - with flash effect and auto-advance
+  document.querySelectorAll('[data-step="1"] .product-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('[data-step="1"] .product-card').forEach(c => {
+        c.classList.remove('selected', 'flash');
+      });
+      card.classList.add('selected', 'flash');
+      state.data.product = card.dataset.product;
+      updateNav();
+      // Flash effect then auto-advance after 1.5 seconds
+      setTimeout(() => {
+        card.classList.remove('flash');
+        goToStep(2);
+      }, 1500);
+    });
+  });
+
+  // Design selection - with flash effect
+  document.querySelectorAll('.design-option').forEach(option => {
+    option.addEventListener('click', () => {
+      document.querySelectorAll('.design-option').forEach(o => o.classList.remove('selected', 'flash'));
+      option.classList.add('selected', 'flash');
+      state.data.design = option.dataset.design;
+
+      // Show/hide upload zone or idea field
+      uploadZone.classList.toggle('hidden', state.data.design !== 'upload');
+      ideaField.classList.toggle('hidden', state.data.design !== 'idea');
+
+      updateNav();
+
+      // Remove flash after animation, then auto-advance if no sub-option needed
+      setTimeout(() => {
+        option.classList.remove('flash');
+        // Auto-advance only if design is 'none' (keine Vorlage)
+        if (state.data.design === 'none') {
+          goToStep(3);
+        }
+      }, 1000);
+    });
+  });
+
+  // File upload
+  uploadZone.addEventListener('click', () => fileInput.click());
+
+  uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+  });
+
+  uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+  });
+
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFileUpload(files[0]);
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) handleFileUpload(e.target.files[0]);
+  });
+
+  function handleFileUpload(file) {
+    if (file.size > 25 * 1024 * 1024) {
+      alert('Die Datei ist zu groß. Maximal 25 MB erlaubt.');
+      return;
+    }
+
+    state.data.uploadedFile = file;
+    uploadZone.classList.add('has-file');
+    uploadZone.querySelector('.upload-content').classList.add('hidden');
+    uploadZone.querySelector('.upload-success').classList.remove('hidden');
+    document.getElementById('uploadFileName').textContent = file.name;
+  }
+
+  // Idea textarea
+  ideaField.querySelector('textarea')?.addEventListener('input', (e) => {
+    state.data.designText = e.target.value;
+  });
+
+  // Detail pills - with flash effect and auto-advance
+  document.querySelectorAll('.option-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const group = pill.dataset.group;
+      const value = pill.dataset.value;
+
+      // Deselect others in same group and remove flash
+      document.querySelectorAll(`.option-pill[data-group="${group}"]`).forEach(p => {
+        p.classList.remove('selected', 'flash');
+      });
+
+      // If clicking a size pill, clear the custom size input
+      if (group === 'groesse') {
+        const customSizeInput = document.getElementById('customSize');
+        if (customSizeInput) customSizeInput.value = '';
+      }
+
+      // Select this one with flash
+      pill.classList.add('selected', 'flash');
+      state.data.details[group] = value;
+
+      // Remove flash after animation, then check for auto-advance
+      setTimeout(() => {
+        pill.classList.remove('flash');
+
+        // Auto-advance to Step 4 when all 3 detail fields are filled
+        if (state.currentStep === 3 &&
+            state.data.details.ort &&
+            state.data.details.groesse &&
+            state.data.details.zeit) {
+          setTimeout(() => {
+            goToStep(4);
+          }, 300);
+        }
+      }, 500);
+    });
+  });
+
+  // Custom size input
+  const customSizeInput = document.getElementById('customSize');
+  if (customSizeInput) {
+    customSizeInput.addEventListener('input', (e) => {
+      const value = e.target.value.trim();
+      if (value) {
+        // Deselect all size pills
+        document.querySelectorAll('.option-pill[data-group="groesse"]').forEach(p => {
+          p.classList.remove('selected', 'flash');
+        });
+        // Set custom size
+        state.data.details.groesse = value + ' cm (custom)';
+      }
+    });
+  }
+
+  // Contact form inputs
+  ['firstName', 'lastName', 'email', 'phone', 'company', 'message'].forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    if (field) {
+      field.addEventListener('input', (e) => {
+        state.data.contact[fieldId] = e.target.value;
+        updateNav();
+      });
+    }
+  });
+
+  // Source pills (Woher kennst du uns?) - with flash effect
+  document.querySelectorAll('.source-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      // Deselect others and remove flash
+      document.querySelectorAll('.source-pill').forEach(p => {
+        p.classList.remove('selected', 'flash');
+      });
+
+      // Select this one with flash
+      pill.classList.add('selected', 'flash');
+      state.data.source = pill.dataset.source;
+
+      // Remove flash after animation
+      setTimeout(() => {
+        pill.classList.remove('flash');
+      }, 500);
+    });
+  });
+
+  // Navigation buttons
+  btnNext.addEventListener('click', () => {
+    if (state.currentStep < state.totalSteps) {
+      goToStep(state.currentStep + 1);
+    } else {
+      // Submit
+      showSuccess();
+    }
+  });
+
+  btnBack.addEventListener('click', () => {
+    if (state.currentStep > 1) {
+      goToStep(state.currentStep - 1);
+    }
+  });
+
+  // Initialize
+  updateNav();
+  updateProgress();
+
+  // ═══════════════════════════════════════
+  // SPLASH SCREEN ANIMATION
+  // ═══════════════════════════════════════
+  const splashScreen = document.getElementById('splashScreen');
+  const splashLogo = document.getElementById('splashLogo');
+  const headerLogo = document.getElementById('headerLogo');
+
+  // Run splash animation on page load
+  window.addEventListener('load', () => {
+    // Step 1: Fade in the logo
+    setTimeout(() => {
+      splashLogo.classList.add('visible');
+    }, 200);
+
+    // Step 2: Slide up splash screen
+    setTimeout(() => {
+      splashScreen.classList.add('exit');
+      headerLogo.style.opacity = '1';
+      headerLogo.style.transition = 'opacity 0.3s ease';
+    }, 1200);
+
+    // Step 3: Remove splash screen from DOM
+    setTimeout(() => {
+      splashScreen.style.display = 'none';
+    }, 1900);
+  });
+
+  // ═══════════════════════════════════════
+  // EXIT INTENT POPUP
+  // ═══════════════════════════════════════
+  const exitPopup = document.getElementById('exitPopup');
+  const exitPopupShownKey = 'neontrip_exit_popup_shown';
+
+  function showExitPopup() {
+    // Only show if: Step 2+, not shown before this session
+    if (state.currentStep >= 2 && !sessionStorage.getItem(exitPopupShownKey)) {
+      exitPopup.classList.add('show');
+      sessionStorage.setItem(exitPopupShownKey, 'true');
+    }
+  }
+
+  function closeExitPopup() {
+    exitPopup.classList.remove('show');
+  }
+
+  // Make functions globally available
+  window.closeExitPopup = closeExitPopup;
+
+  // Debug: Force show popup (for testing) - type testPopup() in console
+  window.testPopup = function() {
+    sessionStorage.removeItem(exitPopupShownKey);
+    exitPopup.classList.add('show');
+  };
+
+  // Desktop: Mouse leaves window at top
+  document.addEventListener('mouseout', (e) => {
+    if (e.clientY < 0 && !e.relatedTarget && !e.toElement) {
+      showExitPopup();
+    }
+  });
+
+  // Mobile: 45 seconds of inactivity
+  let mobileInactivityTimer = null;
+  const isMobile = window.matchMedia('(max-width: 768px)').matches || 'ontouchstart' in window;
+
+  function resetMobileTimer() {
+    if (mobileInactivityTimer) clearTimeout(mobileInactivityTimer);
+    if (isMobile && state.currentStep >= 2) {
+      mobileInactivityTimer = setTimeout(() => {
+        showExitPopup();
+      }, 45000); // 45 seconds
+    }
+  }
+
+  if (isMobile) {
+    // Reset timer on any interaction
+    ['touchstart', 'scroll', 'click'].forEach(event => {
+      document.addEventListener(event, resetMobileTimer, { passive: true });
+    });
+    // Start timer after splash screen
+    setTimeout(resetMobileTimer, 2000);
+  }
+
+  // ═══════════════════════════════════════
+  // PRODUCT INFO MODAL
+  // ═══════════════════════════════════════
+  const productExamples = {
+    neonschild: {
+      title: 'Neonschild',
+      subtitle: 'LED Neon Flex Schilder',
+      info: [
+        { icon: 'home', text: 'Innen & Außen geeignet' },
+        { icon: 'zap', text: 'Energiesparend (80% weniger als Glas-Neon)' },
+        { icon: 'palette', text: 'Alle Farben & RGB möglich' }
+      ],
+      images: [
+        'assets/images/hero/ergo-campus-pflanzenwand.webp',
+        'assets/images/gastronomie/vinos-weinbar.webp',
+        'assets/images/events-clubs/poas-club-neon.webp',
+        'assets/images/gastronomie/aperol-spritz-quallen.webp'
+      ]
+    },
+    '3d-buchstaben': {
+      title: '3D-Buchstaben',
+      subtitle: 'Front- oder rückbeleuchtet',
+      info: [
+        { icon: 'home', text: 'Innen & Außen geeignet' },
+        { icon: 'layers', text: 'Verschiedene Materialien (Acryl, Alu, Edelstahl)' },
+        { icon: 'sun', text: 'Halo-Effekt bei Rückbeleuchtung' }
+      ],
+      images: [
+        'assets/images/hero/neontrip-3d-logo-render.webp',
+        'assets/images/office-empfang/it-titans-holzlamellen.webp',
+        'assets/images/office-empfang/gwa-studio-logo.webp',
+        'assets/images/office-empfang/office-branding.webp'
+      ]
+    },
+    leuchtkasten: {
+      title: 'Leuchtkasten',
+      subtitle: 'Beleuchtete Werbeflächen',
+      info: [
+        { icon: 'home', text: 'Innen & Außen geeignet' },
+        { icon: 'maximize', text: 'Große Formate möglich' },
+        { icon: 'image', text: 'Austauschbare Motive' }
+      ],
+      images: [
+        'assets/images/messe/billie-messestand.webp',
+        'assets/images/messe/messe-projekt-01.webp',
+        'assets/images/messe/messe-projekt-02.webp',
+        'assets/images/marken-branding/bezzer-quizzer-01.webp'
+      ]
+    },
+    unbeleuchtet: {
+      title: 'Unbeleuchtet',
+      subtitle: 'Fräsbuchstaben & Schilder',
+      info: [
+        { icon: 'home', text: 'Innen & Außen geeignet' },
+        { icon: 'dollar', text: 'Kostengünstige Alternative' },
+        { icon: 'layers', text: 'Hochwertige Materialien (Acryl, Holz, Metall)' }
+      ],
+      images: [
+        'assets/images/marken-branding/bezzer-quizzer-02.webp',
+        'assets/images/marken-branding/bezzer-quizzer-03.webp',
+        'assets/images/marken-branding/bezzer-quizzer-04.webp',
+        'assets/images/hero/jedes-logo-jede-form.webp'
+      ]
+    },
+    sonderanfertigung: {
+      title: 'Sonderanfertigung',
+      subtitle: 'Individuelle Projekte',
+      info: [
+        { icon: 'home', text: 'Innen & Außen geeignet' },
+        { icon: 'star', text: 'Maßgeschneiderte Lösungen' },
+        { icon: 'users', text: 'Persönliche Beratung inklusive' }
+      ],
+      images: [
+        'assets/images/fitness/contact-gym-stretch.webp',
+        'assets/images/fitness/contact-gym-logo.webp',
+        'assets/images/gastronomie/fitbox-mooswand.webp',
+        'assets/images/fitness/contact-gym-01.webp'
+      ]
+    },
+    marquise: {
+      title: 'Marquise-Buchstaben',
+      subtitle: 'Retro Glühbirnen-Optik',
+      info: [
+        { icon: 'home', text: 'Primär für Innenbereich' },
+        { icon: 'star', text: 'Vintage-Look mit echten LED-Birnen' },
+        { icon: 'zap', text: 'Dimmbar & energiesparend' }
+      ],
+      images: [
+        'assets/images/events-clubs/keezy-event-targobank.webp',
+        'assets/images/events-clubs/sommerfest-kw-buehne.webp',
+        'assets/images/events-clubs/poas-crowd-event.webp',
+        'assets/images/gastronomie/galaxy-kiosk-cafe.webp'
+      ]
+    },
+    'halo-lampe': {
+      title: 'Halo-Lampe',
+      subtitle: 'Runde LED-Schilder',
+      info: [
+        { icon: 'home', text: 'Primär für Innenbereich' },
+        { icon: 'circle', text: 'Runde Form mit Hintergrundbeleuchtung' },
+        { icon: 'zap', text: 'Ideal für Logos & Symbole' }
+      ],
+      images: [
+        'assets/images/hero/neon-detail-shot.webp',
+        'assets/images/fitness/contact-gym-02.webp',
+        'assets/images/fitness/contact-gym-03.webp',
+        'assets/images/fitness/contact-gym-04.webp'
+      ]
+    },
+    gesamtkonzept: {
+      title: 'Gesamtkonzept',
+      subtitle: 'Innen- & Außengestaltung',
+      info: [
+        { icon: 'home', text: 'Innen & Außen kombiniert' },
+        { icon: 'package', text: 'Alles aus einer Hand' },
+        { icon: 'users', text: 'Projektmanager als Ansprechpartner' }
+      ],
+      images: [
+        'assets/images/office-empfang/it-titans-holzlamellen.webp',
+        'assets/images/messe/billie-messestand.webp',
+        'assets/images/gastronomie/vinos-weinbar.webp',
+        'assets/images/hero/ergo-campus-pflanzenwand.webp'
+      ]
+    }
+  };
+
+  const productModal = document.getElementById('productModal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalSubtitle = document.getElementById('modalSubtitle');
+  const modalInfo = document.getElementById('modalInfo');
+  const modalImages = document.getElementById('modalImages');
+
+  const iconSvgs = {
+    home: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    zap: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    palette: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/></svg>',
+    layers: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+    sun: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+    maximize: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>',
+    image: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
+    dollar: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    star: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    users: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    circle: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>',
+    package: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>'
+  };
+
+  function openProductModal(productType) {
+    const product = productExamples[productType];
+    if (!product) return;
+
+    modalTitle.textContent = product.title;
+    modalSubtitle.textContent = product.subtitle;
+
+    // Render info items
+    modalInfo.innerHTML = product.info.map(item =>
+      `<div class="flex items-center gap-2 text-sm text-black/70 bg-black/[0.03] px-3 py-1.5 rounded-full">
+        <span class="text-black/40">${iconSvgs[item.icon] || ''}</span>
+        <span>${item.text}</span>
+      </div>`
+    ).join('');
+
+    // Render images
+    modalImages.innerHTML = product.images.map(img =>
+      `<img src="${img}" alt="${product.title} Beispiel" class="modal-img" loading="lazy">`
+    ).join('');
+
+    productModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeProductModal() {
+    productModal.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  // Info button click handlers (prevent card selection)
+  document.querySelectorAll('.info-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      openProductModal(btn.dataset.info);
+    });
+  });
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && productModal.classList.contains('active')) {
+      closeProductModal();
+    }
+  });
+</script>
+
+</body>
+</html>

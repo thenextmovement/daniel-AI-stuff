@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="de" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEONTRIP – Custom LED Neon Leuchtreklame | Premium nach Maß</title>
+  <meta name="description" content="NEONTRIP – Premium LED Neon Leuchtreklame nach Maß. Custom Firmenlogos, Schriftzüge & Installationen für Marken wie Google, Porsche, Telekom. Jetzt kostenlosen Entwurf anfordern.">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="NEONTRIP – Custom LED Neon Leuchtreklame für Marken">
+  <meta property="og:description" content="Premium LED Neon Signs nach Maß. Vertraut von Google, Porsche, Telekom & 35+ weiteren Top-Marken.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.neontrip.de">
+  <meta property="og:image" content="assets/images/hero/ergo-campus-pflanzenwand.jpg">
+  <meta property="og:locale" content="de_DE">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.shopify.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dark: '#0A0A0A',
+            'dark-secondary': '#141414',
+            'dark-nav': '#040313',
+            light: '#F5F5F5',
+          },
+          fontFamily: {
+            inter: ['Inter', 'sans-serif'],
+          },
+          letterSpacing: {
+            'tight-xl': '-0.04em',
+            'tight-2xl': '-0.05em',
+            'tight-3xl': '-0.06em',
+            'tight-4xl': '-0.07em',
+          },
+          keyframes: {
+            marquee: { '0%': { transform: 'translateX(0)' }, '100%': { transform: 'translateX(-50%)' } },
+            'fade-up': { '0%': { opacity: '0', transform: 'translateY(40px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+            'splash-text': { '0%': { opacity: '0', filter: 'blur(5px)', transform: 'translateY(60px)' }, '100%': { opacity: '1', filter: 'blur(0)', transform: 'translateY(0)' } },
+            'splash-exit': { '0%': { transform: 'translateY(0)' }, '100%': { transform: 'translateY(-100vh)' } },
+            'product-scroll': { '0%': { transform: 'translateX(0)' }, '100%': { transform: 'translateX(-50%)' } },
+            'review-scroll': { '0%': { transform: 'translateX(0)' }, '100%': { transform: 'translateX(-50%)' } },
+          },
+          animation: {
+            marquee: 'marquee 30s linear infinite',
+            'fade-up': 'fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            'splash-text': 'splash-text 1s cubic-bezier(0.56, 0.22, 0.05, 0.99) forwards',
+            'splash-exit': 'splash-exit 0.7s cubic-bezier(0.76, 0, 0.24, 1) forwards',
+            'product-scroll': 'product-scroll 50s linear infinite',
+            'review-scroll': 'review-scroll 45s linear infinite',
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    "name": "NEONTRIP",
+    "legalName": "Dara Nova GmbH",
+    "description": "Premium LED Neon Leuchtreklame nach Maß",
+    "url": "https://www.neontrip.de",
+    "telephone": "+49-211-54257240",
+    "email": "support@neontrip.de",
+    "address": { "@type": "PostalAddress", "streetAddress": "Bilker Allee 29", "addressLocality": "Düsseldorf", "postalCode": "40219", "addressCountry": "DE" },
+    "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": "236" },
+    "sameAs": [
+      "https://www.instagram.com/neontrip.de/",
+      "https://www.linkedin.com/company/neontrip/",
+      "https://www.facebook.com/NeonTrip.de/",
+      "https://www.tiktok.com/@neontrip.de",
+      "https://g.page/neontrip"
+    ]
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: 'Inter', sans-serif; }
+
+    /* Splash */
+    .splash { position: fixed; inset: 0; z-index: 9999; background: #0A0A0A; display: flex; align-items: center; justify-content: center; }
+    .splash.exit { animation: splash-exit 0.7s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
+    .splash.hidden { display: none; }
+    .splash-letter { display: inline-block; opacity: 0; filter: blur(5px); transform: translateY(60px); }
+    .splash-letter.visible { animation: splash-text 0.6s cubic-bezier(0.56, 0.22, 0.05, 0.99) forwards; }
+
+    /* Scroll reveal */
+    .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* Marquee */
+    .marquee-track { display: inline-flex; animation: marquee 30s linear infinite; }
+    .marquee-track:hover { animation-play-state: paused; }
+    .marquee-mask { -webkit-mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%); mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%); }
+
+    /* Product Carousel */
+    .product-track { display: flex; gap: 24px; animation: product-scroll 50s linear infinite; }
+    .product-track:hover { animation-play-state: paused; }
+
+    /* Review Carousel */
+    .review-track { display: flex; gap: 16px; animation: review-scroll 45s linear infinite; }
+    .review-track:hover { animation-play-state: paused; }
+
+    @keyframes reviewScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+    /* FAQ */
+    .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+    .faq-item.active .faq-answer { max-height: 400px; }
+    .faq-item.active .faq-icon svg { transform: rotate(45deg); }
+    .faq-icon svg { transition: transform 0.3s ease; }
+
+    /* Counter */
+    [data-count] { font-variant-numeric: tabular-nums; }
+
+    /* Mobile Nav */
+    #mobile-nav.open { opacity: 1; pointer-events: auto; }
+    #mobile-nav .mobile-nav-link { opacity: 0; transform: translateY(20px); transition: opacity 0.4s ease, transform 0.4s ease; }
+    #mobile-nav.open .mobile-nav-link { opacity: 1; transform: translateY(0); }
+    #mobile-nav.open .mobile-nav-link:nth-child(1) { transition-delay: 0.05s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(2) { transition-delay: 0.1s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(3) { transition-delay: 0.15s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(4) { transition-delay: 0.2s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(5) { transition-delay: 0.25s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(6) { transition-delay: 0.3s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(7) { transition-delay: 0.35s; }
+
+    /* Hamburger X transform */
+    .hamburger.active span:first-child { transform: rotate(45deg) translateY(3.25px); }
+    .hamburger.active span:last-child { transform: rotate(-45deg) translateY(-3.25px); }
+
+    /* Header scroll */
+    .header-scrolled { background: rgba(10,10,10,0.97) !important; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .header-scrolled .nav-link { color: rgba(255,255,255,0.6) !important; }
+    .header-scrolled .nav-link:hover, .header-scrolled .nav-link.active { color: #fff !important; }
+    .header-scrolled .header-logo { filter: brightness(0) invert(1) !important; }
+    .header-scrolled .hamburger span { background: #fff !important; }
+
+    /* Desktop Nav active pill */
+    .nav-link { position: relative; }
+    .nav-link.active::after { content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; background: #0A0A0A; border-radius: 50%; }
+
+    /* Noise overlay */
+    .noise-overlay { background-image: url('https://framerusercontent.com/images/rR6HYXBrMmX4cRpXfXUOvpvpB0.png'); background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; }
+  </style>
+</head>
+<body class="bg-white text-dark overflow-x-hidden" style="overflow: hidden;">
+
+  <!-- ════════════════════════════════════════
+       SPLASH SCREEN
+       ════════════════════════════════════════ -->
+  <div class="splash" id="splash" aria-hidden="true">
+    <p class="text-white font-inter text-4xl md:text-5xl font-semibold tracking-tight-2xl" id="splash-text">
+      <span class="splash-letter">N</span><span class="splash-letter">E</span><span class="splash-letter">O</span><span class="splash-letter">N</span><span class="splash-letter">T</span><span class="splash-letter">R</span><span class="splash-letter">I</span><span class="splash-letter">P</span>
+    </p>
+  </div>
+
+  <!-- ════════════════════════════════════════
+       HEADER
+       ════════════════════════════════════════ -->
+  <header id="header" class="fixed top-0 left-0 right-0 z-50 transition-all duration-[400ms] opacity-0 -translate-y-full" style="background: rgba(10,10,10,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+    <div class="max-w-[1520px] mx-auto flex items-center justify-between h-[80px] px-5 md:px-8">
+      <!-- Logo (links, größer) -->
+      <a href="index.html" class="header-logo shrink-0" style="filter: brightness(0) invert(1); transition: filter 0.4s;">
+        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-10 md:h-11 w-auto">
+      </a>
+
+      <!-- Desktop Navigation (komplett neu) -->
+      <nav class="hidden lg:flex items-center">
+        <div class="flex items-center gap-1 bg-white/[0.07] rounded-full px-1.5 py-1.5">
+          <a href="#projekte" class="nav-link text-[13px] font-medium text-white/70 hover:text-white px-4 py-2 rounded-full hover:bg-white/10 transition-all duration-300">Projekte</a>
+          <a href="#leistungen" class="nav-link text-[13px] font-medium text-white/70 hover:text-white px-4 py-2 rounded-full hover:bg-white/10 transition-all duration-300">Leistungen</a>
+          <a href="#bewertungen" class="nav-link text-[13px] font-medium text-white/70 hover:text-white px-4 py-2 rounded-full hover:bg-white/10 transition-all duration-300">Bewertungen</a>
+          <a href="#team" class="nav-link text-[13px] font-medium text-white/70 hover:text-white px-4 py-2 rounded-full hover:bg-white/10 transition-all duration-300">Team</a>
+          <a href="#faq" class="nav-link text-[13px] font-medium text-white/70 hover:text-white px-4 py-2 rounded-full hover:bg-white/10 transition-all duration-300">FAQ</a>
+        </div>
+      </nav>
+
+      <!-- Rechte Seite: Telefon + CTA -->
+      <div class="hidden lg:flex items-center gap-4">
+        <a href="tel:+4921154257240" class="flex items-center gap-2 text-white/60 hover:text-white text-[13px] font-medium transition-colors duration-300">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+          0211 54257240
+        </a>
+        <a href="#kontakt" class="header-cta flex items-center gap-2.5 bg-gradient-to-bl from-white to-[#eae6f7] text-dark-nav font-medium text-[13px] px-5 py-2.5 rounded-full border border-white/30 shadow-lg hover:shadow-xl transition-all duration-300">
+          <span class="w-6 h-6 bg-[#0A0A0A] rounded-full flex items-center justify-center shadow-md">
+            <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          </span>
+          Jetzt anfragen
+        </a>
+      </div>
+
+      <button class="hamburger lg:hidden flex flex-col gap-[5px] p-2" id="hamburger" aria-label="Menü">
+        <span class="block w-5 h-[1.5px] bg-white transition-all duration-300 origin-center"></span>
+        <span class="block w-5 h-[1.5px] bg-white transition-all duration-300 origin-center"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ════════════════════════════════════════
+       MOBILE NAV
+       ════════════════════════════════════════ -->
+  <div id="mobile-nav" class="fixed inset-0 z-40 pointer-events-none opacity-0 transition-opacity duration-300 lg:hidden" aria-hidden="true">
+    <div class="absolute inset-0 bg-dark/90 backdrop-blur-md"></div>
+    <div class="relative z-10 flex flex-col items-center justify-center h-full gap-7">
+      <a href="#hero" class="mobile-nav-link text-3xl font-inter font-semibold text-white tracking-tight-xl hover:text-white/70 transition-colors">Home</a>
+      <a href="#projekte" class="mobile-nav-link text-3xl font-inter font-semibold text-white tracking-tight-xl hover:text-white/70 transition-colors">Projekte</a>
+      <a href="#leistungen" class="mobile-nav-link text-3xl font-inter font-semibold text-white tracking-tight-xl hover:text-white/70 transition-colors">Leistungen</a>
+      <a href="#bewertungen" class="mobile-nav-link text-3xl font-inter font-semibold text-white tracking-tight-xl hover:text-white/70 transition-colors">Bewertungen</a>
+      <a href="#team" class="mobile-nav-link text-3xl font-inter font-semibold text-white tracking-tight-xl hover:text-white/70 transition-colors">Team</a>
+      <a href="#faq" class="mobile-nav-link text-3xl font-inter font-semibold text-white tracking-tight-xl hover:text-white/70 transition-colors">FAQ</a>
+      <a href="#kontakt" class="mobile-nav-link text-3xl font-inter font-semibold text-white tracking-tight-xl hover:text-white/70 transition-colors">Kontakt</a>
+      <div class="mt-4">
+        <a href="#kontakt" class="mobile-nav-link inline-flex items-center gap-3 bg-gradient-to-bl from-white to-[#eae6f7] text-dark-nav font-medium text-base px-6 py-3 rounded-full">
+          <span class="w-8 h-8 bg-[#0A0A0A] rounded-full flex items-center justify-center shadow-md">
+            <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          </span>
+          JETZT ANFRAGEN
+        </a>
+      </div>
+      <a href="tel:+4921154257240" class="mobile-nav-link text-lg font-medium text-white/60 mt-2">0211 54257240</a>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════
+       HERO
+       ════════════════════════════════════════ -->
+  <section id="hero" class="relative min-h-screen flex flex-col justify-center items-center bg-dark overflow-hidden">
+    <div class="absolute inset-0 z-0">
+      <video src="https://framerusercontent.com/assets/WhJOogHlaNXHRzlzRWUyNpmLgB8.mp4" autoplay loop muted playsinline class="w-full h-full object-cover opacity-60"></video>
+    </div>
+
+    <div class="relative z-10 flex flex-col items-center text-center px-5 pt-24 pb-32 md:pb-40 max-w-[1200px] mx-auto w-full">
+      <div class="reveal inline-flex items-center gap-2 px-3 py-2.5 border border-white/20 rounded-full text-xs font-semibold tracking-[0.1em] uppercase text-white mb-8 backdrop-blur-sm">
+        Premium LED Neon · Düsseldorf
+      </div>
+
+      <h1 class="reveal font-inter text-[38px] md:text-[72px] font-semibold leading-[1.1] tracking-tight-2xl text-white uppercase mb-8" style="transition-delay: 0.1s;">
+        DEIN LOGO<br>ALS LEUCHTSCHILD
+      </h1>
+
+      <div class="reveal flex flex-col sm:flex-row items-center gap-6 mb-8" style="transition-delay: 0.2s;">
+        <a href="#kontakt" class="flex items-center gap-3 bg-gradient-to-bl from-white to-[#eae6f7] text-dark-nav font-medium text-base px-5 py-2 rounded-full border border-white shadow-lg hover:shadow-xl transition-all duration-300">
+          <span class="w-8 h-8 bg-[#0A0A0A] rounded-full flex items-center justify-center shadow-md">
+            <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          </span>
+          JETZT ANFRAGEN
+        </a>
+        <div class="flex items-center gap-3">
+          <div class="flex -space-x-2">
+            <img src="https://framerusercontent.com/images/sFJggTzla8eMLg8n1AbKDQlyulU.jpg?width=3744&height=5616" class="w-9 h-9 rounded-full border-2 border-dark object-cover" alt="">
+            <img src="https://framerusercontent.com/images/JhbGle453RWF0QjzZnSxbtxRBiA.jpg?width=3000&height=4499" class="w-9 h-9 rounded-full border-2 border-dark object-cover" alt="">
+            <img src="https://framerusercontent.com/images/hCsV8dkBKP9VEaaIlJr8Bk89bX4.jpg?width=4928&height=3264" class="w-9 h-9 rounded-full border-2 border-dark object-cover" alt="">
+            <div class="w-9 h-9 rounded-full border-2 border-dark bg-[#0A0A0A] flex items-center justify-center text-white text-xs font-bold">21K+</div>
+          </div>
+          <div>
+            <div class="flex gap-0.5 mb-0.5">
+              <svg class="w-3.5 h-3.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-3.5 h-3.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-3.5 h-3.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-3.5 h-3.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-3.5 h-3.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-white text-sm">4.9 / 5 Google Bewertung</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal w-full mt-auto" style="transition-delay: 0.3s;">
+        <div class="flex items-center gap-4 mb-6">
+          <p class="text-xs font-semibold tracking-[0.15em] uppercase text-white/80 shrink-0">Vertraut von führenden Marken</p>
+          <div class="h-px bg-white/10 flex-1"></div>
+        </div>
+        <div class="marquee-mask overflow-hidden">
+          <div class="marquee-track gap-16 md:gap-20 items-center">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-8 md:h-12 w-auto opacity-80 brightness-200" alt="Google">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-10 md:h-14 w-auto opacity-80 brightness-200" alt="Porsche">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-8 md:h-12 w-auto opacity-80 brightness-200" alt="Telekom">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-10 md:h-14 w-auto opacity-80 brightness-200" alt="Vapiano">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-10 md:h-14 w-auto opacity-80 brightness-200" alt="Asbach">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-8 md:h-12 w-auto opacity-80 brightness-200" alt="Absolut">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-8 md:h-12 w-auto opacity-80 brightness-200" alt="Google">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-10 md:h-14 w-auto opacity-80 brightness-200" alt="Porsche">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-8 md:h-12 w-auto opacity-80 brightness-200" alt="Telekom">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-10 md:h-14 w-auto opacity-80 brightness-200" alt="Vapiano">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-10 md:h-14 w-auto opacity-80 brightness-200" alt="Asbach">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-8 md:h-12 w-auto opacity-80 brightness-200" alt="Absolut">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       STATS
+       ════════════════════════════════════════ -->
+  <section class="bg-white py-16 md:py-20">
+    <div class="max-w-[1200px] mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
+      <div class="reveal text-center flex flex-col items-center">
+        <div class="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+          <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="text-5xl md:text-7xl font-semibold tracking-tight-4xl text-dark-nav leading-none mb-2" data-count="21000" data-suffix="+">0</div>
+        <p class="text-sm md:text-base font-medium text-dark/60 tracking-tight-xl">Bestellungen</p>
+      </div>
+      <div class="reveal text-center flex flex-col items-center" style="transition-delay: 0.1s;">
+        <div class="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+          <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="text-5xl md:text-7xl font-semibold tracking-tight-4xl text-dark-nav leading-none mb-2" data-count="99" data-suffix="%">0</div>
+        <p class="text-sm md:text-base font-medium text-dark/60 tracking-tight-xl">Pünktliche Lieferung</p>
+      </div>
+      <div class="reveal text-center flex flex-col items-center" style="transition-delay: 0.2s;">
+        <div class="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+          <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <div class="text-5xl md:text-7xl font-semibold tracking-tight-4xl text-dark-nav leading-none mb-2" data-count="4.9" data-suffix="/5">0</div>
+        <p class="text-sm md:text-base font-medium text-dark/60 tracking-tight-xl">Google Bewertung</p>
+      </div>
+      <div class="reveal text-center flex flex-col items-center" style="transition-delay: 0.3s;">
+        <div class="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+          <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        </div>
+        <div class="text-5xl md:text-7xl font-semibold tracking-tight-4xl text-dark-nav leading-none mb-2" data-count="7" data-suffix=" Tage">0</div>
+        <p class="text-sm md:text-base font-medium text-dark/60 tracking-tight-xl">Express Lieferung</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       PROJEKTE
+       ════════════════════════════════════════ -->
+  <section id="projekte" class="bg-white py-16 md:py-24 px-6 md:px-9">
+    <div class="max-w-[1520px] mx-auto">
+      <div class="reveal flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-12">
+        <h2 class="text-[62px] md:text-[144px] font-semibold leading-[0.92] tracking-tight-3xl text-dark">Projekte.</h2>
+        <p class="max-w-[400px] text-base md:text-lg font-medium text-dark/60 tracking-tight-xl leading-[1.3]">Wir realisieren Neonschilder, Neonlampen und beleuchtete Firmenlogos für Unternehmen aus verschiedenen Branchen.</p>
+      </div>
+
+      <div class="reveal flex flex-wrap gap-2 mb-8">
+        <button class="filter-btn active bg-dark text-white text-sm font-medium px-4 py-2 rounded-full transition-all" data-filter="all">Alle</button>
+        <button class="filter-btn bg-gray-100 text-dark text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-200 transition-all" data-filter="events">Events</button>
+        <button class="filter-btn bg-gray-100 text-dark text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-200 transition-all" data-filter="gastro">Gastronomie</button>
+        <button class="filter-btn bg-gray-100 text-dark text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-200 transition-all" data-filter="messe">Messen</button>
+        <button class="filter-btn bg-gray-100 text-dark text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-200 transition-all" data-filter="office">Büros</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1">
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" data-category="events">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Events</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ POAS Club</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/events-clubs/poas-club-neon.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="POAS LED Neon Logo über Tanzfläche" loading="lazy">
+          </div>
+        </div>
+
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" style="transition-delay: 0.1s;" data-category="gastro">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Gastronomie</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ Vino's</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/gastronomie/vinos-weinbar.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Vinos Weinbar LED Neon" loading="lazy">
+          </div>
+        </div>
+
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" style="transition-delay: 0.2s;" data-category="messe">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Messen</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ Billie</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/messe/billie-messestand.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Billie Payments Messestand" loading="lazy">
+          </div>
+        </div>
+
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" style="transition-delay: 0.3s;" data-category="office">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Büros</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ IT Titans</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/office-empfang/it-titans-holzlamellen.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="IT Titans LED Leuchtschild" loading="lazy">
+          </div>
+        </div>
+
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" data-category="events">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Fitness</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ Contact Gym</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/fitness/contact-gym-stretch.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Contact Gym STRETCH Neon" loading="lazy">
+          </div>
+        </div>
+
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" style="transition-delay: 0.1s;" data-category="events">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Events</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ KEEZY × Targobank</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/events-clubs/keezy-event-targobank.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="KEEZY Event Targobank" loading="lazy">
+          </div>
+        </div>
+
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" style="transition-delay: 0.2s;" data-category="events">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Marken</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ Bezzer Quizzer</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/marken-branding/bezzer-quizzer-01.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Bezzer Quizzer LED Neon" loading="lazy">
+          </div>
+        </div>
+
+        <div class="reveal group project-card rounded-[14px] overflow-hidden bg-white" style="transition-delay: 0.3s;" data-category="gastro">
+          <div class="flex items-center justify-between px-5 py-4 bg-white rounded-[14px]">
+            <div class="flex items-end gap-4">
+              <span class="text-lg font-semibold tracking-tight-xl text-dark">Gastronomie</span>
+              <span class="text-xs font-medium text-dark/60 tracking-tight-xl">/ Aperol Spritz</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-light">
+            <div class="absolute inset-0 bg-dark/15 z-10"></div>
+            <img src="assets/images/gastronomie/aperol-spritz-quallen.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Aperol Spritz Neon" loading="lazy">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       WARUM NEONTRIP
+       ════════════════════════════════════════ -->
+  <section id="vorteile" class="bg-white py-16 md:py-24 px-6 md:px-9">
+    <div class="max-w-[1520px] mx-auto">
+      <div class="reveal flex items-center gap-2 mb-6">
+        <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center"><span class="w-[2px] h-2 bg-white block"></span></div>
+        <span class="text-base font-medium tracking-tight-xl text-dark">Warum NEONTRIP</span>
+      </div>
+
+      <div class="reveal mb-12">
+        <h2 class="text-[32px] md:text-[60px] font-semibold leading-[1.1] tracking-tight-3xl text-dark max-w-[830px]">
+          Premium LED Schriftzüge, <span class="text-dark/60">für Marken, Events & Messen.</span>
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-[400px_1px_1fr] gap-8 lg:gap-0">
+        <div class="reveal relative rounded-[18px] overflow-hidden aspect-[3/4] lg:aspect-auto lg:h-[545px] group cursor-pointer">
+          <div class="absolute inset-0 bg-dark/20 z-10"></div>
+          <video src="https://framerusercontent.com/assets/XV8Q2CqZy57dS7z89N8f9aPGhY.mp4" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
+          <div class="absolute bottom-12 left-8 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+            <p class="text-white text-base font-medium tracking-tight-xl mb-4 max-w-[300px]">Ihr perfektes Leuchtschild beginnt mit einer Anfrage.</p>
+            <a href="#kontakt" class="inline-flex items-center gap-2 bg-dark text-white text-xs font-semibold tracking-tight-xl px-3 py-2 rounded-full">Jetzt anfragen <span class="w-2 h-2 bg-white rounded-full"></span></a>
+          </div>
+        </div>
+
+        <div class="hidden lg:block w-px bg-gray-200"></div>
+
+        <div class="flex flex-col gap-6">
+          <p class="reveal text-lg md:text-[22px] font-medium leading-[1.2] tracking-tight-xl text-dark/60 max-w-[550px]">
+            <span class="text-dark">Wir sind ein B2B-Partner für Agenturen, Messe- und Ladenbauer sowie Marken.</span> Mit über 3500 Projekten, unserem Showroom in Düsseldorf und schnellen Abläufen liefern wir individuelle LED-Leuchtschilder zuverlässig und in Premiumqualität.
+          </p>
+
+          <div class="flex flex-col md:flex-row gap-1">
+            <div class="reveal flex-1 bg-white rounded-[18px] overflow-hidden">
+              <div class="flex items-center justify-between p-6 bg-white rounded-[18px]">
+                <div class="text-[36px] md:text-[45px] font-semibold tracking-tight-4xl text-dark leading-none" data-count="240" data-suffix="+">0</div>
+                <span class="text-[10px] font-semibold tracking-tight-3xl text-dark/50">01</span>
+              </div>
+              <div class="p-6 pt-0 bg-white rounded-b-[18px]">
+                <p class="text-base md:text-lg font-medium tracking-tight-xl text-dark text-right mb-2">Erfolgreich abgeschlossene Projekte</p>
+                <p class="text-sm md:text-base font-medium tracking-tight-xl text-dark/60">Von kleinen Logos bis zu großformatigen Messeinstallationen.</p>
+              </div>
+            </div>
+
+            <div class="reveal flex-1 bg-white rounded-[18px] overflow-hidden" style="transition-delay: 0.15s;">
+              <div class="flex items-center justify-between p-6 bg-white rounded-[18px]">
+                <div class="text-[36px] md:text-[45px] font-semibold tracking-tight-4xl text-dark leading-none" data-count="99" data-suffix="%">0</div>
+                <span class="text-[10px] font-semibold tracking-tight-3xl text-dark/50">02</span>
+              </div>
+              <div class="p-6 pt-0 bg-white rounded-b-[18px]">
+                <p class="text-base md:text-lg font-medium tracking-tight-xl text-dark text-right mb-2">Pünktliche Lieferung</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ════════════════════════════════════════
+       USP SECTION
+       ════════════════════════════════════════ -->
+  <section class="bg-white py-16 md:py-24 px-6 md:px-9">
+    <div class="max-w-[1200px] mx-auto">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="bg-white rounded-[18px] p-6 border border-gray-100">
+          <svg class="w-6 h-6 text-dark mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          <h3 class="text-base font-semibold tracking-tight-xl text-dark mb-1">Express in 7 Tagen</h3>
+          <p class="text-sm font-medium text-dark/50 tracking-tight-xl">Europaweit inkl. Schweiz</p>
+        </div>
+        <div class="bg-white rounded-[18px] p-6 border border-gray-100">
+          <svg class="w-6 h-6 text-dark mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <h3 class="text-base font-semibold tracking-tight-xl text-dark mb-1">Entwurf in 6 Stunden</h3>
+          <p class="text-sm font-medium text-dark/50 tracking-tight-xl">Kostenlose Visualisierung</p>
+        </div>
+        <div class="bg-white rounded-[18px] p-6 border border-gray-100">
+          <svg class="w-6 h-6 text-dark mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+          <h3 class="text-base font-semibold tracking-tight-xl text-dark mb-1">Rückruf in 30 Min</h3>
+          <p class="text-sm font-medium text-dark/50 tracking-tight-xl">Persönliche Experten-Beratung</p>
+        </div>
+        <div class="bg-white rounded-[18px] p-6 border border-gray-100">
+          <svg class="w-6 h-6 text-dark mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <h3 class="text-base font-semibold tracking-tight-xl text-dark mb-1">24 Monate Garantie</h3>
+          <p class="text-sm font-medium text-dark/50 tracking-tight-xl">Auf alle Produkte</p>
+        </div>
+        <div class="bg-white rounded-[18px] p-6 border border-gray-100">
+          <svg class="w-6 h-6 text-dark mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <h3 class="text-base font-semibold tracking-tight-xl text-dark mb-1">10 Jahre Lebensdauer</h3>
+          <p class="text-sm font-medium text-dark/50 tracking-tight-xl">ECOPOWER LEDs</p>
+        </div>
+        <div class="bg-white rounded-[18px] p-6 border border-gray-100">
+          <svg class="w-6 h-6 text-dark mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <h3 class="text-base font-semibold tracking-tight-xl text-dark mb-1">Showroom Düsseldorf</h3>
+          <p class="text-sm font-medium text-dark/50 tracking-tight-xl">Besichtigung vor Ort möglich</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       LEISTUNGEN / PRODUKTE (Dark Carousel)
+       ════════════════════════════════════════ -->
+  <section id="leistungen" class="relative bg-light py-16 md:py-24 px-6 md:px-9">
+    <div class="absolute inset-[6px] bg-dark rounded-[25px] z-0">
+      <div class="absolute inset-0 noise-overlay rounded-[25px]"></div>
+    </div>
+
+    <div class="relative z-10 max-w-[1520px] mx-auto">
+      <div class="reveal flex items-center gap-2 mb-6">
+        <div class="w-4 h-4 bg-white rounded-full flex items-center justify-center"><span class="w-[2px] h-2 bg-dark block"></span></div>
+        <span class="text-base font-medium tracking-tight-xl text-white">Was wir außer Neon anbieten</span>
+      </div>
+
+      <h2 class="reveal text-[62px] md:text-[144px] font-semibold leading-[0.92] tracking-tight-3xl text-white mb-12">Produkte.</h2>
+
+      <div class="marquee-mask overflow-hidden">
+        <div class="product-track">
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Neon LED Schilder" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Neon LED Schilder</h3><p class="text-white/75 text-sm">ab 199€</p></div>
+          </div>
+
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Vollflächig beleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Vollflächig beleuchtet</h3><p class="text-white/75 text-sm">ab 399€</p></div>
+          </div>
+
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Frontbeleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Frontbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Leuchtkasten" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Leuchtkasten</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Marquees Buchstaben" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Marquees Buchstaben</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
+
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Rückbeleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Rückbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Unbeleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Unbeleuchtet</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
+
+          <!-- Duplikate für nahtlose Loop -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Neon LED Schilder</h3><p class="text-white/75 text-sm">ab 199€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Vollflächig beleuchtet</h3><p class="text-white/75 text-sm">ab 399€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Frontbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Leuchtkasten</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Marquees Buchstaben</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Rückbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512&width=6480&height=6480" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Unbeleuchtet</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       GOOGLE BEWERTUNGEN (Scrollendes Karussell)
+       ════════════════════════════════════════ -->
+  <section id="bewertungen" class="bg-white py-16 md:py-24 px-6 md:px-9">
+    <div class="max-w-[1520px] mx-auto">
+      <div class="reveal flex items-center gap-2 mb-6">
+        <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center"><span class="w-[2px] h-2 bg-white block"></span></div>
+        <span class="text-base font-medium tracking-tight-xl text-dark">Google Bewertungen</span>
+      </div>
+
+      <div class="reveal flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
+        <h2 class="text-[62px] md:text-[144px] font-semibold leading-[0.92] tracking-tight-3xl text-dark">Erfahrungen.</h2>
+        <div class="flex items-center gap-3 pb-2">
+          <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-2xl font-semibold tracking-tight-xl text-dark">4.9</span>
+              <div class="flex gap-0.5">
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              </div>
+            </div>
+            <p class="text-sm font-medium text-dark/60 tracking-tight-xl">236 Bewertungen auf Google</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kunden-Fotos aus Google Bewertungen -->
+      <div class="reveal grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mb-10">
+        <div class="aspect-square rounded-xl overflow-hidden"><img src="assets/images/events-clubs/poas-club-neon.webp" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Kundenprojekt" loading="lazy"></div>
+        <div class="aspect-square rounded-xl overflow-hidden"><img src="assets/images/gastronomie/vinos-weinbar.webp" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Kundenprojekt" loading="lazy"></div>
+        <div class="aspect-square rounded-xl overflow-hidden"><img src="assets/images/office-empfang/it-titans-holzlamellen.webp" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Kundenprojekt" loading="lazy"></div>
+        <div class="aspect-square rounded-xl overflow-hidden"><img src="assets/images/marken-branding/bezzer-quizzer-01.webp" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Kundenprojekt" loading="lazy"></div>
+        <div class="aspect-square rounded-xl overflow-hidden hidden sm:block"><img src="assets/images/fitness/contact-gym-stretch.webp" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Kundenprojekt" loading="lazy"></div>
+        <div class="aspect-square rounded-xl overflow-hidden hidden md:block"><img src="assets/images/gastronomie/aperol-spritz-quallen.webp" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Kundenprojekt" loading="lazy"></div>
+      </div>
+
+      <!-- Scrolling Review Carousel -->
+      <div class="marquee-mask overflow-hidden" id="review-carousel">
+        <div class="review-track flex gap-4" style="animation: reviewScroll 45s linear infinite;">
+          <!-- Review 1 -->
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#4285F4] flex items-center justify-center text-sm font-semibold text-white">JT</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Julia Termeyer</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Leiterin Einkauf · Cocoyu Agency</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">NEONTRIP hat unsere Erwartungen bei jeder Zusammenarbeit übertroffen. Ihre Kreativität und ihr Engagement sind bemerkenswert. Die schnelle Reaktionszeit und professionelle Herangehensweise haben uns beeindruckt.</p>
+          </div>
+
+          <!-- Review 2 -->
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#34A853] flex items-center justify-center text-sm font-semibold text-white">LM</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Lukas Mann</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Geschäftsführer</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">Zwischen der Anfrage bis zum Angebot mit visuellem Entwurf lagen nur 45 Minuten. Sehr effizientes und zuverlässiges Team. Insgesamt ein fantastisches Erlebnis!</p>
+          </div>
+
+          <!-- Review 3 -->
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#EA4335] flex items-center justify-center text-sm font-semibold text-white">AW</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Anna Wellner</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Projektleitung · Werbeagentur</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">Wir bestellen als Werbeagentur regelmäßig für Kunden und dabei ist NEONTRIP ein perfekter Partner. Die Lieferung erfolgt stets zuverlässig und innerhalb einer Woche.</p>
+          </div>
+
+          <!-- Review 4 -->
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#FBBC05] flex items-center justify-center text-sm font-semibold text-white">FM</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Fabian Meister</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Inhaber</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">Top-Service: immer erreichbar, hilfsbereit und gute Beratung. Wir konnten im Laden in Düsseldorf sogar Beispiel-Exemplare ansehen. Unser Schild ist ein richtiger Hingucker geworden.</p>
+          </div>
+
+          <!-- Duplicate set for seamless loop -->
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6" aria-hidden="true">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#4285F4] flex items-center justify-center text-sm font-semibold text-white">JT</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Julia Termeyer</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Leiterin Einkauf · Cocoyu Agency</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">NEONTRIP hat unsere Erwartungen bei jeder Zusammenarbeit übertroffen. Ihre Kreativität und ihr Engagement sind bemerkenswert. Die schnelle Reaktionszeit und professionelle Herangehensweise haben uns beeindruckt.</p>
+          </div>
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6" aria-hidden="true">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#34A853] flex items-center justify-center text-sm font-semibold text-white">LM</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Lukas Mann</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Geschäftsführer</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">Zwischen der Anfrage bis zum Angebot mit visuellem Entwurf lagen nur 45 Minuten. Sehr effizientes und zuverlässiges Team. Insgesamt ein fantastisches Erlebnis!</p>
+          </div>
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6" aria-hidden="true">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#EA4335] flex items-center justify-center text-sm font-semibold text-white">AW</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Anna Wellner</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Projektleitung · Werbeagentur</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">Wir bestellen als Werbeagentur regelmäßig für Kunden und dabei ist NEONTRIP ein perfekter Partner. Die Lieferung erfolgt stets zuverlässig und innerhalb einer Woche.</p>
+          </div>
+          <div class="shrink-0 w-[360px] bg-light rounded-[18px] p-6" aria-hidden="true">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-[42px] h-[42px] rounded-full bg-[#FBBC05] flex items-center justify-center text-sm font-semibold text-white">FM</div>
+              <div>
+                <p class="text-base font-semibold tracking-tight-xl text-dark">Fabian Meister</p>
+                <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Inhaber</p>
+              </div>
+              <svg class="w-5 h-5 ml-auto" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            </div>
+            <div class="flex gap-0.5 mb-3">
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium text-dark tracking-tight-xl leading-[1.5]">Top-Service: immer erreichbar, hilfsbereit und gute Beratung. Wir konnten im Laden in Düsseldorf sogar Beispiel-Exemplare ansehen. Unser Schild ist ein richtiger Hingucker geworden.</p>
+          </div>
+        </div>
+      </div>
+
+            <!-- CTA below reviews -->
+      <div class="reveal flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-8 border-t border-gray-100">
+        <p class="text-base font-medium text-dark/60 tracking-tight-xl">Über 236 positive Google Bewertungen</p>
+        <div class="flex items-center gap-3">
+          <a href="https://g.page/neontrip/review" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 bg-dark text-white text-sm font-semibold tracking-tight-xl px-5 py-3 rounded-full hover:opacity-90 transition-opacity">Bewertung schreiben <svg class="w-3 h-3" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+          <a href="#kontakt" class="inline-flex items-center gap-2 bg-white border border-gray-200 text-dark text-sm font-semibold tracking-tight-xl px-5 py-3 rounded-full hover:border-gray-400 transition-colors">Jetzt Anfragen</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       TEAM
+       ════════════════════════════════════════ -->
+  <section id="team" class="bg-light py-16 md:py-24 px-6 md:px-9">
+    <div class="max-w-[1520px] mx-auto">
+      <div class="reveal flex items-center gap-2 mb-6">
+        <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center"><span class="w-[2px] h-2 bg-white block"></span></div>
+        <span class="text-base font-medium tracking-tight-xl text-dark">Unser Team</span>
+      </div>
+
+      <div class="reveal mb-12">
+        <h2 class="text-[32px] md:text-[60px] font-semibold leading-[1.1] tracking-tight-3xl text-dark max-w-[830px]">
+          Die Menschen <span class="text-dark/60">hinter NEONTRIP.</span>
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1">
+        <div class="reveal bg-white rounded-[18px] overflow-hidden p-6 text-center">
+          <div class="w-20 h-20 rounded-[12px] bg-light flex items-center justify-center text-xl font-semibold text-dark/50 mx-auto mb-4">DK</div>
+          <p class="text-lg font-semibold tracking-tight-xl text-dark">Daniel Klesse</p>
+          <p class="text-sm font-medium text-dark/60 tracking-tight-xl">Geschäftsführer</p>
+        </div>
+        <div class="reveal bg-white rounded-[18px] overflow-hidden p-6 text-center" style="transition-delay: 0.1s;">
+          <div class="w-20 h-20 rounded-[12px] bg-light flex items-center justify-center text-xl font-semibold text-dark/50 mx-auto mb-4">FT</div>
+          <p class="text-lg font-semibold tracking-tight-xl text-dark">Fabienne Trapp</p>
+          <p class="text-sm font-medium text-dark/60 tracking-tight-xl">Kundenberatung</p>
+        </div>
+        <div class="reveal bg-white rounded-[18px] overflow-hidden p-6 text-center" style="transition-delay: 0.2s;">
+          <div class="w-20 h-20 rounded-[12px] bg-light flex items-center justify-center text-xl font-semibold text-dark/50 mx-auto mb-4">MH</div>
+          <p class="text-lg font-semibold tracking-tight-xl text-dark">Marco Huber</p>
+          <p class="text-sm font-medium text-dark/60 tracking-tight-xl">Design & Entwurf</p>
+        </div>
+        <div class="reveal bg-white rounded-[18px] overflow-hidden p-6 text-center" style="transition-delay: 0.3s;">
+          <div class="w-20 h-20 rounded-[12px] bg-light flex items-center justify-center text-xl font-semibold text-dark/50 mx-auto mb-4">SR</div>
+          <p class="text-lg font-semibold tracking-tight-xl text-dark">Sebastian Richter</p>
+          <p class="text-sm font-medium text-dark/60 tracking-tight-xl">Produktion & Montage</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       FAQ
+       ════════════════════════════════════════ -->
+  <section id="faq" class="bg-white py-16 md:py-24 px-6 md:px-9">
+    <div class="max-w-[1520px] mx-auto flex flex-col lg:flex-row gap-12">
+      <div class="lg:w-1/3">
+        <h2 class="reveal text-[62px] md:text-[144px] font-semibold leading-[0.92] tracking-tight-3xl text-dark mb-6">FAQ.</h2>
+        <p class="reveal text-base font-medium text-dark/60 tracking-tight-xl max-w-[300px]">Haben Sie Fragen? Wir haben die Antworten.</p>
+      </div>
+
+      <div class="lg:w-2/3 flex flex-col gap-1" id="faq-list">
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight-xl text-dark pr-4">Wie schnell kann mein Schild geliefert werden?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight-xl leading-[1.4]">Die Standard-Lieferzeit beträgt ca. 7 Werktage ab Auftragsbestätigung. Bei besonders eiligen Projekten können wir über Express-Optionen sprechen.</p></div></div>
+        </div>
+
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight-xl text-dark pr-4">Kann jedes Logo als LED Neon Schild umgesetzt werden?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight-xl leading-[1.4]">Grundsätzlich ja. Jedes Logo, jeder Schriftzug und nahezu jedes Design kann als LED Neon Leuchtschild realisiert werden.</p></div></div>
+        </div>
+
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight-xl text-dark pr-4">Wie lange hält ein LED-Leuchtschild?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight-xl leading-[1.4]">Unsere LED-Technik hat eine Lebensdauer von mindestens 50.000 Stunden – das sind über 10 Jahre Nutzung bei täglichem Betrieb.</p></div></div>
+        </div>
+
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight-xl text-dark pr-4">Welche Größen und Formen sind möglich?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight-xl leading-[1.4]">Von 30 cm bis über 10 Meter Länge ist alles umsetzbar. Ob filigrane Schriftzüge, Logos, 3D-Buchstaben oder Sonderformen.</p></div></div>
+        </div>
+
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight-xl text-dark pr-4">Was kostet ein individuelles LED Neon Schild?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight-xl leading-[1.4]">Der Preis hängt von Größe, Komplexität und Ausführung ab. Senden Sie uns Ihre Anfrage – wir erstellen innerhalb weniger Stunden ein unverbindliches Angebot.</p></div></div>
+        </div>
+
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight-xl text-dark pr-4">Gibt es eine Garantie?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight-xl leading-[1.4]">Ja. Auf alle LED-Systeme gewähren wir 24 Monate Garantie, auf Anfrage auch verlängerte Gewährleistung für gewerbliche Dauerinstallationen.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       KONTAKT
+       ════════════════════════════════════════ -->
+  <section id="kontakt" class="relative bg-light py-16 md:py-24 px-6 md:px-9">
+    <div class="absolute inset-[6px] bg-dark rounded-[25px] z-0">
+      <div class="absolute inset-0 noise-overlay rounded-[25px]"></div>
+      <video src="https://framerusercontent.com/assets/G0NwzP4bivPvK55b3ubxNslUs.mp4" autoplay loop muted playsinline class="absolute inset-0 w-full h-full object-cover rounded-[25px] opacity-20 grayscale"></video>
+    </div>
+
+    <div class="relative z-10 max-w-[1520px] mx-auto flex flex-col lg:flex-row gap-12">
+      <div class="reveal lg:w-1/2">
+        <form action="https://api.neontrip.de/anfrage" method="POST" class="bg-white rounded-[18px] p-8 md:p-10" id="cta-form">
+          <div class="flex items-center gap-3 mb-6">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594" class="w-10 h-10" alt="NEONTRIP">
+            <h3 class="text-2xl md:text-[38px] font-semibold tracking-tight-2xl text-dark leading-[1.1]">Sie planen <span class="text-dark/60">ein Projekt?</span></h3>
+          </div>
+          <div class="flex flex-col gap-4 mb-6">
+            <div><label class="text-xs font-medium text-dark tracking-tight-xl mb-1 block">Ihr Name*</label><input type="text" name="name" placeholder="Name" required class="w-full bg-light rounded-[10px] px-4 py-3 text-lg font-medium tracking-tight-xl text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300"></div>
+            <div><label class="text-xs font-medium text-dark tracking-tight-xl mb-1 block">Firma</label><input type="text" name="firma" placeholder="Firma (optional)" class="w-full bg-light rounded-[10px] px-4 py-3 text-lg font-medium tracking-tight-xl text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300"></div>
+            <div><label class="text-xs font-medium text-dark tracking-tight-xl mb-1 block">E-Mail*</label><input type="email" name="email" placeholder="Email" required class="w-full bg-light rounded-[10px] px-4 py-3 text-lg font-medium tracking-tight-xl text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300"></div>
+            <div><label class="text-xs font-medium text-dark tracking-tight-xl mb-1 block">Telefonnummer</label><input type="tel" name="telefon" placeholder="Telefon" class="w-full bg-light rounded-[10px] px-4 py-3 text-lg font-medium tracking-tight-xl text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300"></div>
+            <div><label class="text-xs font-medium text-dark tracking-tight-xl mb-1 block">Projekt-Art</label><select name="projekt_art" class="w-full bg-light rounded-[10px] px-4 py-3 text-lg font-medium tracking-tight-xl text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300"><option value="">Bitte wählen (optional)</option><option value="neon-led-logo">Neon LED Logo</option><option value="schriftzug">Schriftzug</option><option value="3d-buchstaben">3D Buchstaben</option><option value="messe-event">Messe &amp; Event</option><option value="gastronomie">Gastronomie</option><option value="sonstiges">Sonstiges</option></select></div>
+            <div><label class="text-xs font-medium text-dark tracking-tight-xl mb-1 block">Nachricht*</label><textarea name="nachricht" placeholder="Beschreiben Sie Ihr Projekt" required class="w-full bg-light rounded-[10px] px-4 py-3 text-lg font-medium tracking-tight-xl text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300 resize-y" style="min-height: 120px;"></textarea></div>
+          </div>
+          <button type="submit" class="w-full bg-dark text-white font-semibold text-lg tracking-tight-xl py-4 rounded-full hover:opacity-90 transition-opacity">Unverbindlich anfragen</button>
+          <p class="text-xs font-medium text-dark/60 tracking-tight-xl mt-3">Mit dem Absenden erklären Sie sich mit unseren Nutzungsbedingungen und Datenschutzbestimmungen einverstanden.</p>
+        </form>
+      </div>
+
+      <div class="reveal lg:w-1/2 flex flex-col justify-between">
+        <div>
+          <h2 class="text-[32px] md:text-[60px] font-semibold leading-[1.1] tracking-tight-3xl text-white mb-6">Lassen Sie uns reden.</h2>
+          <p class="text-xl md:text-[26px] font-medium tracking-tight-xl leading-[1.15] mb-8">
+            <span class="text-white">Erzählen Sie uns von Ihrem Projekt</span><span class="text-white/70"> – egal ob Neonschild, 3D Buchstaben, Leuchtkästen, unbeleuchtete Schilder oder Moos.</span>
+          </p>
+          <div class="h-px bg-white/10 mb-8"></div>
+          <div class="flex flex-col gap-4 mb-8">
+            <div>
+              <h4 class="text-lg font-semibold tracking-tight-xl text-white mb-1">Telefonische Beratung</h4>
+              <p class="text-[15px] font-medium text-white/60 tracking-tight-xl">Wir unterstützen Sie gerne telefonisch: <a href="tel:+4921154257240" class="text-white">+49 211 54257240</a></p>
+            </div>
+            <div>
+              <h4 class="text-lg font-semibold tracking-tight-xl text-white mb-1">Angebot in 60 Minuten</h4>
+              <p class="text-[15px] font-medium text-white/60 tracking-tight-xl">Sie haben eine Idee für ein Leuchtschild? Wir schicken Ihnen ein Angebot.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4 bg-white rounded-2xl p-1.5">
+          <div class="w-[113px] h-[161px] rounded-xl overflow-hidden shrink-0">
+            <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" class="w-full h-full object-cover" alt="Fabienne Trapp">
+          </div>
+          <div class="py-4 pr-4">
+            <p class="text-sm font-semibold tracking-tight-xl text-dark">Customer Support</p>
+            <p class="text-xs font-semibold tracking-tight-xl text-dark/60 mb-3">bei NEONTRIP</p>
+            <p class="text-[22px] font-semibold tracking-tight-xl text-dark leading-tight mb-4">Fabienne Trapp</p>
+            <a href="mailto:info@neontrip.de" class="inline-flex items-center gap-2 bg-dark text-white text-xs font-semibold tracking-tight-xl px-3 py-2 rounded-full">Jetzt Anfragen <span class="w-2 h-2 bg-white rounded-full"></span></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       TRUST ICONS
+       ════════════════════════════════════════ -->
+  <section class="bg-white py-14 md:py-20 px-6 md:px-9 border-t border-gray-100">
+    <div class="max-w-[1520px] mx-auto">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-8 md:gap-4">
+        <!-- Expresslieferung -->
+        <div class="reveal flex flex-col items-center text-center gap-3">
+          <div class="w-12 h-12 rounded-full bg-light flex items-center justify-center">
+            <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold tracking-tight-xl text-dark">Express in 7 Tagen</p>
+            <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Schnelle Fertigung</p>
+          </div>
+        </div>
+
+        <!-- Kostenloser Versand -->
+        <div class="reveal flex flex-col items-center text-center gap-3" style="transition-delay: 0.05s;">
+          <div class="w-12 h-12 rounded-full bg-light flex items-center justify-center">
+            <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold tracking-tight-xl text-dark">Kostenloser Versand</p>
+            <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Deutschlandweit</p>
+          </div>
+        </div>
+
+        <!-- 24 Monate Garantie -->
+        <div class="reveal flex flex-col items-center text-center gap-3" style="transition-delay: 0.1s;">
+          <div class="w-12 h-12 rounded-full bg-light flex items-center justify-center">
+            <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold tracking-tight-xl text-dark">24 Monate Garantie</p>
+            <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Volle Absicherung</p>
+          </div>
+        </div>
+
+        <!-- Made in Düsseldorf -->
+        <div class="reveal flex flex-col items-center text-center gap-3" style="transition-delay: 0.15s;">
+          <div class="w-12 h-12 rounded-full bg-light flex items-center justify-center">
+            <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold tracking-tight-xl text-dark">Made in Düsseldorf</p>
+            <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Eigener Showroom</p>
+          </div>
+        </div>
+
+        <!-- Flackerfrei -->
+        <div class="reveal flex flex-col items-center text-center gap-3" style="transition-delay: 0.2s;">
+          <div class="w-12 h-12 rounded-full bg-light flex items-center justify-center">
+            <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold tracking-tight-xl text-dark">10 Jahre Lebensdauer</p>
+            <p class="text-xs font-medium text-dark/50 tracking-tight-xl">ECOPOWER LEDs</p>
+          </div>
+        </div>
+
+        <!-- Plug & Play -->
+        <div class="reveal flex flex-col items-center text-center gap-3" style="transition-delay: 0.25s;">
+          <div class="w-12 h-12 rounded-full bg-light flex items-center justify-center">
+            <svg class="w-5 h-5 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold tracking-tight-xl text-dark">Einfache Montage</p>
+            <p class="text-xs font-medium text-dark/50 tracking-tight-xl">Plug & Play</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       FOOTER
+       ════════════════════════════════════════ -->
+  <footer class="bg-light">
+    <div class="bg-light px-6 md:px-9 pt-12 pb-0">
+      <div class="max-w-[1520px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
+        <div>
+          <p class="text-lg font-medium tracking-tight-xl text-dark mb-3">+49 211 54257240</p>
+          <a href="mailto:info@neontrip.de" class="flex items-center gap-2 text-[26px] md:text-[34px] font-semibold tracking-tight-2xl text-dark hover:opacity-70 transition-opacity">
+            <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center shrink-0"><span class="w-[2px] h-2 bg-white block"></span></div>
+            info@neontrip.de
+          </a>
+        </div>
+        <div class="grid grid-cols-2 gap-8">
+          <div>
+            <p class="text-sm font-medium text-dark/60 tracking-tight-xl mb-3 uppercase">Navigation</p>
+            <div class="flex flex-col gap-2">
+              <a href="#kontakt" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity">Anfrage</a>
+              <a href="#projekte" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity">Projekte</a>
+              <a href="#bewertungen" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity">Erfahrungen</a>
+              <a href="#leistungen" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity">Preise</a>
+              <a href="#faq" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity">FAQ</a>
+            </div>
+          </div>
+          <div>
+            <p class="text-sm font-medium text-dark/60 tracking-tight-xl mb-3 uppercase">Links</p>
+            <div class="flex flex-col gap-2">
+              <a href="agb.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity flex items-center gap-2">AGBs <svg class="w-2.5 h-2.5 opacity-30" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+              <a href="datenschutz.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity flex items-center gap-2">Datenschutzerklärung <svg class="w-2.5 h-2.5 opacity-30" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+              <a href="impressum.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity flex items-center gap-2">Impressum <svg class="w-2.5 h-2.5 opacity-30" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+              <a href="widerruf.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight-xl hover:opacity-70 transition-opacity flex items-center gap-2">Widerrufsrecht <svg class="w-2.5 h-2.5 opacity-30" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Stats + Dark Bottom -->
+    <div class="bg-dark-nav mt-12 py-12 md:py-16 px-6">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Stats Bar -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-14 pb-14 border-b border-white/10">
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight-3xl text-white leading-none mb-2" data-count="21000" data-suffix="+">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight-3xl text-white leading-none mb-2" data-count="4.9" data-suffix="/5">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Google Bewertung</p>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight-3xl text-white leading-none mb-2" data-count="99" data-suffix="%">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Pünktliche Lieferung</p>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight-3xl text-white leading-none mb-2" data-count="7" data-suffix=" Tage">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Express Lieferung</p>
+          </div>
+        </div>
+
+        <!-- Large Logo - full width like Framer reference -->
+        <div class="flex items-center justify-center mb-6 py-8 overflow-hidden">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" class="w-full max-w-full opacity-90" alt="NEONTRIP" style="max-height: none;">
+        </div>
+
+        <!-- Social Links -->
+        <div class="flex items-center justify-center gap-4 mb-6">
+          <a href="https://www.instagram.com/neontrip.de/" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-white hover:border-white/30 transition-all duration-300" aria-label="Instagram">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          </a>
+          <a href="https://www.tiktok.com/@neontrip.de" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-white hover:border-white/30 transition-all duration-300" aria-label="TikTok">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.97a8.16 8.16 0 004.77 1.52V7.04a4.84 4.84 0 01-1.01-.35z"/></svg>
+          </a>
+          <a href="https://www.facebook.com/NeonTrip.de/" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-white hover:border-white/30 transition-all duration-300" aria-label="Facebook">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          </a>
+          <a href="https://www.linkedin.com/company/neontrip/" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-white hover:border-white/30 transition-all duration-300" aria-label="LinkedIn">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+          </a>
+          <a href="https://g.page/neontrip" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-white hover:border-white/30 transition-all duration-300" aria-label="Google Business">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          </a>
+          <a href="https://www.youtube.com/channel/UCds0CY-pNdqtiIexfD-MnUw" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-white hover:border-white/30 transition-all duration-300" aria-label="YouTube">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          </a>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+          <span class="text-gray-500 font-medium uppercase tracking-wider">©<span data-year></span> NEONTRIP</span>
+          <div class="flex items-center gap-4 md:gap-6 flex-wrap justify-center">
+            <a href="agb.html" class="text-gray-500 font-medium tracking-wider hover:text-white transition-colors">Allgemeine Geschäftsbedingungen</a>
+            <a href="datenschutz.html" class="text-gray-500 font-medium tracking-wider hover:text-white transition-colors">Datenschutzerklärung</a>
+            <a href="impressum.html" class="text-gray-500 font-medium tracking-wider hover:text-white transition-colors">Impressum</a>
+            <a href="widerruf.html" class="text-gray-500 font-medium tracking-wider hover:text-white transition-colors">Widerrufsrecht</a>
+          </div>
+          <a href="#hero" class="text-gray-500 font-medium uppercase tracking-wider hover:text-white transition-colors shrink-0">Zurück zum Anfang ↑</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ════════════════════════════════════════
+       JAVASCRIPT
+       ════════════════════════════════════════ -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      'use strict';
+      const header = document.getElementById('header');
+      const splash = document.getElementById('splash');
+      const mobileNav = document.getElementById('mobile-nav');
+      const hamburger = document.getElementById('hamburger');
+
+      // 1. SPLASH SCREEN
+      const letters = document.querySelectorAll('.splash-letter');
+      letters.forEach((letter, i) => { setTimeout(() => letter.classList.add('visible'), 200 + i * 80); });
+      setTimeout(() => { splash.classList.add('exit'); }, 1800);
+      setTimeout(() => {
+        splash.classList.add('hidden');
+        document.body.style.overflow = '';
+        header.style.opacity = '1';
+        header.style.transform = 'translateY(0)';
+        triggerVisibleReveals();
+      }, 2500);
+
+      // 2. HEADER SCROLL
+      window.addEventListener('scroll', () => {
+        header.classList.toggle('header-scrolled', window.scrollY > 80);
+      }, { passive: true });
+
+      // 3. SCROLL REVEAL
+      const revealObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('visible'); revealObserver.unobserve(entry.target); } });
+      }, { threshold: 0.05, rootMargin: '0px 0px -30px 0px' });
+      document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+      function triggerVisibleReveals() {
+        document.querySelectorAll('.reveal').forEach(el => {
+          const rect = el.getBoundingClientRect();
+          if (rect.top < window.innerHeight && rect.bottom > 0) { el.classList.add('visible'); revealObserver.unobserve(el); }
+        });
+      }
+
+      // 4. COUNTER ANIMATION
+      const counterObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => { if (entry.isIntersecting) { animateCounter(entry.target); counterObserver.unobserve(entry.target); } });
+      }, { threshold: 0.3 });
+      document.querySelectorAll('[data-count]').forEach(el => counterObserver.observe(el));
+
+      function animateCounter(el) {
+        const raw = el.getAttribute('data-count');
+        const isDecimal = raw.includes('.');
+        const target = parseFloat(raw);
+        const suffix = el.getAttribute('data-suffix') || '';
+        const duration = 2000;
+        const start = performance.now();
+        function tick(now) {
+          const progress = Math.min((now - start) / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          let display;
+          if (isDecimal) display = (eased * target).toFixed(1);
+          else display = Math.floor(eased * target).toLocaleString('de-DE');
+          el.innerHTML = display + suffix;
+          if (progress < 1) requestAnimationFrame(tick);
+          else { if (isDecimal) el.innerHTML = target.toFixed(1) + suffix; else el.innerHTML = target.toLocaleString('de-DE') + suffix; }
+        }
+        requestAnimationFrame(tick);
+      }
+
+      // 5. MOBILE MENU
+      function closeMobileNav() {
+        mobileNav.classList.remove('open');
+        mobileNav.setAttribute('aria-hidden', 'true');
+        hamburger.classList.remove('active');
+        document.body.style.overflow = '';
+      }
+      hamburger.addEventListener('click', () => {
+        const isOpen = mobileNav.classList.contains('open');
+        if (isOpen) { closeMobileNav(); } else {
+          mobileNav.classList.add('open');
+          mobileNav.setAttribute('aria-hidden', 'false');
+          hamburger.classList.add('active');
+          document.body.style.overflow = 'hidden';
+        }
+      });
+      mobileNav.querySelectorAll('a').forEach(link => { link.addEventListener('click', () => closeMobileNav()); });
+
+      // 6. SMOOTH SCROLL
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', (e) => {
+          const href = anchor.getAttribute('href');
+          if (href === '#') { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+          const target = document.querySelector(href);
+          if (!target) return;
+          e.preventDefault();
+          const offset = header ? header.offsetHeight + 20 : 80;
+          window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - offset, behavior: 'smooth' });
+        });
+      });
+
+      // 7. AUTO-YEAR
+      document.querySelectorAll('[data-year]').forEach(el => { el.textContent = new Date().getFullYear(); });
+
+      // 8. EXTERNAL LINKS
+      document.querySelectorAll('a[href^="http"]').forEach(link => {
+        if (!link.hostname?.includes('neontrip.de')) { link.setAttribute('target', '_blank'); link.setAttribute('rel', 'noopener noreferrer'); }
+      });
+
+      // 9. ACTIVE NAV HIGHLIGHT
+      const sections = document.querySelectorAll('section[id]');
+      const navLinks = document.querySelectorAll('nav .nav-link');
+      const sectionObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const id = entry.target.getAttribute('id');
+            navLinks.forEach(link => {
+              link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+            });
+          }
+        });
+      }, { threshold: 0.15, rootMargin: '-80px 0px -50% 0px' });
+      sections.forEach(section => sectionObserver.observe(section));
+
+      // 10. PROJECT FILTER
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const filter = btn.dataset.filter;
+          document.querySelectorAll('.filter-btn').forEach(b => {
+            b.classList.remove('active', 'bg-dark', 'text-white');
+            b.classList.add('bg-gray-100', 'text-dark');
+          });
+          btn.classList.add('active', 'bg-dark', 'text-white');
+          btn.classList.remove('bg-gray-100', 'text-dark');
+          document.querySelectorAll('.project-card').forEach(card => {
+            if (filter === 'all' || card.dataset.category === filter) {
+              card.style.display = '';
+            } else {
+              card.style.display = 'none';
+            }
+          });
+        });
+      });
+    });
+
+    // FAQ Toggle
+    function toggleFaq(btn) {
+      const item = btn.closest('.faq-item');
+      const isOpen = item.classList.contains('active');
+      document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('active'));
+      if (!isOpen) item.classList.add('active');
+    }
+  </script>
+</body>
+</html>

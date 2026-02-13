@@ -1,0 +1,11 @@
+# System files
+.DS_Store
+.wrangler/
+.playwright-mcp/
+
+# Screenshots (for documentation, not needed in repo)
+*.png
+
+# Temporary files
+*.tmp
+*.log

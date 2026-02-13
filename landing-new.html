@@ -1,0 +1,1717 @@
+<!DOCTYPE html>
+<html lang="de" class="scroll-smooth snap-active">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEONTRIP – Custom LED Neon Leuchtreklame | Premium B2B</title>
+  <meta name="description" content="Premium LED Neon Leuchtreklame nach Maß für B2B. 3D-Buchstaben, Neon-Flex, Leuchtkästen. Vertraut von Google, Porsche, Telekom. Express in 7 Tagen.">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="NEONTRIP – Custom LED Neon Leuchtreklame für Marken">
+  <meta property="og:description" content="Premium LED Neon Signs nach Maß. Vertraut von Google, Porsche, Telekom & 35+ weiteren Top-Marken.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.neontrip.de">
+  <meta property="og:locale" content="de_DE">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dark: '#0A0A0A',
+            light: '#F5F5F5',
+            accent: '#8B5CF6',
+          },
+          fontFamily: {
+            inter: ['Inter', 'sans-serif'],
+          },
+          letterSpacing: {
+            'tighter-custom': '-0.04em',
+            'tightest': '-0.06em',
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    "name": "NEONTRIP",
+    "legalName": "Dara Nova GmbH",
+    "description": "Premium LED Neon Leuchtreklame nach Maß",
+    "url": "https://www.neontrip.de",
+    "telephone": "+49-211-54257240",
+    "email": "support@neontrip.de",
+    "address": { "@type": "PostalAddress", "streetAddress": "Bilker Allee 29", "addressLocality": "Düsseldorf", "postalCode": "40219", "addressCountry": "DE" },
+    "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": "236" }
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: 'Inter', sans-serif; }
+
+    /* Splash */
+    .splash { position: fixed; inset: 0; z-index: 9999; background: #0A0A0A; display: flex; align-items: center; justify-content: center; }
+    .splash.exit { animation: splash-exit 0.8s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
+    .splash.hidden { display: none; }
+    .splash-letter { display: inline-block; opacity: 0; filter: blur(8px); transform: translateY(50px); }
+    .splash-letter.visible { animation: splash-text 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    @keyframes splash-text { 0% { opacity: 0; filter: blur(8px); transform: translateY(50px); } 100% { opacity: 1; filter: blur(0); transform: translateY(0); } }
+    @keyframes splash-exit { 0% { transform: translateY(0); } 100% { transform: translateY(-100vh); } }
+
+    /* Scroll reveal */
+    .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* Marquee */
+    @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+    .marquee-track { display: inline-flex; animation: marquee 35s linear infinite; }
+    .marquee-track:hover { animation-play-state: paused; }
+    .marquee-mask { -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%); mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%); }
+    .marquee-track-seamless { display: flex; animation: marquee 40s linear infinite; width: max-content; }
+
+    /* Counter */
+    [data-count] { font-variant-numeric: tabular-nums; }
+
+    /* Form Steps */
+    .form-step { display: none; }
+    .form-step.active { display: block; animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* FAQ */
+    .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+    .faq-item.active .faq-answer { max-height: 500px; }
+    .faq-item.active .faq-icon { transform: rotate(45deg); }
+    .faq-icon { transition: transform 0.3s ease; }
+
+    /* Header */
+    .header-scrolled { background: rgba(255,255,255,0.95) !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .header-scrolled .nav-link { color: rgba(10,10,10,0.6) !important; }
+    .header-scrolled .nav-link:hover { color: #0A0A0A !important; }
+    .header-scrolled .header-logo { filter: none !important; }
+    .header-scrolled .header-cta { background: #8B5CF6 !important; color: #fff !important; }
+    .header-scrolled .hamburger span { background: #0A0A0A !important; }
+
+    /* Contact Dropdown */
+    #contact-dropdown.open { opacity: 1; visibility: visible; transform: translateY(0); }
+    #contact-chevron.open { transform: rotate(180deg); }
+
+    /* Arrow bounce animation */
+    @keyframes arrow-bounce { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
+    .arrow-animate { animation: arrow-bounce 1.5s ease-in-out infinite; }
+
+    /* Sticky Contact Card */
+    .contact-sticky {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 50;
+      opacity: 0;
+      transform: translateX(100%);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+    .contact-sticky.visible {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+    @media (max-width: 768px) {
+      .contact-sticky { display: none; }
+    }
+
+    /* Mobile Nav */
+    #mobile-nav.open { opacity: 1; pointer-events: auto; }
+    #mobile-nav .mobile-nav-link { opacity: 0; transform: translateY(20px); transition: opacity 0.4s ease, transform 0.4s ease; }
+    #mobile-nav.open .mobile-nav-link { opacity: 1; transform: translateY(0); }
+    #mobile-nav.open .mobile-nav-link:nth-child(1) { transition-delay: 0.05s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(2) { transition-delay: 0.1s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(3) { transition-delay: 0.15s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(4) { transition-delay: 0.2s; }
+    #mobile-nav.open .mobile-nav-link:nth-child(5) { transition-delay: 0.25s; }
+
+    /* Hamburger */
+    .hamburger.active span:first-child { transform: rotate(45deg) translateY(3px); }
+    .hamburger.active span:last-child { transform: rotate(-45deg) translateY(-3px); }
+
+    /* Progress Bar */
+    .progress-step { transition: all 0.3s ease; }
+    .progress-step.active { background: #8B5CF6; }
+    .progress-step.completed { background: #8B5CF6; }
+
+    /* File Upload */
+    .file-drop-zone { border: 2px dashed rgba(10,10,10,0.2); transition: all 0.3s ease; }
+    .file-drop-zone:hover, .file-drop-zone.dragover { border-color: #0A0A0A; background: rgba(10,10,10,0.02); }
+
+    /* Scroll Snap */
+    html.snap-active { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+    .snap-section { scroll-snap-align: start; scroll-snap-stop: always; }
+  </style>
+</head>
+<body class="bg-white text-dark overflow-x-hidden" style="overflow: hidden;">
+
+  <!-- ════════════════════════════════════════
+       SPLASH SCREEN
+       ════════════════════════════════════════ -->
+  <div class="splash" id="splash" aria-hidden="true">
+    <img
+      src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088"
+      alt="NEONTRIP"
+      id="splash-logo"
+      class="h-20 md:h-28 lg:h-36 w-auto opacity-0"
+      style="filter: blur(10px); transform: scale(0.9); transition: all 0.8s cubic-bezier(0.22, 1, 0.36, 1);"
+    >
+  </div>
+
+  <!-- ════════════════════════════════════════
+       HEADER
+       ════════════════════════════════════════ -->
+  <header id="header" class="fixed top-0 left-0 right-0 z-50 transition-all duration-500 opacity-0 -translate-y-full" style="background: transparent;">
+    <div class="max-w-[1520px] mx-auto flex items-center justify-between h-[80px] px-6 md:px-9">
+      <!-- Logo -->
+      <a href="#" class="header-logo shrink-0 transition-all duration-300" style="filter: brightness(0) invert(1);">
+        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 w-auto">
+      </a>
+
+      <!-- Nav Links (centered) -->
+      <nav class="hidden lg:flex items-center gap-10 absolute left-1/2 -translate-x-1/2">
+        <a href="#leistungen" class="nav-link text-[15px] font-medium text-white/70 hover:text-white transition-colors tracking-tight">Leistungen</a>
+        <a href="#projekte" class="nav-link text-[15px] font-medium text-white/70 hover:text-white transition-colors tracking-tight">Projekte</a>
+        <a href="#bewertungen" class="nav-link text-[15px] font-medium text-white/70 hover:text-white transition-colors tracking-tight">Bewertungen</a>
+        <a href="#faq" class="nav-link text-[15px] font-medium text-white/70 hover:text-white transition-colors tracking-tight">FAQ</a>
+      </nav>
+
+      <!-- Right Side: Contact + CTA -->
+      <div class="hidden lg:flex items-center gap-5">
+        <!-- Contact Dropdown -->
+        <div class="relative" id="contact-dropdown-wrapper">
+          <button id="contact-toggle" class="nav-link flex items-center gap-1.5 text-[15px] font-medium text-white/70 hover:text-white transition-colors py-2 tracking-tight">
+            Kontakt
+            <svg class="w-4 h-4 transition-transform duration-200" id="contact-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+
+          <!-- Dropdown Panel - Premium Design -->
+          <div id="contact-dropdown" class="absolute top-full right-0 mt-3 w-[340px] bg-white rounded-2xl shadow-2xl opacity-0 invisible translate-y-2 transition-all duration-200 overflow-hidden border border-black/5">
+            <!-- Header with Photo -->
+            <div class="relative bg-gradient-to-br from-accent/10 to-accent/5 p-6 pb-4">
+              <div class="flex items-start gap-4">
+                <div class="relative">
+                  <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" alt="Fabienne Trapp" class="w-16 h-16 rounded-2xl object-cover shadow-lg">
+                  <span class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></span>
+                </div>
+                <div class="pt-1">
+                  <p class="text-lg font-semibold text-dark tracking-tight">Fabienne Trapp</p>
+                  <p class="text-sm text-dark/50">Customer Support</p>
+                  <p class="text-xs text-green-600 font-medium mt-1 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                    Jetzt online
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-5 pt-4">
+              <!-- Phone -->
+              <a href="tel:+4921154257240" class="flex items-center gap-3 text-dark hover:text-accent transition-colors mb-3 group">
+                <div class="w-10 h-10 rounded-xl bg-light flex items-center justify-center group-hover:bg-accent/10 transition-colors">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </div>
+                <div>
+                  <p class="text-base font-semibold tracking-tight">+49 211 54257240</p>
+                  <p class="text-xs text-dark/50">Mo. – Fr. 9:00 – 18:00</p>
+                </div>
+              </a>
+
+              <!-- Address -->
+              <a href="https://maps.google.com/?q=Bilker+Allee+29,+40219+Düsseldorf" target="_blank" class="flex items-center gap-3 text-dark hover:text-accent transition-colors mb-4 group">
+                <div class="w-10 h-10 rounded-xl bg-light flex items-center justify-center group-hover:bg-accent/10 transition-colors">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+                <div>
+                  <p class="text-base font-semibold tracking-tight">Showroom Düsseldorf</p>
+                  <p class="text-xs text-dark/50">Bilker Allee 29, 40219</p>
+                </div>
+              </a>
+
+              <!-- CTA Buttons -->
+              <a href="anfrage.html" class="flex items-center justify-center gap-2 w-full bg-dark text-white font-semibold text-sm px-4 py-3.5 rounded-xl hover:bg-dark/90 transition-all mb-2.5">
+                Kostenloses Angebot anfordern
+              </a>
+              <a href="https://wa.me/4921154257240" target="_blank" class="flex items-center justify-center gap-2 w-full bg-[#25D366] text-white font-semibold text-sm px-4 py-3.5 rounded-xl hover:bg-[#22c55e] transition-all">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                <span class="flex items-center gap-2">WhatsApp schreiben <span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span></span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- CTA Button -->
+        <a href="anfrage.html" class="header-cta bg-accent text-white font-semibold text-[15px] px-6 py-3 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20 tracking-tight">
+          Angebot in 24h
+        </a>
+      </div>
+
+      <!-- Mobile Hamburger -->
+      <button class="hamburger lg:hidden flex flex-col gap-[5px] p-2" id="hamburger" aria-label="Menü">
+        <span class="block w-5 h-[1.5px] bg-white transition-all duration-300 origin-center"></span>
+        <span class="block w-5 h-[1.5px] bg-white transition-all duration-300 origin-center"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Nav -->
+  <div id="mobile-nav" class="fixed inset-0 z-40 pointer-events-none opacity-0 transition-opacity duration-300 lg:hidden" aria-hidden="true">
+    <div class="absolute inset-0 bg-dark/95 backdrop-blur-md"></div>
+    <div class="relative z-10 flex flex-col items-center justify-center h-full gap-8">
+      <a href="#leistungen" class="mobile-nav-link text-2xl font-semibold text-white tracking-tight hover:text-white/70 transition-colors">Leistungen</a>
+      <a href="#projekte" class="mobile-nav-link text-2xl font-semibold text-white tracking-tight hover:text-white/70 transition-colors">Projekte</a>
+      <a href="#bewertungen" class="mobile-nav-link text-2xl font-semibold text-white tracking-tight hover:text-white/70 transition-colors">Bewertungen</a>
+      <a href="#faq" class="mobile-nav-link text-2xl font-semibold text-white tracking-tight hover:text-white/70 transition-colors">FAQ</a>
+      <a href="anfrage.html" class="mobile-nav-link mt-4 bg-white text-dark font-medium text-base px-8 py-3 rounded-full">Jetzt anfragen</a>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════
+       HERO (DARK)
+       ════════════════════════════════════════ -->
+  <section id="hero" class="snap-section relative min-h-screen flex items-center bg-dark overflow-hidden">
+    <!-- Video Background -->
+    <div class="absolute inset-0 z-0">
+      <video src="https://framerusercontent.com/assets/WhJOogHlaNXHRzlzRWUyNpmLgB8.mp4" autoplay loop muted playsinline class="w-full h-full object-cover opacity-50"></video>
+      <div class="absolute inset-0 bg-gradient-to-b from-dark/30 via-transparent to-dark/60"></div>
+    </div>
+
+    <div class="relative z-10 w-full max-w-[1400px] mx-auto px-5 md:px-8 py-32 md:py-40">
+      <div class="max-w-[900px] mx-auto text-center">
+        <!-- Badge -->
+        <div class="reveal inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-xs font-medium tracking-wide uppercase text-white/90 mb-8">
+          <span class="w-2 h-2 bg-accent rounded-full"></span>
+          Premium LED Leuchtreklame für B2B
+        </div>
+
+        <!-- Headline -->
+        <h1 class="reveal text-[42px] md:text-[72px] lg:text-[88px] font-semibold leading-[0.95] tracking-tightest text-white mb-6" style="transition-delay: 0.1s;">
+          Dein Logo.<br>Als Leuchtschild.
+        </h1>
+
+        <!-- Subline -->
+        <p class="reveal text-lg md:text-xl text-white/70 font-medium leading-relaxed max-w-[600px] mx-auto mb-10" style="transition-delay: 0.2s;">
+          Premium LED Neon, 3D-Buchstaben & Leuchtkästen für Agenturen, Messebau und Gastronomie. <span class="text-white">Angebot + Vorschaubild in 24h.</span>
+        </p>
+
+        <!-- CTAs -->
+        <div class="reveal flex flex-col sm:flex-row justify-center gap-4" style="transition-delay: 0.3s;">
+          <a href="anfrage.html" class="inline-flex items-center justify-center gap-3 bg-accent text-white font-semibold text-base px-8 py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/30">
+            Kostenloses Angebot in 24h
+            <svg class="w-5 h-5 arrow-animate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a href="#projekte" class="inline-flex items-center justify-center gap-2 text-white font-medium text-base px-6 py-4 rounded-full border border-white/30 hover:bg-white/10 transition-all">
+            Projekte ansehen
+          </a>
+        </div>
+
+        <!-- Trust Indicator: Avatar Stack + Google Rating -->
+        <div class="reveal flex flex-col sm:flex-row items-center justify-center gap-5 mt-12" style="transition-delay: 0.4s;">
+          <!-- Avatar Stack -->
+          <div class="flex items-center">
+            <div class="flex -space-x-3">
+              <img src="https://framerusercontent.com/images/sFJggTzla8eMLg8n1AbKDQlyulU.jpg?width=3744&height=5616" class="w-10 h-10 rounded-full border-2 border-dark object-cover" alt="Kunde">
+              <img src="https://framerusercontent.com/images/JhbGle453RWF0QjzZnSxbtxRBiA.jpg?width=3000&height=4499" class="w-10 h-10 rounded-full border-2 border-dark object-cover" alt="Kunde">
+              <img src="https://framerusercontent.com/images/hCsV8dkBKP9VEaaIlJr8Bk89bX4.jpg?width=4928&height=3264" class="w-10 h-10 rounded-full border-2 border-dark object-cover" alt="Kunde">
+              <div class="w-10 h-10 rounded-full border-2 border-dark bg-white flex items-center justify-center text-dark text-xs font-bold">21K+</div>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="hidden sm:block w-px h-10 bg-white/20"></div>
+
+          <!-- Google Rating with G Logo -->
+          <div class="flex items-center gap-3">
+            <!-- Google G Icon -->
+            <div class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white/80" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill-opacity="0.7"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill-opacity="0.8"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill-opacity="0.6"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill-opacity="0.9"/></svg>
+            </div>
+            <div class="flex flex-col">
+              <div class="flex items-center gap-1 mb-0.5">
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+              </div>
+              <p class="text-white/80 text-sm font-medium">4.9 / 5 · 236 Bewertungen</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logo Marquee -->
+    <div class="absolute bottom-0 left-0 right-0 z-10 pb-10">
+      <div class="overflow-hidden w-full">
+        <div class="marquee-track-seamless flex items-center">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-12 md:h-20 lg:h-24 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Google">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Porsche">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-12 md:h-20 lg:h-24 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Telekom">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Vapiano">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Asbach">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-12 md:h-20 lg:h-24 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Absolut">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/ps_logo.svg?v=1691764079" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="P&S">
+          <!-- Duplicate set for seamless loop -->
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-12 md:h-20 lg:h-24 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Google">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Porsche">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-12 md:h-20 lg:h-24 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Telekom">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Vapiano">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Asbach">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-12 md:h-20 lg:h-24 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="Absolut">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/ps_logo.svg?v=1691764079" class="h-14 md:h-24 lg:h-28 w-auto mx-10 md:mx-16 opacity-70 brightness-200" alt="P&S">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       SO EINFACH GEHT'S (How It Works)
+       ════════════════════════════════════════ -->
+  <section class="snap-section bg-light py-24 md:py-32">
+    <div class="max-w-[1400px] mx-auto px-5 md:px-8">
+      <!-- Section Header -->
+      <div class="reveal text-center mb-16 md:mb-20">
+        <span class="inline-block text-xs font-medium tracking-widest uppercase text-dark/40 mb-4">In 3 Schritten zum Leuchtschild</span>
+        <h2 class="text-[36px] md:text-[56px] lg:text-[72px] font-semibold leading-[0.95] tracking-tightest text-dark">
+          So einfach geht's.
+        </h2>
+      </div>
+
+      <!-- Steps Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6 lg:gap-12">
+        <!-- Step 1 -->
+        <div class="reveal relative">
+          <div class="relative bg-white rounded-2xl p-8 md:p-10 h-full border border-black/5 hover:shadow-xl transition-shadow duration-300">
+            <!-- Number Badge -->
+            <div class="absolute -top-5 left-8 w-10 h-10 rounded-full bg-dark text-white flex items-center justify-center font-semibold text-lg">
+              1
+            </div>
+            <!-- Icon -->
+            <div class="w-14 h-14 rounded-2xl bg-light flex items-center justify-center mb-6 mt-3">
+              <svg class="w-7 h-7 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-dark mb-3 tracking-tight">Logo hochladen</h3>
+            <p class="text-dark/60 leading-relaxed">Senden Sie uns Ihr Logo oder Ihren Wunschtext. Wir akzeptieren alle gängigen Dateiformate.</p>
+          </div>
+          <!-- Connector Arrow (hidden on mobile) -->
+          <div class="hidden md:block absolute top-1/2 -right-3 lg:-right-6 transform -translate-y-1/2">
+            <svg class="w-6 h-6 text-dark/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="reveal relative" style="transition-delay: 0.1s;">
+          <div class="relative bg-white rounded-2xl p-8 md:p-10 h-full border border-black/5 hover:shadow-xl transition-shadow duration-300">
+            <div class="absolute -top-5 left-8 w-10 h-10 rounded-full bg-dark text-white flex items-center justify-center font-semibold text-lg">
+              2
+            </div>
+            <div class="w-14 h-14 rounded-2xl bg-light flex items-center justify-center mb-6 mt-3">
+              <svg class="w-7 h-7 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-dark mb-3 tracking-tight">Entwurf in 24h</h3>
+            <p class="text-dark/60 leading-relaxed">Sie erhalten innerhalb von 24 Stunden eine fotorealistische Visualisierung inkl. Angebot.</p>
+          </div>
+          <div class="hidden md:block absolute top-1/2 -right-3 lg:-right-6 transform -translate-y-1/2">
+            <svg class="w-6 h-6 text-dark/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="reveal relative" style="transition-delay: 0.2s;">
+          <div class="relative bg-white rounded-2xl p-8 md:p-10 h-full border border-black/5 hover:shadow-xl transition-shadow duration-300">
+            <div class="absolute -top-5 left-8 w-10 h-10 rounded-full bg-dark text-white flex items-center justify-center font-semibold text-lg">
+              3
+            </div>
+            <div class="w-14 h-14 rounded-2xl bg-light flex items-center justify-center mb-6 mt-3">
+              <svg class="w-7 h-7 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-dark mb-3 tracking-tight">Lieferung in 7 Tagen</h3>
+            <p class="text-dark/60 leading-relaxed">Nach Freigabe produzieren wir Ihr Leuchtschild und liefern es innerhalb von 7 Werktagen.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="reveal text-center mt-14">
+        <a href="anfrage.html" class="inline-flex items-center gap-3 bg-dark text-white font-semibold text-base px-8 py-4 rounded-full hover:bg-dark/90 transition-all">
+          Jetzt Anfrage starten
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       LEISTUNGEN / PRODUKTE (DARK)
+       ════════════════════════════════════════ -->
+  <section id="leistungen" class="snap-section bg-dark py-24 md:py-32 relative overflow-hidden">
+    <!-- Noise Overlay -->
+    <div class="absolute inset-0 opacity-[0.03]" style="background-image: url('https://framerusercontent.com/images/rR6HYXBrMmX4cRpXfXUOvpvpB0.png'); background-size: 200px;"></div>
+
+    <div class="relative z-10 max-w-[1400px] mx-auto px-5 md:px-8">
+      <!-- Section Header -->
+      <div class="reveal mb-16 md:mb-20">
+        <span class="inline-block text-xs font-medium tracking-widest uppercase text-white/40 mb-4">Was wir anbieten</span>
+        <h2 class="text-[36px] md:text-[64px] lg:text-[80px] font-semibold leading-[0.95] tracking-tightest text-white">
+          Produkte.
+        </h2>
+      </div>
+
+      <!-- Products Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Product 1 -->
+        <div class="reveal group relative rounded-2xl overflow-hidden aspect-[4/5] cursor-pointer">
+          <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Neon LED Flex" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark via-dark/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-6">
+            <span class="text-xs font-medium tracking-wider uppercase text-white/60 mb-2 block">ab 299€</span>
+            <h3 class="text-xl font-semibold text-white">Neon LED Flex</h3>
+          </div>
+        </div>
+
+        <!-- Product 2 -->
+        <div class="reveal group relative rounded-2xl overflow-hidden aspect-[4/5] cursor-pointer" style="transition-delay: 0.1s;">
+          <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="3D Buchstaben Rückbeleuchtet" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark via-dark/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-6">
+            <span class="text-xs font-medium tracking-wider uppercase text-white/60 mb-2 block">ab 499€</span>
+            <h3 class="text-xl font-semibold text-white">3D Buchstaben Rückbeleuchtet</h3>
+          </div>
+        </div>
+
+        <!-- Product 3 -->
+        <div class="reveal group relative rounded-2xl overflow-hidden aspect-[4/5] cursor-pointer" style="transition-delay: 0.2s;">
+          <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="3D Buchstaben Frontbeleuchtet" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark via-dark/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-6">
+            <span class="text-xs font-medium tracking-wider uppercase text-white/60 mb-2 block">ab 499€</span>
+            <h3 class="text-xl font-semibold text-white">3D Buchstaben Frontbeleuchtet</h3>
+          </div>
+        </div>
+
+        <!-- Product 4 -->
+        <div class="reveal group relative rounded-2xl overflow-hidden aspect-[4/5] cursor-pointer">
+          <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Leuchtkasten" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark via-dark/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-6">
+            <span class="text-xs font-medium tracking-wider uppercase text-white/60 mb-2 block">ab 499€</span>
+            <h3 class="text-xl font-semibold text-white">Leuchtkasten</h3>
+          </div>
+        </div>
+
+        <!-- Product 5 -->
+        <div class="reveal group relative rounded-2xl overflow-hidden aspect-[4/5] cursor-pointer" style="transition-delay: 0.1s;">
+          <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Unbeleuchtet" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark via-dark/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-6">
+            <span class="text-xs font-medium tracking-wider uppercase text-white/60 mb-2 block">ab 199€</span>
+            <h3 class="text-xl font-semibold text-white">Unbeleuchtet</h3>
+          </div>
+        </div>
+
+        <!-- Product 6 -->
+        <div class="reveal group relative rounded-2xl overflow-hidden aspect-[4/5] cursor-pointer" style="transition-delay: 0.2s;">
+          <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Marquee Buchstaben" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark via-dark/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-6">
+            <span class="text-xs font-medium tracking-wider uppercase text-white/60 mb-2 block">ab 299€</span>
+            <h3 class="text-xl font-semibold text-white">Marquee Buchstaben</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       USPs (LIGHT)
+       ════════════════════════════════════════ -->
+  <section class="snap-section bg-white py-24 md:py-32">
+    <div class="max-w-[1400px] mx-auto px-5 md:px-8">
+      <div class="reveal mb-16 md:mb-20 max-w-[700px]">
+        <span class="inline-block text-xs font-medium tracking-widest uppercase text-dark/40 mb-4">Warum NEONTRIP</span>
+        <h2 class="text-[32px] md:text-[48px] font-semibold leading-[1.1] tracking-tighter-custom text-dark">
+          Premium Qualität. <span class="text-dark/40">Schnelle Lieferung. Persönlicher Service.</span>
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- USP 1 -->
+        <div class="reveal bg-light rounded-2xl p-8">
+          <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
+            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-dark mb-2">Express in 7 Tagen</h3>
+          <p class="text-sm text-dark/60 leading-relaxed">Schnelle Produktion und Lieferung europaweit. Bei Eilaufträgen auch in 3-4 Tagen möglich.</p>
+        </div>
+
+        <!-- USP 2 -->
+        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+          <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
+            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-dark mb-2">Entwurf in 24 Stunden</h3>
+          <p class="text-sm text-dark/60 leading-relaxed">Kostenlose Visualisierung Ihres Logos als Leuchtschild. Inklusive Angebot und Maßangaben.</p>
+        </div>
+
+        <!-- USP 3 -->
+        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.2s;">
+          <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
+            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-dark mb-2">Rückruf in 30 Minuten</h3>
+          <p class="text-sm text-dark/60 leading-relaxed">Persönliche Beratung durch unsere Experten. Wir rufen Sie zeitnah zurück.</p>
+        </div>
+
+        <!-- USP 4 -->
+        <div class="reveal bg-light rounded-2xl p-8">
+          <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
+            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-dark mb-2">24 Monate Garantie</h3>
+          <p class="text-sm text-dark/60 leading-relaxed">Auf alle Produkte. Verlängerbar für gewerbliche Dauerinstallationen.</p>
+        </div>
+
+        <!-- USP 5 -->
+        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+          <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
+            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-dark mb-2">10 Jahre Lebensdauer</h3>
+          <p class="text-sm text-dark/60 leading-relaxed">Hochwertige ECOPOWER LEDs mit über 50.000 Betriebsstunden.</p>
+        </div>
+
+        <!-- USP 6 -->
+        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.2s;">
+          <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
+            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-dark mb-2">Showroom Düsseldorf</h3>
+          <p class="text-sm text-dark/60 leading-relaxed">Besuchen Sie uns vor Ort und sehen Sie Beispielexemplare live.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       PROJEKTE (LIGHT)
+       ════════════════════════════════════════ -->
+  <section id="projekte" class="snap-section bg-light py-24 md:py-32">
+    <div class="max-w-[1520px] mx-auto px-5 md:px-8">
+      <!-- Section Label -->
+      <div class="reveal flex items-center gap-3 mb-8">
+        <div class="w-5 h-5 bg-dark rounded-full flex items-center justify-center">
+          <span class="w-[2px] h-2.5 bg-white block"></span>
+        </div>
+        <span class="text-sm font-medium tracking-widest text-dark/50 uppercase">Unsere Arbeiten</span>
+      </div>
+
+      <!-- Headline + Subtext -->
+      <div class="reveal flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 mb-12" style="transition-delay: 0.05s;">
+        <h2 class="text-[clamp(3rem,10vw,8rem)] font-semibold leading-[0.88] tracking-tightest text-dark">Projekte.</h2>
+        <p class="max-w-[400px] text-lg md:text-xl font-medium text-dark/50 tracking-tight leading-snug lg:pb-4">
+          <span class="text-dark">Neonschilder, Neonlampen & Firmenlogos</span> für Unternehmen aus verschiedenen Branchen.
+        </p>
+      </div>
+
+      <!-- Filter Tabs (scrollable on mobile) -->
+      <div class="reveal overflow-x-auto pb-4 -mx-5 px-5 md:mx-0 md:px-0" style="transition-delay: 0.1s;">
+        <div class="flex gap-3 min-w-max">
+          <button class="filter-btn active bg-dark text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-all duration-300" data-filter="all">Alle Projekte</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="ladenbau">Ladenbau</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="messen">Messen</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="events">Events</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="clubs">Clubs</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="gastro">Gastronomie</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="podcast">Podcasts</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="bueros">Büros</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="empfang">Empfang</button>
+          <button class="filter-btn bg-white text-dark/60 text-sm font-medium px-5 py-2.5 rounded-full border border-black/5 hover:border-black/20 hover:text-dark transition-all duration-300" data-filter="sonder">Sonderanfertigungen</button>
+        </div>
+      </div>
+
+      <!-- Project Grid -->
+      <div id="project-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-8">
+
+        <!-- Events: POAS Club -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" data-category="events clubs">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Events</span>
+              <span class="text-xs font-medium text-dark/50">/ POAS Club</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="assets/images/events-clubs/poas-club-neon.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="POAS LED Neon Logo über Tanzfläche" loading="lazy">
+          </div>
+        </div>
+
+        <!-- Gastronomie: Vinos -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.05s;" data-category="gastro">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Gastronomie</span>
+              <span class="text-xs font-medium text-dark/50">/ Vino's</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="assets/images/gastronomie/vinos-weinbar.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Vinos Weinbar LED Neon" loading="lazy">
+          </div>
+        </div>
+
+        <!-- Messen: Billie -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.1s;" data-category="messen">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Messen</span>
+              <span class="text-xs font-medium text-dark/50">/ Billie</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="assets/images/messe/billie-messestand.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Billie Payments Messestand" loading="lazy">
+          </div>
+        </div>
+
+        <!-- Büros: IT Titans -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.15s;" data-category="bueros empfang ladenbau">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Büros</span>
+              <span class="text-xs font-medium text-dark/50">/ IT Titans</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="assets/images/office-empfang/it-titans-holzlamellen.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="IT Titans LED Leuchtschild" loading="lazy">
+          </div>
+        </div>
+
+        <!-- Events: KEEZY Targobank -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" data-category="events">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Events</span>
+              <span class="text-xs font-medium text-dark/50">/ KEEZY × Targobank</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="assets/images/events-clubs/keezy-event-targobank.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="KEEZY Event Targobank" loading="lazy">
+          </div>
+        </div>
+
+        <!-- Gastronomie: Aperol -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.05s;" data-category="gastro">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Gastronomie</span>
+              <span class="text-xs font-medium text-dark/50">/ Aperol Spritz</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="assets/images/gastronomie/aperol-spritz-quallen.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Aperol Spritz Neon mit Quallen" loading="lazy">
+          </div>
+        </div>
+
+        <!-- Podcast: Wahr & Klar -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.1s;" data-category="podcast">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Podcast</span>
+              <span class="text-xs font-medium text-dark/50">/ Wahr & Klar</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="https://framerusercontent.com/images/vDFpcSxvuMN1dWhrmMP5QMtd0.png?width=2560&height=1434" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Wahr und Klar Podcast" loading="lazy">
+          </div>
+        </div>
+
+        <!-- Empfang: GWA Studio -->
+        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.15s;" data-category="empfang bueros">
+          <div class="flex items-center justify-between px-5 py-4 bg-white">
+            <div class="flex items-end gap-3">
+              <span class="text-lg font-semibold tracking-tight text-dark">Empfang</span>
+              <span class="text-xs font-medium text-dark/50">/ G.W.A. Studio</span>
+            </div>
+            <div class="flex gap-[3px]"><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span><span class="w-2 h-2 rounded-full bg-gray-200"></span></div>
+          </div>
+          <div class="relative aspect-[4/3] rounded-[14px] overflow-hidden mx-1.5 mb-1.5 bg-light">
+            <div class="absolute inset-0 bg-dark/10 z-10"></div>
+            <img src="assets/images/office-empfang/gwa-studio-logo.webp" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="G.W.A. Studio Neon Logo" loading="lazy">
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Load More / CTA -->
+      <div class="reveal flex justify-center mt-12">
+        <a href="anfrage.html" class="inline-flex items-center gap-3 bg-dark text-white font-semibold text-sm px-8 py-4 rounded-full hover:bg-dark/90 transition-all">
+          Ihr Projekt anfragen
+          <svg class="w-4 h-4 arrow-animate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       TESTIMONIALS (LIGHT)
+       ════════════════════════════════════════ -->
+  <section id="bewertungen" class="snap-section bg-white py-24 md:py-32">
+    <div class="max-w-[1400px] mx-auto px-5 md:px-8">
+      <div class="reveal flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-16">
+        <div>
+          <span class="inline-block text-xs font-medium tracking-widest uppercase text-dark/40 mb-4">Kundenstimmen</span>
+          <h2 class="text-[36px] md:text-[64px] font-semibold leading-[0.95] tracking-tightest text-dark">Erfahrungen.</h2>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="flex gap-1">
+            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.07 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z"/></svg>
+          </div>
+          <span class="text-lg font-semibold text-dark">4.9/5</span>
+          <span class="text-sm text-dark/50">236 Google Bewertungen</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Testimonial 1 -->
+        <div class="reveal bg-light rounded-2xl p-8">
+          <div class="flex items-center gap-4 mb-6">
+            <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
+              <span class="text-sm font-semibold text-dark/60">JT</span>
+            </div>
+            <div>
+              <p class="font-semibold text-dark">Julia Termeyer</p>
+              <p class="text-sm text-dark/50">Leiterin Einkauf, Cocoyu Agency</p>
+            </div>
+          </div>
+          <p class="text-dark/70 leading-relaxed">"NEONTRIP hat unsere Erwartungen bei jeder Zusammenarbeit übertroffen. Ihre Kreativität und ihr Engagement sind bemerkenswert. Die schnelle Reaktionszeit und professionelle Herangehensweise haben uns beeindruckt."</p>
+        </div>
+
+        <!-- Testimonial 2 -->
+        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+          <div class="flex items-center gap-4 mb-6">
+            <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
+              <span class="text-sm font-semibold text-dark/60">LM</span>
+            </div>
+            <div>
+              <p class="font-semibold text-dark">Lukas Mann</p>
+              <p class="text-sm text-dark/50">Geschäftsführer</p>
+            </div>
+          </div>
+          <p class="text-dark/70 leading-relaxed">"Zwischen der Anfrage bis zum Angebot mit visuellem Entwurf lagen nur 45 Minuten. Sehr effizientes und zuverlässiges Team. Insgesamt ein fantastisches Erlebnis!"</p>
+        </div>
+
+        <!-- Testimonial 3 -->
+        <div class="reveal bg-light rounded-2xl p-8">
+          <div class="flex items-center gap-4 mb-6">
+            <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
+              <span class="text-sm font-semibold text-dark/60">AW</span>
+            </div>
+            <div>
+              <p class="font-semibold text-dark">Anna Wellner</p>
+              <p class="text-sm text-dark/50">Projektleitung, Werbeagentur</p>
+            </div>
+          </div>
+          <p class="text-dark/70 leading-relaxed">"Wir bestellen als Werbeagentur regelmäßig für Kunden und dabei ist NEONTRIP ein perfekter Partner. Die Lieferung erfolgt stets zuverlässig und innerhalb einer Woche."</p>
+        </div>
+
+        <!-- Testimonial 4 -->
+        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+          <div class="flex items-center gap-4 mb-6">
+            <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
+              <span class="text-sm font-semibold text-dark/60">FM</span>
+            </div>
+            <div>
+              <p class="font-semibold text-dark">Fabian Meister</p>
+              <p class="text-sm text-dark/50">Inhaber</p>
+            </div>
+          </div>
+          <p class="text-dark/70 leading-relaxed">"Top-Service: immer erreichbar, hilfsbereit und gute Beratung. Wir konnten im Laden in Düsseldorf sogar Beispiel-Exemplare ansehen. Unser Schild ist ein richtiger Hingucker geworden."</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       MULTI-STEP FORM (DARK)
+       ════════════════════════════════════════ -->
+  <section id="anfrage" class="snap-section bg-dark py-24 md:py-32 relative overflow-hidden">
+    <!-- Noise Overlay -->
+    <div class="absolute inset-0 opacity-[0.03]" style="background-image: url('https://framerusercontent.com/images/rR6HYXBrMmX4cRpXfXUOvpvpB0.png'); background-size: 200px;"></div>
+
+    <div class="relative z-10 max-w-[900px] mx-auto px-5 md:px-8">
+      <div class="reveal text-center mb-12">
+        <span class="inline-block text-xs font-medium tracking-widest uppercase text-white/40 mb-4">Kostenloses Angebot in 24h</span>
+        <h2 class="text-[32px] md:text-[48px] font-semibold leading-[1.1] tracking-tighter-custom text-white mb-4">
+          Ihr individuelles Leuchtschild
+        </h2>
+        <p class="text-lg text-white/60 max-w-[550px] mx-auto">Produkt wählen, Logo hochladen – Sie erhalten innerhalb von 24 Stunden eine fotorealistische Vorschau inkl. Angebot.</p>
+      </div>
+
+      <!-- Progress Bar with Labels -->
+      <div class="reveal flex items-center justify-center gap-1 md:gap-2 mb-10">
+        <div class="flex flex-col items-center gap-2">
+          <div class="progress-step active w-10 md:w-14 h-1.5 rounded-full bg-white/20 transition-all" data-step="1"></div>
+          <span class="text-[10px] md:text-xs text-white/40 font-medium hidden sm:block">Produkt</span>
+        </div>
+        <div class="flex flex-col items-center gap-2">
+          <div class="progress-step w-10 md:w-14 h-1.5 rounded-full bg-white/20 transition-all" data-step="2"></div>
+          <span class="text-[10px] md:text-xs text-white/40 font-medium hidden sm:block">Details</span>
+        </div>
+        <div class="flex flex-col items-center gap-2">
+          <div class="progress-step w-10 md:w-14 h-1.5 rounded-full bg-white/20 transition-all" data-step="3"></div>
+          <span class="text-[10px] md:text-xs text-white/40 font-medium hidden sm:block">Kontakt</span>
+        </div>
+      </div>
+
+      <!-- Form -->
+      <form id="multi-step-form" class="reveal bg-white rounded-3xl p-8 md:p-12" action="https://api.neontrip.de/anfrage" method="POST" enctype="multipart/form-data">
+
+        <!-- Step 1: Produkt-Kategorie -->
+        <div class="form-step active" data-step="1">
+          <h3 class="text-xl font-semibold text-dark mb-2">Was möchten Sie anfertigen lassen?</h3>
+          <p class="text-sm text-dark/50 mb-6">Wählen Sie die passende Kategorie für Ihr Projekt.</p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
+            <!-- Neon LED Schriftzug -->
+            <label class="cursor-pointer group">
+              <input type="radio" name="produkt" value="neon-schriftzug" class="peer sr-only" required>
+              <div class="relative p-5 rounded-xl border-2 border-dark/10 peer-checked:border-accent peer-checked:bg-accent/5 hover:border-dark/20 transition-all h-full">
+                <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center mb-3">
+                  <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                </div>
+                <span class="font-semibold text-dark block mb-1">Neon LED Schriftzug</span>
+                <p class="text-xs text-dark/50">Leuchtschrift, Neon Flex, LED-Schild</p>
+                <div class="absolute top-3 right-3 w-5 h-5 rounded-full border-2 border-dark/20 peer-checked:border-accent peer-checked:bg-accent flex items-center justify-center transition-all">
+                  <svg class="w-3 h-3 text-white opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+            </label>
+
+            <!-- 3D Buchstaben -->
+            <label class="cursor-pointer group">
+              <input type="radio" name="produkt" value="3d-buchstaben" class="peer sr-only">
+              <div class="relative p-5 rounded-xl border-2 border-dark/10 peer-checked:border-accent peer-checked:bg-accent/5 hover:border-dark/20 transition-all h-full">
+                <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center mb-3">
+                  <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                </div>
+                <span class="font-semibold text-dark block mb-1">3D Buchstaben</span>
+                <p class="text-xs text-dark/50">Profilbuchstaben, front- oder rückbeleuchtet</p>
+                <div class="absolute top-3 right-3 w-5 h-5 rounded-full border-2 border-dark/20 peer-checked:border-accent peer-checked:bg-accent flex items-center justify-center transition-all">
+                  <svg class="w-3 h-3 text-white opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+            </label>
+
+            <!-- Leuchtkasten -->
+            <label class="cursor-pointer group">
+              <input type="radio" name="produkt" value="leuchtkasten" class="peer sr-only">
+              <div class="relative p-5 rounded-xl border-2 border-dark/10 peer-checked:border-accent peer-checked:bg-accent/5 hover:border-dark/20 transition-all h-full">
+                <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center mb-3">
+                  <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                </div>
+                <span class="font-semibold text-dark block mb-1">Leuchtkasten</span>
+                <p class="text-xs text-dark/50">Leuchtbox, Nasenschild, Werbekasten</p>
+                <div class="absolute top-3 right-3 w-5 h-5 rounded-full border-2 border-dark/20 peer-checked:border-accent peer-checked:bg-accent flex items-center justify-center transition-all">
+                  <svg class="w-3 h-3 text-white opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+            </label>
+
+            <!-- Firmenschild -->
+            <label class="cursor-pointer group">
+              <input type="radio" name="produkt" value="firmenschild" class="peer sr-only">
+              <div class="relative p-5 rounded-xl border-2 border-dark/10 peer-checked:border-accent peer-checked:bg-accent/5 hover:border-dark/20 transition-all h-full">
+                <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center mb-3">
+                  <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                </div>
+                <span class="font-semibold text-dark block mb-1">Firmenschild</span>
+                <p class="text-xs text-dark/50">LED-Firmenschild, Werbeschild beleuchtet</p>
+                <div class="absolute top-3 right-3 w-5 h-5 rounded-full border-2 border-dark/20 peer-checked:border-accent peer-checked:bg-accent flex items-center justify-center transition-all">
+                  <svg class="w-3 h-3 text-white opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+            </label>
+
+            <!-- Messe & Event -->
+            <label class="cursor-pointer group">
+              <input type="radio" name="produkt" value="messe-event" class="peer sr-only">
+              <div class="relative p-5 rounded-xl border-2 border-dark/10 peer-checked:border-accent peer-checked:bg-accent/5 hover:border-dark/20 transition-all h-full">
+                <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center mb-3">
+                  <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </div>
+                <span class="font-semibold text-dark block mb-1">Messe & Event</span>
+                <p class="text-xs text-dark/50">Temporäre Installation, Messestand</p>
+                <div class="absolute top-3 right-3 w-5 h-5 rounded-full border-2 border-dark/20 peer-checked:border-accent peer-checked:bg-accent flex items-center justify-center transition-all">
+                  <svg class="w-3 h-3 text-white opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+            </label>
+
+            <!-- Sonderanfertigung -->
+            <label class="cursor-pointer group">
+              <input type="radio" name="produkt" value="sonderanfertigung" class="peer sr-only">
+              <div class="relative p-5 rounded-xl border-2 border-dark/10 peer-checked:border-accent peer-checked:bg-accent/5 hover:border-dark/20 transition-all h-full">
+                <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center mb-3">
+                  <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                </div>
+                <span class="font-semibold text-dark block mb-1">Sonderanfertigung</span>
+                <p class="text-xs text-dark/50">Individuelle Projekte, Spezialanfragen</p>
+                <div class="absolute top-3 right-3 w-5 h-5 rounded-full border-2 border-dark/20 peer-checked:border-accent peer-checked:bg-accent flex items-center justify-center transition-all">
+                  <svg class="w-3 h-3 text-white opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <button type="button" class="form-next w-full bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20">
+            Weiter
+          </button>
+        </div>
+
+        <!-- Step 2: Logo Upload + Details -->
+        <div class="form-step" data-step="2">
+          <h3 class="text-xl font-semibold text-dark mb-2">Projekt-Details</h3>
+          <p class="text-sm text-dark/50 mb-6">Laden Sie Ihr Logo hoch und teilen Sie uns Ihre Wünsche mit.</p>
+
+          <!-- File Upload - Enhanced -->
+          <div class="file-drop-zone rounded-2xl p-8 text-center mb-6 bg-light/50 hover:bg-light transition-colors" id="file-drop-zone">
+            <input type="file" name="logo" id="logo-upload" accept=".png,.jpg,.jpeg,.svg,.pdf,.ai,.eps" class="hidden" multiple>
+            <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            </div>
+            <p class="font-semibold text-dark mb-1">Logo oder Entwurf hochladen</p>
+            <p class="text-sm text-dark/50 mb-4">PNG, JPG, SVG, PDF, AI, EPS · Max 25 MB</p>
+            <button type="button" onclick="document.getElementById('logo-upload').click()" class="inline-flex items-center gap-2 px-5 py-2.5 bg-dark text-white text-sm font-medium rounded-full hover:bg-dark/90 transition-all">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Datei auswählen
+            </button>
+            <p id="file-name" class="text-sm text-accent font-medium mt-4 hidden"></p>
+          </div>
+
+          <!-- Size + Urgency Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label class="block text-sm font-medium text-dark mb-2">Gewünschte Größe</label>
+              <input type="text" name="groesse" placeholder="z.B. 120 cm Breite" class="w-full px-4 py-3.5 rounded-xl border border-dark/10 focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none transition-all">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-dark mb-2">Wunschtermin</label>
+              <select name="termin" class="w-full px-4 py-3.5 rounded-xl border border-dark/10 focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none transition-all bg-white">
+                <option value="">Bitte wählen</option>
+                <option value="express">Express (3-5 Tage)</option>
+                <option value="standard">Standard (7-10 Tage)</option>
+                <option value="flexibel">Flexibel</option>
+                <option value="termin">Fester Termin</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Message -->
+          <div class="mb-8">
+            <label class="block text-sm font-medium text-dark mb-2">Zusätzliche Informationen</label>
+            <textarea name="nachricht" rows="3" placeholder="Gewünschte Farben, Montageort, besondere Anforderungen..." class="w-full px-4 py-3.5 rounded-xl border border-dark/10 focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none transition-all resize-none"></textarea>
+          </div>
+
+          <div class="flex gap-3">
+            <button type="button" class="form-prev flex-1 bg-light text-dark font-medium text-base py-4 rounded-full hover:bg-dark/10 transition-all">
+              Zurück
+            </button>
+            <button type="button" class="form-next flex-[2] bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20">
+              Weiter
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 3: Kontaktdaten -->
+        <div class="form-step" data-step="3">
+          <h3 class="text-xl font-semibold text-dark mb-2">Ihre Kontaktdaten</h3>
+          <p class="text-sm text-dark/50 mb-6">Wie können wir Sie für das Angebot erreichen?</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="block text-sm font-medium text-dark mb-2">Vorname & Name *</label>
+              <input type="text" name="name" required placeholder="Max Mustermann" class="w-full px-4 py-3.5 rounded-xl border border-dark/10 focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none transition-all">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-dark mb-2">Firma</label>
+              <input type="text" name="firma" placeholder="Firmenname (optional)" class="w-full px-4 py-3.5 rounded-xl border border-dark/10 focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none transition-all">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label class="block text-sm font-medium text-dark mb-2">E-Mail *</label>
+              <input type="email" name="email" required placeholder="ihre@email.de" class="w-full px-4 py-3.5 rounded-xl border border-dark/10 focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none transition-all">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-dark mb-2">Telefon *</label>
+              <input type="tel" name="telefon" required placeholder="+49 211 ..." class="w-full px-4 py-3.5 rounded-xl border border-dark/10 focus:border-accent focus:ring-2 focus:ring-accent/10 focus:outline-none transition-all">
+            </div>
+          </div>
+
+          <!-- Privacy Checkbox -->
+          <div class="mb-8 p-4 bg-light rounded-xl">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" name="datenschutz" required class="mt-0.5 w-5 h-5 rounded border-dark/20 text-accent focus:ring-accent/20">
+              <span class="text-sm text-dark/70">Ich stimme der Verarbeitung meiner Daten gemäß der <a href="datenschutz.html" class="text-accent underline hover:no-underline">Datenschutzerklärung</a> zu. *</span>
+            </label>
+          </div>
+
+          <div class="flex gap-3">
+            <button type="button" class="form-prev flex-1 bg-light text-dark font-medium text-base py-4 rounded-full hover:bg-dark/10 transition-all">
+              Zurück
+            </button>
+            <button type="submit" class="flex-[2] bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20 flex items-center justify-center gap-2">
+              <span>Angebot anfordern</span>
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+
+          <!-- Trust Badges -->
+          <div class="flex items-center justify-center gap-6 mt-8 pt-6 border-t border-dark/5">
+            <div class="flex items-center gap-2 text-dark/40">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span class="text-xs font-medium">SSL-verschlüsselt</span>
+            </div>
+            <div class="flex items-center gap-2 text-dark/40">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span class="text-xs font-medium">Antwort in 24h</span>
+            </div>
+            <div class="flex items-center gap-2 text-dark/40">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <span class="text-xs font-medium">100% kostenlos</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Success State -->
+        <div class="form-step" data-step="success" style="display: none;">
+          <div class="text-center py-8">
+            <div class="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
+              <svg class="w-10 h-10 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h3 class="text-2xl font-semibold text-dark mb-3">Anfrage erfolgreich gesendet!</h3>
+            <p class="text-dark/60 mb-6 max-w-md mx-auto">Vielen Dank für Ihre Anfrage. Wir melden uns innerhalb von 24 Stunden mit Ihrem persönlichen Angebot und einer Vorschau.</p>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a href="tel:+4921154257240" class="inline-flex items-center gap-2 px-6 py-3 bg-dark text-white font-medium rounded-full hover:bg-dark/90 transition-all">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                Direkt anrufen
+              </a>
+              <a href="https://wa.me/4921154257240" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 bg-[#25D366] text-white font-medium rounded-full hover:bg-[#22c55e] transition-all">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                WhatsApp schreiben
+              </a>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       FAQ (LIGHT)
+       ════════════════════════════════════════ -->
+  <section id="faq" class="snap-section bg-white py-24 md:py-32">
+    <div class="max-w-[900px] mx-auto px-5 md:px-8">
+      <div class="reveal text-center mb-16">
+        <span class="inline-block text-xs font-medium tracking-widest uppercase text-dark/40 mb-4">Häufige Fragen</span>
+        <h2 class="text-[36px] md:text-[48px] font-semibold leading-[1.1] tracking-tighter-custom text-dark">FAQ.</h2>
+      </div>
+
+      <div class="space-y-3">
+        <!-- FAQ 1 -->
+        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden">
+          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
+            <span class="font-semibold text-dark pr-4">Wie schnell können Neon LED-Schilder geliefert werden?</span>
+            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p class="px-6 pb-6 text-dark/60">Je nach Projekt bieten wir Expressfertigungen ab 3 Tagen an. Standardlieferzeiten liegen bei 5-10 Werktagen, inklusive Versand ab Düsseldorf.</p>
+          </div>
+        </div>
+
+        <!-- FAQ 2 -->
+        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.05s;">
+          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
+            <span class="font-semibold text-dark pr-4">Wie unterscheiden sich Ihre Schilder von günstigen Online-Anbietern?</span>
+            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p class="px-6 pb-6 text-dark/60">Unsere Schilder sind auf B2B-Qualität und Langlebigkeit ausgelegt – kein Acrylkleber, keine Billig-LEDs, keine Einwegprodukte. Wir verwenden ausschließlich hochwertige Materialien und ECOPOWER LEDs.</p>
+          </div>
+        </div>
+
+        <!-- FAQ 3 -->
+        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.1s;">
+          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
+            <span class="font-semibold text-dark pr-4">Wie lange hält ein LED-Leuchtschild?</span>
+            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p class="px-6 pb-6 text-dark/60">Mindestens 50.000 Stunden, über 10 Jahre bei täglichem Betrieb. Die Lebensdauer hängt von der Nutzungsintensität ab.</p>
+          </div>
+        </div>
+
+        <!-- FAQ 4 -->
+        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.15s;">
+          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
+            <span class="font-semibold text-dark pr-4">Welche Größen und Formen sind möglich?</span>
+            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p class="px-6 pb-6 text-dark/60">Von 30 cm bis über 10 Meter. Schriftzüge, Logos, 3D-Buchstaben, Sonderformen – alles ist möglich.</p>
+          </div>
+        </div>
+
+        <!-- FAQ 5 -->
+        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.2s;">
+          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
+            <span class="font-semibold text-dark pr-4">Wie läuft der Bestellprozess ab?</span>
+            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p class="px-6 pb-6 text-dark/60">1. Logo hochladen → 2. Kostenloses Vorschaubild & Angebot in 24h → 3. Fertigung nach Freigabe → 4. Montagefertige Lieferung.</p>
+          </div>
+        </div>
+
+        <!-- FAQ 6 -->
+        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.25s;">
+          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
+            <span class="font-semibold text-dark pr-4">Gibt es eine Garantie?</span>
+            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p class="px-6 pb-6 text-dark/60">24 Monate auf alle LED-Systeme, verlängerbar für gewerbliche Dauerinstallationen.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       FOOTER
+       ════════════════════════════════════════ -->
+  <footer class="snap-section bg-light">
+    <!-- Grey Section: Contact & Navigation -->
+    <div class="bg-light px-5 md:px-8 pt-16 pb-0">
+      <div class="max-w-[1400px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
+        <div class="reveal">
+          <p class="text-lg font-medium tracking-tight text-dark mb-3">+49 211 54257240</p>
+          <a href="mailto:info@neontrip.de" class="flex items-center gap-2 text-[26px] md:text-[34px] font-semibold tracking-tight text-dark hover:opacity-70 transition-opacity">
+            <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center shrink-0"><span class="w-[2px] h-2 bg-white block"></span></div>
+            info@neontrip.de
+          </a>
+        </div>
+        <div class="reveal grid grid-cols-2 gap-8" style="transition-delay: 0.1s;">
+          <div>
+            <p class="text-sm font-medium text-dark/60 tracking-wide mb-3 uppercase">Navigation</p>
+            <div class="flex flex-col gap-2">
+              <a href="anfrage.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity">Anfrage</a>
+              <a href="#projekte" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity">Projekte</a>
+              <a href="#bewertungen" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity">Erfahrungen</a>
+              <a href="#leistungen" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity">Leistungen</a>
+              <a href="#faq" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity">FAQ</a>
+            </div>
+          </div>
+          <div>
+            <p class="text-sm font-medium text-dark/60 tracking-wide mb-3 uppercase">Links</p>
+            <div class="flex flex-col gap-2">
+              <a href="agb.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity flex items-center gap-2">AGBs <svg class="w-2.5 h-2.5 opacity-30" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+              <a href="datenschutz.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity flex items-center gap-2">Datenschutz <svg class="w-2.5 h-2.5 opacity-30" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+              <a href="impressum.html" class="text-xl md:text-[22px] font-medium text-dark tracking-tight hover:opacity-70 transition-opacity flex items-center gap-2">Impressum <svg class="w-2.5 h-2.5 opacity-30" viewBox="0 0 10 11" fill="currentColor"><path d="M1.498.795v.65c0 .078.032.153.087.209a.302.302 0 00.209.086h6.089L.086 9.537A.296.296 0 000 9.745c0 .079.031.154.087.209l.459.46a.302.302 0 00.418 0L8.76 2.617v6.09c0 .078.031.153.086.208a.296.296 0 00.209.087h.65a.296.296 0 00.295-.295V.795a.296.296 0 00-.295-.295H1.793a.296.296 0 00-.295.295z"/></svg></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dark Section: Stats + Big Logo -->
+    <div class="bg-dark mt-10 py-10 md:py-12 px-5 md:px-8">
+      <div class="max-w-[1400px] mx-auto">
+        <!-- Stats Bar -->
+        <div class="reveal grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 pb-10 border-b border-white/10">
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2" data-count="21000" data-suffix="+">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2" data-count="4.9" data-suffix="/5">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Google Bewertung</p>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2" data-count="99" data-suffix="%">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Pünktliche Lieferung</p>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2" data-count="7" data-suffix=" Tage">0</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Express Lieferung</p>
+          </div>
+        </div>
+
+        <!-- Large Logo - tighter padding -->
+        <div class="reveal flex items-center justify-center py-4 overflow-hidden">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" class="w-full max-w-full opacity-90" alt="NEONTRIP" style="max-height: none;">
+        </div>
+
+        <!-- Social Links with hover animation -->
+        <div class="reveal flex items-center justify-center gap-3 mt-4 mb-4">
+          <a href="https://www.instagram.com/neontrip.de/" target="_blank" rel="noopener noreferrer" class="social-icon group w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gradient-to-br hover:from-purple-500 hover:to-pink-500 transition-all duration-300 hover:scale-110 hover:-translate-y-1" aria-label="Instagram">
+            <svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          </a>
+          <a href="https://www.tiktok.com/@neontrip.de" target="_blank" rel="noopener noreferrer" class="social-icon group w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-dark transition-all duration-300 hover:scale-110 hover:-translate-y-1" aria-label="TikTok">
+            <svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.97a8.16 8.16 0 004.77 1.52V7.04a4.84 4.84 0 01-1.01-.35z"/></svg>
+          </a>
+          <a href="https://www.facebook.com/NeonTrip.de/" target="_blank" rel="noopener noreferrer" class="social-icon group w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#1877F2] transition-all duration-300 hover:scale-110 hover:-translate-y-1" aria-label="Facebook">
+            <svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          </a>
+          <a href="https://www.linkedin.com/company/neontrip/" target="_blank" rel="noopener noreferrer" class="social-icon group w-11 h-11 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#0A66C2] transition-all duration-300 hover:scale-110 hover:-translate-y-1" aria-label="LinkedIn">
+            <svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+          </a>
+          <a href="https://g.page/neontrip" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-white hover:border-white/30 transition-all duration-300" aria-label="Google Business">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          </a>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="border-t border-white/10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+          <span class="text-gray-500 font-medium uppercase tracking-wider">© 2026 NEONTRIP</span>
+          <div class="flex items-center gap-4 md:gap-6 flex-wrap justify-center">
+            <a href="agb.html" class="text-gray-500 font-medium tracking-wider hover:text-white transition-colors">AGB</a>
+            <a href="datenschutz.html" class="text-gray-500 font-medium tracking-wider hover:text-white transition-colors">Datenschutz</a>
+            <a href="impressum.html" class="text-gray-500 font-medium tracking-wider hover:text-white transition-colors">Impressum</a>
+          </div>
+          <a href="#hero" class="text-gray-500 font-medium uppercase tracking-wider hover:text-white transition-colors shrink-0">Zurück zum Anfang ↑</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ════════════════════════════════════════
+       STICKY WHATSAPP BUTTON
+       ════════════════════════════════════════ -->
+  <a href="https://wa.me/4921154257240" target="_blank" class="fixed left-5 bottom-5 z-50 inline-flex items-center gap-2.5 bg-[#25D366] text-white pl-4 pr-5 py-3 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all" aria-label="WhatsApp">
+    <span class="relative flex items-center justify-center">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      <!-- Online pulse -->
+      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-300 rounded-full animate-ping"></span>
+      <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full border border-white"></span>
+    </span>
+    <span class="text-sm font-semibold">Jetzt online</span>
+  </a>
+
+  <!-- ════════════════════════════════════════
+       STICKY CONTACT CARD
+       ════════════════════════════════════════ -->
+  <div id="contact-sticky" class="contact-sticky">
+    <div class="flex items-center gap-4 bg-white rounded-2xl p-1.5 shadow-2xl border border-gray-100">
+      <div class="relative w-[100px] h-[140px] rounded-xl overflow-hidden shrink-0">
+        <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" class="w-full h-full object-cover" alt="Fabienne Trapp">
+        <!-- Online indicator -->
+        <span class="absolute bottom-2 right-2 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></span>
+      </div>
+      <div class="py-3 pr-4">
+        <p class="text-xs font-semibold tracking-tight text-dark/60">Customer Support</p>
+        <p class="text-[10px] font-medium tracking-tight text-dark/40 mb-1">bei NEONTRIP</p>
+        <p class="text-lg font-semibold tracking-tight text-dark leading-tight mb-1">Fabienne Trapp</p>
+        <p class="text-[10px] text-green-600 font-medium mb-3 flex items-center gap-1">
+          <span class="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>
+          Online
+        </p>
+        <a href="anfrage.html" class="inline-flex items-center gap-2 bg-accent text-white text-xs font-semibold px-4 py-2.5 rounded-full hover:bg-accent/90 transition-colors">
+          Jetzt Anfragen
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════
+       JAVASCRIPT
+       ════════════════════════════════════════ -->
+  <script>
+    // Splash Screen
+    document.addEventListener('DOMContentLoaded', () => {
+      const splash = document.getElementById('splash');
+      const logo = document.getElementById('splash-logo');
+      const header = document.getElementById('header');
+
+      // Animate logo
+      setTimeout(() => {
+        logo.style.opacity = '1';
+        logo.style.filter = 'blur(0)';
+        logo.style.transform = 'scale(1)';
+      }, 200);
+
+      // Exit splash
+      setTimeout(() => {
+        splash.classList.add('exit');
+        document.body.style.overflow = '';
+        header.style.opacity = '1';
+        header.style.transform = 'translateY(0)';
+      }, 1600);
+
+      setTimeout(() => splash.classList.add('hidden'), 2400);
+    });
+
+    // Header Scroll + Sticky Contact Card
+    const headerEl = document.getElementById('header');
+    const contactSticky = document.getElementById('contact-sticky');
+    let lastScroll = 0;
+    window.addEventListener('scroll', () => {
+      const currentScroll = window.pageYOffset;
+      if (currentScroll > 100) {
+        headerEl.classList.add('header-scrolled');
+      } else {
+        headerEl.classList.remove('header-scrolled');
+      }
+      // Show contact card after scrolling past hero
+      if (currentScroll > window.innerHeight * 0.8) {
+        contactSticky.classList.add('visible');
+      } else {
+        contactSticky.classList.remove('visible');
+      }
+      lastScroll = currentScroll;
+    });
+
+    // Mobile Nav
+    const hamburger = document.getElementById('hamburger');
+    const mobileNav = document.getElementById('mobile-nav');
+    hamburger.addEventListener('click', () => {
+      hamburger.classList.toggle('active');
+      mobileNav.classList.toggle('open');
+      document.body.style.overflow = mobileNav.classList.contains('open') ? 'hidden' : '';
+    });
+
+    mobileNav.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        hamburger.classList.remove('active');
+        mobileNav.classList.remove('open');
+        document.body.style.overflow = '';
+      });
+    });
+
+    // Contact Dropdown
+    const contactToggle = document.getElementById('contact-toggle');
+    const contactDropdown = document.getElementById('contact-dropdown');
+    const contactChevron = document.getElementById('contact-chevron');
+
+    contactToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      contactDropdown.classList.toggle('open');
+      contactChevron.classList.toggle('open');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#contact-dropdown-wrapper')) {
+        contactDropdown.classList.remove('open');
+        contactChevron.classList.remove('open');
+      }
+    });
+
+    // Close dropdown when clicking a link inside
+    contactDropdown.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        contactDropdown.classList.remove('open');
+        contactChevron.classList.remove('open');
+      });
+    });
+
+    // Scroll Reveal
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+    document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+    // Counter Animation
+    const counterObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          const target = parseFloat(el.dataset.count);
+          const suffix = el.dataset.suffix || '';
+          const isDecimal = target % 1 !== 0;
+          const duration = 2000;
+          const start = performance.now();
+
+          const animate = (now) => {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const current = target * eased;
+
+            if (isDecimal) {
+              el.textContent = current.toFixed(1) + suffix;
+            } else if (target >= 1000) {
+              el.textContent = Math.floor(current).toLocaleString('de-DE') + suffix;
+            } else {
+              el.textContent = Math.floor(current) + suffix;
+            }
+
+            if (progress < 1) requestAnimationFrame(animate);
+          };
+
+          requestAnimationFrame(animate);
+          counterObserver.unobserve(el);
+        }
+      });
+    }, { threshold: 0.5 });
+    document.querySelectorAll('[data-count]').forEach(el => counterObserver.observe(el));
+
+    // Project Filter
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    const projectCards = document.querySelectorAll('.project-card');
+
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Update active button
+        filterBtns.forEach(b => {
+          b.classList.remove('active', 'bg-dark', 'text-white');
+          b.classList.add('bg-white', 'text-dark/60');
+        });
+        btn.classList.add('active', 'bg-dark', 'text-white');
+        btn.classList.remove('bg-white', 'text-dark/60');
+
+        const filter = btn.dataset.filter;
+
+        // Filter cards
+        projectCards.forEach(card => {
+          const categories = card.dataset.category.split(' ');
+          if (filter === 'all' || categories.includes(filter)) {
+            card.style.display = 'block';
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+              card.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+              card.style.opacity = '1';
+              card.style.transform = 'translateY(0)';
+            }, 50);
+          } else {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+              card.style.display = 'none';
+            }, 300);
+          }
+        });
+      });
+    });
+
+    // FAQ Accordion
+    document.querySelectorAll('.faq-trigger').forEach(trigger => {
+      trigger.addEventListener('click', () => {
+        const item = trigger.closest('.faq-item');
+        const wasActive = item.classList.contains('active');
+
+        // Close all
+        document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('active'));
+
+        // Open clicked if not already open
+        if (!wasActive) item.classList.add('active');
+      });
+    });
+
+    // Multi-Step Form
+    const form = document.getElementById('multi-step-form');
+    const steps = form.querySelectorAll('.form-step[data-step]');
+    const progressSteps = document.querySelectorAll('.progress-step');
+    let currentStep = 1;
+
+    const showStep = (step) => {
+      steps.forEach(s => s.classList.remove('active'));
+      const targetStep = form.querySelector(`[data-step="${step}"]`);
+      if (targetStep) targetStep.classList.add('active');
+
+      progressSteps.forEach((p, i) => {
+        p.classList.remove('active', 'completed');
+        if (i + 1 < step) p.classList.add('completed');
+        if (i + 1 === step) p.classList.add('active');
+      });
+
+      // Scroll form into view
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    const showSuccess = () => {
+      steps.forEach(s => s.classList.remove('active'));
+      const successStep = form.querySelector('[data-step="success"]');
+      if (successStep) {
+        successStep.style.display = 'block';
+        successStep.classList.add('active');
+      }
+      progressSteps.forEach(p => p.classList.add('completed'));
+    };
+
+    form.querySelectorAll('.form-next').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Validation for step 1
+        if (currentStep === 1) {
+          const selected = form.querySelector('input[name="produkt"]:checked');
+          if (!selected) {
+            // Highlight the cards
+            const cards = form.querySelectorAll('[data-step="1"] label > div');
+            cards.forEach(c => c.classList.add('border-red-300'));
+            setTimeout(() => cards.forEach(c => c.classList.remove('border-red-300')), 2000);
+            return;
+          }
+        }
+        currentStep++;
+        showStep(currentStep);
+      });
+    });
+
+    form.querySelectorAll('.form-prev').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentStep--;
+        showStep(currentStep);
+      });
+    });
+
+    // Form Submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const originalText = submitBtn.innerHTML;
+      submitBtn.innerHTML = '<svg class="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Wird gesendet...';
+      submitBtn.disabled = true;
+
+      try {
+        const formData = new FormData(form);
+
+        // Send to webhook (adjust URL as needed)
+        const response = await fetch(form.action, {
+          method: 'POST',
+          body: formData
+        });
+
+        // Show success regardless (for demo)
+        showSuccess();
+
+      } catch (error) {
+        console.error('Form error:', error);
+        // Still show success for demo purposes
+        showSuccess();
+      }
+    });
+
+    // File Upload (supports multiple files)
+    const fileInput = document.getElementById('logo-upload');
+    const dropZone = document.getElementById('file-drop-zone');
+    const fileName = document.getElementById('file-name');
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        const names = Array.from(e.target.files).map(f => f.name).join(', ');
+        fileName.textContent = `✓ ${e.target.files.length} Datei(en): ${names}`;
+        fileName.classList.remove('hidden');
+        dropZone.classList.add('border-accent', 'bg-accent/5');
+      }
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover', 'border-accent');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover', 'border-accent');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        fileInput.files = e.dataTransfer.files;
+        const names = Array.from(e.dataTransfer.files).map(f => f.name).join(', ');
+        fileName.textContent = `✓ ${e.dataTransfer.files.length} Datei(en): ${names}`;
+        fileName.classList.remove('hidden');
+        dropZone.classList.add('border-accent', 'bg-accent/5');
+      }
+    });
+
+    // Smooth Scroll
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          const offset = 80;
+          const position = target.getBoundingClientRect().top + window.pageYOffset - offset;
+          window.scrollTo({ top: position, behavior: 'smooth' });
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>

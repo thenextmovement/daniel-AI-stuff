@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEONTRIP – Premium LED Neon Leuchtreklame | Dein Logo als Leuchtschild</title>
+  <meta name="description" content="Premium LED Neon Leuchtreklame nach Maß. Vertraut von Google, Porsche, Telekom. Expresslieferung in 7 Tagen.">
+  <meta property="og:title" content="NEONTRIP – Custom LED Neon Leuchtreklame für Marken">
+  <meta property="og:description" content="Premium LED Neon Signs nach Maß. Vertraut von Google, Porsche, Telekom & 35+ Top-Marken.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.neontrip.de">
+  <meta property="og:locale" content="de_DE">
+  <link rel="icon" type="image/svg+xml" href="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            inter: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            dark: '#0A0A0A',
+            light: '#F5F5F5',
+          }
+        }
+      }
+    }
+  </script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"LocalBusiness","name":"NEONTRIP","legalName":"Daranova GmbH","url":"https://www.neontrip.de","telephone":"+49-211-54257240","email":"support@neontrip.de","address":{"@type":"PostalAddress","streetAddress":"Bilker Allee 29","addressLocality":"Düsseldorf","postalCode":"40219","addressCountry":"DE"},"aggregateRating":{"@type":"AggregateRating","ratingValue":"4.9","reviewCount":"236"}}
+  </script>
+  <style>
+    * {
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Scroll Reveal */
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Marquee */
+    .marquee-track {
+      display: inline-flex;
+      animation: marquee 40s linear infinite;
+    }
+    .marquee-track:hover {
+      animation-play-state: paused;
+    }
+    .marquee-mask {
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%);
+      mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%);
+    }
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* Pain Points Marquee - Vertical */
+    .pain-marquee {
+      animation: pain-scroll 20s linear infinite;
+    }
+    @keyframes pain-scroll {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-50%); }
+    }
+
+    /* Header scroll state */
+    .header-scrolled {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    .header-scrolled .nav-pill {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    /* FAQ Accordion */
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), padding 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .faq-item.open .faq-answer {
+      max-height: 500px;
+    }
+    .faq-item.open .faq-icon {
+      transform: rotate(45deg);
+    }
+
+    /* Noise texture for dark sections */
+    .noise-overlay {
+      background-image: url('https://framerusercontent.com/images/rR6HYXBrMmX4cRpXfXUOvpvpB0.png');
+      background-size: 256px;
+      background-repeat: repeat;
+      opacity: 0.03;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #F5F5F5;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #0A0A0A;
+      border-radius: 4px;
+    }
+
+    /* Smooth scroll */
+    html {
+      scroll-behavior: smooth;
+    }
+
+    /* Mobile menu */
+    .mobile-menu {
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .mobile-menu.open {
+      transform: translateX(0);
+    }
+
+    /* Clean Navigation */
+    .nav-pill {
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(20px);
+    }
+    .nav-pill .nav-link {
+      transition: all 0.2s ease;
+      color: rgba(10, 10, 10, 0.5);
+    }
+    .nav-pill .nav-link:hover,
+    .nav-pill .nav-link.active {
+      color: #0A0A0A;
+    }
+
+    /* Logo Carousel */
+    .logo-column {
+      position: relative;
+      height: 56px;
+      width: 120px;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: logoColumnFadeIn 0.5s ease forwards;
+    }
+    @media (min-width: 768px) {
+      .logo-column {
+        height: 80px;
+        width: 180px;
+      }
+    }
+    .logo-column:nth-child(1) { animation-delay: 0s; }
+    .logo-column:nth-child(2) { animation-delay: 0.1s; }
+    .logo-column:nth-child(3) { animation-delay: 0.2s; }
+    .logo-column:nth-child(4) { animation-delay: 0.3s; }
+    .logo-column:nth-child(5) { animation-delay: 0.4s; }
+    .logo-column:nth-child(6) { animation-delay: 0.5s; }
+
+    @keyframes logoColumnFadeIn {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .logo-slot {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .logo-slot.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .logo-slot.exiting {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    .logo-slot img {
+      max-height: 70%;
+      max-width: 80%;
+      object-fit: contain;
+      filter: grayscale(100%);
+      opacity: 0.5;
+      transition: all 0.3s ease;
+    }
+    .logo-column:hover .logo-slot.active img {
+      filter: grayscale(0%);
+      opacity: 1;
+    }
+
+    /* Scroll Morph Hero */
+    .morph-hero {
+      position: relative;
+      height: 300vh;
+      background: #F5F5F5;
+    }
+    .morph-hero-sticky {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .morph-cards-container {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .morph-card {
+      position: absolute;
+      width: 90px;
+      height: 120px;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+      transition: all 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-style: preserve-3d;
+      cursor: pointer;
+      pointer-events: auto;
+      will-change: transform, left, top;
+    }
+    @media (min-width: 768px) {
+      .morph-card {
+        width: 110px;
+        height: 150px;
+      }
+    }
+    .morph-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .morph-card:hover {
+      transform: scale(1.15) !important;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.25);
+      z-index: 100 !important;
+    }
+
+    /* Hero content layers */
+    .hero-intro {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      z-index: 20;
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .hero-intro.faded {
+      opacity: 0;
+      transform: translateY(-40px);
+      pointer-events: none;
+    }
+    .hero-main {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 2rem;
+      z-index: 20;
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 0.8s ease 0.2s, transform 0.8s ease 0.2s;
+    }
+    .hero-main.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    @media (min-width: 768px) {
+      .hero-main {
+        padding: 4rem;
+      }
+    }
+  </style>
+</head>
+<body class="bg-light text-dark antialiased">
+
+  <!-- HEADER -->
+  <header id="header" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300">
+    <div class="max-w-[1520px] mx-auto px-6 md:px-9 py-4">
+      <div class="flex items-center justify-between">
+        <!-- Logo -->
+        <a href="#" class="flex-shrink-0">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-7 md:h-8">
+        </a>
+
+        <!-- Nav Pill (Desktop) -->
+        <nav class="hidden lg:flex items-center">
+          <div id="nav-pill" class="nav-pill flex items-center gap-1 rounded-full px-2 py-1.5 border border-black/5">
+            <a href="#produkte" class="nav-link active px-4 py-2 text-sm font-medium rounded-full">Schriftzüge</a>
+            <a href="#projekte" class="nav-link px-4 py-2 text-sm font-medium rounded-full">Projekte</a>
+            <a href="#leistungen" class="nav-link px-4 py-2 text-sm font-medium rounded-full">Leistungen</a>
+            <a href="#bewertungen" class="nav-link px-4 py-2 text-sm font-medium rounded-full">Bewertungen</a>
+            <a href="#faq" class="nav-link px-4 py-2 text-sm font-medium rounded-full">FAQ</a>
+            <a href="#kontakt" class="nav-link px-4 py-2 text-sm font-medium rounded-full">Kontakt</a>
+          </div>
+        </nav>
+
+        <!-- CTA (Desktop) -->
+        <a href="#kontakt" class="hidden lg:inline-flex items-center gap-2 bg-dark text-white text-sm font-medium px-5 py-2.5 rounded-full hover:bg-dark/90 transition-colors">
+          Jetzt Anfragen
+        </a>
+
+        <!-- Mobile Menu Button -->
+        <button id="mobile-menu-btn" class="lg:hidden w-10 h-10 flex items-center justify-center">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <line x1="4" y1="8" x2="20" y2="8"></line>
+            <line x1="4" y1="16" x2="20" y2="16"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Menu -->
+  <div id="mobile-menu" class="mobile-menu fixed inset-0 z-[60] bg-white lg:hidden">
+    <div class="flex flex-col h-full p-6">
+      <div class="flex items-center justify-between mb-12">
+        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-7">
+        <button id="mobile-menu-close" class="w-10 h-10 flex items-center justify-center">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+            <line x1="6" y1="18" x2="18" y2="6"></line>
+          </svg>
+        </button>
+      </div>
+      <nav class="flex flex-col gap-2">
+        <a href="#produkte" class="mobile-nav-link text-3xl font-semibold tracking-tight py-3 border-b border-black/10">Schriftzüge</a>
+        <a href="#projekte" class="mobile-nav-link text-3xl font-semibold tracking-tight py-3 border-b border-black/10">Projekte</a>
+        <a href="#leistungen" class="mobile-nav-link text-3xl font-semibold tracking-tight py-3 border-b border-black/10">Leistungen</a>
+        <a href="#bewertungen" class="mobile-nav-link text-3xl font-semibold tracking-tight py-3 border-b border-black/10">Bewertungen</a>
+        <a href="#faq" class="mobile-nav-link text-3xl font-semibold tracking-tight py-3 border-b border-black/10">FAQ</a>
+        <a href="#kontakt" class="mobile-nav-link text-3xl font-semibold tracking-tight py-3 border-b border-black/10">Kontakt</a>
+      </nav>
+      <div class="mt-auto">
+        <a href="#kontakt" class="block w-full bg-dark text-white text-center text-lg font-medium py-4 rounded-full">Jetzt Anfragen</a>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- SCROLL MORPH HERO -->
+    <section id="morph-hero" class="morph-hero">
+      <div class="morph-hero-sticky">
+        <!-- Cards Container -->
+        <div class="morph-cards-container" id="morph-cards">
+          <!-- Cards will be generated by JS -->
+        </div>
+
+        <!-- Intro Text (fades out on scroll) -->
+        <div class="hero-intro" id="hero-intro">
+          <span class="text-xs font-medium tracking-[0.15em] uppercase text-dark/40 mb-6">Premium LED Neon · Düsseldorf</span>
+          <h1 class="text-[36px] sm:text-[48px] md:text-[72px] lg:text-[96px] font-semibold leading-[0.95] tracking-[-0.04em] text-dark max-w-[900px]">
+            Premium LED Neon<br>für wachsende Marken.
+          </h1>
+          <p class="text-base md:text-lg text-dark/50 mt-6 max-w-[500px]">
+            Scrollen Sie, um unsere Arbeit zu entdecken
+          </p>
+          <svg class="w-6 h-6 mt-8 text-dark/30 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 5v14M19 12l-7 7-7-7"/>
+          </svg>
+        </div>
+
+        <!-- Main Content (fades in on scroll) -->
+        <div class="hero-main" id="hero-main">
+          <div class="max-w-[1520px] mx-auto">
+            <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+              <div>
+                <p class="text-lg md:text-xl font-medium leading-relaxed text-dark/60 max-w-[600px]">
+                  <span class="text-dark">Custom LED Neon Leuchtreklame nach Maß</span> für Unternehmen, Events, Messen und Gastronomie.
+                </p>
+              </div>
+              <div class="flex flex-col sm:flex-row gap-3">
+                <a href="#kontakt" class="inline-flex items-center justify-center gap-2 bg-dark text-white text-sm font-medium px-6 py-3.5 rounded-full hover:bg-dark/90 transition-colors">
+                  Kostenlosen Entwurf anfordern
+                </a>
+                <a href="#projekte" class="inline-flex items-center justify-center gap-2 bg-white text-dark text-sm font-medium px-6 py-3.5 rounded-full border border-black/10 hover:bg-black/5 transition-colors">
+                  Projekte ansehen
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRUST LOGO CAROUSEL -->
+    <section class="py-16 md:py-24 px-6 md:px-9 bg-white">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-12 md:mb-16 reveal">
+          <p class="text-xs font-medium tracking-[0.15em] uppercase text-dark/40 mb-6">
+            Vertraut von führenden Unternehmen
+          </p>
+          <h2 class="text-[32px] md:text-[48px] lg:text-[56px] font-semibold leading-[1.05] tracking-[-0.03em] text-dark">
+            Die Besten sind bereits hier
+          </h2>
+        </div>
+
+        <!-- Logo Carousel Grid -->
+        <div id="logo-carousel" class="flex justify-center gap-3 md:gap-6 py-8">
+          <!-- Columns will be generated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- PAIN POINTS -->
+    <section class="py-20 md:py-32 px-6 md:px-9 bg-white">
+      <div class="max-w-[1520px] mx-auto">
+        <div class="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+          <!-- Image -->
+          <div class="relative reveal">
+            <div class="rounded-[24px] overflow-hidden aspect-square">
+              <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg" alt="LED Neon Schild" class="w-full h-full object-cover">
+            </div>
+          </div>
+
+          <!-- Pain Points -->
+          <div class="reveal" style="transition-delay: 0.1s">
+            <!-- Scrolling Pain Points -->
+            <div class="h-[200px] overflow-hidden mb-8 relative">
+              <div class="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-white to-transparent z-10"></div>
+              <div class="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white to-transparent z-10"></div>
+              <div class="pain-marquee">
+                <div class="space-y-4 py-4">
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Standardschilder fallen nicht auf.</p>
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Lieferzeiten von Wochen verzögern Eröffnungen.</p>
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Billig-LED flackert und bricht nach Monaten.</p>
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Keine Beratung, keine individuelle Anpassung.</p>
+                </div>
+                <div class="space-y-4 py-4">
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Standardschilder fallen nicht auf.</p>
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Lieferzeiten von Wochen verzögern Eröffnungen.</p>
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Billig-LED flackert und bricht nach Monaten.</p>
+                  <p class="text-lg md:text-xl font-medium text-dark/40">Keine Beratung, keine individuelle Anpassung.</p>
+                </div>
+              </div>
+            </div>
+
+            <h2 class="text-[32px] md:text-[48px] font-semibold leading-[1.1] tracking-[-0.03em] text-dark">
+              Schluss mit Kompromissen bei Ihrer Außenwirkung
+            </h2>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SERVICES / PRODUKTE -->
+    <section id="produkte" class="py-20 md:py-32 px-6 md:px-9">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Section Header -->
+        <div class="mb-12 md:mb-16 reveal">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center">
+              <span class="w-[2px] h-2 bg-white block"></span>
+            </div>
+            <span class="text-xs font-medium tracking-[0.1em] uppercase text-dark/50">Unsere Produkte</span>
+          </div>
+          <h2 class="text-[36px] md:text-[56px] font-semibold leading-[1.05] tracking-[-0.03em] text-dark mb-4">
+            Leuchtreklame-Lösungen
+          </h2>
+          <p class="text-lg md:text-xl font-medium text-dark/60 max-w-[600px]">
+            Von klassischen Neon-LED-Schriftzügen bis zu rückbeleuchteten 3D-Buchstaben – wir fertigen jede Lösung individuell nach Ihren Wünschen.
+          </p>
+        </div>
+
+        <!-- Services Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          <!-- Service Card 1 -->
+          <div class="group bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.1s">
+            <div class="aspect-[4/3] overflow-hidden">
+              <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg" alt="Neon LED Schilder" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+            </div>
+            <div class="p-6">
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-2">Neon LED Schilder</h3>
+              <p class="text-sm font-medium text-dark/60 mb-4">Der Klassiker – flexibles LED-Neon für jeden Schriftzug und jedes Logo.</p>
+              <p class="text-sm font-semibold text-dark/40">ab 199€</p>
+            </div>
+          </div>
+
+          <!-- Service Card 2 -->
+          <div class="group bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.15s">
+            <div class="aspect-[4/3] overflow-hidden">
+              <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg" alt="3D Buchstaben Frontbeleuchtet" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+            </div>
+            <div class="p-6">
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-2">3D Buchstaben Frontbeleuchtet</h3>
+              <p class="text-sm font-medium text-dark/60 mb-4">Premium-Optik mit leuchtender Frontfläche für maximale Sichtbarkeit.</p>
+              <p class="text-sm font-semibold text-dark/40">ab 499€</p>
+            </div>
+          </div>
+
+          <!-- Service Card 3 -->
+          <div class="group bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.2s">
+            <div class="aspect-[4/3] overflow-hidden">
+              <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg" alt="Vollflächig beleuchtet" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+            </div>
+            <div class="p-6">
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-2">Vollflächig beleuchtet</h3>
+              <p class="text-sm font-medium text-dark/60 mb-4">Gleichmäßige Ausleuchtung der gesamten Buchstabenfläche.</p>
+              <p class="text-sm font-semibold text-dark/40">ab 399€</p>
+            </div>
+          </div>
+
+          <!-- Service Card 4 -->
+          <div class="group bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.25s">
+            <div class="aspect-[4/3] overflow-hidden">
+              <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png" alt="Leuchtkästen" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+            </div>
+            <div class="p-6">
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-2">Leuchtkästen</h3>
+              <p class="text-sm font-medium text-dark/60 mb-4">Robuste Außenwerbung mit homogener Lichtverteilung.</p>
+              <p class="text-sm font-semibold text-dark/40">ab 499€</p>
+            </div>
+          </div>
+
+          <!-- Service Card 5 -->
+          <div class="group bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.3s">
+            <div class="aspect-[4/3] overflow-hidden">
+              <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg" alt="Marquee Buchstaben" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+            </div>
+            <div class="p-6">
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-2">Marquee Buchstaben</h3>
+              <p class="text-sm font-medium text-dark/60 mb-4">Retro-Hollywood-Stil mit einzelnen Glühbirnen.</p>
+              <p class="text-sm font-semibold text-dark/40">ab 299€</p>
+            </div>
+          </div>
+
+          <!-- Service Card 6 -->
+          <div class="group bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.35s">
+            <div class="aspect-[4/3] overflow-hidden">
+              <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png" alt="Rückbeleuchtet" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+            </div>
+            <div class="p-6">
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-2">Rückbeleuchtet</h3>
+              <p class="text-sm font-medium text-dark/60 mb-4">Eleganter Halo-Effekt durch indirekte Beleuchtung.</p>
+              <p class="text-sm font-semibold text-dark/40">ab 499€</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CASE STUDIES / PROJEKTE -->
+    <section id="projekte" class="py-20 md:py-32 px-6 md:px-9 bg-white">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Section Header -->
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-12 md:mb-16">
+          <div class="reveal">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center">
+                <span class="w-[2px] h-2 bg-white block"></span>
+              </div>
+              <span class="text-xs font-medium tracking-[0.1em] uppercase text-dark/50">Referenzen</span>
+            </div>
+            <h2 class="text-[36px] md:text-[56px] font-semibold leading-[1.05] tracking-[-0.03em] text-dark">
+              Aktuelle Projekte
+            </h2>
+          </div>
+          <a href="#" class="reveal text-sm font-medium text-dark/60 hover:text-dark transition-colors flex items-center gap-2" style="transition-delay: 0.1s">
+            Alle Projekte
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+        </div>
+
+        <!-- Case Study Cards -->
+        <div class="space-y-6">
+          <!-- Case Study 1 -->
+          <div class="group bg-light rounded-[24px] p-4 md:p-6 reveal" style="transition-delay: 0.15s">
+            <div class="grid lg:grid-cols-[1fr_2fr] gap-6">
+              <!-- Info -->
+              <div class="flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center gap-3 mb-4">
+                    <span class="text-sm font-medium text-dark/40">/</span>
+                    <span class="text-sm font-medium text-dark/60">2024</span>
+                  </div>
+                  <h3 class="text-2xl md:text-3xl font-semibold tracking-[-0.02em] mb-4">ERGO Campus Düsseldorf – Pflanzenwand mit Logo</h3>
+                </div>
+                <div class="flex flex-wrap gap-6 mt-6">
+                  <div>
+                    <p class="text-2xl md:text-3xl font-semibold tracking-[-0.02em]">120m²</p>
+                    <p class="text-sm font-medium text-dark/50">Installation</p>
+                  </div>
+                  <div>
+                    <p class="text-2xl md:text-3xl font-semibold tracking-[-0.02em]">Corporate</p>
+                    <p class="text-sm font-medium text-dark/50">Kategorie</p>
+                  </div>
+                  <div>
+                    <p class="text-2xl md:text-3xl font-semibold tracking-[-0.02em]">14 Tage</p>
+                    <p class="text-sm font-medium text-dark/50">Lieferzeit</p>
+                  </div>
+                </div>
+              </div>
+              <!-- Image -->
+              <div class="rounded-[16px] overflow-hidden aspect-[16/10]">
+                <img src="assets/images/hero/ergo-campus-pflanzenwand.jpg" alt="ERGO Campus" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+              </div>
+            </div>
+          </div>
+
+          <!-- Case Study 2 -->
+          <div class="group bg-light rounded-[24px] p-4 md:p-6 reveal" style="transition-delay: 0.2s">
+            <div class="grid lg:grid-cols-[1fr_2fr] gap-6">
+              <!-- Info -->
+              <div class="flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center gap-3 mb-4">
+                    <span class="text-sm font-medium text-dark/40">/</span>
+                    <span class="text-sm font-medium text-dark/60">2024</span>
+                  </div>
+                  <h3 class="text-2xl md:text-3xl font-semibold tracking-[-0.02em] mb-4">Google Pixel Launch Event – Custom Neon Installation</h3>
+                </div>
+                <div class="flex flex-wrap gap-6 mt-6">
+                  <div>
+                    <p class="text-2xl md:text-3xl font-semibold tracking-[-0.02em]">Event</p>
+                    <p class="text-sm font-medium text-dark/50">Kategorie</p>
+                  </div>
+                  <div>
+                    <p class="text-2xl md:text-3xl font-semibold tracking-[-0.02em]">5 Tage</p>
+                    <p class="text-sm font-medium text-dark/50">Express</p>
+                  </div>
+                  <div>
+                    <p class="text-2xl md:text-3xl font-semibold tracking-[-0.02em]">Berlin</p>
+                    <p class="text-sm font-medium text-dark/50">Location</p>
+                  </div>
+                </div>
+              </div>
+              <!-- Image -->
+              <div class="rounded-[16px] overflow-hidden aspect-[16/10]">
+                <img src="https://framerusercontent.com/images/CTyO7V6hj1gF7dmT4RqKZKULE.png?width=588&height=351" alt="Google Pixel Event" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROZESS / ABLAUF -->
+    <section id="leistungen" class="py-20 md:py-32 px-6 md:px-9">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Section Header -->
+        <div class="mb-12 md:mb-16 reveal">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center">
+              <span class="w-[2px] h-2 bg-white block"></span>
+            </div>
+            <span class="text-xs font-medium tracking-[0.1em] uppercase text-dark/50">Unser Ablauf</span>
+          </div>
+        </div>
+
+        <!-- Process Steps -->
+        <div class="grid lg:grid-cols-[auto_1fr] gap-8 lg:gap-16">
+          <!-- Step Numbers -->
+          <div class="flex lg:flex-col gap-2 reveal">
+            <span class="text-sm font-medium text-dark/30">/0</span>
+            <div class="flex lg:flex-col gap-2">
+              <span class="process-step text-4xl md:text-5xl font-semibold text-dark cursor-pointer hover:text-dark/60 transition-colors" data-step="1">1</span>
+              <span class="process-step text-4xl md:text-5xl font-semibold text-dark/20 cursor-pointer hover:text-dark/60 transition-colors" data-step="2">2</span>
+              <span class="process-step text-4xl md:text-5xl font-semibold text-dark/20 cursor-pointer hover:text-dark/60 transition-colors" data-step="3">3</span>
+              <span class="process-step text-4xl md:text-5xl font-semibold text-dark/20 cursor-pointer hover:text-dark/60 transition-colors" data-step="4">4</span>
+            </div>
+          </div>
+
+          <!-- Step Content -->
+          <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div class="reveal" style="transition-delay: 0.1s">
+              <h3 class="text-2xl font-semibold tracking-[-0.02em] mb-3">Anfrage</h3>
+              <p class="text-base font-medium text-dark/60 leading-relaxed">Beschreiben Sie Ihr Projekt – Logo hochladen oder Idee skizzieren. Wir melden uns innerhalb von 30 Minuten.</p>
+            </div>
+            <div class="reveal" style="transition-delay: 0.15s">
+              <h3 class="text-2xl font-semibold tracking-[-0.02em] mb-3">Entwurf</h3>
+              <p class="text-base font-medium text-dark/60 leading-relaxed">Kostenlose Visualisierung Ihres Schildes in nur 6 Stunden – inklusive Angebot und Maßangaben.</p>
+            </div>
+            <div class="reveal" style="transition-delay: 0.2s">
+              <h3 class="text-2xl font-semibold tracking-[-0.02em] mb-3">Produktion</h3>
+              <p class="text-base font-medium text-dark/60 leading-relaxed">Fertigung in unserer Manufaktur in Düsseldorf. Express in 7 Tagen, Standard in 10-14 Tagen.</p>
+            </div>
+            <div class="reveal" style="transition-delay: 0.25s">
+              <h3 class="text-2xl font-semibold tracking-[-0.02em] mb-3">Montage</h3>
+              <p class="text-base font-medium text-dark/60 leading-relaxed">Montagefertig mit Plug & Play. Optional: Professionelle Installation durch unser Team.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TESTIMONIALS -->
+    <section id="bewertungen" class="py-20 md:py-32 px-6 md:px-9 bg-white">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Section Header -->
+        <div class="mb-12 md:mb-16 reveal">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center">
+              <span class="w-[2px] h-2 bg-white block"></span>
+            </div>
+            <span class="text-xs font-medium tracking-[0.1em] uppercase text-dark/50">Kundenstimmen</span>
+          </div>
+        </div>
+
+        <!-- Rating Banner -->
+        <div class="flex flex-col md:flex-row md:items-center gap-6 mb-12 reveal" style="transition-delay: 0.1s">
+          <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8">
+          <div class="flex items-center gap-4">
+            <div class="flex">
+              <svg class="w-5 h-5 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-5 h-5 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-5 h-5 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-5 h-5 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-5 h-5 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <span class="text-lg font-semibold">4.9/5</span>
+            <span class="text-sm font-medium text-dark/50">– über 230 positive Bewertungen</span>
+          </div>
+        </div>
+
+        <!-- Testimonial Cards -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          <!-- Testimonial 1 -->
+          <div class="bg-light rounded-[20px] p-6 md:p-8 reveal" style="transition-delay: 0.15s">
+            <div class="flex mb-4">
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium leading-relaxed mb-6">"NEONTRIP hat unsere Erwartungen bei jeder Zusammenarbeit übertroffen. Ihre Kreativität und ihr Engagement sind bemerkenswert. Die schnelle Reaktionszeit und professionelle Herangehensweise haben uns beeindruckt."</p>
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-lg bg-dark/10 flex items-center justify-center">
+                <span class="text-sm font-semibold text-dark/60">JT</span>
+              </div>
+              <div>
+                <p class="text-base font-semibold">Julia Termeyer</p>
+                <p class="text-xs font-medium text-dark/50">Inhaberin, Goldschmiede</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Testimonial 2 -->
+          <div class="bg-light rounded-[20px] p-6 md:p-8 reveal" style="transition-delay: 0.2s">
+            <div class="flex mb-4">
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium leading-relaxed mb-6">"Zwischen der Anfrage bis zum Angebot mit visuellem Entwurf lagen nur 45 Minuten. Sehr effizientes und zuverlässiges Team. Insgesamt ein fantastisches Erlebnis!"</p>
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-lg bg-dark/10 flex items-center justify-center">
+                <span class="text-sm font-semibold text-dark/60">LM</span>
+              </div>
+              <div>
+                <p class="text-base font-semibold">Lukas Mann</p>
+                <p class="text-xs font-medium text-dark/50">Marketing, Vapiano</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Testimonial 3 -->
+          <div class="bg-light rounded-[20px] p-6 md:p-8 reveal" style="transition-delay: 0.25s">
+            <div class="flex mb-4">
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg class="w-4 h-4 text-[#FB9826]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <p class="text-[15px] font-medium leading-relaxed mb-6">"Wir bestellen als Werbeagentur regelmäßig für Kunden und dabei ist NEONTRIP ein perfekter Partner. Die Lieferung erfolgt stets zuverlässig und innerhalb einer Woche."</p>
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-lg bg-dark/10 flex items-center justify-center">
+                <span class="text-sm font-semibold text-dark/60">AW</span>
+              </div>
+              <div>
+                <p class="text-base font-semibold">Anna Wellner</p>
+                <p class="text-xs font-medium text-dark/50">Eventmanagerin</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPARISON TABLE -->
+    <section class="py-20 md:py-32 px-6 md:px-9">
+      <div class="max-w-[1520px] mx-auto">
+        <h2 class="text-[32px] md:text-[48px] font-semibold leading-[1.1] tracking-[-0.03em] text-dark text-center mb-12 md:mb-16 reveal">
+          Der Unterschied ist klar
+        </h2>
+
+        <div class="grid md:grid-cols-2 gap-6 max-w-[1000px] mx-auto">
+          <!-- NEONTRIP Column -->
+          <div class="bg-white rounded-[24px] p-6 md:p-8 border border-black/5 reveal" style="transition-delay: 0.1s">
+            <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-6 mb-8">
+            <div class="space-y-4">
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <span class="text-[15px] font-medium">Kostenloser Entwurf in 6 Stunden</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <span class="text-[15px] font-medium">Express-Lieferung in 7 Tagen</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <span class="text-[15px] font-medium">24 Monate Garantie</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <span class="text-[15px] font-medium">Persönliche Beratung + Showroom</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <span class="text-[15px] font-medium">ECOPOWER LEDs, 10 Jahre Lebensdauer</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <span class="text-[15px] font-medium">Vertraut von Google, Porsche, Telekom</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Other Providers Column -->
+          <div class="bg-light rounded-[24px] p-6 md:p-8 reveal" style="transition-delay: 0.15s">
+            <h4 class="text-lg font-semibold mb-8">Andere Anbieter</h4>
+            <div class="space-y-4">
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark/30 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <span class="text-[15px] font-medium text-dark/50">Kein Entwurf oder tagelange Wartezeit</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark/30 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <span class="text-[15px] font-medium text-dark/50">3-6 Wochen Standard</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark/30 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <span class="text-[15px] font-medium text-dark/50">Keine oder kurze Garantie</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark/30 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <span class="text-[15px] font-medium text-dark/50">Nur Online-Bestellung</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark/30 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <span class="text-[15px] font-medium text-dark/50">Billig-LEDs mit Flackern</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-dark/30 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <span class="text-[15px] font-medium text-dark/50">Keine namhaften Referenzen</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- QUALITY FEATURES -->
+    <section class="py-20 md:py-32 px-6 md:px-9 bg-white">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Section Header -->
+        <div class="mb-12 md:mb-16 reveal">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center">
+              <span class="w-[2px] h-2 bg-white block"></span>
+            </div>
+            <span class="text-xs font-medium tracking-[0.1em] uppercase text-dark/50">Qualitätsmerkmale</span>
+          </div>
+          <h2 class="text-[36px] md:text-[56px] font-semibold leading-[1.05] tracking-[-0.03em] text-dark">
+            Warum NEONTRIP
+          </h2>
+        </div>
+
+        <!-- Features Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div class="bg-light rounded-[16px] p-5 reveal" style="transition-delay: 0.1s">
+            <span class="text-sm font-medium text-dark/40 block mb-4">/01</span>
+            <p class="text-base font-semibold">ECOPOWER LEDs</p>
+          </div>
+          <div class="bg-light rounded-[16px] p-5 reveal" style="transition-delay: 0.15s">
+            <span class="text-sm font-medium text-dark/40 block mb-4">/02</span>
+            <p class="text-base font-semibold">CE-zertifiziert</p>
+          </div>
+          <div class="bg-light rounded-[16px] p-5 reveal" style="transition-delay: 0.2s">
+            <span class="text-sm font-medium text-dark/40 block mb-4">/03</span>
+            <p class="text-base font-semibold">Dimmbar per App</p>
+          </div>
+          <div class="bg-light rounded-[16px] p-5 reveal" style="transition-delay: 0.25s">
+            <span class="text-sm font-medium text-dark/40 block mb-4">/04</span>
+            <p class="text-base font-semibold">Plug & Play</p>
+          </div>
+          <div class="bg-light rounded-[16px] p-5 reveal" style="transition-delay: 0.3s">
+            <span class="text-sm font-medium text-dark/40 block mb-4">/05</span>
+            <p class="text-base font-semibold">Kostenloser Versand</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TEAM -->
+    <section class="py-20 md:py-32 px-6 md:px-9">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Section Header -->
+        <div class="grid lg:grid-cols-[1fr_1fr] gap-12 mb-12 md:mb-16">
+          <div class="reveal">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center">
+                <span class="w-[2px] h-2 bg-white block"></span>
+              </div>
+              <span class="text-xs font-medium tracking-[0.1em] uppercase text-dark/50">Unser Team</span>
+            </div>
+            <h2 class="text-[36px] md:text-[56px] font-semibold leading-[1.05] tracking-[-0.03em] text-dark">
+              Die Menschen hinter NEONTRIP
+            </h2>
+          </div>
+          <div class="reveal" style="transition-delay: 0.1s">
+            <p class="text-lg md:text-xl font-medium text-dark/60 leading-relaxed">
+              Wir sind ein kleines, aber engagiertes Team aus Düsseldorf. Jeder von uns liebt Licht, Design und erstklassigen Kundenservice.
+            </p>
+          </div>
+        </div>
+
+        <!-- Team Grid -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          <!-- Team Member 1 -->
+          <div class="bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.15s">
+            <div class="aspect-[4/3] bg-light flex items-center justify-center">
+              <div class="w-24 h-24 rounded-full bg-dark/10 flex items-center justify-center">
+                <span class="text-2xl font-semibold text-dark/40">DK</span>
+              </div>
+            </div>
+            <div class="p-6">
+              <div class="flex items-center gap-3 mb-3">
+                <span class="text-sm font-medium text-dark/40">01</span>
+              </div>
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-1">Daniel Klesse</h3>
+              <p class="text-sm font-medium text-dark/50 mb-4">Geschäftsführer</p>
+              <p class="text-sm font-medium text-dark/60">Gründer und Visionär hinter NEONTRIP. Verantwortlich für Strategie und Kundenbeziehungen.</p>
+            </div>
+          </div>
+
+          <!-- Team Member 2 -->
+          <div class="bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.2s">
+            <div class="aspect-[4/3] bg-light flex items-center justify-center">
+              <div class="w-24 h-24 rounded-full bg-dark/10 flex items-center justify-center">
+                <span class="text-2xl font-semibold text-dark/40">R</span>
+              </div>
+            </div>
+            <div class="p-6">
+              <div class="flex items-center gap-3 mb-3">
+                <span class="text-sm font-medium text-dark/40">02</span>
+              </div>
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-1">Rahim</h3>
+              <p class="text-sm font-medium text-dark/50 mb-4">Operations</p>
+              <p class="text-sm font-medium text-dark/60">Kümmert sich um Produktion, Logistik und die reibungslose Abwicklung aller Aufträge.</p>
+            </div>
+          </div>
+
+          <!-- Team Member 3 -->
+          <div class="bg-white rounded-[20px] overflow-hidden border border-black/5 reveal" style="transition-delay: 0.25s">
+            <div class="aspect-[4/3] overflow-hidden">
+              <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" alt="Fabienne Trapp" class="w-full h-full object-cover">
+            </div>
+            <div class="p-6">
+              <div class="flex items-center gap-3 mb-3">
+                <span class="text-sm font-medium text-dark/40">03</span>
+              </div>
+              <h3 class="text-xl font-semibold tracking-[-0.02em] mb-1">Fabienne Trapp</h3>
+              <p class="text-sm font-medium text-dark/50 mb-4">Customer Support</p>
+              <p class="text-sm font-medium text-dark/60">Ihre Ansprechpartnerin für alle Fragen, Angebote und Projektberatung.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="py-20 md:py-32 px-6 md:px-9 bg-white">
+      <div class="max-w-[1520px] mx-auto">
+        <!-- Section Header -->
+        <div class="mb-12 md:mb-16 reveal">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-4 h-4 bg-dark rounded-full flex items-center justify-center">
+              <span class="w-[2px] h-2 bg-white block"></span>
+            </div>
+            <span class="text-xs font-medium tracking-[0.1em] uppercase text-dark/50">FAQ</span>
+          </div>
+          <h2 class="text-[36px] md:text-[56px] font-semibold leading-[1.05] tracking-[-0.03em] text-dark">
+            Häufig gestellte Fragen
+          </h2>
+        </div>
+
+        <!-- FAQ Items -->
+        <div class="max-w-[900px] space-y-4">
+          <div class="faq-item bg-light rounded-[16px] overflow-hidden reveal" style="transition-delay: 0.1s">
+            <button class="faq-toggle w-full flex items-center justify-between p-6 text-left">
+              <span class="text-base md:text-lg font-semibold pr-8">Wie schnell können Neon LED-Schilder geliefert werden?</span>
+              <svg class="faq-icon w-5 h-5 flex-shrink-0 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <div class="faq-answer px-6">
+              <p class="text-base font-medium text-dark/60 pb-6">Je nach Projekt bieten wir Expressfertigungen ab 3 Tagen an. Standardlieferzeiten liegen bei 5-10 Werktagen, inklusive Versand ab Düsseldorf.</p>
+            </div>
+          </div>
+
+          <div class="faq-item bg-light rounded-[16px] overflow-hidden reveal" style="transition-delay: 0.15s">
+            <button class="faq-toggle w-full flex items-center justify-between p-6 text-left">
+              <span class="text-base md:text-lg font-semibold pr-8">Wie unterscheiden sich Ihre Schilder von günstigen Online-Anbietern?</span>
+              <svg class="faq-icon w-5 h-5 flex-shrink-0 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <div class="faq-answer px-6">
+              <p class="text-base font-medium text-dark/60 pb-6">Unsere Schilder sind auf B2B-Qualität und Langlebigkeit ausgelegt – kein Acrylkleber, keine Billig-LEDs, keine Einwegprodukte. Jedes Schild wird individuell in unserer Manufaktur gefertigt.</p>
+            </div>
+          </div>
+
+          <div class="faq-item bg-light rounded-[16px] overflow-hidden reveal" style="transition-delay: 0.2s">
+            <button class="faq-toggle w-full flex items-center justify-between p-6 text-left">
+              <span class="text-base md:text-lg font-semibold pr-8">Wie lange hält ein LED-Leuchtschild?</span>
+              <svg class="faq-icon w-5 h-5 flex-shrink-0 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <div class="faq-answer px-6">
+              <p class="text-base font-medium text-dark/60 pb-6">Mindestens 50.000 Stunden – das entspricht über 10 Jahren bei täglichem Betrieb. Unsere ECOPOWER LEDs sind besonders langlebig und energieeffizient.</p>
+            </div>
+          </div>
+
+          <div class="faq-item bg-light rounded-[16px] overflow-hidden reveal" style="transition-delay: 0.25s">
+            <button class="faq-toggle w-full flex items-center justify-between p-6 text-left">
+              <span class="text-base md:text-lg font-semibold pr-8">Welche Größen und Formen sind möglich?</span>
+              <svg class="faq-icon w-5 h-5 flex-shrink-0 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <div class="faq-answer px-6">
+              <p class="text-base font-medium text-dark/60 pb-6">Von 30 cm bis über 10 Meter – alles ist möglich. Schriftzüge, Logos, 3D-Buchstaben, Sonderformen – wir setzen jede Idee um.</p>
+            </div>
+          </div>
+
+          <div class="faq-item bg-light rounded-[16px] overflow-hidden reveal" style="transition-delay: 0.3s">
+            <button class="faq-toggle w-full flex items-center justify-between p-6 text-left">
+              <span class="text-base md:text-lg font-semibold pr-8">Gibt es eine Garantie?</span>
+              <svg class="faq-icon w-5 h-5 flex-shrink-0 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+            <div class="faq-answer px-6">
+              <p class="text-base font-medium text-dark/60 pb-6">24 Monate auf alle LED-Systeme, verlängerbar für gewerbliche Dauerinstallationen. Bei Fragen zu Garantieleistungen kontaktieren Sie uns gerne.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA SECTION -->
+    <section class="relative py-20 md:py-32 px-6 md:px-9 overflow-hidden">
+      <div class="absolute inset-0 bg-dark">
+        <div class="absolute inset-0 noise-overlay"></div>
+        <video autoplay muted loop playsinline class="absolute inset-0 w-full h-full object-cover opacity-20 grayscale">
+          <source src="https://framerusercontent.com/assets/G0NwzP4bivPvK55b3ubxNslUs.mp4" type="video/mp4">
+        </video>
+      </div>
+      <div class="relative z-10 max-w-[1520px] mx-auto text-center">
+        <h2 class="text-[36px] md:text-[56px] lg:text-[72px] font-semibold leading-[1.05] tracking-[-0.03em] text-white mb-8 reveal">
+          Bereit für Ihre Leuchtreklame?
+        </h2>
+        <a href="#kontakt" class="inline-flex items-center gap-2 bg-white text-dark text-base font-medium px-8 py-4 rounded-full hover:bg-white/90 transition-colors reveal" style="transition-delay: 0.1s">
+          Kostenlosen Entwurf anfordern
+        </a>
+      </div>
+    </section>
+
+    <!-- CONTACT -->
+    <section id="kontakt" class="relative py-20 md:py-32 px-6 md:px-9 overflow-hidden">
+      <div class="absolute inset-0 bg-dark">
+        <div class="absolute inset-0 noise-overlay"></div>
+      </div>
+      <div class="relative z-10 max-w-[1520px] mx-auto">
+        <div class="grid lg:grid-cols-2 gap-12 lg:gap-20">
+          <!-- Contact Form -->
+          <div class="bg-white rounded-[24px] p-6 md:p-10 reveal">
+            <div class="flex items-center gap-4 mb-8">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-6">
+              <span class="text-base font-medium">Sie planen <strong>ein Projekt?</strong></span>
+            </div>
+
+            <form action="https://api.neontrip.de/anfrage" method="POST" class="space-y-5">
+              <div class="grid md:grid-cols-2 gap-5">
+                <div>
+                  <label class="block text-sm font-medium mb-2">Name *</label>
+                  <input type="text" name="name" required class="w-full px-4 py-3 rounded-xl bg-light border border-black/5 text-base focus:outline-none focus:ring-2 focus:ring-dark/20" placeholder="Ihr Name">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-2">Firma</label>
+                  <input type="text" name="company" class="w-full px-4 py-3 rounded-xl bg-light border border-black/5 text-base focus:outline-none focus:ring-2 focus:ring-dark/20" placeholder="Firmenname (optional)">
+                </div>
+              </div>
+              <div class="grid md:grid-cols-2 gap-5">
+                <div>
+                  <label class="block text-sm font-medium mb-2">E-Mail *</label>
+                  <input type="email" name="email" required class="w-full px-4 py-3 rounded-xl bg-light border border-black/5 text-base focus:outline-none focus:ring-2 focus:ring-dark/20" placeholder="ihre@email.de">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-2">Telefon *</label>
+                  <input type="tel" name="phone" required class="w-full px-4 py-3 rounded-xl bg-light border border-black/5 text-base focus:outline-none focus:ring-2 focus:ring-dark/20" placeholder="+49 ...">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Projekt-Art</label>
+                <select name="project_type" class="w-full px-4 py-3 rounded-xl bg-light border border-black/5 text-base focus:outline-none focus:ring-2 focus:ring-dark/20">
+                  <option value="">Bitte wählen</option>
+                  <option value="neon-logo">Neon LED Logo</option>
+                  <option value="schriftzug">Schriftzug</option>
+                  <option value="3d-buchstaben">3D Buchstaben</option>
+                  <option value="messe-event">Messe & Event</option>
+                  <option value="gastronomie">Gastronomie</option>
+                  <option value="sonstiges">Sonstiges</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Nachricht</label>
+                <textarea name="message" rows="4" class="w-full px-4 py-3 rounded-xl bg-light border border-black/5 text-base focus:outline-none focus:ring-2 focus:ring-dark/20 resize-none" placeholder="Erzählen Sie uns von Ihrem Projekt..."></textarea>
+              </div>
+              <button type="submit" class="w-full bg-dark text-white text-base font-medium py-4 rounded-full hover:bg-dark/90 transition-colors">
+                Unverbindlich anfragen
+              </button>
+            </form>
+          </div>
+
+          <!-- Contact Info -->
+          <div class="text-white reveal" style="transition-delay: 0.1s">
+            <h2 class="text-[32px] md:text-[48px] font-semibold leading-[1.1] tracking-[-0.03em] mb-6">
+              Lassen Sie uns reden.
+            </h2>
+            <p class="text-lg font-medium text-white/60 mb-12">
+              Erzählen Sie uns von Ihrem Projekt – egal ob Neonschild, 3D Buchstaben, Leuchtkästen oder Sonderanfertigung.
+            </p>
+
+            <!-- Contact Details -->
+            <div class="space-y-6 mb-12">
+              <div>
+                <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-2">Telefon</p>
+                <a href="tel:+49-211-54257240" class="text-xl font-semibold hover:text-white/80 transition-colors">+49 211 54257240</a>
+              </div>
+              <div>
+                <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-2">E-Mail</p>
+                <a href="mailto:support@neontrip.de" class="text-xl font-semibold hover:text-white/80 transition-colors">support@neontrip.de</a>
+              </div>
+              <div>
+                <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-2">Showroom</p>
+                <p class="text-lg font-medium text-white/80">Bilker Allee 29, 40219 Düsseldorf</p>
+              </div>
+            </div>
+
+            <!-- Personal Contact Card -->
+            <div class="bg-white rounded-[20px] p-2 inline-flex items-center gap-4">
+              <div class="w-[100px] h-[140px] rounded-xl overflow-hidden flex-shrink-0">
+                <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" alt="Fabienne Trapp" class="w-full h-full object-cover">
+              </div>
+              <div class="pr-4">
+                <p class="text-xs font-semibold text-dark/50 mb-1">Customer Support</p>
+                <p class="text-lg font-semibold text-dark mb-3">Fabienne Trapp</p>
+                <a href="mailto:support@neontrip.de" class="inline-flex items-center gap-2 bg-dark text-white text-xs font-semibold px-4 py-2 rounded-full">
+                  Jetzt Anfragen
+                  <span class="w-1.5 h-1.5 bg-white rounded-full"></span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-dark text-white">
+    <!-- Footer Top -->
+    <div class="py-16 md:py-24 px-6 md:px-9 border-b border-white/10">
+      <div class="max-w-[1520px] mx-auto">
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-12">
+          <!-- Contact -->
+          <div>
+            <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-4">/E-Mail</p>
+            <a href="mailto:support@neontrip.de" class="text-lg font-semibold hover:text-white/80 transition-colors">support@neontrip.de</a>
+          </div>
+          <div>
+            <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-4">/Telefon</p>
+            <a href="tel:+49-211-54257240" class="text-lg font-semibold hover:text-white/80 transition-colors">+49 211 54257240</a>
+          </div>
+
+          <!-- Navigation -->
+          <div>
+            <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-4">/Navigation</p>
+            <div class="space-y-2">
+              <a href="#" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">Home</a>
+              <a href="#produkte" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">Produkte</a>
+              <a href="#projekte" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">Projekte</a>
+              <a href="#bewertungen" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">Bewertungen</a>
+              <a href="#kontakt" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">Kontakt</a>
+            </div>
+          </div>
+
+          <!-- Legal + Social -->
+          <div>
+            <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-4">/Rechtliches</p>
+            <div class="space-y-2 mb-8">
+              <a href="agb.html" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">AGB</a>
+              <a href="datenschutz.html" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">Datenschutz</a>
+              <a href="impressum.html" class="block text-sm font-medium text-white/70 hover:text-white transition-colors">Impressum</a>
+            </div>
+
+            <p class="text-xs font-medium text-white/40 uppercase tracking-wider mb-4">/Social</p>
+            <div class="flex gap-4">
+              <a href="#" class="text-white/70 hover:text-white transition-colors">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+              </a>
+              <a href="#" class="text-white/70 hover:text-white transition-colors">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/></svg>
+              </a>
+              <a href="#" class="text-white/70 hover:text-white transition-colors">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Bottom -->
+    <div class="py-8 md:py-12 px-6 md:px-9">
+      <div class="max-w-[1520px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" alt="NEONTRIP" class="h-12 md:h-16">
+        <div class="flex flex-col md:flex-row items-center gap-4 md:gap-8">
+          <p class="text-xs font-medium text-white/40">© 2025 NEONTRIP. Alle Rechte vorbehalten.</p>
+          <a href="#" class="text-xs font-medium text-white/60 hover:text-white transition-colors">Zurück zum Anfang</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- JavaScript -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // ===== NEON SIGN NAVIGATION =====
+      const neonNav = document.getElementById('neon-nav');
+      const navLinks = neonNav ? neonNav.querySelectorAll('.nav-link') : [];
+      let currentActiveIndex = 0;
+
+      function updateNeonActive(index) {
+        if (!navLinks[index]) return;
+
+        // Update active states
+        navLinks.forEach((link, i) => {
+          if (i === index) {
+            link.classList.add('active');
+          } else {
+            link.classList.remove('active');
+          }
+        });
+
+        currentActiveIndex = index;
+      }
+
+      // Initialize
+      if (neonNav) {
+        // Click handlers for nav links
+        navLinks.forEach((link, index) => {
+          link.addEventListener('click', () => {
+            updateNeonActive(index);
+          });
+        });
+
+        // Update on scroll to highlight active section
+        const sections = ['produkte', 'projekte', 'leistungen', 'bewertungen', 'faq', 'kontakt'];
+
+        window.addEventListener('scroll', () => {
+          const scrollPos = window.scrollY + 200;
+
+          sections.forEach((sectionId, index) => {
+            const section = document.getElementById(sectionId);
+            if (section) {
+              const sectionTop = section.offsetTop;
+              const sectionBottom = sectionTop + section.offsetHeight;
+
+              if (scrollPos >= sectionTop && scrollPos < sectionBottom) {
+                if (currentActiveIndex !== index) {
+                  updateNeonActive(index);
+                }
+              }
+            }
+          });
+        });
+      }
+
+      // ===== SCROLL REVEAL =====
+      const revealObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            revealObserver.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+
+      document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+      // ===== HEADER SCROLL =====
+      const header = document.getElementById('header');
+      let lastScroll = 0;
+
+      window.addEventListener('scroll', () => {
+        const currentScroll = window.pageYOffset;
+
+        if (currentScroll > 80) {
+          header.classList.add('header-scrolled');
+        } else {
+          header.classList.remove('header-scrolled');
+        }
+
+        lastScroll = currentScroll;
+      });
+
+      // ===== MOBILE MENU =====
+      const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+      const mobileMenuClose = document.getElementById('mobile-menu-close');
+      const mobileMenu = document.getElementById('mobile-menu');
+      const mobileNavLinks = document.querySelectorAll('.mobile-nav-link');
+
+      mobileMenuBtn.addEventListener('click', () => {
+        mobileMenu.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      });
+
+      mobileMenuClose.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        document.body.style.overflow = '';
+      });
+
+      mobileNavLinks.forEach(link => {
+        link.addEventListener('click', () => {
+          mobileMenu.classList.remove('open');
+          document.body.style.overflow = '';
+        });
+      });
+
+      // ===== SMOOTH SCROLL =====
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+          const targetId = this.getAttribute('href');
+          if (targetId === '#') return;
+
+          e.preventDefault();
+          const target = document.querySelector(targetId);
+          if (target) {
+            const headerOffset = 100;
+            const elementPosition = target.getBoundingClientRect().top;
+            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+            window.scrollTo({
+              top: offsetPosition,
+              behavior: 'smooth'
+            });
+          }
+        });
+      });
+
+      // ===== FAQ ACCORDION =====
+      const faqItems = document.querySelectorAll('.faq-item');
+
+      faqItems.forEach(item => {
+        const toggle = item.querySelector('.faq-toggle');
+
+        toggle.addEventListener('click', () => {
+          // Close other items
+          faqItems.forEach(otherItem => {
+            if (otherItem !== item && otherItem.classList.contains('open')) {
+              otherItem.classList.remove('open');
+            }
+          });
+
+          // Toggle current item
+          item.classList.toggle('open');
+        });
+      });
+
+      // ===== BACK TO TOP =====
+      document.querySelector('a[href="#"]').addEventListener('click', (e) => {
+        if (e.target.textContent.includes('Zurück')) {
+          e.preventDefault();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      });
+
+      // ===== SCROLL MORPH HERO =====
+      const morphHero = document.getElementById('morph-hero');
+      const morphCardsContainer = document.getElementById('morph-cards');
+      const heroIntro = document.getElementById('hero-intro');
+      const heroMain = document.getElementById('hero-main');
+
+      if (morphHero && morphCardsContainer) {
+        // Product images
+        const images = [
+          'https://framerusercontent.com/images/CTyO7V6hj1gF7dmT4RqKZKULE.png',
+          'https://framerusercontent.com/images/8APo9u3MNpN0V7xSGkXKpFUm9rs.jpeg',
+          'https://framerusercontent.com/images/hydT9E9GNvvos3edCemzFUw6yk4.jpg',
+          'https://framerusercontent.com/images/WLZ7w6AT08W32y9a6UIdZ97h4.jpg',
+          'https://framerusercontent.com/images/mA5WwE7zzMV2EaQshUQyPsbz4SA.jpg',
+          'https://framerusercontent.com/images/7AexYZM9lcbqD1Ud3Q3DnOnsDA.png',
+          'https://framerusercontent.com/images/kB23JL9fB0OD84X1VxTA2NafQE.jpg',
+          'https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg',
+          'https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg',
+          'https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg'
+        ];
+
+        const cardCount = images.length;
+        const cards = [];
+
+        // Generate random scatter positions (seeded for consistency)
+        const scatterPositions = images.map((_, i) => ({
+          x: 15 + (i % 5) * 18 + (Math.sin(i * 1.5) * 8),
+          y: 20 + Math.floor(i / 5) * 35 + (Math.cos(i * 2) * 10),
+          rotation: (Math.sin(i * 3) * 20)
+        }));
+
+        // Create cards
+        images.forEach((src, i) => {
+          const card = document.createElement('div');
+          card.className = 'morph-card';
+          card.style.zIndex = i + 1;
+          card.innerHTML = `<img src="${src}" alt="NEONTRIP Projekt ${i + 1}" loading="eager">`;
+          morphCardsContainer.appendChild(card);
+          cards.push(card);
+        });
+
+        // Position calculation functions
+        function getScatterPosition(index) {
+          const pos = scatterPositions[index];
+          return {
+            x: pos.x,
+            y: pos.y,
+            rotation: pos.rotation,
+            scale: 0.85 + (index % 3) * 0.1
+          };
+        }
+
+        function getLinePosition(index) {
+          const cardWidth = window.innerWidth < 768 ? 90 : 110;
+          const gap = window.innerWidth < 768 ? 12 : 20;
+          const totalWidth = cardCount * cardWidth + (cardCount - 1) * gap;
+          const startX = (window.innerWidth - totalWidth) / 2;
+          const x = startX + index * (cardWidth + gap);
+          return {
+            x: (x / window.innerWidth) * 100,
+            y: 50,
+            rotation: 0,
+            scale: 1
+          };
+        }
+
+        function getCirclePosition(index) {
+          const radius = Math.min(window.innerWidth, window.innerHeight) * 0.28;
+          const angle = (index / cardCount) * Math.PI * 2 - Math.PI / 2;
+          const centerX = window.innerWidth / 2;
+          const centerY = window.innerHeight / 2;
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
+          return {
+            x: (x / window.innerWidth) * 100,
+            y: (y / window.innerHeight) * 100,
+            rotation: (angle * 180 / Math.PI) + 90,
+            scale: 1
+          };
+        }
+
+        function getArcPosition(index) {
+          const arcRadius = Math.min(window.innerWidth * 0.45, 450);
+          const arcSpread = Math.PI * 0.75;
+          const startAngle = Math.PI - arcSpread / 2;
+          const angle = startAngle + (index / (cardCount - 1)) * arcSpread;
+          const centerX = window.innerWidth / 2;
+          const centerY = window.innerHeight + arcRadius * 0.15;
+          const x = centerX + Math.cos(angle) * arcRadius;
+          const y = centerY - Math.sin(angle) * arcRadius;
+          return {
+            x: (x / window.innerWidth) * 100,
+            y: (y / window.innerHeight) * 100,
+            rotation: ((angle - Math.PI / 2) * 180 / Math.PI),
+            scale: 1.05
+          };
+        }
+
+        function interpolate(from, to, progress) {
+          return {
+            x: from.x + (to.x - from.x) * progress,
+            y: from.y + (to.y - from.y) * progress,
+            rotation: from.rotation + (to.rotation - from.rotation) * progress,
+            scale: from.scale + (to.scale - from.scale) * progress
+          };
+        }
+
+        function easeInOutCubic(t) {
+          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function updateCards(scrollProgress) {
+          const phase = scrollProgress * 3;
+          const currentPhase = Math.floor(Math.min(phase, 2.999));
+          const phaseProgress = easeInOutCubic(phase - currentPhase);
+
+          cards.forEach((card, i) => {
+            let pos;
+
+            if (currentPhase === 0) {
+              const scatter = getScatterPosition(i);
+              const line = getLinePosition(i);
+              pos = interpolate(scatter, line, phaseProgress);
+            } else if (currentPhase === 1) {
+              const line = getLinePosition(i);
+              const circle = getCirclePosition(i);
+              pos = interpolate(line, circle, phaseProgress);
+            } else {
+              const circle = getCirclePosition(i);
+              const arc = getArcPosition(i);
+              pos = interpolate(circle, arc, phaseProgress);
+            }
+
+            const cardWidth = window.innerWidth < 768 ? 90 : 110;
+            const cardHeight = window.innerWidth < 768 ? 120 : 150;
+
+            card.style.left = `calc(${pos.x}% - ${cardWidth/2}px)`;
+            card.style.top = `calc(${pos.y}% - ${cardHeight/2}px)`;
+            card.style.transform = `rotate(${pos.rotation}deg) scale(${pos.scale})`;
+          });
+
+          // Fade intro/main content
+          if (scrollProgress > 0.12) {
+            heroIntro.classList.add('faded');
+          } else {
+            heroIntro.classList.remove('faded');
+          }
+
+          if (scrollProgress > 0.55) {
+            heroMain.classList.add('visible');
+          } else {
+            heroMain.classList.remove('visible');
+          }
+        }
+
+        // Initial position (scattered)
+        updateCards(0);
+
+        // Scroll handler with RAF
+        let ticking = false;
+        function onScroll() {
+          if (!ticking) {
+            requestAnimationFrame(() => {
+              const rect = morphHero.getBoundingClientRect();
+              const scrollHeight = morphHero.offsetHeight - window.innerHeight;
+              const scrolled = -rect.top;
+              const progress = Math.max(0, Math.min(1, scrolled / scrollHeight));
+              updateCards(progress);
+              ticking = false;
+            });
+            ticking = true;
+          }
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+
+        // Resize handler
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTimeout);
+          resizeTimeout = setTimeout(onScroll, 100);
+        });
+      }
+
+      // ===== LOGO CAROUSEL =====
+      const logoCarousel = document.getElementById('logo-carousel');
+
+      if (logoCarousel) {
+        // NEONTRIP client logos
+        const logos = [
+          { id: 1, name: 'Google', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911' },
+          { id: 2, name: 'Porsche', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348' },
+          { id: 3, name: 'Telekom', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349' },
+          { id: 4, name: 'Vapiano', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832' },
+          { id: 5, name: 'Asbach', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082' },
+          { id: 6, name: 'Absolut', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651' },
+          { id: 7, name: 'PS', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/ps_logo.svg?v=1691764079' },
+          { id: 8, name: 'Staatstheater', src: 'https://cdn.shopify.com/s/files/1/0534/7819/5350/files/deutsche_staatsheater.svg?v=1691762848' },
+        ];
+
+        const COLUMNS = 6;
+        const CYCLE_DURATION = 2500; // ms per logo
+        let currentTime = 0;
+
+        // Shuffle and distribute logos to columns
+        function shuffleArray(arr) {
+          const shuffled = [...arr];
+          for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+          }
+          return shuffled;
+        }
+
+        function distributeLogos() {
+          const shuffled = shuffleArray(logos);
+          const columns = Array.from({ length: COLUMNS }, () => []);
+
+          shuffled.forEach((logo, i) => {
+            columns[i % COLUMNS].push(logo);
+          });
+
+          // Fill columns to equal length
+          const maxLen = Math.max(...columns.map(c => c.length));
+          columns.forEach(col => {
+            while (col.length < maxLen) {
+              col.push(shuffled[Math.floor(Math.random() * shuffled.length)]);
+            }
+          });
+
+          return columns;
+        }
+
+        const logoColumns = distributeLogos();
+
+        // Create column elements
+        logoColumns.forEach((columnLogos, colIndex) => {
+          const column = document.createElement('div');
+          column.className = 'logo-column';
+          column.dataset.columnIndex = colIndex;
+
+          // Create logo slots for this column
+          columnLogos.forEach((logo, logoIndex) => {
+            const slot = document.createElement('div');
+            slot.className = 'logo-slot';
+            slot.dataset.logoIndex = logoIndex;
+            slot.innerHTML = `<img src="${logo.src}" alt="${logo.name}" loading="lazy">`;
+            column.appendChild(slot);
+          });
+
+          logoCarousel.appendChild(column);
+        });
+
+        // Animation loop
+        function updateCarousel() {
+          const columns = logoCarousel.querySelectorAll('.logo-column');
+
+          columns.forEach((column, colIndex) => {
+            const columnDelay = colIndex * 300;
+            const adjustedTime = (currentTime + columnDelay) % (CYCLE_DURATION * logoColumns[colIndex].length);
+            const currentIndex = Math.floor(adjustedTime / CYCLE_DURATION);
+
+            const slots = column.querySelectorAll('.logo-slot');
+            slots.forEach((slot, slotIndex) => {
+              slot.classList.remove('active', 'exiting');
+              if (slotIndex === currentIndex) {
+                slot.classList.add('active');
+              }
+            });
+          });
+
+          currentTime += 100;
+        }
+
+        // Start animation
+        setInterval(updateCarousel, 100);
+        updateCarousel(); // Initial call
+      }
+    });
+  </script>
+</body>
+</html>
