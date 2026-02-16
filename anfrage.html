@@ -73,6 +73,23 @@
       animation: popupIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
+    /* Logo Marquee */
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .marquee-track {
+      display: inline-flex;
+      animation: marquee 25s linear infinite;
+    }
+    .marquee-track:hover {
+      animation-play-state: paused;
+    }
+    .marquee-mask {
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%);
+      mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%);
+    }
+
     /* Animations */
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(20px); }
@@ -420,7 +437,7 @@
 <!-- ═══════════════════════════════════════════════════════════════
      FORM CONTAINER
      ═══════════════════════════════════════════════════════════════ -->
-<main class="pb-14 px-4 sm:px-6">
+<main class="pb-40 px-4 sm:px-6">
   <div class="max-w-4xl mx-auto">
 
     <!-- ═══════════════════════════════════════
@@ -795,12 +812,25 @@
           </button>
         </div>
 
-        <!-- Minimal Social Proof - Just Logos -->
-        <div class="mt-8 pt-6 border-t border-black/5">
-          <div class="flex items-center justify-center gap-8 opacity-40 grayscale">
-            <img src="logos/porsche.svg" alt="Porsche" class="h-4 w-auto">
-            <img src="logos/rtl.svg" alt="RTL" class="h-3.5 w-auto">
-            <img src="logos/edeka.svg" alt="EDEKA" class="h-4 w-auto">
+        <!-- Logo Marquee -->
+        <div class="mt-10">
+          <p class="text-[11px] text-black/40 text-center mb-4 tracking-wide">Marken, die uns bereits vertrauen</p>
+          <div class="marquee-mask overflow-hidden">
+            <div class="marquee-track gap-10 items-center">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-5 w-auto opacity-40 grayscale" alt="Google">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-6 w-auto opacity-40 grayscale" alt="Porsche">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-5 w-auto opacity-40 grayscale" alt="Telekom">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-6 w-auto opacity-40 grayscale" alt="Vapiano">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-6 w-auto opacity-40 grayscale" alt="Asbach">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-5 w-auto opacity-40 grayscale" alt="Absolut">
+              <!-- Duplicate for seamless loop -->
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-5 w-auto opacity-40 grayscale" alt="Google">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-6 w-auto opacity-40 grayscale" alt="Porsche">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-5 w-auto opacity-40 grayscale" alt="Telekom">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-6 w-auto opacity-40 grayscale" alt="Vapiano">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-6 w-auto opacity-40 grayscale" alt="Asbach">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-5 w-auto opacity-40 grayscale" alt="Absolut">
+            </div>
           </div>
         </div>
       </div>
@@ -905,7 +935,7 @@
     </div>
 
     <!-- Legal Links Row -->
-    <div class="flex items-center justify-center gap-3 py-1.5 border-t border-black/5 text-[10px] text-black/30">
+    <div class="flex items-center justify-center gap-3 py-1.5 text-[10px] text-black/30">
       <a href="impressum.html" class="hover:text-black/50 transition-colors">Impressum</a>
       <span>·</span>
       <a href="datenschutz.html" class="hover:text-black/50 transition-colors">Datenschutz</a>
@@ -935,6 +965,11 @@
       </svg>
     </button>
 
+    <!-- Logo -->
+    <div class="flex justify-center mb-3">
+      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-5 w-auto">
+    </div>
+
     <!-- Photo -->
     <div class="flex justify-center mb-4">
       <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-white shadow-lg">
@@ -951,7 +986,7 @@
 
     <!-- Buttons -->
     <div class="space-y-2 mb-4">
-      <a href="tel:+4921154257240" class="flex items-center justify-center gap-2 w-full py-3 px-4 bg-dark text-white rounded-xl font-medium hover:bg-black transition-colors">
+      <a href="tel:+4921154257240" class="flex items-center justify-center gap-2 w-full py-3 px-4 bg-accent text-white rounded-xl font-medium hover:bg-accent/90 transition-colors">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
         </svg>
