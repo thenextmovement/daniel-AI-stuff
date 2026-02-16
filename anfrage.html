@@ -24,7 +24,7 @@
         extend: {
           colors: {
             dark: '#0A0A0A',
-            accent: '#8B5CF6',
+            accent: '#6D28D9',
           },
           fontFamily: {
             sans: ['Inter', 'system-ui', 'sans-serif'],
@@ -104,14 +104,14 @@
       box-shadow: 0 12px 40px rgba(0,0,0,0.12);
     }
     .product-card.selected {
-      border-color: #8B5CF6;
-      box-shadow: 0 0 0 2px #8B5CF6;
-      background: rgba(139, 92, 246, 0.03);
+      border-color: #6D28D9;
+      box-shadow: 0 0 0 2px #6D28D9;
+      background: rgba(109, 40, 217, 0.03);
     }
     .product-card.flash {
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
-      border-color: #8B5CF6;
-      box-shadow: 0 0 0 2px #8B5CF6, 0 8px 32px rgba(139, 92, 246, 0.25);
+      background: linear-gradient(135deg, rgba(109, 40, 217, 0.15) 0%, rgba(109, 40, 217, 0.05) 100%);
+      border-color: #6D28D9;
+      box-shadow: 0 0 0 2px #6D28D9, 0 8px 32px rgba(109, 40, 217, 0.25);
     }
     .product-card .check-icon {
       opacity: 0;
@@ -132,14 +132,14 @@
       background: #fafafa;
     }
     .option-pill.selected {
-      border-color: #8B5CF6;
-      background: #8B5CF6;
+      border-color: #6D28D9;
+      background: #6D28D9;
       color: #ffffff;
     }
     .option-pill.flash {
-      border-color: #8B5CF6;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
-      box-shadow: 0 0 0 2px #8B5CF6;
+      border-color: #6D28D9;
+      background: linear-gradient(135deg, rgba(109, 40, 217, 0.2) 0%, rgba(109, 40, 217, 0.1) 100%);
+      box-shadow: 0 0 0 2px #6D28D9;
     }
 
     /* Source pill (Woher kennst du uns) */
@@ -147,12 +147,12 @@
       transition: all 0.2s ease;
     }
     .source-pill.selected {
-      border-color: #8B5CF6;
-      background: #8B5CF6;
+      border-color: #6D28D9;
+      background: #6D28D9;
       color: #ffffff;
     }
     .source-pill.flash {
-      box-shadow: 0 0 0 2px #8B5CF6;
+      box-shadow: 0 0 0 2px #6D28D9;
     }
 
     /* Design option */
@@ -164,17 +164,17 @@
       background: #fafafa;
     }
     .design-option.selected {
-      border-color: #8B5CF6;
-      background: rgba(139, 92, 246, 0.05);
+      border-color: #6D28D9;
+      background: rgba(109, 40, 217, 0.05);
     }
     .design-option.selected .option-icon {
-      background: #8B5CF6;
+      background: #6D28D9;
       color: #ffffff;
     }
     .design-option.flash {
-      border-color: #8B5CF6;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
-      box-shadow: 0 0 0 2px #8B5CF6;
+      border-color: #6D28D9;
+      background: linear-gradient(135deg, rgba(109, 40, 217, 0.15) 0%, rgba(109, 40, 217, 0.05) 100%);
+      box-shadow: 0 0 0 2px #6D28D9;
     }
 
     /* Upload zone */
@@ -637,7 +637,7 @@
           </svg>
           Zurück
         </button>
-        <button type="button" class="inline-btn-next flex items-center gap-2 bg-dark text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" data-target="3" disabled>
+        <button type="button" class="inline-btn-next flex items-center gap-2 bg-accent text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" data-target="3" disabled>
           Weiter
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -707,7 +707,7 @@
           </svg>
           Zurück
         </button>
-        <button type="button" class="inline-btn-next flex items-center gap-2 bg-dark text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98]" data-target="4">
+        <button type="button" class="inline-btn-next flex items-center gap-2 bg-accent text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98]" data-target="4">
           Weiter
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -787,7 +787,7 @@
             </svg>
             Zurück
           </button>
-          <button type="button" class="inline-submit-btn flex items-center gap-2 bg-dark text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" id="inlineSubmitBtn" disabled>
+          <button type="button" class="inline-submit-btn flex items-center gap-2 bg-accent text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" id="inlineSubmitBtn" disabled>
             Anfrage senden
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -795,11 +795,13 @@
           </button>
         </div>
 
-        <!-- Minimal Social Proof -->
-        <div class="mt-6 pt-6 border-t border-black/5">
-          <p class="text-center text-sm text-black/40">
-            Über 2.000 Projekte für Marken wie Porsche, EDEKA, RTL & mehr
-          </p>
+        <!-- Minimal Social Proof - Just Logos -->
+        <div class="mt-8 pt-6 border-t border-black/5">
+          <div class="flex items-center justify-center gap-8 opacity-40 grayscale">
+            <img src="logos/porsche.svg" alt="Porsche" class="h-4 w-auto">
+            <img src="logos/rtl.svg" alt="RTL" class="h-3.5 w-auto">
+            <img src="logos/edeka.svg" alt="EDEKA" class="h-4 w-auto">
+          </div>
         </div>
       </div>
     </div>
@@ -883,17 +885,8 @@
      ═══════════════════════════════════════════════════════════════ -->
 <div class="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-black/5" id="formNav">
   <div class="max-w-4xl mx-auto px-4 sm:px-6">
-    <!-- Main Navigation Row -->
-    <div class="flex items-center justify-between py-2.5">
-      <!-- Back Button -->
-      <button class="btn-back hidden items-center gap-1.5 text-black/40 hover:text-dark font-medium text-xs transition-colors" id="btnBack">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5M12 19l-7-7 7-7"/>
-        </svg>
-        Zurück
-      </button>
-
-      <!-- Contact Options (prominent, centered) -->
+    <!-- Contact Options Row -->
+    <div class="flex items-center justify-center py-2.5">
       <div class="flex items-center gap-1">
         <span class="text-[11px] text-black/40 mr-1 hidden sm:inline">Lieber direkt?</span>
         <a href="https://wa.me/4921154257240" target="_blank" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-black/70 hover:bg-black/5 transition-colors">
@@ -1084,13 +1077,15 @@
       inlineSubmitBtn.disabled = !canProceed;
     }
 
-    // Show/hide back button
-    if (state.currentStep === 1) {
-      btnBack.classList.add('hidden');
-      btnBack.classList.remove('flex');
-    } else {
-      btnBack.classList.remove('hidden');
-      btnBack.classList.add('flex');
+    // Show/hide back button (legacy - only if exists)
+    if (btnBack) {
+      if (state.currentStep === 1) {
+        btnBack.classList.add('hidden');
+        btnBack.classList.remove('flex');
+      } else {
+        btnBack.classList.remove('hidden');
+        btnBack.classList.add('flex');
+      }
     }
   }
 

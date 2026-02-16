@@ -18,7 +18,7 @@ Zielgruppe: Agenturen, Messebauer, Ladenbauer, Marken, Gastronomie. Sprache: Deu
 ## Design-Richtung
 Die index.html zeigt bereits den richtigen Stil. Das Grundgefühl beibehalten:
 - Clean, minimalistisch, viel Weißraum
-- Farbschema: Schwarz, Weiß, Grautöne + eine Akzentfarbe (#8B5CF6 Violet)
+- Farbschema: Schwarz (#0A0A0A), Weiß (#FFFFFF), Grautöne + Akzentfarbe (#6D28D9 Deep Violet)
 - Font: Inter, schlank gehalten (max semibold/600)
 - Große Typografie mit engem Tracking bei Headlines
 - Subtile Animationen, nichts Überladenes
