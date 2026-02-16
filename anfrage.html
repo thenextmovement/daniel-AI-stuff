@@ -6,6 +6,7 @@
   <title>Anfrage stellen – NEONTRIP</title>
   <meta name="description" content="Stellen Sie jetzt Ihre unverbindliche Anfrage für LED Neon Schilder, 3D Buchstaben und Leuchtreklame. Antwort in 24 Stunden.">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light only">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594">
@@ -34,12 +35,17 @@
   </script>
 
   <style>
+    /* Force light mode only */
+    :root {
+      color-scheme: light only;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: 'Inter', system-ui, sans-serif;
-      background: #ffffff;
-      color: #0A0A0A;
+      background: #ffffff !important;
+      color: #0A0A0A !important;
       min-height: 100vh;
       overflow-x: hidden;
     }
@@ -197,11 +203,13 @@
     }
     .progress-dot.active {
       background: #0A0A0A;
+      border-color: #0A0A0A;
       color: #ffffff;
       transform: scale(1.1);
     }
     .progress-dot.done {
       background: #0A0A0A;
+      border-color: #0A0A0A;
       color: #ffffff;
     }
 
@@ -353,7 +361,7 @@
      SPLASH SCREEN
      ═══════════════════════════════════════════════════════════════ -->
 <div id="splashScreen" class="fixed inset-0 z-[100] bg-[#0A0A0A] flex items-center justify-center">
-  <img id="splashLogo" src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" alt="NEONTRIP" class="h-14 sm:h-16 md:h-20 opacity-0 transition-opacity duration-500">
+  <img id="splashLogo" src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" alt="NEONTRIP" class="h-20 md:h-28 lg:h-36 opacity-0 transition-opacity duration-500">
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -594,7 +602,7 @@
 
       <!-- Upload Zone (hidden by default) -->
       <div class="upload-zone hidden border-2 border-dashed border-black/20 rounded-2xl p-8 text-center cursor-pointer" id="uploadZone">
-        <input type="file" id="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.ai,.svg,.eps">
+        <input type="file" id="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.ai,.svg,.eps" multiple>
         <div class="upload-content">
           <div class="w-14 h-14 rounded-full bg-black/5 flex items-center justify-center mx-auto mb-4">
             <svg class="w-6 h-6 text-black/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -603,22 +611,38 @@
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </div>
-          <p class="font-medium mb-1">Datei hierher ziehen</p>
+          <p class="font-medium mb-1">Dateien hierher ziehen</p>
           <p class="text-sm text-black/50 mb-3">oder <span class="text-dark underline">klicken zum Auswählen</span></p>
-          <p class="text-xs text-black/40">PDF, PNG, JPG, AI, SVG, EPS – max. 25 MB</p>
+          <p class="text-xs text-black/40">PDF, PNG, JPG, AI, SVG, EPS – max. 25 MB pro Datei</p>
         </div>
         <div class="upload-success hidden">
-          <div class="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-            <svg class="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
+          <div class="w-14 h-14 rounded-full bg-black/5 flex items-center justify-center mx-auto mb-4">
+            <svg class="w-6 h-6 text-black/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
           </div>
           <p class="font-medium mb-1" id="uploadFileName">Datei hochgeladen</p>
-          <p class="text-sm text-black/50">Du kannst eine andere Datei wählen, indem du hier klickst.</p>
+          <p class="text-sm text-black/50">Klicke hier um weitere Dateien hinzuzufügen.</p>
         </div>
       </div>
 
       <!-- Idea Textarea (hidden by default) -->
       <div class="idea-field hidden" id="ideaField">
         <textarea class="form-input w-full border-2 border-black/10 rounded-xl p-4 text-base resize-none h-32 transition-all" placeholder="Beschreib deine Idee... z.B. 'Unser Firmenlogo als Neonschild, ca. 1m breit, warmweiß'"></textarea>
+      </div>
+
+      <!-- Inline Navigation -->
+      <div class="mt-8 flex items-center justify-between">
+        <button type="button" class="inline-btn-back flex items-center gap-2 text-black/50 hover:text-dark font-medium text-sm px-4 py-2.5 rounded-full transition-all" data-target="1">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Zurück
+        </button>
+        <button type="button" class="inline-btn-next flex items-center gap-2 bg-dark text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" data-target="3" disabled>
+          Weiter
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -673,6 +697,22 @@
           <button class="option-pill border-2 border-black/10 rounded-full px-5 py-2.5 text-sm font-medium" data-group="zeit" data-value="express">Express (7–10 Tage)</button>
           <button class="option-pill border-2 border-black/10 rounded-full px-5 py-2.5 text-sm font-medium" data-group="zeit" data-value="standard">Standard (2–3 Wochen)</button>
         </div>
+      </div>
+
+      <!-- Inline Navigation -->
+      <div class="mt-6 flex items-center justify-between">
+        <button type="button" class="inline-btn-back flex items-center gap-2 text-black/50 hover:text-dark font-medium text-sm px-4 py-2.5 rounded-full transition-all" data-target="2">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Zurück
+        </button>
+        <button type="button" class="inline-btn-next flex items-center gap-2 bg-dark text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98]" data-target="4">
+          Weiter
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -739,46 +779,27 @@
           </div>
         </div>
 
-        <!-- Trust Section -->
+        <!-- Inline Navigation -->
+        <div class="mt-8 flex items-center justify-between">
+          <button type="button" class="inline-btn-back flex items-center gap-2 text-black/50 hover:text-dark font-medium text-sm px-4 py-2.5 rounded-full transition-all" data-target="3">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Zurück
+          </button>
+          <button type="button" class="inline-submit-btn flex items-center gap-2 bg-dark text-white font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed" id="inlineSubmitBtn" disabled>
+            Anfrage senden
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Minimal Social Proof -->
         <div class="mt-6 pt-6 border-t border-black/5">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-            <div class="flex flex-col items-center gap-1.5">
-              <div class="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                <svg class="w-5 h-5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                  <path d="M9 12l2 2 4-4"/>
-                </svg>
-              </div>
-              <span class="text-xs text-black/50">DSGVO-konform</span>
-            </div>
-            <div class="flex flex-col items-center gap-1.5">
-              <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                <svg class="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-              </div>
-              <span class="text-xs text-black/50">SSL-verschlüsselt</span>
-            </div>
-            <div class="flex flex-col items-center gap-1.5">
-              <div class="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
-                <svg class="w-5 h-5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-              </div>
-              <span class="text-xs text-black/50">4.9/5 Google</span>
-            </div>
-            <div class="flex flex-col items-center gap-1.5">
-              <div class="w-10 h-10 rounded-full bg-violet-50 flex items-center justify-center">
-                <svg class="w-5 h-5 text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 6v6l4 2"/>
-                </svg>
-              </div>
-              <span class="text-xs text-black/50">Antwort in 24h</span>
-            </div>
-          </div>
-          <p class="text-center text-xs text-black/40 mt-4">Unverbindlich & kostenlos · Über 2.000 Projekte realisiert</p>
+          <p class="text-center text-sm text-black/40">
+            Über 2.000 Projekte für Marken wie Porsche, EDEKA, RTL & mehr
+          </p>
         </div>
       </div>
     </div>
@@ -888,14 +909,6 @@
           E-Mail
         </a>
       </div>
-
-      <!-- Next/Submit Button -->
-      <button class="btn-next flex items-center gap-1.5 bg-dark text-white font-semibold text-xs px-5 py-2.5 rounded-full transition-all" id="btnNext" disabled>
-        <span id="btnNextText">Weiter</span>
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
-      </button>
     </div>
 
     <!-- Legal Links Row -->
@@ -1006,7 +1019,7 @@
       product: null,
       design: null,
       designText: '',
-      uploadedFile: null,
+      uploadedFiles: [],
       details: {
         ort: null,
         groesse: null,
@@ -1027,10 +1040,11 @@
   // ═══════════════════════════════════════
   // DOM ELEMENTS
   // ═══════════════════════════════════════
-  const btnNext = document.getElementById('btnNext');
   const btnBack = document.getElementById('btnBack');
-  const btnNextText = document.getElementById('btnNextText');
   const formNav = document.getElementById('formNav');
+  const inlineNextBtns = document.querySelectorAll('.inline-btn-next');
+  const inlineBackBtns = document.querySelectorAll('.inline-btn-back');
+  const inlineSubmitBtn = document.getElementById('inlineSubmitBtn');
   const uploadZone = document.getElementById('uploadZone');
   const fileInput = document.getElementById('fileInput');
   const ideaField = document.getElementById('ideaField');
@@ -1057,7 +1071,18 @@
         break;
     }
 
-    btnNext.disabled = !canProceed;
+    // Update inline next buttons for current step
+    inlineNextBtns.forEach(btn => {
+      const targetStep = parseInt(btn.dataset.target);
+      if (targetStep === state.currentStep + 1) {
+        btn.disabled = !canProceed;
+      }
+    });
+
+    // Update inline submit button
+    if (inlineSubmitBtn && state.currentStep === 4) {
+      inlineSubmitBtn.disabled = !canProceed;
+    }
 
     // Show/hide back button
     if (state.currentStep === 1) {
@@ -1067,9 +1092,6 @@
       btnBack.classList.remove('hidden');
       btnBack.classList.add('flex');
     }
-
-    // Update button text
-    btnNextText.textContent = state.currentStep === 4 ? 'Anfrage absenden' : 'Weiter';
   }
 
   function updateProgress() {
@@ -1134,7 +1156,7 @@
     console.log('Produkt:', state.data.product);
     console.log('Design:', state.data.design);
     if (state.data.designText) console.log('Design-Idee:', state.data.designText);
-    if (state.data.uploadedFile) console.log('Datei:', state.data.uploadedFile.name);
+    if (state.data.uploadedFiles.length > 0) console.log('Dateien:', state.data.uploadedFiles.map(f => f.name).join(', '));
     console.log('Details:', state.data.details);
     console.log('Kontakt:', state.data.contact);
     if (state.data.source) console.log('Quelle:', state.data.source);
@@ -1154,11 +1176,11 @@
       card.classList.add('selected', 'flash');
       state.data.product = card.dataset.product;
       updateNav();
-      // Flash effect then auto-advance after 1.5 seconds
+      // Flash effect then auto-advance after 800ms
       setTimeout(() => {
         card.classList.remove('flash');
         goToStep(2);
-      }, 1500);
+      }, 800);
     });
   });
 
@@ -1201,25 +1223,39 @@
   uploadZone.addEventListener('drop', (e) => {
     e.preventDefault();
     uploadZone.classList.remove('dragover');
-    const files = e.dataTransfer.files;
-    if (files.length > 0) handleFileUpload(files[0]);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) handleFileUpload(files);
   });
 
   fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) handleFileUpload(e.target.files[0]);
+    const files = Array.from(e.target.files);
+    if (files.length > 0) handleFileUpload(files);
   });
 
-  function handleFileUpload(file) {
-    if (file.size > 25 * 1024 * 1024) {
-      alert('Die Datei ist zu groß. Maximal 25 MB erlaubt.');
-      return;
-    }
+  function handleFileUpload(files) {
+    const validFiles = files.filter(file => {
+      if (file.size > 25 * 1024 * 1024) {
+        alert(`"${file.name}" ist zu groß. Maximal 25 MB pro Datei.`);
+        return false;
+      }
+      return true;
+    });
 
-    state.data.uploadedFile = file;
+    if (validFiles.length === 0) return;
+
+    // Add to existing files
+    state.data.uploadedFiles = [...state.data.uploadedFiles, ...validFiles];
+
     uploadZone.classList.add('has-file');
     uploadZone.querySelector('.upload-content').classList.add('hidden');
     uploadZone.querySelector('.upload-success').classList.remove('hidden');
-    document.getElementById('uploadFileName').textContent = file.name;
+
+    // Show file count and names
+    const fileNames = state.data.uploadedFiles.map(f => f.name);
+    const displayText = state.data.uploadedFiles.length === 1
+      ? fileNames[0]
+      : `${state.data.uploadedFiles.length} Dateien ausgewählt`;
+    document.getElementById('uploadFileName').textContent = displayText;
   }
 
   // Idea textarea
@@ -1311,21 +1347,41 @@
     });
   });
 
-  // Navigation buttons
-  btnNext.addEventListener('click', () => {
-    if (state.currentStep < state.totalSteps) {
-      goToStep(state.currentStep + 1);
-    } else {
-      // Submit
-      showSuccess();
-    }
+  // Navigation buttons - Inline Next Buttons
+  inlineNextBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetStep = parseInt(btn.dataset.target);
+      if (targetStep && targetStep <= state.totalSteps) {
+        goToStep(targetStep);
+      }
+    });
   });
 
-  btnBack.addEventListener('click', () => {
-    if (state.currentStep > 1) {
-      goToStep(state.currentStep - 1);
-    }
+  // Inline Back Buttons
+  inlineBackBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetStep = parseInt(btn.dataset.target);
+      if (targetStep && targetStep >= 1) {
+        goToStep(targetStep);
+      }
+    });
   });
+
+  // Inline Submit Button
+  if (inlineSubmitBtn) {
+    inlineSubmitBtn.addEventListener('click', () => {
+      showSuccess();
+    });
+  }
+
+  // Bottom Nav Back Button (legacy)
+  if (btnBack) {
+    btnBack.addEventListener('click', () => {
+      if (state.currentStep > 1) {
+        goToStep(state.currentStep - 1);
+      }
+    });
+  }
 
   // Initialize
   updateNav();
