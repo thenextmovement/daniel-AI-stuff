@@ -432,7 +432,7 @@
 </header>
 
 <!-- Spacer for fixed header -->
-<div class="h-24 sm:h-28"></div>
+<div class="h-20 sm:h-24"></div>
 
 <!-- ═══════════════════════════════════════════════════════════════
      FORM CONTAINER
@@ -618,26 +618,25 @@
       </div>
 
       <!-- Upload Zone (hidden by default) -->
-      <div class="upload-zone hidden border-2 border-dashed border-black/20 rounded-2xl p-8 text-center cursor-pointer" id="uploadZone">
+      <div class="upload-zone hidden border-2 border-dashed border-black/20 rounded-xl p-4 text-center cursor-pointer" id="uploadZone">
         <input type="file" id="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.ai,.svg,.eps" multiple>
         <div class="upload-content">
-          <div class="w-14 h-14 rounded-full bg-black/5 flex items-center justify-center mx-auto mb-4">
-            <svg class="w-6 h-6 text-black/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <div class="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center mx-auto mb-2">
+            <svg class="w-5 h-5 text-black/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </div>
-          <p class="font-medium mb-1">Dateien hierher ziehen</p>
-          <p class="text-sm text-black/50 mb-3">oder <span class="text-dark underline">klicken zum Auswählen</span></p>
-          <p class="text-xs text-black/40">PDF, PNG, JPG, AI, SVG, EPS – max. 25 MB pro Datei</p>
+          <p class="font-medium text-sm mb-0.5">Dateien hierher ziehen</p>
+          <p class="text-xs text-black/50">oder <span class="text-dark underline">klicken</span> · PDF, PNG, JPG, AI, SVG, EPS</p>
         </div>
         <div class="upload-success hidden">
-          <div class="w-14 h-14 rounded-full bg-black/5 flex items-center justify-center mx-auto mb-4">
-            <svg class="w-6 h-6 text-black/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
+          <div class="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center mx-auto mb-2">
+            <svg class="w-5 h-5 text-black/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
           </div>
-          <p class="font-medium mb-1" id="uploadFileName">Datei hochgeladen</p>
-          <p class="text-sm text-black/50">Klicke hier um weitere Dateien hinzuzufügen.</p>
+          <p class="font-medium text-sm mb-0.5" id="uploadFileName">Datei hochgeladen</p>
+          <p class="text-xs text-black/50">Klicke hier für weitere Dateien</p>
         </div>
       </div>
 
@@ -669,7 +668,7 @@
     <div class="step" data-step="3">
       <div class="text-center mb-8">
         <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-2">Noch ein paar Details</h1>
-        <p class="text-black/50">Hilft uns, dir ein passendes Angebot zu machen. <span class="text-black/30">(Alles optional)</span></p>
+        <p class="text-black/50">Hilft uns, dir ein passendes Angebot zu machen.</p>
       </div>
 
       <!-- Anbringungsort -->
@@ -812,27 +811,6 @@
           </button>
         </div>
 
-        <!-- Logo Marquee -->
-        <div class="mt-10">
-          <p class="text-[11px] text-black/40 text-center mb-4 tracking-wide">Marken, die uns bereits vertrauen</p>
-          <div class="marquee-mask overflow-hidden">
-            <div class="marquee-track gap-10 items-center">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-5 w-auto opacity-40 grayscale" alt="Google">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-6 w-auto opacity-40 grayscale" alt="Porsche">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-5 w-auto opacity-40 grayscale" alt="Telekom">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-6 w-auto opacity-40 grayscale" alt="Vapiano">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-6 w-auto opacity-40 grayscale" alt="Asbach">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-5 w-auto opacity-40 grayscale" alt="Absolut">
-              <!-- Duplicate for seamless loop -->
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/8_f6b1e195-5c9d-4fc7-8a70-ecdeb3821b8d.svg?v=1688462911" class="h-5 w-auto opacity-40 grayscale" alt="Google">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/22.svg?v=1688465348" class="h-6 w-auto opacity-40 grayscale" alt="Porsche">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/16.svg?v=1688465349" class="h-5 w-auto opacity-40 grayscale" alt="Telekom">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/vapiano_c5d93e00-9aa9-4ca5-be26-1617d76c4819.svg?v=1690203832" class="h-6 w-auto opacity-40 grayscale" alt="Vapiano">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/asbach.svg?v=1690204082" class="h-6 w-auto opacity-40 grayscale" alt="Asbach">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/absolut.svg?v=1691763651" class="h-5 w-auto opacity-40 grayscale" alt="Absolut">
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -1031,7 +1009,7 @@
       uploadedFiles: [],
       details: {
         ort: null,
-        groesse: null,
+        groesse: [],
         zeit: null
       },
       contact: {
@@ -1280,29 +1258,44 @@
       const group = pill.dataset.group;
       const value = pill.dataset.value;
 
-      // Deselect others in same group and remove flash
-      document.querySelectorAll(`.option-pill[data-group="${group}"]`).forEach(p => {
-        p.classList.remove('selected', 'flash');
-      });
-
-      // If clicking a size pill, clear the custom size input
+      // Größe: Multi-Select (Toggle)
       if (group === 'groesse') {
         const customSizeInput = document.getElementById('customSize');
         if (customSizeInput) customSizeInput.value = '';
+
+        // Initialize as array if needed
+        if (!Array.isArray(state.data.details.groesse)) {
+          state.data.details.groesse = [];
+        }
+
+        // Toggle selection
+        if (pill.classList.contains('selected')) {
+          pill.classList.remove('selected');
+          state.data.details.groesse = state.data.details.groesse.filter(v => v !== value);
+        } else {
+          pill.classList.add('selected', 'flash');
+          state.data.details.groesse.push(value);
+          setTimeout(() => pill.classList.remove('flash'), 500);
+        }
+      } else {
+        // Other groups: Single-Select
+        document.querySelectorAll(`.option-pill[data-group="${group}"]`).forEach(p => {
+          p.classList.remove('selected', 'flash');
+        });
+        pill.classList.add('selected', 'flash');
+        state.data.details[group] = value;
+        setTimeout(() => pill.classList.remove('flash'), 500);
       }
 
-      // Select this one with flash
-      pill.classList.add('selected', 'flash');
-      state.data.details[group] = value;
+      // Check for auto-advance (groesse counts if array has items)
+      const groesseValid = Array.isArray(state.data.details.groesse)
+        ? state.data.details.groesse.length > 0
+        : !!state.data.details.groesse;
 
-      // Remove flash after animation, then check for auto-advance
       setTimeout(() => {
-        pill.classList.remove('flash');
-
-        // Auto-advance to Step 4 when all 3 detail fields are filled
         if (state.currentStep === 3 &&
             state.data.details.ort &&
-            state.data.details.groesse &&
+            groesseValid &&
             state.data.details.zeit) {
           setTimeout(() => {
             goToStep(4);
@@ -1322,8 +1315,11 @@
         document.querySelectorAll('.option-pill[data-group="groesse"]').forEach(p => {
           p.classList.remove('selected', 'flash');
         });
-        // Set custom size
-        state.data.details.groesse = value + ' cm (custom)';
+        // Set custom size (replaces any selected pills)
+        state.data.details.groesse = [value + ' cm (custom)'];
+      } else {
+        // If cleared, reset to empty array
+        state.data.details.groesse = [];
       }
     });
   }
