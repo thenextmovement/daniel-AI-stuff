@@ -1064,7 +1064,8 @@
         company: '',
         message: ''
       },
-      source: null
+      source: null,
+      urlSource: null
     }
   };
 
@@ -1171,6 +1172,24 @@
     state.currentStep = step;
     updateProgress();
     updateNav();
+
+    // Apply pre-selected values from URL parameters (Step 3)
+    if (step === 3) {
+      // Ort (Anbringungsort)
+      if (state.data.details.ort) {
+        const ortPill = document.querySelector(`.option-pill[data-group="ort"][data-value="${state.data.details.ort}"]`);
+        if (ortPill && !ortPill.classList.contains('selected')) {
+          ortPill.classList.add('selected');
+        }
+      }
+      // Use-Case (Branche)
+      if (state.data.details.usecase) {
+        const usecasePill = document.querySelector(`.option-pill[data-group="usecase"][data-value="${state.data.details.usecase}"]`);
+        if (usecasePill && !usecasePill.classList.contains('selected')) {
+          usecasePill.classList.add('selected');
+        }
+      }
+    }
 
     // Smooth scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1453,11 +1472,58 @@
       splashLogo.classList.add('visible');
     }, 200);
 
-    // Step 2: Slide up splash screen
+    // Step 2: Slide up splash screen + URL Parameter Support
     setTimeout(() => {
       splashScreen.classList.add('exit');
       headerLogo.style.opacity = '1';
       headerLogo.style.transition = 'opacity 0.3s ease';
+
+      // ═══════════════════════════════════════
+      // URL PARAMETER SUPPORT
+      // ═══════════════════════════════════════
+      const urlParams = new URLSearchParams(window.location.search);
+
+      // Store full query string for tracking
+      if (window.location.search) {
+        state.data.urlSource = window.location.search;
+      }
+
+      // Valid values mapping
+      const validProducts = ['neonschild', '3d-buchstaben', 'leuchtkasten', 'unbeleuchtet', 'sonderanfertigung', 'marquise', 'halo-lampe', 'gesamtkonzept', 'unsicher'];
+      const validBranche = ['geschaeft', 'buero', 'gastro', 'messe', 'zuhause', 'sonstiges'];
+      const validOrt = ['innen', 'aussen'];
+
+      // ?produkt=X → Pre-select product card (NO auto-advance to Step 2)
+      const produktParam = urlParams.get('produkt');
+      if (produktParam && validProducts.includes(produktParam.toLowerCase())) {
+        const productValue = produktParam.toLowerCase();
+        const productCard = document.querySelector(`.product-card[data-product="${productValue}"]`);
+        if (productCard) {
+          // Remove previous selection
+          document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
+          // Select this product
+          productCard.classList.add('selected');
+          state.data.product = productValue;
+          updateNavigationButtons();
+        }
+      }
+
+      // ?branche=X → Pre-select use-case pill (for Step 3)
+      const brancheParam = urlParams.get('branche');
+      if (brancheParam && validBranche.includes(brancheParam.toLowerCase())) {
+        const brancheValue = brancheParam.toLowerCase();
+        state.data.details.usecase = brancheValue;
+        // Visual selection will be applied when Step 3 renders
+      }
+
+      // ?ort=X → Pre-select anbringungsort pill (for Step 3)
+      const ortParam = urlParams.get('ort');
+      if (ortParam && validOrt.includes(ortParam.toLowerCase())) {
+        const ortValue = ortParam.toLowerCase();
+        state.data.details.ort = ortValue;
+        // Visual selection will be applied when Step 3 renders
+      }
+
     }, 1200);
 
     // Step 3: Remove splash screen from DOM
