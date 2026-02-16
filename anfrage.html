@@ -807,8 +807,8 @@
         <!-- Phone & Company Row -->
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Telefon *</label>
-            <input type="tel" id="phone" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base transition-all" placeholder="+49 211 ..." required>
+            <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Telefon <span class="text-black/30 normal-case">(optional)</span></label>
+            <input type="tel" id="phone" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3.5 text-base transition-all" placeholder="+49 211 ...">
           </div>
           <div>
             <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-2">Firma <span class="text-black/30 normal-case">(optional)</span></label>
@@ -1097,8 +1097,8 @@
         canProceed = true; // All optional
         break;
       case 4:
-        const { firstName, lastName, email, phone } = state.data.contact;
-        canProceed = firstName.trim() && lastName.trim() && email.trim() && email.includes('@') && phone.trim();
+        const { firstName, lastName, email } = state.data.contact;
+        canProceed = firstName.trim() && lastName.trim() && email.trim() && email.includes('@');
         break;
     }
 
