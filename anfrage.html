@@ -258,6 +258,9 @@
       box-shadow: 0 8px 24px rgba(0,0,0,0.15);
     }
 
+    /* Counter Animation */
+    [data-count] { font-variant-numeric: tabular-nums; }
+
     /* Scrollbar */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: #f5f5f5; }
@@ -945,21 +948,53 @@
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     NAVIGATION BAR (Fixed at bottom)
+     DARK FOOTER SECTION: Stats + Big Logo
      ═══════════════════════════════════════════════════════════════ -->
-<div class="sm:fixed sm:bottom-0 left-0 right-0 z-50 bg-white/95 sm:backdrop-blur-sm border-t border-black/5 mt-8 sm:mt-0" id="formNav">
+<div class="bg-dark py-8 sm:py-10 px-4 sm:px-6" id="darkFooterSection">
+  <div class="max-w-4xl mx-auto">
+    <!-- Stats Bar -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 mb-6 pb-6 border-b border-white/10">
+      <div class="text-center">
+        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="21000" data-suffix="+">0</div>
+        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="4.9" data-suffix="/5">0</div>
+        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Google Bewertung</p>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="99" data-suffix="%">0</div>
+        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Pünktliche Lieferung</p>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="7" data-suffix=" Tage">0</div>
+        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Express Lieferung</p>
+      </div>
+    </div>
+
+    <!-- Large Logo - compact -->
+    <div class="flex items-center justify-center py-4 overflow-hidden">
+      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" class="w-full max-w-2xl opacity-90" alt="NEONTRIP">
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     FOOTER (Dark background)
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="sm:fixed sm:bottom-0 left-0 right-0 z-40 bg-dark border-t border-white/10" id="formNav">
   <div class="max-w-4xl mx-auto px-4 sm:px-6">
     <!-- Legal Links Row -->
-    <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-3 sm:py-2 text-[10px] text-black/30">
-      <a href="impressum.html" class="hover:text-black/50 transition-colors">Impressum</a>
-      <span>·</span>
-      <a href="datenschutz.html" class="hover:text-black/50 transition-colors">Datenschutz</a>
-      <span>·</span>
-      <button onclick="openCookieSettings()" class="hover:text-black/50 transition-colors">Cookie-Einstellungen</button>
-      <span>·</span>
-      <a href="agb.html" class="hover:text-black/50 transition-colors">AGB</a>
-      <span>·</span>
-      <a href="widerruf.html" class="hover:text-black/50 transition-colors">Widerrufsrecht</a>
+    <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-3 sm:py-2 text-[10px] text-gray-500">
+      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
+      <span class="text-gray-600">·</span>
+      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
+      <span class="text-gray-600">·</span>
+      <button onclick="openCookieSettings()" class="hover:text-white transition-colors">Cookie-Einstellungen</button>
+      <span class="text-gray-600">·</span>
+      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
+      <span class="text-gray-600">·</span>
+      <a href="widerruf.html" class="hover:text-white transition-colors">Widerrufsrecht</a>
     </div>
   </div>
 </div>
@@ -1473,6 +1508,43 @@
   // Initialize
   updateNav();
   updateProgress();
+
+  // ═══════════════════════════════════════
+  // COUNTER ANIMATION (Stats in Footer)
+  // ═══════════════════════════════════════
+  const counterObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const el = entry.target;
+        const target = parseFloat(el.dataset.count);
+        const suffix = el.dataset.suffix || '';
+        const isDecimal = target % 1 !== 0;
+        const duration = 2000;
+        const start = performance.now();
+
+        const animate = (now) => {
+          const elapsed = now - start;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const current = target * eased;
+
+          if (isDecimal) {
+            el.textContent = current.toFixed(1) + suffix;
+          } else if (target >= 1000) {
+            el.textContent = Math.floor(current).toLocaleString('de-DE') + suffix;
+          } else {
+            el.textContent = Math.floor(current) + suffix;
+          }
+
+          if (progress < 1) requestAnimationFrame(animate);
+        };
+
+        requestAnimationFrame(animate);
+        counterObserver.unobserve(el);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('[data-count]').forEach(el => counterObserver.observe(el));
 
   // ═══════════════════════════════════════
   // SPLASH SCREEN ANIMATION
