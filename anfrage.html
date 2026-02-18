@@ -237,6 +237,28 @@
       background: #0A0A0A;
     }
 
+    /* Mobile Progress (dark theme) */
+    .progress-dot-mobile {
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .progress-dot-mobile.active {
+      background: #ffffff;
+      border-color: #ffffff;
+      color: #0A0A0A;
+      transform: scale(1.1);
+    }
+    .progress-dot-mobile.done {
+      background: #ffffff;
+      border-color: #ffffff;
+      color: #0A0A0A;
+    }
+    .progress-line-mobile {
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .progress-line-mobile.done {
+      background: #ffffff;
+    }
+
     /* Product card with image */
     .product-card img.product-img {
       width: 100%;
@@ -387,12 +409,13 @@
 <!-- ═══════════════════════════════════════════════════════════════
      HEADER (Static on mobile, Fixed on desktop)
      ═══════════════════════════════════════════════════════════════ -->
-<header class="sm:fixed top-0 left-0 right-0 z-50 bg-white">
+<header class="sm:fixed top-0 left-0 right-0 z-50 bg-dark sm:bg-white">
   <!-- Row 1: Logo + Icons (always visible) -->
   <div class="px-4 sm:px-6 py-3 flex items-center justify-between">
-    <!-- Logo (left) -->
+    <!-- Logo (left) - white on mobile, black on desktop -->
     <a href="landing-new.html" id="headerLogo" class="flex items-center opacity-0">
-      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 sm:h-9">
+      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" alt="NEONTRIP" class="h-8 sm:hidden">
+      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="hidden sm:block h-9">
     </a>
 
     <!-- Progress Bar (center, hidden on mobile, shown on desktop) -->
@@ -426,55 +449,55 @@
 
     <!-- Contact Shortcuts + Close Button (right) -->
     <div class="flex items-center gap-1.5 sm:gap-2">
-      <a href="tel:+4921154257240" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-black/10 flex items-center justify-center hover:bg-black/5 transition-colors" title="Anrufen: +49 211 54257240">
-        <svg class="w-4 h-4 text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <a href="tel:+4921154257240" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-white/20 sm:border-black/10 flex items-center justify-center hover:bg-white/10 sm:hover:bg-black/5 transition-colors" title="Anrufen: +49 211 54257240">
+        <svg class="w-4 h-4 text-white/70 sm:text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
         </svg>
       </a>
-      <a href="mailto:support@neontrip.de" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-black/10 flex items-center justify-center hover:bg-black/5 transition-colors" title="E-Mail: support@neontrip.de">
-        <svg class="w-4 h-4 text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <a href="mailto:support@neontrip.de" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-white/20 sm:border-black/10 flex items-center justify-center hover:bg-white/10 sm:hover:bg-black/5 transition-colors" title="E-Mail: support@neontrip.de">
+        <svg class="w-4 h-4 text-white/70 sm:text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
         </svg>
       </a>
-      <a href="landing-new.html" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-black/10 flex items-center justify-center hover:bg-black/5 transition-colors" title="Schließen">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <a href="landing-new.html" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-white/20 sm:border-black/10 flex items-center justify-center hover:bg-white/10 sm:hover:bg-black/5 transition-colors" title="Schließen">
+        <svg class="w-4 h-4 text-white/70 sm:text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <path d="M18 6L6 18M6 6l12 12"/>
         </svg>
       </a>
     </div>
   </div>
 
-  <!-- Row 2: Progress Bar (mobile only, full width centered) -->
+  <!-- Row 2: Progress Bar (mobile only, full width centered, dark theme) -->
   <div class="sm:hidden px-4 pb-3" id="progressBarMobile">
     <div class="flex items-center justify-between max-w-xs mx-auto">
       <!-- Step 1 -->
       <div class="flex flex-col items-center">
-        <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+        <div class="progress-dot-mobile active w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="1">1</div>
+        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile active">Produkt</span>
       </div>
-      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="1"></div>
+      <div class="progress-line-mobile flex-1 h-0.5 bg-white/20 mx-1.5" data-line="1"></div>
       <!-- Step 2 -->
       <div class="flex flex-col items-center">
-        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+        <div class="progress-dot-mobile w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="2">2</div>
+        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile">Design</span>
       </div>
-      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="2"></div>
+      <div class="progress-line-mobile flex-1 h-0.5 bg-white/20 mx-1.5" data-line="2"></div>
       <!-- Step 3 -->
       <div class="flex flex-col items-center">
-        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+        <div class="progress-dot-mobile w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="3">3</div>
+        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile">Details</span>
       </div>
-      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="3"></div>
+      <div class="progress-line-mobile flex-1 h-0.5 bg-white/20 mx-1.5" data-line="3"></div>
       <!-- Step 4 -->
       <div class="flex flex-col items-center">
-        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+        <div class="progress-dot-mobile w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="4">4</div>
+        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile">Kontakt</span>
       </div>
     </div>
   </div>
 
-  <!-- Divider -->
-  <div class="border-b border-black/5"></div>
+  <!-- Divider (hidden on mobile with dark header) -->
+  <div class="hidden sm:block border-b border-black/5"></div>
 </header>
 
 <!-- Spacer for fixed header (only needed on desktop) -->
@@ -950,10 +973,10 @@
 <!-- ═══════════════════════════════════════════════════════════════
      DARK FOOTER SECTION: Stats + Big Logo
      ═══════════════════════════════════════════════════════════════ -->
-<div class="bg-dark py-8 sm:py-10 px-4 sm:px-6" id="darkFooterSection">
+<div class="bg-dark py-5 sm:py-8 px-4 sm:px-6" id="darkFooterSection">
   <div class="max-w-4xl mx-auto">
     <!-- Stats Bar -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 mb-6 pb-6 border-b border-white/10">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8 mb-3 sm:mb-6 sm:pb-6 sm:border-b sm:border-white/10">
       <div class="text-center">
         <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="21000" data-suffix="+">0</div>
         <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
@@ -973,7 +996,7 @@
     </div>
 
     <!-- Large Logo - compact -->
-    <div class="flex items-center justify-center py-4 overflow-hidden">
+    <div class="flex items-center justify-center py-2 sm:py-4 overflow-hidden">
       <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" class="w-full max-w-2xl opacity-90" alt="NEONTRIP">
     </div>
   </div>
@@ -982,7 +1005,7 @@
 <!-- ═══════════════════════════════════════════════════════════════
      FOOTER (Dark background)
      ═══════════════════════════════════════════════════════════════ -->
-<div class="sm:fixed sm:bottom-0 left-0 right-0 z-40 bg-dark border-t border-white/10" id="formNav">
+<div class="sm:fixed sm:bottom-0 left-0 right-0 z-40 bg-dark sm:border-t sm:border-white/10" id="formNav">
   <div class="max-w-4xl mx-auto px-4 sm:px-6">
     <!-- Legal Links Row -->
     <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-3 sm:py-2 text-[10px] text-gray-500">
@@ -1177,7 +1200,7 @@
   }
 
   function updateProgress() {
-    // Update dots
+    // Update desktop dots
     document.querySelectorAll('.progress-dot').forEach(dot => {
       const step = parseInt(dot.dataset.step);
       dot.classList.remove('active', 'done');
@@ -1188,13 +1211,30 @@
       }
     });
 
-    // Update lines
+    // Update mobile dots (dark theme)
+    document.querySelectorAll('.progress-dot-mobile').forEach(dot => {
+      const step = parseInt(dot.dataset.step);
+      dot.classList.remove('active', 'done');
+      if (step === state.currentStep) {
+        dot.classList.add('active');
+      } else if (step < state.currentStep) {
+        dot.classList.add('done');
+      }
+    });
+
+    // Update desktop lines
     document.querySelectorAll('.progress-line').forEach(line => {
       const lineNum = parseInt(line.dataset.line);
       line.classList.toggle('done', lineNum < state.currentStep);
     });
 
-    // Update labels
+    // Update mobile lines
+    document.querySelectorAll('.progress-line-mobile').forEach(line => {
+      const lineNum = parseInt(line.dataset.line);
+      line.classList.toggle('done', lineNum < state.currentStep);
+    });
+
+    // Update desktop labels
     document.querySelectorAll('.step-label').forEach((label, i) => {
       label.classList.toggle('active', i + 1 === state.currentStep);
       if (i + 1 === state.currentStep) {
@@ -1203,6 +1243,18 @@
       } else {
         label.classList.add('text-black/40');
         label.classList.remove('text-dark', 'font-semibold');
+      }
+    });
+
+    // Update mobile labels (dark theme)
+    document.querySelectorAll('.step-label-mobile').forEach((label, i) => {
+      label.classList.toggle('active', i + 1 === state.currentStep);
+      if (i + 1 === state.currentStep) {
+        label.classList.remove('text-white/40');
+        label.classList.add('text-white', 'font-semibold');
+      } else {
+        label.classList.add('text-white/40');
+        label.classList.remove('text-white', 'font-semibold');
       }
     });
   }
