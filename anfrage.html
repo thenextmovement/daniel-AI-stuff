@@ -441,35 +441,6 @@
     </div>
   </div>
 
-  <!-- Row 2: Progress Bar (mobile only, full width centered) -->
-  <div class="sm:hidden px-4 pb-3" id="progressBarMobile">
-    <div class="flex items-center justify-between max-w-xs mx-auto">
-      <!-- Step 1 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
-      </div>
-      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="1"></div>
-      <!-- Step 2 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
-      </div>
-      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="2"></div>
-      <!-- Step 3 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
-      </div>
-      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="3"></div>
-      <!-- Step 4 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
-        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
-      </div>
-    </div>
-  </div>
-
   <!-- Divider -->
   <div class="border-b border-black/5"></div>
 </header>
@@ -480,7 +451,7 @@
 <!-- ═══════════════════════════════════════════════════════════════
      FORM CONTAINER
      ═══════════════════════════════════════════════════════════════ -->
-<main class="pb-4 sm:pb-16 px-4 sm:px-6">
+<main class="pb-20 sm:pb-16 px-4 sm:px-6">
   <div class="max-w-4xl mx-auto">
 
     <!-- ═══════════════════════════════════════
@@ -945,9 +916,40 @@
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     NAVIGATION BAR (Fixed at bottom)
+     MOBILE PROGRESS BAR (Fixed at bottom, mobile only)
      ═══════════════════════════════════════════════════════════════ -->
-<div class="sm:fixed sm:bottom-0 left-0 right-0 z-50 bg-white/95 sm:backdrop-blur-sm border-t border-black/5 mt-8 sm:mt-0" id="formNav">
+<div class="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-black/5 px-4 py-3" id="progressBarMobile">
+  <div class="flex items-center justify-between max-w-xs mx-auto">
+    <!-- Step 1 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+    </div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="1"></div>
+    <!-- Step 2 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+    </div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="2"></div>
+    <!-- Step 3 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+    </div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="3"></div>
+    <!-- Step 4 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     NAVIGATION BAR (Fixed at bottom, desktop only)
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="sm:fixed sm:bottom-0 left-0 right-0 z-40 bg-white/95 sm:backdrop-blur-sm border-t border-black/5 mt-8 sm:mt-0" id="formNav">
   <div class="max-w-4xl mx-auto px-4 sm:px-6">
     <!-- Legal Links Row -->
     <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-3 sm:py-2 text-[10px] text-black/30">
