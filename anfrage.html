@@ -414,7 +414,7 @@
   <div class="px-4 sm:px-6 py-3 flex items-center justify-between">
     <!-- Logo (left) - white on mobile, black on desktop -->
     <a href="landing-new.html" id="headerLogo" class="flex items-center opacity-0">
-      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" alt="NEONTRIP" class="h-8 sm:hidden">
+      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" alt="NEONTRIP" class="h-9 sm:hidden">
       <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="hidden sm:block h-9">
     </a>
 
@@ -467,38 +467,38 @@
     </div>
   </div>
 
-  <!-- Row 2: Progress Bar (mobile only, full width centered, dark theme) -->
-  <div class="sm:hidden px-4 pb-3" id="progressBarMobile">
-    <div class="flex items-center justify-between max-w-xs mx-auto">
-      <!-- Step 1 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot-mobile active w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="1">1</div>
-        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile active">Produkt</span>
-      </div>
-      <div class="progress-line-mobile flex-1 h-0.5 bg-white/20 mx-1.5" data-line="1"></div>
-      <!-- Step 2 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot-mobile w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="2">2</div>
-        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile">Design</span>
-      </div>
-      <div class="progress-line-mobile flex-1 h-0.5 bg-white/20 mx-1.5" data-line="2"></div>
-      <!-- Step 3 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot-mobile w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="3">3</div>
-        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile">Details</span>
-      </div>
-      <div class="progress-line-mobile flex-1 h-0.5 bg-white/20 mx-1.5" data-line="3"></div>
-      <!-- Step 4 -->
-      <div class="flex flex-col items-center">
-        <div class="progress-dot-mobile w-7 h-7 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-[11px] font-semibold text-white/50" data-step="4">4</div>
-        <span class="text-[8px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-mobile">Kontakt</span>
-      </div>
-    </div>
-  </div>
-
   <!-- Divider (hidden on mobile with dark header) -->
   <div class="hidden sm:block border-b border-black/5"></div>
 </header>
+
+<!-- Mobile Progress Bar (below header with white background) -->
+<div class="sm:hidden bg-white px-4 py-3 border-b border-black/5" id="progressBarMobile">
+  <div class="flex items-center justify-between max-w-xs mx-auto">
+    <!-- Step 1 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+    </div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="1"></div>
+    <!-- Step 2 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+    </div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="2"></div>
+    <!-- Step 3 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+    </div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="3"></div>
+    <!-- Step 4 -->
+    <div class="flex flex-col items-center">
+      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
+      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+    </div>
+  </div>
+</div>
 
 <!-- Spacer for fixed header (only needed on desktop) -->
 <div class="hidden sm:block sm:h-24"></div>
@@ -973,10 +973,10 @@
 <!-- ═══════════════════════════════════════════════════════════════
      DARK FOOTER SECTION: Stats + Big Logo
      ═══════════════════════════════════════════════════════════════ -->
-<div class="bg-dark py-5 sm:py-8 px-4 sm:px-6" id="darkFooterSection">
+<div class="bg-dark pt-5 pb-2 sm:py-8 px-4 sm:px-6" id="darkFooterSection">
   <div class="max-w-4xl mx-auto">
     <!-- Stats Bar -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8 mb-3 sm:mb-6 sm:pb-6 sm:border-b sm:border-white/10">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8 mb-1.5 sm:mb-6 sm:pb-6 sm:border-b sm:border-white/10">
       <div class="text-center">
         <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="21000" data-suffix="+">0</div>
         <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
@@ -996,7 +996,7 @@
     </div>
 
     <!-- Large Logo - compact -->
-    <div class="flex items-center justify-center py-2 sm:py-4 overflow-hidden">
+    <div class="flex items-center justify-center py-1 sm:py-4 overflow-hidden">
       <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088" class="w-full max-w-2xl opacity-90" alt="NEONTRIP">
     </div>
   </div>
