@@ -382,46 +382,47 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     HEADER (Fixed)
+     HEADER (Static on mobile, Fixed on desktop)
      ═══════════════════════════════════════════════════════════════ -->
-<header class="fixed top-0 left-0 right-0 z-50 bg-white">
-  <div class="px-4 sm:px-6 py-3 flex items-center relative">
-    <!-- Logo (far left) -->
+<header class="sm:fixed top-0 left-0 right-0 z-50 bg-white">
+  <!-- Row 1: Logo + Icons (always visible) -->
+  <div class="px-4 sm:px-6 py-3 flex items-center justify-between">
+    <!-- Logo (left) -->
     <a href="landing-new.html" id="headerLogo" class="flex items-center opacity-0">
       <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 sm:h-9">
     </a>
 
-    <!-- Progress Bar (absolutely centered) -->
-    <div class="absolute left-1/2 -translate-x-1/2 max-w-xs sm:max-w-sm w-full px-4" id="progressBar">
+    <!-- Progress Bar (center, hidden on mobile, shown on desktop) -->
+    <div class="hidden sm:block absolute left-1/2 -translate-x-1/2 max-w-sm w-full px-4" id="progressBarDesktop">
       <div class="flex items-center justify-between">
         <!-- Step 1 -->
         <div class="flex flex-col items-center">
-          <div class="progress-dot active w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="1">1</div>
-          <span class="hidden sm:block text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+          <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
+          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
         </div>
-        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1 sm:mx-2" data-line="1"></div>
+        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-2" data-line="1"></div>
         <!-- Step 2 -->
         <div class="flex flex-col items-center">
-          <div class="progress-dot w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="2">2</div>
-          <span class="hidden sm:block text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+          <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
+          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
         </div>
-        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1 sm:mx-2" data-line="2"></div>
+        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-2" data-line="2"></div>
         <!-- Step 3 -->
         <div class="flex flex-col items-center">
-          <div class="progress-dot w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="3">3</div>
-          <span class="hidden sm:block text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+          <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
+          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
         </div>
-        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1 sm:mx-2" data-line="3"></div>
+        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-2" data-line="3"></div>
         <!-- Step 4 -->
         <div class="flex flex-col items-center">
-          <div class="progress-dot w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[10px] sm:text-[11px] font-semibold text-black/40" data-step="4">4</div>
-          <span class="hidden sm:block text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+          <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
+          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
         </div>
       </div>
     </div>
 
-    <!-- Contact Shortcuts + Close Button (far right) -->
-    <div class="ml-auto flex items-center gap-1.5 sm:gap-2">
+    <!-- Contact Shortcuts + Close Button (right) -->
+    <div class="flex items-center gap-1.5 sm:gap-2">
       <a href="tel:+4921154257240" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-black/10 flex items-center justify-center hover:bg-black/5 transition-colors" title="Anrufen: +49 211 54257240">
         <svg class="w-4 h-4 text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
@@ -439,17 +440,47 @@
       </a>
     </div>
   </div>
+
+  <!-- Row 2: Progress Bar (mobile only, full width centered) -->
+  <div class="sm:hidden px-4 pb-3" id="progressBarMobile">
+    <div class="flex items-center justify-between max-w-xs mx-auto">
+      <!-- Step 1 -->
+      <div class="flex flex-col items-center">
+        <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
+        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+      </div>
+      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="1"></div>
+      <!-- Step 2 -->
+      <div class="flex flex-col items-center">
+        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
+        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+      </div>
+      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="2"></div>
+      <!-- Step 3 -->
+      <div class="flex flex-col items-center">
+        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
+        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+      </div>
+      <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="3"></div>
+      <!-- Step 4 -->
+      <div class="flex flex-col items-center">
+        <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
+        <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Divider -->
   <div class="border-b border-black/5"></div>
 </header>
 
-<!-- Spacer for fixed header -->
-<div class="h-16 sm:h-24"></div>
+<!-- Spacer for fixed header (only needed on desktop) -->
+<div class="hidden sm:block sm:h-24"></div>
 
 <!-- ═══════════════════════════════════════════════════════════════
      FORM CONTAINER
      ═══════════════════════════════════════════════════════════════ -->
-<main class="pb-20 sm:pb-16 px-4 sm:px-6">
+<main class="pb-4 sm:pb-16 px-4 sm:px-6">
   <div class="max-w-4xl mx-auto">
 
     <!-- ═══════════════════════════════════════
@@ -467,7 +498,7 @@
         <!-- LED Neonschild -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="neonschild">
           <button class="info-btn" data-info="neonschild" title="Beispiele ansehen">?</button>
-          <img src="https://framerusercontent.com/images/8APo9u3MNpN0V7xSGkXKpFUm9rs.jpeg?scale-down-to=512" alt="LED Neonschild" class="w-full h-44 sm:h-56 object-cover">
+          <img src="https://framerusercontent.com/images/8APo9u3MNpN0V7xSGkXKpFUm9rs.jpeg?scale-down-to=512" alt="LED Neonschild" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">LED Neonschild</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Leuchtender Schriftzug oder Logo</p>
@@ -480,7 +511,7 @@
         <!-- 3D Buchstaben (Front) -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="front-buchstaben">
           <button class="info-btn" data-info="front-buchstaben" title="Beispiele ansehen">?</button>
-          <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" alt="3D Buchstaben (Front)" class="w-full h-44 sm:h-56 object-cover">
+          <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" alt="3D Buchstaben (Front)" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">3D Buchstaben (Front)</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Buchstaben leuchten von vorne</p>
@@ -493,7 +524,7 @@
         <!-- 3D Buchstaben (Halo) -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="halo-buchstaben">
           <button class="info-btn" data-info="halo-buchstaben" title="Beispiele ansehen">?</button>
-          <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" alt="3D Buchstaben (Halo)" class="w-full h-44 sm:h-56 object-cover">
+          <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" alt="3D Buchstaben (Halo)" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">3D Buchstaben (Halo)</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Buchstaben leuchten von hinten</p>
@@ -506,7 +537,7 @@
         <!-- Leuchtkasten -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="leuchtkasten">
           <button class="info-btn" data-info="leuchtkasten" title="Beispiele ansehen">?</button>
-          <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" alt="Leuchtkasten" class="w-full h-44 sm:h-56 object-cover">
+          <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" alt="Leuchtkasten" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">Leuchtkasten</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Beleuchtetes Schild mit Rahmen</p>
@@ -519,7 +550,7 @@
         <!-- Sonderanfertigung -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="sonderanfertigung">
           <button class="info-btn" data-info="sonderanfertigung" title="Beispiele ansehen">?</button>
-          <img src="https://framerusercontent.com/images/kB23JL9fB0OD84X1VxTA2NafQE.jpg?scale-down-to=512" alt="Sonderanfertigung" class="w-full h-44 sm:h-56 object-cover">
+          <img src="https://framerusercontent.com/images/kB23JL9fB0OD84X1VxTA2NafQE.jpg?scale-down-to=512" alt="Sonderanfertigung" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">Sonderanfertigung</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Deine Idee, wir setzen um</p>
@@ -532,7 +563,7 @@
         <!-- Marquee-Buchstaben -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="marquee">
           <button class="info-btn" data-info="marquee" title="Beispiele ansehen">?</button>
-          <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" alt="Marquee-Buchstaben" class="w-full h-44 sm:h-56 object-cover">
+          <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" alt="Marquee-Buchstaben" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">Marquee-Buchstaben</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Retro-Buchstaben mit Glühbirnen</p>
@@ -545,7 +576,7 @@
         <!-- Halo-Lampe -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="halo-lampe">
           <button class="info-btn" data-info="halo-lampe" title="Beispiele ansehen">?</button>
-          <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" alt="Halo-Lampe" class="w-full h-44 sm:h-56 object-cover">
+          <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" alt="Halo-Lampe" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">Halo-Lampe</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Rundes Schild mit Hintergrundlicht</p>
@@ -558,7 +589,7 @@
         <!-- Gesamtkonzept -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="gesamtkonzept">
           <button class="info-btn" data-info="gesamtkonzept" title="Beispiele ansehen">?</button>
-          <img src="assets/images/referenzen/alle-marken-logos.webp" alt="Gesamtkonzept" class="w-full h-44 sm:h-56 object-cover">
+          <img src="assets/images/referenzen/alle-marken-logos.webp" alt="Gesamtkonzept" class="w-full h-32 sm:h-56 object-cover">
           <div class="p-2.5 sm:p-3 text-center">
             <h3 class="font-semibold text-sm sm:text-base mb-0.5">Gesamtkonzept</h3>
             <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Mehrere Produkte & Komplett-Branding</p>
@@ -708,15 +739,15 @@
       <!-- Größe -->
       <div class="mb-8">
         <label class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-3">Ungefähre Größe?</label>
-        <div class="grid grid-cols-4 gap-2 mb-3">
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="50">50 cm</button>
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="75">75 cm</button>
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="100">100 cm</button>
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="120">120 cm</button>
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="150">150 cm</button>
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="175">175 cm</button>
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="200">200 cm</button>
-          <button class="option-pill border-2 border-black/10 rounded-full px-4 py-2 text-sm font-medium text-center" data-group="groesse" data-value="xl">über 200 cm</button>
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="50">50 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="75">75 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="100">100 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="120">120 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="150">150 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="175">175 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="200">200 cm</button>
+          <button class="option-pill border-2 border-black/10 rounded-xl sm:rounded-full px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium text-center min-w-0" data-group="groesse" data-value="xl">über 200 cm</button>
         </div>
         <div class="flex items-center gap-2">
           <span class="text-xs text-black/40">Andere Größe:</span>
@@ -916,10 +947,10 @@
 <!-- ═══════════════════════════════════════════════════════════════
      NAVIGATION BAR (Fixed at bottom)
      ═══════════════════════════════════════════════════════════════ -->
-<div class="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-black/5" id="formNav">
+<div class="sm:fixed sm:bottom-0 left-0 right-0 z-50 bg-white/95 sm:backdrop-blur-sm border-t border-black/5 mt-8 sm:mt-0" id="formNav">
   <div class="max-w-4xl mx-auto px-4 sm:px-6">
     <!-- Legal Links Row -->
-    <div class="flex items-center justify-center gap-3 py-2 text-[10px] text-black/30">
+    <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-3 sm:py-2 text-[10px] text-black/30">
       <a href="impressum.html" class="hover:text-black/50 transition-colors">Impressum</a>
       <span>·</span>
       <a href="datenschutz.html" class="hover:text-black/50 transition-colors">Datenschutz</a>
@@ -1182,8 +1213,11 @@
     document.getElementById('successState').classList.add('active');
     formNav.style.display = 'none';
 
-    // Hide progress bar
-    document.getElementById('progressBar').style.display = 'none';
+    // Hide progress bars (both mobile and desktop)
+    const progressBarDesktop = document.getElementById('progressBarDesktop');
+    const progressBarMobile = document.getElementById('progressBarMobile');
+    if (progressBarDesktop) progressBarDesktop.style.display = 'none';
+    if (progressBarMobile) progressBarMobile.style.display = 'none';
 
     // Log form data
     console.log('=== NEONTRIP Anfrage ===');
