@@ -47,7 +47,7 @@
       html, body {
         background: #0A0A0A !important;
       }
-      #progressBarMobile {
+      #progressBarSection {
         margin-bottom: -1px;
         padding-bottom: calc(0.5rem + 1px);
       }
@@ -291,6 +291,14 @@
       background: #ffffff;
     }
 
+    /* Desktop Progress (dark header) */
+    .progress-line-desktop {
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .progress-line-desktop.done {
+      background: #ffffff;
+    }
+
     /* Product card with image */
     .product-card img.product-img {
       width: 100%;
@@ -441,99 +449,91 @@
 <!-- ═══════════════════════════════════════════════════════════════
      HEADER (Static on mobile, Fixed on desktop)
      ═══════════════════════════════════════════════════════════════ -->
-<header class="lg:fixed top-0 left-0 right-0 z-50 bg-dark lg:bg-white">
+<header class="lg:fixed top-0 left-0 right-0 z-50 bg-dark">
   <!-- Row 1: Logo + Icons (always visible) -->
-  <div class="px-4 lg:px-6 py-5 lg:py-3 flex items-center justify-between">
-    <!-- Logo (left) - white on mobile/tablet, black on desktop -->
+  <div class="px-4 lg:px-8 py-5 lg:py-5 flex items-center justify-between">
+    <!-- Logo (left) - white on all devices -->
     <a href="landing-new.html" id="headerLogo" class="flex items-center opacity-0">
-      <img src="assets/logo_weiss_neontrip.png" alt="NEONTRIP" class="h-8 lg:hidden">
-      <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="hidden lg:block h-9">
+      <img src="assets/logo_weiss_neontrip.png" alt="NEONTRIP" class="h-8 lg:h-10">
     </a>
 
-    <!-- Progress Bar (center, hidden on mobile/tablet, shown on desktop) -->
-    <div class="hidden lg:block absolute left-1/2 -translate-x-1/2 max-w-sm w-full px-4" id="progressBarDesktop">
+    <!-- Progress Bar (desktop only, in header) -->
+    <div class="hidden lg:block absolute left-1/2 -translate-x-1/2 max-w-sm w-full px-4">
       <div class="flex items-center justify-between">
-        <!-- Step 1 -->
         <div class="flex flex-col items-center">
-          <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
-          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+          <div class="progress-dot active w-8 h-8 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-xs font-semibold text-white/40" data-step="1">1</div>
+          <span class="text-[9px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-desktop active">Produkt</span>
         </div>
-        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-2" data-line="1"></div>
-        <!-- Step 2 -->
+        <div class="progress-line-desktop flex-1 h-0.5 bg-white/20 mx-2" data-line="1"></div>
         <div class="flex flex-col items-center">
-          <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
-          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+          <div class="progress-dot w-8 h-8 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-xs font-semibold text-white/40" data-step="2">2</div>
+          <span class="text-[9px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-desktop">Design</span>
         </div>
-        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-2" data-line="2"></div>
-        <!-- Step 3 -->
+        <div class="progress-line-desktop flex-1 h-0.5 bg-white/20 mx-2" data-line="2"></div>
         <div class="flex flex-col items-center">
-          <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
-          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+          <div class="progress-dot w-8 h-8 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-xs font-semibold text-white/40" data-step="3">3</div>
+          <span class="text-[9px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-desktop">Details</span>
         </div>
-        <div class="progress-line flex-1 h-0.5 bg-black/10 mx-2" data-line="3"></div>
-        <!-- Step 4 -->
+        <div class="progress-line-desktop flex-1 h-0.5 bg-white/20 mx-2" data-line="3"></div>
         <div class="flex flex-col items-center">
-          <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
-          <span class="text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+          <div class="progress-dot w-8 h-8 rounded-full border-2 border-white/20 bg-transparent flex items-center justify-center text-xs font-semibold text-white/40" data-step="4">4</div>
+          <span class="text-[9px] font-medium text-white/40 mt-0.5 uppercase tracking-wide step-label-desktop">Kontakt</span>
         </div>
       </div>
     </div>
 
     <!-- Contact Shortcuts + Close Button (right) -->
-    <div class="flex items-center gap-1.5 lg:gap-2">
-      <a href="tel:+4921154257240" class="w-8 h-8 lg:w-9 lg:h-9 rounded-full border border-white/20 lg:border-black/10 flex items-center justify-center hover:bg-white/10 lg:hover:bg-black/5 transition-colors" title="Anrufen: +49 211 54257240">
-        <svg class="w-4 h-4 text-white/70 lg:text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <div class="flex items-center gap-1.5 lg:gap-3">
+      <a href="tel:+4921154257240" class="w-8 h-8 lg:w-10 lg:h-10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/10 transition-colors" title="Anrufen: +49 211 54257240">
+        <svg class="w-4 h-4 lg:w-5 lg:h-5 text-white/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
         </svg>
       </a>
-      <a href="mailto:support@neontrip.de" class="w-8 h-8 lg:w-9 lg:h-9 rounded-full border border-white/20 lg:border-black/10 flex items-center justify-center hover:bg-white/10 lg:hover:bg-black/5 transition-colors" title="E-Mail: support@neontrip.de">
-        <svg class="w-4 h-4 text-white/70 lg:text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <a href="mailto:support@neontrip.de" class="w-8 h-8 lg:w-10 lg:h-10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/10 transition-colors" title="E-Mail: support@neontrip.de">
+        <svg class="w-4 h-4 lg:w-5 lg:h-5 text-white/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
         </svg>
       </a>
-      <a href="landing-new.html" class="w-8 h-8 lg:w-9 lg:h-9 rounded-full border border-white/20 lg:border-black/10 flex items-center justify-center hover:bg-white/10 lg:hover:bg-black/5 transition-colors" title="Schließen">
-        <svg class="w-4 h-4 text-white/70 lg:text-black/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <a href="landing-new.html" class="w-8 h-8 lg:w-10 lg:h-10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/10 transition-colors" title="Schließen">
+        <svg class="w-4 h-4 lg:w-5 lg:h-5 text-white/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <path d="M18 6L6 18M6 6l12 12"/>
         </svg>
       </a>
     </div>
   </div>
-
-  <!-- Divider (hidden on mobile/tablet with dark header) -->
-  <div class="hidden lg:block border-b border-black/5"></div>
 </header>
 
-<!-- Mobile/Tablet Progress Bar (below header with white background) -->
-<div class="lg:hidden bg-white px-4 pt-5 pb-2" id="progressBarMobile">
-  <div class="flex items-center justify-between max-w-xs mx-auto">
+<!-- Spacer for fixed header (only needed on desktop) -->
+<div class="hidden lg:block lg:h-[68px]"></div>
+
+<!-- Progress Bar (mobile/tablet only, white background) -->
+<div class="lg:hidden bg-white px-4 pt-5 pb-2" id="progressBarSection">
+  <div class="flex items-center justify-between max-w-xs lg:max-w-sm mx-auto">
     <!-- Step 1 -->
     <div class="flex flex-col items-center">
-      <div class="progress-dot active w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="1">1</div>
-      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
+      <div class="progress-dot active w-7 h-7 lg:w-8 lg:h-8 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] lg:text-xs font-semibold text-black/40" data-step="1">1</div>
+      <span class="text-[8px] lg:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label active">Produkt</span>
     </div>
-    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="1"></div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5 lg:mx-2" data-line="1"></div>
     <!-- Step 2 -->
     <div class="flex flex-col items-center">
-      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="2">2</div>
-      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
+      <div class="progress-dot w-7 h-7 lg:w-8 lg:h-8 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] lg:text-xs font-semibold text-black/40" data-step="2">2</div>
+      <span class="text-[8px] lg:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Design</span>
     </div>
-    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="2"></div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5 lg:mx-2" data-line="2"></div>
     <!-- Step 3 -->
     <div class="flex flex-col items-center">
-      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="3">3</div>
-      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
+      <div class="progress-dot w-7 h-7 lg:w-8 lg:h-8 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] lg:text-xs font-semibold text-black/40" data-step="3">3</div>
+      <span class="text-[8px] lg:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Details</span>
     </div>
-    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5" data-line="3"></div>
+    <div class="progress-line flex-1 h-0.5 bg-black/10 mx-1.5 lg:mx-2" data-line="3"></div>
     <!-- Step 4 -->
     <div class="flex flex-col items-center">
-      <div class="progress-dot w-7 h-7 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] font-semibold text-black/40" data-step="4">4</div>
-      <span class="text-[8px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
+      <div class="progress-dot w-7 h-7 lg:w-8 lg:h-8 rounded-full border-2 border-black/10 bg-white flex items-center justify-center text-[11px] lg:text-xs font-semibold text-black/40" data-step="4">4</div>
+      <span class="text-[8px] lg:text-[9px] font-medium text-black/40 mt-0.5 uppercase tracking-wide step-label">Kontakt</span>
     </div>
   </div>
 </div>
-
-<!-- Spacer for fixed header (only needed on desktop) -->
-<div class="hidden lg:block lg:h-24"></div>
 
 <!-- ═══════════════════════════════════════════════════════════════
      FORM CONTAINER
@@ -545,16 +545,16 @@
          STEP 1: Produkt-Auswahl
          ═══════════════════════════════════════ -->
     <div class="step active" data-step="1">
-      <div class="text-center mb-4 pt-5 sm:pt-0">
+      <div class="text-center mb-4 lg:mb-6 pt-5 sm:pt-0 lg:pt-6">
         <!-- Trust Badge -->
         <div class="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-3 py-1 rounded-full mb-3">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>
           Kostenloses Vorschau-Bild + Angebot in 24h
         </div>
-        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-1">Was möchtest du umsetzen?</h1>
-        <p class="text-sm text-black/50">Wähle das Produkt, das am besten passt.</p>
-        <!-- Social Proof -->
-        <p class="text-xs text-black/40 mt-2">Bereits <span class="font-semibold text-black/60">127 Anfragen</span> diese Woche</p>
+        <h1 class="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight mb-1 lg:mb-2">Was möchtest du umsetzen?</h1>
+        <p class="text-sm lg:text-base text-black/50">Wähle das Produkt, das am besten passt.</p>
+        <!-- Social Proof (mobile only) -->
+        <p class="lg:hidden text-xs text-black/40 mt-2">Bereits <span class="font-semibold text-black/60">127 Anfragen</span> diese Woche</p>
       </div>
 
       <!-- Product Grid - With Images -->
@@ -1034,67 +1034,46 @@
 <!-- ═══════════════════════════════════════════════════════════════
      DARK FOOTER SECTION: Stats + Big Logo
      ═══════════════════════════════════════════════════════════════ -->
-<div class="bg-dark pt-5 sm:pt-8 pb-4 lg:pb-2 px-4 sm:px-6" id="darkFooterSection">
-  <div class="max-w-4xl mx-auto">
-    <!-- Stats Bar -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8 mb-1.5 lg:mb-6 lg:pb-6 lg:border-b lg:border-white/10">
-      <div class="text-center">
-        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="5000" data-suffix="+">0</div>
-        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
-      </div>
-      <div class="text-center">
-        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="4.9" data-suffix="/5">0</div>
-        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Google Bewertung</p>
-      </div>
-      <div class="text-center">
-        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="99" data-suffix="%">0</div>
-        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Pünktliche Lieferung</p>
-      </div>
-      <div class="text-center">
-        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="3" data-suffix=" Tage">0</div>
-        <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Express Lieferung</p>
-      </div>
+<div class="bg-dark pt-5 sm:pt-8 lg:pt-16 pb-4 lg:pb-12 px-4 sm:px-6 lg:px-12" id="darkFooterSection">
+  <!-- Stats Bar -->
+  <div class="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8 mb-6 lg:mb-10">
+    <div class="text-center">
+      <div class="text-2xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-white leading-none mb-1" data-count="5000" data-suffix="+">0</div>
+      <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
     </div>
+    <div class="text-center">
+      <div class="text-2xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-white leading-none mb-1" data-count="4.9" data-suffix="/5">0</div>
+      <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Google Bewertung</p>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-white leading-none mb-1" data-count="99" data-suffix="%">0</div>
+      <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Pünktliche Lieferung</p>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-white leading-none mb-1" data-count="3" data-suffix=" Tage">0</div>
+      <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Express Lieferung</p>
+    </div>
+  </div>
 
-    <!-- Large Logo -->
-    <div class="flex items-center justify-center py-5 sm:py-6 overflow-hidden">
-      <img src="assets/logo_weiss_neontrip.png" class="w-full max-w-2xl opacity-90" alt="NEONTRIP">
-    </div>
+  <!-- Large Logo (full width on desktop) -->
+  <div class="flex items-center justify-center py-6 sm:py-8 lg:py-12 overflow-hidden">
+    <img src="assets/logo_weiss_neontrip.png" class="w-full max-w-xl sm:max-w-2xl lg:max-w-[85%] opacity-90" alt="NEONTRIP">
+  </div>
 
-    <!-- Legal Links (Mobile/Tablet only, inside dark section) -->
-    <div class="lg:hidden flex items-center justify-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
-      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
-      <span class="text-gray-600">·</span>
-      <button onclick="openCookieSettings()" class="hover:text-white transition-colors">Cookie-Einstellungen</button>
-      <span class="text-gray-600">·</span>
-      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
-      <span class="text-gray-600">·</span>
-      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
-      <span class="text-gray-600">·</span>
-      <a href="widerruf.html" class="hover:text-white transition-colors">Widerrufsrecht</a>
-    </div>
+  <!-- Legal Links -->
+  <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 text-[10px] lg:text-xs text-gray-500 mt-4">
+    <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
+    <span class="text-gray-600">·</span>
+    <button onclick="openCookieSettings()" class="hover:text-white transition-colors">Cookie-Einstellungen</button>
+    <span class="text-gray-600">·</span>
+    <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
+    <span class="text-gray-600">·</span>
+    <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
+    <span class="text-gray-600">·</span>
+    <a href="widerruf.html" class="hover:text-white transition-colors">Widerrufsrecht</a>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════
-     FOOTER (Desktop only - fixed at bottom)
-     ═══════════════════════════════════════════════════════════════ -->
-<div class="hidden lg:block lg:fixed lg:bottom-0 left-0 right-0 z-40 bg-dark border-t border-white/10" id="formNav">
-  <div class="max-w-4xl mx-auto px-4 lg:px-6">
-    <!-- Legal Links Row -->
-    <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-2 text-[10px] text-gray-500">
-      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
-      <span class="text-gray-600">·</span>
-      <button onclick="openCookieSettings()" class="hover:text-white transition-colors">Cookie-Einstellungen</button>
-      <span class="text-gray-600">·</span>
-      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
-      <span class="text-gray-600">·</span>
-      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
-      <span class="text-gray-600">·</span>
-      <a href="widerruf.html" class="hover:text-white transition-colors">Widerrufsrecht</a>
-    </div>
-  </div>
-</div>
 
 <!-- ═══════════════════════════════════════════════════════════════
      EXIT INTENT POPUP
@@ -1308,6 +1287,12 @@
       line.classList.toggle('done', lineNum < state.currentStep);
     });
 
+    // Update desktop header lines (dark theme)
+    document.querySelectorAll('.progress-line-desktop').forEach(line => {
+      const lineNum = parseInt(line.dataset.line);
+      line.classList.toggle('done', lineNum < state.currentStep);
+    });
+
     // Update desktop labels
     document.querySelectorAll('.step-label').forEach((label, i) => {
       label.classList.toggle('active', i + 1 === state.currentStep);
@@ -1322,6 +1307,18 @@
 
     // Update mobile labels (dark theme)
     document.querySelectorAll('.step-label-mobile').forEach((label, i) => {
+      label.classList.toggle('active', i + 1 === state.currentStep);
+      if (i + 1 === state.currentStep) {
+        label.classList.remove('text-white/40');
+        label.classList.add('text-white', 'font-semibold');
+      } else {
+        label.classList.add('text-white/40');
+        label.classList.remove('text-white', 'font-semibold');
+      }
+    });
+
+    // Update desktop header labels (dark theme)
+    document.querySelectorAll('.step-label-desktop').forEach((label, i) => {
       label.classList.toggle('active', i + 1 === state.currentStep);
       if (i + 1 === state.currentStep) {
         label.classList.remove('text-white/40');
@@ -1374,11 +1371,9 @@
     document.getElementById('successState').classList.add('active');
     formNav.style.display = 'none';
 
-    // Hide progress bars (both mobile and desktop)
-    const progressBarDesktop = document.getElementById('progressBarDesktop');
-    const progressBarMobile = document.getElementById('progressBarMobile');
-    if (progressBarDesktop) progressBarDesktop.style.display = 'none';
-    if (progressBarMobile) progressBarMobile.style.display = 'none';
+    // Hide progress bar
+    const progressBarSection = document.getElementById('progressBarSection');
+    if (progressBarSection) progressBarSection.style.display = 'none';
 
     // Log form data
     console.log('=== NEONTRIP Anfrage ===');
