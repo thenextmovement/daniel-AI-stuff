@@ -54,6 +54,10 @@
       main {
         background: #ffffff;
       }
+      #darkFooterSection {
+        margin-bottom: -100px;
+        padding-bottom: calc(0.75rem + 100px);
+      }
     }
 
     body {
@@ -208,13 +212,29 @@
       box-shadow: 0 0 0 2px #6D28D9;
     }
 
+    /* Upload icon bounce animation */
+    @keyframes uploadBounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+    .design-option[data-design="upload"] .option-icon svg {
+      animation: uploadBounce 1.5s ease-in-out infinite;
+    }
+    .design-option[data-design="upload"].selected .option-icon svg {
+      animation: none;
+    }
+
     /* Upload zone */
     .upload-zone {
       transition: all 0.3s ease;
     }
-    .upload-zone:hover, .upload-zone.dragover {
-      border-color: #0A0A0A;
-      background: #fafafa;
+    .upload-zone:not(.hidden) {
+      border-color: #6D28D9;
+      background: rgba(109, 40, 217, 0.03);
+    }
+    .upload-zone:not(.hidden):hover, .upload-zone.dragover {
+      border-color: #6D28D9;
+      background: rgba(109, 40, 217, 0.08);
     }
     .upload-zone.has-file {
       border-color: #22c55e;
@@ -987,12 +1007,12 @@
 <!-- ═══════════════════════════════════════════════════════════════
      DARK FOOTER SECTION: Stats + Big Logo
      ═══════════════════════════════════════════════════════════════ -->
-<div class="bg-dark pt-5 pb-10 lg:pb-2 sm:py-8 px-4 sm:px-6" id="darkFooterSection">
+<div class="bg-dark pt-5 pb-0 lg:pb-2 sm:py-8 px-4 sm:px-6" id="darkFooterSection">
   <div class="max-w-4xl mx-auto">
     <!-- Stats Bar -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8 mb-1.5 lg:mb-6 lg:pb-6 lg:border-b lg:border-white/10">
       <div class="text-center">
-        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="21000" data-suffix="+">0</div>
+        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="5000" data-suffix="+">0</div>
         <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Bestellungen</p>
       </div>
       <div class="text-center">
@@ -1004,7 +1024,7 @@
         <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Pünktliche Lieferung</p>
       </div>
       <div class="text-center">
-        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="7" data-suffix=" Tage">0</div>
+        <div class="text-2xl sm:text-4xl font-semibold tracking-tight text-white leading-none mb-1" data-count="3" data-suffix=" Tage">0</div>
         <p class="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider">Express Lieferung</p>
       </div>
     </div>
@@ -1015,14 +1035,14 @@
     </div>
 
     <!-- Legal Links (Mobile/Tablet only, inside dark section) -->
-    <div class="lg:hidden flex items-center justify-center flex-wrap gap-x-3 gap-y-1 pb-4 text-[10px] text-gray-500">
-      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
-      <span class="text-gray-600">·</span>
-      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
+    <div class="lg:hidden flex items-center justify-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
+      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
       <span class="text-gray-600">·</span>
       <button onclick="openCookieSettings()" class="hover:text-white transition-colors">Cookie-Einstellungen</button>
       <span class="text-gray-600">·</span>
-      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
+      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
+      <span class="text-gray-600">·</span>
+      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
       <span class="text-gray-600">·</span>
       <a href="widerruf.html" class="hover:text-white transition-colors">Widerrufsrecht</a>
     </div>
@@ -1036,13 +1056,13 @@
   <div class="max-w-4xl mx-auto px-4 lg:px-6">
     <!-- Legal Links Row -->
     <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-2 text-[10px] text-gray-500">
-      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
-      <span class="text-gray-600">·</span>
-      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
+      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
       <span class="text-gray-600">·</span>
       <button onclick="openCookieSettings()" class="hover:text-white transition-colors">Cookie-Einstellungen</button>
       <span class="text-gray-600">·</span>
-      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
+      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
+      <span class="text-gray-600">·</span>
+      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
       <span class="text-gray-600">·</span>
       <a href="widerruf.html" class="hover:text-white transition-colors">Widerrufsrecht</a>
     </div>
