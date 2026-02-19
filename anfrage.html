@@ -995,20 +995,33 @@
       </div>
     </div>
 
-    <!-- Large Logo - compact -->
-    <div class="flex items-center justify-center py-3 sm:py-4 overflow-hidden">
+    <!-- Large Logo -->
+    <div class="flex items-center justify-center py-5 sm:py-6 overflow-hidden">
       <img src="assets/logo_weiss_neontrip.png" class="w-full max-w-2xl opacity-90" alt="NEONTRIP">
+    </div>
+
+    <!-- Legal Links (Mobile only, inside dark section) -->
+    <div class="sm:hidden flex items-center justify-center flex-wrap gap-x-3 gap-y-1 pb-4 text-[10px] text-gray-500">
+      <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
+      <span class="text-gray-600">·</span>
+      <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
+      <span class="text-gray-600">·</span>
+      <button onclick="openCookieSettings()" class="hover:text-white transition-colors">Cookie-Einstellungen</button>
+      <span class="text-gray-600">·</span>
+      <a href="agb.html" class="hover:text-white transition-colors">AGB</a>
+      <span class="text-gray-600">·</span>
+      <a href="widerruf.html" class="hover:text-white transition-colors">Widerrufsrecht</a>
     </div>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     FOOTER (Dark background)
+     FOOTER (Desktop only - fixed at bottom)
      ═══════════════════════════════════════════════════════════════ -->
-<div class="sm:fixed sm:bottom-0 left-0 right-0 z-40 bg-dark border-0 sm:border-t sm:border-white/10" id="formNav">
+<div class="hidden sm:block sm:fixed sm:bottom-0 left-0 right-0 z-40 bg-dark border-t border-white/10" id="formNav">
   <div class="max-w-4xl mx-auto px-4 sm:px-6">
     <!-- Legal Links Row -->
-    <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-3 sm:py-2 text-[10px] text-gray-500">
+    <div class="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 py-2 text-[10px] text-gray-500">
       <a href="impressum.html" class="hover:text-white transition-colors">Impressum</a>
       <span class="text-gray-600">·</span>
       <a href="datenschutz.html" class="hover:text-white transition-colors">Datenschutz</a>
