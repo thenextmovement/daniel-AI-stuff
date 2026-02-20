@@ -373,26 +373,26 @@
   <!-- ════════════════════════════════════════
        HEADER
        ════════════════════════════════════════ -->
-  <header id="header" class="fixed top-0 left-0 right-0 z-50 transition-all duration-500 opacity-0 -translate-y-full" style="background: transparent;">
+  <header id="header" class="fixed top-0 left-0 right-0 z-50 transition-all duration-500 opacity-0 -translate-y-full lg:bg-white lg:border-b lg:border-black/5" style="background: transparent;">
     <div class="max-w-[1520px] mx-auto flex items-center h-[80px] px-6 md:px-9">
-      <!-- Logo -->
-      <a href="#" class="header-logo shrink-0 transition-all duration-300" style="filter: brightness(0) invert(1);">
+      <!-- Logo (white on mobile, black on desktop) -->
+      <a href="#" class="header-logo shrink-0 transition-all duration-300 brightness-0 invert lg:brightness-100 lg:invert-0">
         <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 md:h-10 w-auto">
       </a>
 
       <!-- Nav Links (spread across - Fabrica style: Inter 600, -0.04em) -->
       <nav class="hidden lg:flex items-center justify-between flex-1 px-16 xl:px-24">
-        <a href="#leistungen" class="nav-link text-[15px] font-semibold text-white hover:text-white/70 transition-colors tracking-[-0.04em]">Leistungen</a>
-        <a href="#projekte" class="nav-link text-[15px] font-semibold text-white hover:text-white/70 transition-colors tracking-[-0.04em]">Projekte</a>
-        <a href="#bewertungen" class="nav-link text-[15px] font-semibold text-white hover:text-white/70 transition-colors tracking-[-0.04em]">Bewertungen</a>
-        <a href="#faq" class="nav-link text-[15px] font-semibold text-white hover:text-white/70 transition-colors tracking-[-0.04em]">FAQ</a>
+        <a href="#leistungen" class="nav-link text-[15px] font-semibold text-dark hover:text-dark/60 transition-colors tracking-[-0.04em]">Leistungen</a>
+        <a href="#projekte" class="nav-link text-[15px] font-semibold text-dark hover:text-dark/60 transition-colors tracking-[-0.04em]">Projekte</a>
+        <a href="#bewertungen" class="nav-link text-[15px] font-semibold text-dark hover:text-dark/60 transition-colors tracking-[-0.04em]">Bewertungen</a>
+        <a href="#faq" class="nav-link text-[15px] font-semibold text-dark hover:text-dark/60 transition-colors tracking-[-0.04em]">FAQ</a>
       </nav>
 
       <!-- Right Side: Contact + CTA -->
       <div class="hidden lg:flex items-center gap-5 shrink-0">
         <!-- Contact Dropdown -->
         <div class="relative" id="contact-dropdown-wrapper">
-          <button id="contact-toggle" class="nav-link flex items-center gap-1.5 text-[15px] font-semibold text-white hover:text-white/70 transition-colors py-2 tracking-[-0.04em]">
+          <button id="contact-toggle" class="nav-link flex items-center gap-1.5 text-[15px] font-semibold text-dark hover:text-dark/60 transition-colors py-2 tracking-[-0.04em]">
             Kontakt
             <svg class="w-4 h-4 transition-transform duration-200" id="contact-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
