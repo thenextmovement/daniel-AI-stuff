@@ -291,12 +291,12 @@
     .faq-item.active .faq-icon { transform: rotate(45deg); }
     .faq-icon { transition: transform 0.3s ease; }
 
-    /* Header */
-    .header-scrolled { background: #0A0A0A !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.06); }
-    .header-scrolled .nav-link { color: rgba(255,255,255,0.7) !important; }
-    .header-scrolled .nav-link:hover { color: #ffffff !important; }
-    .header-scrolled .header-logo { filter: brightness(0) invert(1) !important; }
-    .header-scrolled .hamburger span { background: #ffffff !important; }
+    /* Header - always white */
+    .header-scrolled { background: #ffffff !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0,0,0,0.05); }
+    .header-scrolled .nav-link { color: #0A0A0A !important; }
+    .header-scrolled .nav-link:hover { color: rgba(10,10,10,0.6) !important; }
+    .header-scrolled .header-logo { filter: none !important; }
+    .header-scrolled .hamburger span { background: #0A0A0A !important; }
 
     /* Contact Dropdown */
     #contact-dropdown.open { opacity: 1; visibility: visible; transform: translateY(0); }
@@ -373,10 +373,10 @@
   <!-- ════════════════════════════════════════
        HEADER
        ════════════════════════════════════════ -->
-  <header id="header" class="fixed top-0 left-0 right-0 z-50 transition-all duration-500 opacity-0 -translate-y-full lg:bg-white lg:border-b lg:border-black/5" style="background: transparent;">
+  <header id="header" class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-black/5">
     <div class="max-w-[1520px] mx-auto flex items-center h-[80px] px-6 md:px-9">
-      <!-- Logo (white on mobile, black on desktop) -->
-      <a href="#" class="header-logo shrink-0 transition-all duration-300 brightness-0 invert lg:brightness-100 lg:invert-0">
+      <!-- Logo (black) -->
+      <a href="#" class="header-logo shrink-0 transition-all duration-300">
         <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 md:h-10 w-auto">
       </a>
 
@@ -460,8 +460,8 @@
 
       <!-- Mobile Hamburger -->
       <button class="hamburger lg:hidden flex flex-col gap-[5px] p-2" id="hamburger" aria-label="Menü">
-        <span class="block w-5 h-[1.5px] bg-white transition-all duration-300 origin-center"></span>
-        <span class="block w-5 h-[1.5px] bg-white transition-all duration-300 origin-center"></span>
+        <span class="block w-5 h-[1.5px] bg-dark transition-all duration-300 origin-center"></span>
+        <span class="block w-5 h-[1.5px] bg-dark transition-all duration-300 origin-center"></span>
       </button>
     </div>
   </header>
