@@ -197,11 +197,12 @@
 
     /* Splash */
     .splash { position: fixed; inset: 0; z-index: 9999; background: #0A0A0A; display: flex; align-items: center; justify-content: center; }
-    .splash.fade-out { animation: splash-fade 0.6s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
+    .splash.exit { animation: splash-exit 0.8s cubic-bezier(0.76, 0, 0.24, 1) forwards; }
     .splash.hidden { display: none; }
-    #splash-logo { transition: all 1s cubic-bezier(0.22, 1, 0.36, 1); }
-    #splash-logo.fly-to-header { position: fixed !important; }
-    @keyframes splash-fade { 0% { opacity: 1; } 100% { opacity: 0; } }
+    .splash-letter { display: inline-block; opacity: 0; filter: blur(8px); transform: translateY(50px); }
+    .splash-letter.visible { animation: splash-text 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    @keyframes splash-text { 0% { opacity: 0; filter: blur(8px); transform: translateY(50px); } 100% { opacity: 1; filter: blur(0); transform: translateY(0); } }
+    @keyframes splash-exit { 0% { transform: translateY(0); } 100% { transform: translateY(-100vh); } }
 
     /* Scroll reveal - enhanced with blur */
     .reveal { opacity: 0; transform: translateY(40px); filter: blur(8px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), filter 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
@@ -1606,42 +1607,28 @@
        JAVASCRIPT
        ════════════════════════════════════════ -->
   <script>
-    // Splash Screen with fly-to-header animation
+    // Splash Screen
     document.addEventListener('DOMContentLoaded', () => {
       const splash = document.getElementById('splash');
-      const splashLogo = document.getElementById('splash-logo');
-      const headerLogo = document.querySelector('.header-logo img');
+      const logo = document.getElementById('splash-logo');
+      const header = document.getElementById('header');
 
-      // Phase 1: Show logo in center
+      // Animate logo
       setTimeout(() => {
-        splashLogo.style.opacity = '1';
-        splashLogo.style.filter = 'blur(0)';
-        splashLogo.style.transform = 'scale(1)';
+        logo.style.opacity = '1';
+        logo.style.filter = 'blur(0)';
+        logo.style.transform = 'scale(1)';
       }, 200);
 
-      // Phase 2: Fly logo to header position
+      // Exit splash
       setTimeout(() => {
-        const headerRect = headerLogo.getBoundingClientRect();
-        const splashRect = splashLogo.getBoundingClientRect();
-
-        // Calculate the translation needed
-        const translateX = headerRect.left - splashRect.left + (headerRect.width - splashRect.width) / 2;
-        const translateY = headerRect.top - splashRect.top + (headerRect.height - splashRect.height) / 2;
-        const scale = headerRect.height / splashRect.height;
-
-        // Apply the transformation
-        splashLogo.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
-        splashLogo.style.filter = 'brightness(0)'; // Turn black like header logo
-      }, 1400);
-
-      // Phase 3: Fade out splash background
-      setTimeout(() => {
-        splash.classList.add('fade-out');
+        splash.classList.add('exit');
         document.body.style.overflow = '';
-      }, 2000);
+        header.style.opacity = '1';
+        header.style.transform = 'translateY(0)';
+      }, 1600);
 
-      // Phase 4: Hide splash completely
-      setTimeout(() => splash.classList.add('hidden'), 2600);
+      setTimeout(() => splash.classList.add('hidden'), 2400);
     });
 
     // Header Scroll + Sticky Contact Card
