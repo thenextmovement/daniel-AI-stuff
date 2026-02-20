@@ -1123,90 +1123,60 @@
   <!-- ════════════════════════════════════════
        FAQ (LIGHT)
        ════════════════════════════════════════ -->
-  <section id="faq" class="snap-section bg-white py-24 md:py-32">
-    <div class="max-w-[900px] mx-auto px-5 md:px-8">
-      <div class="reveal text-center mb-16">
-        <span class="inline-block text-xs font-medium tracking-widest uppercase text-dark/40 mb-4">Häufige Fragen</span>
-        <h2 class="text-[36px] md:text-[48px] font-semibold leading-[1.1] tracking-tighter-custom text-dark">FAQ.</h2>
+  <section id="faq" class="snap-section bg-white py-16 md:py-24 px-6 md:px-9">
+    <div class="max-w-[1520px] mx-auto flex flex-col lg:flex-row gap-12">
+      <div class="lg:w-1/3">
+        <h2 class="reveal text-[62px] md:text-[144px] font-semibold leading-[0.92] tracking-tighter text-dark mb-6">FAQ.</h2>
+        <p class="reveal text-base font-medium text-dark/60 tracking-tight max-w-[300px]">Haben Sie Fragen? Wir haben die Antworten.</p>
       </div>
 
-      <div class="space-y-3">
-        <!-- FAQ 1 -->
-        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden">
-          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
-            <span class="font-semibold text-dark pr-4">Wie schnell können Neon LED-Schilder geliefert werden?</span>
-            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </span>
+      <div class="lg:w-2/3 flex flex-col gap-1" id="faq-list">
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie schnell kann mein Schild geliefert werden?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer">
-            <p class="px-6 pb-6 text-dark/60">Je nach Projekt bieten wir Expressfertigungen ab 3 Tagen an. Standardlieferzeiten liegen bei 5-10 Werktagen, inklusive Versand ab Düsseldorf.</p>
-          </div>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight leading-[1.4]">Die Standard-Lieferzeit beträgt ca. 7 Werktage ab Auftragsbestätigung. Bei besonders eiligen Projekten können wir über Express-Optionen sprechen.</p></div></div>
         </div>
 
-        <!-- FAQ 2 -->
-        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.05s;">
-          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
-            <span class="font-semibold text-dark pr-4">Wie unterscheiden sich Ihre Schilder von günstigen Online-Anbietern?</span>
-            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </span>
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Kann jedes Logo als LED Neon Schild umgesetzt werden?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer">
-            <p class="px-6 pb-6 text-dark/60">Unsere Schilder sind auf B2B-Qualität und Langlebigkeit ausgelegt – kein Acrylkleber, keine Billig-LEDs, keine Einwegprodukte. Wir verwenden ausschließlich hochwertige Materialien und ECOPOWER LEDs.</p>
-          </div>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight leading-[1.4]">Grundsätzlich ja. Jedes Logo, jeder Schriftzug und nahezu jedes Design kann als LED Neon Leuchtschild realisiert werden.</p></div></div>
         </div>
 
-        <!-- FAQ 3 -->
-        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.1s;">
-          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
-            <span class="font-semibold text-dark pr-4">Wie lange hält ein LED-Leuchtschild?</span>
-            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </span>
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie lange hält ein LED-Leuchtschild?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer">
-            <p class="px-6 pb-6 text-dark/60">Mindestens 50.000 Stunden, über 10 Jahre bei täglichem Betrieb. Die Lebensdauer hängt von der Nutzungsintensität ab.</p>
-          </div>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight leading-[1.4]">Unsere LED-Technik hat eine Lebensdauer von mindestens 50.000 Stunden – das sind über 10 Jahre Nutzung bei täglichem Betrieb.</p></div></div>
         </div>
 
-        <!-- FAQ 4 -->
-        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.15s;">
-          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
-            <span class="font-semibold text-dark pr-4">Welche Größen und Formen sind möglich?</span>
-            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </span>
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Welche Größen und Formen sind möglich?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer">
-            <p class="px-6 pb-6 text-dark/60">Von 30 cm bis über 10 Meter. Schriftzüge, Logos, 3D-Buchstaben, Sonderformen – alles ist möglich.</p>
-          </div>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight leading-[1.4]">Von 30 cm bis über 10 Meter Länge ist alles umsetzbar. Ob filigrane Schriftzüge, Logos, 3D-Buchstaben oder Sonderformen.</p></div></div>
         </div>
 
-        <!-- FAQ 5 -->
-        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.2s;">
-          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
-            <span class="font-semibold text-dark pr-4">Wie läuft der Bestellprozess ab?</span>
-            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </span>
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Was kostet ein individuelles LED Neon Schild?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer">
-            <p class="px-6 pb-6 text-dark/60">1. Logo hochladen → 2. Kostenloses Vorschaubild & Angebot in 24h → 3. Fertigung nach Freigabe → 4. Montagefertige Lieferung.</p>
-          </div>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight leading-[1.4]">Der Preis hängt von Größe, Komplexität und Ausführung ab. Senden Sie uns Ihre Anfrage – wir erstellen innerhalb weniger Stunden ein unverbindliches Angebot.</p></div></div>
         </div>
 
-        <!-- FAQ 6 -->
-        <div class="reveal faq-item border border-dark/10 rounded-2xl overflow-hidden" style="transition-delay: 0.25s;">
-          <button class="faq-trigger w-full flex items-center justify-between p-6 text-left">
-            <span class="font-semibold text-dark pr-4">Gibt es eine Garantie?</span>
-            <span class="faq-icon w-8 h-8 rounded-full bg-dark/5 flex items-center justify-center shrink-0">
-              <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </span>
+        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
+          <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Gibt es eine Garantie?</span>
+            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer">
-            <p class="px-6 pb-6 text-dark/60">24 Monate auf alle LED-Systeme, verlängerbar für gewerbliche Dauerinstallationen.</p>
-          </div>
+          <div class="faq-answer"><div class="px-6 pb-6"><p class="text-[15px] font-medium text-dark/60 tracking-tight leading-[1.4]">Ja. Auf alle LED-Systeme gewähren wir 24 Monate Garantie, auf Anfrage auch verlängerte Gewährleistung für gewerbliche Dauerinstallationen.</p></div></div>
         </div>
       </div>
     </div>
@@ -1515,18 +1485,14 @@
     });
 
     // FAQ Accordion
-    document.querySelectorAll('.faq-trigger').forEach(trigger => {
-      trigger.addEventListener('click', () => {
-        const item = trigger.closest('.faq-item');
-        const wasActive = item.classList.contains('active');
-
-        // Close all
-        document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('active'));
-
-        // Open clicked if not already open
-        if (!wasActive) item.classList.add('active');
-      });
-    });
+    // FAQ Toggle
+    function toggleFaq(btn) {
+      const item = btn.closest('.faq-item');
+      const wasActive = item.classList.contains('active');
+      document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('active'));
+      if (!wasActive) item.classList.add('active');
+    }
+    window.toggleFaq = toggleFaq;
 
     // Multi-Step Form
     const form = document.getElementById('multi-step-form');
