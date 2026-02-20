@@ -100,12 +100,11 @@
     .faq-icon { transition: transform 0.3s ease; }
 
     /* Header */
-    .header-scrolled { background: rgba(255,255,255,0.95) !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0,0,0,0.06); }
-    .header-scrolled .nav-link { color: rgba(10,10,10,0.6) !important; }
-    .header-scrolled .nav-link:hover { color: #0A0A0A !important; }
-    .header-scrolled .header-logo { filter: none !important; }
-    .header-scrolled .header-cta { background: #8B5CF6 !important; color: #fff !important; }
-    .header-scrolled .hamburger span { background: #0A0A0A !important; }
+    .header-scrolled { background: #0A0A0A !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .header-scrolled .nav-link { color: rgba(255,255,255,0.7) !important; }
+    .header-scrolled .nav-link:hover { color: #ffffff !important; }
+    .header-scrolled .header-logo { filter: brightness(0) invert(1) !important; }
+    .header-scrolled .hamburger span { background: #ffffff !important; }
 
     /* Contact Dropdown */
     #contact-dropdown.open { opacity: 1; visibility: visible; transform: translateY(0); }
@@ -185,7 +184,7 @@
     <div class="max-w-[1520px] mx-auto flex items-center justify-between h-[80px] px-6 md:px-9">
       <!-- Logo -->
       <a href="#" class="header-logo shrink-0 transition-all duration-300" style="filter: brightness(0) invert(1);">
-        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 w-auto">
+        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 md:h-10 w-auto">
       </a>
 
       <!-- Nav Links (centered) -->
