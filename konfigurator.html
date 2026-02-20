@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="de" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Konfigurator | NEONTRIP – Dein individuelles Leuchtschild</title>
+  <meta name="description" content="Erstelle dein individuelles LED Leuchtschild mit dem NEONTRIP Konfigurator. LED Neon Schilder und 3D Leuchtbuchstaben nach Maß.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dark: '#0A0A0A',
+            light: '#F5F5F5',
+            accent: '#6D28D9',
+          },
+          fontFamily: {
+            inter: ['Inter', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: 'Inter', sans-serif; }
+
+    /* Scroll reveal */
+    .reveal { opacity: 0; transform: translateY(30px); filter: blur(6px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1), filter 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+    .reveal.visible { opacity: 1; transform: translateY(0); filter: blur(0); }
+
+    /* Card hover */
+    .product-card { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease; }
+    .product-card:hover { transform: translateY(-8px); box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12); }
+    .product-card:hover .card-image { transform: scale(1.05); }
+    .product-card:hover .card-arrow { transform: translateX(4px); opacity: 1; }
+
+    /* Image zoom */
+    .card-image { transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+
+    /* Arrow slide */
+    .card-arrow { transition: transform 0.3s ease, opacity 0.3s ease; opacity: 0.5; }
+
+    /* Expand toggle */
+    .expand-content { max-height: 0; overflow: hidden; transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease; opacity: 0; }
+    .expand-content.open { max-height: 300px; opacity: 1; }
+    .expand-icon { transition: transform 0.3s ease; }
+    .expand-icon.open { transform: rotate(180deg); }
+
+    /* Header */
+    .header-scrolled { background: rgba(255, 255, 255, 0.95) !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
+
+    /* Stagger */
+    .stagger > *:nth-child(1) { transition-delay: 0.05s; }
+    .stagger > *:nth-child(2) { transition-delay: 0.15s; }
+
+    /* Link underline */
+    .link-animated { position: relative; }
+    .link-animated::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 0; height: 1px; background: currentColor; transition: width 0.3s ease; }
+    .link-animated:hover::after { width: 100%; }
+
+    /* Button hover */
+    .btn-primary { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease; }
+    .btn-primary:hover { transform: scale(1.03) translateY(-2px); box-shadow: 0 10px 40px rgba(109, 40, 217, 0.3); }
+  </style>
+</head>
+<body class="bg-white text-dark overflow-x-hidden">
+
+  <!-- ════════════════════════════════════════
+       HEADER
+       ════════════════════════════════════════ -->
+  <header id="header" class="fixed top-0 left-0 right-0 z-50 transition-all duration-500" style="background: transparent;">
+    <div class="max-w-[1520px] mx-auto flex items-center justify-between h-[72px] px-6 md:px-9">
+      <a href="landing-new.html" class="shrink-0">
+        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 md:h-9 w-auto">
+      </a>
+      <a href="anfrage.html" class="btn-primary bg-accent text-white font-semibold text-sm px-6 py-2.5 rounded-full hover:bg-accent/90 shadow-lg shadow-accent/20 tracking-tight">
+        Angebot in 24h
+      </a>
+    </div>
+  </header>
+
+  <!-- ════════════════════════════════════════
+       HERO / PRODUCT SELECTION
+       ════════════════════════════════════════ -->
+  <main class="min-h-screen flex flex-col items-center justify-center px-5 md:px-8 pt-28 pb-20 md:pt-36 md:pb-28">
+    <div class="max-w-[960px] mx-auto w-full">
+
+      <!-- Heading -->
+      <div class="text-center mb-14 md:mb-20 reveal">
+        <p class="text-sm font-medium text-dark/40 tracking-wide uppercase mb-4">Konfigurator</p>
+        <h1 class="text-3xl md:text-5xl lg:text-[3.5rem] font-semibold tracking-tight leading-[1.1] mb-5">
+          Welches Produkt<br class="hidden md:block"> soll es werden?
+        </h1>
+        <p class="text-base md:text-lg text-dark/50 max-w-[520px] mx-auto leading-relaxed">
+          Erstelle dein individuelles Leuchtschild. Intuitiv konfigurieren, kostenlos visualisieren lassen.
+        </p>
+      </div>
+
+      <!-- Product Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 stagger reveal">
+
+        <!-- Card 1: LED Neon -->
+        <a href="#" class="product-card group block bg-white border border-black/[0.08] rounded-2xl overflow-hidden">
+          <!-- Image -->
+          <div class="relative overflow-hidden aspect-[16/10]">
+            <img
+              src="https://assets.sygns.com/products/neon/banner/LED_NEON_DIRECT_TO_WALL.webp"
+              alt="LED Neon Schild individuell konfigurieren"
+              class="card-image w-full h-full object-cover"
+              loading="lazy"
+            >
+            <div class="absolute inset-0 bg-gradient-to-t from-dark/40 via-transparent to-transparent"></div>
+            <!-- Badge -->
+            <div class="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 bg-white/95 backdrop-blur-sm rounded-full text-xs font-medium text-dark">
+              <span class="w-1.5 h-1.5 bg-accent rounded-full"></span>
+              Beliebteste Wahl
+            </div>
+          </div>
+
+          <!-- Content -->
+          <div class="p-6 md:p-7">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-xl md:text-2xl font-semibold tracking-tight">LED Neon</h2>
+              <svg class="card-arrow w-5 h-5 text-dark/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </div>
+            <p class="text-sm text-dark/50 leading-relaxed mb-4">
+              Flexible Silikonschläuche mit LED-Modulen. Modern, energieeffizient, leicht zu installieren.
+            </p>
+
+            <!-- Expand Toggle -->
+            <button onclick="event.preventDefault(); toggleExpand('led-details', this)" class="flex items-center gap-1.5 text-xs font-medium text-dark/40 hover:text-dark/70 transition-colors">
+              <span class="expand-label">Details anzeigen</span>
+              <svg class="expand-icon w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
+            <div id="led-details" class="expand-content">
+              <ul class="mt-4 space-y-2.5 text-sm text-dark/50">
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Flexible Silikonröhren mit LED-Dioden
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Wählbare Farben (RGB) und Dimmung per Fernbedienung
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Sehr energieeffizient und langlebig
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Leicht zu transportieren und zu installieren
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Montiert auf Schienen oder Platte
+                </li>
+              </ul>
+            </div>
+          </div>
+        </a>
+
+        <!-- Card 2: 3D Buchstaben -->
+        <a href="#" class="product-card group block bg-white border border-black/[0.08] rounded-2xl overflow-hidden">
+          <!-- Image -->
+          <div class="relative overflow-hidden aspect-[16/10]">
+            <img
+              src="https://assets.sygns.com/products/letters/banner/letters_back_lit_o.webp"
+              alt="3D Leuchtbuchstaben individuell konfigurieren"
+              class="card-image w-full h-full object-cover"
+              loading="lazy"
+            >
+            <div class="absolute inset-0 bg-gradient-to-t from-dark/40 via-transparent to-transparent"></div>
+          </div>
+
+          <!-- Content -->
+          <div class="p-6 md:p-7">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-xl md:text-2xl font-semibold tracking-tight">3D Buchstaben</h2>
+              <svg class="card-arrow w-5 h-5 text-dark/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </div>
+            <p class="text-sm text-dark/50 leading-relaxed mb-4">
+              Dreidimensionale Buchstaben mit LED-Beleuchtung. Front- oder rückbeleuchtet, premium Materialien.
+            </p>
+
+            <!-- Expand Toggle -->
+            <button onclick="event.preventDefault(); toggleExpand('letters-details', this)" class="flex items-center gap-1.5 text-xs font-medium text-dark/40 hover:text-dark/70 transition-colors">
+              <span class="expand-label">Details anzeigen</span>
+              <svg class="expand-icon w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+
+            <div id="letters-details" class="expand-content">
+              <ul class="mt-4 space-y-2.5 text-sm text-dark/50">
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Aluminium, Edelstahl oder Acrylglas
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Frontbeleuchtet oder rückbeleuchtet (Halo-Effekt)
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Breite Leuchtfarbpalette, RGB und Dimmung
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Vormontiert auf Hintergrund
+                </li>
+                <li class="flex items-start gap-2.5">
+                  <svg class="w-4 h-4 mt-0.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Hintergrund in vielen Formaten und Materialien
+                </li>
+              </ul>
+            </div>
+          </div>
+        </a>
+
+      </div>
+
+      <!-- Bottom CTA -->
+      <div class="text-center mt-12 md:mt-16 reveal">
+        <p class="text-sm text-dark/40 mb-3">Du weißt noch nicht genau, was du brauchst?</p>
+        <a href="anfrage.html" class="inline-flex items-center gap-2 text-sm font-medium text-dark link-animated hover:text-accent transition-colors">
+          Lass dich kostenlos beraten
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ════════════════════════════════════════
+       FOOTER (minimal)
+       ════════════════════════════════════════ -->
+  <footer class="border-t border-black/[0.06] py-8 px-6">
+    <div class="max-w-[1520px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-6 text-xs text-dark/40">
+        <span>Dara Nova GmbH, Düsseldorf</span>
+        <a href="mailto:support@neontrip.de" class="hover:text-dark/70 transition-colors">support@neontrip.de</a>
+        <a href="tel:+4921154257240" class="hover:text-dark/70 transition-colors">+49 211 54257240</a>
+      </div>
+      <div class="flex items-center gap-5 text-xs text-dark/30">
+        <a href="#" class="hover:text-dark/60 transition-colors">Impressum</a>
+        <a href="#" class="hover:text-dark/60 transition-colors">Datenschutz</a>
+        <a href="#" class="hover:text-dark/60 transition-colors">AGB</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ════════════════════════════════════════
+       SCRIPTS
+       ════════════════════════════════════════ -->
+  <script>
+    // Scroll Reveal
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Header scroll
+    const header = document.getElementById('header');
+    window.addEventListener('scroll', () => {
+      header.classList.toggle('header-scrolled', window.scrollY > 20);
+    });
+
+    // Expand/Collapse
+    function toggleExpand(id, btn) {
+      const content = document.getElementById(id);
+      const icon = btn.querySelector('.expand-icon');
+      const label = btn.querySelector('.expand-label');
+      const isOpen = content.classList.contains('open');
+
+      content.classList.toggle('open');
+      icon.classList.toggle('open');
+      label.textContent = isOpen ? 'Details anzeigen' : 'Weniger anzeigen';
+    }
+  </script>
+
+</body>
+</html>
