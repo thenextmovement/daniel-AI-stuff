@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de" class="scroll-smooth snap-active">
+<html lang="de" class="scroll-smooth">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -335,9 +335,10 @@
     .file-drop-zone { border: 2px dashed rgba(10,10,10,0.2); transition: all 0.3s ease; }
     .file-drop-zone:hover, .file-drop-zone.dragover { border-color: #0A0A0A; background: rgba(10,10,10,0.02); }
 
-    /* Scroll Snap */
+    /* Scroll Snap (disabled for natural scrolling)
     html.snap-active { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
     .snap-section { scroll-snap-align: start; scroll-snap-stop: always; }
+    */
   </style>
 </head>
 <body class="bg-white text-dark overflow-x-hidden" style="overflow: hidden;">
