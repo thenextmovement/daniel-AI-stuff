@@ -74,9 +74,53 @@
     @keyframes splash-text { 0% { opacity: 0; filter: blur(8px); transform: translateY(50px); } 100% { opacity: 1; filter: blur(0); transform: translateY(0); } }
     @keyframes splash-exit { 0% { transform: translateY(0); } 100% { transform: translateY(-100vh); } }
 
-    /* Scroll reveal */
-    .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
-    .reveal.visible { opacity: 1; transform: translateY(0); }
+    /* Scroll reveal - enhanced with blur */
+    .reveal { opacity: 0; transform: translateY(40px); filter: blur(8px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), filter 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+    .reveal.visible { opacity: 1; transform: translateY(0); filter: blur(0); }
+
+    /* Button hover effects */
+    .btn-primary { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease; }
+    .btn-primary:hover { transform: scale(1.03) translateY(-2px); box-shadow: 0 10px 40px rgba(109, 40, 217, 0.3); }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .btn-secondary { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.3s ease; }
+    .btn-secondary:hover { transform: scale(1.02); }
+
+    /* Card hover lift */
+    .card-hover { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease; }
+    .card-hover:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); }
+
+    /* Link underline animation */
+    .link-animated { position: relative; }
+    .link-animated::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 0; height: 1px; background: currentColor; transition: width 0.3s ease; }
+    .link-animated:hover::after { width: 100%; }
+
+    /* Image hover zoom */
+    .img-zoom { overflow: hidden; }
+    .img-zoom img { transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+    .img-zoom:hover img { transform: scale(1.05); }
+
+    /* Stagger children animation */
+    .stagger-children > * { opacity: 0; transform: translateY(20px); }
+    .stagger-children.visible > *:nth-child(1) { animation: staggerIn 0.6s 0.1s forwards; }
+    .stagger-children.visible > *:nth-child(2) { animation: staggerIn 0.6s 0.2s forwards; }
+    .stagger-children.visible > *:nth-child(3) { animation: staggerIn 0.6s 0.3s forwards; }
+    .stagger-children.visible > *:nth-child(4) { animation: staggerIn 0.6s 0.4s forwards; }
+    .stagger-children.visible > *:nth-child(5) { animation: staggerIn 0.6s 0.5s forwards; }
+    .stagger-children.visible > *:nth-child(6) { animation: staggerIn 0.6s 0.6s forwards; }
+    @keyframes staggerIn { to { opacity: 1; transform: translateY(0); } }
+
+    /* Floating animation for decorative elements */
+    .float { animation: float 6s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+
+    /* Pulse glow for CTAs */
+    .pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
+    @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(109, 40, 217, 0.4); } 50% { box-shadow: 0 0 0 15px rgba(109, 40, 217, 0); } }
+
+    /* Text gradient animation */
+    .text-shimmer { background: linear-gradient(90deg, #0A0A0A 40%, #6D28D9 50%, #0A0A0A 60%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: shimmer 3s ease-in-out infinite; }
+    @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
     /* Marquee */
     @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
@@ -260,7 +304,7 @@
         </div>
 
         <!-- CTA Button -->
-        <a href="anfrage.html" class="header-cta bg-accent text-white font-semibold text-[15px] px-6 py-3 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20 tracking-tight">
+        <a href="anfrage.html" class="header-cta btn-primary bg-accent text-white font-semibold text-[15px] px-6 py-3 rounded-full hover:bg-accent/90 shadow-lg shadow-accent/20 tracking-tight">
           Angebot in 24h
         </a>
       </div>
@@ -298,8 +342,8 @@
     <div class="relative z-10 w-full max-w-[1400px] mx-auto px-5 md:px-8 py-32 md:py-40">
       <div class="max-w-[900px] mx-auto text-center">
         <!-- Badge -->
-        <div class="reveal inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-xs font-medium tracking-wide uppercase text-white/90 mb-8">
-          <span class="w-2 h-2 bg-accent rounded-full"></span>
+        <div class="reveal float inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-xs font-medium tracking-wide uppercase text-white/90 mb-8">
+          <span class="w-2 h-2 bg-accent rounded-full pulse-glow"></span>
           Premium LED Leuchtreklame für B2B
         </div>
 
@@ -315,11 +359,11 @@
 
         <!-- CTAs -->
         <div class="reveal flex flex-col sm:flex-row justify-center gap-4" style="transition-delay: 0.3s;">
-          <a href="anfrage.html" class="inline-flex items-center justify-center gap-3 bg-accent text-white font-semibold text-base px-8 py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/30">
+          <a href="anfrage.html" class="btn-primary pulse-glow inline-flex items-center justify-center gap-3 bg-accent text-white font-semibold text-base px-8 py-4 rounded-full hover:bg-accent/90 shadow-lg shadow-accent/30">
             Kostenloses Angebot in 24h
             <svg class="w-5 h-5 arrow-animate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </a>
-          <a href="#projekte" class="inline-flex items-center justify-center gap-2 text-white font-medium text-base px-6 py-4 rounded-full border border-white/30 hover:bg-white/10 transition-all">
+          <a href="#projekte" class="btn-secondary inline-flex items-center justify-center gap-2 text-white font-medium text-base px-6 py-4 rounded-full border border-white/30 hover:bg-white/10">
             Projekte ansehen
           </a>
         </div>
@@ -532,7 +576,7 @@
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <!-- USP 1 -->
-        <div class="reveal bg-light rounded-2xl p-8">
+        <div class="reveal card-hover bg-light rounded-2xl p-8">
           <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
             <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
           </div>
@@ -541,7 +585,7 @@
         </div>
 
         <!-- USP 2 -->
-        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+        <div class="reveal card-hover bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
           <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
             <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
@@ -550,7 +594,7 @@
         </div>
 
         <!-- USP 3 -->
-        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.2s;">
+        <div class="reveal card-hover bg-light rounded-2xl p-8" style="transition-delay: 0.2s;">
           <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
             <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
           </div>
@@ -559,7 +603,7 @@
         </div>
 
         <!-- USP 4 -->
-        <div class="reveal bg-light rounded-2xl p-8">
+        <div class="reveal card-hover bg-light rounded-2xl p-8">
           <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
             <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
@@ -568,7 +612,7 @@
         </div>
 
         <!-- USP 5 -->
-        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+        <div class="reveal card-hover bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
           <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
             <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           </div>
@@ -577,7 +621,7 @@
         </div>
 
         <!-- USP 6 -->
-        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.2s;">
+        <div class="reveal card-hover bg-light rounded-2xl p-8" style="transition-delay: 0.2s;">
           <div class="w-12 h-12 rounded-xl bg-dark flex items-center justify-center mb-6">
             <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
           </div>
@@ -629,7 +673,7 @@
       <div id="project-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-8">
 
         <!-- Events: POAS Club -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" data-category="events clubs">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" data-category="events clubs">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Events</span>
@@ -644,7 +688,7 @@
         </div>
 
         <!-- Gastronomie: Vinos -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.05s;" data-category="gastro">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.05s;" data-category="gastro">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Gastronomie</span>
@@ -659,7 +703,7 @@
         </div>
 
         <!-- Messen: Billie -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.1s;" data-category="messen">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.1s;" data-category="messen">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Messen</span>
@@ -674,7 +718,7 @@
         </div>
 
         <!-- Büros: IT Titans -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.15s;" data-category="bueros empfang ladenbau">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.15s;" data-category="bueros empfang ladenbau">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Büros</span>
@@ -689,7 +733,7 @@
         </div>
 
         <!-- Events: KEEZY Targobank -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" data-category="events">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" data-category="events">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Events</span>
@@ -704,7 +748,7 @@
         </div>
 
         <!-- Gastronomie: Aperol -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.05s;" data-category="gastro">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.05s;" data-category="gastro">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Gastronomie</span>
@@ -719,7 +763,7 @@
         </div>
 
         <!-- Podcast: Wahr & Klar -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.1s;" data-category="podcast">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.1s;" data-category="podcast">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Podcast</span>
@@ -734,7 +778,7 @@
         </div>
 
         <!-- Empfang: GWA Studio -->
-        <div class="reveal project-card group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.15s;" data-category="empfang bueros">
+        <div class="reveal project-card card-hover group rounded-[18px] overflow-hidden bg-white border border-black/5" style="transition-delay: 0.15s;" data-category="empfang bueros">
           <div class="flex items-center justify-between px-5 py-4 bg-white">
             <div class="flex items-end gap-3">
               <span class="text-lg font-semibold tracking-tight text-dark">Empfang</span>
@@ -785,7 +829,7 @@
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Testimonial 1 -->
-        <div class="reveal bg-light rounded-2xl p-8">
+        <div class="reveal card-hover bg-light rounded-2xl p-8">
           <div class="flex items-center gap-4 mb-6">
             <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
               <span class="text-sm font-semibold text-dark/60">JT</span>
@@ -799,7 +843,7 @@
         </div>
 
         <!-- Testimonial 2 -->
-        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+        <div class="reveal card-hover bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
           <div class="flex items-center gap-4 mb-6">
             <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
               <span class="text-sm font-semibold text-dark/60">LM</span>
@@ -813,7 +857,7 @@
         </div>
 
         <!-- Testimonial 3 -->
-        <div class="reveal bg-light rounded-2xl p-8">
+        <div class="reveal card-hover bg-light rounded-2xl p-8">
           <div class="flex items-center gap-4 mb-6">
             <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
               <span class="text-sm font-semibold text-dark/60">AW</span>
@@ -827,7 +871,7 @@
         </div>
 
         <!-- Testimonial 4 -->
-        <div class="reveal bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
+        <div class="reveal card-hover bg-light rounded-2xl p-8" style="transition-delay: 0.1s;">
           <div class="flex items-center gap-4 mb-6">
             <div class="w-12 h-12 rounded-full bg-dark/10 flex items-center justify-center">
               <span class="text-sm font-semibold text-dark/60">FM</span>
@@ -975,7 +1019,7 @@
             </label>
           </div>
 
-          <button type="button" class="form-next w-full bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20">
+          <button type="button" class="form-next btn-primary w-full bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 shadow-lg shadow-accent/20">
             Weiter
           </button>
         </div>
@@ -1028,7 +1072,7 @@
             <button type="button" class="form-prev flex-1 bg-light text-dark font-medium text-base py-4 rounded-full hover:bg-dark/10 transition-all">
               Zurück
             </button>
-            <button type="button" class="form-next flex-[2] bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20">
+            <button type="button" class="form-next btn-primary flex-[2] bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 shadow-lg shadow-accent/20">
               Weiter
             </button>
           </div>
@@ -1073,7 +1117,7 @@
             <button type="button" class="form-prev flex-1 bg-light text-dark font-medium text-base py-4 rounded-full hover:bg-dark/10 transition-all">
               Zurück
             </button>
-            <button type="submit" class="flex-[2] bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 transition-all shadow-lg shadow-accent/20 flex items-center justify-center gap-2">
+            <button type="submit" class="btn-primary flex-[2] bg-accent text-white font-semibold text-base py-4 rounded-full hover:bg-accent/90 shadow-lg shadow-accent/20 flex items-center justify-center gap-2">
               <span>Angebot anfordern</span>
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </button>
@@ -1130,7 +1174,7 @@
         <p class="reveal text-base font-medium text-dark/60 tracking-tight max-w-[300px]">Haben Sie Fragen? Wir haben die Antworten.</p>
       </div>
 
-      <div class="lg:w-2/3 flex flex-col gap-1" id="faq-list">
+      <div class="lg:w-2/3 flex flex-col gap-1 reveal stagger-children" id="faq-list">
         <div class="faq-item bg-light rounded-[14px] overflow-hidden">
           <button class="flex items-center justify-between w-full px-6 py-5 text-left cursor-pointer" onclick="toggleFaq(this)">
             <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie schnell kann mein Schild geliefert werden?</span>
