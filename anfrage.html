@@ -154,6 +154,23 @@
       transform: scale(1);
     }
 
+    /* Variant card (for sub-selection) */
+    .variant-card {
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .variant-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+    }
+    .variant-card.selected {
+      border-color: #6D28D9;
+      box-shadow: 0 0 0 2px #6D28D9;
+      background: rgba(109, 40, 217, 0.03);
+    }
+    .variant-card.selected .variant-check {
+      opacity: 1;
+    }
+
     /* Option pill */
     .option-pill {
       transition: all 0.2s ease;
@@ -572,7 +589,7 @@
       </div>
 
       <!-- Product Grid - With Images -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+      <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
 
         <!-- LED Neonschild -->
         <div class="product-card relative border border-black/8 rounded-xl shadow-sm overflow-hidden cursor-pointer bg-white" data-product="neonschild">
@@ -678,6 +695,45 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Variant Selection for Front-Buchstaben (replaces product grid) -->
+      <div id="variantSelect" class="hidden">
+        <div class="text-center mb-6">
+          <h2 class="text-xl sm:text-2xl font-semibold tracking-tight mb-1">Welche Beleuchtungsart?</h2>
+          <p class="text-sm text-black/50">Wähle, wie die 3D Buchstaben leuchten sollen.</p>
+        </div>
+        <div class="grid grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
+          <!-- Option 1: Nur Front beleuchtet -->
+          <div class="variant-card relative border-2 border-black/10 rounded-xl overflow-hidden cursor-pointer bg-white hover:border-accent/30 transition-all" data-variant="front">
+            <img src="assets/images/produkte/front-buchstaben.webp" alt="Nur Front beleuchtet" class="w-full h-36 sm:h-52 object-cover">
+            <div class="p-3 sm:p-4 text-center">
+              <h3 class="font-semibold text-sm sm:text-base mb-0.5">Nur Front beleuchtet</h3>
+              <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Frontfläche leuchtet, Seiten aus Metall</p>
+            </div>
+            <div class="variant-check absolute top-3 right-3 w-6 h-6 bg-accent rounded-full flex items-center justify-center opacity-0 transition-opacity">
+              <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+            </div>
+          </div>
+          <!-- Option 2: Voll beleuchtet -->
+          <div class="variant-card relative border-2 border-black/10 rounded-xl overflow-hidden cursor-pointer bg-white hover:border-accent/30 transition-all" data-variant="voll">
+            <img src="assets/images/produkte/front-buchstaben-voll.webp" alt="Voll beleuchtet" class="w-full h-36 sm:h-52 object-cover">
+            <div class="p-3 sm:p-4 text-center">
+              <h3 class="font-semibold text-sm sm:text-base mb-0.5">Voll beleuchtet</h3>
+              <p class="text-[10px] sm:text-xs text-black/40 leading-tight">Front und Seiten leuchten komplett</p>
+            </div>
+            <div class="variant-check absolute top-3 right-3 w-6 h-6 bg-accent rounded-full flex items-center justify-center opacity-0 transition-opacity">
+              <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+            </div>
+          </div>
+        </div>
+        <!-- Back Button -->
+        <div class="mt-6 text-center">
+          <button id="variantBackBtn" class="inline-flex items-center gap-2 text-sm text-black/50 hover:text-black transition-colors">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Zurück zur Produktauswahl
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1403,6 +1459,7 @@
     // Log form data
     console.log('=== NEONTRIP Anfrage ===');
     console.log('Produkt:', state.data.product);
+    if (state.data.productVariant) console.log('Variante:', state.data.productVariant);
     console.log('Design:', state.data.design);
     if (state.data.designText) console.log('Design-Idee:', state.data.designText);
     if (state.data.uploadedFiles.length > 0) console.log('Dateien:', state.data.uploadedFiles.map(f => f.name).join(', '));
@@ -1417,6 +1474,10 @@
   // ═══════════════════════════════════════
 
   // Product selection - with flash effect and auto-advance
+  const productGrid = document.getElementById('productGrid');
+  const variantSelect = document.getElementById('variantSelect');
+  const variantBackBtn = document.getElementById('variantBackBtn');
+
   document.querySelectorAll('[data-step="1"] .product-card').forEach(card => {
     card.addEventListener('click', () => {
       document.querySelectorAll('[data-step="1"] .product-card').forEach(c => {
@@ -1424,13 +1485,53 @@
       });
       card.classList.add('selected', 'flash');
       state.data.product = card.dataset.product;
+
+      // Reset variant selection
+      delete state.data.productVariant;
+      document.querySelectorAll('.variant-card').forEach(v => v.classList.remove('selected'));
+
       updateNav();
-      // Flash effect then auto-advance after 800ms
-      setTimeout(() => {
-        card.classList.remove('flash');
-        goToStep(2);
-      }, 800);
+
+      // If front-buchstaben: show variant selection instead of auto-advance
+      if (card.dataset.product === 'front-buchstaben') {
+        setTimeout(() => {
+          card.classList.remove('flash');
+          productGrid.classList.add('hidden');
+          variantSelect.classList.remove('hidden');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 400);
+      } else {
+        // Flash effect then auto-advance after 800ms
+        setTimeout(() => {
+          card.classList.remove('flash');
+          goToStep(2);
+        }, 800);
+      }
     });
+  });
+
+  // Variant selection for Front-Buchstaben
+  document.querySelectorAll('.variant-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.variant-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      state.data.productVariant = card.dataset.variant;
+      // Auto-advance to step 2 after selection
+      setTimeout(() => {
+        goToStep(2);
+      }, 500);
+    });
+  });
+
+  // Back button in variant selection
+  variantBackBtn.addEventListener('click', () => {
+    variantSelect.classList.add('hidden');
+    productGrid.classList.remove('hidden');
+    // Deselect the product card
+    document.querySelectorAll('[data-step="1"] .product-card').forEach(c => c.classList.remove('selected'));
+    delete state.data.product;
+    delete state.data.productVariant;
+    updateNav();
   });
 
   // Design selection - with flash effect
