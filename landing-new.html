@@ -953,7 +953,7 @@
     <div class="relative z-10 max-w-[1400px] mx-auto px-5 md:px-8">
       <!-- Centered Header (Fabrica-Style) -->
       <div class="reveal text-center mb-4 md:mb-5">
-        <h2 class="text-[42px] md:text-[64px] font-semibold leading-[0.92] tracking-tighter text-dark mb-2">Anfragen.</h2>
+        <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-2">Anfragen.</h2>
         <p class="text-sm md:text-base font-medium text-dark/50 tracking-tight">Produkt wählen, Logo hochladen – Angebot in 24h</p>
       </div>
 
@@ -1501,6 +1501,163 @@
       </div>
     </div>
   </section>
+
+  <!-- ════════════════════════════════════════
+       PRODUKTE (Dark Carousel)
+       ════════════════════════════════════════ -->
+  <section id="produkte" class="snap-section relative bg-dark py-16 md:py-24 px-6 md:px-9 overflow-hidden">
+    <!-- Noise Overlay -->
+    <div class="absolute inset-0 noise-overlay z-0"></div>
+
+    <div class="relative z-10 max-w-[1520px] mx-auto">
+      <!-- Centered Header -->
+      <div class="reveal text-center mb-6">
+        <div class="flex items-center justify-center gap-2 mb-6">
+          <div class="w-4 h-4 bg-white rounded-full flex items-center justify-center"><span class="w-[2px] h-2 bg-dark block"></span></div>
+          <span class="text-base font-medium tracking-tight text-white">Was wir außer Neon anbieten</span>
+        </div>
+        <h2 class="text-[62px] md:text-[144px] font-semibold leading-[0.92] tracking-tighter text-white">Produkte.</h2>
+      </div>
+
+      <!-- Product Carousel with Navigation -->
+      <div class="relative mt-12">
+        <!-- Left Arrow -->
+        <button onclick="scrollProducts('left')" class="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center transition-all -translate-x-2 md:-translate-x-6">
+          <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+
+        <!-- Right Arrow -->
+        <button onclick="scrollProducts('right')" class="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center transition-all translate-x-2 md:translate-x-6">
+          <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+
+        <!-- Carousel Container -->
+        <div class="overflow-hidden mx-8 md:mx-16" id="product-carousel">
+          <div class="flex gap-6 transition-transform duration-500 ease-out" id="product-track" style="transform: translateX(0)">
+          <!-- Neon LED Schilder -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Neon LED Schilder" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Neon LED Schilder</h3><p class="text-white/75 text-sm">ab 199€</p></div>
+          </div>
+
+          <!-- Vollflächig beleuchtet -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Vollflächig beleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Vollflächig beleuchtet</h3><p class="text-white/75 text-sm">ab 399€</p></div>
+          </div>
+
+          <!-- Frontbeleuchtet -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Frontbeleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Frontbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+
+          <!-- Leuchtkasten -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Leuchtkasten" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Leuchtkasten</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+
+          <!-- Marquees Buchstaben -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Marquees Buchstaben" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Marquees Buchstaben</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
+
+          <!-- Rückbeleuchtet -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Rückbeleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Rückbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+
+          <!-- Unbeleuchtet -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
+            <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Unbeleuchtet" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Unbeleuchtet</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
+
+        </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // Product Carousel Navigation with Auto-Scroll
+    let productScrollPosition = 0;
+    const productCardWidth = 260 + 24; // card width + gap
+    let autoScrollInterval;
+    let autoScrollPaused = false;
+
+    function scrollProducts(direction) {
+      const track = document.getElementById('product-track');
+      const container = document.getElementById('product-carousel');
+      const containerWidth = container.offsetWidth;
+      const totalCards = 7;
+      const maxScroll = (totalCards * productCardWidth) - containerWidth;
+
+      if (direction === 'right') {
+        productScrollPosition += productCardWidth;
+        if (productScrollPosition > maxScroll) {
+          productScrollPosition = 0; // Loop back to start
+        }
+      } else {
+        productScrollPosition -= productCardWidth;
+        if (productScrollPosition < 0) {
+          productScrollPosition = maxScroll; // Loop to end
+        }
+      }
+
+      track.style.transform = `translateX(-${productScrollPosition}px)`;
+
+      // Pause auto-scroll when user clicks, resume after 5 seconds
+      pauseAutoScroll();
+      setTimeout(startAutoScroll, 5000);
+    }
+
+    function startAutoScroll() {
+      if (autoScrollInterval) clearInterval(autoScrollInterval);
+      autoScrollInterval = setInterval(() => {
+        if (!autoScrollPaused) {
+          scrollProductsAuto();
+        }
+      }, 3000); // Scroll every 3 seconds
+    }
+
+    function scrollProductsAuto() {
+      const track = document.getElementById('product-track');
+      const container = document.getElementById('product-carousel');
+      if (!track || !container) return;
+
+      const containerWidth = container.offsetWidth;
+      const totalCards = 7;
+      const maxScroll = (totalCards * productCardWidth) - containerWidth;
+
+      productScrollPosition += productCardWidth;
+      if (productScrollPosition > maxScroll) {
+        productScrollPosition = 0;
+      }
+
+      track.style.transform = `translateX(-${productScrollPosition}px)`;
+    }
+
+    function pauseAutoScroll() {
+      autoScrollPaused = true;
+      setTimeout(() => { autoScrollPaused = false; }, 5000);
+    }
+
+    // Start auto-scroll when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(startAutoScroll, 2000); // Start after 2 seconds
+    });
+  </script>
 
   <!-- ════════════════════════════════════════
        FAQ (LIGHT)
