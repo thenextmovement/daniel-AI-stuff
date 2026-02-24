@@ -1301,18 +1301,13 @@
         </div>
       </div>
 
-      <!-- CTA below reviews -->
-      <div class="reveal flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-8 border-t border-gray-100">
-        <p class="text-base font-medium text-dark/60 tracking-tight">Über 236 positive Google Bewertungen</p>
-        <button onclick="openFormPopup('neonschild')" class="inline-flex items-center gap-2 bg-dark text-white text-sm font-semibold tracking-tight px-5 py-3 rounded-full hover:opacity-90 hover:scale-105 transition-all duration-200">Jetzt anfragen <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-      </div>
     </div>
   </section>
 
   <!-- ════════════════════════════════════════
        USPs (WHITE)
        ════════════════════════════════════════ -->
-  <section class="snap-section bg-white py-12 md:py-16">
+  <section class="snap-section bg-white py-8 md:py-10">
     <div class="max-w-[1400px] mx-auto px-5 md:px-8">
       <!-- Centered Header (Fabrica-Style) -->
       <div class="reveal text-center mb-8 md:mb-10">
@@ -1469,6 +1464,7 @@
       <!-- Centered Header -->
       <div class="reveal text-center mb-12 px-6">
         <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-white">Produkte.</h2>
+        <p class="text-base font-medium text-white/50 tracking-tight mt-3">Produkt anklicken und direkt anfragen</p>
       </div>
 
       <!-- Product Carousel - Smooth Infinite Marquee -->
@@ -1713,7 +1709,7 @@
   </section>
 
   <!-- ════════════════════════════════════════
-       KUNDEN (LOGO GRID)
+       KUNDEN (ANIMATED LOGO CAROUSEL)
        ════════════════════════════════════════ -->
   <section class="snap-section bg-light min-h-screen flex items-center py-12 md:py-16 px-5 md:px-8">
     <div class="max-w-[1200px] mx-auto w-full">
@@ -1733,43 +1729,23 @@
         <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Fitness & Wellness</span>
       </div>
 
-      <!-- Logo Grid -->
-      <div class="reveal grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8 md:gap-12 items-center justify-items-center">
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/1.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Greenpeace" loading="lazy">
+      <!-- Animated Logo Carousel -->
+      <div class="reveal flex justify-center gap-6 md:gap-10" id="logo-carousel">
+        <!-- Column 1 -->
+        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden" data-column="0">
+          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
         </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/3.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="ERGO" loading="lazy">
+        <!-- Column 2 -->
+        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden" data-column="1">
+          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
         </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/5.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="E.ON" loading="lazy">
+        <!-- Column 3 -->
+        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden" data-column="2">
+          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
         </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/7.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Campari Group" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/Amazon_logo.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Amazon" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/11.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Celonis" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/Aperol_Logo.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Aperol" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/15.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Fresenius" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/17.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Schwarzkopf" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/19.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Paramount+" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/21.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="Google" loading="lazy">
-        </div>
-        <div class="h-8 md:h-10 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <img src="assets/images/kundenlogos/Logo_DB_Schenker.svg" class="h-full w-auto max-w-[140px] object-contain grayscale" alt="DB Schenker" loading="lazy">
+        <!-- Column 4 (hidden on mobile) -->
+        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden hidden md:block" data-column="3">
+          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
         </div>
       </div>
 
@@ -1779,64 +1755,6 @@
           Jetzt Projekt anfragen
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ════════════════════════════════════════
-       DOWNLOADS
-       ════════════════════════════════════════ -->
-  <section id="downloads" class="snap-section bg-white py-10 md:py-12">
-    <div class="max-w-[800px] mx-auto px-5 md:px-8">
-      <!-- Header -->
-      <div class="reveal text-center mb-6">
-        <h2 class="text-[36px] md:text-[44px] font-semibold leading-[0.95] tracking-tighter text-dark mb-1">Downloads.</h2>
-        <p class="text-sm font-medium text-dark/50 tracking-tight">Alle Infos zum Mitnehmen</p>
-      </div>
-
-      <!-- Download Cards -->
-      <div class="reveal grid grid-cols-1 md:grid-cols-2 gap-3">
-
-        <!-- Lookbook -->
-        <a href="assets/downloads/neontrip-lookbook.pdf" download class="group card-hover bg-light rounded-xl p-5 text-center cursor-pointer">
-          <div class="w-9 h-9 rounded-lg bg-dark flex items-center justify-center mb-3 mx-auto">
-            <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <path d="M21 15l-5-5L5 21"/>
-            </svg>
-          </div>
-          <h3 class="text-sm font-semibold text-dark mb-0.5">Lookbook</h3>
-          <p class="text-xs text-dark/50 leading-relaxed mb-2">Inspirationen und Projektfotos</p>
-          <span class="inline-flex items-center gap-1.5 text-xs font-medium text-dark/60 group-hover:text-dark transition-colors">
-            PDF herunterladen
-            <svg class="w-3.5 h-3.5 group-hover:translate-y-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
-          </span>
-        </a>
-
-        <!-- Technische Spezifikationen -->
-        <a href="assets/downloads/neontrip-technische-daten.pdf" download class="group card-hover bg-light rounded-xl p-5 text-center cursor-pointer" style="transition-delay: 0.1s;">
-          <div class="w-9 h-9 rounded-lg bg-dark flex items-center justify-center mb-3 mx-auto">
-            <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-          </div>
-          <h3 class="text-sm font-semibold text-dark mb-0.5">Technische Daten</h3>
-          <p class="text-xs text-dark/50 leading-relaxed mb-2">Materialien und Maße</p>
-          <span class="inline-flex items-center gap-1.5 text-xs font-medium text-dark/60 group-hover:text-dark transition-colors">
-            PDF herunterladen
-            <svg class="w-3.5 h-3.5 group-hover:translate-y-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
-          </span>
-        </a>
-
       </div>
     </div>
   </section>
@@ -1869,8 +1787,12 @@
                 <input type="email" name="email" placeholder="E-Mail" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
               </div>
               <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefonnummer</label>
-                <input type="tel" name="telefon" placeholder="Telefon (optional)" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefonnummer*</label>
+                <input type="tel" name="telefon" placeholder="Telefon" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+              </div>
+              <div>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Größe</label>
+                <input type="text" name="groesse" placeholder="z.B. 80 x 40 cm" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
               </div>
               <div>
                 <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Nachricht*</label>
@@ -1882,18 +1804,17 @@
           </form>
         </div>
 
-        <!-- Text Content + Contact Card -->
-        <div class="reveal flex flex-col justify-between">
-          <!-- Text oben -->
+        <!-- Text Content -->
+        <div class="reveal flex flex-col">
           <div>
-            <h2 class="text-[40px] md:text-[56px] font-semibold leading-[0.95] tracking-tighter text-white mb-4">Persönliche Beratung.</h2>
+            <h2 class="text-[40px] md:text-[56px] font-semibold leading-[0.95] tracking-tighter text-white mb-4">Beratung.</h2>
             <p class="text-base md:text-lg font-medium tracking-tight leading-relaxed mb-6">
               <span class="text-white">Mehr über das Projekt erfahren</span><span class="text-white/50"> – egal ob Neonschild, 3D Buchstaben, Leuchtkästen oder Sonderanfertigung.</span>
             </p>
 
             <div class="h-px bg-white/10 mb-6"></div>
 
-            <div class="flex flex-col gap-4 mb-8">
+            <div class="flex flex-col gap-4">
               <div>
                 <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Telefonische Beratung</h4>
                 <p class="text-sm font-medium text-white/50 tracking-tight">Erreichbar Mo–Fr 9–17 Uhr: <a href="tel:+4921154257240" class="text-white hover:underline">+49 211 54257240</a></p>
@@ -1902,22 +1823,6 @@
                 <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Angebot in 24 Stunden</h4>
                 <p class="text-sm font-medium text-white/50 tracking-tight">Schnelle Rückmeldung mit kostenloser 3D-Vorschau.</p>
               </div>
-            </div>
-          </div>
-
-          <!-- Contact Card unten -->
-          <div class="flex items-center gap-4 bg-white rounded-2xl p-1.5">
-            <div class="w-[100px] h-[140px] rounded-xl overflow-hidden shrink-0">
-              <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" class="w-full h-full object-cover" alt="Fabienne Trapp">
-            </div>
-            <div class="py-3 pr-4">
-              <p class="text-sm font-semibold tracking-tight text-dark">Head of Customer Experience</p>
-              <p class="text-xs font-semibold tracking-tight text-dark/60 mb-2">bei NEONTRIP</p>
-              <p class="text-xl font-semibold tracking-tight text-dark leading-tight mb-3">Fabienne Trapp</p>
-              <a href="mailto:info@neontrip.de" class="inline-flex items-center gap-2 bg-dark text-white text-xs font-semibold tracking-tight px-3 py-2 rounded-full hover:bg-dark/80 transition-colors">
-                Jetzt Anfragen
-                <span class="w-2 h-2 bg-white rounded-full"></span>
-              </a>
             </div>
           </div>
         </div>
@@ -1942,7 +1847,7 @@
               <a href="#projekte" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Projekte</a>
               <a href="#bewertungen" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Erfahrungen</a>
               <a href="#faq" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">FAQ</a>
-              <a href="#downloads" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Downloads</a>
+              <a href="#kontakt" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Kontakt</a>
             </div>
           </div>
 
@@ -2119,6 +2024,7 @@
     const projekteSection = document.getElementById('projekte');
     const anfrageSection = document.getElementById('anfrage');
     const produkteSection = document.getElementById('produkte');
+    const kontaktSection = document.getElementById('kontakt');
     let lastScroll = 0;
 
     // Helper function to check if scroll position is within a section
@@ -2137,13 +2043,14 @@
         headerEl.classList.remove('header-scrolled');
       }
 
-      // Hide contact card in: Hero, Projekte, Anfragen, Produkte
+      // Hide contact card in: Hero, Projekte, Anfragen, Produkte, Kontakt
       const inHero = isInSection(heroSection, currentScroll, 0, 100);
       const inProjekte = isInSection(projekteSection, currentScroll);
       const inAnfrage = isInSection(anfrageSection, currentScroll);
       const inProdukte = isInSection(produkteSection, currentScroll);
+      const inKontakt = isInSection(kontaktSection, currentScroll);
 
-      const shouldHide = inHero || inProjekte || inAnfrage || inProdukte;
+      const shouldHide = inHero || inProjekte || inAnfrage || inProdukte || inKontakt;
 
       if (!shouldHide) {
         contactSticky.classList.add('visible');
@@ -2241,6 +2148,119 @@
       });
     }, { threshold: 0.5 });
     document.querySelectorAll('[data-count]').forEach(el => counterObserver.observe(el));
+
+    // Animated Logo Carousel
+    const logoCarousel = document.getElementById('logo-carousel');
+    if (logoCarousel) {
+      const logos = [
+        { src: 'assets/images/kundenlogos/1.svg', alt: 'Greenpeace' },
+        { src: 'assets/images/kundenlogos/3.svg', alt: 'ERGO' },
+        { src: 'assets/images/kundenlogos/5.svg', alt: 'E.ON' },
+        { src: 'assets/images/kundenlogos/7.svg', alt: 'Campari Group' },
+        { src: 'assets/images/kundenlogos/Amazon_logo.svg', alt: 'Amazon' },
+        { src: 'assets/images/kundenlogos/11.svg', alt: 'Celonis' },
+        { src: 'assets/images/kundenlogos/Aperol_Logo.svg', alt: 'Aperol' },
+        { src: 'assets/images/kundenlogos/15.svg', alt: 'Fresenius' },
+        { src: 'assets/images/kundenlogos/17.svg', alt: 'Schwarzkopf' },
+        { src: 'assets/images/kundenlogos/19.svg', alt: 'Paramount+' },
+        { src: 'assets/images/kundenlogos/21.svg', alt: 'Google' },
+        { src: 'assets/images/kundenlogos/Logo_DB_Schenker.svg', alt: 'DB Schenker' }
+      ];
+
+      const columns = logoCarousel.querySelectorAll('.logo-column');
+      const columnCount = columns.length;
+      const cycleInterval = 2000;
+
+      // Shuffle array helper
+      function shuffleArray(array) {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+      }
+
+      // Distribute logos to columns
+      const shuffledLogos = shuffleArray(logos);
+      const columnLogos = Array.from({ length: columnCount }, () => []);
+      shuffledLogos.forEach((logo, index) => {
+        columnLogos[index % columnCount].push(logo);
+      });
+
+      // Ensure all columns have same number of logos
+      const maxLength = Math.max(...columnLogos.map(col => col.length));
+      columnLogos.forEach(col => {
+        while (col.length < maxLength) {
+          col.push(shuffledLogos[Math.floor(Math.random() * shuffledLogos.length)]);
+        }
+      });
+
+      // Track current index for each column
+      const currentIndices = Array(columnCount).fill(0);
+
+      // Create logo element
+      function createLogoElement(logo) {
+        const img = document.createElement('img');
+        img.src = logo.src;
+        img.alt = logo.alt;
+        img.className = 'h-10 md:h-16 w-auto max-w-full object-contain grayscale opacity-60';
+        img.loading = 'lazy';
+        return img;
+      }
+
+      // Initialize columns with first logo
+      columns.forEach((column, colIndex) => {
+        const slot = column.querySelector('.logo-slot');
+        if (columnLogos[colIndex] && columnLogos[colIndex][0]) {
+          slot.appendChild(createLogoElement(columnLogos[colIndex][0]));
+          slot.style.opacity = '1';
+          slot.style.filter = 'blur(0px)';
+          slot.style.transform = 'translateY(0)';
+        }
+      });
+
+      // Animate column
+      function animateColumn(colIndex) {
+        const column = columns[colIndex];
+        if (!column) return;
+
+        const slot = column.querySelector('.logo-slot');
+        const colLogos = columnLogos[colIndex];
+
+        // Fade out current
+        slot.style.opacity = '0';
+        slot.style.filter = 'blur(6px)';
+        slot.style.transform = 'translateY(-10%)';
+
+        setTimeout(() => {
+          // Update index
+          currentIndices[colIndex] = (currentIndices[colIndex] + 1) % colLogos.length;
+
+          // Replace content
+          slot.innerHTML = '';
+          slot.appendChild(createLogoElement(colLogos[currentIndices[colIndex]]));
+
+          // Reset position for entry
+          slot.style.transform = 'translateY(10%)';
+
+          // Small delay then fade in
+          requestAnimationFrame(() => {
+            slot.style.opacity = '1';
+            slot.style.filter = 'blur(0px)';
+            slot.style.transform = 'translateY(0)';
+          });
+        }, 300);
+      }
+
+      // Start staggered animations for each column
+      columns.forEach((_, colIndex) => {
+        const delay = colIndex * 400; // Stagger start times
+        setTimeout(() => {
+          setInterval(() => animateColumn(colIndex), cycleInterval);
+        }, delay);
+      });
+    }
 
     // Project Filter
     const filterBtns = document.querySelectorAll('.filter-btn');
