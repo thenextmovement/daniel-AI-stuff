@@ -355,7 +355,7 @@
     .marquee-track-seamless { display: flex; animation: marquee 40s linear infinite; width: max-content; }
 
     /* Product Carousel */
-    .product-track { display: flex; gap: 24px; animation: marquee 50s linear infinite; }
+    .product-track { display: flex; gap: 24px; animation: marquee 25s linear infinite; }
     .product-track:hover { animation-play-state: paused; }
 
     /* Counter */
@@ -1505,35 +1505,19 @@
   <!-- ════════════════════════════════════════
        PRODUKTE (Dark Carousel)
        ════════════════════════════════════════ -->
-  <section id="produkte" class="snap-section relative bg-dark py-16 md:py-24 px-6 md:px-9 overflow-hidden">
+  <section id="produkte" class="snap-section relative bg-dark py-16 md:py-24 overflow-hidden">
     <!-- Noise Overlay -->
     <div class="absolute inset-0 noise-overlay z-0"></div>
 
-    <div class="relative z-10 max-w-[1520px] mx-auto">
+    <div class="relative z-10">
       <!-- Centered Header -->
-      <div class="reveal text-center mb-6">
-        <div class="flex items-center justify-center gap-2 mb-6">
-          <div class="w-4 h-4 bg-white rounded-full flex items-center justify-center"><span class="w-[2px] h-2 bg-dark block"></span></div>
-          <span class="text-base font-medium tracking-tight text-white">Was wir außer Neon anbieten</span>
-        </div>
+      <div class="reveal text-center mb-12 px-6">
         <h2 class="text-[62px] md:text-[144px] font-semibold leading-[0.92] tracking-tighter text-white">Produkte.</h2>
       </div>
 
-      <!-- Product Carousel with Navigation -->
-      <div class="relative mt-12">
-        <!-- Left Arrow -->
-        <button onclick="scrollProducts('left')" class="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center transition-all -translate-x-2 md:-translate-x-6">
-          <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-        </button>
-
-        <!-- Right Arrow -->
-        <button onclick="scrollProducts('right')" class="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center transition-all translate-x-2 md:translate-x-6">
-          <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-        </button>
-
-        <!-- Carousel Container -->
-        <div class="overflow-hidden mx-8 md:mx-16" id="product-carousel">
-          <div class="flex gap-6 transition-transform duration-500 ease-out" id="product-track" style="transform: translateX(0)">
+      <!-- Product Carousel - Smooth Infinite Marquee -->
+      <div class="marquee-mask overflow-hidden">
+        <div class="product-track">
           <!-- Neon LED Schilder -->
           <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
             <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Neon LED Schilder" loading="lazy">
@@ -1583,81 +1567,46 @@
             <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Unbeleuchtet</h3><p class="text-white/75 text-sm">ab 299€</p></div>
           </div>
 
-        </div>
+          <!-- Duplikate für nahtlosen Loop -->
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Neon LED Schilder</h3><p class="text-white/75 text-sm">ab 199€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Vollflächig beleuchtet</h3><p class="text-white/75 text-sm">ab 399€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Frontbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Leuchtkasten</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Marquees Buchstaben</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Rückbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
+          </div>
+          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
+            <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Unbeleuchtet</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          </div>
         </div>
       </div>
     </div>
   </section>
-
-  <script>
-    // Product Carousel Navigation with Auto-Scroll
-    let productScrollPosition = 0;
-    const productCardWidth = 260 + 24; // card width + gap
-    let autoScrollInterval;
-    let autoScrollPaused = false;
-
-    function scrollProducts(direction) {
-      const track = document.getElementById('product-track');
-      const container = document.getElementById('product-carousel');
-      const containerWidth = container.offsetWidth;
-      const totalCards = 7;
-      const maxScroll = (totalCards * productCardWidth) - containerWidth;
-
-      if (direction === 'right') {
-        productScrollPosition += productCardWidth;
-        if (productScrollPosition > maxScroll) {
-          productScrollPosition = 0; // Loop back to start
-        }
-      } else {
-        productScrollPosition -= productCardWidth;
-        if (productScrollPosition < 0) {
-          productScrollPosition = maxScroll; // Loop to end
-        }
-      }
-
-      track.style.transform = `translateX(-${productScrollPosition}px)`;
-
-      // Pause auto-scroll when user clicks, resume after 5 seconds
-      pauseAutoScroll();
-      setTimeout(startAutoScroll, 5000);
-    }
-
-    function startAutoScroll() {
-      if (autoScrollInterval) clearInterval(autoScrollInterval);
-      autoScrollInterval = setInterval(() => {
-        if (!autoScrollPaused) {
-          scrollProductsAuto();
-        }
-      }, 3000); // Scroll every 3 seconds
-    }
-
-    function scrollProductsAuto() {
-      const track = document.getElementById('product-track');
-      const container = document.getElementById('product-carousel');
-      if (!track || !container) return;
-
-      const containerWidth = container.offsetWidth;
-      const totalCards = 7;
-      const maxScroll = (totalCards * productCardWidth) - containerWidth;
-
-      productScrollPosition += productCardWidth;
-      if (productScrollPosition > maxScroll) {
-        productScrollPosition = 0;
-      }
-
-      track.style.transform = `translateX(-${productScrollPosition}px)`;
-    }
-
-    function pauseAutoScroll() {
-      autoScrollPaused = true;
-      setTimeout(() => { autoScrollPaused = false; }, 5000);
-    }
-
-    // Start auto-scroll when page loads
-    document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(startAutoScroll, 2000); // Start after 2 seconds
-    });
-  </script>
 
   <!-- ════════════════════════════════════════
        FAQ (LIGHT)
@@ -1932,49 +1881,67 @@
       <div class="max-w-[1400px] mx-auto">
         <!-- All in one row on desktop (Fabrica-Style with + symbols) -->
         <div class="reveal grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10">
-          <!-- Kontakt -->
-          <div>
-            <span class="text-lg font-light text-dark/30 block mb-4">+</span>
-            <p class="text-sm font-medium text-dark/50 tracking-tight mb-4">Kontakt</p>
-            <div class="flex flex-col gap-2">
-              <p class="text-lg md:text-xl font-semibold text-dark tracking-tight">+49 211 54257240</p>
-              <a href="mailto:support@neontrip.de" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity underline underline-offset-4">support@neontrip.de</a>
-            </div>
-          </div>
-
           <!-- Navigation -->
           <div>
-            <span class="text-lg font-light text-dark/30 block mb-4">+</span>
-            <p class="text-sm font-medium text-dark/50 tracking-tight mb-4">Navigation</p>
+            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Navigation</p>
             <div class="flex flex-col gap-2">
-              <a href="anfrage.html" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Anfrage</a>
-              <a href="#projekte" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Projekte</a>
-              <a href="#bewertungen" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Erfahrungen</a>
-              <a href="#faq" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">FAQ</a>
+              <a href="#projekte" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Projekte</a>
+              <a href="#bewertungen" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Erfahrungen</a>
+              <a href="#faq" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">FAQ</a>
+              <a href="#downloads" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Downloads</a>
             </div>
           </div>
 
           <!-- Produkte -->
           <div>
-            <span class="text-lg font-light text-dark/30 block mb-4">+</span>
-            <p class="text-sm font-medium text-dark/50 tracking-tight mb-4">Produkte</p>
+            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Produkte</p>
             <div class="flex flex-col gap-2">
-              <a href="anfrage.html?produkt=neonschild" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Neon Schilder</a>
-              <a href="anfrage.html?produkt=front" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">3D Buchstaben</a>
-              <a href="anfrage.html?produkt=leuchtkasten" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Leuchtkästen</a>
-              <a href="anfrage.html?produkt=sonder" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Sonderanfertigung</a>
+              <a href="anfrage.html?produkt=neonschild" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Neon Schilder</a>
+              <a href="anfrage.html?produkt=front" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">3D Buchstaben</a>
+              <a href="anfrage.html?produkt=leuchtkasten" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Leuchtkästen</a>
+              <a href="anfrage.html?produkt=sonder" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Sonderanfertigung</a>
             </div>
           </div>
 
           <!-- Service -->
           <div>
-            <span class="text-lg font-light text-dark/30 block mb-4">+</span>
-            <p class="text-sm font-medium text-dark/50 tracking-tight mb-4">Service</p>
+            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Service</p>
             <div class="flex flex-col gap-2">
-              <a href="#downloads" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Downloads</a>
-              <a href="agb.html" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">AGB</a>
-              <a href="datenschutz.html" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Datenschutz</a>
-              <a href="impressum.html" class="text-lg md:text-xl font-semibold text-dark tracking-tight hover:opacity-70 transition-opacity">Impressum</a>
+              <a href="agb.html" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">AGB</a>
+              <a href="datenschutz.html" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Datenschutz</a>
+              <a href="impressum.html" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Impressum</a>
+            </div>
+          </div>
+
+          <!-- Kontaktiere uns -->
+          <div>
+            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Kontaktiere uns</p>
+            <p class="text-sm text-dark/60 mb-4">Wir antworten innerhalb 24h</p>
+
+            <a href="anfrage.html" class="inline-flex items-center gap-2 bg-dark text-white text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-dark/90 transition-colors mb-5">
+              Kontaktformular
+            </a>
+
+            <div class="text-sm text-dark/60 space-y-1 mb-5">
+              <p>Mo. - Fr. 9:00 - 17:00 Uhr</p>
+              <p class="font-medium text-dark">+49 211 54257240</p>
+              <a href="mailto:support@neontrip.de" class="text-dark hover:underline">support@neontrip.de</a>
+            </div>
+
+            <!-- Social Icons -->
+            <div class="flex items-center gap-3">
+              <a href="https://instagram.com/neontrip.de" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="Instagram">
+                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+              </a>
+              <a href="https://facebook.com/neontrip.de" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="Facebook">
+                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+              </a>
+              <a href="https://linkedin.com/company/neontrip" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="LinkedIn">
+                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+              </a>
+              <a href="https://tiktok.com/@neontrip.de" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="TikTok">
+                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+              </a>
             </div>
           </div>
 
