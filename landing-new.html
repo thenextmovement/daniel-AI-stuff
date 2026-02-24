@@ -1842,22 +1842,22 @@
   </section>
 
   <!-- ════════════════════════════════════════
-       KONTAKT (Sie planen ein Projekt?)
+       KONTAKT (Projekt geplant?)
        ════════════════════════════════════════ -->
   <section id="kontakt" class="snap-section bg-dark min-h-screen flex items-center py-12 md:py-16 px-5 md:px-8">
     <div class="max-w-[1200px] mx-auto w-full">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
 
         <!-- Form -->
         <div class="reveal">
           <form action="https://api.neontrip.de/anfrage" method="POST" class="bg-white rounded-2xl p-6 md:p-8" id="kontakt-form">
             <div class="flex items-center gap-3 mb-5">
               <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594" class="w-8 h-8" alt="NEONTRIP">
-              <h3 class="text-xl md:text-2xl font-semibold tracking-tight text-dark leading-[1.1]">Sie planen <span class="text-dark/50">ein Projekt?</span></h3>
+              <h3 class="text-xl md:text-2xl font-semibold tracking-tight text-dark leading-[1.1]">Projekt <span class="text-dark/50">geplant?</span></h3>
             </div>
             <div class="flex flex-col gap-3 mb-5">
               <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Ihr Name*</label>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Name*</label>
                 <input type="text" name="name" placeholder="Name" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
               </div>
               <div>
@@ -1866,41 +1866,58 @@
               </div>
               <div>
                 <label class="text-xs font-medium text-dark tracking-tight mb-1 block">E-Mail*</label>
-                <input type="email" name="email" placeholder="Email" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+                <input type="email" name="email" placeholder="E-Mail" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
               </div>
               <div>
                 <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefonnummer</label>
-                <input type="tel" name="telefon" placeholder="Telefon" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+                <input type="tel" name="telefon" placeholder="Telefon (optional)" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
               </div>
               <div>
                 <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Nachricht*</label>
-                <textarea name="nachricht" placeholder="Beschreiben Sie Ihr Projekt" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20 resize-y" style="min-height: 80px;"></textarea>
+                <textarea name="nachricht" placeholder="Projektbeschreibung" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20 resize-y" style="min-height: 80px;"></textarea>
               </div>
             </div>
             <button type="submit" class="w-full bg-dark text-white font-semibold text-sm tracking-tight py-3 rounded-full hover:opacity-90 transition-opacity">Unverbindlich anfragen</button>
-            <p class="text-[10px] font-medium text-dark/50 tracking-tight mt-2 text-center">Mit dem Absenden erklären Sie sich mit unseren Datenschutzbestimmungen einverstanden.</p>
+            <p class="text-[10px] font-medium text-dark/50 tracking-tight mt-2 text-center">Mit dem Absenden werden die Datenschutzbestimmungen akzeptiert.</p>
           </form>
         </div>
 
-        <!-- Text Content -->
-        <div class="reveal flex flex-col gap-6">
+        <!-- Text Content + Contact Card -->
+        <div class="reveal flex flex-col justify-between">
+          <!-- Text oben -->
           <div>
-            <h2 class="text-[40px] md:text-[56px] font-semibold leading-[0.95] tracking-tighter text-white mb-4">Lassen Sie uns reden.</h2>
-            <p class="text-base md:text-lg font-medium tracking-tight leading-relaxed">
-              <span class="text-white">Erzählen Sie uns von Ihrem Projekt</span><span class="text-white/50"> – egal ob Neonschild, 3D Buchstaben, Leuchtkästen oder Sonderanfertigung.</span>
+            <h2 class="text-[40px] md:text-[56px] font-semibold leading-[0.95] tracking-tighter text-white mb-4">Persönliche Beratung.</h2>
+            <p class="text-base md:text-lg font-medium tracking-tight leading-relaxed mb-6">
+              <span class="text-white">Mehr über das Projekt erfahren</span><span class="text-white/50"> – egal ob Neonschild, 3D Buchstaben, Leuchtkästen oder Sonderanfertigung.</span>
             </p>
+
+            <div class="h-px bg-white/10 mb-6"></div>
+
+            <div class="flex flex-col gap-4 mb-8">
+              <div>
+                <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Telefonische Beratung</h4>
+                <p class="text-sm font-medium text-white/50 tracking-tight">Erreichbar Mo–Fr 9–17 Uhr: <a href="tel:+4921154257240" class="text-white hover:underline">+49 211 54257240</a></p>
+              </div>
+              <div>
+                <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Angebot in 24 Stunden</h4>
+                <p class="text-sm font-medium text-white/50 tracking-tight">Schnelle Rückmeldung mit kostenloser 3D-Vorschau.</p>
+              </div>
+            </div>
           </div>
 
-          <div class="h-px bg-white/10"></div>
-
-          <div class="flex flex-col gap-4">
-            <div>
-              <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Telefonische Beratung</h4>
-              <p class="text-sm font-medium text-white/50 tracking-tight">Wir unterstützen Sie gerne: <a href="tel:+4921154257240" class="text-white hover:underline">+49 211 54257240</a></p>
+          <!-- Contact Card unten -->
+          <div class="flex items-center gap-4 bg-white rounded-2xl p-1.5">
+            <div class="w-[100px] h-[140px] rounded-xl overflow-hidden shrink-0">
+              <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" class="w-full h-full object-cover" alt="Fabienne Trapp">
             </div>
-            <div>
-              <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Angebot in 24 Stunden</h4>
-              <p class="text-sm font-medium text-white/50 tracking-tight">Schnelle Rückmeldung mit kostenloser 3D-Vorschau.</p>
+            <div class="py-3 pr-4">
+              <p class="text-sm font-semibold tracking-tight text-dark">Head of Customer Experience</p>
+              <p class="text-xs font-semibold tracking-tight text-dark/60 mb-2">bei NEONTRIP</p>
+              <p class="text-xl font-semibold tracking-tight text-dark leading-tight mb-3">Fabienne Trapp</p>
+              <a href="mailto:info@neontrip.de" class="inline-flex items-center gap-2 bg-dark text-white text-xs font-semibold tracking-tight px-3 py-2 rounded-full hover:bg-dark/80 transition-colors">
+                Jetzt Anfragen
+                <span class="w-2 h-2 bg-white rounded-full"></span>
+              </a>
             </div>
           </div>
         </div>
