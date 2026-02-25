@@ -430,9 +430,185 @@
     /* Hide scrollbar but keep functionality */
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+    /* ═══════════════════════════════════════
+       CUSTOM CURSOR (Neon Glow)
+       ═══════════════════════════════════════ */
+    @media (pointer: fine) {
+      body { cursor: none; }
+      a, button, [role="button"], input, textarea, select, label { cursor: none; }
+    }
+
+    .cursor-dot {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 8px;
+      height: 8px;
+      background: #810180;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 99999;
+      transform: translate(-50%, -50%);
+      transition: transform 0.1s ease, width 0.2s ease, height 0.2s ease, background 0.2s ease;
+      mix-blend-mode: difference;
+    }
+
+    .cursor-glow {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 40px;
+      height: 40px;
+      background: radial-gradient(circle, rgba(129, 1, 128, 0.4) 0%, rgba(129, 1, 128, 0) 70%);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 99998;
+      transform: translate(-50%, -50%);
+      transition: transform 0.15s ease-out, width 0.3s ease, height 0.3s ease, opacity 0.3s ease;
+    }
+
+    .cursor-dot.hover {
+      width: 12px;
+      height: 12px;
+      background: #fff;
+    }
+
+    .cursor-glow.hover {
+      width: 60px;
+      height: 60px;
+      background: radial-gradient(circle, rgba(129, 1, 128, 0.6) 0%, rgba(129, 1, 128, 0) 70%);
+    }
+
+    .cursor-dot.clicking {
+      transform: translate(-50%, -50%) scale(0.8);
+    }
+
+    .cursor-glow.clicking {
+      width: 30px;
+      height: 30px;
+    }
+
+    /* Hide cursor on mobile */
+    @media (pointer: coarse) {
+      .cursor-dot, .cursor-glow { display: none; }
+    }
+
+    /* ═══════════════════════════════════════
+       HERO MOUSE SPOTLIGHT
+       ═══════════════════════════════════════ */
+    .hero-spotlight {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .hero-spotlight.active {
+      opacity: 1;
+    }
+
+    /* ═══════════════════════════════════════
+       ANIMATED GRID BACKGROUND
+       ═══════════════════════════════════════ */
+    .grid-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .grid-bg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      animation: gridMove 20s linear infinite;
+    }
+
+    @keyframes gridMove {
+      0% { transform: translate(0, 0); }
+      100% { transform: translate(60px, 60px); }
+    }
+
+    /* Gradient orbs floating in background */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.4;
+      animation: orbFloat 15s ease-in-out infinite;
+    }
+
+    .orb-1 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(129, 1, 128, 0.6) 0%, transparent 70%);
+      top: 10%;
+      left: 10%;
+      animation-delay: 0s;
+    }
+
+    .orb-2 {
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(129, 1, 128, 0.4) 0%, transparent 70%);
+      bottom: 20%;
+      right: 15%;
+      animation-delay: -5s;
+    }
+
+    .orb-3 {
+      width: 250px;
+      height: 250px;
+      background: radial-gradient(circle, rgba(129, 1, 128, 0.3) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation-delay: -10s;
+    }
+
+    @keyframes orbFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(30px, -20px) scale(1.1); }
+      50% { transform: translate(-20px, 30px) scale(0.95); }
+      75% { transform: translate(20px, 20px) scale(1.05); }
+    }
+
+    /* Glow line at bottom of hero */
+    .glow-line {
+      position: absolute;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, rgba(129, 1, 128, 0.5) 50%, transparent 100%);
+      z-index: 2;
+    }
+
+    .glow-line::after {
+      content: '';
+      position: absolute;
+      inset: -10px 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(129, 1, 128, 0.2) 50%, transparent 100%);
+      filter: blur(10px);
+    }
   </style>
 </head>
 <body class="bg-white text-dark overflow-x-hidden" style="overflow: hidden;">
+
+  <!-- ════════════════════════════════════════
+       CUSTOM CURSOR
+       ════════════════════════════════════════ -->
+  <div class="cursor-dot" id="cursor-dot"></div>
+  <div class="cursor-glow" id="cursor-glow"></div>
 
   <!-- ════════════════════════════════════════
        SPLASH SCREEN
@@ -511,11 +687,25 @@
        HERO (DARK)
        ════════════════════════════════════════ -->
   <section id="hero" class="snap-section relative min-h-screen flex items-center bg-dark overflow-hidden">
+    <!-- Animated Grid Background -->
+    <div class="grid-bg"></div>
+
+    <!-- Floating Orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- Mouse Spotlight -->
+    <div class="hero-spotlight" id="hero-spotlight"></div>
+
     <!-- Video Background -->
     <div class="absolute inset-0 z-0">
-      <video src="https://framerusercontent.com/assets/WhJOogHlaNXHRzlzRWUyNpmLgB8.mp4" autoplay loop muted playsinline class="w-full h-full object-cover opacity-50"></video>
-      <div class="absolute inset-0 bg-gradient-to-b from-dark/30 via-transparent to-dark/60"></div>
+      <video src="https://framerusercontent.com/assets/WhJOogHlaNXHRzlzRWUyNpmLgB8.mp4" autoplay loop muted playsinline class="w-full h-full object-cover opacity-40"></video>
+      <div class="absolute inset-0 bg-gradient-to-b from-dark/40 via-transparent to-dark/70"></div>
     </div>
+
+    <!-- Glow Line -->
+    <div class="glow-line"></div>
 
     <div class="relative z-10 w-full max-w-[1400px] mx-auto px-5 md:px-8 py-32 md:py-40">
       <div class="max-w-[900px] mx-auto text-center">
@@ -2334,6 +2524,100 @@
         }
       });
     });
+
+    // ═══════════════════════════════════════
+    // CUSTOM CURSOR
+    // ═══════════════════════════════════════
+    const cursorDot = document.getElementById('cursor-dot');
+    const cursorGlow = document.getElementById('cursor-glow');
+
+    if (cursorDot && cursorGlow && window.matchMedia('(pointer: fine)').matches) {
+      let mouseX = 0, mouseY = 0;
+      let dotX = 0, dotY = 0;
+      let glowX = 0, glowY = 0;
+
+      // Track mouse position
+      document.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      });
+
+      // Smooth cursor animation
+      function animateCursor() {
+        // Dot follows immediately
+        dotX += (mouseX - dotX) * 0.3;
+        dotY += (mouseY - dotY) * 0.3;
+        cursorDot.style.left = dotX + 'px';
+        cursorDot.style.top = dotY + 'px';
+
+        // Glow follows with delay
+        glowX += (mouseX - glowX) * 0.15;
+        glowY += (mouseY - glowY) * 0.15;
+        cursorGlow.style.left = glowX + 'px';
+        cursorGlow.style.top = glowY + 'px';
+
+        requestAnimationFrame(animateCursor);
+      }
+      animateCursor();
+
+      // Hover effects on interactive elements
+      const interactiveElements = document.querySelectorAll('a, button, [role="button"], input, textarea, select, label, .card-hover, .img-zoom');
+      interactiveElements.forEach(el => {
+        el.addEventListener('mouseenter', () => {
+          cursorDot.classList.add('hover');
+          cursorGlow.classList.add('hover');
+        });
+        el.addEventListener('mouseleave', () => {
+          cursorDot.classList.remove('hover');
+          cursorGlow.classList.remove('hover');
+        });
+      });
+
+      // Click effect
+      document.addEventListener('mousedown', () => {
+        cursorDot.classList.add('clicking');
+        cursorGlow.classList.add('clicking');
+      });
+      document.addEventListener('mouseup', () => {
+        cursorDot.classList.remove('clicking');
+        cursorGlow.classList.remove('clicking');
+      });
+
+      // Hide cursor when leaving window
+      document.addEventListener('mouseleave', () => {
+        cursorDot.style.opacity = '0';
+        cursorGlow.style.opacity = '0';
+      });
+      document.addEventListener('mouseenter', () => {
+        cursorDot.style.opacity = '1';
+        cursorGlow.style.opacity = '1';
+      });
+    }
+
+    // ═══════════════════════════════════════
+    // HERO MOUSE SPOTLIGHT
+    // ═══════════════════════════════════════
+    const heroSpotlight = document.getElementById('hero-spotlight');
+    const heroSectionEl = document.getElementById('hero');
+
+    if (heroSpotlight && heroSectionEl) {
+      heroSectionEl.addEventListener('mouseenter', () => {
+        heroSpotlight.classList.add('active');
+      });
+
+      heroSectionEl.addEventListener('mouseleave', () => {
+        heroSpotlight.classList.remove('active');
+      });
+
+      heroSectionEl.addEventListener('mousemove', (e) => {
+        const rect = heroSectionEl.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Create gradient spotlight following mouse
+        heroSpotlight.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(129, 1, 128, 0.15), transparent 50%)`;
+      });
+    }
 
   </script>
 
