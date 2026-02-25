@@ -344,7 +344,7 @@
     }
     .review-track { display: flex; width: max-content; }
     .review-track:hover { animation-play-state: paused; }
-    .marquee-track-seamless { display: flex; animation: marquee 40s linear infinite; width: max-content; }
+    .marquee-track-seamless { display: flex; animation: marquee 90s linear infinite; width: max-content; }
 
     /* Product Carousel */
     .product-track { display: flex; gap: 24px; animation: marquee 25s linear infinite; }
@@ -451,10 +451,10 @@
        HEADER
        ════════════════════════════════════════ -->
   <header id="header" class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-black/5">
-    <div class="max-w-[1520px] mx-auto flex items-center h-[60px] px-5 md:px-8">
+    <div class="max-w-[1520px] mx-auto flex items-center py-5 px-5 md:px-8">
       <!-- Logo (black) -->
       <a href="#" class="header-logo shrink-0 transition-all duration-300">
-        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-7 md:h-8 w-auto">
+        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-8 lg:h-10 w-auto">
       </a>
 
       <!-- Nav Links (compact spacing like sygns) -->
@@ -637,307 +637,135 @@
   <!-- ════════════════════════════════════════
        PROJEKTE (LIGHT)
        ════════════════════════════════════════ -->
-  <section id="projekte" class="snap-section bg-light py-10 md:py-14">
-    <div class="max-w-[1520px] mx-auto px-5 md:px-8">
-      <!-- Centered Header (Fabrica-Style) -->
-      <div class="reveal text-center mb-6 md:mb-8">
+  <section id="projekte" class="snap-section bg-light py-12 md:py-16">
+    <div class="max-w-[1400px] mx-auto px-5 md:px-8 w-full">
+      <!-- Centered Header -->
+      <div class="reveal text-center mb-8 md:mb-12">
         <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-4">Projekte.</h2>
         <p class="max-w-[450px] mx-auto text-base md:text-lg font-medium text-dark/50 tracking-tight leading-snug">
           <span class="text-dark">LED Leuchtreklame & Firmenschilder</span> für Agenturen, Marken und Unternehmen.
         </p>
       </div>
 
-      <!-- Project Grid -->
-      <div id="project-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 md:gap-3">
+      <!-- Sygns-Style Masonry Grid -->
+      <div id="project-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
 
-        <!-- Gastronomie & Bar: POAS Club -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Gastronomie & Bar</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ POAS Club</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/events-clubs/poas-club-neon.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="POAS Club LED Neon Schild Bar Leuchtreklame Gastronomie" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">POAS Club Düsseldorf</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 1: Büro & Empfang - 4flow (Tall) -->
+        <a href="anfrage.html?produkt=halo-buchstaben" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer row-span-2" style="aspect-ratio: 3/4;">
+          <img src="assets/images/office-empfang/it-titans-holzlamellen.webp" class="w-full h-full object-cover" alt="4flow 3D Buchstaben Büro" loading="lazy">
+          <!-- Hover: White Card Overlay -->
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-sm font-medium text-dark/50 mb-1">Büro | Buchstaben</p>
+            <h3 class="text-lg font-semibold text-dark text-center mb-4">4flow</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-xs font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
-        <!-- Gastronomie & Bar: Vinos -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.05s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Gastronomie & Bar</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Vino's Weinbar</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/gastronomie/vinos-weinbar.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Vinos Weinbar LED Neonschild Leuchtreklame Gastronomie" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">Vino's Weinbar</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 2: Marken & Branding - Audi (Square) -->
+        <a href="anfrage.html?produkt=neonschild" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer" style="aspect-ratio: 1/1;">
+          <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="Audi LED Neonschild" loading="lazy">
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-xs font-medium text-dark/50 mb-1">Marken | LED Neon</p>
+            <h3 class="text-base font-semibold text-dark text-center mb-3">Audi</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-[10px] font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
-        <!-- Messe & Event: Billie -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.1s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Messe & Event</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Billie Payments</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/messe/billie-messestand.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Billie Payments Messestand LED Leuchtschild für Messe" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">Billie Payments Messestand</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 3: Messe & Event - AHK (Tall) -->
+        <a href="anfrage.html?produkt=neonschild" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer row-span-2" style="aspect-ratio: 3/4;">
+          <img src="assets/images/messe/billie-messestand.webp" class="w-full h-full object-cover" alt="AHK Messestand LED" loading="lazy">
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-sm font-medium text-dark/50 mb-1">Messe | LED Neon</p>
+            <h3 class="text-lg font-semibold text-dark text-center mb-4">AHK Messestand</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-xs font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
-        <!-- Büro & Empfang: IT Titans -->
-        <a href="anfrage.html?produkt=halo-buchstaben" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.15s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Büro & Empfang</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ IT Titans</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/office-empfang/it-titans-holzlamellen.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="IT Titans LED Firmenschild beleuchtet Büro Empfang" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">3D Buchstaben (Halo)</span>
-              <span class="text-white font-semibold text-sm mb-3">IT Titans Empfangsbereich</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 4: Fitness - BECYCLE (Square) -->
+        <a href="anfrage.html?produkt=neonschild" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer" style="aspect-ratio: 1/1;">
+          <img src="assets/images/fitness/contact-gym-logo.webp" class="w-full h-full object-cover" alt="BECYCLE Fitnessstudio LED" loading="lazy">
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-xs font-medium text-dark/50 mb-1">Fitness | LED Neon</p>
+            <h3 class="text-base font-semibold text-dark text-center mb-3">BECYCLE</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-[10px] font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
-        <!-- Messe & Event: KEEZY Targobank -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Messe & Event</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ KEEZY × Targobank</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/events-clubs/keezy-event-targobank.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="KEEZY Targobank LED Neonschild Event Messe Leuchtreklame" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">KEEZY × Targobank Event</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 5: Büro - d5 (Square) -->
+        <a href="anfrage.html?produkt=halo-buchstaben" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer" style="aspect-ratio: 1/1;">
+          <img src="assets/images/office-empfang/gwa-studio-logo.webp" class="w-full h-full object-cover" alt="d5 3D Buchstaben" loading="lazy">
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-xs font-medium text-dark/50 mb-1">Büro | 3D Buchstaben</p>
+            <h3 class="text-base font-semibold text-dark text-center mb-3">digital 5a</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-[10px] font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
-        <!-- Gastronomie & Bar + Logo & Branding: Aperol -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.05s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Logo & Branding</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Aperol Spritz</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/gastronomie/aperol-spritz-quallen.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Aperol Spritz LED Neon Logo Firmenlogo beleuchtet Markenbranding" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">Aperol Spritz Markenbranding</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 6: Gastronomie - Pilates (Square) -->
+        <a href="anfrage.html?produkt=neonschild" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer" style="aspect-ratio: 1/1;">
+          <img src="assets/images/gastronomie/vinos-weinbar.webp" class="w-full h-full object-cover" alt="Everybody Needs Pilates LED" loading="lazy">
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-xs font-medium text-dark/50 mb-1">Fitness | LED Neon</p>
+            <h3 class="text-base font-semibold text-dark text-center mb-3">Pilates Studio</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-[10px] font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
-        <!-- Logo & Branding: Wahr & Klar -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.1s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Logo & Branding</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Wahr & Klar Podcast</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="https://framerusercontent.com/images/vDFpcSxvuMN1dWhrmMP5QMtd0.png?width=2560&height=1434" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Wahr und Klar Podcast LED Neonschild Logo beleuchtet" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">Wahr & Klar Podcast Studio</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 7: Events - MIRAKE (Wide) -->
+        <a href="anfrage.html?produkt=neonschild" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer" style="aspect-ratio: 1/1;">
+          <img src="assets/images/events-clubs/poas-club-neon.webp" class="w-full h-full object-cover" alt="MIRAKE Event LED" loading="lazy">
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-xs font-medium text-dark/50 mb-1">Events | LED Neon</p>
+            <h3 class="text-base font-semibold text-dark text-center mb-3">MIRAKE</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-[10px] font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
-        <!-- Büro & Empfang + Logo & Branding: GWA Studio -->
-        <a href="anfrage.html?produkt=halo-buchstaben" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.15s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Büro & Empfang</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ G.W.A. Studio</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/office-empfang/gwa-studio-logo.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="G.W.A. Studio LED Firmenschild für Empfangsbereich" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">3D Buchstaben (Halo)</span>
-              <span class="text-white font-semibold text-sm mb-3">G.W.A. Studio Empfang</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
-            </div>
-          </div>
-        </a>
-
-        <!-- Fitness & Wellness: Contact Gym -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Fitness & Wellness</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Contact Gym</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/fitness/contact-gym-logo.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Contact Gym LED Neon Logo für Fitnessstudio" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">Contact Gym Fitnessstudio</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
-            </div>
-          </div>
-        </a>
-
-        <!-- Logo & Branding: Bezzer Quizzer -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.05s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Logo & Branding</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Bezzer Quizzer</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/marken-branding/bezzer-quizzer-01.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Bezzer Quizzer LED Leuchtschild für Markenbranding" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">Bezzer Quizzer</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
-            </div>
-          </div>
-        </a>
-
-        <!-- Einzelhandel & Ladenbau: Galaxy Kiosk -->
-        <a href="anfrage.html?produkt=leuchtkasten" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.1s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Einzelhandel & Ladenbau</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Galaxy Kiosk</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/gastronomie/galaxy-kiosk-cafe.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Galaxy Kiosk Café LED Ladenschild beleuchtet" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">Leuchtkasten</span>
-              <span class="text-white font-semibold text-sm mb-3">Galaxy Kiosk & Café</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
-            </div>
-          </div>
-        </a>
-
-        <!-- Fitness & Wellness: Fitbox -->
-        <a href="anfrage.html?produkt=neonschild" class="reveal project-card card-hover group rounded-xl overflow-hidden bg-white border border-black/5 cursor-pointer" style="transition-delay: 0.15s;">
-          <div class="flex items-center justify-between px-3 py-2 bg-white">
-            <div class="flex items-end gap-3">
-              <span class="text-sm font-semibold tracking-tight text-dark">Fitness & Wellness</span>
-              <span class="text-[10px] font-medium text-dark/50 hidden sm:inline">/ Fitbox</span>
-            </div>
-            <div class="flex gap-[2px]"><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span><span class="w-1.5 h-1.5 rounded-full bg-gray-200"></span></div>
-          </div>
-          <div class="relative aspect-[3/2] rounded-lg overflow-hidden mx-1 mb-1 bg-light">
-            <img src="assets/images/gastronomie/fitbox-mooswand.webp" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Fitbox LED Neonschild mit Mooswand für Fitnessstudio" loading="lazy">
-            <!-- Hover Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 z-20">
-              <span class="text-white/70 text-xs font-medium mb-1">LED Neonschild</span>
-              <span class="text-white font-semibold text-sm mb-3">Fitbox Fitnessstudio</span>
-              <span class="inline-flex items-center gap-1.5 bg-white text-dark text-xs font-semibold px-3 py-1.5 rounded-full w-fit">
-                Jetzt anfragen
-                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+        <!-- 8: Retail - ace & tate (Square) -->
+        <a href="anfrage.html?produkt=leuchtkasten" class="reveal project-card group relative rounded-xl overflow-hidden cursor-pointer" style="aspect-ratio: 1/1;">
+          <img src="assets/images/gastronomie/aperol-spritz-quallen.webp" class="w-full h-full object-cover" alt="ace & tate Leuchtschild" loading="lazy">
+          <div class="absolute inset-0 bg-white flex flex-col items-center justify-center p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p class="text-xs font-medium text-dark/50 mb-1">Retail | Leuchtkasten</p>
+            <h3 class="text-base font-semibold text-dark text-center mb-3">ace & tate</h3>
+            <div class="flex items-center gap-2 text-dark/50">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span class="text-[10px] font-medium">Klick zum Vergrößern</span>
             </div>
           </div>
         </a>
 
       </div>
 
-      <!-- Load More / CTA -->
-      <div class="reveal flex justify-center mt-12">
+      <!-- CTA Button -->
+      <div class="reveal flex justify-center mt-10">
         <a href="anfrage.html" class="inline-flex items-center gap-3 bg-dark text-white font-semibold text-sm px-8 py-4 rounded-full hover:bg-dark/90 hover:scale-105 transition-all duration-200">
-          Projekt anfragen
-          <svg class="w-4 h-4 arrow-animate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          Alle Projekte ansehen
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
       </div>
     </div>
   </section>
-
   <!-- ════════════════════════════════════════
        PRODUKT-AUSWAHL (DARK - Conversion Focus)
        ════════════════════════════════════════ -->
@@ -1305,69 +1133,88 @@
   </section>
 
   <!-- ════════════════════════════════════════
-       USPs (WHITE)
+       USPs (LIGHT - Attention Grabbing with Animated Icons)
        ════════════════════════════════════════ -->
-  <section class="snap-section bg-white py-8 md:py-10">
+  <style>
+    /* Icon Animations */
+    @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes wiggle { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+    @keyframes drive { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+    @keyframes pulse-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    @keyframes bounce-subtle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+    .icon-spin { animation: spin-slow 8s linear infinite; }
+    .icon-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+    .icon-drive { animation: drive 1.5s ease-in-out infinite; }
+    .icon-pulse { animation: pulse-glow 2s ease-in-out infinite; }
+    .icon-bounce { animation: bounce-subtle 2s ease-in-out infinite; }
+
+    .group:hover .icon-spin { animation-duration: 2s; }
+    .group:hover .icon-wiggle { animation-duration: 0.3s; }
+  </style>
+
+  <section class="snap-section bg-light py-12 md:py-16 overflow-hidden">
     <div class="max-w-[1400px] mx-auto px-5 md:px-8">
-      <!-- Centered Header (Fabrica-Style) -->
-      <div class="reveal text-center mb-8 md:mb-10">
-        <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-4">Vorteile.</h2>
-        <p class="text-lg md:text-xl font-medium text-dark/50 tracking-tight max-w-[500px] mx-auto">Premium Qualität, schnelle Lieferung, persönlicher Service</p>
+      <!-- Centered Header -->
+      <div class="reveal text-center mb-6 md:mb-8">
+        <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-3">Vorteile.</h2>
+        <p class="text-lg md:text-xl font-medium text-dark/40 tracking-tight max-w-[500px] mx-auto">Premium Qualität, schnelle Lieferung, persönlicher Service</p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <!-- USP 1 -->
-        <div class="reveal card-hover bg-light rounded-xl p-6 text-center">
-          <div class="w-10 h-10 rounded-lg bg-dark flex items-center justify-center mb-4 mx-auto">
-            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      <!-- All 6 USPs in uniform grid - centered -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        <!-- USP 1: Express -->
+        <div class="reveal group relative bg-white rounded-2xl p-8 border border-black/5 hover:border-black/10 hover:shadow-lg transition-all duration-300 text-center">
+          <div class="w-16 h-16 rounded-xl bg-dark flex items-center justify-center mx-auto mb-5">
+            <svg class="w-8 h-8 text-white icon-drive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-dark mb-2">Express in 3 Tagen</h3>
-          <p class="text-sm text-dark/60 leading-relaxed">Schnelle Produktion und Lieferung europaweit. Bei Eilaufträgen auch in 3-4 Tagen möglich.</p>
+          <h3 class="text-xl font-semibold text-dark mb-2 tracking-tight">Express in 3 Tagen</h3>
+          <p class="text-sm text-dark/50 leading-relaxed">Schnelle Produktion und Lieferung europaweit. Bei Eilaufträgen auch in 3-4 Tagen möglich.</p>
         </div>
 
-        <!-- USP 2 -->
-        <div class="reveal card-hover bg-light rounded-xl p-6 text-center" style="transition-delay: 0.1s;">
-          <div class="w-10 h-10 rounded-lg bg-dark flex items-center justify-center mb-4 mx-auto">
-            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <!-- USP 2: 24h Entwurf -->
+        <div class="reveal group relative bg-white rounded-2xl p-8 border border-black/5 hover:border-black/10 hover:shadow-lg transition-all duration-300 text-center" style="transition-delay: 0.05s;">
+          <div class="w-16 h-16 rounded-xl bg-dark flex items-center justify-center mx-auto mb-5">
+            <svg class="w-8 h-8 text-white icon-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-dark mb-2">Entwurf in 24 Stunden</h3>
-          <p class="text-sm text-dark/60 leading-relaxed">Kostenlose Visualisierung vom Logo als Leuchtschild. Inklusive Angebot und Maßangaben.</p>
+          <h3 class="text-xl font-semibold text-dark mb-2 tracking-tight">Entwurf in 24 Stunden</h3>
+          <p class="text-sm text-dark/50 leading-relaxed">Kostenlose Visualisierung vom Logo als Leuchtschild. Inklusive Angebot und Maßangaben.</p>
         </div>
 
-        <!-- USP 3 -->
-        <div class="reveal card-hover bg-light rounded-xl p-6 text-center" style="transition-delay: 0.2s;">
-          <div class="w-10 h-10 rounded-lg bg-dark flex items-center justify-center mb-4 mx-auto">
-            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        <!-- USP 3: 30 Min Rückruf -->
+        <div class="reveal group relative bg-white rounded-2xl p-8 border border-black/5 hover:border-black/10 hover:shadow-lg transition-all duration-300 text-center" style="transition-delay: 0.1s;">
+          <div class="w-16 h-16 rounded-xl bg-dark flex items-center justify-center mx-auto mb-5">
+            <svg class="w-8 h-8 text-white icon-wiggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-dark mb-2">Rückruf in 30 Minuten</h3>
-          <p class="text-sm text-dark/60 leading-relaxed">Persönliche Beratung durch unsere Experten. Zeitnaher Rückruf garantiert.</p>
+          <h3 class="text-xl font-semibold text-dark mb-2 tracking-tight">Rückruf in 30 Minuten</h3>
+          <p class="text-sm text-dark/50 leading-relaxed">Persönliche Beratung durch unsere Experten. Zeitnaher Rückruf garantiert.</p>
         </div>
 
-        <!-- USP 4 -->
-        <div class="reveal card-hover bg-light rounded-xl p-6 text-center">
-          <div class="w-10 h-10 rounded-lg bg-dark flex items-center justify-center mb-4 mx-auto">
-            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <!-- USP 4: 24 Monate Garantie -->
+        <div class="reveal group relative bg-white rounded-2xl p-8 border border-black/5 hover:border-black/10 hover:shadow-lg transition-all duration-300 text-center">
+          <div class="w-16 h-16 rounded-xl bg-dark flex items-center justify-center mx-auto mb-5">
+            <svg class="w-8 h-8 text-white icon-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-dark mb-2">24 Monate Garantie</h3>
-          <p class="text-sm text-dark/60 leading-relaxed">Auf alle Produkte. Verlängerbar für gewerbliche Dauerinstallationen.</p>
+          <h3 class="text-xl font-semibold text-dark mb-2 tracking-tight">24 Monate Garantie</h3>
+          <p class="text-sm text-dark/50 leading-relaxed">Auf alle Produkte. Verlängerbar für gewerbliche Dauerinstallationen.</p>
         </div>
 
-        <!-- USP 5 -->
-        <div class="reveal card-hover bg-light rounded-xl p-6 text-center" style="transition-delay: 0.1s;">
-          <div class="w-10 h-10 rounded-lg bg-dark flex items-center justify-center mb-4 mx-auto">
-            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <!-- USP 5: 10 Jahre Lebensdauer -->
+        <div class="reveal group relative bg-white rounded-2xl p-8 border border-black/5 hover:border-black/10 hover:shadow-lg transition-all duration-300 text-center" style="transition-delay: 0.05s;">
+          <div class="w-16 h-16 rounded-xl bg-dark flex items-center justify-center mx-auto mb-5">
+            <svg class="w-8 h-8 text-white icon-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-dark mb-2">10 Jahre Lebensdauer</h3>
-          <p class="text-sm text-dark/60 leading-relaxed">Hochwertige Premium-LEDs mit über 110.000 Betriebsstunden.</p>
+          <h3 class="text-xl font-semibold text-dark mb-2 tracking-tight">10 Jahre Lebensdauer</h3>
+          <p class="text-sm text-dark/50 leading-relaxed">Hochwertige Premium-LEDs mit über 110.000 Betriebsstunden.</p>
         </div>
 
-        <!-- USP 6 -->
-        <div class="reveal card-hover bg-light rounded-xl p-6 text-center" style="transition-delay: 0.2s;">
-          <div class="w-10 h-10 rounded-lg bg-dark flex items-center justify-center mb-4 mx-auto">
-            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <!-- USP 6: Showroom -->
+        <div class="reveal group relative bg-white rounded-2xl p-8 border border-black/5 hover:border-black/10 hover:shadow-lg transition-all duration-300 text-center" style="transition-delay: 0.1s;">
+          <div class="w-16 h-16 rounded-xl bg-dark flex items-center justify-center mx-auto mb-5">
+            <svg class="w-8 h-8 text-white icon-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-dark mb-2">Showroom Düsseldorf</h3>
-          <p class="text-sm text-dark/60 leading-relaxed">Showroom-Besuch mit Beispielexemplaren zum Anfassen. Termin auf Anfrage.</p>
+          <h3 class="text-xl font-semibold text-dark mb-2 tracking-tight">Showroom Düsseldorf</h3>
+          <p class="text-sm text-dark/50 leading-relaxed">Showroom-Besuch mit Beispielexemplaren zum Anfassen. Termin auf Anfrage.</p>
         </div>
       </div>
     </div>
@@ -1454,108 +1301,189 @@
   </script>
 
   <!-- ════════════════════════════════════════
-       PRODUKTE (Dark Carousel)
+       ANFRAGE FORMULAR (DARK - Split Layout)
        ════════════════════════════════════════ -->
-  <section id="produkte" class="snap-section relative bg-dark py-16 md:py-24 overflow-hidden">
-    <!-- Noise Overlay -->
-    <div class="absolute inset-0 noise-overlay z-0"></div>
+  <section id="anfrage-quick" class="snap-section bg-dark py-12 md:py-16 px-5 md:px-8">
+    <div class="max-w-[1200px] mx-auto">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-stretch">
 
-    <div class="relative z-10">
-      <!-- Centered Header -->
-      <div class="reveal text-center mb-12 px-6">
-        <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-white">Produkte.</h2>
-        <p class="text-base font-medium text-white/50 tracking-tight mt-3">Produkt anklicken und direkt anfragen</p>
-      </div>
+        <!-- Left: Trust & Info -->
+        <div class="reveal">
+          <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-white mb-4">Anfragen.</h2>
+          <p class="text-lg md:text-xl font-medium tracking-tight text-white/50 mb-10 max-w-md">
+            Logo oder Design hochladen und kostenloses Angebot mit 3D-Vorschau erhalten.
+          </p>
 
-      <!-- Product Carousel - Smooth Infinite Marquee -->
-      <div class="marquee-mask overflow-hidden">
-        <div class="product-track">
-          <!-- Neon LED Schilder -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
-            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Neon LED Schilder" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Neon LED Schilder</h3><p class="text-white/75 text-sm">ab 199€</p></div>
-          </div>
-
-          <!-- Vollflächig beleuchtet -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
-            <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Vollflächig beleuchtet" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Vollflächig beleuchtet</h3><p class="text-white/75 text-sm">ab 399€</p></div>
-          </div>
-
-          <!-- Frontbeleuchtet -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
-            <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Frontbeleuchtet" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Frontbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
-          </div>
-
-          <!-- Leuchtkasten -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
-            <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Leuchtkasten" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Leuchtkasten</h3><p class="text-white/75 text-sm">ab 499€</p></div>
-          </div>
-
-          <!-- Marquees Buchstaben -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
-            <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Marquees Buchstaben" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Marquees Buchstaben</h3><p class="text-white/75 text-sm">ab 299€</p></div>
-          </div>
-
-          <!-- Rückbeleuchtet -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
-            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Rückbeleuchtet" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Rückbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
-          </div>
-
-          <!-- Unbeleuchtet -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer">
-            <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="Unbeleuchtet" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium leading-tight">Unbeleuchtet</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          <!-- So funktioniert's -->
+          <p class="text-sm font-medium text-white/30 uppercase tracking-widest mb-6">So funktioniert's</p>
+          <div class="flex flex-col gap-6 mb-12">
+            <!-- Step 1 -->
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                <span class="text-base font-semibold text-white">1</span>
+              </div>
+              <div>
+                <p class="text-base font-semibold text-white tracking-tight">Anfrage senden</p>
+                <p class="text-sm font-medium text-white/40 tracking-tight">Logo oder Idee hochladen</p>
+              </div>
+            </div>
+            <!-- Step 2 -->
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                <span class="text-base font-semibold text-white">2</span>
+              </div>
+              <div>
+                <p class="text-base font-semibold text-white tracking-tight">3D-Vorschau erhalten</p>
+                <p class="text-sm font-medium text-white/40 tracking-tight">Innerhalb von 24 Stunden, kostenlos</p>
+              </div>
+            </div>
+            <!-- Step 3 -->
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                <span class="text-base font-semibold text-white">3</span>
+              </div>
+              <div>
+                <p class="text-base font-semibold text-white tracking-tight">Angebot prüfen</p>
+                <p class="text-sm font-medium text-white/40 tracking-tight">Kostenlos & unverbindlich</p>
+              </div>
+            </div>
+            <!-- Step 4 -->
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                <span class="text-base font-semibold text-white">4</span>
+              </div>
+              <div>
+                <p class="text-base font-semibold text-white tracking-tight">Produktion starten</p>
+                <p class="text-sm font-medium text-white/40 tracking-tight">Nach Freigabe, Lieferung in 7–10 Tagen</p>
+              </div>
+            </div>
           </div>
 
-          <!-- Duplikate für nahtlosen Loop -->
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
-            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Neon LED Schilder</h3><p class="text-white/75 text-sm">ab 199€</p></div>
-          </div>
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
-            <img src="https://framerusercontent.com/images/z6S0aDTv0h6M5y6bIAyxAOEPDA.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Vollflächig beleuchtet</h3><p class="text-white/75 text-sm">ab 399€</p></div>
-          </div>
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
-            <img src="https://framerusercontent.com/images/3ucCvS0f8QaxxyTmDxs714Kt7s.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Frontbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
-          </div>
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
-            <img src="https://framerusercontent.com/images/6NXHtlfloL1WiVnGa3iTLwQvnQ.png?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Leuchtkasten</h3><p class="text-white/75 text-sm">ab 499€</p></div>
-          </div>
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
-            <img src="https://framerusercontent.com/images/6PFSc7TEMRWrmA5ehtdzTS8jK8.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Marquees Buchstaben</h3><p class="text-white/75 text-sm">ab 299€</p></div>
-          </div>
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
-            <img src="https://framerusercontent.com/images/9CaaQsqoB6EQd7ggHrPyrH0YGn4.jpg?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Rückbeleuchtet</h3><p class="text-white/75 text-sm">ab 499€</p></div>
-          </div>
-          <div class="shrink-0 w-[260px] h-[306px] rounded-3xl overflow-hidden relative group cursor-pointer" aria-hidden="true">
-            <img src="https://framerusercontent.com/images/j7GQSh8Pt1X3YomspLdmr4Nk6rA.png?scale-down-to=512" class="w-full h-full object-cover" alt="" loading="lazy">
-            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0d0d0d] to-transparent"></div>
-            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-center"><h3 class="text-white text-lg font-medium">Unbeleuchtet</h3><p class="text-white/75 text-sm">ab 299€</p></div>
+          <!-- Badges -->
+          <div class="flex flex-wrap items-center gap-3">
+            <!-- Google Rating -->
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              <span class="text-[11px] font-medium text-white/50 tracking-tight">4.9 · 236 Bewertungen</span>
+            </div>
+            <!-- DSGVO -->
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full">
+              <svg class="w-3.5 h-3.5 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+              <span class="text-[11px] font-medium text-white/50 tracking-tight">DSGVO-konform</span>
+            </div>
           </div>
         </div>
+
+        <!-- Right: Form Card -->
+        <div class="reveal flex flex-col" style="transition-delay: 0.1s;">
+          <form action="https://api.neontrip.de/anfrage" method="POST" enctype="multipart/form-data" class="bg-white rounded-2xl p-6 md:p-8 flex-1 flex flex-col" id="quick-anfrage-form">
+
+            <!-- Fabienne - Personal Touch -->
+            <div class="flex items-center gap-3 mb-5 pb-4 border-b border-dark/10">
+              <div class="relative shrink-0">
+                <img src="https://framerusercontent.com/images/yInjID4XEU1mkrMZa9WQMuqcNM.png?width=940&height=788" class="w-12 h-12 rounded-full object-cover" alt="Fabienne Trapp">
+                <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></span>
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-semibold text-dark tracking-tight">Fabienne Trapp</p>
+                <p class="text-xs text-dark/50 tracking-tight">Customer Experience</p>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-green-600 font-medium flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                  Online
+                </p>
+                <p class="text-[10px] text-dark/40">Antwortet in ~2h</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <!-- Name -->
+              <div>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Name*</label>
+                <input type="text" name="name" placeholder="Name" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+              </div>
+              <!-- Firma -->
+              <div>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Firma</label>
+                <input type="text" name="firma" placeholder="Firma" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <!-- E-Mail -->
+              <div>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">E-Mail*</label>
+                <input type="email" name="email" placeholder="E-Mail" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+              </div>
+              <!-- Telefon -->
+              <div>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefon*</label>
+                <input type="tel" name="telefon" placeholder="Telefon" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <!-- Größe -->
+              <div>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Größe (cm)</label>
+                <input type="text" name="groesse" placeholder="z.B. 100" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
+              </div>
+              <!-- Farbe -->
+              <div>
+                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Farbe</label>
+                <select name="farbe" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark outline-none focus:ring-1 focus:ring-dark/20 appearance-none cursor-pointer" style="background-image: url('data:image/svg+xml;utf8,<svg fill=\"%23666\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>'); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px;">
+                  <option value="wie-design" selected>Wie im Design</option>
+                  <option value="warmweiss">Warmweiß</option>
+                  <option value="kaltweiss">Kaltweiß</option>
+                  <option value="rgb">RGB (Farbwechsel)</option>
+                  <option value="rot">Rot</option>
+                  <option value="blau">Blau</option>
+                  <option value="gruen">Grün</option>
+                  <option value="pink">Pink</option>
+                  <option value="andere">Andere (siehe Nachricht)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Upload -->
+            <div class="mb-3">
+              <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Logo / Design hochladen</label>
+              <div class="relative">
+                <input type="file" name="datei" accept=".png,.jpg,.jpeg,.pdf,.ai,.eps,.svg" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" id="quick-file-input">
+                <div class="w-full bg-light rounded-lg px-4 py-3 text-sm font-medium tracking-tight text-dark/40 border-2 border-dashed border-dark/10 hover:border-dark/20 transition-colors flex items-center gap-2" id="quick-file-label">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <span>PNG, JPG, PDF, AI, EPS oder SVG</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Nachricht -->
+            <div class="mb-4">
+              <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Nachricht</label>
+              <textarea name="nachricht" placeholder="Projektdetails, Wünsche, Fragen..." rows="3" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20 resize-y"></textarea>
+            </div>
+
+            <!-- Express Option -->
+            <div class="mb-5">
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <input type="checkbox" name="express" value="ja" class="w-5 h-5 rounded border-2 border-dark/20 text-dark focus:ring-dark/20 cursor-pointer">
+                <span class="text-sm font-medium text-dark tracking-tight">Express / Dringend</span>
+                <span class="text-xs text-dark/40">(schnellstmögliche Bearbeitung)</span>
+              </label>
+            </div>
+
+            <!-- Submit -->
+            <div class="mt-auto pt-2">
+              <button type="submit" class="w-full bg-dark text-white font-semibold text-sm tracking-tight py-3.5 rounded-full hover:opacity-90 transition-opacity">
+                Kostenloses Angebot anfordern
+              </button>
+              <p class="text-[10px] font-medium text-dark/50 tracking-tight mt-2 text-center">Mit dem Absenden werden die Datenschutzbestimmungen akzeptiert.</p>
+            </div>
+
+          </form>
+        </div>
+
       </div>
     </div>
   </section>
@@ -1563,125 +1491,125 @@
   <!-- ════════════════════════════════════════
        FAQ (LIGHT)
        ════════════════════════════════════════ -->
-  <section id="faq" class="snap-section bg-white min-h-screen flex items-center py-8 md:py-12 px-6 md:px-9">
+  <section id="faq" class="snap-section bg-white min-h-screen flex items-center py-12 md:py-16 px-6 md:px-9">
     <div class="max-w-[1400px] mx-auto w-full">
-      <!-- Centered Header (compact) -->
-      <div class="reveal text-center mb-6 md:mb-8">
-        <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-2">FAQ.</h2>
-        <p class="text-base font-medium text-dark/60 tracking-tight">Häufige Fragen zu Leuchtreklame, LED Schildern & Preisen.</p>
+      <!-- Centered Header -->
+      <div class="reveal text-center mb-8 md:mb-12">
+        <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-3">FAQ.</h2>
+        <p class="text-lg md:text-xl font-medium text-dark/60 tracking-tight">Häufige Fragen zu Leuchtreklame, LED Schildern & Preisen.</p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-1.5 md:gap-2 reveal" id="faq-list">
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Was kostet eine Leuchtreklame?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 reveal items-start" id="faq-list">
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Was kostet eine Leuchtreklame?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Individuelle LED-Leuchtreklame kostet je nach Größe, Material und Komplexität zwischen 299 € und 5.000 €. Der Durchschnitt unserer B2B-Projekte liegt bei 1.300–2.500 €. Einfache LED-Neon-Schriftzüge starten ab 299 €, 3D-Leuchtbuchstaben ab 800 €, und großformatige Fassadeninstallationen auf Anfrage. Wir erstellen innerhalb von 24 Stunden ein kostenloses Angebot mit 3D-Vorschau.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Individuelle LED-Leuchtreklame kostet je nach Größe, Material und Komplexität zwischen 299 € und 5.000 €. Der Durchschnitt unserer B2B-Projekte liegt bei 1.300–2.500 €. Einfache LED-Neon-Schriftzüge starten ab 299 €, 3D-Leuchtbuchstaben ab 800 €, und großformatige Fassadeninstallationen auf Anfrage. Wir erstellen innerhalb von 24 Stunden ein kostenloses Angebot mit 3D-Vorschau.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Wie lange hält ein LED-Leuchtschild?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie lange hält ein LED-Leuchtschild?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">LED-Leuchtschilder halten mindestens 110.000 Betriebsstunden – das entspricht über 10 Jahren bei täglich 12 Stunden Nutzung. Die Schilder sind wartungsfrei. Falls nach Jahren ein Netzteil oder LED-Modul ausfällt, lässt es sich unkompliziert tauschen. Moderne LED-Technik verbraucht dabei bis zu 80 % weniger Strom als herkömmliche Neonröhren.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">LED-Leuchtschilder halten mindestens 110.000 Betriebsstunden – das entspricht über 10 Jahren bei täglich 12 Stunden Nutzung. Die Schilder sind wartungsfrei. Falls nach Jahren ein Netzteil oder LED-Modul ausfällt, lässt es sich unkompliziert tauschen. Moderne LED-Technik verbraucht dabei bis zu 80 % weniger Strom als herkömmliche Neonröhren.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Was ist der Unterschied zwischen LED Neon und echtem Neon?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Was ist der Unterschied zwischen LED Neon und echtem Neon?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">LED Neon verwendet flexible Silikonröhren mit LED-Modulen, echtes Neon besteht aus handgebogenen Glasröhren mit Gas. LED Neon ist bruchsicher, energieeffizienter, leichter und deutlich günstiger in Anschaffung und Betrieb. Echtes Neon hat einen klassischen Retro-Look, ist aber fragil, schwerer und benötigt höhere Spannung. Für gewerbliche Anwendungen empfehlen wir LED Neon.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">LED Neon verwendet flexible Silikonröhren mit LED-Modulen, echtes Neon besteht aus handgebogenen Glasröhren mit Gas. LED Neon ist bruchsicher, energieeffizienter, leichter und deutlich günstiger in Anschaffung und Betrieb. Echtes Neon hat einen klassischen Retro-Look, ist aber fragil, schwerer und benötigt höhere Spannung. Für gewerbliche Anwendungen empfehlen wir LED Neon.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Kann man jedes Logo als Leuchtschild umsetzen?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Kann man jedes Logo als Leuchtschild umsetzen?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Ja, praktisch jedes Logo und jeder Schriftzug kann als Leuchtschild umgesetzt werden – egal wie komplex. Ob filigrane Schriften, mehrfarbige Designs, fotorealistische Logos oder dreidimensionale Buchstaben. Einfach Datei senden (PNG, JPG, PDF, AI oder EPS) – die Machbarkeit wird kostenlos innerhalb von 24 Stunden geprüft.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Ja, praktisch jedes Logo und jeder Schriftzug kann als Leuchtschild umgesetzt werden – egal wie komplex. Ob filigrane Schriften, mehrfarbige Designs, fotorealistische Logos oder dreidimensionale Buchstaben. Einfach Datei senden (PNG, JPG, PDF, AI oder EPS) – die Machbarkeit wird kostenlos innerhalb von 24 Stunden geprüft.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Wie schnell kann eine Leuchtreklame geliefert werden?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie schnell kann eine Leuchtreklame geliefert werden?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Standardlieferung erfolgt in 7–10 Werktagen ab Auftragsbestätigung. Bei Eilaufträgen ist eine Express-Lieferung ab 3 Werktagen möglich. Wir liefern europaweit und sind auf termingenaue Lieferungen für Messen, Events und Ladeneröffnungen spezialisiert.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Standardlieferung erfolgt in 7–10 Werktagen ab Auftragsbestätigung. Bei Eilaufträgen ist eine Express-Lieferung ab 3 Werktagen möglich. Wir liefern europaweit und sind auf termingenaue Lieferungen für Messen, Events und Ladeneröffnungen spezialisiert.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Sind LED-Leuchtschilder für den Außenbereich geeignet?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Sind LED-Leuchtschilder für den Außenbereich geeignet?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Ja, LED-Leuchtschilder sind sowohl für Innen- als auch für Außenbereiche erhältlich. Outdoor-Versionen sind wetterfest nach Schutzklasse IP67, UV-beständig und werden mit wasserdichtem Netzteil geliefert. Indoor-Versionen sind leichter und steckfertig. Wir empfehlen je nach Einsatzort das passende System.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Ja, LED-Leuchtschilder sind sowohl für Innen- als auch für Außenbereiche erhältlich. Outdoor-Versionen sind wetterfest nach Schutzklasse IP67, UV-beständig und werden mit wasserdichtem Netzteil geliefert. Indoor-Versionen sind leichter und steckfertig. Wir empfehlen je nach Einsatzort das passende System.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Wie wird ein Leuchtschild montiert?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie wird ein Leuchtschild montiert?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Die Montage funktioniert nach dem Plug-&-Play-Prinzip – keine Fachinstallation nötig. Jedes Schild wird mit vormontierter Aufhängung oder Abstandshaltern, Bohrschablone, Netzteil mit Schuko-Stecker und bebilderter Montageanleitung geliefert. Die Kabel-Reichweite beträgt ca. 3,5 Meter und ist verlängerbar. Optional bieten wir professionellen Montageservice.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Die Montage funktioniert nach dem Plug-&-Play-Prinzip – keine Fachinstallation nötig. Jedes Schild wird mit vormontierter Aufhängung oder Abstandshaltern, Bohrschablone, Netzteil mit Schuko-Stecker und bebilderter Montageanleitung geliefert. Die Kabel-Reichweite beträgt ca. 3,5 Meter und ist verlängerbar. Optional bieten wir professionellen Montageservice.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Braucht man eine Genehmigung für Leuchtreklame?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Braucht man eine Genehmigung für Leuchtreklame?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">In Deutschland ist für Außenwerbung in der Regel eine Baugenehmigung erforderlich. Die Regelungen variieren je nach Bundesland und Kommune. Leuchtreklame an der Fassade oder als freistehender Pylon erfordert meist einen Bauantrag. Auf Anfrage wird Unterstützung bei der Antragstellung geboten.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">In Deutschland ist für Außenwerbung in der Regel eine Baugenehmigung erforderlich. Die Regelungen variieren je nach Bundesland und Kommune. Leuchtreklame an der Fassade oder als freistehender Pylon erfordert meist einen Bauantrag. Auf Anfrage wird Unterstützung bei der Antragstellung geboten.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Welche Größen sind bei Leuchtschildern möglich?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Welche Größen sind bei Leuchtschildern möglich?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Leuchtschilder sind von 30 cm bis über 10 Meter Länge realisierbar. Ob filigrane Schriftzüge für den Empfangsbereich, mittelgroße Logos für die Ladenfront oder großformatige Fassadenbeschriftungen – jedes Schild wird individuell nach Maß gefertigt.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Leuchtschilder sind von 30 cm bis über 10 Meter Länge realisierbar. Ob filigrane Schriftzüge für den Empfangsbereich, mittelgroße Logos für die Ladenfront oder großformatige Fassadenbeschriftungen – jedes Schild wird individuell nach Maß gefertigt.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Wie viel Strom verbraucht ein LED-Leuchtschild?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie viel Strom verbraucht ein LED-Leuchtschild?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Ein durchschnittliches LED-Leuchtschild (ca. 1 Meter Breite) verbraucht zwischen 20 und 60 Watt – vergleichbar mit einer Schreibtischlampe. Bei 12 Stunden täglicher Nutzung und einem Strompreis von 0,30 €/kWh liegen die jährlichen Stromkosten bei ca. 25–65 €. LED ist damit bis zu 80 % effizienter als klassische Neonröhren.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Ein durchschnittliches LED-Leuchtschild (ca. 1 Meter Breite) verbraucht zwischen 20 und 60 Watt – vergleichbar mit einer Schreibtischlampe. Bei 12 Stunden täglicher Nutzung und einem Strompreis von 0,30 €/kWh liegen die jährlichen Stromkosten bei ca. 25–65 €. LED ist damit bis zu 80 % effizienter als klassische Neonröhren.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Gibt es eine Garantie auf LED-Leuchtreklame?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Gibt es eine Garantie auf LED-Leuchtreklame?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Ja, wir gewähren 24 Monate Garantie auf alle LED-Systeme. Auf Anfrage bieten wir verlängerte Gewährleistung für gewerbliche Dauerinstallationen. Die Garantie deckt LED-Module, Netzteile und Verarbeitungsfehler ab.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Ja, wir gewähren 24 Monate Garantie auf alle LED-Systeme. Auf Anfrage bieten wir verlängerte Gewährleistung für gewerbliche Dauerinstallationen. Die Garantie deckt LED-Module, Netzteile und Verarbeitungsfehler ab.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Was unterscheidet NEONTRIP von anderen Leuchtreklame-Anbietern?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Was unterscheidet NEONTRIP von anderen Leuchtreklame-Anbietern?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">NEONTRIP fertigt mit Marken-LEDs und geprüfter Elektronik – keine Billig-Komponenten. Jedes Schild durchläuft Qualitätskontrolle, wird maßgefertigt und ist wartungsfrei konzipiert. Dazu kommen persönliche Beratung, kostenlose 3D-Visualisierung in 24 Stunden, ein Showroom in Düsseldorf und über 3.500 realisierte Projekte für Marken wie Aperol, Nestlé und Henkel.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">NEONTRIP fertigt mit Marken-LEDs und geprüfter Elektronik – keine Billig-Komponenten. Jedes Schild durchläuft Qualitätskontrolle, wird maßgefertigt und ist wartungsfrei konzipiert. Dazu kommen persönliche Beratung, kostenlose 3D-Visualisierung in 24 Stunden, ein Showroom in Düsseldorf und über 3.500 realisierte Projekte für Marken wie Aperol, Nestlé und Henkel.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Wie läuft die Bestellung einer individuellen Leuchtreklame ab?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Wie läuft die Bestellung einer individuellen Leuchtreklame ab?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">Der Bestellprozess umfasst vier Schritte: Zuerst Logo oder Idee als Datei oder Foto senden. Innerhalb von 24 Stunden folgt eine kostenlose 3D-Visualisierung mit Angebot. Nach Freigabe startet die Fertigung. Anschließend wird das Schild montagefertig mit komplettem Zubehör europaweit geliefert.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">Der Bestellprozess umfasst vier Schritte: Zuerst Logo oder Idee als Datei oder Foto senden. Innerhalb von 24 Stunden folgt eine kostenlose 3D-Visualisierung mit Angebot. Nach Freigabe startet die Fertigung. Anschließend wird das Schild montagefertig mit komplettem Zubehör europaweit geliefert.</p></div></div>
         </div>
 
-        <div class="faq-item bg-light rounded-[14px] overflow-hidden">
-          <button class="flex items-center justify-between w-full px-4 py-3 text-left cursor-pointer" onclick="toggleFaq(this)">
-            <span class="text-sm md:text-base font-medium tracking-tight text-dark pr-4">Welche Materialien werden für 3D-Leuchtbuchstaben verwendet?</span>
-            <span class="faq-icon shrink-0"><svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+        <div class="faq-item bg-light rounded-2xl overflow-hidden">
+          <button class="flex items-center justify-between w-full px-5 py-4 text-left cursor-pointer" onclick="toggleFaq(this)">
+            <span class="text-base md:text-lg font-medium tracking-tight text-dark pr-4">Welche Materialien werden für 3D-Leuchtbuchstaben verwendet?</span>
+            <span class="faq-icon shrink-0"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
           </button>
-          <div class="faq-answer"><div class="px-4 pb-4"><p class="text-[13px] font-medium text-dark/60 tracking-tight leading-[1.4]">3D-Leuchtbuchstaben werden aus Aluminium, Edelstahl oder Acrylglas gefertigt. Die Fronten bestehen je nach Beleuchtungsart aus opalem oder transparentem Acryl. Die Seitenwangen sind lackiertes Aluminium oder gebürsteter Edelstahl. Alle Materialien sind für den Außenbereich witterungsbeständig und UV-resistent.</p></div></div>
+          <div class="faq-answer"><div class="px-5 pb-5"><p class="text-sm md:text-base font-medium text-dark/60 tracking-tight leading-relaxed">3D-Leuchtbuchstaben werden aus Aluminium, Edelstahl oder Acrylglas gefertigt. Die Fronten bestehen je nach Beleuchtungsart aus opalem oder transparentem Acryl. Die Seitenwangen sind lackiertes Aluminium oder gebürsteter Edelstahl. Alle Materialien sind für den Außenbereich witterungsbeständig und UV-resistent.</p></div></div>
         </div>
 
       </div>
@@ -1711,16 +1639,16 @@
   <!-- ════════════════════════════════════════
        KUNDEN (ANIMATED LOGO CAROUSEL)
        ════════════════════════════════════════ -->
-  <section class="snap-section bg-light min-h-screen flex items-center py-12 md:py-16 px-5 md:px-8">
+  <section class="snap-section bg-light py-10 md:py-14 px-5 md:px-8">
     <div class="max-w-[1200px] mx-auto w-full">
       <!-- Header -->
-      <div class="reveal text-center mb-8 md:mb-10">
+      <div class="reveal text-center mb-6 md:mb-8">
         <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-2">Kunden.</h2>
         <p class="text-base font-medium text-dark/50 tracking-tight">Agenturen, Marken, Messebauer und Unternehmen vertrauen uns</p>
       </div>
 
       <!-- Customer Categories -->
-      <div class="reveal flex flex-wrap justify-center gap-2 md:gap-3 mb-10 md:mb-12">
+      <div class="reveal flex flex-wrap justify-center gap-2 md:gap-3 mb-8 md:mb-10">
         <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Werbeagenturen</span>
         <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Marken & Konzerne</span>
         <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Messebauer</span>
@@ -1750,7 +1678,7 @@
       </div>
 
       <!-- CTA -->
-      <div class="reveal text-center mt-10 md:mt-12">
+      <div class="reveal text-center mt-8 md:mt-10">
         <button onclick="openFormPopup('neonschild')" class="inline-flex items-center gap-2 bg-dark text-white text-sm font-semibold tracking-tight px-6 py-3 rounded-full hover:opacity-90 hover:scale-105 transition-all duration-200">
           Jetzt Projekt anfragen
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -1762,75 +1690,6 @@
   <!-- ════════════════════════════════════════
        KONTAKT (Projekt geplant?)
        ════════════════════════════════════════ -->
-  <section id="kontakt" class="snap-section bg-dark min-h-screen flex items-center py-12 md:py-16 px-5 md:px-8">
-    <div class="max-w-[1200px] mx-auto w-full">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
-
-        <!-- Form -->
-        <div class="reveal">
-          <form action="https://api.neontrip.de/anfrage" method="POST" class="bg-white rounded-2xl p-6 md:p-8" id="kontakt-form">
-            <div class="flex items-center gap-3 mb-5">
-              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594" class="w-8 h-8" alt="NEONTRIP">
-              <h3 class="text-xl md:text-2xl font-semibold tracking-tight text-dark leading-[1.1]">Projekt <span class="text-dark/50">geplant?</span></h3>
-            </div>
-            <div class="flex flex-col gap-3 mb-5">
-              <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Name*</label>
-                <input type="text" name="name" placeholder="Name" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
-              </div>
-              <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Firma</label>
-                <input type="text" name="firma" placeholder="Firma (optional)" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
-              </div>
-              <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">E-Mail*</label>
-                <input type="email" name="email" placeholder="E-Mail" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
-              </div>
-              <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefonnummer*</label>
-                <input type="tel" name="telefon" placeholder="Telefon" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
-              </div>
-              <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Größe</label>
-                <input type="text" name="groesse" placeholder="z.B. 80 x 40 cm" class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20">
-              </div>
-              <div>
-                <label class="text-xs font-medium text-dark tracking-tight mb-1 block">Nachricht*</label>
-                <textarea name="nachricht" placeholder="Projektbeschreibung" required class="w-full bg-light rounded-lg px-4 py-2.5 text-sm font-medium tracking-tight text-dark placeholder:text-dark/40 outline-none focus:ring-1 focus:ring-dark/20 resize-y" style="min-height: 80px;"></textarea>
-              </div>
-            </div>
-            <button type="submit" class="w-full bg-dark text-white font-semibold text-sm tracking-tight py-3 rounded-full hover:opacity-90 transition-opacity">Unverbindlich anfragen</button>
-            <p class="text-[10px] font-medium text-dark/50 tracking-tight mt-2 text-center">Mit dem Absenden werden die Datenschutzbestimmungen akzeptiert.</p>
-          </form>
-        </div>
-
-        <!-- Text Content -->
-        <div class="reveal flex flex-col">
-          <div>
-            <h2 class="text-[40px] md:text-[56px] font-semibold leading-[0.95] tracking-tighter text-white mb-4">Beratung.</h2>
-            <p class="text-base md:text-lg font-medium tracking-tight leading-relaxed mb-6">
-              <span class="text-white">Mehr über das Projekt erfahren</span><span class="text-white/50"> – egal ob Neonschild, 3D Buchstaben, Leuchtkästen oder Sonderanfertigung.</span>
-            </p>
-
-            <div class="h-px bg-white/10 mb-6"></div>
-
-            <div class="flex flex-col gap-4">
-              <div>
-                <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Telefonische Beratung</h4>
-                <p class="text-sm font-medium text-white/50 tracking-tight">Erreichbar Mo–Fr 9–17 Uhr: <a href="tel:+4921154257240" class="text-white hover:underline">+49 211 54257240</a></p>
-              </div>
-              <div>
-                <h4 class="text-sm font-semibold tracking-tight text-white mb-1">Angebot in 24 Stunden</h4>
-                <p class="text-sm font-medium text-white/50 tracking-tight">Schnelle Rückmeldung mit kostenloser 3D-Vorschau.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
   <!-- ════════════════════════════════════════
        FOOTER
        ════════════════════════════════════════ -->
@@ -1838,69 +1697,77 @@
     <!-- Grey Section: Contact & Navigation -->
     <div class="bg-light px-5 md:px-8 pt-16 pb-12">
       <div class="max-w-[1400px] mx-auto">
-        <!-- All in one row on desktop (Fabrica-Style with + symbols) -->
-        <div class="reveal grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10">
-          <!-- Navigation -->
-          <div>
-            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Navigation</p>
-            <div class="flex flex-col gap-2">
-              <a href="#projekte" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Projekte</a>
-              <a href="#bewertungen" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Erfahrungen</a>
-              <a href="#faq" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">FAQ</a>
-              <a href="#kontakt" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Kontakt</a>
+        <!-- Footer Grid -->
+        <div class="reveal grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-6">
+
+          <!-- NEONTRIP Brand -->
+          <div class="col-span-2 md:col-span-1">
+            <a href="/" class="inline-block mb-4">
+              <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_affiliate.png?v=1688479146" alt="NEONTRIP" class="h-6">
+            </a>
+            <p class="text-sm text-dark/60 leading-relaxed mb-4">
+              Individuelle LED Leuchtreklame & Neon Schilder aus Düsseldorf. Seit 2020.
+            </p>
+            <!-- Social Icons -->
+            <div class="flex items-center gap-2">
+              <a href="https://instagram.com/neontrip.de" target="_blank" class="w-8 h-8 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="Instagram">
+                <svg class="w-3.5 h-3.5 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+              </a>
+              <a href="https://linkedin.com/company/neontrip" target="_blank" class="w-8 h-8 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="LinkedIn">
+                <svg class="w-3.5 h-3.5 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+              </a>
+              <a href="https://tiktok.com/@neontrip.de" target="_blank" class="w-8 h-8 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="TikTok">
+                <svg class="w-3.5 h-3.5 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+              </a>
             </div>
           </div>
 
           <!-- Produkte -->
           <div>
-            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Produkte</p>
-            <div class="flex flex-col gap-2">
-              <a href="anfrage.html?produkt=neonschild" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Neon Schilder</a>
-              <a href="anfrage.html?produkt=front" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">3D Buchstaben</a>
-              <a href="anfrage.html?produkt=leuchtkasten" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Leuchtkästen</a>
-              <a href="anfrage.html?produkt=sonder" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Sonderanfertigung</a>
+            <p class="text-xs font-semibold text-dark/40 uppercase tracking-wider mb-4">Produkte</p>
+            <div class="flex flex-col gap-2.5">
+              <a href="anfrage.html?produkt=neonschild" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">LED Neon Schilder</a>
+              <a href="anfrage.html?produkt=front" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">3D Buchstaben</a>
+              <a href="anfrage.html?produkt=leuchtkasten" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">Leuchtkästen</a>
+              <a href="anfrage.html?produkt=sonder" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">Sonderanfertigung</a>
             </div>
           </div>
 
-          <!-- Service -->
+          <!-- Seiten -->
           <div>
-            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Service</p>
-            <div class="flex flex-col gap-2">
-              <a href="agb.html" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">AGB</a>
-              <a href="datenschutz.html" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Datenschutz</a>
-              <a href="impressum.html" class="text-base font-medium text-dark/70 tracking-tight hover:text-dark transition-colors">Impressum</a>
+            <p class="text-xs font-semibold text-dark/40 uppercase tracking-wider mb-4">Seiten</p>
+            <div class="flex flex-col gap-2.5">
+              <a href="#projekte" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">Projekte</a>
+              <a href="#bewertungen" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">Bewertungen</a>
+              <a href="#faq" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">FAQ</a>
+              <a href="anfrage.html" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">Anfrage</a>
             </div>
           </div>
 
-          <!-- Kontaktiere uns -->
+          <!-- Rechtliches -->
           <div>
-            <p class="text-sm font-semibold text-dark tracking-tight mb-4 pb-2 border-b border-dark/10">Kontaktiere uns</p>
-            <p class="text-sm text-dark/60 mb-4">Wir antworten innerhalb 24h</p>
-
-            <a href="anfrage.html" class="inline-flex items-center gap-2 bg-dark text-white text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-dark/90 transition-colors mb-5">
-              Kontaktformular
-            </a>
-
-            <div class="text-sm text-dark/60 space-y-1 mb-5">
-              <p>Mo. - Fr. 9:00 - 17:00 Uhr</p>
-              <p class="font-medium text-dark">+49 211 54257240</p>
-              <a href="mailto:support@neontrip.de" class="text-dark hover:underline">support@neontrip.de</a>
+            <p class="text-xs font-semibold text-dark/40 uppercase tracking-wider mb-4">Rechtliches</p>
+            <div class="flex flex-col gap-2.5">
+              <a href="impressum.html" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">Impressum</a>
+              <a href="datenschutz.html" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">Datenschutz</a>
+              <a href="agb.html" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors">AGB</a>
             </div>
+          </div>
 
-            <!-- Social Icons -->
-            <div class="flex items-center gap-3">
-              <a href="https://instagram.com/neontrip.de" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="Instagram">
-                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-              </a>
-              <a href="https://facebook.com/neontrip.de" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="Facebook">
-                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-              </a>
-              <a href="https://linkedin.com/company/neontrip" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="LinkedIn">
-                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-              </a>
-              <a href="https://tiktok.com/@neontrip.de" target="_blank" class="w-9 h-9 flex items-center justify-center rounded-full bg-dark/5 hover:bg-dark/10 transition-colors" aria-label="TikTok">
-                <svg class="w-4 h-4 text-dark" viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
-              </a>
+          <!-- Kontakt -->
+          <div>
+            <p class="text-xs font-semibold text-dark/40 uppercase tracking-wider mb-4">Kontakt</p>
+            <div class="space-y-3">
+              <div>
+                <p class="text-sm font-medium text-dark tracking-tight">+49 211 54257240</p>
+                <p class="text-xs text-dark/50">Mo–Fr 9–17 Uhr</p>
+              </div>
+              <a href="mailto:support@neontrip.de" class="text-sm font-medium text-dark/80 tracking-tight hover:text-dark transition-colors block">support@neontrip.de</a>
+              <p class="text-xs text-dark/50 leading-relaxed">
+                Dara Nova GmbH<br>
+                Bilker Allee 29<br>
+                40219 Düsseldorf
+              </p>
             </div>
           </div>
 
@@ -2169,7 +2036,7 @@
 
       const columns = logoCarousel.querySelectorAll('.logo-column');
       const columnCount = columns.length;
-      const cycleInterval = 2000;
+      const cycleInterval = 3000;
 
       // Shuffle array helper
       function shuffleArray(array) {
@@ -2433,6 +2300,27 @@
       }
     });
     } // end if (fileInput)
+
+    // Quick Anfrage Form File Upload
+    const quickFileInput = document.getElementById('quick-file-input');
+    if (quickFileInput) {
+      const quickFileLabel = document.getElementById('quick-file-label');
+      const labelSpan = quickFileLabel.querySelector('span');
+      const originalText = labelSpan.textContent;
+
+      quickFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          const names = Array.from(e.target.files).map(f => f.name).join(', ');
+          labelSpan.textContent = `✓ ${names}`;
+          quickFileLabel.classList.remove('text-dark/40', 'border-dark/10');
+          quickFileLabel.classList.add('text-dark', 'border-accent', 'bg-accent/5');
+        } else {
+          labelSpan.textContent = originalText;
+          quickFileLabel.classList.add('text-dark/40', 'border-dark/10');
+          quickFileLabel.classList.remove('text-dark', 'border-accent', 'bg-accent/5');
+        }
+      });
+    }
 
     // Smooth Scroll
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
