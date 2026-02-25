@@ -56,22 +56,10 @@ Diese Seiten zeigen die Richtung (nicht kopieren, nur als Inspiration):
 - Passe Farben, Fonts und Content auf den NEONTRIP-Stil an
 - Die Komponente ist Inspiration, nicht Copy-Paste
 
-## Was NIEMALS in die Seite darf
-- Custom cursor / cursor follower
-- Progress bars
-- 3D tilt / perspective transforms auf Karten
-- Shimmer / shine Text-Effekte
-- Magnetic buttons
-- Parallax (außer explizit gewünscht)
-- Mehr als 2 verschiedene Animationstypen pro Seite
-- Gradient backgrounds mit mehr als 2 Farben
-- Partikel-Effekte, Canvas-Animationen, WebGL
-
 ## Qualitätsregel
-- Max 30% CSS für Effekte, 70% für Layout/Spacing/Typo
-- Wenn eine Animation mehr als 20 Zeilen CSS braucht ? zu komplex, weglassen
-- Weniger ist mehr – im Zweifel weglassen statt hinzufügen
-- Erlaubte Animationen: fade-up on scroll, marquee, hover-opacity, smooth transitions
+- Performance beachten: Animationen sollten flüssig laufen (60fps)
+- Mobile: Komplexe Effekte ggf. reduzieren oder deaktivieren
+- Premium-Gefühl im Vordergrund – nicht überladen
 
 ## Qualitätsmerkmale (bei jedem Build beachten)
 - Micro-Interactions: Hover-Skalierung auf Buttons, subtiler Schatten auf Karten, animierte Underlines auf Links
