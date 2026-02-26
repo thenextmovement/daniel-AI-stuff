@@ -439,10 +439,9 @@
     .file-drop-zone { border: 2px dashed rgba(10,10,10,0.2); transition: all 0.3s ease; }
     .file-drop-zone:hover, .file-drop-zone.dragover { border-color: #0A0A0A; background: rgba(10,10,10,0.02); }
 
-    /* Scroll Snap (disabled for natural scrolling)
-    html.snap-active { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
-    .snap-section { scroll-snap-align: start; scroll-snap-stop: always; }
-    */
+    /* Scroll Snap - enabled for full-screen sections */
+    html { scroll-snap-type: y mandatory; scroll-behavior: smooth; scroll-padding-top: 80px; }
+    .snap-section { scroll-snap-align: start; scroll-snap-stop: always; min-height: 100vh; }
 
     /* Hide scrollbar but keep functionality */
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
@@ -1723,41 +1722,64 @@
   <!-- ════════════════════════════════════════
        KUNDEN (ANIMATED LOGO CAROUSEL)
        ════════════════════════════════════════ -->
-  <section class="snap-section bg-light py-10 md:py-14 px-5 md:px-8">
-    <div class="max-w-[1200px] mx-auto w-full">
+  <section class="snap-section bg-light flex items-center px-5 md:px-8">
+    <div class="max-w-[1200px] mx-auto w-full py-16">
       <!-- Header -->
-      <div class="reveal text-center mb-6 md:mb-8">
+      <div class="reveal text-center mb-8 md:mb-10">
         <h2 class="text-[62px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-2">Kunden.</h2>
         <p class="text-base font-medium text-dark/50 tracking-tight">Agenturen, Marken, Messebauer und Unternehmen vertrauen uns</p>
       </div>
 
-      <!-- Customer Categories -->
-      <div class="reveal flex flex-wrap justify-center gap-2 md:gap-3 mb-8 md:mb-10">
-        <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Werbeagenturen</span>
-        <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Marken & Konzerne</span>
-        <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Messebauer</span>
-        <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Ladenbauer</span>
-        <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Gastronomie</span>
-        <span class="px-4 py-2 bg-white rounded-full text-xs md:text-sm font-medium text-dark/70 border border-black/5">Fitness & Wellness</span>
+      <!-- Customer Categories (Keywords) -->
+      <div class="reveal flex flex-wrap justify-center gap-2 md:gap-2.5 mb-10 md:mb-14 max-w-[1000px] mx-auto">
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Agenturen</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Marken & Konzerne</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Messebauer</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Ladenbauer</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Gastronomie & Bars</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Hotels & Hospitality</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Retail & Shops</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Events & Messen</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Fitness & Wellness</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Pop-up Stores</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Öffentliche Einrichtungen</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Praxen & Kanzleien</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Büro & Empfang</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Startups</span>
+        <span class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 border border-black/5">Podcaster & Creator</span>
       </div>
 
-      <!-- Animated Logo Carousel -->
-      <div class="reveal flex justify-center gap-6 md:gap-10" id="logo-carousel">
-        <!-- Column 1 -->
-        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden" data-column="0">
-          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+      <!-- Animated Logo Carousel - 2 Rows -->
+      <div class="reveal flex flex-col gap-8 md:gap-12" id="logo-carousel">
+        <!-- Row 1 -->
+        <div class="flex justify-center gap-10 md:gap-16">
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="0">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="1">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="2">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden hidden sm:block" data-column="3">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
         </div>
-        <!-- Column 2 -->
-        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden" data-column="1">
-          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
-        </div>
-        <!-- Column 3 -->
-        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden" data-column="2">
-          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
-        </div>
-        <!-- Column 4 (hidden on mobile) -->
-        <div class="logo-column relative h-16 w-28 md:h-24 md:w-44 overflow-hidden hidden md:block" data-column="3">
-          <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+        <!-- Row 2 -->
+        <div class="flex justify-center gap-10 md:gap-16">
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="4">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="5">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="6">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden hidden sm:block" data-column="7">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
         </div>
       </div>
 
@@ -1884,12 +1906,12 @@
         </div>
 
         <!-- Large Logo -->
-        <div class="reveal flex items-center justify-center py-4 overflow-hidden">
+        <div class="reveal flex items-center justify-center py-2 overflow-hidden">
           <img src="assets/logo_weiss_neontrip.png" class="w-full max-w-full opacity-90" alt="NEONTRIP" style="max-height: none;">
         </div>
 
         <!-- Copyright & Legal -->
-        <div class="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 pt-6 text-xs text-gray-500">
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 pt-3 pb-4 text-xs text-gray-500">
           <span>© NEONTRIP 2026</span>
           <div class="flex items-center gap-4">
             <a href="agb.html" class="hover:text-gray-300 transition-colors">AGB</a>
@@ -2138,7 +2160,7 @@
 
       const columns = logoCarousel.querySelectorAll('.logo-column');
       const columnCount = columns.length;
-      const cycleInterval = 3000;
+      const cycleInterval = 16000; // 16 seconds before same column changes again
 
       // Shuffle array helper
       function shuffleArray(array) {
@@ -2173,7 +2195,7 @@
         const img = document.createElement('img');
         img.src = logo.src;
         img.alt = logo.alt;
-        img.className = 'h-10 md:h-16 w-auto max-w-full object-contain grayscale opacity-60';
+        img.className = 'h-14 md:h-20 w-auto max-w-full object-contain grayscale opacity-60';
         img.loading = 'lazy';
         return img;
       }
@@ -2224,7 +2246,7 @@
 
       // Start staggered animations for each column
       columns.forEach((_, colIndex) => {
-        const delay = colIndex * 400; // Stagger start times
+        const delay = colIndex * 2000; // 2 seconds between each logo change
         setTimeout(() => {
           setInterval(() => animateColumn(colIndex), cycleInterval);
         }, delay);
