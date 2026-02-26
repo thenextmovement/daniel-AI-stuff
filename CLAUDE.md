@@ -39,6 +39,24 @@ Diese Seiten zeigen die Richtung (nicht kopieren, nur als Inspiration):
 - Telefon: +49-211-54257240
 - Keine Emojis als Icons, SVGs verwenden
 
+## Footer (auf allen Seiten außer anfrage.html)
+Der Footer ist zweigeteilt:
+1. **Grauer Bereich (bg-light)**: Menü-Spalten (Produkte, Seiten, Rechtliches, Kontakt)
+2. **Schwarzer Bereich (bg-dark)**: Stats-Zahlen, großes Logo, Copyright
+
+### Kontakt-Spalte
+- Telefon: In Accent-Farbe, verlinkt (`tel:+4921154257240`)
+- E-Mail: In Accent-Farbe, verlinkt (`mailto:support@neontrip.de`)
+- Öffnungszeiten: Untereinander formatiert (Montag – Freitag / 9:00 – 17:00 Uhr)
+- Firmenname: "NEONTRIP" (nicht "Dara Nova GmbH")
+- Adresse: Bilker Allee 29, 40219 Düsseldorf
+
+### Schwarzer Bereich
+- Stats mit animierten Countern (21.000+ Bestellungen, 4.9/5 Google, 99% Pünktlich, 3 Tage Express)
+- Großes weißes NEONTRIP Logo (volle Breite)
+- Copyright: "© NEONTRIP 2026"
+- Legal Links: AGB, Datenschutz, Impressum
+
 ## Logo-Assets (Shopify CDN)
 - Favicon: https://cdn.shopify.com/s/files/1/0534/7819/5350/files/neontrip-logo.svg?v=1765972594
 - Logo Weiß: https://cdn.shopify.com/s/files/1/0534/7819/5350/files/logo_weiss_neontrip.png?v=1688479088
