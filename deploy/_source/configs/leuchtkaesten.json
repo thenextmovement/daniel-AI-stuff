@@ -1,0 +1,340 @@
+{
+  "slug": "leuchtkaesten",
+  "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
+  "lang": "de",
+  "title": "Individuelle Leuchtkästen & LED Leuchtkästen | NEONTRIP Düsseldorf",
+  "meta_description": "Individuelle LED Leuchtkästen nach Maß aus Düsseldorf. Leuchtkasten mit Ihrem Logo für Geschäft, Praxis oder Büro. Kostenlose Visualisierung in 24h. Express ab 3 Tagen.",
+  "canonical": "https://neontrip.de/leuchtkaesten/",
+  "og_title": "NEONTRIP – Individuelle Leuchtkästen & LED Leuchtkästen",
+  "og_description": "Individuelle LED Leuchtkästen nach Maß aus Düsseldorf. Leuchtkasten mit Ihrem Logo für Geschäft, Praxis oder Büro. Kostenlose Visualisierung in 24h. Express ab 3 Tagen.",
+  "h1_text": "Leuchtkästen nach&nbsp;Maß",
+  "default_product": "Leuchtkasten",
+  "price_anchor": "Leuchtkästen ab 499 € · LED Neon ab 299 € · 3D Buchstaben ab 499 €",
+  "price_anchor_desktop": "Individuelle Leuchtkästen ab 499 EUR",
+  "hero_subline": "LED Leuchtkästen mit Ihrem Logo für Geschäft, Praxis, Büro oder Außenwerbung — wir liefern eine kostenlose Visualisierung mit Festpreisangebot.",
+  "footer_tagline": "Individuelle LED Leuchtkästen aus Düsseldorf.",
+  "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
+  "faq_cta_title": "Bereit für Ihren Leuchtkasten?",
+  "clarity_page_type": "landing",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/leuchtkaesten/\">",
+  "dki_rules": [
+    [
+      "leuchtkasten kaufen",
+      "Leuchtkasten kaufen"
+    ],
+    [
+      "leuchtkasten mit logo",
+      "Leuchtkasten mit Ihrem Logo"
+    ],
+    [
+      "leuchtkasten individuell",
+      "Individueller Leuchtkasten"
+    ],
+    [
+      "leuchtkasten bestellen",
+      "Leuchtkasten bestellen"
+    ],
+    [
+      "leuchtkasten außenwerbung",
+      "Leuchtkasten für Außenwerbung"
+    ],
+    [
+      "leuchtkasten praxis",
+      "Leuchtkasten für Ihre Praxis"
+    ],
+    [
+      "leuchtkasten laden",
+      "Leuchtkasten für Ihren Laden"
+    ],
+    [
+      "leuchtkasten firma",
+      "Leuchtkasten für Ihr Unternehmen"
+    ],
+    [
+      "led leuchtkasten",
+      "LED Leuchtkasten nach Maß"
+    ],
+    [
+      "led leuchtkasten kaufen",
+      "LED Leuchtkasten kaufen"
+    ],
+    [
+      "leuchtbox",
+      "Individuelle Leuchtbox"
+    ],
+    [
+      "leuchtbox mit logo",
+      "Leuchtbox mit Ihrem Logo"
+    ],
+    [
+      "werbeschild beleuchtet",
+      "Beleuchtetes Werbeschild nach Maß"
+    ],
+    [
+      "firmenschild beleuchtet",
+      "Beleuchtetes Firmenschild"
+    ],
+    [
+      "leuchtkasten düsseldorf",
+      "Leuchtkasten aus Düsseldorf"
+    ],
+    [
+      "leuchtkasten hersteller",
+      "Leuchtkasten vom Hersteller"
+    ],
+    [
+      "leuchtkasten",
+      "Individueller Leuchtkasten nach Maß"
+    ]
+  ],
+  "structured_data": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "NEONTRIP ist ein deutscher Hersteller für individuelle LED Leuchtkästen, Nasenschilder und beleuchtete Werbeanlagen aus Düsseldorf. Spezialisiert auf B2B-Projekte für Geschäfte, Praxen und Unternehmen.",
+      "url": "https://neontrip.de",
+      "logo": "/assets/neontrip-favicon.svg",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "foundingDate": "2020",
+      "numberOfEmployees": {
+        "@type": "QuantitativeValue",
+        "minValue": 10,
+        "maxValue": 50
+      },
+      "slogan": "Jedes Logo. Als Leuchtkasten.",
+      "knowsAbout": [
+        "LED Leuchtkästen",
+        "Nasenschilder",
+        "Leuchtboxen",
+        "Leuchtwerbung",
+        "Werbeleuchtkästen",
+        "Pylone"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressRegion": "NRW",
+        "addressCountry": "DE"
+      },
+      "areaServed": {
+        "@type": "GeoCircle",
+        "geoMidpoint": {
+          "@type": "GeoCoordinates",
+          "latitude": 51.2277,
+          "longitude": 6.7735
+        },
+        "geoRadius": "500 km"
+      },
+      "sameAs": [
+        "https://www.instagram.com/neontrip.de",
+        "https://www.linkedin.com/company/neontrip",
+        "https://www.tiktok.com/@neontrip.de",
+        "https://www.youtube.com/@neontrip",
+        "https://www.facebook.com/neontrip.de"
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "Deutscher Hersteller für individuelle LED Leuchtkästen, Nasenschilder und beleuchtete Werbeschilder. Über 8.247 B2B-Projekte realisiert. Kostenlose Visualisierung in 24h.",
+      "url": "https://neontrip.de",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "priceRange": "€€€",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressCountry": "DE"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236",
+        "bestRating": "5"
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Individuelle LED Leuchtkästen",
+      "description": "Individuelle LED Leuchtkästen nach Maß. Leuchtkasten mit Ihrem Logo für Geschäft, Praxis, Büro oder Außenwerbung. Kostenlose Visualisierung in 24h.",
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
+      "image": "https://neontrip.de/assets/images/og-share.jpg",
+      "category": "Leuchtkästen",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "EUR",
+        "lowPrice": "499",
+        "highPrice": "8000",
+        "offerCount": "6",
+        "availability": "https://schema.org/InStock",
+        "price": "499"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Was kostet ein individueller Leuchtkasten?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Individuelle LED Leuchtkästen kosten je nach Größe, Bauart und Ausstattung zwischen 499 und 8.000 EUR. Einseitige Leuchtkästen für Fassaden starten ab 499 EUR, doppelseitige Nasenschilder ab 699 EUR, und großformatige Pylone auf Anfrage. Wir erstellen innerhalb von 24 Stunden ein kostenloses Angebot mit Visualisierung."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Leuchtkasten-Typen bietet NEONTRIP an?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "NEONTRIP bietet einseitige Leuchtkästen für Fassadenmontage, doppelseitige Nasenschilder für maximale Sichtbarkeit, Pylone und Stelen als freistehende Werbeträger, rahmenlose Leuchtkästen mit Textilbespannung sowie Sonderformen nach Maß. Alle Varianten sind für den Außenbereich geeignet und mit energieeffizienter LED-Technik ausgestattet."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie groß kann ein Leuchtkasten sein?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Leuchtkästen sind von 30 cm bis über 5 Meter Kantenlänge realisierbar. Ob kompaktes Nasenschild für die Praxis, mittlerer Leuchtkasten für die Ladenfront oder großformatiger Werbeträger für die Fassade — jeder Leuchtkasten wird individuell nach Maß gefertigt. Bei Übergrößen wird ein modularer Aufbau mit nahtloser Optik eingesetzt."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Braucht man eine Genehmigung für einen Leuchtkasten?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "In Deutschland ist für Leuchtkästen als Außenwerbung in der Regel eine Baugenehmigung erforderlich. Die Regelungen variieren je nach Bundesland und Kommune. Leuchtkästen an der Fassade oder als freistehender Pylon erfordern meist einen Bauantrag. NEONTRIP unterstützt auf Anfrage bei der Antragstellung und liefert die notwendigen technischen Unterlagen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie viel Strom verbraucht ein LED-Leuchtkasten?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ein LED-Leuchtkasten mit 1 Meter Breite verbraucht zwischen 30 und 80 Watt. Bei 12 Stunden täglicher Nutzung und einem Strompreis von 0,30 EUR/kWh liegen die jährlichen Stromkosten bei ca. 40–105 EUR. LED-Leuchtkästen sind damit bis zu 70 % effizienter als herkömmliche Leuchtstoffröhren-Kästen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie wird ein Leuchtkasten montiert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Leuchtkästen werden mit Wandhaltern, Auslegerarmen oder Mastbefestigungen montiert. Jeder Leuchtkasten wird mit komplettem Montageset, Bohrschablone und Anleitung geliefert. Die Elektroinstallation sollte von einem Fachbetrieb durchgeführt werden. Optional bietet NEONTRIP einen professionellen Montageservice deutschlandweit."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Sind Leuchtkästen wetterfest?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, alle NEONTRIP Leuchtkästen sind für den dauerhaften Außeneinsatz konzipiert. Sie erfüllen Schutzklasse IP65 oder höher, sind UV-beständig, korrosionsgeschützt und temperaturresistent von -20 bis +50 Grad Celsius. Das Gehäuse besteht aus pulverbeschichtetem Aluminium, die Frontscheibe aus schlagfestem Acrylglas oder Polycarbonat."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie lange hält ein LED-Leuchtkasten?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED-Leuchtkästen haben eine Lebensdauer von über 60.000 Betriebsstunden — das entspricht über 13 Jahren bei täglich 12 Stunden Nutzung. Die LED-Module sind wartungsfrei. Falls nach Jahren ein Netzteil oder LED-Modul ausfällt, lässt es sich unkompliziert tauschen. NEONTRIP gewährt 24 Monate Garantie auf alle Komponenten."
+          }
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Individuelle Leuchtkästen & LED Leuchtkästen | NEONTRIP",
+      "url": "https://neontrip.de/leuchtkaesten/",
+      "description": "Individuelle LED Leuchtkästen nach Maß aus Düsseldorf. Leuchtkasten mit Logo für Geschäft, Praxis oder Büro. Kostenlose Visualisierung in 24h.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Produkte",
+          "item": "https://neontrip.de/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Leuchtkästen",
+          "item": "https://neontrip.de/leuchtkaesten/"
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "NEONTRIP — Individuelle Leuchtkästen & LED Leuchtkästen",
+      "description": "Einblick in die Produktion und Installation individueller LED Leuchtkästen und beleuchteter Werbeanlagen von NEONTRIP aus Düsseldorf.",
+      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "uploadDate": "2025-01-01"
+    }
+  ],
+  "sections": [
+    "header",
+    "hero",
+        "projekte",
+    "events",
+    "anfrage-quick",
+    "bewertungen",
+    "testimonials",
+    "vorteile",
+    "anfrage",
+    "faq",
+    "kunden",
+    "kontakt",
+    "footer"
+  ]
+}

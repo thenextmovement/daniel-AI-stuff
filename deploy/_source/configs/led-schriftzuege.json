@@ -1,0 +1,417 @@
+{
+  "slug": "led-schriftzuege",
+  "hero_video_desktop": "../assets/videos/hero-desktop-neon.mp4",
+  "hero_video_mobile": "../assets/videos/hero-mobile-neon.mp4",
+  "lang": "de",
+  "title": "Individuelle LED Schriftzüge & Leuchtschriften | NEONTRIP Düsseldorf",
+  "meta_description": "LED Schriftzüge & Leuchtschriften ab 299 EUR nach Maß. Kostenlose 3D-Vorschau in 24h. 4,9★ bei 236 Bewertungen. Jetzt anfragen!",
+  "canonical": "https://neontrip.de/led-schriftzuege/",
+  "og_title": "NEONTRIP – Individuelle LED Schriftzüge & Leuchtschriften nach Maß",
+  "og_description": "LED Schriftzüge & Leuchtschriften ab 299 EUR nach Maß. Kostenlose 3D-Vorschau in 24h. 4,9★ bei 236 Bewertungen. Jetzt anfragen!",
+  "h1_text": "LED Schriftzüge nach&nbsp;Maß",
+  "hero_subline": "Ihr Text oder Logo als LED Schriftzug — individuelle Leuchtschriften mit kostenloser 3D-Vorschau und Festpreisangebot.",
+  "footer_tagline": "Individuelle LED Schriftzüge & Leuchtschriften aus Düsseldorf.",
+  "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
+  "faq_cta_title": "Bereit für Ihren LED Schriftzug?",
+  "clarity_page_type": "landing",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/led-schriftzuege/\">",
+  "dki_rules": [
+    [
+      "led schriftzug individuell",
+      "Individueller LED Schriftzug"
+    ],
+    [
+      "led schriftzug wand",
+      "LED Schriftzug für die Wand"
+    ],
+    [
+      "led schriftzug kaufen",
+      "LED Schriftzug kaufen"
+    ],
+    [
+      "led schriftzug logo",
+      "Ihr Logo als LED Schriftzug"
+    ],
+    [
+      "led schriftzug firma",
+      "LED Schriftzug für Ihre Firma"
+    ],
+    [
+      "led schriftzug personalisiert",
+      "Personalisierter LED Schriftzug"
+    ],
+    [
+      "led schriftzug",
+      "LED Schriftzug nach Ihrem Design"
+    ],
+    [
+      "led leuchtschriftzug",
+      "LED Leuchtschriftzug nach Maß"
+    ],
+    [
+      "led leuchtschrift kaufen",
+      "LED Leuchtschrift kaufen"
+    ],
+    [
+      "led leuchtschrift",
+      "LED Leuchtschrift nach Maß"
+    ],
+    [
+      "leuchtschrift personalisiert",
+      "Personalisierte Leuchtschrift"
+    ],
+    [
+      "leuchtschrift kaufen",
+      "Leuchtschrift kaufen"
+    ],
+    [
+      "leuchtschrift individuell",
+      "Individuelle Leuchtschrift"
+    ],
+    [
+      "leuchtschrift",
+      "Leuchtschrift nach Ihrem Design"
+    ],
+    [
+      "neon light schriftzug",
+      "Neon Light Schriftzug nach Maß"
+    ],
+    [
+      "neon buchstaben",
+      "Neon Buchstaben nach Maß"
+    ],
+    [
+      "neon schriftzug personalisiert",
+      "Personalisierter Neon Schriftzug"
+    ],
+    [
+      "neon schriftzug",
+      "Neon Schriftzug nach Maß"
+    ],
+    [
+      "neon schrift",
+      "Individuelle Neon Schrift nach Maß"
+    ],
+    [
+      "beleuchteter schriftzug",
+      "Beleuchteter Schriftzug nach Maß"
+    ],
+    [
+      "schriftzug led",
+      "LED Schriftzug nach Maß"
+    ],
+    [
+      "led buchstaben schriftzug",
+      "LED Buchstaben-Schriftzug"
+    ],
+    [
+      "led schrift wand",
+      "LED Schrift für die Wand"
+    ],
+    [
+      "led text beleuchtet",
+      "Beleuchteter LED Text nach Maß"
+    ],
+    [
+      "led schrift",
+      "LED Schrift nach Maß"
+    ],
+    [
+      "led logo firma",
+      "Ihr Firmenlogo als LED Schriftzug"
+    ],
+    [
+      "led logo",
+      "Ihr Logo als LED Schriftzug"
+    ]
+  ],
+  "structured_data": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "NEONTRIP ist Spezialist für individuelle LED Schriftzüge und Leuchtschriften. Von der kostenlosen 3D-Vorschau bis zur fertigen LED Leuchtschrift — alles aus einer Hand.",
+      "url": "https://neontrip.de",
+      "logo": "/assets/neontrip-favicon.svg",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "foundingDate": "2020",
+      "numberOfEmployees": {
+        "@type": "QuantitativeValue",
+        "minValue": 10,
+        "maxValue": 50
+      },
+      "slogan": "Individuelle LED Schriftzüge & Leuchtschriften nach Maß",
+      "knowsAbout": [
+        "LED Schriftzüge",
+        "LED Leuchtschriften",
+        "Neon Schriftzüge",
+        "Individuelle Leuchtschriften",
+        "LED Beschriftung beleuchtet",
+        "Firmenschriftzug LED"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressRegion": "NRW",
+        "addressCountry": "DE"
+      },
+      "areaServed": {
+        "@type": "GeoCircle",
+        "geoMidpoint": {
+          "@type": "GeoCoordinates",
+          "latitude": 51.2277,
+          "longitude": 6.7735
+        },
+        "geoRadius": "500 km"
+      },
+      "sameAs": [
+        "https://www.instagram.com/neontrip.de",
+        "https://www.linkedin.com/company/neontrip",
+        "https://www.tiktok.com/@neontrip.de",
+        "https://www.youtube.com/@neontrip",
+        "https://www.facebook.com/neontrip.de"
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "Deutsches Unternehmen für individuelle LED Schriftzüge, LED Neon Schriftzüge und personalisierte Leuchtschriften. Über 8.247 B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
+      "url": "https://neontrip.de",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "priceRange": "€€€",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressCountry": "DE"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236",
+        "bestRating": "5"
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Individuelle LED Schriftzüge & Leuchtschriften",
+      "description": "Individuelle LED Schriftzüge und Leuchtschriften nach Ihrem Design. Alle Schriftarten, Farben und Größen. Kostenlose 3D-Vorschau in 24h.",
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
+      "category": "LED Schriftzüge",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "EUR",
+        "lowPrice": "199",
+        "highPrice": "5000",
+        "offerCount": "8"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Was kostet ein individueller LED Schriftzug?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ab ca. 300 EUR je nach Größe, Schriftart und Farbe. Kostenlose 3D-Vorschau + Angebot in 24h."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie lange dauert die Produktion einer LED Leuchtschrift?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Standard 10–14 Werktage, Express ab 3 Tagen möglich."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann ich mein Logo als LED Schriftzug bekommen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, jedes Logo, Wort oder Design — einfach Vorlage hochladen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Schriftarten sind als LED Schriftzug möglich?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Jede Schriftart möglich — von elegant-geschwungen bis modern-geradlinig. Auch Handschrift."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie wird ein LED Schriftzug montiert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Einfache Wandmontage mit transparenter Acrylplatte und Abstandshaltern. Montageanleitung inklusive."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Eignen sich LED Schriftzüge für außen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, mit IP65-Schutzklasse wetterfest für Fassaden, Schaufenster und Außenbereiche."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie groß kann ein LED Schriftzug werden?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Von 20 cm bis über 3 Meter Breite — keine Grenzen bei individuellen Formaten."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Farben sind bei LED Schriftzügen möglich?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Über 20 LED-Farben verfügbar, auch RGB-Farbwechsel und Warmweiß."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie hoch ist der Stromverbrauch einer LED Leuchtschrift?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Minimal — ca. 5–15 Watt je nach Größe. Vergleichbar mit einer LED-Lampe."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann ich den LED Schriftzug dimmen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, optionaler Dimmer für stufenlose Helligkeitsregelung."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie lange hält ein LED Schriftzug?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Über 50.000 Betriebsstunden — bei 8h/Tag sind das über 17 Jahre."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Was ist der Unterschied zwischen Neon und LED Schriftzug?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED Schriftzüge nutzen Neon Flex statt Glas — bruchsicher, stromsparend und langlebiger."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Liefert NEONTRIP LED Schriftzüge deutschlandweit?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, sichere Lieferung in ganz Deutschland, Österreich und die Schweiz."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Bekomme ich eine Vorschau vor der Produktion?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, kostenlose fotorealistische 3D-Vorschau Ihres LED Schriftzugs innerhalb von 24 Stunden."
+          }
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Individuelle LED Schriftzüge & Leuchtschriften | NEONTRIP",
+      "url": "https://neontrip.de/led-schriftzuege/",
+      "description": "Individuelle LED Schriftzüge & Leuchtschriften nach Maß. Ihr Text oder Logo als LED Schriftzug. Kostenlose 3D-Vorschau in 24h.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "LED Schriftzüge",
+          "item": "https://neontrip.de/led-schriftzuege/"
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "LED Schriftzüge & Leuchtschriften — Showroom",
+      "description": "Einblick in die Produktion und Installation individueller LED Schriftzüge und Leuchtschriften von NEONTRIP aus Düsseldorf.",
+      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "uploadDate": "2025-01-01"
+    }
+  ],
+  "sections": [
+    "header",
+    "hero",
+        "projekte",
+    "events",
+    "anfrage-quick",
+    "bewertungen",
+    "testimonials",
+    "vorteile",
+    "anfrage",
+    "faq",
+    "kunden",
+    "kontakt",
+    "footer"
+  ]
+}

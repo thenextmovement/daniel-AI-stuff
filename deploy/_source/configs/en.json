@@ -1,0 +1,190 @@
+{
+  "slug": "en",
+  "hero_video_desktop": "../assets/videos/hero-desktop-neon.mp4",
+  "lang": "en",
+  "title": "Custom Illuminated Signage & LED Neon Signs | NEONTRIP Düsseldorf",
+  "meta_description": "Custom LED illuminated signage, neon signs & 3D channel letters from Düsseldorf, Germany. Trusted by Campari, Amazon & 8,247 businesses. Free 3D preview within 24h. Express from 3 days.",
+  "canonical": "https://neontrip.de/en/",
+  "og_title": "NEONTRIP – Custom Illuminated Signage & LED Neon Signs",
+  "og_description": "Custom LED illuminated signage, neon signs & 3D channel letters from Düsseldorf, Germany. Trusted by Campari, Amazon & 8,247 businesses. Free 3D preview within 24h. Express from 3 days.",
+  "h1_text": "Your Logo as a Light Sign",
+  "hero_subline": "Send us your logo — we deliver a free 3D preview with a fixed-price quote. For agencies, exhibition builders and businesses.",
+  "footer_tagline": "Custom illuminated signage from Düsseldorf, Germany.",
+  "footer_products": "LED Neon · 3D Letters · Light Boxes",
+  "faq_cta_title": "Ready for your light sign?",
+  "clarity_page_type": "landing",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/\">\n  <link rel=\"alternate\" hreflang=\"en\" href=\"https://neontrip.de/en/\">\n  <link rel=\"alternate\" hreflang=\"x-default\" href=\"https://neontrip.de/\">",
+  "dki_rules": [],
+  "structured_data": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "NEONTRIP is a German manufacturer of custom illuminated signage, LED neon signs, and 3D channel letters based in Düsseldorf. Specializing in B2B projects for agencies, brands, and businesses.",
+      "url": "https://neontrip.de",
+      "logo": "/assets/neontrip-favicon.svg",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "foundingDate": "2020",
+      "numberOfEmployees": {
+        "@type": "QuantitativeValue",
+        "minValue": 10,
+        "maxValue": 50
+      },
+      "slogan": "Every logo. As an illuminated sign.",
+      "knowsAbout": [
+        "LED illuminated signage",
+        "neon signs",
+        "3D channel letters",
+        "light boxes",
+        "business signs",
+        "outdoor advertising"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressRegion": "NRW",
+        "addressCountry": "DE"
+      },
+      "areaServed": {
+        "@type": "GeoCircle",
+        "geoMidpoint": {
+          "@type": "GeoCoordinates",
+          "latitude": 51.2277,
+          "longitude": 6.7735
+        },
+        "geoRadius": "500 km"
+      },
+      "sameAs": [
+        "https://www.instagram.com/neontrip.de",
+        "https://www.linkedin.com/company/neontrip",
+        "https://www.tiktok.com/@neontrip.de",
+        "https://www.youtube.com/@neontrip",
+        "https://www.facebook.com/neontrip.de"
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "German manufacturer of custom illuminated signage, LED neon signs, 3D channel letters, and light boxes. Over 8,247 B2B projects completed. Free 3D preview within 24h.",
+      "url": "https://neontrip.de",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "priceRange": "€€€",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressCountry": "DE"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236",
+        "bestRating": "5"
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Custom LED Illuminated Signage",
+      "description": "Custom-made LED neon signs, 3D channel letters, and light boxes for businesses. Free visualization within 24 hours.",
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
+      "category": "Illuminated Signage",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "EUR",
+        "lowPrice": "299",
+        "highPrice": "5000",
+        "offerCount": "8"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236"
+      }
+    },
+    "{\n    \"@context\": \"https://schema.org\",\n    \"@type\": \"FAQPage\",\n    \"mainEntity\": [\n      {\n        \"@type\": \"Question\",\n        \"name\": \"How much does illuminated signage cost?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"Custom LED illuminated signage costs between EUR 299 and EUR 5,000 depending on size, material, and complexity. The average of our B2B projects is EUR 1,300–2,500. Simple LED neon lettering starts from EUR 299, 3D channel letters from EUR 800, and large-format facade installations on request. We provide a free quote with 3D preview within 24 hours.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"How long does an LED sign last?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"LED signs last at least 110,000 operating hours — that is over 12 years of continuous operation or over 25 years at 12 hours of daily use. The signs are maintenance-free. If a power supply or LED module fails after years, it can be easily replaced. Modern LED technology uses up to 80% less energy than traditional neon tubes.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"What is the difference between LED neon and real neon?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"LED neon uses flexible silicone tubes with LED modules, while real neon consists of hand-bent glass tubes filled with gas. LED neon is shatterproof, more energy-efficient, lighter, and significantly cheaper to purchase and operate. Real neon has a classic retro look but is fragile, heavier, and requires higher voltage. For commercial applications, we recommend LED neon.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"Can any logo be made into an illuminated sign?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"Yes, virtually any logo or lettering can be made into an illuminated sign — no matter how complex. Whether delicate fonts, multicolor designs, photorealistic logos, or three-dimensional letters. Simply send your file (PNG, JPG, PDF, AI, or EPS) — feasibility is checked free of charge within 24 hours.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"How fast can illuminated signage be delivered?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"Standard delivery takes 7–10 business days from order confirmation. For rush orders, express delivery from 3 business days is available. We deliver Europe-wide and specialize in deadline-precise deliveries for trade shows, events, and store openings.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"Are LED signs suitable for outdoor use?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"Yes, LED signs are available for both indoor and outdoor use. Outdoor versions are weatherproof rated IP67, UV-resistant, and come with a waterproof power supply. Indoor versions are lighter and plug-and-play. We recommend the appropriate system based on the installation location.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"How is an illuminated sign installed?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"Installation follows a plug-and-play principle — no specialist installation required. Every sign comes with pre-mounted hanging hardware or spacers, a drilling template, power supply with plug, and illustrated installation instructions. Cable reach is approximately 3.5 meters and can be extended. We optionally offer professional installation service.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"Do you need a permit for illuminated signage?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"In Germany, a building permit is generally required for outdoor advertising. Regulations vary by federal state and municipality. Illuminated signage on facades or as freestanding pylons usually requires a building application. Support with the application process is available on request.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"What sizes are available for illuminated signs?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"Illuminated signs can be produced from 30 cm to over 10 meters in length. Whether delicate lettering for the reception area, medium-sized logos for the storefront, or large-format facade signage — every sign is custom-made to order.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"How much electricity does an LED sign consume?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"An average LED sign (approx. 1 meter wide) consumes between 20 and 60 watts — comparable to a desk lamp. At 12 hours of daily use and an electricity price of EUR 0.30/kWh, annual electricity costs are approximately EUR 25–65. LED is thus up to 80% more efficient than traditional neon tubes.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"Is there a warranty on LED illuminated signage?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"Yes, we offer a 24-month warranty on all LED systems. Extended warranty for commercial permanent installations is available on request. The warranty covers LED modules, power supplies, and manufacturing defects.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"What sets NEONTRIP apart from other signage providers?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"NEONTRIP manufactures with branded LEDs and certified electronics — no cheap components. Every sign undergoes quality control, is custom-made, and designed to be maintenance-free. Add personal consultation, free 3D visualization within 24 hours, a showroom in Düsseldorf, and over 8,247 completed projects for brands like Aperol, Nestlé, and Henkel.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"What is the ordering process for custom illuminated signage?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"The ordering process consists of four steps: First, send your logo or idea as a file or photo. Within 24 hours, you receive a free 3D visualization with a quote. After approval, production begins. The sign is then delivered installation-ready with complete accessories Europe-wide.\"\n        }\n      },\n      {\n        \"@type\": \"Question\",\n        \"name\": \"What materials are used for 3D channel letters?\",\n        \"acceptedAnswer\": {\n          \"@type\": \"Answer\",\n          \"text\": \"3D channel letters are manufactured from aluminum, stainless steel, or acrylic glass. The faces consist of opal or transparent acrylic depending on the lighting type. The side returns are painted aluminum or brushed stainless steel. All materials are weather-resistant and UV-resistant for outdoor use.\"\n        }\n      },\n    ]\n  }",
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Request Custom Illuminated Signage & LED Neon Signs | NEONTRIP",
+      "url": "https://neontrip.de/en/",
+      "description": "Custom LED illuminated signage, neon signs & 3D channel letters from Düsseldorf, Germany. Free 3D preview within 24h.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Request Signage",
+          "item": "https://neontrip.de/en/"
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "NEONTRIP — Custom Illuminated Signage & LED Neon Signs",
+      "description": "A look into the production and installation of custom LED illuminated signage, neon signs, and 3D channel letters by NEONTRIP from Düsseldorf, Germany.",
+      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "uploadDate": "2025-01-01"
+    }
+  ],
+  "sections": [
+    "header",
+    "hero",
+        "projekte",
+    "events",
+    "anfrage-quick",
+    "bewertungen",
+    "testimonials",
+    "vorteile",
+    "anfrage",
+    "faq",
+    "kunden",
+    "kontakt",
+    "footer"
+  ]
+}

@@ -1,0 +1,304 @@
+<!-- ===== SECTION: hero ===== -->
+  <section id="hero" class="relative md:min-h-[100dvh] flex items-center bg-dark overflow-hidden grain">
+    <!-- Video Background — Desktop -->
+    <div class="absolute inset-0 z-0 hidden md:block">
+      <img src="../assets/images/hero-poster-desktop-neon.webp" fetchpriority="high" decoding="async" alt="NEONTRIP LED Neonschild" class="absolute inset-0 w-full h-full object-cover" width="1920" height="1080">
+      <video id="hero-video-desktop" autoplay loop muted playsinline preload="auto" poster="../assets/images/hero-poster-desktop-neon.webp" class="absolute inset-0 z-[1] w-full h-full object-cover" style="background:#0a0a0a" width="1920" height="1080">
+        <source src="{{HERO_VIDEO_DESKTOP}}" type="video/mp4">
+      </video>
+      <div class="absolute inset-0" style="background:rgba(10,10,10,.35)"></div>
+      <div class="absolute inset-0" style="background:linear-gradient(to bottom,rgba(10,10,10,.2) 0,transparent 50%,rgba(10,10,10,.3) 100%)"></div>
+    </div>
+    <!-- Background — Mobile (static poster, no video) -->
+    <div class="absolute inset-0 z-0 md:hidden">
+      <img src="../assets/images/hero-poster-neon-mobile.webp" fetchpriority="high" decoding="async" alt="NEONTRIP LED Leuchtreklame" class="absolute inset-0 w-full h-full object-cover" width="375" height="667">
+      <div class="absolute inset-0" style="background:linear-gradient(to bottom,rgba(10,10,10,.05) 0,rgba(10,10,10,.55) 60%)"></div>
+    </div>
+
+    <div class="relative z-10 w-full max-w-[1400px] mx-auto px-5 md:px-8 pt-16 md:pt-32 pb-6 md:pb-28" style="text-shadow:0 2px 20px rgba(0,0,0,.5)">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-16 items-start">
+
+        <!-- Left: Headline + Mobile Form -->
+        <div class="text-center lg:text-left self-center order-1 lg:row-span-2">
+          <!-- Badge -->
+          <div class="reveal inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-white/10 backdrop-blur-sm rounded-full text-[10px] md:text-xs font-medium tracking-wide uppercase text-white/90 mb-3 md:mb-8">
+            <span class="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-400 rounded-full pulse-glow"></span>
+            Über 8.200+ realisierte Projekte
+          </div>
+          <!-- H1 -->
+          <h1 class="reveal text-[28px] md:text-[52px] lg:text-[64px] font-semibold leading-[1.08] tracking-tightest text-white neon-glow mb-2 md:mb-5" style="transition-delay:0.1s">
+            {{H1_TEXT}}
+          </h1>
+          <!-- Subline -->
+          <p class="reveal text-[14px] md:text-xl text-white/60 font-medium tracking-tight leading-snug mb-4 md:mb-6" style="transition-delay:0.2s">
+            {{HERO_SUBLINE}}
+          </p>
+
+          <!-- ═══ MOBILE FORM — 3-Step ═══ -->
+          <div class="flex flex-col items-center md:hidden mb-4" style="transition-delay:0.25s">
+            <div class="w-full max-w-[380px] mx-auto">
+              <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" id="hero-form" class="bg-white rounded-[16px] p-4 border border-black/5 shadow-[0_8px_40px_rgba(0,0,0,0.08)]" style="backdrop-filter:blur(20px);">
+                <input type="hidden" name="source" value="hero-form-{{SLUG}}">
+                <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
+                <div class="text-center mb-3" id="hero-form-header">
+                  <h2 class="text-[17px] font-semibold text-dark tracking-[-0.03em] leading-tight">Angebot in 1 Minute</h2>
+                  <p class="text-[11px] font-medium text-dark/55 mt-0.5">Design hochladen und Angebot erhalten</p>
+                </div>
+                <div class="flex items-center gap-1.5 mb-3" id="hero-bars-wrapper">
+                  <div class="flex-1 h-[3px] rounded-full bg-accent" id="hero-bar-1"></div>
+                  <div class="flex-1 h-[3px] rounded-full bg-dark/[0.08]" id="hero-bar-2"></div>
+                  <div class="flex-1 h-[3px] rounded-full bg-dark/[0.08]" id="hero-bar-3"></div>
+                </div>
+                <!-- Step 1: Projekt -->
+                <div id="hero-step-1" class="hero-form-step">
+                  <p class="text-[11px] font-semibold text-dark/60 uppercase tracking-wider mb-2">Schritt 1 von 3 — Projekt</p>
+                  <div class="space-y-3 mb-3">
+                    <div><label for="hero-produkt" class="text-[12px] font-semibold text-dark block mb-1">Produktart</label>
+                      <select name="produkt" id="hero-produkt" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark appearance-none cursor-pointer" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
+                        <option value="LED Neonschild" selected>LED Neonschild</option>
+                        <option value="3D Buchstaben (Front)">3D Buchstaben (Front)</option>
+                        <option value="3D Buchstaben (Rückbeleuchtet)">3D Buchstaben (Rückbeleuchtet)</option>
+                        <option value="Leuchtkasten">Leuchtkasten</option>
+                        <option value="Marquee-Buchstaben">Marquee-Buchstaben</option>
+                        <option value="Vollflächig beleuchtet">Vollflächig beleuchtet</option>
+                        <option value="Unbeleuchtet">Unbeleuchtet</option>
+                      </select>
+                    </div>
+                    <div><label class="text-[12px] font-semibold text-dark block mb-1">Einsatzort</label>
+                      <div class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center gap-2 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5"><input type="radio" name="einsatzort" value="Innen" checked class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Innen</span></label>
+                        <label class="flex items-center gap-2 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5"><input type="radio" name="einsatzort" value="Außen" class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Außen</span></label>
+                      </div>
+                    </div>
+                    <div><label class="text-[12px] font-semibold text-dark block mb-1">Gewünschte Größe</label>
+                      <select name="groesse" onchange="document.getElementById('hero-groesse-custom').style.display=this.value==='Individuelle Größe'?'block':'none'" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark appearance-none cursor-pointer" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
+                        <option value="" disabled selected>Größe wählen</option>
+                        <option value="Kleinstmögliche Größe">Kleinstmögliche Größe</option>
+                        <option value="25 cm">25 cm</option>
+                        <option value="50 cm">50 cm</option>
+                        <option value="75 cm">75 cm</option>
+                        <option value="100 cm">100 cm</option>
+                        <option value="125 cm">125 cm</option>
+                        <option value="150 cm">150 cm</option>
+                        <option value="175 cm">175 cm</option>
+                        <option value="200 cm">200 cm</option>
+                        <option value="225 cm">225 cm</option>
+                        <option value="> 240 cm">&gt; 240 cm</option>
+                        <option value="Individuelle Größe">Individuelle Größe</option>
+                      </select>
+                      <input type="text" name="groesse_custom" id="hero-groesse-custom" placeholder="Gewünschte Größe eingeben" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50 mt-1.5" style="display:none">
+                    </div>
+                  </div>
+                  <button type="button" id="hero-next-1" class="w-full bg-accent text-white font-semibold text-[13px] py-3 rounded-xl hover:bg-accent/90 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Weiter <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                </div>
+                <!-- Step 2: Design -->
+                <div id="hero-step-2" class="hero-form-step hidden">
+                  <p class="text-[11px] font-semibold text-dark/60 uppercase tracking-wider mb-2">Schritt 2 von 3 — Design</p>
+                  <div class="space-y-3 mb-3">
+                    <div><label class="text-[12px] font-semibold text-dark block mb-1">Logo / Design hochladen</label>
+                      <div class="relative"><input type="file" name="datei" accept=".png,.jpg,.jpeg,.pdf,.ai,.eps,.svg" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" id="hero-file-input">
+                        <div class="w-full bg-accent/[0.04] rounded-xl px-4 py-4 border-2 border-dashed border-accent/30 hover:border-accent/50 flex items-center gap-3 group" id="hero-file-label">
+                          <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0"><svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+                          <div><span class="text-[13px] font-semibold text-accent block">Datei auswählen</span><span class="text-[11px] text-dark/50">PNG, JPG, PDF, AI, SVG — oder überspringen</span></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div><label class="text-[12px] font-semibold text-dark block mb-1">Farbe</label>
+                      <select name="farbe" onchange="document.getElementById('hero-farbe-custom').style.display=this.value==='Andere'?'block':'none'" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark appearance-none cursor-pointer" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
+                        <option value="Wie im Logo" selected>Wie im Logo</option>
+                        <option value="Warmweiß">Warmweiß</option>
+                        <option value="Kaltweiß">Kaltweiß</option>
+                        <option value="Rot">Rot</option>
+                        <option value="Orange">Orange</option>
+                        <option value="Pink Orange">Pink Orange</option>
+                        <option value="Gold-Gelb">Gold-Gelb</option>
+                        <option value="Gelb">Gelb</option>
+                        <option value="Grün">Grün</option>
+                        <option value="Türkis">Türkis</option>
+                        <option value="Blau">Blau</option>
+                        <option value="Lila">Lila</option>
+                        <option value="Pink">Pink</option>
+                        <option value="Hell Pink">Hell Pink</option>
+                        <option value="RGB / Farbwechsel">RGB / Farbwechsel</option>
+                        <option value="Noch unsicher">Noch unsicher</option>
+                        <option value="Andere">Andere</option>
+                      </select>
+                      <input type="text" name="farbe_custom" id="hero-farbe-custom" placeholder="Gewünschte Farbe eingeben" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50 mt-1.5" style="display:none">
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <button type="button" id="hero-back-2" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08]"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+                    <button type="button" id="hero-next-2" class="flex-1 bg-accent text-white font-semibold text-[13px] py-3 rounded-xl hover:bg-accent/90 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Weiter <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                  </div>
+                </div>
+                <!-- Step 3: Kontakt -->
+                <div id="hero-step-3" class="hero-form-step hidden">
+                  <p class="text-[11px] font-semibold text-dark/60 uppercase tracking-wider mb-2">Schritt 3 von 3 — Kontakt</p>
+                  <div class="space-y-2 mb-3">
+                    <div class="grid grid-cols-2 gap-2">
+                      <div><label class="text-[11px] font-semibold text-dark block mb-1">Name *</label><input type="text" name="name" id="hero-name" placeholder="Max Mustermann" required autocomplete="name" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
+                      <div><label class="text-[11px] font-semibold text-dark block mb-1">Firma</label><input type="text" name="firma" placeholder="Unternehmen" autocomplete="organization" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
+                    </div>
+                    <div><label class="text-[11px] font-semibold text-dark block mb-1">E-Mail *</label><input type="email" name="email" id="hero-email" placeholder="max@firma.de" required autocomplete="email" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
+                    <div><label class="text-[11px] font-semibold text-dark block mb-1">Telefon</label><input type="tel" name="telefon" placeholder="+49 ..." autocomplete="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
+                  </div>
+                  <div class="flex gap-2">
+                    <button type="button" id="hero-back-3" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08]"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+                    <button type="submit" class="flex-1 bg-accent text-white font-semibold text-[13px] py-3 rounded-xl hover:bg-accent/90 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Jetzt Angebot erhalten <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                  </div>
+                  <p class="text-[9px] font-medium text-dark/50 text-center mt-2">Kostenlos & unverbindlich · 4.9/5 Google · 2.156 B2B-Kunden</p>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Desktop-only extras below subline -->
+          <div class="reveal hidden lg:flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 sm:gap-6 text-sm text-white/50 font-medium tracking-tight mb-3 md:mb-6" style="transition-delay:0.25s">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+              {{PRICE_ANCHOR_DESKTOP}}
+            </span>
+            <span class="hidden sm:block w-px h-4 bg-white/20"></span>
+            <a href="tel:+4921154257240" class="text-white font-semibold hover:text-white/80 transition-colors flex items-center gap-1.5"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>+49 211 54257240</a>
+          </div>
+          <div class="reveal hidden md:flex flex-wrap items-center justify-center lg:justify-start gap-4 text-sm text-white/50 font-medium tracking-tight mb-3 md:mb-6" style="transition-delay:0.3s">
+            <span class="flex items-center gap-1.5"><svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Express ab 3 Werktagen</span>
+            <span class="flex items-center gap-1.5"><svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>100 % pünktliche Lieferung</span>
+            <span class="flex items-center gap-1.5"><svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>100 % CI-konform</span>
+          </div>
+          <div class="reveal hidden lg:flex flex-col sm:flex-row items-center lg:items-start gap-4" style="transition-delay:0.35s">
+            <a href="#projekte" class="inline-flex items-center gap-2 text-sm font-medium text-white/60 hover:text-white transition-colors">Projekte ansehen <svg class="w-4 h-4 arrow-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg></a>
+          </div>
+        </div>
+
+        <!-- Right: Desktop Form — 3-Step -->
+        <div class="reveal w-full max-w-[420px] mx-auto lg:ml-auto lg:mr-0 order-2 hidden lg:block" style="transition-delay:0.3s">
+          <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" id="hero-form-desktop" class="bg-white rounded-[18px] p-6 md:p-8 border border-black/5 shadow-[0_8px_40px_rgba(0,0,0,0.08)]" style="-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)">
+            <input type="hidden" name="source" value="hero-form-{{SLUG}}">
+            <div class="nt-hp" aria-hidden="true"><input name="website" tabindex="-1" autocomplete="off"></div>
+            <div class="text-center mb-4" id="hero-form-desktop-header">
+              <h2 class="text-[22px] font-semibold text-dark tracking-[-0.03em] leading-tight">Angebot in 1 Minute</h2>
+              <p class="text-[13px] font-medium text-dark/55 tracking-[-0.01em] mt-1">Design hochladen und Angebot erhalten</p>
+            </div>
+            <div class="flex items-center gap-1.5 mb-4" id="hero-bars-wrapper-d">
+              <div class="flex-1 h-[3px] rounded-full bg-accent" id="hero-bar-d-1"></div>
+              <div class="flex-1 h-[3px] rounded-full bg-dark/[0.08]" id="hero-bar-d-2"></div>
+              <div class="flex-1 h-[3px] rounded-full bg-dark/[0.08]" id="hero-bar-d-3"></div>
+            </div>
+            <!-- Desktop Step 1: Projekt -->
+            <div id="hero-step-d-1" class="hero-form-step">
+              <p class="text-[11px] font-semibold text-dark/60 uppercase tracking-wider mb-3">Schritt 1 von 3 — Projekt</p>
+              <div class="space-y-3.5 mb-4">
+                <div><label for="hero-produkt-d" class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Produktart</label>
+                  <select name="produkt" id="hero-produkt-d" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-4 py-2.5 text-[13px] font-medium text-dark appearance-none cursor-pointer outline-none focus:border-dark/20 focus:bg-white transition-all duration-200" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
+                    <option value="LED Neonschild" selected>LED Neonschild</option>
+                    <option value="3D Buchstaben (Front)">3D Buchstaben (Front)</option>
+                    <option value="3D Buchstaben (Rückbeleuchtet)">3D Buchstaben (Rückbeleuchtet)</option>
+                    <option value="Leuchtkasten">Leuchtkasten</option>
+                    <option value="Marquee-Buchstaben">Marquee-Buchstaben</option>
+                    <option value="Vollflächig beleuchtet">Vollflächig beleuchtet</option>
+                    <option value="Unbeleuchtet">Unbeleuchtet</option>
+                  </select>
+                </div>
+                <div><label class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Einsatzort</label>
+                  <div class="grid grid-cols-2 gap-2.5">
+                    <label class="flex items-center gap-2.5 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-4 py-2.5 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5 transition-all duration-200"><input type="radio" name="einsatzort" value="Innen" checked class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Innen</span></label>
+                    <label class="flex items-center gap-2.5 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-4 py-2.5 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5 transition-all duration-200"><input type="radio" name="einsatzort" value="Außen" class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Außen</span></label>
+                  </div>
+                </div>
+                <div><label class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Gewünschte Größe</label>
+                  <select name="groesse" onchange="document.getElementById('hero-groesse-custom-d').style.display=this.value==='Individuelle Größe'?'block':'none'" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-4 py-2.5 text-[13px] font-medium text-dark appearance-none cursor-pointer outline-none focus:border-dark/20 focus:bg-white transition-all duration-200" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
+                    <option value="" disabled selected>Größe wählen</option>
+                    <option value="Kleinstmögliche Größe">Kleinstmögliche Größe</option>
+                    <option value="25 cm">25 cm</option>
+                    <option value="50 cm">50 cm</option>
+                    <option value="75 cm">75 cm</option>
+                    <option value="100 cm">100 cm</option>
+                    <option value="125 cm">125 cm</option>
+                    <option value="150 cm">150 cm</option>
+                    <option value="175 cm">175 cm</option>
+                    <option value="200 cm">200 cm</option>
+                    <option value="225 cm">225 cm</option>
+                    <option value="> 240 cm">&gt; 240 cm</option>
+                    <option value="Individuelle Größe">Individuelle Größe</option>
+                  </select>
+                  <input type="text" name="groesse_custom" id="hero-groesse-custom-d" placeholder="Gewünschte Größe eingeben" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-4 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200 mt-1.5" style="display:none">
+                </div>
+              </div>
+              <button type="button" id="hero-next-d-1" class="btn-accent w-full bg-accent text-white font-semibold text-[13px] tracking-[-0.01em] py-3 rounded-xl hover:bg-accent/90 transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Weiter <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+            </div>
+            <!-- Desktop Step 2: Design -->
+            <div id="hero-step-d-2" class="hero-form-step hidden">
+              <p class="text-[11px] font-semibold text-dark/60 uppercase tracking-wider mb-3">Schritt 2 von 3 — Design</p>
+              <div class="space-y-3.5 mb-4">
+                <div><label class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Logo / Design hochladen</label>
+                  <div class="relative"><input type="file" name="datei" accept=".png,.jpg,.jpeg,.pdf,.ai,.eps,.svg" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" id="hero-file-input-d">
+                    <div class="w-full bg-accent/[0.04] rounded-xl px-4 py-4 border-2 border-dashed border-accent/30 hover:border-accent/50 transition-all duration-200 flex items-center gap-3 group" id="hero-file-label-d">
+                      <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0"><svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+                      <div><span class="text-[13px] font-semibold text-accent block">Datei auswählen</span><span class="text-[11px] text-dark/50">PNG, JPG, PDF, AI, SVG — oder überspringen</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div><label class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Farbe</label>
+                  <select name="farbe" onchange="document.getElementById('hero-farbe-custom-d').style.display=this.value==='Andere'?'block':'none'" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-4 py-2.5 text-[13px] font-medium text-dark appearance-none cursor-pointer outline-none focus:border-dark/20 focus:bg-white transition-all duration-200" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
+                    <option value="Wie im Logo" selected>Wie im Logo</option>
+                    <option value="Warmweiß">Warmweiß</option>
+                    <option value="Kaltweiß">Kaltweiß</option>
+                    <option value="Rot">Rot</option>
+                    <option value="Orange">Orange</option>
+                    <option value="Pink Orange">Pink Orange</option>
+                    <option value="Gold-Gelb">Gold-Gelb</option>
+                    <option value="Gelb">Gelb</option>
+                    <option value="Grün">Grün</option>
+                    <option value="Türkis">Türkis</option>
+                    <option value="Blau">Blau</option>
+                    <option value="Lila">Lila</option>
+                    <option value="Pink">Pink</option>
+                    <option value="Hell Pink">Hell Pink</option>
+                    <option value="RGB / Farbwechsel">RGB / Farbwechsel</option>
+                    <option value="Noch unsicher">Noch unsicher</option>
+                    <option value="Andere">Andere</option>
+                  </select>
+                  <input type="text" name="farbe_custom" id="hero-farbe-custom-d" placeholder="Gewünschte Farbe eingeben" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-4 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200 mt-1.5" style="display:none">
+                </div>
+              </div>
+              <div class="flex gap-2.5">
+                <button type="button" id="hero-back-d-2" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08] transition-all duration-200"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+                <button type="button" id="hero-next-d-2" class="btn-accent flex-1 bg-accent text-white font-semibold text-[13px] tracking-[-0.01em] py-3 rounded-xl hover:bg-accent/90 transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Weiter <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+              </div>
+            </div>
+            <!-- Desktop Step 3: Kontakt -->
+            <div id="hero-step-d-3" class="hero-form-step hidden">
+              <p class="text-[11px] font-semibold text-dark/60 uppercase tracking-wider mb-3">Schritt 3 von 3 — Kontakt</p>
+              <div class="space-y-2.5 mb-4">
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Name *</label><input name="name" id="hero-name-d" placeholder="Max Mustermann" required autocomplete="name" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
+                  <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Firma</label><input name="firma" placeholder="Unternehmen" autocomplete="organization" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
+                </div>
+                <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">E-Mail *</label><input type="email" name="email" id="hero-email-d" placeholder="max@firma.de" required autocomplete="email" inputmode="email" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
+                <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Telefon</label><input type="tel" name="telefon" placeholder="+49 ..." autocomplete="tel" inputmode="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
+              </div>
+              <div class="flex gap-2.5">
+                <button type="button" id="hero-back-d-3" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08] transition-all duration-200"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+                <button type="submit" class="btn-accent flex-1 bg-accent text-white font-semibold text-[13px] tracking-[-0.01em] py-3 rounded-xl hover:bg-accent/90 transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Jetzt Angebot erhalten <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+              </div>
+              <p class="text-[10px] font-medium text-dark/50 tracking-tight mt-2.5 text-center">Kostenlos & unverbindlich · 4.9/5 Google · 2.156 B2B-Kunden</p>
+            </div>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Logo Marquee -->
+    <div class="absolute bottom-0 left-0 right-0 z-10 pb-2 md:pb-3">
+      <div class="overflow-hidden w-full">
+        <div class="marquee-track-seamless flex items-center">
+          <img src="../assets/images/kundenlogos/1.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/3.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/5.svg" class="h-20 md:h-28 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="Campari Group" width="168" height="80" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/7.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/Amazon_logo.svg" class="h-4 md:h-5 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="Amazon" width="60" height="20" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/11.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/Aperol_Logo.svg" class="h-8 md:h-10 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="Aperol" width="80" height="32" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/15.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/17.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/19.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/21.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="eager" decoding="async"><img src="../assets/images/kundenlogos/Logo_DB_Schenker.svg" class="h-5 md:h-6 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="DB Schenker" width="80" height="24" loading="eager" decoding="async">
+          <img src="../assets/images/kundenlogos/1.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/3.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/5.svg" class="h-20 md:h-28 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="Campari Group" width="168" height="80" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/7.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/Amazon_logo.svg" class="h-4 md:h-5 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="Amazon" width="60" height="20" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/11.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/Aperol_Logo.svg" class="h-8 md:h-10 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="Aperol" width="80" height="32" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/15.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/17.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/19.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/21.svg" class="h-14 md:h-20 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="NEONTRIP Referenzkunde" width="120" height="56" loading="lazy" decoding="async"><img src="../assets/images/kundenlogos/Logo_DB_Schenker.svg" class="h-5 md:h-6 w-auto mx-6 md:mx-10 opacity-80 grayscale brightness-0 invert" alt="DB Schenker" width="80" height="24" loading="lazy" decoding="async">
+        </div>
+      </div>
+    </div>
+  </section>
+  <style>@media (max-width:768px){.contact-sticky{display:none}#hero{min-height:85dvh!important}#hero>.relative.z-10{padding-top:100px!important;padding-bottom:64px!important}#hero .reveal.inline-flex{margin-bottom:28px!important}#hero h1{font-size:28px!important;line-height:1.12!important;margin-bottom:22px!important}#hero .reveal.text-lg{font-size:15px!important;line-height:1.45!important;margin-bottom:56px!important}#hero .flex.flex-col.items-center{margin-bottom:0!important}#hero .flex.items-center.justify-center.gap-4.text-sm.text-white\/50{display:none!important}#CookiebotWidget{display:none!important}#hero-video-mobile{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-mobile.video-loaded{opacity:1}#hero-video-desktop{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-desktop.video-loaded{opacity:1}}</style>
+<!-- ===== /SECTION: hero ===== -->

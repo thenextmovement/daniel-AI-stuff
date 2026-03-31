@@ -1,0 +1,143 @@
+<!-- ===== SECTION: anfrage ===== -->
+  <!--        PRODUKT-AUSWAHL (DARK - Conversion Focus)
+       ════════════════════════════════════════ -->
+  <section id="anfrage" class="bg-dark relative overflow-hidden py-12 md:py-16 grain">
+    <!-- Noise Overlay -->
+    <div class="absolute inset-0 noise-overlay z-0"></div>
+    <div class="relative z-10 max-w-[1400px] mx-auto px-5 md:px-8 w-full">
+      <!-- Centered Header -->
+      <div class="reveal text-center mb-4">
+        <h2 class="text-[36px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-white neon-glow mb-3">Produkte.</h2>
+        <p class="text-sm md:text-base font-medium text-white/50 tracking-tight mb-2">Neon Schilder, LED Schriftzüge & mehr — klicken Sie für Beispiele und direkte Anfrage.</p>
+      </div>
+
+      <!-- Product Grid - All products visible at once -->
+      <div class="reveal grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-1.5 md:gap-2 mb-3">
+
+        <!-- LED Neonschild -->
+        <button onclick="openProductGallery('neonschild')" class="product-tile group cursor-pointer text-center" data-product="neonschild">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/neonschild.webp" alt="LED Neonschild individuell gestalten" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">LED Neonschild</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 299€</p>
+        </button>
+
+        <!-- 3D Buchstaben (Front) -->
+        <button onclick="openProductGallery('front-buchstaben')" class="product-tile group cursor-pointer text-center" data-product="front-buchstaben">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/front-buchstaben.webp" alt="3D Buchstaben frontbeleuchtet kaufen" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">3D Buchstaben (Front)</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+        </button>
+
+        <!-- 3D Buchstaben (Rückbeleuchtet) -->
+        <button onclick="openProductGallery('halo-buchstaben')" class="product-tile group cursor-pointer text-center" data-product="halo-buchstaben">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/halo-buchstaben.webp" alt="3D Buchstaben rückbeleuchtet Halo-Effekt" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">3D Buchstaben (Rückbeleuchtet)</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+        </button>
+
+        <!-- Leuchtkasten -->
+        <button onclick="openProductGallery('leuchtkasten')" class="product-tile group cursor-pointer text-center" data-product="leuchtkasten">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/leuchtkasten.webp" alt="Leuchtkasten mit Logo individuell" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Leuchtkasten</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+        </button>
+
+        <!-- Marquee-Buchstaben -->
+        <button onclick="openProductGallery('marquee')" class="product-tile group cursor-pointer text-center" data-product="marquee">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/marquee.webp" alt="Marquee Buchstaben Glühbirnen Retro" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Marquee-Buchstaben</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 299€</p>
+        </button>
+
+        <!-- Neon-Halo -->
+        <button onclick="openProductGallery('halo-lampe')" class="product-tile group cursor-pointer text-center" data-product="halo-lampe">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/neon-halo.webp" alt="Neon Halo LED Neon Schild" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Neon-Halo</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 399€</p>
+        </button>
+
+        <!-- Vollflächig beleuchtet -->
+        <button onclick="openProductGallery('sonderanfertigung')" class="product-tile group cursor-pointer text-center" data-product="sonderanfertigung">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/sonderanfertigung.webp" alt="Vollflächig beleuchtete Buchstaben" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Vollflächig beleuchtet</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+        </button>
+
+        <!-- Unbeleuchtet -->
+        <button onclick="openProductGallery('gesamtkonzept')" class="product-tile group cursor-pointer text-center" data-product="gesamtkonzept">
+          <div class="rounded-lg overflow-hidden relative aspect-[3/2] bg-[#111]">
+            <img src="../assets/images/produkte-anfrage/gesamtkonzept.webp" alt="Unbeleuchtete Buchstaben und Logos" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" decoding="async" width="200" height="200">
+            <span class="product-overlay absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+              <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </span>
+          </div>
+          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Unbeleuchtet</h3>
+          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 299€</p>
+        </button>
+
+      </div>
+
+      <!-- CTA Buttons -->
+      <div class="reveal flex flex-wrap items-center justify-center gap-4 mt-6 mb-5">
+        <button onclick="openFormPopup('{{SLUG}}')" class="inline-flex items-center gap-2.5 bg-white text-dark text-base font-semibold tracking-tight px-8 py-4 rounded-full hover:bg-white/90 hover:scale-105 transition-all duration-200 shadow-lg">
+          Ihr Produkt anfragen
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <a href="tel:+4921154257240" class="inline-flex items-center gap-2.5 bg-transparent text-white text-base font-semibold tracking-tight px-8 py-4 rounded-full border border-white/30 hover:bg-white/10 hover:border-white/50 transition-all duration-200">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          Jetzt anrufen
+        </a>
+      </div>
+      <!-- Trust Badges inline -->
+      <div class="reveal flex flex-wrap items-center justify-center gap-4 sm:gap-6 mt-2 text-white/60">
+        <div class="flex items-center gap-1.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <span class="text-xs sm:text-sm font-medium">3D-Vorschau inklusive</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          <span class="text-xs sm:text-sm font-medium">Persönliche Beratung</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="text-xs sm:text-sm font-medium">Angebot in Minuten</span>
+        </div>
+      </div>
+    </div>
+  </section>
+<!-- ===== /SECTION: anfrage ===== -->

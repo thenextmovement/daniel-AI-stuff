@@ -1,0 +1,75 @@
+<!-- ===== SECTION: kunden ===== -->
+  <!--        KUNDEN (ANIMATED LOGO CAROUSEL)
+       ════════════════════════════════════════ -->
+  <section id="kunden" class="bg-light flex items-center px-5 md:px-8">
+    <div class="max-w-[1200px] mx-auto w-full py-16 md:py-24">
+      <!-- Header -->
+      <div class="reveal text-center mb-8 md:mb-10">
+        <h2 class="text-[36px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-dark mb-2">Kunden.</h2>
+        <p class="text-base font-medium text-dark/60 tracking-tight">Über 8.247 Projekte für Agenturen, Marken und Unternehmen jeder Größe</p>
+      </div>
+
+      <!-- Customer Categories (Keywords) -->
+      <div class="reveal flex flex-wrap justify-center gap-2 md:gap-2.5 mb-10 md:mb-14 max-w-[1000px] mx-auto">
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Agenturen</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Marken & Konzerne</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Messebauer</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Ladenbauer</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Gastronomie & Bars</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Hotels & Hospitality</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Retail & Shops</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Events & Messen</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Fitness & Wellness</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Pop-up Stores</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Öffentliche Einrichtungen</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Praxen & Kanzleien</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Büro & Empfang</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Startups</button>
+        <button onclick="openFormPopup('{{SLUG}}')" class="px-3 py-1.5 bg-white rounded-full text-xs font-medium text-dark/70 tracking-tight border border-black/5 hover:border-accent/30 hover:text-accent transition-colors cursor-pointer">Podcaster & Creator</button>
+      </div>
+
+      <!-- Animated Logo Carousel - 2 Rows -->
+      <div class="reveal flex flex-col gap-8 md:gap-12" id="logo-carousel">
+        <!-- Row 1 -->
+        <div class="flex justify-center gap-10 md:gap-16">
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="0">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="1">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="2">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden hidden sm:block" data-column="3">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+        </div>
+        <!-- Row 2 -->
+        <div class="flex justify-center gap-10 md:gap-16">
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="4">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="5">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden" data-column="6">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+          <div class="logo-column relative h-16 w-32 md:h-20 md:w-44 overflow-hidden hidden sm:block" data-column="7">
+            <div class="logo-slot absolute inset-0 flex items-center justify-center transition-all duration-500"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="reveal text-center mt-8 md:mt-10">
+        <button onclick="openFormPopup('{{SLUG}}')" class="inline-flex items-center gap-2 bg-dark text-white text-sm font-semibold tracking-tight px-6 py-3 rounded-full hover:opacity-90 hover:scale-105 transition-all duration-200">
+          Jetzt Ihr Projekt besprechen
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <p class="text-xs text-dark/50 font-medium tracking-tight mt-3">4.9/5 Google · Unverbindlich</p>
+      </div>
+    </div>
+  </section>
+<!-- ===== /SECTION: kunden ===== -->
