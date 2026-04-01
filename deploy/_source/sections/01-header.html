@@ -2,14 +2,14 @@
   <div id="scroll-progress" class="fixed top-0 left-0 h-[3px] bg-accent z-[60] transition-none" style="width: 0%;"></div>
 
   <header id="header" class="fixed top-0 left-0 right-0 z-50 bg-dark">
-    <div class="px-4 lg:px-8 py-5 flex items-center justify-between">
+    <div class="px-4 lg:px-8 py-3 lg:py-3.5 flex items-center justify-between">
       <!-- Logo (white) -->
       <a href="/" id="headerLogo" class="header-logo shrink-0 transition-all duration-300">
         <img src="../assets/logo_weiss_neontrip.webp" alt="NEONTRIP Logo — Individuelle LED Leuchtreklame" class="h-8 lg:h-10 w-auto" loading="eager" decoding="async" fetchpriority="high" width="160" height="40">
       </a>
 
       <!-- Nav Links (center) with Produkte dropdown -->
-      <nav class="hidden lg:flex items-center justify-center" style="flex: 1 1 0%; min-width: 0; gap: 20px;">
+      <nav class="hidden lg:flex items-center justify-center" style="flex: 1 1 0%; min-width: 0; gap: 32px;">
         <div class="relative group">
           <a href="#anfrage" class="nav-link text-sm font-medium text-white/70 hover:text-white transition-colors flex items-center gap-1" style="white-space: nowrap;">
             Produkte
@@ -26,6 +26,7 @@
         <a href="#projekte" class="nav-link text-sm font-medium text-white/70 hover:text-white transition-colors" style="white-space: nowrap;">Projekte</a>
         <a href="#bewertungen" class="nav-link text-sm font-medium text-white/70 hover:text-white transition-colors" style="white-space: nowrap;">Bewertungen</a>
         <a href="#faq" class="nav-link text-sm font-medium text-white/70 hover:text-white transition-colors" style="white-space: nowrap;">FAQ</a>
+        <a href="#anfrage-quick" class="nav-link text-sm font-medium text-white/70 hover:text-white transition-colors" style="white-space: nowrap;">Anfrage</a>
         <a href="#kontakt" class="nav-link text-sm font-medium text-white/70 hover:text-white transition-colors" style="white-space: nowrap;">Kontakt</a>
       </nav>
 
@@ -75,19 +76,17 @@
 
   <div id="mobile-nav" class="fixed inset-0 z-40 pointer-events-none opacity-0 transition-opacity duration-300 lg:hidden" aria-hidden="true">
     <div class="absolute inset-0 bg-dark/95 backdrop-blur-md"></div>
-    <div class="relative z-10 flex flex-col items-center justify-start h-full gap-6 overflow-y-auto pt-24 pb-8" style="font-family: 'Inter', sans-serif;">
+    <div class="relative z-10 flex flex-col items-center justify-center h-full gap-5 overflow-y-auto pt-20 pb-8" style="font-family: 'Inter', sans-serif;">
       <a href="#anfrage" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Produkte</a>
       <a href="#projekte" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Projekte</a>
-      <a href="#events" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Events</a>
       <a href="#bewertungen" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Bewertungen</a>
-      <a href="#vorteile" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Vorteile</a>
-      <a href="#kunden" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Kunden</a>
       <a href="#faq" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">FAQ</a>
+      <a href="#anfrage-quick" onclick="document.getElementById('hamburger').click();" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Anfrage</a>
       <a href="#kontakt" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">Kontakt</a>
-      <a href="#anfrage-quick" onclick="document.getElementById('hamburger').click();" class="mobile-nav-link mt-4 bg-white text-dark font-medium text-base px-8 py-3 rounded-full" style="font-family: 'Inter', sans-serif;">Jetzt 3D-Vorschau erhalten</a>
+      <a href="#anfrage-quick" onclick="document.getElementById('hamburger').click();" class="mobile-nav-link mt-3 bg-white text-dark font-medium text-base px-8 py-3 rounded-full" style="font-family: 'Inter', sans-serif;">Jetzt 3D-Vorschau erhalten</a>
 
       <!-- Contact Info -->
-      <div class="mt-6 flex flex-col items-center gap-3">
+      <div class="mt-4 flex flex-col items-center gap-2.5">
         <a href="tel:+4921154257240" class="mobile-nav-link flex items-center gap-2 text-white/60 text-sm font-medium">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
           +49 211 54257240
@@ -96,6 +95,11 @@
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           support@neontrip.de
         </a>
+      </div>
+
+      <!-- Logo -->
+      <div class="mt-auto pt-4 pb-2">
+        <img src="../assets/logo_weiss_neontrip.webp" alt="NEONTRIP" class="h-7 w-auto opacity-40" width="140" height="28">
       </div>
     </div>
   </div>

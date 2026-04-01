@@ -4,10 +4,10 @@
   "lang": "de",
   "title": "3D Leuchtbuchstaben & Profilbuchstaben nach Maß | NEONTRIP Düsseldorf",
   "meta_description": "3D Leuchtbuchstaben nach Maß — front-, rück- oder seitenbeleuchtet. Edelstahl, Acryl & Aluminium. Angebot + 3D-Vorschau in 24h. Express ab 14 Tagen.",
-  "canonical": "https://neontrip.de/leuchtbuchstaben/",
+  "canonical": "https://anfrage.neontrip.de/leuchtbuchstaben/",
   "og_title": "NEONTRIP – 3D Leuchtbuchstaben & Profilbuchstaben nach Maß",
   "og_description": "3D Leuchtbuchstaben nach Maß — front-, rück- oder seitenbeleuchtet. Edelstahl, Acryl & Aluminium. Angebot + 3D-Vorschau in 24h. Express ab 14 Tagen.",
-  "h1_text": "3D Leuchtbuchstaben nach&nbsp;Maß",
+  "h1_text": "Ihr Logo als 3D Leuchtbuchstaben",
   "default_product": "3D Buchstaben (Front)",
   "price_anchor": "3D Buchstaben ab 499 € · LED Neon ab 299 € · Leuchtkästen ab 499 €",
   "price_anchor_desktop": "3D Leuchtbuchstaben ab 499 EUR",
@@ -351,7 +351,7 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "3D Leuchtbuchstaben & Profilbuchstaben nach Maß | NEONTRIP",
-      "url": "https://neontrip.de/leuchtbuchstaben/",
+      "url": "https://anfrage.neontrip.de/leuchtbuchstaben/",
       "description": "Individuelle 3D-Leuchtbuchstaben & Profilbuchstaben nach Maß aus Düsseldorf. Kostenlose 3D-Vorschau in 24h.",
       "speakable": {
         "@type": "SpeakableSpecification",
@@ -375,7 +375,7 @@
           "@type": "ListItem",
           "position": 2,
           "name": "Leuchtbuchstaben anfragen",
-          "item": "https://neontrip.de/leuchtbuchstaben/"
+          "item": "https://anfrage.neontrip.de/leuchtbuchstaben/"
         }
       ]
     },
@@ -384,8 +384,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Individuelle 3D-Leuchtbuchstaben & Profilbuchstaben",
       "description": "Einblick in die Produktion und Installation individueller 3D-Leuchtbuchstaben und Profilbuchstaben von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }
   ],

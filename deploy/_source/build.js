@@ -104,6 +104,11 @@ ${rulesStr}
     document.addEventListener('DOMContentLoaded', function() {
       var el = document.querySelector('#hero h1');
       if (el) el.innerHTML = h + ' \\u2014 Kostenlose 3D\\u2011Vorschau in 24h';
+      var plain = h.replace(/<[^>]*>/g, '');
+      var ft = document.getElementById('hero-form-title-d');
+      var ftm = document.getElementById('hero-form-title');
+      if (ft) ft.textContent = plain + ' — in 60 Sek.';
+      if (ftm) ftm.textContent = plain + ' — in 1 Min.';
     });
   })();
   </script>`;

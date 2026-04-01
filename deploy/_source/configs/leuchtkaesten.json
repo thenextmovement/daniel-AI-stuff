@@ -4,10 +4,10 @@
   "lang": "de",
   "title": "Individuelle Leuchtkästen & LED Leuchtkästen | NEONTRIP Düsseldorf",
   "meta_description": "Individuelle LED Leuchtkästen nach Maß aus Düsseldorf. Leuchtkasten mit Ihrem Logo für Geschäft, Praxis oder Büro. Kostenlose Visualisierung in 24h. Express ab 3 Tagen.",
-  "canonical": "https://neontrip.de/leuchtkaesten/",
+  "canonical": "https://anfrage.neontrip.de/leuchtkaesten/",
   "og_title": "NEONTRIP – Individuelle Leuchtkästen & LED Leuchtkästen",
   "og_description": "Individuelle LED Leuchtkästen nach Maß aus Düsseldorf. Leuchtkasten mit Ihrem Logo für Geschäft, Praxis oder Büro. Kostenlose Visualisierung in 24h. Express ab 3 Tagen.",
-  "h1_text": "Leuchtkästen nach&nbsp;Maß",
+  "h1_text": "Ihr Logo im Leuchtkasten",
   "default_product": "Leuchtkasten",
   "price_anchor": "Leuchtkästen ab 499 € · LED Neon ab 299 € · 3D Buchstaben ab 499 €",
   "price_anchor_desktop": "Individuelle Leuchtkästen ab 499 EUR",
@@ -16,7 +16,7 @@
   "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
   "faq_cta_title": "Bereit für Ihren Leuchtkasten?",
   "clarity_page_type": "landing",
-  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/leuchtkaesten/\">",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/leuchtkaesten/\">",
   "dki_rules": [
     [
       "leuchtkasten kaufen",
@@ -187,7 +187,7 @@
         "@type": "Organization",
         "name": "Dara Nova GmbH"
       },
-      "image": "https://neontrip.de/assets/images/og-share.jpg",
+      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
       "category": "Leuchtkästen",
       "offers": {
         "@type": "AggregateOffer",
@@ -278,7 +278,7 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "Individuelle Leuchtkästen & LED Leuchtkästen | NEONTRIP",
-      "url": "https://neontrip.de/leuchtkaesten/",
+      "url": "https://anfrage.neontrip.de/leuchtkaesten/",
       "description": "Individuelle LED Leuchtkästen nach Maß aus Düsseldorf. Leuchtkasten mit Logo für Geschäft, Praxis oder Büro. Kostenlose Visualisierung in 24h.",
       "speakable": {
         "@type": "SpeakableSpecification",
@@ -302,13 +302,13 @@
           "@type": "ListItem",
           "position": 2,
           "name": "Produkte",
-          "item": "https://neontrip.de/"
+          "item": "https://anfrage.neontrip.de/"
         },
         {
           "@type": "ListItem",
           "position": 3,
           "name": "Leuchtkästen",
-          "item": "https://neontrip.de/leuchtkaesten/"
+          "item": "https://anfrage.neontrip.de/leuchtkaesten/"
         }
       ]
     },
@@ -317,8 +317,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Individuelle Leuchtkästen & LED Leuchtkästen",
       "description": "Einblick in die Produktion und Installation individueller LED Leuchtkästen und beleuchteter Werbeanlagen von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }
   ],

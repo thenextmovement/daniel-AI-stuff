@@ -4,7 +4,7 @@
   "lang": "de",
   "title": "Ihr Logo als Leuchtschild — LED & Neon | NEONTRIP Düsseldorf",
   "meta_description": "Ihr Logo als Leuchtschild ab 299 EUR — als Neon, LED oder 3D-Buchstaben. Kostenlose 3D-Vorschau in 24h. Jetzt Logo hochladen!",
-  "canonical": "https://neontrip.de/logo/",
+  "canonical": "https://anfrage.neontrip.de/logo/",
   "og_title": "NEONTRIP – Ihr Logo als Leuchtschild | LED & Neon",
   "og_description": "Ihr Logo als Leuchtschild ab 299 EUR — als Neon, LED oder 3D-Buchstaben. Kostenlose 3D-Vorschau in 24h. Jetzt Logo hochladen!",
   "h1_text": "Ihr Logo als Leuchtschild",
@@ -14,7 +14,7 @@
   "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
   "faq_cta_title": "Bereit für Ihr Logo-Leuchtschild?",
   "clarity_page_type": "landing",
-  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/logo/\">",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/logo/\">",
   "dki_rules": [
     [
       "led logo firma",
@@ -70,7 +70,7 @@
     ],
     [
       "firmenlogo beleuchtet",
-      "Ihr Firmenlogo als Leuchtschild"
+      "Ihr beleuchtetes Firmenlogo"
     ],
     [
       "firmenlogo schild",
@@ -221,7 +221,7 @@
         "@type": "Organization",
         "name": "Dara Nova GmbH"
       },
-      "image": "https://neontrip.de/assets/images/og-share.jpg",
+      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
       "category": "Logo Leuchtschilder",
       "offers": {
         "@type": "AggregateOffer",
@@ -328,7 +328,7 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "Ihr Logo als Leuchtschild — LED & Neon | NEONTRIP",
-      "url": "https://neontrip.de/logo/",
+      "url": "https://anfrage.neontrip.de/logo/",
       "description": "Ihr Logo als individuelles Leuchtschild — als Neon, LED oder 3D-Buchstaben. Ab 299 EUR.",
       "speakable": {
         "@type": "SpeakableSpecification",
@@ -352,13 +352,13 @@
           "@type": "ListItem",
           "position": 2,
           "name": "Produkte",
-          "item": "https://neontrip.de/"
+          "item": "https://anfrage.neontrip.de/"
         },
         {
           "@type": "ListItem",
           "position": 3,
           "name": "Logo Leuchtschilder",
-          "item": "https://neontrip.de/logo/"
+          "item": "https://anfrage.neontrip.de/logo/"
         }
       ]
     },
@@ -367,8 +367,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Ihr Logo als Leuchtschild",
       "description": "Einblick in die Produktion und Installation von Logo Leuchtschildern, Neon-Logos und 3D-Leuchtbuchstaben von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }
   ],

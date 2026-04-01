@@ -4,7 +4,7 @@
   "lang": "en",
   "title": "Custom Illuminated Signage & LED Neon Signs | NEONTRIP Düsseldorf",
   "meta_description": "Custom LED illuminated signage, neon signs & 3D channel letters from Düsseldorf, Germany. Trusted by Campari, Amazon & 8,247 businesses. Free 3D preview within 24h. Express from 3 days.",
-  "canonical": "https://neontrip.de/en/",
+  "canonical": "https://anfrage.neontrip.de/en/",
   "og_title": "NEONTRIP – Custom Illuminated Signage & LED Neon Signs",
   "og_description": "Custom LED illuminated signage, neon signs & 3D channel letters from Düsseldorf, Germany. Trusted by Campari, Amazon & 8,247 businesses. Free 3D preview within 24h. Express from 3 days.",
   "h1_text": "Your Logo as a Light Sign",
@@ -13,7 +13,7 @@
   "footer_products": "LED Neon · 3D Letters · Light Boxes",
   "faq_cta_title": "Ready for your light sign?",
   "clarity_page_type": "landing",
-  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/\">\n  <link rel=\"alternate\" hreflang=\"en\" href=\"https://neontrip.de/en/\">\n  <link rel=\"alternate\" hreflang=\"x-default\" href=\"https://neontrip.de/\">",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/\">\n  <link rel=\"alternate\" hreflang=\"en\" href=\"https://anfrage.neontrip.de/en/\">\n  <link rel=\"alternate\" hreflang=\"x-default\" href=\"https://anfrage.neontrip.de/\">",
   "dki_rules": [],
   "structured_data": [
     {
@@ -134,7 +134,7 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "Request Custom Illuminated Signage & LED Neon Signs | NEONTRIP",
-      "url": "https://neontrip.de/en/",
+      "url": "https://anfrage.neontrip.de/en/",
       "description": "Custom LED illuminated signage, neon signs & 3D channel letters from Düsseldorf, Germany. Free 3D preview within 24h.",
       "speakable": {
         "@type": "SpeakableSpecification",
@@ -158,7 +158,7 @@
           "@type": "ListItem",
           "position": 2,
           "name": "Request Signage",
-          "item": "https://neontrip.de/en/"
+          "item": "https://anfrage.neontrip.de/en/"
         }
       ]
     },
@@ -167,8 +167,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Custom Illuminated Signage & LED Neon Signs",
       "description": "A look into the production and installation of custom LED illuminated signage, neon signs, and 3D channel letters by NEONTRIP from Düsseldorf, Germany.",
-      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }
   ],

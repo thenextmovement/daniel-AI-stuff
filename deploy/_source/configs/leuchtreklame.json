@@ -4,16 +4,16 @@
   "lang": "de",
   "title": "Individuelle Leuchtreklame & LED Werbeanlagen | NEONTRIP Düsseldorf",
   "meta_description": "Individuelle Leuchtreklame ab 299 EUR — 3D-Vorschau in 24h kostenlos. LED Neon, Buchstaben, Leuchtkästen. Jetzt anfragen!",
-  "canonical": "https://neontrip.de/leuchtreklame/",
+  "canonical": "https://anfrage.neontrip.de/leuchtreklame/",
   "og_title": "NEONTRIP – Individuelle Leuchtreklame & LED Werbeanlagen",
   "og_description": "Individuelle Leuchtreklame ab 299 EUR — 3D-Vorschau in 24h kostenlos. LED Neon, Buchstaben, Leuchtkästen. Jetzt anfragen!",
-  "h1_text": "Leuchtreklame nach&nbsp;Maß",
+  "h1_text": "Ihre Marke in Licht",
   "hero_subline": "LED Leuchtreklame, Neon Schilder, 3D-Buchstaben und Leuchtkästen — für Fassade, Laden, Gastronomie und Messe. Kostenlose 3D-Vorschau.",
   "footer_tagline": "Individuelle Leuchtreklame aus Düsseldorf.",
   "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
   "faq_cta_title": "Bereit für Ihre Leuchtreklame?",
   "clarity_page_type": "landing",
-  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/leuchtreklame/\">",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/leuchtreklame/\">",
   "dki_rules": [
     [
       "leuchtreklame kaufen",
@@ -178,6 +178,14 @@
     [
       "neon werbung",
       "Neon Werbung nach Maß"
+    ],
+    [
+      "leuchtwerbung",
+      "Individuelle Leuchtwerbung nach Maß"
+    ],
+    [
+      "neon beleuchtung",
+      "Individuelle Neon Beleuchtung nach Maß"
     ]
   ],
   "structured_data": [
@@ -280,7 +288,7 @@
         "@type": "Organization",
         "name": "Dara Nova GmbH"
       },
-      "image": "https://neontrip.de/assets/images/og-share.jpg",
+      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
       "category": "Leuchtreklame",
       "offers": {
         "@type": "AggregateOffer",
@@ -387,7 +395,7 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "Individuelle Leuchtreklame & LED Werbeanlagen | NEONTRIP",
-      "url": "https://neontrip.de/leuchtreklame/",
+      "url": "https://anfrage.neontrip.de/leuchtreklame/",
       "description": "Individuelle Leuchtreklame nach Maß aus Düsseldorf — LED Neon Schilder, 3D-Buchstaben, Leuchtkästen und Lichtwerbung.",
       "speakable": {
         "@type": "SpeakableSpecification",
@@ -411,13 +419,13 @@
           "@type": "ListItem",
           "position": 2,
           "name": "Produkte",
-          "item": "https://neontrip.de/"
+          "item": "https://anfrage.neontrip.de/"
         },
         {
           "@type": "ListItem",
           "position": 3,
           "name": "Leuchtreklame",
-          "item": "https://neontrip.de/leuchtreklame/"
+          "item": "https://anfrage.neontrip.de/leuchtreklame/"
         }
       ]
     },
@@ -426,8 +434,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Individuelle Leuchtreklame & LED Werbeanlagen",
       "description": "Einblick in die Produktion und Installation individueller Leuchtreklame, LED Neon Schilder und 3D-Leuchtbuchstaben von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }
   ],

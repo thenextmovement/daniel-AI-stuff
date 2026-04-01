@@ -4,10 +4,10 @@
   "lang": "de",
   "title": "Leuchtreklame für Messe & Events | NEONTRIP Düsseldorf",
   "meta_description": "Leuchtreklame für Messe & Events — Leuchtlogos, beleuchtete Messewände, LED Schilder für Ihren Messestand. Express ab 3 Tagen. Kostenlose 3D-Vorschau in 24h.",
-  "canonical": "https://neontrip.de/messe-event/",
+  "canonical": "https://anfrage.neontrip.de/messe-event/",
   "og_title": "NEONTRIP – Leuchtreklame für Messe & Events",
   "og_description": "Leuchtreklame für Messe & Events — Leuchtlogos, beleuchtete Messewände, LED Schilder für Ihren Messestand. Express ab 3 Tagen. Kostenlose 3D-Vorschau in 24h.",
-  "h1_text": "Leuchtreklame für Messen",
+  "h1_text": "Ihr Messestand leuchtet",
   "hero_subline": "Leuchtlogos, beleuchtete Messewände & LED Schilder für Ihren Messestand — wir liefern eine kostenlose 3D-Vorschau mit Festpreisangebot.",
   "footer_tagline": "Individuelle Neon Schilder aus Düsseldorf.",
   "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
@@ -380,7 +380,7 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "Leuchtreklame für Messe & Events | NEONTRIP",
-      "url": "https://neontrip.de/messe-event/",
+      "url": "https://anfrage.neontrip.de/messe-event/",
       "description": "Leuchtreklame für Messe & Events — Leuchtlogos, beleuchtete Messewände und LED Schilder für Ihren Messestand. Express ab 3 Tagen.",
       "speakable": {
         "@type": "SpeakableSpecification",
@@ -404,7 +404,7 @@
           "@type": "ListItem",
           "position": 2,
           "name": "Messe & Event Leuchtreklame",
-          "item": "https://neontrip.de/messe-event/"
+          "item": "https://anfrage.neontrip.de/messe-event/"
         }
       ]
     },
@@ -413,8 +413,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Individuelle Neon Schilder & LED Schriftzüge",
       "description": "Einblick in die Produktion und Installation individueller LED Neon Schilder und Leuchtschriftzüge von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }
   ],

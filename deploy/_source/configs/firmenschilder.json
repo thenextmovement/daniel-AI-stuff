@@ -4,10 +4,10 @@
   "lang": "de",
   "title": "Beleuchtete Firmenschilder & LED Werbeschilder | NEONTRIP Düsseldorf",
   "meta_description": "Beleuchtete Firmenschilder ab 499 EUR — 3D-Vorschau in 24h kostenlos. IP67 wetterfest. Jetzt unverbindlich anfragen!",
-  "canonical": "https://neontrip.de/firmenschilder/",
+  "canonical": "https://anfrage.neontrip.de/firmenschilder/",
   "og_title": "NEONTRIP – Beleuchtete Firmenschilder & LED Werbeschilder",
   "og_description": "Beleuchtete Firmenschilder ab 499 EUR — 3D-Vorschau in 24h kostenlos. IP67 wetterfest. Jetzt unverbindlich anfragen!",
-  "h1_text": "Firmenschilder beleuchtet",
+  "h1_text": "Ihr Firmenschild — beleuchtet",
   "default_product": "Vollflächig beleuchtet",
   "price_anchor": "Firmenschilder ab 499 € · LED Neon ab 299 € · Leuchtkästen ab 499 €",
   "price_anchor_desktop": "Beleuchtete Firmenschilder ab 499 EUR",
@@ -16,7 +16,7 @@
   "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
   "faq_cta_title": "Bereit für Ihr Firmenschild?",
   "clarity_page_type": "landing",
-  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://neontrip.de/firmenschilder/\">",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/firmenschilder/\">",
   "dki_rules": [
     [
       "beleuchtetes firmenschild",
@@ -295,7 +295,7 @@
         "@type": "Organization",
         "name": "Dara Nova GmbH"
       },
-      "image": "https://neontrip.de/assets/images/og-share.jpg",
+      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
       "category": "Firmenschilder",
       "offers": {
         "@type": "AggregateOffer",
@@ -434,7 +434,7 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "Beleuchtete Firmenschilder & LED Werbeschilder | NEONTRIP",
-      "url": "https://neontrip.de/firmenschilder/",
+      "url": "https://anfrage.neontrip.de/firmenschilder/",
       "description": "Beleuchtete Firmenschilder & LED Werbeschilder nach Maß aus Düsseldorf. Von Einzelbuchstaben bis Komplett-Schildanlagen.",
       "speakable": {
         "@type": "SpeakableSpecification",
@@ -458,13 +458,13 @@
           "@type": "ListItem",
           "position": 2,
           "name": "Produkte",
-          "item": "https://neontrip.de/"
+          "item": "https://anfrage.neontrip.de/"
         },
         {
           "@type": "ListItem",
           "position": 3,
           "name": "Firmenschilder",
-          "item": "https://neontrip.de/firmenschilder/"
+          "item": "https://anfrage.neontrip.de/firmenschilder/"
         }
       ]
     },
@@ -473,8 +473,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Beleuchtete Firmenschilder & LED Werbeschilder",
       "description": "Einblick in die Produktion und Installation beleuchteter Firmenschilder, LED Werbeschilder und 3D-Leuchtbuchstaben von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }
   ],
