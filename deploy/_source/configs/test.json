@@ -459,5 +459,6 @@
     "kontakt",
     "footer"
   ],
-  "default_product": "LED Neonschild"
+  "default_product": "LED Neonschild",
+  "sticky_produkt": "neonschild"
 }

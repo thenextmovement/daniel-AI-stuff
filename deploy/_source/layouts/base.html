@@ -2246,6 +2246,16 @@ if (window.innerWidth < 768) {
   </div>
 </div>
 
+<!-- Sticky CTA (Desktop only, hidden on mobile via CSS) -->
+<div class="contact-sticky" id="contact-sticky">
+  <a href="https://anfrage.neontrip.de/anfrage?produkt={{STICKY_PRODUKT}}&utm_source=google&utm_medium=cpc&utm_campaign={{SLUG}}&utm_content=sticky-cta" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:10px;background:#ff1f6e;color:white;font-weight:700;font-size:15px;padding:14px 22px;border-radius:50px;box-shadow:0 8px 30px rgba(255,31,110,0.4);text-decoration:none;white-space:nowrap" onclick="typeof gtag==='function'&&gtag('event','sticky_cta_click',{event_category:'engagement',event_label:window.location.pathname})">
+    <span>⚡</span> Kostenloses Angebot anfragen
+  </a>
+</div>
+<script>
+(function(){var s=document.getElementById('contact-sticky');if(!s)return;var f=document.querySelector('footer,#kontakt,[data-section="kontakt"]');window.addEventListener('scroll',function(){var scrolled=window.scrollY>400;var fv=f?f.getBoundingClientRect().top<window.innerHeight+100:false;s.classList.toggle('visible',scrolled&&!fv)},{passive:true})})();
+</script>
+
 <!-- Cloudflare Web Analytics -->
 <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "92bd73acc6e245f1a17f6c36b00927ef"}'></script>
 </body>

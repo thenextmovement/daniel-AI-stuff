@@ -149,6 +149,7 @@ function replaceVariables(html, config) {
     '{{DEFAULT_PRODUCT}}': config.default_product || 'LED Neonschild',
     '{{PRICE_ANCHOR}}': config.price_anchor || 'LED Neon ab 299 € · 3D Buchstaben ab 499 € · Leuchtkästen ab 499 €',
     '{{PRICE_ANCHOR_DESKTOP}}': config.price_anchor_desktop || 'LED Neon Schilder ab 199 EUR',
+    '{{STICKY_PRODUKT}}': config.sticky_produkt || 'neonschild',
   };
 
   let result = html;
