@@ -423,10 +423,9 @@
       text-shadow: none;
     }
 
-    /* Hero H1: 36px on mobile only, desktop uses Tailwind classes */
-    @media (max-width: 767px) {
-      #hero h1 { font-size: 36px !important; }
-    }
+    /* Hero H1 sizes — double ID selector to beat pre-built Tailwind 28px !important */
+    section#hero h1 { font-size: 36px !important; }
+    @media (min-width: 768px) { section#hero h1 { font-size: 80px !important; } }
 
     /* Noise overlay for card-in-card dark sections */
     .noise-overlay { background-image: url('../assets/images/grain-texture.png'); background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
