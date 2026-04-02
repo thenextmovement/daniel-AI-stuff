@@ -1365,6 +1365,18 @@
         const href = this.getAttribute('href');
         if (!href || href === '#') return;
         e.preventDefault();
+        // Header CTA: scroll to hero form if visible, else anfrage-quick
+        if (this.classList.contains('header-cta')) {
+          var heroSec = document.getElementById('hero');
+          var heroForm = document.getElementById('hero-form-desktop');
+          if (heroSec && heroForm && heroSec.getBoundingClientRect().bottom > 200) {
+            var pos = heroForm.getBoundingClientRect().top + window.pageYOffset - 100;
+            window.scrollTo({ top: pos, behavior: 'smooth' });
+            heroForm.style.boxShadow = '0 25px 80px rgba(0,0,0,0.25),0 8px 32px rgba(0,0,0,0.12),0 0 0 3px #fa31a2';
+            setTimeout(function() { heroForm.style.boxShadow = '0 25px 80px rgba(0,0,0,0.25),0 8px 32px rgba(0,0,0,0.12)'; }, 1500);
+            return;
+          }
+        }
         const target = document.querySelector(href);
         if (target) {
           const offset = 80;
