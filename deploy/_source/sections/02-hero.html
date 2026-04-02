@@ -21,12 +21,12 @@
         <!-- Left: Headline + Mobile Form -->
         <div class="text-center lg:text-left order-1 lg:row-span-2">
           <!-- Badge -->
-          <div class="reveal inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-white/10 backdrop-blur-sm rounded-full text-[10px] md:text-xs font-medium tracking-wide uppercase text-white/90 mb-3 md:mb-8">
+          <div class="reveal inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-white/10 backdrop-blur-sm rounded-full text-[10px] md:text-xs font-medium tracking-wide uppercase text-white/90 mb-1.5 md:mb-8">
             <span class="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-400 rounded-full pulse-glow"></span>
             Über 8.200+ realisierte Projekte
           </div>
           <!-- H1 -->
-          <h1 class="reveal text-[28px] md:text-[52px] lg:text-[64px] font-semibold leading-[1.02] tracking-tightest text-white neon-glow mb-2 md:mb-5" style="transition-delay:0.1s">
+          <h1 class="reveal font-semibold leading-[0.95] tracking-tightest text-white neon-glow mb-1 md:mb-5" style="font-size:80px;line-height:1.15;transition-delay:0.1s">
             {{H1_TEXT}}
           </h1>
           <!-- Subline -->
@@ -41,7 +41,7 @@
                 <input type="hidden" name="source" value="hero-form-{{SLUG}}">
                 <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
                 <div class="text-center mb-3" id="hero-form-header">
-                  <h2 class="text-[20px] font-semibold text-dark tracking-[-0.03em] leading-tight" id="hero-form-title">Angebot in 1 Minute</h2>
+                  <h2 class="text-2xl font-semibold text-dark tracking-[-0.03em] leading-tight" id="hero-form-title">Angebot in 1 Minute</h2>
                   <p class="text-[11px] font-medium text-dark/55 mt-0.5">Kostenlose 3D-Vorschau & Festpreisangebot</p>
                 </div>
                 <div class="flex items-center gap-1.5 mb-3" id="hero-bars-wrapper">
@@ -123,7 +123,7 @@
                     <input type="checkbox" name="express" value="ja" class="accent-accent w-4 h-4" style="accent-color:#fa31a2">
                     <span class="flex items-center gap-1.5 text-[12px] font-semibold text-dark/70"><svg class="w-3.5 h-3.5 text-amber-500" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Express-Fertigung (ab 3 Werktage)</span>
                   </label>
-                  <button type="button" id="hero-next-1" class="w-full bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);margin-top:6px;letter-spacing:-0.01em">Kostenlose 3D-Vorschau starten <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                  <button type="button" id="hero-next-1" class="w-full bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);margin-top:6px;letter-spacing:-0.01em">Jetzt 3D-Vorschau sichern <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
                 </div>
                 <!-- Step 2: Design -->
                 <div id="hero-step-2" class="hero-form-step hidden">
@@ -166,7 +166,7 @@
                   </div>
                   <div class="flex gap-2">
                     <button type="button" id="hero-back-2" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08]"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-                    <button type="button" id="hero-next-2" class="flex-1 bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);letter-spacing:-0.01em">Weiter — fast geschafft! <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                    <button type="button" id="hero-next-2" class="flex-1 bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);letter-spacing:-0.01em">Weiter zum Angebot <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
                   </div>
                 </div>
                 <!-- Step 3: Kontakt -->
@@ -183,7 +183,7 @@
                   </div>
                   <div class="flex gap-2">
                     <button type="button" id="hero-back-3" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08]"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-                    <button type="submit" class="flex-1 bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);letter-spacing:-0.01em">3D-Vorschau & Angebot erhalten <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                    <button type="submit" class="flex-1 bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);letter-spacing:-0.01em">Mein Angebot sichern <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
                   </div>
                 </div>
               </form>
@@ -297,7 +297,7 @@
                 <input type="checkbox" name="express" value="ja" style="accent-color:#fa31a2;width:16px;height:16px">
                 <span class="flex items-center gap-1.5" style="font-size:13px;font-weight:600;color:rgba(10,10,10,0.6)"><svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Express-Fertigung (ab 3 Werktage)</span>
               </label>
-              <button type="button" id="hero-next-d-1" class="w-full bg-accent text-white font-bold flex items-center justify-center gap-2" style="font-size:15px;padding:16px 20px;border-radius:14px;border:none;cursor:pointer;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);transition:all 200ms;letter-spacing:-0.01em">Kostenlose 3D-Vorschau starten <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+              <button type="button" id="hero-next-d-1" class="w-full bg-accent text-white font-bold flex items-center justify-center gap-2" style="font-size:15px;padding:16px 20px;border-radius:14px;border:none;cursor:pointer;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);transition:all 200ms;letter-spacing:-0.01em">Jetzt 3D-Vorschau sichern <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
               <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;font-size:13px;font-weight:500;color:rgba(10,10,10,0.5)">
                 <svg width="40" height="14" viewBox="0 0 272 92" xmlns="http://www.w3.org/2000/svg" fill="rgba(10,10,10,0.4)"><path d="M115.75 47.18c0 12.77-9.99 22.18-22.25 22.18s-22.25-9.41-22.25-22.18C71.25 34.32 81.24 25 93.5 25s22.25 9.32 22.25 22.18zm-9.74 0c0-7.98-5.79-13.44-12.51-13.44S80.99 39.2 80.99 47.18c0 7.9 5.79 13.44 12.51 13.44s12.51-5.55 12.51-13.44z"/><path d="M163.75 47.18c0 12.77-9.99 22.18-22.25 22.18s-22.25-9.41-22.25-22.18c0-12.85 9.99-22.18 22.25-22.18s22.25 9.32 22.25 22.18zm-9.74 0c0-7.98-5.79-13.44-12.51-13.44s-12.51 5.46-12.51 13.44c0 7.9 5.79 13.44 12.51 13.44s12.51-5.55 12.51-13.44z"/><path d="M209.75 26.34v39.82c0 16.38-9.66 23.07-21.08 23.07-10.75 0-17.22-7.19-19.66-13.07l8.48-3.53c1.51 3.61 5.21 7.87 11.17 7.87 7.31 0 11.84-4.51 11.84-13v-3.19h-.34c-2.18 2.69-6.38 5.04-11.68 5.04-11.09 0-21.25-9.66-21.25-22.09 0-12.52 10.16-22.26 21.25-22.26 5.29 0 9.49 2.35 11.68 4.96h.34v-3.61h9.25zm-8.56 20.92c0-7.81-5.21-13.52-11.84-13.52-6.72 0-12.35 5.71-12.35 13.52 0 7.73 5.63 13.36 12.35 13.36 6.63 0 11.84-5.63 11.84-13.36z"/><path d="M225 3v65h-9.5V3h9.5z"/><path d="M262.02 54.48l7.56 5.04c-2.44 3.61-8.32 9.83-18.48 9.83-12.6 0-22.01-9.74-22.01-22.18 0-13.19 9.49-22.18 20.92-22.18 11.51 0 17.14 9.16 18.98 14.11l1.01 2.52-29.65 12.28c2.27 4.45 5.8 6.72 10.75 6.72 4.96 0 8.4-2.44 10.92-6.14zm-23.27-7.98l19.82-8.23c-1.09-2.77-4.37-4.7-8.23-4.7-4.95 0-11.84 4.37-11.59 12.93z"/><path d="M35.29 41.19V32H67c.31 1.64.47 3.58.47 5.68 0 7.06-1.93 15.79-8.15 22.01-6.05 6.3-13.78 9.66-24.02 9.66C16.32 69.35.36 53.89.36 34.91.36 15.93 16.32.47 35.3.47c10.5 0 17.98 4.12 23.6 9.49l-6.64 6.64c-4.03-3.78-9.49-6.72-16.97-6.72-13.86 0-24.7 11.17-24.7 25.03 0 13.86 10.84 25.03 24.7 25.03 8.99 0 14.11-3.61 17.39-6.89 2.66-2.66 4.41-6.46 5.1-11.65l-22.49-.21z"/></svg>
                 <span style="display:flex;align-items:center;gap:2px"><svg width="15" height="15" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span>
@@ -345,7 +345,7 @@
               </div>
               <div class="flex gap-2.5">
                 <button type="button" id="hero-back-d-2" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08] transition-all duration-200"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-                <button type="button" id="hero-next-d-2" class="flex-1 bg-accent text-white font-semibold flex items-center justify-center gap-2" style="font-size:14px;padding:14px 20px;border-radius:12px;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(250,49,162,0.3);transition:background 200ms;letter-spacing:-0.01em">Weiter — fast geschafft! <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                <button type="button" id="hero-next-d-2" class="flex-1 bg-accent text-white font-semibold flex items-center justify-center gap-2" style="font-size:14px;padding:14px 20px;border-radius:12px;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(250,49,162,0.3);transition:background 200ms;letter-spacing:-0.01em">Weiter zum Angebot <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
               </div>
               <p style="font-size:11px;font-weight:500;color:rgba(10,10,10,0.4);text-align:center;margin-top:12px">Noch 1 Schritt bis zu Ihrer kostenlosen 3D-Vorschau</p>
             </div>
@@ -363,7 +363,7 @@
               </div>
               <div class="flex gap-2.5">
                 <button type="button" id="hero-back-d-3" class="flex items-center justify-center w-[44px] shrink-0 bg-dark/[0.04] border border-black/[0.06] rounded-xl hover:bg-dark/[0.08] transition-all duration-200"><svg class="w-4 h-4 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-                <button type="submit" class="flex-1 bg-accent text-white font-semibold flex items-center justify-center gap-2" style="font-size:14px;padding:14px 20px;border-radius:12px;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(250,49,162,0.3);transition:background 200ms;letter-spacing:-0.01em">3D-Vorschau & Angebot erhalten <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                <button type="submit" class="flex-1 bg-accent text-white font-semibold flex items-center justify-center gap-2" style="font-size:14px;padding:14px 20px;border-radius:12px;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(250,49,162,0.3);transition:background 200ms;letter-spacing:-0.01em">Mein kostenloses Angebot sichern <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
               </div>
               <p style="font-size:11px;font-weight:500;color:rgba(10,10,10,0.4);text-align:center;margin-top:12px">Kostenlos & unverbindlich · DSGVO-konform</p>
             </div>

@@ -392,7 +392,8 @@
   "sections": [
     "header",
     "hero",
-        "projekte",
+    "stats-bar",
+    "projekte",
     "events",
     "anfrage-quick",
     "bewertungen",

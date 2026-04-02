@@ -23,6 +23,7 @@ const CONFIGS_DIR = path.join(SOURCE_DIR, 'configs');
 const SECTION_FILES = {
   'header':        '01-header.html',
   'hero':          '02-hero.html',
+  'stats-bar':     '03-stats-bar.html',
   'process':       '03-process.html',
   'projekte':      '04-projekte.html',
   'events':        '05-events.html',
