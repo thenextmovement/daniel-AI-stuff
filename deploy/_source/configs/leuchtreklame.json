@@ -454,5 +454,6 @@
     "kunden",
     "kontakt",
     "footer"
-  ]
+  ],
+  "default_product": "LED Neonschild"
 }

@@ -55,7 +55,7 @@
                   <div class="space-y-3 mb-3">
                     <div><label for="hero-produkt" class="text-[12px] font-semibold text-dark block mb-1">Produktart</label>
                       <select name="produkt" id="hero-produkt" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark appearance-none cursor-pointer" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
-                        <option value="LED Neonschild" selected>LED Neonschild</option>
+                        <option value="LED Neonschild">LED Neonschild</option>
                         <option value="3D Buchstaben (Front)">3D Buchstaben (Front)</option>
                         <option value="3D Buchstaben (Rückbeleuchtet)">3D Buchstaben (Rückbeleuchtet)</option>
                         <option value="Leuchtkasten">Leuchtkasten</option>
@@ -229,7 +229,7 @@
               <div class="space-y-3 mb-4">
                 <div><label for="hero-produkt-d" class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Produktart</label>
                   <select name="produkt" id="hero-produkt-d" class="w-full border rounded-xl px-4 text-[13px] font-medium text-dark appearance-none cursor-pointer outline-none focus:border-dark/20 transition-all duration-200" style="background-color:#f7f7f8;border-color:rgba(0,0,0,0.08);padding-top:11px;padding-bottom:11px" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
-                    <option value="LED Neonschild" selected>LED Neonschild</option>
+                    <option value="LED Neonschild">LED Neonschild</option>
                     <option value="3D Buchstaben (Front)">3D Buchstaben (Front)</option>
                     <option value="3D Buchstaben (Rückbeleuchtet)">3D Buchstaben (Rückbeleuchtet)</option>
                     <option value="Leuchtkasten">Leuchtkasten</option>
@@ -383,5 +383,6 @@
       </div>
     </div>
   </section>
-  <style>@media (min-width:1024px){#hero-logos{right:50%;-webkit-mask-image:linear-gradient(to right,black 70%,transparent 100%);mask-image:linear-gradient(to right,black 70%,transparent 100%)}}@media (max-width:768px){.contact-sticky{display:none}#hero{min-height:85dvh!important}#hero>.relative.z-10{padding-top:100px!important;padding-bottom:64px!important}#hero .reveal.inline-flex{margin-bottom:28px!important}#hero h1{font-size:28px!important;line-height:1.12!important;margin-bottom:22px!important}#hero .reveal.text-lg{font-size:15px!important;line-height:1.45!important;margin-bottom:56px!important}#hero .flex.flex-col.items-center{margin-bottom:0!important}#hero .flex.items-center.justify-center.gap-4.text-sm.text-white\/50{display:none!important}#CookiebotWidget{display:none!important}#hero-video-mobile{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-mobile.video-loaded{opacity:1}#hero-video-desktop{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-desktop.video-loaded{opacity:1}}</style>
+  <style>@media (min-width:1024px){#hero-logos{right:50%;-webkit-mask-image:linear-gradient(to right,black 70%,transparent 100%);mask-image:linear-gradient(to right,black 70%,transparent 100%)}}@media (max-width:768px){.contact-sticky{display:none}#hero{min-height:85dvh!important}#hero>.relative.z-10{padding-top:100px!important;padding-bottom:64px!important}#hero .reveal.inline-flex{margin-bottom:28px!important}#hero h1{line-height:1.12!important;margin-bottom:22px!important}#hero .reveal.text-lg{font-size:15px!important;line-height:1.45!important;margin-bottom:56px!important}#hero .flex.flex-col.items-center{margin-bottom:0!important}#hero .flex.items-center.justify-center.gap-4.text-sm.text-white\/50{display:none!important}#CookiebotWidget{display:none!important}#hero-video-mobile{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-mobile.video-loaded{opacity:1}#hero-video-desktop{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-desktop.video-loaded{opacity:1}}</style>
+  <script>document.querySelectorAll('select[name="produkt"]').forEach(function(s){s.value='{{DEFAULT_PRODUCT}}'});</script>
 <!-- ===== /SECTION: hero ===== -->
