@@ -1,17 +1,48 @@
 <!-- ===== SECTION: hero ===== -->
+  <style>
+    /* Innen/Außen toggle — checked state */
+    label:has(input[type="radio"][name="einsatzort"]:checked) {
+      background-color: #fa31a2 !important;
+      border-color: #fa31a2 !important;
+      color: #fff !important;
+    }
+    label:has(input[type="radio"][name="einsatzort"]:checked) span {
+      color: #fff !important;
+    }
+    @media (max-width: 767px) {
+      #hero-content { padding-top: 48px !important; padding-bottom: 8px !important; }
+      #hero .hero-badge { margin-bottom: 0 !important; padding-top: 4px !important; padding-bottom: 4px !important; }
+      section#hero h1 { font-size: 30px !important; margin-bottom: 0 !important; }
+      #hero .hero-subline { margin-bottom: 6px !important; font-size: 13px !important; }
+      #hero .hero-mobile-form-wrap { margin-bottom: 0 !important; }
+      #hero-form { padding: 10px !important; }
+      #hero-form-header { margin-bottom: 6px !important; }
+      #hero-form-header h2 { font-size: 18px !important; }
+      #hero-form-header p { font-size: 10px !important; }
+      #hero-bars-wrapper { margin-bottom: 6px !important; }
+      .hero-form-step > p { margin-bottom: 4px !important; font-size: 10px !important; }
+      .hero-form-step .space-y-3 { margin-bottom: 4px !important; }
+      .hero-form-step .space-y-3 > * + * { margin-top: 6px !important; }
+      .hero-form-step label.text-\[12px\] { font-size: 11px !important; margin-bottom: 2px !important; }
+      .hero-form-step select, .hero-form-step input[type="text"] { padding-top: 8px !important; padding-bottom: 8px !important; font-size: 14px !important; }
+      .hero-form-step .grid-cols-2 label { padding-top: 8px !important; padding-bottom: 8px !important; }
+      .hero-form-step label[style*="margin-left"] { margin-top: 0 !important; margin-bottom: 0 !important; }
+      #hero-next-1, #hero-next-2, #hero-step-3 button[type="submit"] { padding: 14px 16px !important; margin-top: 2px !important; font-size: 15px !important; }
+    }
+  </style>
   <section id="hero" class="relative md:min-h-[100dvh] flex items-center bg-dark overflow-hidden grain">
     <!-- Video Background — Desktop -->
     <div class="absolute inset-0 z-0 hidden md:block">
-      <img src="../assets/images/hero-poster-desktop-neon.webp" fetchpriority="high" decoding="async" alt="NEONTRIP LED Neonschild" class="absolute inset-0 w-full h-full object-cover" width="1920" height="1080">
-      <video id="hero-video-desktop" autoplay loop muted playsinline preload="auto" poster="../assets/images/hero-poster-desktop-neon.webp" class="absolute inset-0 z-[1] w-full h-full object-cover" style="background:#0a0a0a" width="1920" height="1080">
-        <source src="{{HERO_VIDEO_DESKTOP}}" type="video/mp4">
+      <img src="../assets/images/hero-poster-desktop-neon.webp" fetchpriority="high" decoding="sync" alt="NEONTRIP LED Neonschild" class="absolute inset-0 w-full h-full object-cover" width="1920" height="1080">
+      <video id="hero-video-desktop" autoplay loop muted playsinline preload="none" poster="../assets/images/hero-poster-desktop-neon.webp" class="absolute inset-0 z-[1] w-full h-full object-cover" style="background:#0a0a0a" width="1920" height="1080">
+        <source data-src="{{HERO_VIDEO_DESKTOP}}" type="video/mp4">
       </video>
       <div class="absolute inset-0" style="background:rgba(10,10,10,.35)"></div>
       <div class="absolute inset-0" style="background:linear-gradient(to bottom,rgba(10,10,10,.2) 0,transparent 50%,rgba(10,10,10,.3) 100%)"></div>
     </div>
     <!-- Background — Mobile (static poster, no video) -->
     <div class="absolute inset-0 z-0 md:hidden">
-      <img src="../assets/images/hero-poster-neon-mobile.webp" fetchpriority="high" decoding="async" alt="NEONTRIP LED Leuchtreklame" class="absolute inset-0 w-full h-full object-cover" width="375" height="667">
+      <img src="../assets/images/hero-poster-neon-mobile.webp" fetchpriority="high" decoding="sync" alt="NEONTRIP LED Leuchtreklame" class="absolute inset-0 w-full h-full object-cover" width="375" height="667">
       <div class="absolute inset-0" style="background:linear-gradient(to bottom,rgba(10,10,10,.05) 0,rgba(10,10,10,.55) 60%)"></div>
     </div>
 
@@ -21,23 +52,23 @@
         <!-- Left: Headline + Mobile Form -->
         <div class="text-center lg:text-left order-1 lg:row-span-2">
           <!-- Badge -->
-          <div class="reveal inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-white/10 backdrop-blur-sm rounded-full text-[10px] md:text-xs font-medium tracking-wide uppercase text-white/90 mb-1.5 md:mb-8">
+          <div class="reveal hero-badge inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-white/10 backdrop-blur-sm rounded-full text-[10px] md:text-xs font-medium tracking-wide uppercase text-white/90 mb-1.5 md:mb-8">
             <span class="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-400 rounded-full pulse-glow"></span>
             Über 8.200+ realisierte Projekte
           </div>
-          <!-- H1 -->
-          <h1 class="reveal font-semibold leading-[0.95] tracking-tightest text-white neon-glow mb-1 md:mb-5" style="line-height:1.15;transition-delay:0.1s">
+          <!-- H1 (clickable → scrolls to form) -->
+          <h1 class="reveal font-semibold leading-[0.95] tracking-tightest text-white neon-glow mb-1 md:mb-5 cursor-pointer" style="line-height:1.15;transition-delay:0.1s" onclick="document.querySelector('#anfrage-quick,#anfrage').scrollIntoView({behavior:'smooth'})">
             {{H1_TEXT}}
           </h1>
-          <!-- Subline -->
-          <p class="reveal text-[14px] md:text-xl text-white/60 font-medium tracking-tight leading-snug mb-4 md:mb-6" style="transition-delay:0.2s">
+          <!-- Subline (clickable → scrolls to form) -->
+          <p class="reveal hero-subline text-[14px] md:text-xl text-white/60 font-medium tracking-tight leading-snug mb-4 md:mb-6 cursor-pointer" style="transition-delay:0.2s" onclick="document.querySelector('#anfrage-quick,#anfrage').scrollIntoView({behavior:'smooth'})">
             {{HERO_SUBLINE}}
           </p>
 
           <!-- ═══ MOBILE FORM — 3-Step ═══ -->
-          <div class="flex flex-col items-center md:hidden mb-4" style="transition-delay:0.25s">
+          <div class="flex flex-col items-center md:hidden mb-4 hero-mobile-form-wrap" style="transition-delay:0.25s">
             <div class="w-full max-w-[380px] mx-auto">
-              <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" id="hero-form" class="bg-white rounded-[16px] p-4 border border-black/5 shadow-[0_8px_40px_rgba(0,0,0,0.08)]" style="backdrop-filter:blur(20px);">
+              <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" novalidate id="hero-form" class="bg-white rounded-[16px] p-4 border border-black/5 shadow-[0_8px_40px_rgba(0,0,0,0.08)]" style="backdrop-filter:blur(20px);">
                 <input type="hidden" name="source" value="hero-form-{{SLUG}}">
                 <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
                 <div class="text-center mb-3" id="hero-form-header">
@@ -66,8 +97,8 @@
                     </div>
                     <div><label class="text-[12px] font-semibold text-dark block mb-1">Einsatzort</label>
                       <div class="grid grid-cols-2 gap-2">
-                        <label class="flex items-center gap-2 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5"><input type="radio" name="einsatzort" value="Innen" checked class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Innen</span></label>
-                        <label class="flex items-center gap-2 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5"><input type="radio" name="einsatzort" value="Außen" class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Außen</span></label>
+                        <label class="flex items-center gap-2 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 cursor-pointer transition-all duration-200 has-[:checked]:border-accent has-[:checked]:bg-accent has-[:checked]:text-white"><input type="radio" name="einsatzort" value="Innen" checked class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Innen</span></label>
+                        <label class="flex items-center gap-2 bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 cursor-pointer transition-all duration-200 has-[:checked]:border-accent has-[:checked]:bg-accent has-[:checked]:text-white"><input type="radio" name="einsatzort" value="Außen" class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Außen</span></label>
                       </div>
                     </div>
                     <div><label class="text-[12px] font-semibold text-dark block mb-1">Gewünschte Größe</label>
@@ -123,7 +154,7 @@
                     <input type="checkbox" name="express" value="ja" class="accent-accent w-4 h-4" style="accent-color:#fa31a2">
                     <span class="flex items-center gap-1.5 text-[12px] font-semibold text-dark/70"><svg class="w-3.5 h-3.5 text-amber-500" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Express-Fertigung (ab 3 Werktage)</span>
                   </label>
-                  <button type="button" id="hero-next-1" class="w-full bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);margin-top:6px;letter-spacing:-0.01em">Jetzt 3D-Vorschau sichern <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                  <button type="button" id="hero-next-1" class="w-full bg-accent text-white font-bold text-[16px] flex items-center justify-center gap-2" style="padding:18px 20px;min-height:56px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);margin-top:6px;letter-spacing:-0.01em">Jetzt 3D-Vorschau sichern <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
                 </div>
                 <!-- Step 2: Design -->
                 <div id="hero-step-2" class="hero-form-step hidden">
@@ -142,7 +173,7 @@
                       </label>
                     </div>
                     <div><label class="text-[12px] font-semibold text-dark block mb-1">Farbe</label>
-                      <select name="farbe" onchange="document.getElementById('hero-farbe-custom').style.display=this.value==='Andere'?'block':'none'" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark appearance-none cursor-pointer" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
+                      <select name="farbe" onchange="document.getElementById('hero-farbe-custom').style.display=this.value==='Andere'?'block':'none'" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[16px] font-medium text-dark appearance-none cursor-pointer focus:ring-2 focus:ring-accent/30 focus:border-accent focus:outline-none transition-all duration-150" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 fill=%22none%22 stroke=%22%230A0A0A%22 stroke-width=%221.5%22 viewBox=%220 0 24 24%22><path d=%22M6 9l6 6 6-6%22/></svg>');background-repeat:no-repeat;background-position:right 12px center;background-size:14px;">
                         <option value="Wie im Logo" selected>Wie im Logo</option>
                         <option value="Warmweiß">Warmweiß</option>
                         <option value="Kaltweiß">Kaltweiß</option>
@@ -178,7 +209,7 @@
                       <div><label class="text-[11px] font-semibold text-dark block mb-1">Firma</label><input type="text" name="firma" placeholder="Unternehmen" autocomplete="organization" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
                     </div>
                     <div><label class="text-[11px] font-semibold text-dark block mb-1">E-Mail *</label><input type="email" name="email" id="hero-email" placeholder="max@firma.de" required autocomplete="email" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
-                    <div><label class="text-[11px] font-semibold text-dark block mb-1">Telefon</label><input type="tel" name="telefon" placeholder="+49 ..." autocomplete="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
+                    <div><label class="text-[11px] font-semibold text-dark block mb-1">Telefon *</label><input type="tel" name="telefon" id="hero-telefon" placeholder="+49 ..." autocomplete="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50"></div>
                     <div><label class="text-[11px] font-semibold text-dark block mb-1">Nachricht <span class="font-normal text-dark/40">(optional)</span></label><textarea name="nachricht" rows="2" placeholder="Besondere Wünsche, Maße, Termin ..." class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[15px] font-medium text-dark placeholder:text-dark/50 resize-none"></textarea></div>
                   </div>
                   <div class="flex gap-2">
@@ -211,7 +242,7 @@
 
         <!-- Right: Desktop Form — 3-Step -->
         <div class="reveal w-full mx-auto lg:ml-auto lg:mr-0 order-2 hidden lg:block" style="max-width:540px;transition-delay:0.3s">
-          <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" id="hero-form-desktop" style="background:#fff;padding:40px 40px 36px;border-radius:24px;-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:0 25px 80px rgba(0,0,0,0.25),0 8px 32px rgba(0,0,0,0.12);border-top:3px solid #fa31a2;position:relative;overflow:hidden">
+          <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" novalidate id="hero-form-desktop" style="background:#fff;padding:40px 40px 36px;border-radius:24px;-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:0 25px 80px rgba(0,0,0,0.25),0 8px 32px rgba(0,0,0,0.12);border-top:3px solid #fa31a2;position:relative;overflow:hidden">
             <input type="hidden" name="source" value="hero-form-{{SLUG}}">
             <div class="nt-hp" aria-hidden="true"><input name="website" tabindex="-1" autocomplete="off"></div>
             <div class="text-center mb-4" id="hero-form-desktop-header">
@@ -240,8 +271,8 @@
                 </div>
                 <div><label class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Einsatzort</label>
                   <div class="grid grid-cols-2 gap-2.5">
-                    <label class="flex items-center gap-2.5 border rounded-xl px-4 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5 transition-all duration-200" style="background-color:#f7f7f8;border-color:rgba(0,0,0,0.08);padding-top:11px;padding-bottom:11px"><input type="radio" name="einsatzort" value="Innen" checked class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Innen</span></label>
-                    <label class="flex items-center gap-2.5 border rounded-xl px-4 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent/5 transition-all duration-200" style="background-color:#f7f7f8;border-color:rgba(0,0,0,0.08);padding-top:11px;padding-bottom:11px"><input type="radio" name="einsatzort" value="Außen" class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Außen</span></label>
+                    <label class="flex items-center gap-2.5 border rounded-xl px-4 cursor-pointer transition-all duration-200 has-[:checked]:border-accent has-[:checked]:bg-accent has-[:checked]:text-white transition-all duration-200" style="background-color:#f7f7f8;border-color:rgba(0,0,0,0.08);padding-top:11px;padding-bottom:11px"><input type="radio" name="einsatzort" value="Innen" checked class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Innen</span></label>
+                    <label class="flex items-center gap-2.5 border rounded-xl px-4 cursor-pointer transition-all duration-200 has-[:checked]:border-accent has-[:checked]:bg-accent has-[:checked]:text-white transition-all duration-200" style="background-color:#f7f7f8;border-color:rgba(0,0,0,0.08);padding-top:11px;padding-bottom:11px"><input type="radio" name="einsatzort" value="Außen" class="accent-accent w-4 h-4"><span class="text-[13px] font-medium text-dark">Außen</span></label>
                   </div>
                 </div>
                 <div><label class="text-[13px] font-semibold text-dark tracking-[-0.01em] block mb-1.5">Gewünschte Größe</label>
@@ -358,7 +389,7 @@
                   <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Firma</label><input name="firma" placeholder="Unternehmen" autocomplete="organization" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
                 </div>
                 <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">E-Mail *</label><input type="email" name="email" id="hero-email-d" placeholder="max@firma.de" required autocomplete="email" inputmode="email" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
-                <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Telefon</label><input type="tel" name="telefon" placeholder="+49 ..." autocomplete="tel" inputmode="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
+                <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Telefon *</label><input type="tel" name="telefon" placeholder="+49 ..." autocomplete="tel" inputmode="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200"></div>
                 <div><label class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Nachricht <span style="font-weight:400;color:rgba(10,10,10,0.35)">(optional)</span></label><textarea name="nachricht" rows="2" placeholder="Besondere Wünsche, Maße, Termin ..." class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark placeholder:text-dark/35 outline-none focus:border-dark/20 focus:bg-white transition-all duration-200 resize-none"></textarea></div>
               </div>
               <div class="flex gap-2.5">
@@ -385,4 +416,20 @@
   </section>
   <style>@media (min-width:1024px){#hero-logos{right:50%;-webkit-mask-image:linear-gradient(to right,black 70%,transparent 100%);mask-image:linear-gradient(to right,black 70%,transparent 100%)}}@media (max-width:768px){.contact-sticky{display:none}#hero{min-height:85dvh!important}#hero>.relative.z-10{padding-top:100px!important;padding-bottom:64px!important}#hero .reveal.inline-flex{margin-bottom:28px!important}#hero h1{line-height:1.12!important;margin-bottom:22px!important}#hero .reveal.text-lg{font-size:15px!important;line-height:1.45!important;margin-bottom:56px!important}#hero .flex.flex-col.items-center{margin-bottom:0!important}#hero .flex.items-center.justify-center.gap-4.text-sm.text-white\/50{display:none!important}#CookiebotWidget{display:none!important}#hero-video-mobile{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-mobile.video-loaded{opacity:1}#hero-video-desktop{position:absolute;inset:0;opacity:0;transition:opacity .8s ease}#hero-video-desktop.video-loaded{opacity:1}}</style>
   <script>document.querySelectorAll('select[name="produkt"]').forEach(function(s){s.value='{{DEFAULT_PRODUCT}}'});</script>
+  <script>
+  // Lazy-load hero video after LCP paint (delay 1.5s to avoid bandwidth competition)
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      var id = window.innerWidth >= 768 ? 'hero-video-desktop' : 'hero-video-mobile';
+      var video = document.getElementById(id);
+      if (!video) return;
+      var source = video.querySelector('source[data-src]');
+      if (source) {
+        source.src = source.getAttribute('data-src');
+        video.load();
+        video.play().then(function(){ video.classList.add('video-loaded'); }).catch(function(){});
+      }
+    }, 1500);
+  });
+  </script>
 <!-- ===== /SECTION: hero ===== -->

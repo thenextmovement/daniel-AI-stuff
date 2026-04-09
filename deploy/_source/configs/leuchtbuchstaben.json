@@ -111,6 +111,22 @@
       "LED Buchstaben nach Maß"
     ],
     [
+      "außenreklame beleuchtet",
+      "Beleuchtete Außenreklame nach Maß"
+    ],
+    [
+      "außenwerbung beleuchtet",
+      "Beleuchtete Außenwerbung nach Maß"
+    ],
+    [
+      "leuchtschild außen",
+      "Leuchtschild für Außen"
+    ],
+    [
+      "fassadenschild beleuchtet",
+      "Beleuchtetes Fassadenschild"
+    ],
+    [
       "buchstaben beleuchtet",
       "Beleuchtete Buchstaben nach Maß"
     ]
@@ -395,11 +411,10 @@
     "stats-bar",
     "projekte",
     "events",
-    "anfrage-quick",
+    "anfrage",
+    "vorteile",
     "bewertungen",
     "testimonials",
-    "vorteile",
-    "anfrage",
     "faq",
     "kunden",
     "kontakt",

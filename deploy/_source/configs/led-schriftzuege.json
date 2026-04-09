@@ -121,6 +121,10 @@
       "Ihr Firmenlogo als LED Schriftzug"
     ],
     [
+      "schriftzug mit licht",
+      "Schriftzug mit Licht nach Maß"
+    ],
+    [
       "led logo",
       "Ihr Logo als LED Schriftzug"
     ]
@@ -405,11 +409,10 @@
     "stats-bar",
     "projekte",
     "events",
-    "anfrage-quick",
+    "anfrage",
+    "vorteile",
     "bewertungen",
     "testimonials",
-    "vorteile",
-    "anfrage",
     "faq",
     "kunden",
     "kontakt",

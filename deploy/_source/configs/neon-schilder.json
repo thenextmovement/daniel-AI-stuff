@@ -165,6 +165,70 @@
       "Ihr Logo als LED Schild"
     ],
     [
+      "led wappen",
+      "Ihr Wappen als LED Schild"
+    ],
+    [
+      "neonschild",
+      "Individuelles Neonschild nach Maß"
+    ],
+    [
+      "led neon leuchte",
+      "LED Neon Leuchte nach Maß"
+    ],
+    [
+      "neonlicht deutschland",
+      "Neonlicht — Made in Germany"
+    ],
+    [
+      "led schild express",
+      "LED Schild — Express ab 3 Werktagen"
+    ],
+    [
+      "neon schild express",
+      "Neon Schild — Express ab 3 Werktagen"
+    ],
+    [
+      "neon schild kurzfristig",
+      "Neon Schild — kurzfristig lieferbar"
+    ],
+    [
+      "led schriftzug express",
+      "LED Schriftzug — Express ab 3 Werktagen"
+    ],
+    [
+      "neonschild schnelle lieferung",
+      "Neonschild — schnelle Lieferung"
+    ],
+    [
+      "leuchtschild express",
+      "Leuchtschild — Express ab 3 Werktagen"
+    ],
+    [
+      "neon schild schnell",
+      "Neon Schild — schnell geliefert"
+    ],
+    [
+      "leuchtreklame messe express",
+      "Leuchtreklame Messe — Express"
+    ],
+    [
+      "leuchtreklame express",
+      "Leuchtreklame — Express ab 3 Werktagen"
+    ],
+    [
+      "leuchtreklame schnell",
+      "Leuchtreklame — schnell geliefert"
+    ],
+    [
+      "leuchtschild sofort",
+      "Leuchtschild — sofort verfügbar"
+    ],
+    [
+      "messe leuchtschild kurzfristig",
+      "Messe-Leuchtschild — kurzfristig"
+    ],
+    [
       "leuchtschild",
       "Individuelles Leuchtschild nach Maß"
     ]
@@ -449,10 +513,10 @@
     "stats-bar",
     "projekte",
     "events",
+    "anfrage",
+    "vorteile",
     "bewertungen",
     "testimonials",
-    "vorteile",
-    "anfrage",
     "faq",
     "kunden",
     "kontakt",

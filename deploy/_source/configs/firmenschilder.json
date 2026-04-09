@@ -191,6 +191,10 @@
       "LED Zeichen nach Maß"
     ],
     [
+      "ladenschild bestellen",
+      "Ladenschild bestellen"
+    ],
+    [
       "led logo",
       "Ihr Logo als Leuchtschild"
     ]
@@ -484,11 +488,10 @@
     "stats-bar",
     "projekte",
     "events",
-    "anfrage-quick",
+    "anfrage",
+    "vorteile",
     "bewertungen",
     "testimonials",
-    "vorteile",
-    "anfrage",
     "faq",
     "kunden",
     "kontakt",

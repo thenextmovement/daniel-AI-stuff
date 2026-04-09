@@ -63,7 +63,7 @@
 
         <!-- Right: Multi-Step Form Card -->
         <div class="reveal" style="transition-delay: 0.1s;">
-          <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" class="bg-white rounded-2xl p-6 md:p-8 form-glow" id="quick-anfrage-form">
+          <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" novalidate class="bg-white rounded-2xl p-6 md:p-8 form-glow" id="quick-anfrage-form">
             <input type="hidden" name="produkt" id="selected-product" value="">
             <input type="hidden" name="source" value="quick-anfrage-{{SLUG}}">
             <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
@@ -189,7 +189,7 @@
                 </div>
               </div>
 
-              <button type="button" id="quick-next-1" class="btn-accent w-full bg-accent text-white font-bold text-[15px] tracking-[-0.01em] hover:bg-accent/90 transition-all duration-200 flex items-center justify-center gap-2" style="padding:16px 20px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);margin-top:4px">
+              <button type="button" id="quick-next-1" class="btn-accent w-full bg-accent text-white font-bold text-[15px] tracking-[-0.01em] hover:bg-accent/90 transition-all duration-200 flex items-center justify-center gap-2" style="padding:16px 20px;min-height:56px;border-radius:50px;border:none;box-shadow:0 6px 24px rgba(250,49,162,0.35),0 2px 8px rgba(250,49,162,0.2);margin-top:4px">
                 3D-Vorschau starten
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </button>
@@ -229,8 +229,8 @@
                   <input type="email" name="email" id="quick-email" placeholder="max@firma.de" required autocomplete="email" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-base md:text-[13px] font-medium tracking-tight text-dark placeholder:text-dark/50 outline-none focus:border-dark/20 focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,0,0,0.04)] transition-all duration-200">
                 </div>
                 <div>
-                  <label for="quick-telefon" class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Telefon</label>
-                  <input type="tel" name="telefon" id="quick-telefon" placeholder="+49 ..." autocomplete="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-base md:text-[13px] font-medium tracking-tight text-dark placeholder:text-dark/50 outline-none focus:border-dark/20 focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,0,0,0.04)] transition-all duration-200">
+                  <label for="quick-telefon" class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Telefon *</label>
+                  <input type="tel" name="telefon" id="quick-telefon" placeholder="+49 ..." required autocomplete="tel" class="w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-base md:text-[13px] font-medium tracking-tight text-dark placeholder:text-dark/50 outline-none focus:border-dark/20 focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,0,0,0.04)] transition-all duration-200">
                 </div>
                 <div>
                   <label for="quick-nachricht" class="text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1">Nachricht <span class="text-dark/25 font-normal">(optional)</span></label>

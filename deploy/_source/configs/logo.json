@@ -117,6 +117,34 @@
       "Ihr Markenlogo als Leuchtschild"
     ],
     [
+      "logo schild",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo platte",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo mit beleuchtung",
+      "Ihr Logo mit Beleuchtung"
+    ],
+    [
+      "logo als neonschild",
+      "Ihr Logo als Neonschild"
+    ],
+    [
+      "neon schild logo",
+      "Ihr Logo als Neon Schild"
+    ],
+    [
+      "beleuchtete werbeschilder",
+      "Beleuchtete Werbeschilder nach Maß"
+    ],
+    [
+      "led sign",
+      "Custom LED Sign"
+    ],
+    [
       "logo hinterleuchtet",
       "Hinterleuchtetes Logo nach Maß"
     ]
@@ -378,11 +406,10 @@
     "stats-bar",
     "projekte",
     "events",
-    "anfrage-quick",
+    "anfrage",
+    "vorteile",
     "bewertungen",
     "testimonials",
-    "vorteile",
-    "anfrage",
     "faq",
     "kunden",
     "kontakt",

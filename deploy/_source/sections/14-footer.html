@@ -1,4 +1,10 @@
 <!-- ===== SECTION: footer ===== -->
+  <style>
+    @media (max-width: 767px) {
+      .footer-copyright { display: none !important; }
+      .footer-legal-links { font-size: 10px !important; column-gap: 10px !important; }
+    }
+  </style>
   </main>
 
   <!-- ════════════════════════════════════════
@@ -114,18 +120,18 @@
           </div>
         </div>
 
-        <!-- Large Logo -->
-        <div class="reveal flex items-center justify-center overflow-hidden">
+        <!-- Large Logo — hidden on mobile -->
+        <div class="reveal hidden md:flex items-center justify-center overflow-hidden">
           <img src="../assets/logo_weiss_neontrip.png" class="w-full opacity-90" alt="NEONTRIP Logo" loading="lazy" decoding="async" width="1200" height="200">
         </div>
 
         <!-- Copyright & CTA Row -->
         <div class="flex flex-col sm:flex-row items-center sm:justify-between gap-3 pt-3 pb-1">
           <div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-6 text-xs text-gray-500">
-            <span>© NEONTRIP <span data-year></span></span>
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span class="footer-copyright">© NEONTRIP <span data-year></span></span>
+            <div class="footer-legal-links flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
               <a href="/agb" class="hover:text-gray-300 transition-colors">AGBs</a>
-              <a href="cookie-einstellungen.html" class="hover:text-gray-300 transition-colors">Cookie Einstellungen</a>
+              <a href="cookie-einstellungen.html" class="hover:text-gray-300 transition-colors">Cookies</a>
               <a href="/datenschutz" class="hover:text-gray-300 transition-colors">Datenschutz</a>
               <a href="/impressum" class="hover:text-gray-300 transition-colors">Impressum</a>
               <a href="/widerrufsrecht" class="hover:text-gray-300 transition-colors">Widerrufsrecht</a>

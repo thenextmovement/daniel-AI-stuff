@@ -7,7 +7,7 @@
     <div class="relative z-10 max-w-[1200px] mx-auto flex flex-col lg:flex-row gap-8">
       <!-- Links: Anfrageformular -->
       <div class="reveal lg:w-1/2 order-2 lg:order-1">
-        <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" class="bg-white rounded-[18px] p-5 md:p-6" id="kontakt-form">
+        <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" novalidate class="bg-white rounded-[18px] p-5 md:p-6" id="kontakt-form">
           <input type="hidden" name="source" value="kontakt-form-{{SLUG}}">
           <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
           <h3 class="text-lg md:text-xl font-semibold tracking-tighter text-dark mb-4">
@@ -30,8 +30,8 @@
                 <input type="email" name="email" id="kontakt-email" placeholder="E-Mail" required class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300">
               </div>
               <div>
-                <label for="kontakt-telefon" class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefon</label>
-                <input type="tel" name="telefon" id="kontakt-telefon" placeholder="Optional" class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300">
+                <label for="kontakt-telefon" class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefon *</label>
+                <input type="tel" name="telefon" id="kontakt-telefon" placeholder="+49 ..." required class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300">
               </div>
             </div>
             <div>
@@ -55,8 +55,7 @@
             </div>
           </div>
           <button type="submit" class="btn-accent w-full bg-accent text-white font-semibold py-3 rounded-full hover:bg-accent/90 transition-all duration-200 text-sm shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Kostenloses Angebot anfordern</button>
-          <p class="text-[10px] font-medium text-dark/60 tracking-tight mt-2 text-center">Kostenlos & unverbindlich. Kein Risiko, keine versteckten Kosten.</p>
-          <p class="text-[11px] font-medium text-dark/55 tracking-tight mt-1">Mit dem Absenden erklären Sie sich mit unseren <a href="/datenschutz" class="underline">Datenschutzbestimmungen</a> einverstanden.</p>
+          <p class="text-[11px] font-medium text-dark/55 tracking-tight mt-2">Mit dem Absenden erklären Sie sich mit unseren <a href="/datenschutz" class="underline">Datenschutzbestimmungen</a> einverstanden.</p>
           <p class="text-[10px] font-medium text-dark/60 tracking-tight mt-1 text-center">3D-Vorschau + Festpreisangebot per E-Mail. Kostenlos & unverbindlich.</p>
         </form>
       </div>
