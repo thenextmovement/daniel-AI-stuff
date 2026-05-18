@@ -2,6 +2,11 @@
   <style>
     #bewertungen-desktop-grid { display: none; }
     @media (min-width:768px) { #bewertungen-desktop-grid { display: grid !important; grid-template-columns: repeat(6,1fr); gap: 8px; margin-bottom: 2.5rem; } }
+    @media (max-width:767px) {
+      #review-carousel { overflow-x: auto !important; margin-left: -1.5rem; margin-right: -1.5rem; padding-left: 1.5rem; padding-right: 1.5rem; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; -webkit-mask-image: none !important; mask-image: none !important; }
+      #review-carousel .review-track { animation: none !important; width: max-content; }
+      #review-carousel .review-track > div { width: min(320px, calc(100vw - 48px)) !important; scroll-snap-align: start; }
+    }
   </style>
   <!--        TESTIMONIALS (LIGHT)
        ════════════════════════════════════════ -->
