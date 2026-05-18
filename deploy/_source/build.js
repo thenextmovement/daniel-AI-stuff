@@ -90,6 +90,9 @@ function generateDkiScript(config) {
     })
     .join(',\n');
 
+  const hasSuffix = !!(config.dki_suffix && String(config.dki_suffix).length > 0);
+  const escapedSuffix = hasSuffix ? config.dki_suffix.replace(/'/g, "\\'") : '';
+
   return `<!-- Dynamic Text Replacement (Google Ads Keyword Mapping) -->
   <script>
   (function(){
@@ -102,9 +105,10 @@ ${rulesStr}
       if (kw.indexOf(rules[i][0]) !== -1) { h = rules[i][1]; break; }
     }
     if (!h) return;
+    var suffix = '${escapedSuffix}';
     document.addEventListener('DOMContentLoaded', function() {
       var el = document.querySelector('#hero h1');
-      if (el) el.innerHTML = h;
+      if (el) el.innerHTML = h + suffix;
       var plain = h.replace(/<[^>]*>/g, '');
       var ft = document.getElementById('hero-form-title-d');
       var ftm = document.getElementById('hero-form-title');
