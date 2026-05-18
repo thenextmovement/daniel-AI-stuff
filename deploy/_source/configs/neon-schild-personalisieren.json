@@ -19,39 +19,138 @@
   "clarity_page_type": "landing",
   "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/neon-schild-personalisieren/\">",
   "dki_rules": [
-    ["neon schild personalisieren", "Dein Neon Schild personalisieren"],
-    ["neon schild personalisiert", "Dein personalisiertes Neon Schild"],
-    ["neonschild personalisiert", "Dein personalisiertes Neonschild"],
-    ["neonschilder personalisiert", "Personalisierte Neonschilder nach Maß"],
-    ["personalisiertes neon schild", "Dein personalisiertes Neon Schild"],
-    ["personalisiertes neonschild", "Dein personalisiertes Neonschild"],
-    ["personalisiertes led schild", "Dein personalisiertes LED Schild"],
-    ["led schild personalisiert", "Dein personalisiertes LED Schild"],
-    ["led schild personalisieren", "Dein LED Schild personalisieren"],
-    ["neon schriftzug personalisiert", "Dein personalisierter Neon Schriftzug"],
-    ["neon schriftzug personalisieren", "Neon Schriftzug personalisieren"],
-    ["led schriftzug personalisiert", "Dein personalisierter LED Schriftzug"],
-    ["neon schild selbst gestalten", "Dein Neon Schild selbst gestalten"],
-    ["neonschild selbst gestalten", "Dein Neonschild selbst gestalten"],
-    ["led schild selbst gestalten", "Dein LED Schild selbst gestalten"],
-    ["neon schild individuell", "Dein individuelles Neon Schild"],
-    ["neonschild individuell", "Dein individuelles Neonschild"],
-    ["neon schild gestalten", "Dein Neon Schild gestalten"],
-    ["neon schild konfigurator", "Neon Schild Konfigurator"],
-    ["neon schild mit text", "Neon Schild mit deinem Text"],
-    ["neon schild mit name", "Neon Schild mit deinem Namen"],
-    ["neon schild mit namen", "Neon Schild mit deinem Namen"],
-    ["neon schild mit logo", "Neon Schild mit deinem Logo"],
-    ["led schild mit logo", "LED Schild mit deinem Logo"],
-    ["neon schild eigenes design", "Neon Schild mit deinem Design"],
-    ["neon schild nach wunsch", "Neon Schild nach deinem Wunsch"],
-    ["neon schild auf wunsch", "Neon Schild auf deinen Wunsch"],
-    ["neon schild wunschtext", "Neon Schild mit deinem Wunschtext"],
-    ["neon schild anfertigen", "Neon Schild anfertigen lassen"],
-    ["neon schild anfertigen lassen", "Neon Schild anfertigen lassen"],
-    ["custom neon schild", "Dein Custom Neon Schild"],
-    ["custom led schild", "Dein Custom LED Schild"],
-    ["neon schild geschenk", "Personalisiertes Neon Schild als Geschenk"]
+    [
+      "neon schild personalisieren",
+      "Dein Neon Schild personalisieren"
+    ],
+    [
+      "neon schild personalisiert",
+      "Dein personalisiertes Neon Schild"
+    ],
+    [
+      "neonschild personalisiert",
+      "Dein personalisiertes Neonschild"
+    ],
+    [
+      "neonschilder personalisiert",
+      "Personalisierte Neonschilder"
+    ],
+    [
+      "personalisiertes neon schild",
+      "Dein personalisiertes Neon Schild"
+    ],
+    [
+      "personalisiertes neonschild",
+      "Dein personalisiertes Neonschild"
+    ],
+    [
+      "personalisiertes led schild",
+      "Dein personalisiertes LED Schild"
+    ],
+    [
+      "led schild personalisiert",
+      "Dein personalisiertes LED Schild"
+    ],
+    [
+      "led schild personalisieren",
+      "Dein LED Schild personalisieren"
+    ],
+    [
+      "neon schriftzug personalisiert",
+      "Dein personalisierter Neon Schriftzug"
+    ],
+    [
+      "neon schriftzug personalisieren",
+      "Neon Schriftzug personalisieren"
+    ],
+    [
+      "led schriftzug personalisiert",
+      "Dein personalisierter LED Schriftzug"
+    ],
+    [
+      "neon schild selbst gestalten",
+      "Dein Neon Schild selbst gestalten"
+    ],
+    [
+      "neonschild selbst gestalten",
+      "Dein Neonschild selbst gestalten"
+    ],
+    [
+      "led schild selbst gestalten",
+      "Dein LED Schild selbst gestalten"
+    ],
+    [
+      "neon schild individuell",
+      "Dein individuelles Neon Schild"
+    ],
+    [
+      "neonschild individuell",
+      "Dein individuelles Neonschild"
+    ],
+    [
+      "neon schild gestalten",
+      "Dein Neon Schild gestalten"
+    ],
+    [
+      "neon schild konfigurator",
+      "Neon Schild Konfigurator"
+    ],
+    [
+      "neon schild mit text",
+      "Neon Schild mit deinem Text"
+    ],
+    [
+      "neon schild mit name",
+      "Neon Schild mit deinem Namen"
+    ],
+    [
+      "neon schild mit namen",
+      "Neon Schild mit deinem Namen"
+    ],
+    [
+      "neon schild mit logo",
+      "Neon Schild mit deinem Logo"
+    ],
+    [
+      "led schild mit logo",
+      "LED Schild mit deinem Logo"
+    ],
+    [
+      "neon schild eigenes design",
+      "Neon Schild mit deinem Design"
+    ],
+    [
+      "neon schild nach wunsch",
+      "Neon Schild nach deinem Wunsch"
+    ],
+    [
+      "neon schild auf wunsch",
+      "Neon Schild auf deinen Wunsch"
+    ],
+    [
+      "neon schild wunschtext",
+      "Neon Schild mit deinem Wunschtext"
+    ],
+    [
+      "neon schild anfertigen",
+      "Neon Schild anfertigen lassen"
+    ],
+    [
+      "neon schild anfertigen lassen",
+      "Neon Schild anfertigen lassen"
+    ],
+    [
+      "custom neon schild",
+      "Dein Custom Neon Schild"
+    ],
+    [
+      "custom led schild",
+      "Dein Custom LED Schild"
+    ],
+    [
+      "neon schild geschenk",
+      "Personalisiertes Neon Schild als Geschenk"
+    ]
   ],
   "structured_data": [
     {
@@ -116,8 +215,14 @@
       "@type": "Product",
       "name": "Neon Schild personalisiert — Dein Design als LED Neon",
       "description": "Personalisierbares LED Neon Schild — mit deinem Text, Logo, Farbe und Größe. Kostenlose 3D-Vorschau in 24h.",
-      "brand": { "@type": "Brand", "name": "NEONTRIP" },
-      "manufacturer": { "@type": "Organization", "name": "Dara Nova GmbH" },
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
       "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
       "category": "Personalisierte Neon Schilder",
       "offers": {
@@ -221,16 +326,34 @@
       "description": "Neon Schild personalisieren: Text, Logo, Farbe, Größe. Kostenlose 3D-Vorschau in 24h. Ab 89 EUR.",
       "speakable": {
         "@type": "SpeakableSpecification",
-        "cssSelector": ["h1", ".faq-answer p"]
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
       }
     },
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "NEONTRIP", "item": "https://neontrip.de" },
-        { "@type": "ListItem", "position": 2, "name": "Produkte", "item": "https://anfrage.neontrip.de/" },
-        { "@type": "ListItem", "position": 3, "name": "Neon Schild personalisieren", "item": "https://anfrage.neontrip.de/neon-schild-personalisieren/" }
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Produkte",
+          "item": "https://anfrage.neontrip.de/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Neon Schild personalisieren",
+          "item": "https://anfrage.neontrip.de/neon-schild-personalisieren/"
+        }
       ]
     }
   ],

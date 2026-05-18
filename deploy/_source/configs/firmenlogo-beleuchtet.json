@@ -2,10 +2,10 @@
   "slug": "firmenlogo-beleuchtet",
   "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
   "lang": "de",
-  "title": "Firmenlogo beleuchtet — LED Wandlogo nach Maß | NEONTRIP",
+  "title": "Firmenlogo beleuchtet — LED Wandlogo | NEONTRIP",
   "meta_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Visualisierung in 24h.",
   "canonical": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/",
-  "og_title": "NEONTRIP – Firmenlogo beleuchtet | LED Wandlogo nach Maß",
+  "og_title": "NEONTRIP – Firmenlogo beleuchtet | LED Wandlogo",
   "og_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Visualisierung in 24h.",
   "h1_text": "Ihr Firmenlogo beleuchtet",
   "default_product": "LED Logo Wandschild",
@@ -18,38 +18,134 @@
   "clarity_page_type": "landing",
   "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/firmenlogo-beleuchtet/\">",
   "dki_rules": [
-    ["firmenlogo beleuchtet", "Ihr Firmenlogo beleuchtet"],
-    ["firmenlogo schild", "Ihr Firmenlogo als Leuchtschild"],
-    ["firmenlogo leuchten", "Ihr Firmenlogo als Leuchtschild"],
-    ["firmenlogo neon", "Ihr Firmenlogo als Neon Leuchtschild"],
-    ["led firmenlogo", "Ihr Firmenlogo als LED Schild"],
-    ["led logo wand", "Ihr LED Logo an der Wand"],
-    ["logo wand beleuchtet", "Ihr Wandlogo beleuchtet"],
-    ["logo beleuchtet wand", "Ihr Wandlogo beleuchtet"],
-    ["logo an der wand beleuchtet", "Ihr Wandlogo beleuchtet"],
-    ["wandlogo beleuchtet", "Ihr Wandlogo beleuchtet"],
-    ["logo mit beleuchtung", "Ihr Firmenlogo mit Beleuchtung"],
-    ["logo beleuchtet", "Ihr Firmenlogo beleuchtet"],
-    ["beleuchtetes logo", "Ihr Firmenlogo beleuchtet"],
-    ["beleuchtetes firmenlogo", "Ihr beleuchtetes Firmenlogo"],
-    ["logo hinterleuchtet", "Hinterleuchtetes Firmenlogo nach Maß"],
-    ["hinterleuchtetes logo", "Hinterleuchtetes Firmenlogo nach Maß"],
-    ["3d logo beleuchtet", "Ihr 3D-Logo beleuchtet"],
-    ["3d leuchtlogo", "3D Leuchtlogo nach Maß"],
-    ["fassade logo beleuchtet", "Ihr Fassadenlogo beleuchtet"],
-    ["fassadenlogo beleuchtet", "Ihr Fassadenlogo beleuchtet"],
-    ["eigenes logo beleuchtet", "Ihr eigenes Logo als Leuchtschild"],
-    ["leuchtlogo", "Ihr Leuchtlogo nach Maß"],
-    ["logo leuchtschild", "Ihr Logo als Leuchtschild"],
-    ["logo als leuchtschild", "Ihr Logo als Leuchtschild"],
-    ["logo schild beleuchtet", "Ihr beleuchtetes Logo-Schild"],
-    ["markenlogo leuchtschild", "Ihr Markenlogo als Leuchtschild"],
-    ["acrylglas logo beleuchtet", "Ihr Acrylglas-Logo beleuchtet"],
-    ["metallschild logo beleuchtet", "Ihr Metallschild mit Logo beleuchtet"],
-    ["edelstahl logo beleuchtet", "Ihr Edelstahl-Logo beleuchtet"],
-    ["plexiglas logo beleuchtet", "Ihr Plexiglas-Logo beleuchtet"],
-    ["empfang logo beleuchtet", "Ihr Empfangslogo beleuchtet"],
-    ["büro logo beleuchtet", "Ihr Büro-Logo beleuchtet"]
+    [
+      "firmenlogo beleuchtet",
+      "Ihr Firmenlogo beleuchtet"
+    ],
+    [
+      "firmenlogo schild",
+      "Ihr Firmenlogo als Leuchtschild"
+    ],
+    [
+      "firmenlogo leuchten",
+      "Ihr Firmenlogo als Leuchtschild"
+    ],
+    [
+      "firmenlogo neon",
+      "Ihr Firmenlogo als Neon Leuchtschild"
+    ],
+    [
+      "led firmenlogo",
+      "Ihr Firmenlogo als LED Schild"
+    ],
+    [
+      "led logo wand",
+      "Ihr LED Logo an der Wand"
+    ],
+    [
+      "logo wand beleuchtet",
+      "Ihr Wandlogo beleuchtet"
+    ],
+    [
+      "logo beleuchtet wand",
+      "Ihr Wandlogo beleuchtet"
+    ],
+    [
+      "logo an der wand beleuchtet",
+      "Ihr Wandlogo beleuchtet"
+    ],
+    [
+      "wandlogo beleuchtet",
+      "Ihr Wandlogo beleuchtet"
+    ],
+    [
+      "logo mit beleuchtung",
+      "Ihr Firmenlogo mit Beleuchtung"
+    ],
+    [
+      "logo beleuchtet",
+      "Ihr Firmenlogo beleuchtet"
+    ],
+    [
+      "beleuchtetes logo",
+      "Ihr Firmenlogo beleuchtet"
+    ],
+    [
+      "beleuchtetes firmenlogo",
+      "Ihr beleuchtetes Firmenlogo"
+    ],
+    [
+      "logo hinterleuchtet",
+      "Hinterleuchtetes Firmenlogo"
+    ],
+    [
+      "hinterleuchtetes logo",
+      "Hinterleuchtetes Firmenlogo"
+    ],
+    [
+      "3d logo beleuchtet",
+      "Ihr 3D-Logo beleuchtet"
+    ],
+    [
+      "3d leuchtlogo",
+      "3D Leuchtlogo"
+    ],
+    [
+      "fassade logo beleuchtet",
+      "Ihr Fassadenlogo beleuchtet"
+    ],
+    [
+      "fassadenlogo beleuchtet",
+      "Ihr Fassadenlogo beleuchtet"
+    ],
+    [
+      "eigenes logo beleuchtet",
+      "Ihr eigenes Logo als Leuchtschild"
+    ],
+    [
+      "leuchtlogo",
+      "Ihr Leuchtlogo"
+    ],
+    [
+      "logo leuchtschild",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo als leuchtschild",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo schild beleuchtet",
+      "Ihr beleuchtetes Logo-Schild"
+    ],
+    [
+      "markenlogo leuchtschild",
+      "Ihr Markenlogo als Leuchtschild"
+    ],
+    [
+      "acrylglas logo beleuchtet",
+      "Ihr Acrylglas-Logo beleuchtet"
+    ],
+    [
+      "metallschild logo beleuchtet",
+      "Ihr Metallschild mit Logo beleuchtet"
+    ],
+    [
+      "edelstahl logo beleuchtet",
+      "Ihr Edelstahl-Logo beleuchtet"
+    ],
+    [
+      "plexiglas logo beleuchtet",
+      "Ihr Plexiglas-Logo beleuchtet"
+    ],
+    [
+      "empfang logo beleuchtet",
+      "Ihr Empfangslogo beleuchtet"
+    ],
+    [
+      "büro logo beleuchtet",
+      "Ihr Büro-Logo beleuchtet"
+    ]
   ],
   "structured_data": [
     {
@@ -114,8 +210,14 @@
       "@type": "Product",
       "name": "Beleuchtetes Firmenlogo — LED, 3D & Neon",
       "description": "Ihr Firmenlogo als beleuchtetes Wandschild — LED, 3D-Buchstaben oder Neon. Innen & außen, IP67 wetterfest, 100 % CI-konform.",
-      "brand": { "@type": "Brand", "name": "NEONTRIP" },
-      "manufacturer": { "@type": "Organization", "name": "Dara Nova GmbH" },
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
       "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
       "category": "Beleuchtete Firmenlogos",
       "offers": {
@@ -227,16 +329,34 @@
       "description": "Ihr Firmenlogo beleuchtet an der Wand — LED, 3D oder Neon. Ab 499 EUR.",
       "speakable": {
         "@type": "SpeakableSpecification",
-        "cssSelector": ["h1", ".faq-answer p"]
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
       }
     },
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "NEONTRIP", "item": "https://neontrip.de" },
-        { "@type": "ListItem", "position": 2, "name": "Produkte", "item": "https://anfrage.neontrip.de/" },
-        { "@type": "ListItem", "position": 3, "name": "Firmenlogo beleuchtet", "item": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/" }
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Produkte",
+          "item": "https://anfrage.neontrip.de/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Firmenlogo beleuchtet",
+          "item": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/"
+        }
       ]
     }
   ],
