@@ -7,7 +7,7 @@
   "canonical": "https://anfrage.neontrip.de/leuchtkaesten/",
   "og_title": "NEONTRIP – Individuelle Leuchtkästen & LED Leuchtkästen",
   "og_description": "Individuelle LED Leuchtkästen aus Düsseldorf. Leuchtkasten mit Ihrem Logo für Geschäft, Praxis oder Büro. Kostenlose Visualisierung in 24h. Express ab 3 Tagen.",
-  "h1_text": "Ihr Logo im Leuchtkasten",
+  "h1_text": "Ihr Logo im Leuchtkasten — kostenlose 3D-Vorschau in 24h",
   "default_product": "Leuchtkasten",
   "price_anchor": "Leuchtkästen ab 499 € · LED Neon ab 299 € · 3D Buchstaben ab 499 €",
   "price_anchor_desktop": "Individuelle Leuchtkästen ab 499 EUR",
@@ -329,5 +329,6 @@
     "kontakt",
     "footer"
   ],
-  "sticky_produkt": "leuchtkasten"
+  "sticky_produkt": "leuchtkasten",
+  "dki_suffix": " — kostenlose 3D-Vorschau in 24h"
 }

@@ -7,7 +7,7 @@
   "canonical": "https://anfrage.neontrip.de/leuchtbuchstaben/",
   "og_title": "NEONTRIP – 3D Leuchtbuchstaben & Profilbuchstaben",
   "og_description": "3D Leuchtbuchstaben — front-, rück- oder seitenbeleuchtet. Edelstahl, Acryl & Aluminium. Angebot + 3D-Vorschau in 24h. Express ab 14 Tagen.",
-  "h1_text": "Ihr Logo als 3D Leuchtbuchstaben",
+  "h1_text": "3D Leuchtbuchstaben — kostenlose 3D-Vorschau in 24h",
   "default_product": "3D Buchstaben (Front)",
   "price_anchor": "3D Buchstaben ab 499 € · LED Neon ab 299 € · Leuchtkästen ab 499 €",
   "price_anchor_desktop": "3D Leuchtbuchstaben ab 499 EUR",
@@ -416,5 +416,6 @@
     "kontakt",
     "footer"
   ],
-  "sticky_produkt": "front-buchstaben"
+  "sticky_produkt": "front-buchstaben",
+  "dki_suffix": " — kostenlose 3D-Vorschau in 24h"
 }

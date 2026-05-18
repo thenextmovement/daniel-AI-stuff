@@ -7,7 +7,7 @@
   "canonical": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/",
   "og_title": "NEONTRIP – Firmenlogo beleuchtet | LED Wandlogo",
   "og_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Visualisierung in 24h.",
-  "h1_text": "Ihr Firmenlogo beleuchtet",
+  "h1_text": "Ihr Firmenlogo beleuchtet — kostenlose 3D-Vorschau in 24h",
   "default_product": "LED Logo Wandschild",
   "price_anchor": "LED Logo ab 499 € · 3D Buchstaben ab 599 € · Neon ab 299 €",
   "price_anchor_desktop": "Firmenlogo beleuchtet ab 499 EUR",
@@ -375,5 +375,6 @@
     "kontakt",
     "footer"
   ],
-  "sticky_produkt": "neonschild"
+  "sticky_produkt": "neonschild",
+  "dki_suffix": " — kostenlose 3D-Vorschau in 24h"
 }

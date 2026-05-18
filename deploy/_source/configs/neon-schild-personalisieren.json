@@ -8,7 +8,7 @@
   "canonical": "https://anfrage.neontrip.de/neon-schild-personalisieren/",
   "og_title": "NEONTRIP – Neon Schild personalisieren | Dein Design als LED Neon",
   "og_description": "Neon Schild personalisieren: Text, Logo, Farbe, Größe. Kostenlose 3D-Vorschau in 24h. Ab 89 EUR.",
-  "h1_text": "Neon Schild personalisieren",
+  "h1_text": "Neon Schild personalisieren — kostenlose 3D-Vorschau in 24h",
   "default_product": "LED Neonschild",
   "price_anchor": "Personalisierte Neon Schilder ab 89 € · LED Schriftzug ab 149 € · Logo-Schild ab 299 €",
   "price_anchor_desktop": "Neon Schild personalisiert ab 89 EUR",
@@ -372,5 +372,6 @@
     "kontakt",
     "footer"
   ],
-  "sticky_produkt": "neonschild"
+  "sticky_produkt": "neonschild",
+  "dki_suffix": " — kostenlose 3D-Vorschau in 24h"
 }

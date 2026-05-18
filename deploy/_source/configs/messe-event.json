@@ -7,7 +7,7 @@
   "canonical": "https://anfrage.neontrip.de/messe-event/",
   "og_title": "NEONTRIP – Leuchtreklame für Messe & Events",
   "og_description": "Leuchtreklame für Messe & Events — Leuchtlogos, beleuchtete Messewände, LED Schilder für Ihren Messestand. Express ab 3 Tagen. Kostenlose 3D-Vorschau in 24h.",
-  "h1_text": "Ihr Messestand leuchtet",
+  "h1_text": "Ihr Messestand leuchtet — kostenlose 3D-Vorschau in 24h",
   "hero_subline": "Leuchtlogos, beleuchtete Messewände & LED Schilder für Ihren Messestand — wir liefern eine kostenlose 3D-Vorschau mit Festpreisangebot.",
   "footer_tagline": "Individuelle Neon Schilder aus Düsseldorf.",
   "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
@@ -434,5 +434,6 @@
     "footer"
   ],
   "default_product": "LED Neonschild",
-  "sticky_produkt": "neonschild"
+  "sticky_produkt": "neonschild",
+  "dki_suffix": " — kostenlose 3D-Vorschau in 24h"
 }
