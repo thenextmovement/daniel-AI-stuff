@@ -17,6 +17,34 @@ Prevent a repeat of the 2026-05-18 to 2026-05-20 landingpage outage where a depl
 
 Contact data for failed users is not recoverable from Clarity because inputs are masked and the POST never reached the backend.
 
+## Post-Fix Verification
+
+Verified on 2026-05-20 after production deploy:
+
+- Cloudflare Pages deploy uploaded the Functions bundle.
+- `node scripts/post-deploy-smoke.mjs https://anfrage.neontrip.de` passed.
+- `node scripts/post-deploy-smoke.mjs https://anfrage.neontrip.de --real-alert` passed at HTTP/API level and sent a real `/api/r` diagnostic event.
+- n8n `LP Anfrage Webhook v1.0` (`FQ7lf36yje4B1eE3`) had successful webhook executions after the fix:
+  - `1419867` at `2026-05-20T10:39:42Z`
+  - `1419905` at `2026-05-20T10:40:01Z`
+  - `1420471` at `2026-05-20T11:28:04Z`
+- Microsoft Clarity query for `2026-05-20` on `anfrage.neontrip.de` returned no sessions with recorded JavaScript errors or click errors.
+
+Interpretation: new submits are reaching n8n again. The known failed users from the outage window remain non-recoverable unless they independently contacted NEONTRIP, because the backend never received their form payloads.
+
+## Monitoring Findings
+
+The previous alerting setup did not catch the outage for two reasons:
+
+- `/api/r` was also missing from the Cloudflare deploy and returned `405`, so client-side failure reporting could not reach n8n.
+- n8n Error Trigger workflows only fire for n8n executions. The outage happened before n8n, at the Cloudflare Pages Function layer.
+
+Additional findings from n8n review:
+
+- `Error Notification -> info@NeonTrip.de` (`M4uG1HAtN9Zggxww`) is active and did receive n8n-internal errors on 2026-05-20.
+- Its normal path sends data to `AI Alert Reviewer v1.0` (`SH5HK6TqLCyaitXu`), but that workflow is inactive. The execution therefore records `Workflow is not active and cannot be executed.` This weakens the alert path.
+- `NEONTRIP Workflow Monitor v2.0` (`QadPKWZ2cmZDCk2W`) currently receives `401 unauthorized` from `Fetch Error Executions`, but because the node continues on error the workflow still reports `HEALTHY`. This is a false-green monitoring condition.
+
 ## Hardening Implemented
 
 ### 1. Functions are release-critical
@@ -121,4 +149,7 @@ If post-deploy smoke fails:
 
 - Add the verifier to a real CI/predeploy command once the repository has a package script or CI runner.
 - Add scheduled synthetic monitoring outside the deploy flow.
-- Decide whether the n8n fail-alert path needs a second independent channel, because `/api/r -> n8n` is still one alert pipeline.
+- Fix `Error Notification -> info@NeonTrip.de` so it does not depend on inactive `AI Alert Reviewer v1.0`, or reactivate the reviewer after review.
+- Fix `NEONTRIP Workflow Monitor v2.0` so `401 unauthorized` in `Fetch Error Executions` fails loudly instead of producing `HEALTHY`.
+- Add a second independent alert channel outside `/api/r -> n8n`, because a Cloudflare Function outage can break both the form submit and same-origin alert route.
+- Backfill estimate only: use Clarity SubmitForm recordings from the outage window to count likely lost leads, but do not expect contact recovery.
