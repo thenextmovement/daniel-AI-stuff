@@ -1,7 +1,6 @@
 {
   "name": "neontrip-lp",
   "private": true,
-  "type": "module",
   "scripts": {
     "verify:lp-release": "node scripts/verify-lp-release.mjs",
     "smoke:lp": "node scripts/post-deploy-smoke.mjs https://anfrage.neontrip.de",
