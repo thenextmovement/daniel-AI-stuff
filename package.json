@@ -1,0 +1,15 @@
+{
+  "name": "neontrip-lp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verify:lp-release": "node scripts/verify-lp-release.mjs",
+    "smoke:lp": "node scripts/post-deploy-smoke.mjs https://anfrage.neontrip.de",
+    "smoke:lp:real-alert": "node scripts/post-deploy-smoke.mjs https://anfrage.neontrip.de --real-alert",
+    "monitor:lp": "node scripts/lp-synthetic-monitor.mjs",
+    "deploy:pages": "node scripts/verify-lp-release.mjs && npx wrangler pages deploy deploy/ --project-name neontrip-lp --branch main"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

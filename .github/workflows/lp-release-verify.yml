@@ -1,0 +1,25 @@
+name: LP release verify
+
+on:
+  push:
+    branches:
+      - main
+      - phase-0b-isolated
+      - phase-0e-visual-baseline
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify LP release invariants
+        run: npm run verify:lp-release

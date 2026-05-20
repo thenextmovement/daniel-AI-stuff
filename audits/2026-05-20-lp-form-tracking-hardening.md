@@ -30,6 +30,15 @@ Verified on 2026-05-20 after production deploy:
   - `1419905` at `2026-05-20T10:40:01Z`
   - `1420471` at `2026-05-20T11:28:04Z`
 - Microsoft Clarity query for `2026-05-20` on `anfrage.neontrip.de` returned no sessions with recorded JavaScript errors or click errors.
+- `npm run verify:lp-release` passed locally.
+- `npm run monitor:lp` passed against production after network access was allowed.
+- n8n `LP Synthetic Monitor v1.0` (`YCjuwXGnxTjhj40i`) was created and activated. Its first working native-HTTP run, execution `1421430`, returned `status: OK` and verified:
+  - `HEAD /logo/`
+  - `HEAD /neon-schilder/`
+  - `HEAD /leuchtreklame/`
+  - `HEAD /firmenschilder/`
+  - `POST /api/c` dry-run
+  - `POST /api/r` dry-run
 
 Interpretation: new submits are reaching n8n again. The known failed users from the outage window remain non-recoverable unless they independently contacted NEONTRIP, because the backend never received their form payloads.
 
@@ -131,13 +140,46 @@ Change:
 - `Analyze Errors` checks for `firstInput.error` and returns a critical alert with `monitor_error` when the `Fetch Error Executions` node returns a 401/HTTP/API error object.
 - Workflow validation is green after the change.
 
+### 8. Release commands and CI gate added
+
+`package.json` now defines the operational commands:
+
+```bash
+npm run verify:lp-release
+npm run smoke:lp
+npm run smoke:lp:real-alert
+npm run monitor:lp
+npm run deploy:pages
+```
+
+`.github/workflows/lp-release-verify.yml` runs `npm run verify:lp-release` on push, pull request, and manual workflow dispatch.
+
+### 9. Scheduled synthetic monitor added
+
+`LP Synthetic Monitor v1.0` (`YCjuwXGnxTjhj40i`) is active in n8n and runs every 15 minutes.
+
+Structure:
+
+- Schedule trigger
+- Four native HTTP `HEAD` checks for representative paid LPs
+- `POST /api/c` dry-run
+- `POST /api/r` dry-run
+- Aggregate result
+- Send Outlook alert only if any check fails
+
+Important implementation note:
+
+- The first test implementation used a Code node with `fetch`, but n8n Code nodes in this instance do not expose `fetch`. This generated execution `1421387` with `fetch is not defined`.
+- The workflow was immediately deactivated, rebuilt with native HTTP Request nodes, tested, and then reactivated at a 15-minute interval.
+- Working verification: execution `1421430` returned `status: OK`, `failure_count: 0`, and went to the `Log OK` branch.
+
 ## Required Release Gate
 
 Before any Cloudflare Pages deploy:
 
 ```bash
 cd /Users/danielklesse/Desktop/neontrip-phase0e-visual
-node scripts/verify-lp-release.mjs
+npm run verify:lp-release
 ```
 
 The release must not deploy if this fails.
@@ -148,7 +190,7 @@ After deploy:
 
 ```bash
 cd /Users/danielklesse/Desktop/neontrip-phase0e-visual
-node scripts/post-deploy-smoke.mjs https://anfrage.neontrip.de
+npm run smoke:lp
 ```
 
 This validates:
@@ -161,7 +203,7 @@ This validates:
 To verify that the n8n fail-alert email path itself fires, run explicitly:
 
 ```bash
-node scripts/post-deploy-smoke.mjs https://anfrage.neontrip.de --real-alert
+npm run smoke:lp:real-alert
 ```
 
 Only use `--real-alert` intentionally because it sends an operational alert.
@@ -179,7 +221,5 @@ If post-deploy smoke fails:
 
 ## Still Open
 
-- Add the verifier to a real CI/predeploy command once the repository has a package script or CI runner.
-- Add scheduled synthetic monitoring outside the deploy flow.
-- Add a second independent alert channel outside `/api/r -> n8n`, because a Cloudflare Function outage can break both the form submit and same-origin alert route.
 - Backfill estimate only: use Clarity SubmitForm recordings from the outage window to count likely lost leads, but do not expect contact recovery.
+- Optional: add a third-party uptime provider that calls `/api/c` dry-run from outside n8n as an additional external check.
