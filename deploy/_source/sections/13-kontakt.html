@@ -7,7 +7,7 @@
     <div class="relative z-10 max-w-[1200px] mx-auto flex flex-col lg:flex-row gap-8">
       <!-- Links: Anfrageformular -->
       <div class="reveal lg:w-1/2 order-2 lg:order-1">
-        <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" novalidate class="bg-white rounded-[18px] p-5 md:p-6" id="kontakt-form">
+        <form action="/api/c" method="POST" enctype="multipart/form-data" novalidate class="bg-white rounded-[18px] p-5 md:p-6" id="kontakt-form">
           <input type="hidden" name="source" value="kontakt-form-{{SLUG}}">
           <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
           <h3 class="text-lg md:text-xl font-semibold tracking-tighter text-dark mb-4">

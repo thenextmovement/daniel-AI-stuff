@@ -1004,7 +1004,7 @@
 
         <!-- Hero Form (order-2: directly after headline on mobile) -->
         <div class="reveal w-full max-w-[420px] mx-auto lg:ml-auto lg:mr-0 order-2" style="transition-delay: 0.3s;">
-          <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" id="hero-form" class="bg-white rounded-[18px] p-6 md:p-8 border border-black/5 shadow-[0_8px_40px_rgba(0,0,0,0.08)]" style="backdrop-filter:blur(20px);">
+          <form action="/api/c" method="POST" enctype="multipart/form-data" id="hero-form" class="bg-white rounded-[18px] p-6 md:p-8 border border-black/5 shadow-[0_8px_40px_rgba(0,0,0,0.08)]" style="backdrop-filter:blur(20px);">
             <input type="hidden" name="source" value="hero-form">
             <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
 
@@ -1746,7 +1746,7 @@
 
         <!-- Right: Multi-Step Form Card -->
         <div class="reveal" style="transition-delay: 0.1s;">
-          <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" class="bg-white rounded-2xl p-6 md:p-8 form-glow" id="quick-anfrage-form">
+          <form action="/api/c" method="POST" enctype="multipart/form-data" class="bg-white rounded-2xl p-6 md:p-8 form-glow" id="quick-anfrage-form">
             <input type="hidden" name="produkt" id="selected-product" value="">
             <input type="hidden" name="source" value="landing-page">
             <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
@@ -2810,7 +2810,7 @@
     <div class="relative z-10 max-w-[1200px] mx-auto flex flex-col lg:flex-row gap-8">
       <!-- Links: Anfrageformular -->
       <div class="reveal lg:w-1/2 order-2 lg:order-1">
-        <form action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" class="bg-white rounded-[18px] p-5 md:p-6" id="kontakt-form">
+        <form action="/api/c" method="POST" enctype="multipart/form-data" class="bg-white rounded-[18px] p-5 md:p-6" id="kontakt-form">
           <input type="hidden" name="source" value="kontakt-form">
           <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
           <h3 class="text-lg md:text-xl font-semibold tracking-tighter text-dark mb-4">
@@ -3696,6 +3696,70 @@
     }
     window.toggleFaq = toggleFaq;
 
+    // Production-critical submit helpers for legacy v2 page.
+    (function() {
+      var trackingKeys = ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+      var params = new URLSearchParams(window.location.search);
+      trackingKeys.forEach(function(key) {
+        var val = params.get(key);
+        if (val) { try { sessionStorage.setItem('nt_' + key, val); } catch(e) {} }
+      });
+      try {
+        if (!sessionStorage.getItem('nt_landing_page_url')) sessionStorage.setItem('nt_landing_page_url', window.location.href);
+        sessionStorage.setItem('nt_current_page_url', window.location.href);
+        if (document.referrer && !sessionStorage.getItem('nt_referrer')) sessionStorage.setItem('nt_referrer', document.referrer);
+      } catch(e) {}
+      function setHidden(form, name, value) {
+        if (!value) return;
+        var input = form.querySelector('input[type="hidden"][name="' + name + '"]');
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = name;
+          form.appendChild(input);
+        }
+        input.value = value;
+      }
+      window.ntPrepareSubmit = function(form, formName) {
+        trackingKeys.forEach(function(key) {
+          try { setHidden(form, key, sessionStorage.getItem('nt_' + key)); } catch(e) {}
+        });
+        try {
+          var landingPageUrl = sessionStorage.getItem('nt_landing_page_url') || window.location.href;
+          setHidden(form, 'landing_page_url', landingPageUrl);
+          setHidden(form, '_landing_page_url', landingPageUrl);
+          setHidden(form, 'current_page_url', sessionStorage.getItem('nt_current_page_url') || window.location.href);
+          setHidden(form, 'referrer', sessionStorage.getItem('nt_referrer') || document.referrer || '');
+          setHidden(form, '_referrer', sessionStorage.getItem('nt_referrer') || document.referrer || '');
+        } catch(e) {}
+        var fd = new FormData(form);
+        if (fd.get('website')) {
+          window.ntReportSubmitFailure(formName || 'legacy_form', new Error('honeypot_prefilled_client'));
+          fd.delete('website');
+        }
+        return fd;
+      };
+      window.ntReportSubmitFailure = function(formName, error) {
+        try {
+          var payload = JSON.stringify({
+            form: formName,
+            error: (error && (error.message || String(error))) || 'unknown',
+            url: window.location.href,
+            referrer: document.referrer || '',
+            ua: navigator.userAgent,
+            ts: new Date().toISOString()
+          });
+          if (navigator.sendBeacon) navigator.sendBeacon('/api/r', new Blob([payload], { type: 'application/json' }));
+          else fetch('/api/r', { method: 'POST', body: payload, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(function(){});
+        } catch(e) {}
+      };
+      window.ntShowFailureBanner = function(form) {
+        if (!form || form.dataset.ntFailShown === '1') return;
+        form.dataset.ntFailShown = '1';
+        form.innerHTML = '<div class="text-center py-8 px-4"><h3 class="text-xl font-semibold text-dark mb-2">Übermittlung fehlgeschlagen</h3><p class="text-sm text-dark/60 mb-4">Ihre Anfrage konnte nicht übertragen werden. Bitte rufen Sie uns direkt an oder schreiben Sie uns.</p><a href="tel:+4921154257240" class="inline-flex px-5 py-3 rounded-full bg-accent text-white font-semibold">+49 211 54257240</a><p class="mt-3"><a href="mailto:support@neontrip.de" class="text-sm font-semibold text-dark/60 underline">support@neontrip.de</a></p></div>';
+      };
+    })();
+
     // Multi-Step Form (only on anfrage.html)
     const form = document.getElementById('multi-step-form');
     if (form) {
@@ -3763,8 +3827,7 @@
       submitBtn.disabled = true;
 
       try {
-        const formData = new FormData(form);
-        if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+        const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(form, 'multi_step_form') : new FormData(form);
 
         // Send to webhook (adjust URL as needed)
         const response = await fetch(form.action, {
@@ -3772,13 +3835,13 @@
           body: formData
         });
 
-        // Show success regardless (for demo)
+        if (!response.ok) throw new Error('Server error: ' + response.status);
         showSuccess();
 
       } catch (error) {
         console.error('Form error:', error);
-        // Still show success for demo purposes
-        showSuccess();
+        window.ntReportSubmitFailure('multi_step_form', error);
+        window.ntShowFailureBanner(form);
       }
     });
     } // end if (form)
@@ -3857,8 +3920,7 @@
         submitBtn.disabled = true;
 
         try {
-          const formData = new FormData(quickAnfrageForm);
-          if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+          const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(quickAnfrageForm, 'quick_anfrage_form') : new FormData(quickAnfrageForm);
 
           // Send to API
           const response = await fetch(quickAnfrageForm.action, {
@@ -3878,6 +3940,7 @@
           console.error('Form error:', error);
           submitBtn.innerHTML = originalText;
           submitBtn.disabled = false;
+          window.ntReportSubmitFailure('quick_anfrage_form', error);
           alert('Es gab einen Fehler. Bitte versuche es erneut oder ruf uns an.');
         }
       });
@@ -3962,8 +4025,7 @@
         submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Wird gesendet...</span>';
         submitBtn.disabled = true;
         try {
-          const formData = new FormData(heroForm);
-          if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+          const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(heroForm, 'hero_form') : new FormData(heroForm);
           const response = await fetch(heroForm.action, { method: 'POST', body: formData });
           if (!response.ok) throw new Error('Server error: ' + response.status);
           fireEnhancedConversion('hero_form', formData.get('email'), formData.get('telefon'), formData.get('name'));
@@ -3982,6 +4044,7 @@
         } catch (error) {
           submitBtn.innerHTML = originalText;
           submitBtn.disabled = false;
+          window.ntReportSubmitFailure('hero_form', error);
           const errorDiv = document.createElement('p');
           errorDiv.className = 'text-xs text-red-500 font-medium text-center mt-2';
           errorDiv.textContent = 'Fehler beim Senden. Bitte versuchen Sie es erneut oder rufen Sie uns an.';
@@ -4012,8 +4075,7 @@
         submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin inline mr-2" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Wird gesendet...';
         submitBtn.disabled = true;
         try {
-          const formData = new FormData(kontaktForm);
-          if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+          const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(kontaktForm, 'kontakt_form') : new FormData(kontaktForm);
           const response = await fetch(kontaktForm.action, { method: 'POST', body: formData });
           if (!response.ok) throw new Error('Server error: ' + response.status);
           fireEnhancedConversion('kontakt_form', formData.get('email'), formData.get('telefon'), formData.get('name'));
@@ -4021,6 +4083,7 @@
         } catch (error) {
           submitBtn.innerHTML = originalText;
           submitBtn.disabled = false;
+          window.ntReportSubmitFailure('kontakt_form', error);
           const errorDiv = document.createElement('p');
           errorDiv.className = 'text-xs text-red-500 font-medium text-center mt-2';
           errorDiv.textContent = 'Fehler beim Senden. Bitte versuchen Sie es erneut oder rufen Sie uns an.';
@@ -4128,8 +4191,7 @@
           submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Wird gesendet...</span>';
           submitBtn.disabled = true;
           try {
-            const formData = new FormData(quickForm);
-            if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+            const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(quickForm, 'quick_form_section') : new FormData(quickForm);
             const resp = await fetch(quickForm.action, { method: 'POST', body: formData });
             if (!resp.ok) throw new Error('Server error: ' + resp.status);
             fireEnhancedConversion('quick_form', formData.get('email'), formData.get('telefon'), formData.get('name'));
@@ -4145,7 +4207,7 @@
             success.innerHTML = '<div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><svg class="w-7 h-7 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h3 class="text-xl font-semibold text-dark tracking-[-0.03em] mb-1">Anfrage erhalten!</h3><p class="text-sm font-medium text-dark/40 tracking-tight mb-5">Fabienne meldet sich innerhalb von 24h mit Ihrer 3D-Vorschau.</p><a href="tel:+4921154257240" class="inline-flex items-center gap-2 text-[13px] font-semibold text-dark/40 hover:text-dark transition-colors"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Dringend? Jetzt anrufen</a>';
             quickForm.appendChild(success);
             requestAnimationFrame(() => { success.style.opacity = '1'; success.style.transform = 'translateY(0)'; });
-          } catch (error) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; }
+          } catch (error) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; window.ntReportSubmitFailure('quick_form_section', error); window.ntShowFailureBanner(quickForm); }
         });
       }
 

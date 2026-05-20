@@ -592,9 +592,10 @@
 {{SECTIONS}}
 
   <script>
-    // ═══════ GCLID + UTM Capture ═══════
-    // Captures Google Ads click ID and UTM params from URL, stores in sessionStorage,
-    // and injects as hidden fields into all forms on the page
+    // ═══════ Tracking + Attribution Capture ═══════
+    // Captures ad click IDs, UTMs, current LP URL and referrer. These fields
+    // are production-critical for Supabase/Ads reconciliation and must be
+    // present in every /api/c submission.
     (function() {
       const params = new URLSearchParams(window.location.search);
       const trackingKeys = ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
@@ -602,23 +603,58 @@
         const val = params.get(key);
         if (val) { try { sessionStorage.setItem('nt_' + key, val); } catch(e) {} }
       });
-      // Inject hidden fields into all forms
-      function injectTrackingFields() {
-        document.querySelectorAll('form').forEach(form => {
-          if (form.dataset.trackingInjected) return;
+      try {
+        if (!sessionStorage.getItem('nt_landing_page_url')) sessionStorage.setItem('nt_landing_page_url', window.location.href);
+        sessionStorage.setItem('nt_current_page_url', window.location.href);
+        if (document.referrer && !sessionStorage.getItem('nt_referrer')) sessionStorage.setItem('nt_referrer', document.referrer);
+      } catch(e) {}
+
+      function setHiddenField(form, name, value) {
+        if (!form || value == null || value === '') return;
+        let input = form.querySelector('input[type="hidden"][name="' + name + '"]');
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = name;
+          form.appendChild(input);
+        }
+        input.value = value;
+      }
+
+      function injectTrackingFields(formScope) {
+        const forms = formScope ? [formScope] : Array.from(document.querySelectorAll('form'));
+        forms.forEach(form => {
           trackingKeys.forEach(key => {
-            const val = sessionStorage.getItem('nt_' + key);
-            if (val) {
-              const input = document.createElement('input');
-              input.type = 'hidden';
-              input.name = key;
-              input.value = val;
-              form.appendChild(input);
-            }
+            try { setHiddenField(form, key, sessionStorage.getItem('nt_' + key)); } catch(e) {}
           });
+          try {
+            const landingPageUrl = sessionStorage.getItem('nt_landing_page_url') || window.location.href;
+            const currentPageUrl = sessionStorage.getItem('nt_current_page_url') || window.location.href;
+            const referrer = sessionStorage.getItem('nt_referrer') || document.referrer || '';
+            setHiddenField(form, 'landing_page_url', landingPageUrl);
+            setHiddenField(form, '_landing_page_url', landingPageUrl);
+            setHiddenField(form, 'current_page_url', currentPageUrl);
+            setHiddenField(form, 'referrer', referrer);
+            setHiddenField(form, '_referrer', referrer);
+          } catch(e) {}
           form.dataset.trackingInjected = 'true';
         });
       }
+      window.ntInjectTrackingFields = injectTrackingFields;
+      window.ntPrepareSubmit = function(form, formName) {
+        injectTrackingFields(form);
+        const fd = new FormData(form);
+        // Do not let password managers/iOS autofill turn the honeypot into a
+        // silent real-user abort. Direct non-JS bot posts are still filtered
+        // server-side in /api/c.
+        if (fd.get('website')) {
+          try {
+            window.ntReportSubmitFailure(formName || 'form', new Error('honeypot_prefilled_client'));
+          } catch(e) {}
+          fd.delete('website');
+        }
+        return fd;
+      };
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', injectTrackingFields);
       } else {
@@ -1342,8 +1378,7 @@
     // Form Submission
     form.addEventListener('submit', function(e) {
       e.preventDefault();
-      var formData = new FormData(form);
-      if (formData.get('website')) return;
+      var formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(form, 'multi_step_form') : new FormData(form);
       if (typeof fireEnhancedConversion === 'function') fireEnhancedConversion('multi_step_form', formData.get('email'), formData.get('telefon'), formData.get('name'));
       showSuccess();
       fetch(form.action, { method: 'POST', body: formData })
@@ -1456,8 +1491,7 @@
         submitBtn.innerHTML = '<svg class="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Wird gesendet...';
         submitBtn.disabled = true;
 
-        const formData = new FormData(quickAnfrageForm);
-        if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+        const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(quickAnfrageForm, 'quick_anfrage_form') : new FormData(quickAnfrageForm);
         // Optimistic: fire conversion + show success immediately, upload in background
         fireEnhancedConversion('quick_anfrage', formData.get('email'), formData.get('telefon'), formData.get('name'));
         quickAnfrageForm.innerHTML = '<div class="text-center py-6"><svg class="w-14 h-14 text-green-500 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><h3 class="text-2xl font-semibold text-dark mb-2 tracking-tight">Anfrage erhalten!</h3><p class="text-sm text-dark/50 tracking-tight mb-6">Ihre 3D-Vorschau wird vorbereitet.</p><div class="flex items-center gap-3 bg-light rounded-xl p-4 mb-4"><img src="../assets/images/fabienne-trapp.png" class="w-10 h-10 rounded-full object-cover shrink-0" alt="Fabienne Trapp"><div class="text-left"><p class="text-sm font-semibold text-dark tracking-tight">Fabienne meldet sich bei Ihnen</p><p class="text-xs text-dark/40">Innerhalb von 24h mit Angebot + 3D-Vorschau</p></div></div><a href="tel:+4921154257240" class="inline-flex items-center gap-2 text-sm font-medium text-dark/50 hover:text-dark transition-colors"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Dringend? Jetzt anrufen</a></div>';
@@ -1548,8 +1582,7 @@
         var orig = btn.innerHTML;
         btn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Wird gesendet...</span>';
         btn.disabled = true;
-        var fd = new FormData(form);
-        if (fd.get('website')) { btn.innerHTML = orig; btn.disabled = false; return; }
+        var fd = window.ntPrepareSubmit ? window.ntPrepareSubmit(form, 'hero_form_mobile') : new FormData(form);
         // Optimistic: fire conversion + show success immediately, upload in background
         if (typeof fireEnhancedConversion === 'function') fireEnhancedConversion('hero_form', fd.get('email'), fd.get('telefon'), fd.get('name'));
         var header = document.getElementById('hero-form-header');
@@ -1640,8 +1673,7 @@
         const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Wird gesendet...</span>';
         submitBtn.disabled = true;
-        const formData = new FormData(heroFormD);
-        if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+        const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(heroFormD, 'hero_form_desktop') : new FormData(heroFormD);
         fireEnhancedConversion('hero_form', formData.get('email'), formData.get('telefon'), formData.get('name'));
         const barsWrapper = document.getElementById('hero-bars-wrapper-d');
         const header = document.getElementById('hero-form-desktop-header');
@@ -1683,8 +1715,7 @@
         const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin inline mr-2" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Wird gesendet...';
         submitBtn.disabled = true;
-        const formData = new FormData(kontaktForm);
-        if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+        const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(kontaktForm, 'kontakt_form') : new FormData(kontaktForm);
         // Optimistic: fire conversion + show success immediately, upload in background
         fireEnhancedConversion('kontakt_form', formData.get('email'), formData.get('telefon'), formData.get('name'));
         kontaktForm.innerHTML = '<div class="text-center py-8"><div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><svg class="w-7 h-7 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h3 class="text-xl font-semibold text-dark tracking-tight mb-1">Anfrage erhalten!</h3><p class="text-sm font-medium text-dark/40 tracking-tight">Fabienne meldet sich innerhalb von 24h bei Ihnen.</p></div>';
@@ -1820,8 +1851,7 @@
         quickForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           const submitBtn = quickForm.querySelector('button[type="submit"]');
-          const formData = new FormData(quickForm);
-          if (formData.get('website')) return;
+          const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(quickForm, 'quick_form_section') : new FormData(quickForm);
           fireEnhancedConversion('quick_form', formData.get('email'), formData.get('telefon'), formData.get('name'));
           const header = quickForm.querySelector('#quick-form-header');
           const progress = quickProgressBar ? quickProgressBar.parentElement.parentElement : null;

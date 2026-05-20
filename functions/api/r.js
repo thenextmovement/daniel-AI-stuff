@@ -99,6 +99,19 @@ async function handlePost(request) {
     };
   }
 
+  // Synthetic deploy smoke test. Confirms /api/r exists and parses JSON
+  // without sending an operational alert.
+  if (enriched.nt_dry_run === "1") {
+    return new Response('{"ok":true,"dry_run":true}', {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        ...cors,
+      },
+    });
+  }
+
   // Forward to n8n with short timeout. Any error here is logged
   // but not returned to the client.
   const controller = new AbortController();

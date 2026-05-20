@@ -225,7 +225,7 @@ function buildLP(config) {
 
   // Backup existing file
   if (fs.existsSync(outputPath)) {
-    const backupDir = path.join(DEPLOY_DIR, '.backup-pre-build');
+    const backupDir = path.join(SOURCE_DIR, '.backup-pre-build');
     fs.mkdirSync(backupDir, { recursive: true });
     const backupPath = path.join(backupDir, `${config.slug}-index.html`);
     fs.copyFileSync(outputPath, backupPath);

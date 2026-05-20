@@ -121,14 +121,38 @@ async function handlePost(request, ctx) {
     );
   }
 
+  // Synthetic deploy smoke test. Verifies that the Pages Function exists,
+  // accepts multipart FormData and returns JSON without creating a real lead.
+  if (formData.get("nt_dry_run") === "1") {
+    return jsonResponse(
+      { ok: true, dry_run: true, request_id: requestId },
+      200,
+      { ...cors, "X-Request-Id": requestId }
+    );
+  }
+
   // ─── Honeypot: serverside spam filter ───
-  // Real users never see or fill the "website" field (CSS-hidden decoy).
-  // Bots that auto-fill all inputs will populate it. Return 200 OK silently
-  // so the bot thinks its submission worked while we save n8n quota.
+  // Direct bot posts that fill "website" are filtered. If the payload also
+  // contains real contact fields, treat it as likely mobile/password-manager
+  // autofill and forward it instead of silently losing a possible lead.
   const honeypot = formData.get("website");
   if (honeypot) {
-    console.log(`[c ${requestId}] honeypot hit: "${String(honeypot).slice(0, 40)}"`);
-    return jsonResponse({ ok: true, filtered: "honeypot" }, 200, cors);
+    const hasContact =
+      String(formData.get("email") || "").trim() ||
+      String(formData.get("telefon") || "").trim() ||
+      String(formData.get("phone") || "").trim() ||
+      String(formData.get("name") || "").trim();
+    if (!hasContact) {
+      console.log(`[c ${requestId}] honeypot hit: "${String(honeypot).slice(0, 40)}"`);
+      return jsonResponse({ ok: true, filtered: "honeypot" }, 200, cors);
+    }
+    console.warn(`[c ${requestId}] honeypot prefilled with contact fields; forwarding`);
+    reportFailure(ctx, origin, {
+      request_id: requestId,
+      error: "honeypot_prefilled_forwarded",
+      cf_country: cf.country,
+      referer: request.headers.get("Referer"),
+    });
   }
   // Remove the honeypot field from the forwarded payload so n8n never
   // sees it — keeps the data clean even for legitimate submissions.

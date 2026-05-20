@@ -103,7 +103,7 @@
 
       <!-- RIGHT: Form Card -->
       <div class="w-full max-w-[480px] mx-auto lg:ml-auto lg:mr-0">
-        <form id="upguard-form" action="https://fuajob.online/webhook/landing-anfrage" method="POST" enctype="multipart/form-data" class="bg-white rounded-[20px] p-5 md:p-8" style="box-shadow: 0 24px 64px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1);">
+        <form id="upguard-form" action="/api/c" method="POST" enctype="multipart/form-data" class="bg-white rounded-[20px] p-5 md:p-8" style="box-shadow: 0 24px 64px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1);">
           <input type="hidden" name="source" value="upguard-hero-test2">
           <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
 
@@ -391,8 +391,7 @@
       var email = document.getElementById('ug-email');
       if (!name || !name.value.trim() || !email || !email.value.trim()) return;
 
-      var fd = new FormData(form);
-      if (fd.get('website')) return;
+      var fd = window.ntPrepareSubmit ? window.ntPrepareSubmit(form, 'test2_hero_form') : new FormData(form);
 
       var btn = document.getElementById('ug-submit-btn');
       if (btn) { btn.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite"></span>'; btn.disabled = true; }
