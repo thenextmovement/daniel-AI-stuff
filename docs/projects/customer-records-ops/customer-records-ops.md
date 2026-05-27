@@ -1,0 +1,1122 @@
+# Customer Records Ops
+
+Interne Seite zum Korrigieren von Kundendaten ohne Terminal oder direkten Supabase-Zugriff.
+
+Siehe auch: [Request Segmentation](./request-segmentation.md)
+
+## URL
+
+- `/ops/customer-records`
+
+## Rolle
+
+- Interne `Operations Console` fuer Datensatzkorrektur, Angebotskontext, Kommunikationssicht und manuelle Fallnotizen
+
+## Zugriff
+
+- Lokal bleiben `localhost` und `127.0.0.1` fuer Entwicklung freigeschaltet.
+- Fuer interne Veroeffentlichung: Cloudflare Access vor `ops.neontrip.de` setzen und in der App `OPS_CLOUDFLARE_ACCESS_ISSUER` sowie `OPS_CLOUDFLARE_ACCESS_AUD` konfigurieren.
+- Empfohlen: `OPS_REQUIRE_CLOUDFLARE_ACCESS=true` plus `OPS_ALLOWED_EMAILS` oder `OPS_ALLOWED_EMAIL_DOMAINS`, damit nur erlaubte Mitarbeiter in die App kommen.
+- `OPS_PORTAL_TOKEN` bleibt nur als Preview-/Tunnel-Fallback sinnvoll.
+- Details: [Internal Deployment](./internal-deployment.md)
+
+## Suche
+
+- Bevorzugt per `request_id`
+- Alternativ per exakter E-Mail-Adresse
+- Neu zusätzlich per Name oder Firma als Teiltreffer
+- Zusaetzlich per Telefonnummer
+- Zusaetzlich per `deal:12345`
+- Zusaetzlich per `trello:FYXcIQ9K` oder Trello-Kartenlink
+
+## Sales Calls
+
+- `/ops/customer-records/calls` zeigt in Tagesliste und Call-Board direkt:
+  - Segment und ob eine Bestätigung offen ist
+  - Designbild mit Priorität echte Follow-up-/AWS-Mockups aus `followup_queue.mockup_url(_2/_3)` (`MOC ab 01/02/03` bzw. `Mockup01/02/03`), danach Trello-Mockups, danach Angebotsbilder
+  - aktuelles Call-Stadium, z. B. `Call 3 steht an`, `2/3 erledigt` oder `nicht erreicht`
+- Im Detailfenster kann das Segment bestätigt oder geändert werden. Die Speicherung nutzt dieselbe deterministische `set_request_segment`-Action wie das Customer-Records-Portal.
+- Alte Call-Tageslisten ohne Bild-Snapshot laden nur für die ersten fehlenden Fälle einen begrenzten Live-Trello-Fallback. Dadurch bleiben Fotos sichtbar, ohne beim Öffnen wieder massenhaft Trello-Requests auszulösen.
+- Der Trello-Bildproxy ruft nur noch das einzelne Attachment ab und liefert erfolgreiche Bilder mit privatem Browser-Cache aus. Dadurch werden Trello-429-Fehler beim Scrollen/Neuladen der Call-Liste deutlich reduziert.
+- VIP- und Wichtig-Markierungen bleiben in der Call-Cadence sichtbar; sie sind aktuell Prioritätssignale und werden später als eigene Arbeitsliste/Queue weiter ausgebaut.
+
+## Arbeitsmodi
+
+- `Ops Inbox` zeigt priorisierte Einzelfaelle aus offenen Follow-ups und frischen Requests
+- Auch `Ops Inbox` hat Direktaktionen aus der Liste:
+  - `Antworten`
+  - `Rueckruf morgen`
+  - `Follow-up morgen`
+  - `Gewonnen`
+  - `Voicemail`
+  - `Erreicht`
+  - `Urlaub`
+  - `Kein Interesse`
+  - `Kontaktstopp`
+  - `Voicemail` setzt danach automatisch einen Rueckruf auf morgen
+  - `Urlaub` verschiebt den Fall automatisch um zwei Wochen
+  - `Kein Interesse` schliesst den Fall direkt als verloren ab
+  - `Kontaktstopp` setzt sofort Do-not-contact
+- `Workboard` gruppiert operative Faelle in Spuren:
+  - faellige Follow-ups
+  - Rueckrufe
+  - Sales-Recovery
+  - frische Antworten
+  - Kontaktstopps
+- `Ops Radar` hebt zusaetzlich die kritischsten Muster automatisch hervor:
+  - frische Antworten mit hohem Reaktionsdruck
+  - faellige Rueckrufe
+  - laufende Sales-Recovery ohne Auftrag
+  - fehlender Trello-/Design-Kontext
+  - Kontaktstopps mit besonderer Vorsicht
+- Die Radar-Karten selbst haben jetzt auch Direktaktionen, z. B.:
+  - `Antworten`
+  - `Rueckruf morgen`
+  - `Rueckruf setzen`
+  - `Kein Kontakt`
+  - `Trello oeffnen`
+- `Meine Queue` filtert Faelle auf den lokal gesetzten Operator-Namen
+- `Arbeitsmodus` schaltet die gesamte Konsole zwischen `Alle Faelle`, `Meine Faelle` und `Handover`
+- `Fallstatus` filtert die gesamte Zentrale zusaetzlich nach:
+  - `Aktiv`
+  - `Sales-Recovery`
+  - `Rueckruf`
+  - `Urlaub`
+  - `Kontaktstopp`
+  - `Abgeschlossen`
+- Standardmaessig startet die Zentrale auf `Aktiv`, damit abgeschlossene Faelle nicht den Arbeitsfluss verstopfen
+- Innerhalb der sichtbaren Faelle priorisiert die Zentrale automatisch:
+  - frische Antworten zuerst
+  - danach harte Reparaturfaelle wie E-Mail-Drift, Kontaktstopp-Kollisionen oder operativ noch offene Auftraege
+  - danach aktive Rueckrufe
+  - danach offene Follow-ups
+  - danach sichtbare Sales-Recovery-Faelle ohne Auftrag
+- `Schnellzugriff` arbeitet modussensitiv und zeigt Inbox/Workboard passend zum aktiven Arbeitsmodus
+- `Schnellzugriff` ist jetzt eine echte Action-Palette:
+  - sucht wie bisher per Request-ID, Mail, Name, Telefon, `deal:` oder `trello:`
+  - zeigt `Nächster bester Fall`, Watchlist, Repair Queue, Kontakt-Cluster und Workboard-Spuren
+  - zeigt zusätzlich einen `Commercial Desk` fuer Deal-, Quote-, Builder- und Auftragsarbeit
+  - bietet auf dem priorisierten Lead-Fall direkte Sofortaktionen wie `Antworten`, `Rueckruf morgen`, `Follow-up morgen`, `Sync reparieren`, `Follow-ups stoppen`, `Sales-Recovery starten` oder `Kontakt-Dossier öffnen`
+  - zeigt fuer den aktuell offenen Fall einen eigenen `Offener Fall`-Block mit:
+    - direkten Spruengen in `Kommunikation`, `Trello & Design`, `Sales & Calls` und `Verlauf`
+    - Sofortaktionen wie `Jetzt antworten`, `Rueckruf morgen`, `Follow-up morgen` und `Auto-Reparatur`
+    - planbezogene Schnellpfade wie `Plan öffnen` und `Naechster Plan-Schritt`, damit der offene Fall direkt ueber den Case Plan gefuehrt werden kann
+    - flowbezogene Schnellpfade wie `Flow starten`, damit ein kompletter wiederkehrender Ops-Lauf direkt aus der Palette fuer den offenen Fall gestartet werden kann
+    - kontaktweite Schnellpfade wie `Kontakt-Dossier` und `Naechster Kontakt-Fokus`, wenn am Kontakt weitere relevante Requests haengen
+    - kommerzielle Schnellpfade wie `Commercial Brief` und `CRM-Bild`, wenn Deal-/Builder-Kontext vorhanden ist
+    - Team-Steuerung direkt aus der Palette: `Mir zuweisen` und `Handover an mich`
+    - direkte Systemspruenge wie `In Placetel anrufen` sowie Board-Shortcuts fuer `Anfragemanagement`, `Quentin` und `Abdul`, wenn sie zum Fall vorhanden sind
+    - direkte Quellen- und Asset-Spruenge wie `Letzte Mailquelle`, `KI-Video`, `Referenzbild`, `Tracking`, `Landingpage` oder `Referrer`, wenn sie am Fall vorhanden sind
+    - `Trello angleichen`, wenn Titel oder Beschreibung der Arbeitskarten gegen den aktuellen Request-Kontext driften
+  - kennt ausserdem einen `>`-Command-Mode:
+    - Enter fuehrt den ersten Befehl direkt aus
+    - Pfeiltasten wechseln zwischen den sichtbaren Befehlen
+    - Alias-Begriffe wie `>reply`, `>repair`, `>urlaub` oder `>kontaktstopp` filtern die passenden Kommandos sofort
+    - globale Kommandos wie `Ops-Briefing kopieren`, `Repair-Session starten`, `Inbox aktualisieren` oder `Kontakt-Dossier-Session` lassen sich damit ohne Maus und ohne Scrollweg ausloesen
+    - dazu kommt jetzt auch `Commercial-Desk starten` sowie ein eigenes `Commercial-Desk-Briefing`
+    - fuer den aktuell offenen Fall gibt es dort jetzt zusaetzlich direkte Befehle wie:
+      - `>current reply`
+      - `>current callback`
+      - `>current followup`
+      - `>current sync`
+      - `>current dossier`
+      - `>current focus`
+      - `>contact brief`
+      - `>contact handover`
+      - `>commercial brief`
+      - `>open crm image`
+      - `>repair now` fuer den priorisierten Fall
+      - `>current repair all` fuer den offenen Fall
+      - `>assign me`
+      - `>handover me`
+      - `>clear team`
+      - direkte Outcome-Kommandos wie `>current won`, `>current lost`, `>current vacation` oder `>current stop`
+      - operatorbezogene Direktkommandos wie `>assign quentin`, `>handover abdul` oder `>assign fabienne`
+      - systemnahe Direktkommandos wie `>call current`, `>open anfrage management`, `>open quentin` oder `>open abdul`
+      - planbezogene Direktkommandos wie `>current plan` und `>current next`, um den offenen Fall direkt ueber den naechsten Case-Plan-Schritt zu fuehren
+      - flowbezogene Direktkommandos wie `>current flow`, um den fuehrenden `Case Flow` des offenen Falls sofort anzustoßen
+      - globale Flow-Kommandos wie `>flows`, `>flow brief`, `>my flows` und `>my flow brief`, um laufende Case-Flows auch ausserhalb des offenen Falls als Session oder Briefing zu steuern
+      - flowbezogene Ownership-Kommandos wie `>claim flow` und `>current flow brief`, um einen laufenden Flow direkt zu uebernehmen oder als Arbeitsbrief zu kopieren
+      - direkte Trello-Listenwechsel fuer den offenen Fall, z. B. `>move anfrage management quote ready` oder `>move quentin vector file uploaded`, sofern die Ziel-Liste fuer die jeweilige Karte bekannt ist
+      - direkte Quell-/Asset-Kommandos wie `>open current mail`, `>open video`, `>open reference`, `>open tracking`, `>open landingpage` oder `>open referrer`
+      - `>sync trello` als Projektions-Reparatur fuer Titel/Beschreibung der vorhandenen Board-Karten
+- `Nächster bester Fall` erklaert jetzt auch direkt den Grund der Priorisierung, z. B. Antwort offen, Rueckruf faellig, Follow-up faellig oder Sales-Recovery
+- Diese `Naechste Aktion` wird auch direkt im Fall sichtbar, im Header, in `Case Pulse` und rechts in `Anfrage & Systeme`
+- Im Fallkopf gibt es dazu jetzt eine adaptive Aktionsleiste, die je nach Kontext direkt `Antworten`, `Rueckruf morgen`, `Follow-up steuern` oder `Rueckruf vorbereiten` anbietet
+- Auf der Startseite gibt es zusaetzlich eine `Action Queue`, die sichtbare Faelle nach der empfohlenen Hauptaktion in Arbeitsbloecke wie Antworten, Rueckrufe, Follow-ups oder Sales-Recovery gruppiert
+- Fuer Rueckruf-, Follow-up- und Sales-Recovery-Spuren gibt es dort zusaetzlich sichere `Top 5`-Batch-Aktionen mit Bestaetigung, statt unkontrollierter Massenlogik
+- Vor jeder solchen Batch-Aktion zeigt die Konsole jetzt die konkreten betroffenen Faelle als Vorschau, bevor etwas ausgefuehrt wird
+- Riskante Faelle wie `Kontaktstopp`, `Urlaub` oder blockierte Kontaktierbarkeit werden in dieser Vorschau automatisch aus der Sammelaktion herausgenommen und nur noch als `uebersprungen` ausgewiesen
+- Diese Vorschau markiert zusaetzlich Risiken wie Kontaktstopp, Urlaub, fehlenden Design-/Trello-Kontext oder fehlende Telefonnummern direkt vor der Ausfuehrung
+- Die Startseite kennt jetzt ausserdem einen `Layoutmodus`:
+  - `Einfach` ist jetzt die empfohlene Standardansicht und zeigt nur Suche, persoenliche Arbeit, Inbox, Workboard und den geöffneten Fall
+  - `Profi` blendet Teamsteuerung, Radar, Diagnose, Briefings und Spezialspuren wieder ein
+  - der fruehere `Ruhig`-Gedanke bleibt darin erhalten: die einfache Ansicht reduziert nicht nur leere, sondern auch fachlich ueberladene Bloecke
+  - im einfachen Modus ist der Einstieg jetzt bewusst linear: kompakter Hero, direkte Suchkarte, kleine Status-Chips statt rechter Kennzahlenspalte und kein doppelter Einfuehrungsblock
+  - der Hero im einfachen Modus ist bewusst klein und werkzeugartig gehalten, nicht als grosse Buehne
+  - der Operator-Bereich ist in `Einfach` standardmaessig eingeklappt und wird nur bei Bedarf geoeffnet
+  - sobald im einfachen Modus ein Kunde geoeffnet ist, klappt der geoeffnete `Zuständigkeit`-Bereich oben automatisch wieder zu, damit der aktive Fall nicht unter dem Einstellungsblock verschwindet
+  - Beispiele und Status in der Suchkarte sind in `Einfach` sekundär und klappen nur bei Bedarf auf
+  - der Start-Hero ist in `Einfach` bewusst kleiner, kuerzer und werkzeugartiger gehalten
+  - im einfachen Einstieg sprechen die Kernlabels jetzt alltagstauglicher: `Kunde suchen`, `Bearbeiter` und `Kunde laden`
+  - vor dem Oeffnen eines Falls bleibt im einfachen Modus nur noch eine einzige kompakte Karte `Mein Einstieg` sichtbar; detaillierte persoenliche Queue- und Workboard-Bloecke bleiben dem `Profi`-Modus vorbehalten
+  - auf der einfachen Startseite bleibt standardmaessig nur `Nächste Fälle` offen; `Nach Themen` wird erst auf Wunsch eingeblendet
+  - `Nächste Fälle` und `Nach Themen` erscheinen in `Einfach` nur noch als flachere Arbeitslisten mit Primäraktion statt als volle Ops-Karten mit vielen Nebenaktionen
+  - diese einfachen Listen zeigen zuerst nur Vorschaugrössen: `Nächste Fälle` bis zu 5 Einträge, jede Themenliste bis zu 3 Einträge; mehr erscheint erst per `weitere zeigen`
+  - sobald ein Datensatz geladen ist, wird der geoeffnete Fall im einfachen Modus vor Inbox und Workboard nach oben gezogen, damit die eigentliche Arbeit nicht unter Startseiten-Spuren verschwindet
+  - sobald ein Datensatz geoeffnet ist, verschwinden die persoenlichen Startbloecke aus dem oberen Seitenbereich; danach fuehren nur noch der geoeffnete Fall und die Leiste `Nächsten Kunden` / `Nächste Fälle`
+  - sobald ein Datensatz geoeffnet ist, schrumpfen Hero und Suchkarte im einfachen Modus auf eine kurze Arbeitsleiste plus kompakte Wechsel-Leiste fuer den naechsten Kunden; der Bearbeiter bleibt dort nur noch als kurze Zeile sichtbar
+  - sobald ein Datensatz geoeffnet ist, bleibt im einfachen Modus darunter zuerst nur noch `Weitere Kunden`; thematische Spuren erscheinen dort nicht mehr parallel als zweite Folgewelt
+- Auch der geoeffnete Fall folgt jetzt diesem Muster:
+  - in `Einfach` bleiben nur Status, eine einzige Arbeitsbox, Teamsteuerung und Notizen sichtbar
+  - die Fallnavigation ist dort bewusst auf vier Kernraeume reduziert:
+    - `Daten`
+    - `E-Mails`
+    - `Angebot`
+    - `Bilder`
+  - `Kommunikation` zeigt in `Einfach` zuerst nur eine kompakte Karte `Letzte E-Mails` plus die letzten drei Nachrichten in kurzer Listenform
+  - `E-Mails` ist in `Einfach` jetzt zuerst eine Antwortseite: oben nur noch die eine wichtigste Mail mit direkter Antwortaktion, darunter nur noch weitere E-Mails statt doppelt wiederholtem Kontext
+  - `Angebot` zeigt in `Einfach` jetzt eine einzige kompakte Angebotslage mit Deal, Wert und Herkunft; der wichtigste weitere Vorgang desselben Kontakts bleibt nur als schlanke Folgekarte sichtbar
+  - `Bilder` zeigt in `Einfach` zuerst nur das Hauptbild mit einer klaren Primäraktion; weitere Mockups liegen optional dahinter und Trello-Fachwerkzeuge bleiben im `Profi`-Modus
+  - nach dem Oeffnen eines Falls fuehrt eine kompakte Leiste im `Einfach`-Modus direkt zu `Nächsten Kunden` oder `Weitere Kunden`, statt darunter wieder mehrere gleichrangige Arbeitswelten aufzubauen
+  - sobald ein Kunde geoeffnet ist, schrumpfen Hero und Suchkarte im `Einfach`-Modus auf eine kurze Arbeitsleiste plus `Anderen Kunden laden`; Beispielhilfen und Statuschips verschwinden dann aus dem Suchbereich
+  - im geoeffneten Zustand bleibt `Anderen Kunden laden` im `Einfach`-Modus standardmaessig eingeklappt; das Suchfeld erscheint dort erst auf Klick, damit die aktive Kundenarbeit nicht von einer zweiten grossen Suchkarte ueberlagert wird
+  - `Kundendaten` zeigt in `Einfach` standardmaessig nur E-Mail und Name; Billing-Mail, Telefon und Firma liegen hinter `Weitere Felder`
+  - `Daten` startet in `Einfach` jetzt zuerst als kompakte Kundenübersicht statt als offenes Formular; das Formular öffnet sich erst über `Daten ändern`
+  - diese Karte spricht im Ruhemodus jetzt auch als Übersicht (`Aktuelle Daten`) und erst im Bearbeiten-Zustand als Editor (`Daten ändern`)
+  - die Aenderungsvorschau ist in `Einfach` zuerst nur als kompakte Zusammenfassung sichtbar; die volle Feld- und Tabellenansicht klappt erst bei Bedarf auf
+  - der Block `Pruefen & speichern` ist in `Einfach` knapper gehalten und erklaert nur noch den Kernfluss `erst pruefen, dann speichern`
+  - ohne echte Aenderungen bleibt `Pruefen & speichern` in `Einfach` nur eine kleine Ruhe-Leiste; der groessere Pruef-/Speicherblock erscheint erst, wenn Felder wirklich bearbeitet wurden oder bereits eine Vorschau vorliegt
+  - die rechte Spalte ist in `Einfach` jetzt eine einzige Arbeitsbox statt mehrerer konkurrierender Karten
+  - diese Arbeitsbox zeigt Aktionen immer direkt; `Zuständigkeit` und `Notiz` werden nur bei Bedarf geoeffnet
+  - der Aktionsbereich zeigt zuerst nur die Primaeraktion; Schnellaktionen und tiefere Eingriffe liegen hinter `Mehr Aktionen`
+  - der Fallkopf ist in `Einfach` einspaltig und verzichtet auf die zusaetzliche rechte `Naechster Schritt`-Box; dieser Fokus sitzt nur noch im Statusstreifen und im Arbeitsbereich
+  - `Notiz` zeigt in `Einfach` zuerst nur das Schnellformular und die letzte Notiz; der ältere Notizverlauf klappt nur bei Bedarf auf
+  - in dieser Arbeitsbox zeigt die Aktionsansicht zuerst nur `Naechster Schritt` plus wenige Schnellaktionen; die volle Experten-Aktionswand klappt erst bei Bedarf unter `Weitere Eingriffe` auf
+  - der fruehere Experten-Hinweisblock in der rechten Spalte ist im einfachen Modus entfernt, damit Status, Aktion und Notiz nicht gegen Erklaertexte konkurrieren
+  - Diagnose-, Readiness-, Sync-, Briefing-, Audit- und Attribution-Bloecke der rechten Spalte liegen komplett hinter `Profi`
+  - der Statusstreifen unter dem Fallkopf ist in `Einfach` weiter reduziert und zeigt nur noch `Status` und `E-Mails`; der naechste Schritt sitzt nur noch in der rechten Arbeitsbox
+  - der offene Fallkopf ist in `Einfach` nochmals kuerzer: weniger Meta-Chips, knappere Beschreibung und direkte Kernwege `E-Mails`, `Angebot` und `Daten` statt einer groesseren Button-Reihe
+  - der offene Kundenkopf zeigt in `Einfach` jetzt nur noch die wichtigste Hauptaktion; die Fachnavigation passiert ausschliesslich ueber die vier einfachen Tabs darunter
+  - die eigentliche Primäraktion sitzt im einfachen offenen Zustand jetzt nur noch in der rechten Arbeitsbox `Jetzt`; der schwarze Kopf dient dort nur noch der Orientierung
+  - die einfache Arbeitsbox spricht kuerzer und normaler: `Jetzt`, `Zuständigkeit` und `Notiz` statt internerer Arbeitsbegriffe
+  - im offenen Zustand schrumpft die Suchkarte weiter auf ein Werkzeug zum Kundenwechsel; statt einer zweiten Einfuehrung sieht man dort nur noch `Nächsten Kunden laden`, den Bearbeiter und das Suchfeld
+  - die rechte `Jetzt`-Box wiederholt im `Einfach`-Modus nicht mehr die gleiche Aktionsueberschrift doppelt, sondern zeigt zuerst nur noch den kurzen Hinweis und direkt die Hauptaktion
+  - die Hauptaktion in `Jetzt` richtet sich in `Einfach` nun konsequent nach dem sichtbaren naechsten Schritt; faellige Erinnerungen fuehren dort also nicht mehr zu irrefuehrenden Rueckrufaktionen
+  - die Primaeraktion in `Jetzt` folgt im offenen `Einfach`-Fall nun direkt dem gleichen Fallplan wie die restliche Zentrale: Antworten, Sync-Reparatur, gewonnen abschliessen, Sales-Recovery, Commercial Desk oder Kontakt-Dossier oeffnen nicht mehr ueber Sonderlogik, sondern ueber den echten priorisierten Plan-Schritt
+  - faellige Rueckrufe fuehren in `Einfach` als Primaeraktion nicht mehr zuerst zu `Rückruf morgen`, sondern oeffnen direkt die Rueckrufwerkzeuge im Fall; auch in Listen fuehrt die Hauptaktion jetzt zuerst in den Rueckruf-Fall statt ihn reflexhaft wegzuschieben
+  - auf kleinen Screens steht im geoeffneten `Einfach`-Fall die rechte Arbeitsleiste mit `Jetzt`, `Problemfall`, `Zustaendigkeit` und `Notiz` nun vor dem inhaltlichen Datensatzbereich; damit ist die naechste Aktion mobil sofort sichtbar, waehrend Desktop unveraendert bleibt
+  - Problemfaelle / Sonderfaelle koennen jetzt direkt im sichtbaren Arbeitsbereich gemeldet und dort auch wieder als erledigt markiert werden; sie landen als eigene offene Spur statt nur als Notiz
+  - ein Problemfall hat jetzt auch `Zuständig` und `Fällig bis`, damit aus einer bloßen Meldung ein verfolgbarer offener Vorgang wird
+  - offene Problemfaelle erscheinen zusaetzlich in einer eigenen Queue `Problemfaelle`, damit Geschenke, Defekte, Netzteile oder offene Rueckfragen nicht im normalen Tagesrauschen verschwinden
+  - Problemfaelle haengen jetzt auch an `Tagesbriefing` und `Schnellzugriff`: es gibt ein eigenes `Problemfall-Briefing`, eine `Problemfall-Session` und operatorbezogene Problemfall-Briefings/-Sessions
+  - `Cmd/Ctrl+K` bietet fuer Problemfaelle jetzt auch gezieltere Schnellzugriffe statt nur einer Sammelspur: z. B. `Überfällige Problemfälle`, `Meine Technikfaelle`, `Meine Rueckfragen`, `Meine Kulanzfaelle` oder `Meine Ersatzfaelle`
+  - offene Problemfaelle sind im `Einfach`-Modus jetzt direkt sichtbar statt versteckt: im offenen Kunden als Warnspur, im rechten Arbeitsbereich automatisch aufgeklappt und in einfachen Kundenlisten klar markiert
+  - die neue Leiste `Heute wichtig` zieht Problemfaelle im `Einfach`-Modus jetzt schon dann nach oben, wenn sie offen sind; ueberfaellige Faelle werden dort nur noch staerker priorisiert
+  - Problemfaelle tragen jetzt sichtbare Mini-Pfade wie `Kulanz`, `Ersatz`, `Technik` oder `Rueckfrage`; neue Meldungen bekommen dafuer automatisch einen passenden Standard-Horizont statt eines generischen Datums
+  - die untere Problemfall-Queue bleibt im `Einfach`-Modus sichtbar, spricht dort aber kompakter und weniger dashboardig; die volle Tiefe aller Problemspuren bleibt im `Profi`-Modus
+  - sobald ein Kunde geoeffnet ist, erscheint die restliche Problemfall-Arbeit in `Einfach` nicht mehr als volle Queue unter dem aktiven Fall, sondern zuerst als kompakte Merkhilfe `Problemspuren im Blick`; die komplette Queue liegt dann in `Weiterarbeit`
+  - in `Mein Einstieg` und `Mein Workboard` tauchen Problemfaelle jetzt nicht mehr nur als allgemeiner Block auf, sondern persoenlich genauer als z. B. `Meine Technikfaelle`, `Meine Kulanzfaelle`, `Meine Rueckfragen` oder `Meine Ersatzfaelle`
+  - auch im `Team-Board` sind Problemfaelle jetzt pro Operator sichtbar: mit eigenem Zaehler, dominantem Problemtyp und direktem Lead-Fall fuer `Technik`, `Kulanz`, `Rueckfrage` oder `Ersatz`
+  - ueberfaellige oder technische Problemfaelle werden in der Priorisierung jetzt aggressiver nach oben gezogen und in der naechsten Aktion sichtbar als `Problemfall überfällig`
+  - `Pruefen & speichern` verhaelt sich in `Einfach` jetzt bedarfsorientiert: ohne Aenderungen erscheint nur eine kleine Leiste statt eines grossen Pflichtblocks
+  - die Suchkarte spricht in `Einfach` bewusst normaler: `Kunde laden`, `Bearbeiter`, `Datensätze`, `betroffene Abläufe` und `offene Nachfassaktionen` statt internerer Tool-Begriffe
+  - `Bearbeiter` ist im sichtbaren einfachen Arbeitsfluss jetzt als `Zuständig` formuliert, damit Rollen- und Übergabekontext weniger intern klingt
+  - die Mail-Lage zeigt im einfachen Statusstreifen jetzt echte Zustände wie `Warten auf Antwort` oder `1 Antwort` statt roher Sende-/Empfangszahlen
+  - im offenen Zustand ist die Suchkarte nochmals schmaler und spricht nur noch von `Anderen Kunden laden`; die lokale Kennzeichnung dupliziert sich dort nicht mehr
+  - die kurze Startanleitung (`Kurz erklärt`) erscheint in `Einfach` nur noch in wirklich leeren Startlagen; sobald echte Arbeit sichtbar ist, weicht sie den offenen Prioritaeten
+  - oberhalb der persoenlichen Startarbeit zeigt `Einfach` jetzt zusaetzlich eine kompakte Leiste `Heute wichtig`, die ueberfaellige Problemfaelle, sichere Reparaturspuren, Antworten, Rueckrufe, faellige Erinnerungen, Kaufsignale und Handover direkt als Einstieg oeffnet
+  - `Mein Einstieg` ist darunter jetzt persoenlicher gefasst: naechster eigener Fall plus wenige persoenliche Kurzwege, statt dieselben globalen Prioritaeten noch einmal als zweite Prioritaetswand zu wiederholen
+  - die unteren Bereiche `Nächste Fälle` und `Nach Themen` wirken in `Einfach` bewusst mehr wie Anschlussoptionen als wie zweite Ops-Dashboards: kuerzere Titel, weniger Erklaertext und kompaktere Karten mit nur einer klaren Primaeraktion
+  - die einfache `Daten`-Karte arbeitet im unteren Bereich mit Klartext statt Status-Chips; vorhandene Zusatzfelder wie Telefon oder Firma erscheinen dort nur noch als kurze Hinweiszeile
+  - auch die Anschlussarbeit unter dem offenen Kunden ist in `Einfach` ruhiger: `Weitere Kunden` und `Nach Themen` zeigen keine sichtbaren Fallzaehler oder Refresh-Werkzeuge mehr, sondern verhalten sich wie optionale Weiterarbeit statt wie eigene Kontrollpulte
+  - nach erfolgreichem Speichern bietet die grüne Rueckmeldung in `Einfach` direkt `Nächsten Kunden öffnen`, damit der Korrekturfluss ohne Ruecksprung in andere Listen weiterlaufen kann
+  - derselbe Speichern-Erfolg sitzt in `Einfach` jetzt auch direkt in der `Daten`-Karte selbst; nach dem Speichern faellt der Bereich in einen ruhigen Erfolgszustand zurueck und bietet dort sofort `Nächsten Kunden öffnen`
+  - diese lokale Erfolgsansicht ist im einfachen Modus jetzt der Hauptweiterweg; die globale Erfolgsleiste und die untere Anschlussleiste duplizieren diesen Schritt danach nicht mehr
+  - im offenen Zustand ist der zweite dunkle Kopfstreifen auf einen einzigen kurzen Hinweis reduziert; Schnellzugriff und Modus-Chips duplizieren sich dort nicht mehr
+  - die Anschlussleiste unter dem offenen Kunden formuliert im `Einfach`-Modus jetzt ohne Dopplung, also nicht mehr `Danach: Danach ...`
+  - unter dem offenen Kunden spricht die Anschlussarbeit jetzt gesammelt als `Weiterarbeit`: der Schalter oeffnet nicht nur weitere Kunden, sondern auch die restliche offene Anschlussarbeit wie Problemspuren
+  - die kleine Vorschau vor `Weiterarbeit` nennt im einfachen offenen Zustand jetzt nicht nur weitere Kunden und Problemspuren, sondern auch die ersten konkreten Themenspuren beim Namen, damit Antworten, Rueckrufe oder andere Bloecke nicht nur als abstrakte Summe auftauchen
+  - wenn `Weiterarbeit` im offenen einfachen Zustand geoeffnet wird, erscheint darunter jetzt auch `Nach Themen`; die Vorschau und der geoeffnete Bereich passen damit wieder zueinander
+  - nach wirksamen Ops-Aktionen im offenen `Einfach`-Fall, z. B. Rueckruf setzen, Follow-up verschieben, Problemfall erledigen oder Fallausgang anwenden, bietet die grüne Rueckmeldung jetzt ebenfalls direkt `Nächsten Kunden öffnen`; der Arbeitsfluss haengt damit nicht mehr nur am Speichern von Stammdaten
+  - innerhalb einer aktiven Fokus-/Queue-Session springt derselbe Schritt nach wirksamen Ops-Aktionen jetzt direkt zum naechsten Fall weiter; die manuelle Taste `Nächsten Kunden öffnen` bleibt vor allem fuer den offenen Einzelmodus ohne Session wichtig
+  - derselbe Schritt behaelt im offenen `Einfach`-Modus jetzt auch den echten Arbeitsstrom bei: `Nächsten Kunden öffnen` startet nicht mehr immer eine generische `Nächste Fälle`-Session, sondern fuehrt je nach Quelle in `Mein Einstieg`, `Problemfälle`, `Repair Queue`, `Kontakt-Cluster`, `Active Flows` oder den passenden Themenblock weiter
+  - die Fokusleiste spiegelt denselben Strom jetzt auch sichtbar im Badge: statt pauschal `Workboard-Session` steht dort z. B. `Problemfall-Session`, `Rückruf-Session`, `Handover-Session`, `Persönliche Session` oder `Inbox-Session`
+  - auch die Weiter-CTAs im offenen `Einfach`-Fall sprechen jetzt den echten Anschlussstrom aus: statt immer `Nächsten Kunden öffnen` heisst es je nach Lage z. B. `Nächste Reparatur öffnen`, `Nächsten Rückruf öffnen`, `Nächstes Handover öffnen` oder `Meinen nächsten Fall öffnen`; die Vorschau unter dem aktiven Fall nennt denselben Strom ebenfalls direkt
+  - der Sekundaerweg `Weiterarbeit öffnen` nennt denselben Anschlussstrom jetzt ebenfalls direkt, z. B. `Weiterarbeit öffnen • Repair Queue`, `... • Antworten` oder `... • Mein Einstieg`, statt als generischer Sammelbegriff zu bleiben
+  - solange bereits eine Fokus-Session offen ist, folgen die Weiter-CTAs im offenen `Einfach`-Fall jetzt zuerst dieser Session; Speichern oder Teilaktionen springen also nicht mehr versehentlich in einen globalen Anschlussstrom, solange in der laufenden Problemfall-, Repair-, Antwort- oder Handover-Session noch ein naechster Fall vorhanden ist
+  - die Fokusleiste selbst spricht den Strom jetzt ebenfalls konkreter aus und bleibt mit vier Prioritaetskacheln lesbar: statt eines generischen Session-Satzes erklaert sie z. B. Problemfall-, Repair-, Rueckruf- oder Handover-Strecken explizit, und `Heute wichtig` bricht bei vier Karten in eine sauberere 2x2- beziehungsweise 4er-Anordnung statt in ein holpriges 3+1-Layout
+  - solange eine Fokus-Session noch weitere Faelle hat, spiegelt auch die kleine Vorschau unter dem offenen Fall jetzt zuerst diese Session statt globaler Restmengen; `Weiterarbeit` redet dann von `weiteren Fällen in dieser Session`, und globale Problemspur-/Themenzaehler treten erst wieder in den Vordergrund, wenn die Session selbst ausgeschöpft ist
+  - auch die kompakte Merkhilfe `Problemspuren im Blick` oeffnet jetzt sichtbar in eine echte `Problemfall-Session`; bei mehreren offenen Spuren spricht der Primaerknopf entsprechend als `Nächsten Problemfall öffnen` statt generisch nur `Problemfall öffnen`
+  - `Mein Einstieg` ist jetzt ebenfalls voll in die neue Session-Semantik eingebunden: der Hauptknopf spricht als `Meinen nächsten Fall öffnen`, startet als persoenliche Session und persoenliche Kurzwege wie Problemfaelle, Antworten, Rueckrufe, Sales-Recovery, Flows oder Kontakt-Cluster tragen dabei den passenden Session-Badge statt wieder als generisches Workboard zu erscheinen
+  - auch der Schnellzugriff / die Action-Palette startet zentrale Sessions jetzt ueber explizite Session-Metadaten statt ueber Label-Heuristiken; `next best`, Inbox, Repair, Problemfaelle, Flows, Commercial und Kontakt-Dossiers tragen damit ihre Quelle und ihren Session-Badge belastbar statt nur ueber Textvergleiche
+  - dieselbe Bereinigung gilt jetzt auch fuer die sichtbaren Schnellzugriffskacheln im Overlay selbst: `Nächster bester Fall`, Repair-, Problemfall-, Commercial-, Cluster- und Workboard-Schnellspuren oeffnen mit explizitem Session-Badge und passendem bevorzugten Tab, statt still wieder auf generische Defaults zurueckzufallen
+  - `Commercial Desk` und reine `Kaufsignal`-/Recovery-Arbeit sind jetzt auch semantisch getrennt: persoenliche oder globale Commercial-Spuren laufen als eigene `Commercial-Session`, waehrend reine `sales_recovery`-Themen weiter als `Kaufsignal-Session` gekennzeichnet bleiben
+  - die Session-Semantik selbst ist jetzt in zentrale Helper ausgelagert: Badge, Fokus-Text, persoenliche Lane-Zuordnung, Workboard-Tab-Prioritaet sowie die Weiter-CTA-/Kontextsprache kommen aus einer gemeinsamen Quelle statt aus mehreren getrennten If-Ketten im UI
+  - derselbe Standard gilt jetzt auch fuer die persoenlichen Hauptflaechen der Kommandozentrale: `Meine Arbeitslage`, `Mein Workboard` und die globalen Workboard-Spuren oeffnen nicht mehr als stumme generische Workboard-Liste, sondern mit explizitem Session-Badge und passendem Einstiegstab
+  - auch die operativen Queue- und Desk-Bloecke folgen jetzt diesem Schema: `Problemfälle`, `Repair Queue`, `Kontakt-Cluster`, `Action Queue`, `Active Flows`, `Commercial Desk` sowie die grossen Team-/Control-Panels starten mit expliziter Session-Semantik statt wieder in uneindeutige Sammelansichten zu fallen
+  - auch das globale `Ops Radar` oeffnet seine Kacheln jetzt nicht mehr nur ueber eine alte Tab-Heuristik, sondern ueber denselben zentralen Session-Meta-Layer wie die restliche Kommandozentrale
+  - `System Gaps` ist jetzt ebenfalls sauber einsortiert: Drift-, Blockade-, Rueckruf-ohne-Nummer-, Recovery- oder Abschlussluecken oeffnen nicht mehr nur im passenden Tab, sondern mit expliziter Repair-, Rueckruf-, Kaufsignal- oder Commercial-Semantik
+  - auch `Ops Feed` fuehrt jetzt kontextscharf weiter: eingehende Antworten, Handover-, Repair-, Flow-, Cluster-, Recovery- oder Commercial-Ereignisse springen beim Oeffnen in die passende Arbeitsstrecke statt nur in einen neutralen Feed-Fall
+- `Meine Arbeitslage` ist die persoenliche Operator-Zentrale fuer:
+  - Antworten bei mir
+  - meine Reparaturen
+  - meine Rueckrufe
+  - meine Commercial-Faelle
+  - meine aktiven Flows
+  - meine Kontakt-Cluster
+  - Sales-Recovery-Faelle ohne Auftrag
+- Beim Klick auf einen festen Operator springt die Konsole direkt in `Meine Faelle`
+- `Meine Session starten` oeffnet den naechsten persoenlich relevanten Fall direkt als Arbeitslauf
+- wenn der staerkste persoenliche Fall gerade kommerziell ist, startet diese Session jetzt direkt als `Meine Commercial-Faelle` statt nur als generische Queue
+- wenn der staerkste persoenliche Fall eine kontaktweite Mehrfach-Request-Lage ist, startet diese Session jetzt direkt als `Meine Kontakt-Cluster`
+- laufende Flows werden jetzt zusaetzlich als `veraltet` markiert, wenn sie laenger ohne Fortschritt liegen; diese Faelle werden vor normalen Rueckrufen und Follow-ups wieder nach oben gezogen
+- `Mein Workboard` erzeugt zusaetzlich owner-basierte Spuren fuer:
+  - Handover an mich
+  - Antworten bei mir
+  - meine Reparaturen
+  - meine Rueckrufe
+  - meine Commercial-Faelle
+  - meine aktiven Flows
+  - meine Kontakt-Cluster
+  - meine Sales-Recovery
+  - meine Follow-ups
+- aktive Flow-Faelle koennen dort jetzt direkt als `Flow-Brief` kopiert oder per Guided Transfer weitergegeben werden
+- `Active Flows`, `Team-Board`, `Meine Queue` und `Mein Workboard` zeigen fuer laufende Flows jetzt explizit `Flow aktiv` vs. `Flow veraltet`, damit stockende Arbeitslaeufe als Teamlast sichtbar bleiben
+- Auch diese persoenlichen Spuren haben die schnellen Aktionen `Erledigt` und `Spaeter`
+- In globalem und persoenlichem Workboard gibt es jetzt direkte Schnellaktionen aus der Liste:
+  - `Antworten`
+  - `Rueckruf morgen`
+  - `Follow-up morgen`
+  - `Sync reparieren`
+  - `Follow-ups stoppen`
+  - `Als gewonnen schliessen`
+  - `Voicemail`
+  - `Erreicht`
+  - `Urlaub`
+  - `Kein Interesse`
+  - `Kontaktstopp`
+  - `Voicemail` setzt danach automatisch einen Rueckruf auf morgen
+  - `Urlaub` verschiebt den Fall automatisch um zwei Wochen
+  - `Kein Interesse` schliesst den Fall direkt als verloren ab
+  - `Kontaktstopp` setzt sofort Do-not-contact
+- `Meine Queue` hat fuer aktive Flows jetzt ebenfalls direkten `Flow-Brief` und `Flow weitergeben`, damit laufende Arbeitslaeufe nicht erst ueber Spezialblöcke gesteuert werden muessen
+- `Handover-Center` zeigt teamweit alle offenen Übergaben, die Zielperson und den naechsten Fall pro Handover-Owner
+- Offene Übergaben koennen dort direkt ueber `Übernehmen` in einen aktiven Owner-Fall ueberführt werden
+- `Meine Queue` und `Handover-Center` haben ebenfalls Direktaktionen aus der Liste:
+  - `Antworten`
+  - `Rueckruf morgen`
+  - `Follow-up morgen`
+  - `Sync reparieren`
+  - `Follow-ups stoppen`
+  - `Als gewonnen schliessen`
+  - `Gewonnen`
+  - `Kein Interesse`
+  - `Voicemail`
+  - `Erreicht`
+  - `Urlaub`
+  - `Kontaktstopp`
+  - `Voicemail` setzt danach automatisch einen Rueckruf auf morgen
+  - `Urlaub` verschiebt den Fall automatisch um zwei Wochen
+  - `Kein Interesse` schliesst den Fall direkt als verloren ab
+  - `Kontaktstopp` setzt sofort Do-not-contact
+- `Tagesbriefing` kann zusaetzlich operator-spezifisch kopiert werden:
+  - `Mein Briefing`
+  - `Mein Active-Flow-Briefing`
+  - `Mein Kontakt-Cluster-Briefing`
+  - `Mein Commercial-Briefing`
+  - `Handover-Briefing`
+  - `Repair-Briefing`
+  - `Active-Flow-Briefing`
+  - `Kontakt-Cluster Briefing`
+- `Ops Feed` zeigt die letzten operativen Bewegungen aus den geladenen Faellen mit direktem Fallbezug
+- Faelle koennen direkt im Datensatz einem Owner zugewiesen oder mit Handover-Hinweis an eine andere Person uebergeben werden
+- Ein Klick auf einen Fall oeffnet den Datensatz direkt in der Detailansicht darunter
+- Die Konsole springt dabei jetzt kontextabhaengig direkt in den passenden Tab:
+  - Antworten in `Kommunikation`
+  - Deal-, Funnel- und Anfragekontext in `Deal & Source`
+  - Rueckrufe und Sales-Recovery in `Sales & Calls`
+  - Design-/Trello-Luecken in `Trello & Design`
+  - Follow-up-/Kontaktstopp-Faelle bevorzugt in `Verlauf`
+- `Deal & Source` ist jetzt ein eigener Arbeitsraum statt nur rechter Sidebar-Kontext:
+  - Deal-ID, Stage, Segment und Deal-/Request-Status
+  - Request-Wert, PandaDoc-Status und CRM-Quote in einem Blick
+  - Landingpage, Referrer, UTM-Parameter und interne Arbeitslinks
+  - Request-Notiz und kompaktes Anfrageprofil ohne Wechsel in Nebentools
+  - verknuepfte Requests desselben Kontakts koennen dort jetzt direkt geoeffnet werden
+  - diese verknuepften Requests zeigen jetzt auch ihren Deal-/Request-Status, Angebotsstatus und Auftragsbezug
+  - ein Kontakt-Portfolio zaehlt dort jetzt alle Requests, Deals, sichtbaren Angebote und verknuepften Auftraege auf Kontaktebene
+  - pro verknuepftem Request sieht man dort jetzt auch Ops-Status, offene Follow-ups, naechsten Rueckruf/Trigger und den letzten sichtbaren Impuls
+  - zusaetzlich gibt es dort jetzt einen `Naechster Kontakt-Fokus`, der den dringendsten verwandten Vorgang direkt in den passenden Tab oeffnet
+  - jeder verknuepfte Request hat dort jetzt kontextabhaengige Direktaktionen wie `Follow-up oeffnen`, `Verlauf oeffnen`, `Sales oeffnen` oder `Deal oeffnen`, statt nur einem generischen Sprung
+  - verknuepfte Requests lassen sich dort jetzt auch direkt `Mir ziehen` oder inline `Weitergeben`, ohne den anderen Fall erst separat zu oeffnen
+  - `Kontakt-Dossier kopieren` exportiert den gesamten Kontaktkontext mit allen verknuepften Requests als operativen Gesamtbrief
+  - `Kontakt-Handover kopieren` erzeugt zusaetzlich einen kontaktweiten Uebergabe-Export fuer Mehrfach-Request-Faelle
+  - `Commercial Brief kopieren` exportiert Deal-, PandaDoc-, CRM-Quote-, Order- und Funnel-Kontext in einem kompakten kommerziellen Paket
+  - wenn aus der neuesten CRM-Version Bilder vorliegen, kann das erste CRM-Bild direkt aus `Deal & Source` geoeffnet werden
+  - kontaktweite Mehrfachlagen tauchen jetzt auch als echte `Naechste Aktion` auf und fuehren direkt ins Kontakt-Dossier statt nur als Startseiten- oder Team-Signal zu existieren
+- Die Startseite hat jetzt zusaetzlich einen `Commercial Desk`:
+  - `Gesehen, kein Auftrag`
+  - `Auftrag da, Abschluss fehlt`
+  - `Builder-Kontext aktiv`
+  - `Aktive Angebote & Deals`
+  - jede Spur startet direkt eine Deal-/Quote-/Builder-Session
+  - und kann pro Lead-Fall sofort den `Commercial Brief` kopieren
+  - die Karten selbst sind jetzt arbeitsfaehig:
+    - `Sales-Recovery` direkt aus kaufnahen angesehenen Angeboten
+    - `Als gewonnen schliessen` direkt bei sichtbar verknuepftem Auftrag ohne operativen Abschluss
+    - `CRM-Bild` direkt aus aktivem Builder-Kontext
+    - `Entwurf` direkt bei aktiven Angebots-/Deal-Faellen
+  - die Kommandozentrale hat dafuer jetzt auch persoenliche Schnellpfade:
+    - `Meine Commercial-Session`
+    - `Mein Commercial-Briefing`
+- Direkt unter den Tabs gibt es zusaetzlich eine kontextbezogene Arbeitsleiste mit:
+  - der jeweils wichtigsten Primaeraktion
+  - den relevantesten Deep Links fuer diesen Kontext
+  - sichtbaren Sync-/Blocker-Hinweisen wie fehlendem Trello-Kontext, fehlender Telefonnummer, fehlendem Auftrag oder fehlendem Eingangs-Thread
+- Rechts im Fall gibt es zusaetzlich eine `Case Readiness` mit fuenf Kernbereichen:
+  - Kontakt
+  - Kommunikation
+  - Trello & Design
+  - Sales & Calls
+  - Verlauf & Trigger
+- Davor sitzt jetzt ein `Case Plan`:
+  - 2 bis 4 geordnete Schritte statt nur vieler Diagnosekarten
+  - buendelt `Naechste Aktion`, harte `System Gaps`, Trigger und kommerziellen/kontaktweiten Kontext zu einer kurzen Arbeitssequenz
+  - fuehrt direkt bestehende sichere Aktionen aus wie `Sync reparieren`, `Follow-ups stoppen`, `Sales-Recovery`, `Als gewonnen schliessen`, `Rueckruf morgen`, `Follow-up morgen` oder `Kontakt-Dossier`
+  - zusaetzlich gibt es einen `Plan-Assistenten`:
+    - fuehrt denselben Plan als kleinen Guided Flow
+    - zeigt `jetzt / danach / erledigt`
+    - kann den naechsten Schritt direkt ausfuehren oder manuell als erledigt markieren
+  - der Fortschritt bleibt jetzt lokal pro `request_id` erhalten und ist nach Reload in `Case Plan`, `Case Flows`, Inline-Flows und Palette wieder da
+  - zusaetzlich wird der Flow-Stand jetzt als eigenes Audit-Ereignis gespiegelt, damit der Fall auch teamweit einen sichtbaren `Case Flow`-Status traegt
+  - auf der Startseite gibt es dafuer jetzt zusaetzlich eine `Active Flows`-Queue fuer bereits laufende gefuehrte Arbeitslaeufe
+- Direkt darunter gibt es jetzt `Case Flows`:
+  - typische Mini-Läufe wie `Response Flow`, `Recovery Flow`, `Repair Flow` oder `Kontakt-Dossier Flow`
+  - auch diese Flows nutzen denselben persistenten lokalen Fortschritt statt nur Session-State
+  - wenn schon ein geteilter Flow-Stand im Datensatz liegt, uebernimmt die UI ihn beim Oeffnen direkt wieder
+- Im `Case Pulse` ist jetzt zusaetzlich ein eigener `Case Flow`-Baustein sichtbar:
+  - zeigt `idle / aktiv / erledigt`
+  - zeigt Fortschritt wie `1/3 Schritte`
+  - zeigt, wer den Flow zuletzt bewegt hat und wann
+  - jeder Flow buendelt mehrere bestehende Plan-Schritte zu einer wiederkehrenden Ops-Sequenz
+  - auch diese Flows fuehren keine neue Sonderlogik aus, sondern nur vorhandene sichere Aktionen in geordneter Folge
+  - diese Flows starten jetzt nicht nur im offenen Fall, sondern auch direkt aus den wichtigsten Arbeitslisten:
+    - `Ops Inbox`
+    - globales `Workboard`
+    - `Meine Queue`
+    - `Mein Workboard`
+    - `Handover-Center`
+    - `Commercial Desk`
+    - `Action Queue`
+    - `Kontakt-Cluster`
+    - `Repair Queue`
+    - `Repair Control`
+    - `Commercial Control`
+- Jeder Bereich zeigt einen Klarstatus (`sauber`, `offen`, `kritisch`), eine Kurzdiagnose und einen direkten Sprung in den passenden Tab
+- Die `Case Readiness` bietet jetzt ausserdem pro Bereich eine passende Sofortmassnahme, z. B.:
+  - Antworten
+  - Trello oeffnen
+  - Rueckruf setzen
+  - Follow-up morgen
+  - Stammdaten pruefen
+- Direkt darueber gibt es jetzt `Sync Health`:
+  - zeigt explizit die Spiegel-Lage zwischen Datenquelle und Projektionen
+  - Bereiche:
+    - `Source of Truth`
+    - `Folgeprozesse`
+    - `Trello-Projektion`
+    - `Sales-Spiegel`
+    - `Call-Regeln`
+  - macht sichtbar, ob etwas nur beobachtet werden muss oder direkt repariert werden sollte
+  - bietet sofort passende Eingriffe wie:
+    - `Sync reparieren`
+    - `Follow-ups stoppen`
+    - `Sales-Recovery`
+    - `Als gewonnen schliessen`
+    - `Kontakt`, `Trello & Design` oder `Sales & Calls` direkt oeffnen
+- Darunter gibt es jetzt zusaetzlich `System Gaps`:
+  - harte Inkonsistenzen zwischen Kontakt, Folgeprozessen, Trello, Kommunikation und Sales
+  - Beispiele: E-Mail-Drift, Kontaktstopp trotz offener Follow-ups, Angebot gesehen ohne Auftrag, Auftrag da aber operativ noch offen, Rueckruf ohne Telefonnummer
+  - jede Luecke hat eine direkte Gegenmassnahme statt nur einer Diagnose
+  - E-Mail-Drift kann jetzt direkt per `Sync reparieren` bereinigt werden; die Konsole schreibt dabei die aktuellen Stammdaten gezielt in `followup_queue`, `lead_followup_plans` und `document_journey`
+- Dieselbe Logik existiert auf der Startseite jetzt auch als `System Gap Queue`:
+  - aggregiert wiederkehrende Systembrueche ueber alle sichtbaren Faelle
+  - zeigt pro Gap-Typ den Lead-Fall und die Anzahl der betroffenen Faelle
+  - startet direkt eine Reparatur-Session oder fuehrt passende Sofortmassnahmen wie `Follow-ups stoppen` oder `Sales-Recovery starten` aus
+- Zusaetzlich gibt es auf der Startseite jetzt eine `Kontakt-Cluster`-Spur:
+  - buendelt Mehrfach-Request-Faelle desselben Kontakts mit offenen Triggern, kontaktweiten Kaufsignalen oder parallel offenen Vorgängen
+  - startet direkt in `Deal & Source`, damit das Kontakt-Portfolio statt nur ein Einzelfall bearbeitet wird
+- Darunter gibt es jetzt zusaetzlich eine eigene `Repair Queue`:
+  - konzentriert nur die Brueche, die bereits direkt heilbar sind
+  - dazu gehoeren aktuell:
+    - `Downstream-Sync reparieren`
+    - `Kontaktstopp sauber durchziehen`
+    - `Sales-Recovery starten`
+    - `Gewonnene Faelle schliessen`
+  - funktioniert als verdichtete Reparatur-Arbeitslane neben `Action Queue` und `System Gap Queue`
+  - startet Reparatur-Sessions und nutzt dieselben sicheren Batch-Vorschauen wie die System-Gap-Reparaturen
+  - greift jetzt auch in den globalen `Nächster bester Fall` und in den `Schnellzugriff` ein, wenn Reparaturfaelle operativ vor normaler Listenarbeit liegen
+- Fuer klar batchfaehige Gap-Typen gibt es dort jetzt auch sichere `Top 5 reparieren`-Vorschauen, z. B.:
+  - Drift-Faelle gesammelt auf den aktuellen Downstream-Stand ziehen
+  - offene Follow-ups bei Kontaktstopp gesammelt stoppen
+  - Sales-Recovery-Faelle gesammelt in die Recovery-Spur ueberfuehren
+  - verknuepfte Auftraege gesammelt operativ als `gewonnen` abschliessen
+- Beim Oeffnen aus Inbox oder Workboard startet eine `Fall-Session` mit `Vorheriger Fall` / `Naechster Fall`
+- Datensaetze werden dabei gezielt per `request_id` neu geladen, damit die Detailansicht vollen Trello-, Medien- und Timeline-Kontext zeigt
+- Direkt im offenen Fall gibt es zusaetzlich einen `Fall-Brief`:
+  - `Intern kopieren` fuer die kompakte operative Kurzfassung
+  - `Deep Brief kopieren` fuer Handover, Slack oder Rueckfragen mit naechster Aktion, letzter Mail-/Call-Spur, System Gaps und Sync Health
+  - `Kompakt kopieren` fuer eine reduzierte Kontakt-/Angebotszusammenfassung
+- Wenn ein Workboard-Fall in der Session als `Erledigt` oder `Spaeter` markiert wird, springt die Konsole automatisch zum naechsten passenden Fall
+- Faelle koennen direkt im Workboard als `Erledigt` oder `Spaeter` markiert werden
+- `Spaeter` blendet den Fall bis zum gesetzten Zeitpunkt aus, `Erledigt` bis neue Aktivitaet entsteht
+- `Team-Board` zeigt feste Operatoren (`Daniel`, `Quentin`, `Abdul`, `Fabienne`, `Rahim`, `Saeid`) mit aktiven Zuweisungen und offenen Handovers
+- `Team-Board` zeigt jetzt auch aktive Case-Flows pro Operator, inklusive Fortschritt, direktem `Flow öffnen` und Flow-Brief
+- aktive Flow-Faelle koennen dort und in `Active Flows` jetzt auch direkt `mir gezogen` oder per Inline-Transfer an einen anderen Operator weitergegeben werden
+- `Flow Control` legt laufende Case-Flows jetzt zusaetzlich direkt auf Operatoren:
+  - mit Lead-Flow, `Mir ziehen`, Brief und Inline-Weitergabe
+  - inklusive Marker fuer `Flow aktiv` vs. `Flow veraltet`
+  - plus direkter `Flow fortsetzen`-/`Flow reaktivieren`-Steuerung ueber denselben Flow-Assist wie im offenen Fall
+- `Team-Board` zeigt jetzt zusaetzlich Repair-Faelle pro Operator und bietet einen direkten Einstieg in den jeweiligen Repair-Fokus
+- `Team-Board` zeigt jetzt auch Commercial-Faelle pro Operator und einen direkten Einstieg in den jeweiligen Deal-/Quote-Fokus
+- `Team-Board` zeigt jetzt auch kontaktweite Mehrfach-Request-Cluster pro Operator und einen direkten Einstieg in das jeweilige Kontakt-Dossier
+- `Commercial Control` legt Deal-, Quote-, Builder- und Abschlussarbeit jetzt zusaetzlich direkt auf Operatoren:
+  - mit Lead-Fall, `Mir ziehen`, Brief und Inline-Weitergabe
+  - plus direkter Primaeraktion wie `Sales-Recovery`, `Als gewonnen schliessen`, `CRM-Bild` oder `Entwurf`
+  - dadurch wird kommerzielle Arbeit nicht nur global im `Commercial Desk`, sondern auch als echte Teamlast steuerbar
+  - zusaetzlich kann dort jetzt direkt ein passender `Commercial`-Flow gestartet oder fortgesetzt werden
+- `Cluster Control` legt diese kontaktweiten Mehrfach-Request-Dossiers jetzt zusaetzlich direkt auf Operatoren:
+  - mit Lead-Fall, `Mir ziehen`, Brief und Inline-Weitergabe
+  - dadurch koennen kontaktweite Cluster wie eine eigene operative Teamlast verteilt werden
+- `Repair Control` zeigt operatorbezogen:
+  - wie viele reparierbare Systembrueche bei wem haengen
+  - welche Repair-Typen dort dominieren (`Sync`, `Stopp`, `Recovery`, `Close`)
+  - den Lead-Fall plus direkte Primaeraktion (`Sync reparieren`, `Follow-ups stoppen`, `Sales-Recovery`, `Als gewonnen schliessen`)
+  - einen `Unzugewiesen`-Bucket fuer offene Reparaturfaelle ohne klaren Owner
+  - offene oder fremde Repair-Faelle koennen dort direkt per `Mir ziehen` uebernommen werden
+  - zusaetzlich kann dort jetzt direkt ein passender `Repair`-Flow gestartet oder fortgesetzt werden
+- `Owner & Handover` erzeugt jetzt zusaetzlich ein echtes `Handover-Paket`:
+  - kopierbarer Handover-Brief mit Zielperson, naechster Aktion, letzter Kundenmail, offenen Systempunkten und Entwurfs-/Trello-Link
+  - damit lassen sich Uebergaben direkt aus dem Fall heraus sauber weitergeben
+- `Owner & Handover` hat jetzt ausserdem einen `Guided Transfer`:
+  - Zielperson und Hinweis direkt im Datensatz setzen
+  - Handover-Paket im selben Block pruefen und kopieren
+  - Handover anschliessend in einem gefuehrten Schritt setzen
+- `Repair Control` und `Handover-Center` haben diese gefuehrte Uebergabe jetzt ebenfalls inline:
+  - Zielperson direkt in der Liste setzen oder aus festen Operatoren waehlen
+  - Brief direkt aus der Zeile kopieren
+  - Handover direkt aus der Liste setzen, ohne erst in den Fall zu springen
+- Dieselbe Brief-Logik ist jetzt auch direkt in den Team-Listen nutzbar:
+  - `Team-Board`
+  - `Repair Control`
+  - `Handover-Center`
+  - dort koennen Handover- oder Repair-Pakete ohne Oeffnen des Falls direkt kopiert werden
+
+## Änderungen
+
+Die Seite aktualisiert:
+
+- `master_customers.email`
+- `master_customers.billing_email`
+- `master_customers.cc_emails`
+- `master_customers.first_name`
+- `master_customers.last_name`
+- `master_customers.phone`
+- `master_customers.company`
+- `master_customers.company_name`
+- `master_customers.name`
+
+Bei relevanten Aenderungen werden ausserdem propagiert:
+
+- `followup_queue.customer_email`
+- `followup_queue.customer_name`
+- `followup_queue.customer_company`
+- `lead_followup_plans.customer_email`
+- `document_journey.customer_email`
+
+CC-E-Mails bleiben bewusst nur auf dem Kontaktstamm: Sie dienen fuer begleitete Antwortentwuerfe und duerfen nicht die fuehrende Kundenadresse oder Follow-up-Ziele ersetzen.
+
+## Operativer Kontext
+
+Die Konsole zeigt pro Datensatz jetzt zusaetzlich:
+
+- Request-Kontext aus `master_requests`
+- Deal- und Herkunftskontext aus `master_requests` (`ac_deal_id`, Stage, UTM, Landingpage, Referrer, Anfrageprofil)
+- Angebotsstatus und Links aus `master_quotes`
+- Auftragskontext und Bestellhistorie aus `master_orders`
+- zusaetzliche Sales-Sicht aus `crm_sales`, inklusive Tracking-, Delivery- und Easybill-Hinweisen
+- read-only CRM-Quote-Builder-Sicht aus `crm_quotes`, `crm_quote_versions` und `crm_quote_version_images`
+- Trello-Kartenstatus fuer `Anfragemanagement`, `Quentin` und `Abdul`
+- Referenzbild `image.*` und alle `Mockup*`-Attachments aus der bevorzugten Trello-Karte
+- editierbare Trello-Custom-Fields der fuehrenden Karte inklusive Rueckschreiben nach Trello
+- editierbare Trello-Custom-Fields pro verfuegbarem Board (`Anfragemanagement`, `Quentin`, `Abdul`)
+- letzte sichtbare Kommunikationsereignisse aus `quote_email_log`, `master_communications`, `followup_queue` und `document_journey`
+- standardisierte Outlook-Mail- und Reply-Events aus `workflow_audit_log`
+- konsolidierte Timeline fuer Versand, Antworten, Dokumentenereignisse, Bestellungen und interne Notizen
+- Anrufprotokolle und Rueckruf-Termine im selben Verlauf
+- eigener `Sales & Calls`-Tab mit CRM-Sales-Eintraegen, Order-Quelle und Call-Bereitschaft
+- eigener `Sales-Recovery`-Block in `Sales & Calls` mit Startzeit, Grund, naechstem Schritt und Status (`Bereit`, `Aktiv`, `Aufgeloest`)
+- eigener `Sales & Calls`-Tab mit CRM-Sales, CRM-Quote-Versionen und Versionsbildern
+- interne Notizen auf Basis von `workflow_audit_log`
+- verknuepfte Vorgänge desselben Kontakts ueber bekannte E-Mail-/Telefon-Bezüge
+
+## Direkte Aktionen
+
+Zusätzlich kann die Konsole jetzt direkt:
+
+- offene `pending` Follow-ups fuer eine `request_id` auf `cancelled` setzen
+- offene `pending` Follow-ups gesammelt auf ein neues Zieldatum verschieben
+- Rueckruf-Termine setzen und offene `pending` Follow-ups passend nach hinten schieben
+- einen Kontaktstopp setzen, der offene Follow-ups stoppt und die E-Mail in `followup_blacklist` schreibt
+- die letzte Stammdatenaenderung aus dieser Konsole auf Basis des letzten Audit-Snapshots zurueckrollen
+- Anrufe mit Statusflags und Notiz protokollieren
+
+Zusätzlich zeigt der Aktionsblock jetzt `Nächste beste Schritte`:
+
+- Antworten, wenn eine frische Kundenmail vorliegt
+- Follow-ups aktiv verschieben, wenn ein Versand zeitnah faellig ist
+- Rueckruf vorbereiten, wenn ein Angebot gesehen aber noch nicht gekauft wurde
+- Sales-/Shopify-Pruefung, wenn ein signiertes Dokument noch keinen Auftrag hat
+- Kontaktstopp-Hinweis, wenn der Call-Kontext ein No-Interest- oder Loeschsignal enthaelt
+
+Zusätzlich gibt es jetzt standardisierte `Fallausgänge`:
+
+- `Gewonnen`: pausiert offene Follow-ups soweit vorhanden und nimmt den Fall aus dem Workboard
+- `Verloren`: stoppt offene Follow-ups soweit vorhanden und schliesst den Fall operativ ab
+- `Rueckruf`: setzt Rueckruf-Termin plus Workboard-Snooze
+- `Urlaub / spaeter`: verschiebt Follow-ups oder Rueckruf nach hinten und snoozt den Fall
+- `Do not contact`: setzt Kontaktstopp, Blacklist und Workboard-Abschluss
+
+Auch diese Aktionen werden im `workflow_audit_log` protokolliert.
+
+## Kontakt-Links
+
+- Outlook-Compose wird direkt im Datensatz verlinkt.
+- Optional kann ueber `OPS_PLACETEL_CONTACT_URL_TEMPLATE` ein Placetel-Link eingeblendet werden.
+- Ersetzte Platzhalter:
+  - `{phone}`
+  - `{email}`
+  - `{query}`
+
+## Prüfphase vor Save
+
+- Vor dem eigentlichen Save erstellt die API eine Änderungsvorschau.
+- Die Vorschau zeigt Feld für Feld `alt -> neu`.
+- Zusätzlich werden betroffene Tabellen, betroffene Zeilen und operative Warnhinweise angezeigt.
+- Speichern sollte erst nach erfolgreicher Vorschau ausgelöst werden.
+
+## Audit-Log
+
+- Nach erfolgreichem Save schreibt die Konsole einen Eintrag in `workflow_audit_log`.
+- `workflow_name`: `customer_records_console`
+- `action`: `customer_record_update`
+- `document_id`: `request_id`
+- `metadata` enthält:
+  - Feld-Diff
+  - Vorher-/Nachher-Snapshot
+  - betroffene Tabellen/Zeilenzahlen
+  - Actor-Kontext (`local_bypass` oder `ops_session`)
+
+- Die letzten Änderungen zur aktuellen `request_id` werden direkt im Tool angezeigt.
+- Manuelle interne Notizen werden ebenfalls in `workflow_audit_log` gespeichert (`action = customer_record_note`).
+- Outlook-Kommunikationsereignisse werden ueber `document_id = request_id` in `workflow_audit_log` angehaengt.
+- Team-Zuweisungen und Handover laufen ebenfalls ueber `workflow_audit_log` und brauchen keine neue Tabelle.
+- Aktuell standardisierte Actions:
+  - `customer_email_sent`
+  - `followup_email_sent`
+  - `customer_reply_detected`
+
+## Sicherheitsverhalten
+
+- Kein Zugriff ohne Token/Cookie
+- Kein Secret im Frontend gespeichert
+- Trello-Assets werden ueber eine interne Proxy-Route ausgeliefert, damit kein Trello-Token im Browser landet
+- Validierung für E-Mail-Felder am API-Rand
+- Bei Teilfehlern versucht der Server ein Rollback der bereits geschriebenen Zeilen
+- Falls der Audit-Write fehlschlägt, versucht der Server ebenfalls einen Rollback der geschriebenen Datensätze
+
+## Verifikation
+
+- Seite zeigt Feld-Diffs und betroffene Downstream-Zeilen vor dem Speichern
+- Erfolgsantwort nennt die betroffenen Tabellen und Anzahl aktualisierter Zeilen
+- Live-Suche und Preview können read-only geprüft werden, ohne produktive Daten zu verändern
+- Sprünge in verknüpfte Requests öffnen jetzt eine zusammenhängende `Kontakt-Dossier`-/`Cluster-Session`, statt nur den nächsten Einzelfall ohne Arbeitskontext zu laden
+- Watchlist, zuletzt geöffnete Fälle und persönliche Schnellzugriffe lassen sich jetzt ebenfalls als zusammenhängende Review-/Arbeits-Session öffnen statt nur als isolierter Einzelaufruf
+- Mehrfachtreffer aus der Suche öffnen jetzt direkt den ersten Treffer als `Suche`-Review-Session, damit ähnliche Datensätze fallweise durchgearbeitet werden können statt als lose Liste liegenzubleiben
+- Gepinnte und zuletzt geöffnete Fälle speichern jetzt zusätzlich ihren Session-Typ und Einstiegstab, damit Reopen-Läufe auch nach Reload wieder mit passendem fachlichen Kontext starten
+- Such-Review-Sessions übernehmen jetzt ebenfalls die fachliche Fall-Semantik des führenden Treffers, statt bei Mehrfachtreffern pauschal als generische `Workboard-Session` zu starten
+- Gemischte Review-Sessions behalten jetzt zusätzlich den passenden Einstiegstab pro Fall, damit das Weiterblättern in Watchlist-, Recent- oder Such-Läufen nicht mehr im Tab des ersten Falls hängenbleibt
+- Der per-Fall-Tab-Erhalt wird jetzt auch zentral für normale Queue-/Workboard-Sessions berechnet, sodass selbst ohne explizite Tab-Map das Blättern nicht mehr pauschal im ersten oder zufälligen Einstiegs-Tab hängenbleibt
+- Dasselbe gilt jetzt auch für den Session-Typ selbst: gemischte Review-Läufe können Badge und Session-Erklärung pro Fall mitführen, statt semantisch am ersten Fall hängenzubleiben
+- Bei Mehrfachtreffern aus der Suche wird jetzt auch der erste sofort geöffnete Fall direkt im passenden Starttab gerendert, statt bis zum ersten Weiterblättern oder Reload noch mit `null`/Fallback-Tab zu starten
+- Generische Review-Läufe wie `Watchlist`, `Zuletzt geöffnet` oder `Suche` ziehen jetzt zusätzlich den aktuellen Session-Kontext in die Fokusleiste, und Reopen-Pfade reichen die per-Fall-Badge-Maps vollständig durch
+- Generische Session-Vorgaben überschreiben jetzt nicht mehr blind alle Folgefälle: Wo sichtbarer Fallkontext vorhanden ist, werden Badge und Einstiegstab pro Request aus dem echten Datensatz statt aus dem ersten Session-Start abgeleitet
+- Der Schnellzugriff reicht für Next-Best-, Repair-, Cluster-, Inbox-, Workboard- und persönliche Session-Starter jetzt die bereits bekannten Record-Mengen direkt an den Hauptscreen weiter, statt dort erneut auf implizite Sichtbarkeits-Heuristiken zu hoffen
+- Kontakt-Dossier-Sessions tragen jetzt auch innerhalb verknüpfter Requests pro Eintrag den passenden Einstiegstab mit, statt alle Folgefälle stumpf im Tab des zuerst geöffneten Dossier-Falls weiterzuführen
+- Die RecordCard-Sprungpfade reichen diese per-Request-Metadaten jetzt auch wirklich bis `openRequestIdInSession(...)` durch, damit die Dossier-Semantik nicht an der letzten UI-Schicht wieder verloren geht
+- Auch die Palette startet `Kontakt-Dossier`- und `Kontakt-Fokus`-Wege jetzt als echte Kontakt-Portfolio-Session statt nur als Tab-Sprung im aktuellen oder falschen generischen Session-Stack
+- Der primäre `Kontakt-Dossier öffnen`-CTA im offenen Datensatz startet jetzt ebenfalls die echte Kontakt-Portfolio-Session statt nur lokal den `Deal`-Tab derselben Karte umzuschalten
+- Die `Kontakt-Dossier öffnen`-Buttons in der Kontakt-Cluster-Queue starten jetzt ebenfalls das echte Kontakt-Portfolio des Lead-Falls statt nur die sichtbare Cluster-Queue als Ersatz-Session zu öffnen
+- Dasselbe gilt jetzt auch für `Cluster Control`: Die dortige `Dossier-Session` öffnet nicht mehr nur die sichtbare Gruppenliste, sondern das echte Kontakt-Portfolio des Lead-Falls
+- Auch im `Handover-Center` öffnet `Kontakt-Dossier` jetzt das echte Kontakt-Portfolio des Lead-Falls statt fälschlich den Handover-Queue-Lauf selbst als Dossier-Ersatz zu starten
+- Dasselbe gilt jetzt auch für alle `Kontakt-Dossier`-Empfehlungen in Inbox, Workboard, Commercial Desk, `Meine Queue` und `Mein Workboard`: der CTA springt dort nicht mehr in die jeweilige Queue-Session zurück, sondern startet konsequent das echte Kontakt-Portfolio des Falls
+- Auch die sichtbaren Schnellzugriffe im geöffneten Fall der Action-Palette (`Kontakt-Dossier` und `Naechster Kontakt-Fokus`) starten jetzt die echte Kontakt-Portfolio-Session statt nur lokal Tabs desselben Datensatzes umzuschalten
+- Der aktive Schnellzugriff in der Action-Palette zeigt `Plan oeffnen` und `Naechster Plan-Schritt` nicht mehr doppelt, damit der Overlay-Fokus wieder wie eine saubere Kommandoleiste statt wie ein duplizierter Werkzeugkasten wirkt
+- Dasselbe gilt jetzt auch für die eigentlichen Palette-Befehle des offenen Falls: `Plan oeffnen` und `Naechster Plan-Schritt` existieren dort nicht mehr doppelt unter verschiedenen Keys, sondern genau einmal als belastbarer Command
+- Der zentrale Fallplan selbst behandelt `Kontakt-Dossier` jetzt nicht mehr als blossen `Deal`-Tabwechsel: Action-Palette, Case Plan, Case Flows und der einfache offene Arbeitsbereich starten bei diesem Schritt nun dieselbe echte Kontakt-Portfolio-Session
+- Auch die direkten Flow-Helfer in Repair Queue, Kontakt-Cluster, Action Queue, Active Flows sowie den Team-Control-Panels verhalten sich bei einem Dossier-Schritt jetzt session-echt und kippen nicht mehr still in ihre jeweilige Queue- oder Flow-Session zurueck
+- Dasselbe gilt jetzt im zentralen Fallplan auch fuer `Commercial Desk`: Palette, Case Plan, Case Flows und der einfache offene Arbeitsbereich oeffnen bei diesem Schritt nicht mehr bloss den `Deal`-Tab, sondern eine echte Commercial-Session aus der aktuellen sichtbaren Desk-Lage
+- `Plan oeffnen` folgt im offenen Fall jetzt derselben Semantik wie der eigentliche Planschritt: Wenn der naechste Kontext fachlich `Kontakt-Dossier` oder `Commercial Desk` ist, startet auch dieser Schnellweg die echte Session statt nur lokal den passenden Tab zu oeffnen
+- Auch `Offenen Fall • Deal & Source` in der Action-Palette startet bei kaufnahen oder buildernahen Faellen jetzt die echte Commercial-Session; nur ohne Commercial-Kontext bleibt der Befehl ein lokaler `Deal`-Tab-Sprung
+- `Commercial Control` nutzt fuer seinen Fuehrungsfall jetzt ebenfalls die zentrale Commercial-Meta: Recovery-nahe Faelle starten dort als `Kaufsignal-Session`, waehrend echte Angebots-/Builder-Arbeit als `Commercial-Session` markiert und geoeffnet wird
+- Die direkten Flow-Helfer in Repair Queue, Kontakt-Cluster, Action Queue, Active Flows, Repair Control, Commercial Control und Flow Control starten `Commercial Desk` jetzt ebenfalls als echte Commercial-Session aus der sichtbaren Desk-Lage statt als generischen Queue-Fallback
+- Dasselbe gilt jetzt auch fuer die persoenlichen Flaechen `Meine Queue` und `Mein Workboard`: wenn dort ein naechster Schritt kaufnah in den `Commercial Desk` fuehrt, bleibt der Flow in der echten Commercial-Session statt lokal im jeweiligen Personen-Board stecken
+- Dieselbe Commercial-Session-Semantik gilt jetzt auch fuer `Nächste Fälle`/`Ops Inbox`, `Nach Themen`/`Workboard` und `Handover-Center`: eingebettete Flow-Helfer verlieren kaufnahe Schritte dort nicht mehr an generische Record- oder Handover-Fallbacks
+- Auch die sekundären `Kontext öffnen`-Buttons im `Case Plan` folgen jetzt dieser Semantik: bei `Kontakt-Dossier` und `Commercial Desk` oeffnen sie nicht mehr bloss den lokalen Tab, sondern denselben echten Session-Kontext wie der eigentliche Planschritt
+- Wo `Commercial Desk` fachlich der naechste beste Schritt ist, zeigen die primaeren Sofortaktionen jetzt auch direkt `Commercial Desk öffnen` statt diesen Kontext nur indirekt ueber Flow-Helfer oder generische Record-Spruenge erreichbar zu machen
+- Die `Naechste Aktion`-Logik haengt intern nicht mehr an sichtbaren Textlabels wie `Kontakt-Dossier` oder `Commercial Desk`, sondern an stabilen Aktionsschluesseln; damit bleiben vereinfachte CTA-Texte und fachliche Routing-Regeln voneinander entkoppelt
+- Die direkten `Commercial-Desk`-Session-Starter in der Action-Palette ziehen ihre Badge- und Einstiegstab-Semantik jetzt ebenfalls aus der echten Commercial-Meta; dadurch laufen Kaufsignale dort nicht mehr als generische `Commercial-Session`, sondern als saubere `Kaufsignal-Session`
+- Dasselbe gilt jetzt auch fuer die sichtbaren Overlay-Starter und den Kontakt-Dossier-Builder: Cluster- und Commercial-Sessions verwenden dort keine hart verdrahteten Badges oder Starttabs mehr, sondern dieselben zentralen Session-Mappings wie der restliche Stack
+- Auch die sichtbaren Commercial-Namen und Beschreibungen folgen jetzt dieser Trennung: wenn der Fuehrungsfall fachlich ein Kaufsignal ist, sprechen Schnellzugriffe, Overlay-Titel und der `Next Best`-Pfad nicht mehr pauschal von `Commercial`, sondern von der passenden Kaufsignal-Spur
+- Die gleiche Trennung gilt jetzt auch fuer globale und persoenliche Commercial-Briefings: Titel, Copy-Buttons und Erfolgsmeldungen sprechen bei echten Recovery-Spuren nicht mehr von `Commercial`, sondern vom passenden Kaufsignal-Kontext
+- `Kaufsignal` und `Commercial` laufen in persoenlichen und operatorbezogenen Spuren jetzt nicht mehr doppelt ueber dieselben Faelle: Recovery-Faelle bleiben in ihrer eigenen Signal-Spur, waehrend echte Commercial-Lanes nur noch nicht-Recovery-Kontext zeigen
+- Dasselbe gilt jetzt auch fuer `Commercial Control`: die Operator-Gruppen ziehen dort nur noch echte Deal-, Builder- und Abschlussarbeit, waehrend kaufnahe Recovery-Faelle ausschliesslich in ihren Signal-/Recovery-Spuren bleiben
+- Auch das `Team-Board` trennt jetzt wieder sauber: kaufnahe Recovery-Faelle erscheinen dort als eigene `Kaufsignal`-Spur mit direktem Fokus-CTA, statt still im Commercial-Zaehler und Commercial-Fokus mitzulaufen
+- `Commercial Control` erscheint jetzt auch nur noch dann, wenn wirklich nicht-Recovery-Commercial-Arbeit vorhanden ist; reine Kaufsignal-Lagen blenden die Flaeche nicht mehr als leere Pseudo-Steuerung ein
+- Auch der globale `Commercial Desk` spricht jetzt kontextabhaengig: wenn aktuell nur kaufnahe Recovery-Faelle sichtbar sind, wechseln Kopfzeile, Einleitung und Zaehler von pauschalem `Commercial` auf die passende Kaufsignal-Sprache
+- Die technische Pruefung fuer `viewed_without_order` liegt jetzt zentral in `isViewedWithoutOrder(...)`; Radar, persoenliche Lanes, Commercial-Desk, Team-Board und mehrere Workspace-Panels verwenden damit dieselbe Kaufsignal-Regel statt leicht auseinanderlaufender Inline-Bedingungen
+- Dasselbe gilt jetzt fuer Kontakt-Dossier-/Cluster-Kontext: Radar, persoenliche Lanes, Ops-Feed, Cluster-Control und Team-Board verwenden `hasContactClusterOpportunity(...)` statt mehrfach kopierter Inline-Regeln fuer offene Trigger, Sales-Recovery und Mehrfach-Requests
+- Der allgemeine `Aktiver Lead-Fall` im `Team-Board` startet nicht mehr als generische `Workboard-Session`; Badge, Starttab und CTA-Text kommen dort jetzt direkt aus der echten Fall-Meta des Fuehrungsfalls
+- Auch die persoenlichen Hauptstarter (`Meine Arbeitslage`, `Mein Einstieg`, `Meine Queue` in der Palette) oeffnen den ersten Fall nicht mehr pauschal als `Persoenliche Session`, sondern mit der echten Session-Meta des Fuehrungsfalls
+- Die sichtbaren CTA-Texte in den persoenlichen Fokusflaechen folgen jetzt ebenfalls der Session-Semantik: statt generischem `Fokus öffnen` oder `Meinen nächsten Fall öffnen` sprechen sie je nach Spur direkt von Antwort, Rueckruf, Repair, Kaufsignal, Cluster oder Commercial
+- Reopen-Laeufe aus Watchlist und `Zuletzt geöffnet` rekonstruieren fehlende alte Badge-/Tab-Meta jetzt zentral in `openRecentCase(...)` aus den aktuell sichtbaren Datensaetzen; unvollstaendige Persistenzdaten fallen dadurch nicht mehr auf generisches `Workboard` zurueck
+- Die drei verbleibenden gespeicherten Reopen-Callsites verwenden dafuer jetzt denselben Builder `buildStoredCaseSessionOpenOptions(...)` statt jeweils eigene Watchlist-/Recent-Objekte zusammenzubauen
+- Datensatzbasierte Session-Oeffnungen verwenden jetzt zusaetzlich den gemeinsamen Builder `buildRecordSessionOpenOptions(...)`; `Commercial Desk`, `Kontakt-Dossier` und `Meine Queue` muessen ihre per-Request-Badge-/Tab-Maps damit nicht mehr lokal doppeln
+- Auch der persoenliche `Next Best`-/Weiterlauf und das grosse `Meine Queue`-Panel leiten Badge und Starttab jetzt direkt aus der echten Fall-Meta ab, statt dort noch pauschal `Persoenliche Session` zu setzen
+- Suche und Palette teilen sich fuer sichtbare Datensatzlisten jetzt auch die gleiche Session-Map-Ableitung `buildRecordSessionMaps(...)`, statt `preferredTabsByRequestId` und `badgeLabelsByRequestId` an beiden Stellen lokal neu zu bauen
+- Der sichtbare Kontakt-Dossier-Sprung spricht jetzt auch sprachlich sauber: Panel und Palette nennen den Anschlussfall nicht mehr generisch `Kontakt-Fokus`/`Fokus öffnen`, sondern klar als Dossier-Fokus bzw. `Im Kontakt-Dossier öffnen`
+- Die letzten sichtbaren `Workboard-Session`-Fallbacks fuer festen Fuehrungsfall sind entfernt: Team-Board, Such-Review und `Next Best` verwenden jetzt auch dort direkt die echte Fall-Meta statt generische Badges
+- Auch die letzten sichtbaren Dossier-Fokus-Labels sind vereinheitlicht: Panel und Palette sprechen nun beide konsistent von `Dossier-Fokus` statt gemischt von `Kontakt-Fokus`
+- Weitere sichtbare Generik-Buttons sind bereinigt: Watchlist, Problemfallliste, Handover-Center und der verwandte Anschlussfall im Dossier sprechen jetzt nicht mehr nur von `Öffnen`, sondern vom konkreten Arbeitskontext
+- Der letzte generische `Öffnen`-Button im offenen Diagnose-/Sync-Block ist ebenfalls ersetzt; dort nennt der CTA jetzt direkt den Ziel-Tab wie `Kommunikation öffnen`, `Deal & Source öffnen` oder `Verlauf öffnen`
+- `Mein Workboard` oeffnet seine Fuehrungsfaelle jetzt ebenfalls per echter Fall-Meta statt nur per Lane-Badge; ausserdem startet `Dossier öffnen` dort die echte Kontakt-Portfolio-Session statt den allgemeinen Lane-Lauf
+- Auch `Meine Arbeitslage` und `Mein Einstieg` fallen bei bekanntem Fuehrungsfall nicht mehr auf generische `Persoenliche Session`-Badges zurueck; die persoenlichen Kurzwege oeffnen dort jetzt ebenfalls mit der echten Fall-Meta des Lead-Datensatzes
+- Die Palette verwendet fuer datensatzbezogene Session-Meta jetzt keinen eigenen Zweit-Resolver mehr; auch dort laufen Badge- und Starttab-Ableitungen direkt ueber `resolveRecordSessionMeta(...)`
+- Auch der Hauptscreen verwendet fuer gespeicherte Reopen-Faelle, Such-Review und den einfachen Weiterlauf keinen eigenen Shadow-Wrapper mehr; diese Pfade greifen jetzt direkt auf `resolveRecordSessionMeta(...)`
+- Generische `Kontakt-Dossier`-Starter oeffnen nicht mehr pauschal im `deal`-Tab; sie ziehen ihren Einstieg jetzt ueber `buildContactPortfolioFocusSessionOptions(...)` aus dem tatsaechlichen naechsten Dossier-Fokus des Kontakts
+- Dasselbe gilt jetzt auch fuer Cluster- und Handover-Dossierpfade: `Kontakt-Dossier` startet dort nicht mehr pauschal im `contact`-Tab, sondern waehlt ebenfalls den naechsten sinnvollen Dossier-Fokus
+- Vage `Überblick`-CTAs sind weiter zurueckgedraengt: In `Mein Einstieg` oeffnet der Sekundaerpfad jetzt explizit `Deal & Source`, und im Kontakt-Dossier heisst derselbe Alternativpfad ebenfalls konkret `Deal & Source`
+- Auch der `Case Plan` spricht jetzt konkret: generische Buttons wie `Fall öffnen` oder `Kontext öffnen` nennen dort stattdessen direkt `Kontakt öffnen`, `Kommunikation öffnen`, `Deal & Source öffnen`, `Kontakt-Dossier öffnen` oder `Commercial Desk öffnen`
+- Auch Watchlist und Ops Feed verwenden fuer ihre Primärknöpfe jetzt die vorhandene Session- bzw. Tab-Semantik statt generischem `Fall öffnen`
+- Der Ops Feed oeffnet ausserdem nicht mehr gegen die komplette Teammenge, sondern als eigene `Letzte Bewegungen`-Review-Session in der sichtbaren Feed-Reihenfolge, inklusive per-Request-Badge und Starttab
+- Die leere `Einfach`-Startlage spricht jetzt ebenfalls wie eine Kommandozentrale statt wie ein reines Korrekturtool: Hero-Eyebrow, Headline und Subcopy fokussieren dort auf offene Faelle, naechsten Schritt und saubere Abarbeitung
+- Der aktuelle Desktop-Render der leeren `Einfach`-Startlage ist gegen `127.0.0.1:3103` visuell gegengeprueft; dabei behobene sichtbare Copy-Artefakte wie das falsch gesetzte `E-Mail ,` in der Suchhilfe sind bereinigt
+- Auch die mobile `Einfach`-Suche ist visuell gegengeprueft; der zentrale Such-Placeholder ist dort jetzt kuerzer, damit er auf schmalen Screens nicht abgeschnitten wirkt
+- Blockierende Lade- oder Konfigurationsfehler der Suche werden jetzt direkt in der Suchkarte gespiegelt, damit Hinweise wie fehlende Supabase-Server-Konfiguration nicht nur als entfernter Footer-Banner erscheinen
+- Diese Suchfehler liefern dort jetzt auch einen kurzen naechsten Schritt, z. B. dass die UI bereits laeuft, die lokale Such-API aber ohne Supabase-Server-Konfiguration gestartet wurde
+- Solange die Suche durch so einen Fehler blockiert ist, tritt `Kurz erklärt` im einfachen Landing-Zustand zurück, damit die blockierende Meldung die erste sichtbare Arbeitsinformation bleibt
+- Im selben Blockierzustand verschwinden in der einfachen Suchkarte auch Beispiele und Statuszaehler, damit die Fehlermeldung nicht gegen normale Such-Metadaten anarbeiten muss
+- Die Kontakt-Cluster-Queue startet ihr `Kontakt-Dossier` nicht mehr mit hartem `deal`-Tab, sondern mit dem echten naechsten Portfolio-Fokus des Lead-Falls
+- Die grossen Control- und Queue-Panels leiten ihren Fallback-Einstiegstab jetzt zentral aus der Session-Badge-Semantik ab, statt bei Commercial-, Problemfall- oder Cluster-Strecken lokal rohe `deal`-/`contact`-Defaults zu setzen
+- Auch dort greift jetzt dieselbe Prioritaet wie im restlichen Stack: expliziter Tab zuerst, danach der Session-Badge-Tab und erst ganz zuletzt eine recordbasierte Inferenz
+- Im `Team-Board` starten `Kaufsignal`, `Commercial` und `Kontakt-Cluster` jetzt ebenfalls die echten Desk-/Dossier-Strecken statt nur einen Einzelfall mit hartem Tab zu oeffnen
+- Dasselbe gilt jetzt fuer `Mein Einstieg`, `Meine Arbeitslage` und `Mein Workboard`: Cluster- sowie Commercial-/Kaufsignal-Spuren kippen dort nicht mehr in generische Einzelfall-Sessions, sondern oeffnen die echte Dossier- oder Desk-Strecke
+- Die Sonderbehandlung fuer `Cluster`, `Commercial` und `Kaufsignal` liegt dafuer jetzt in einem gemeinsamen Session-Context-Oeffner, statt dieselbe Weiche mehrfach lokal in persoenlichen Panels nachzubauen
+- Die grossen Panel-Wirings im Hauptscreen nutzen fuer Dossier- und Commercial-Oeffnung jetzt ebenfalls gemeinsame lokale Helper, statt `buildContactPortfolioFocusSessionOptions(...)` und `buildCommercialSessionOptions(...)` an vielen Render-Stellen separat zusammenzusetzen
+- Auch `RecordCard`, `Case Plan`, `Case Flow` und der einfache offene Arbeitsbereich oeffnen `Kontakt-Dossier` und `Commercial Desk` jetzt ueber gemeinsame lokale Record-Helper statt dieselben `onOpenRequestId(...)`-Builder mehrfach separat aufzurufen
+- Auch die Action-Palette nutzt fuer Plan-, Dossier-, Deal- und `Next Best`-Spruenge jetzt gemeinsame lokale Dossier-/Commercial-Helper, statt dieselben Session-Builder dort mehrfach separat aufzurufen
+- `DealSourceWorkspace` und `RelatedRequestsPanel` oeffnen Kontakt-Portfolio-Faelle ebenfalls nicht mehr ueber rohe lokale Options-Factories, sondern ueber gemeinsame lokale Portfolio-Oeffner pro Panel
+- Auch die Kontakt-Cluster-Queue zerlegt ihre Dossier-Session nicht mehr lokal in einen eigenen `openQueueRecord(...)`-Payload, sondern nutzt dafuer jetzt einen gemeinsamen Queue-Oeffner fuer Kontakt-Portfolios
+- Die grossen Workboard-, Team-, Queue- und Lane-Panels teilen sich fuer normale Workboard-Sessions jetzt ebenfalls einen gemeinsamen `openWorkboardSessionRecord(...)`-Pfad statt viele leicht abweichende Inline-`openQueueRecord(...)`-Payloads
+- Auch Radar, System-Gaps, Repair-Queue, Ops Feed, einfache Weiterlauf-Buttons und die Inbox laufen jetzt ueber gemeinsame Session-Open-Helper statt eigene Inline-Payloads fuer `workboard` oder `inbox`
+- Auch Palette-Workboard-Oeffnung, Handover-Center und der gruene `Nächsten ... öffnen`-Weiterlauf nach Aktionen nutzen jetzt die gemeinsamen Session-Open-Helper statt letzter freier Inline-`openQueueRecord(...)`-Payloads
+- Die beiden Basispfade `openQueueRecord(...)` und `openRequestIdInSession(...)` bauen ihre per-Request-Tab- und Badge-Maps jetzt nicht mehr getrennt, sondern ueber einen gemeinsamen `resolveSessionMaps(...)`-Helper
+- Auch die letzten `onOpenRequestId`-Brücken im Hauptscreen nutzen jetzt einen gemeinsamen `openRequestIdWithOptions(...)`-Pfad statt dieselbe Session-Option-Übersetzung mehrfach inline zu duplizieren
+- Die Session-Open-Typform selbst ist jetzt ebenfalls zentralisiert: gemeinsame Alias-Typen fuer Request-Maps und Session-Open-Payloads tragen die Basispfade statt mehrfach identischer Inline-Formen
+- Auch die Erzeugung der per-Request-Tab-/Badge-Maps kommt jetzt aus einer gemeinsamen Factory statt aus mehreren separaten `Object.fromEntries(...)`-Blöcken in Stored-Case-, Session-Open- und Record-Map-Helfern
+- Diese Request-Map-Factory lebt dafuer jetzt als eigene Utility mit gezielten Unit-Tests ausserhalb des riesigen Screens, statt weiter nur lokal in `page-client.tsx`
+- Auch die request-id-basierten Dossier- und Commercial-Spruenge laufen jetzt ueber gemeinsame `open...RequestId(...)`-Helper statt dieselben `buildContactPortfolio...`- und `buildCommercialSessionOptions(...)`-Aufrufe in Palette, offenem Fall und Unterpanels mehrfach direkt zu verdrahten
+- `Commercial Control` zeigt fuer seinen Fuehrungsfall jetzt nicht mehr den internen Session-Badge auf dem Hauptbutton, sondern die konkrete Primäraktion der jeweiligen Spur, damit die Steuerung wie Arbeit und nicht wie ein technisches Session-Label spricht
+- Auch die globalen und persönlichen Briefing-CTAs sprechen jetzt präziser: aus dem generischen `Briefing kopieren` bzw. `Mein Briefing kopieren` wurde klare Ops-Sprache, damit die Zentrale ihre eigenen Gesamt- und persönlichen Lagebriefe eindeutig benennt
+- Auch der Cluster-Fallback im grossen `Kontakt-Cluster`-Panel oeffnet einen Lead nicht mehr stumpf im Kontakt-Tab, sondern im echten naechsten Dossier-Fokus des Kontakts
+- Der einfache Inbox-Weiterlauf spricht jetzt ebenfalls konsequent `Ops Inbox` statt des alten Sammelbegriffs `Nächste Fälle`, inklusive CTA-Oberfläche, Vorschau und Inbox-Panel im einfachen Modus
+- `Next Best` und der einfache Weiterlauf nutzen fuer Reparatur- und Flow-Spuren jetzt ebenfalls konsistente deutsche Arbeitslabels statt gemischter Begriffe wie `Repair Queue` oder `Active Flows`
+- Dasselbe gilt jetzt fuer die grossen Panel-Ueberschriften, Schnellzugriffe, Briefings und Fuehrungslabels dieser beiden Spuren: `Reparaturspur` und `Aktive Flows` sprechen in der sichtbaren Zentrale nicht mehr gemischt deutsch/englisch
+- Auch drei weitere zentrale Panel-Ueberschriften sprechen jetzt beschreibend statt nach altem Tool-Namen: `Ops Radar` als `Dringende Spuren`, `Ops Feed` als `Letzte Bewegungen` und `System Gaps` als `Systemlücken`
+- Die nutzernahe `Workboard`-Oberfläche spricht jetzt ebenfalls beschreibender: aus `Workboard` und `Mein Workboard` wurden im sichtbaren UI `Operative Spuren`, `Meine Spuren` und entsprechende `Spuren aktualisieren`-CTAs
+- Auch Schnellzugriff und Briefing sprechen dort jetzt dieselbe Sprache: aus `Workboard`-Schnellspuren, `Workboard kopieren` und ähnlichen Overlay-Texten wurden sichtbare `Spuren`-Begriffe
+- Auch die sichtbare `Commercial Desk`-Fläche spricht jetzt beschreibender als Arbeitsmodus: `Kaufsignal-Spur` bzw. `Abschluss-Spur` statt Alt-Desk-Begriff, plus `Spur öffnen` als primärer CTA
+- Die vier grossen Steuerungsflächen sprechen jetzt ebenfalls als Kommandozentrale statt als Alt-Tools: `Reparatursteuerung`, `Abschlusssteuerung`, `Flow-Steuerung` und `Kontaktsteuerung` ersetzen die alten `... Control`-Begriffe auch in sichtbaren Aktions- und Weitergabe-Kontexten
+- Die restlichen sichtbaren `Commercial`-Beschriftungen der Zentrale sind jetzt ebenfalls auf `Abschluss` gezogen: Abschluss-Fälle, Abschluss-Brief und Abschluss-Fokus ersetzen dort die alten Brief-/Fall-/Fokus-Texte
+- Auch die persoenlichen und briefingnahen Restbegriffe sprechen jetzt als Kommandozentrale: `Meine Queue` wurde sichtbar zu `Meine Faelle`, `Workboard` zu `Spuren`, und die entsprechenden Briefings, Erfolgsmeldungen und Modus-/Paneltexte folgen derselben Sprache
+- Auch die sichtbare `Follow-up`-Sprache der Zentrale kippt weiter in klare Arbeitsbegriffe: Buttons, Paneltexte und Statusmeldungen sprechen jetzt in weiten Teilen von `Erinnerungen` statt am alten Mischbegriff festzuhalten
+- Der sichtbare `Follow-up`-Begriff ist im Hauptscreen jetzt praktisch verschwunden: übrig bleiben nur noch interne Normalisierungshelfer, waehrend Oberflächen, Briefings, Hinweise und Aktionstexte durchgaengig `Erinnerung`-Sprache nutzen
+- Auch die sichtbare `Request`-Sprache ist weiter enttechnisiert: Kontakt-Dossiers, Cluster-Panels und Briefings sprechen dort jetzt von `Vorgängen`, `Mehrfach-Vorgängen`, `Vorgangsnotiz` und `Vorgangs-Wert`, statt den alten Rohbegriff breit in der Oberfläche mitzuschleppen
+- Auch die sichtbare `Sync`-/`Downstream`-Sprache ist in den Kernflächen enttechnisiert: `Sync Health` spricht jetzt als `Datenabgleich`, `Source of Truth` als `Fuehrende Stammdaten`, Reparatur-CTAs als `Abgleich reparieren` und Drift-/Briefingtexte ziehen `Folgesysteme` statt roher `Downstream`-Begriffe
+- Auch die sichtbare `Case Flow`-/`Flow`-Sprache ist in der Zentrale auf `Ablauf` gezogen: Labels, Briefings, CTA-Texte, Paneltitel und die Ablauf-Steuerung sprechen jetzt von `Abläufen`, `Ablauf fortsetzen`, `Ablauf-Brief` und `Ablauf-Steuerung` statt die alte Mischsprache mitzuschleppen
+- Auch die sichtbare `Sales-Recovery`-Sprache ist weiter in Arbeitsmodus-Begriffe verschoben: Buttons, Paneltitel, Batch-Hinweise, Statusfilter und Erfolgsmeldungen sprechen jetzt als `Recovery-Spur` bzw. `Recovery starten`, waehrend `Fall-Check` den alten `Case Readiness`-Block ersetzt
+- Auch die sichtbare Trello-Projektionssprache ist enttechnisiert: `Trello-Projektion` spricht jetzt als `Karten- und Designlage`, fehlende Kontexte werden als Karten-/Designproblem benannt, und der offene Sync-CTA laeuft als `Trello-Karten angleichen`
+- Auch die letzten sichtbaren Session- und Analyse-Restbegriffe sind bereinigt: `Flow-Session` spricht jetzt als `Ablauf-Session`, `System Gaps` als `Systemlücken`, `Commercial Desk` im Session-Kontext als `Abschluss-Spur`, und das persoenliche Spuren-Intro nennt `Abschluss-Arbeit` statt des alten Mischbegriffs
+- Auch der sichtbare Deal-Herkunftsraum spricht jetzt konsistent deutsch: aus `Deal & Source` wurde in Tabs, Buttons, Einstiegspfaden und Panel-Titeln `Deal & Herkunft`
+- Auch die sichtbare `Handover`-Sprache ist aus der Kommandozentrale verschwunden: Session-Badges, Übergabe-Center, Owner-/Übergabe-Flächen, Briefings und Copy-CTAs sprechen jetzt konsequent als `Übergabe`, `Übergabe-Session`, `Übergabe-Brief` und `Übergabe-Paket`
+- Auch die sichtbare `Owner`-Sprache ist jetzt aus den zentralen Nutzerflächen raus: Meine Fälle, Übergabe-Center, Team-/Zuständigkeitsbereich, Action-Palette und Briefings sprechen jetzt als `Zuständigkeit`, `Zuständig` oder `zuständige Person`
+- Auch die sichtbare `Sales & Calls`-Sprache ist aus dem Screen raus: Tabs, Palette-Sprünge, Fall-Check, CTA-Texte und der kaufnahe Datenblock sprechen jetzt als `Vertrieb & Anrufe`
+- Auch die sichtbare `Operator`-Sprache ist im Screen weiter zurückgedrängt: Briefing-Chips, Team-Board-Texte, persönliche Spur-Hinweise und Palette-Fallbacks sprechen jetzt als `Zuständig`, `zuständige Person` oder `Zuständigkeit`
+- Auch die sichtbare `Tracking`-Sprache ist im Screen umgezogen: Palette, Fall-Check, Vertriebsblock und Versand-Links sprechen jetzt als `Sendungsverfolgung`
+- Auch die sichtbare `Landingpage`-/`Referrer`-Sprache ist im Screen umgezogen: Deal-Bereich, Herkunftslinks, Palette und Briefings sprechen jetzt als `Einstiegsseite` und `Herkunftslink`
+- Auch die sichtbare `Request-ID`-Sprache ist im Screen umgezogen: Suche, Briefings, Verlaufs-Hinweise und Erklärungstexte sprechen jetzt als `Vorgangs-ID`
+- Auch der sichtbare `CRM-Quote`-/`CRM-Bild`-Jargon ist im Angebotsraum verschwunden: Palette, Abschluss-Spur, Sidebars und Builder-Block sprechen jetzt als `Builder-Angebot` und `Builder-Bild`
+- Auch der sichtbare `Mockup`-Jargon ist im Bild- und Designbereich verschwunden: Diagnosen, Sidebars, Bildansicht und Trello-Flächen sprechen jetzt als `Entwurfsbild`
+- Auch die sichtbare `CRM-Sales`-/`CRM-Version`-Sprache ist im Vertriebs- und Builder-Bereich bereinigt: Panels, Zähler und Bildhinweise sprechen jetzt als `Verkaufssystem` und `Builder-Version`
+- Auch die sichtbare `Console`-/`Call-Log`-/`Voice-Call`-Sprache ist im Anruf- und Verlaufsbereich enttechnisiert: Audit-/Live-Herkünfte, Anrufhistorien, Sprachanrufe und der sichtbare `Customer Records Console`-Badge sprechen jetzt als `Audit`, `Anrufprotokoll`, `Sprachanruf` und `Kommandozentrale`
+- Auch die verbliebenen sichtbaren `Flow`-Restlabels sind aus den Kernflächen raus: Prioritätstexte, persönliche Laufhinweise, Paneltitel, Briefings und die Ablauf-Steuerung sprechen jetzt als `Ablauf`, `Aktive Abläufe`, `Ablauf aktiv` und `Ablauf veraltet`
+- Auch die sichtbare `Builder`-Sprache ist aus dem Angebotsraum verschwunden: Angebotsflächen, Abschluss-Spur, Quicklinks, Briefings und Bild-/Versionshinweise sprechen jetzt als `Angebotskontext`, `Angebotsstand`, `Angebotsversion` und `Angebotsbild`
+- Auch die sichtbare `Quote`-/`PandaDoc`-Sprache ist im Angebots- und Dokumentenraum enttechnisiert: CTAs, Briefings, Mini-Systeme und der Deal-Bereich sprechen jetzt als `Angebot`, `Angebotslage` und `Angebotsdokument`
+- Auch die sichtbare `Voicemail`-Sprache ist im Screen enttechnisiert: Schnellaktionen, Buttons, Toggle-Texte und Statusmeldungen sprechen jetzt als `Mailbox`, waehrend die zugrunde liegende Anruflogik unveraendert bleibt
+- Auch die sichtbare `Funnel`-Sprache ist aus dem Deal- und Herkunftsraum verschwunden: Buttons, Diagnoseblöcke, Arbeitslinks und Deal-Prüftexte sprechen jetzt als `Herkunfts-` oder `Streckenkontext` statt mit Marketing-Tooljargon
+- Auch die verbleibende sichtbare `Requests`-Mehrzahl ist im Screen bereinigt: Dossier-Hinweise, Kontakttexte, Such-/Landing-Flächen und Statusmeldungen sprechen jetzt durchgaengig von `Vorgängen` statt von `Requests`
+- Auch die sichtbare `Command-Mode`-Sprache der Palette ist bereinigt: Palette-Hinweise, CTA-Texte und Aktionsrückmeldungen sprechen jetzt als `Befehlsmodus` und `Kommando` statt die englische Mischform mitzuschleppen
+- Auch die sichtbare `Repair`-Sprache ist in den Kernflächen bereinigt: Palette, Team-Board, Reparaturspur und Reparatursteuerung sprechen jetzt als `Reparatur`, `Reparaturspur` und `Reparatur öffnen`, waehrend der technische Session-Badge intern bei `Reparatur-Session` bleibt
+- Auch die sichtbare `Sales`-/`Calls`-/`Commercial`-Mischsprache ist weiter bereinigt: Vertriebslage, Vertriebskontext, Vertriebsfeed, Anrufe und Abschluss-Spur sprechen jetzt in den betroffenen Panels, Hilfetexten und CTA-Fallbacks als klare Arbeitsbegriffe statt mit alten Produkt- oder Feldnamen
+- Auch der sichtbare Systemjargon im Angebots- und Auftragsraum ist weiter enttechnisiert: `Shopify`, `Easybill`, `Invoice` und `ActiveCampaign-Deal` sprechen in Nutzerflächen jetzt als `Bestellsystem`, `Rechnungssystem`, `Abgleich` oder `Deal im Verkaufssystem`
+- Auch die sichtbare `Inbox`-/`Briefing`-Schicht ist weiter in Kommandozentrale-Sprache gezogen: `Ops Inbox` spricht jetzt als `Ops-Eingang`, und die vielen `...-Briefing`-Texte laufen in sichtbaren Buttons, Kacheln, Erfolgsrückmeldungen und kopierten Kopfzeilen jetzt als `...-Lage` oder `Gesamtlage`
+- Auch die sichtbaren `...-Session starten`-Reste in Palette und Lagehilfen sind bereinigt: Kaufsignal-, Abschluss-, Ablauf-, Problemfall- und Kontakt-Dossier-Einstiege sprechen jetzt als Spuren, Lagen oder direkte Öffnen-Aktionen statt als technische Session-Starter; dazu reden Tageslage und Modushilfe jetzt von `Dringlichkeitslage` und `Eingang` statt weiter von `Radar` und `Inbox`
+- Auch die sichtbare `Trello`-/`Board`-Sprache ist in den Nutzerflächen weiter enttechnisiert: Tabs, Kartenkontext, Suchhilfen, Diagnoseflächen, Quicklinks und Karteneditor sprechen jetzt als `Karten & Design`, `Karte`, `Kartenfelder` oder `Übersicht`, waehrend nur die echte Suchsyntax `trello:` technisch sichtbar bleibt
+- Auch die sichtbare `Audit`-/`Konsole`-Sprache ist in den Nutzerflächen weiter auf Kommandozentrale-Begriffe gezogen: Hero-Hinweise, Arbeitsablauf, Anrufspuren, Rollback- und Notizhilfen sprechen jetzt als `Prüfspur`, `Prüfverlauf`, `Prüfprotokoll` und `Kommandozentrale` statt mit altem Audit-/Console-Jargon
+- Auch die letzten klaren englischen UI-Reste sind im Kernscreen weiter bereinigt: `Lookup`, `Logout`, `Do not contact`, `Live-Synchronisierung`, `Livequelle` und `Document Journey` sprechen jetzt als `Suche`, `Abmelden`, `Kontaktstopp`, `Direktabgleich`, `Direktquelle` und `Dokumentenstrecke`
+- Auch die sichtbare `Timeline`-/`Trigger`-Sprache ist im Kernscreen weiter auf Arbeitsbegriffe gezogen: Panels, Auswahldetails, Readiness-Hinweise und Verlaufssprünge sprechen jetzt als `Verlauf`, `Verlaufseintrag`, `Auslöser` und `Auslöserverlauf` statt mit alten Timeline-/Trigger-Begriffen
+- Auch der sichtbare Such-/Herkunftsjargon ist weiter enttechnisiert: `master_customers`, `Ops Token`, `Stage`, `Segment` und `UTM` sprechen in Hero, Zugang und Herkunftsflächen jetzt als `Masterkontakt`, `Zugangscode`, `Dealphase`, `Anfragebereich` und `Herkunftsparameter`
+- Auch interne Tool- und Boardnamen sprechen in den sichtbaren Design-/Deal-Flächen jetzt klarer: `Anfragemanagement`, `CRM Version`, `Placetel`, `Outlook`, `read-only` und `Deal-&-Source` laufen in Nutzertexten jetzt als `Anfragekarte`, `Angebotsversion`, `Telefonraum`, `Mailfenster`, `nur lesbar` und `Deal- und Herkunftsraum`
+- Auch die sichtbaren Restbegriffe rund um `Quelle`, `Status`, `Fulfillment`, `Profi` und rohe Verkaufssystem-Hinweise sind weiter bereinigt: Quicklinks sprechen jetzt als `Original öffnen`, fehlende Werte als `Status fehlt`, `Dealphase fehlt`, `Dealstatus fehlt` oder `Versandstatus fehlt`, der sichtbare Modus heißt `Erweitert`, und rohe Formulierungen wie `crm_sales` oder `Kein Deal-Link` laufen jetzt als nutzerlesbare Verkaufssystem-/Deal-Texte
+- Auch die sichtbaren `Queue`-/`Batch`-/`Diff`-Reste sind weiter in Arbeitsbegriffe gezogen: `Customer Records Ops`, `System Gap Queue`, `Batch-Vorschau`, `System-Gap-Vorschau` und `Feld-Diff` sprechen jetzt als `Kommandozentrale`, `Systemlücken-Spur`, `Sammelvorschau`, `Systemlücken-Vorschau` und `Feldvergleich`
+- Auch die sichtbaren Reparatur- und Vorschau-Rohbegriffe sind weiter bereinigt: `Ops-Token`, `Ops-Portal`, rohe Tabellenlisten wie `followup_queue` oder `document_journey`, `Custom Fields`, `Lead-Fall`, `Gap-Typen` und `pending` sprechen jetzt als `Zugangscode`, `Ops-Zugang`, `Erinnerungsspur`, `Dokumentenstrecke`, `Zusatzfelder`, `Führungsfall`, `Reparaturtypen` und `offen`
+- Auch der verbleibende UI-Feinschliff ist weiter geglättet: sichtbare `Board`-Texte sprechen jetzt als `Übersicht`, der Hero nennt `Erinnerungsspur` und `Erinnerungspläne`, der Session-Label `Ops Feed` läuft als `Letzte Bewegungen`, der Konfigurationshinweis für den Ops-Zugang ist lesbarer formuliert und der Landing-Hinweis unten sagt jetzt klar `Oben suchst du den Datensatz`
+- Auch die sichtbare Fehler- und Zugangssprache ist weiter enttechnisiert: `konfiguriert`, `UI`, `Such-API`, `Server-Konfiguration`, `API-Umgebung`, `Session abgelaufen` und `Lokalmode` sprechen in den Suchhinweisen jetzt lesbarer als `eingerichtet`, `Oberfläche`, `Suche`, `Supabase-Anbindung`, `Such-Anbindung`, `erneut entsperren` und `Lokalmodus`
+- Auch die sichtbare `Recovery`-Sprache ist jetzt konsequent auf `Rückgewinnung` gezogen: Spuren, Buttons, Briefings, Batch-Vorschauen, Systemlücken-Hinweise und Erfolgsrückmeldungen sprechen nun als `Rückgewinnungs-Spur`, `Rückgewinnung starten` und `Rückgewinnungs-Fall` statt mit dem alten Mischbegriff
+- Auch die verbliebenen Briefing- und Teamübersichts-Reste sprechen jetzt lesbarer: `NEONTRIP Ops Briefing`, `Inbox`, `Radar`, `Lead`, `Kaufsignalspur`, `kommerzielle Lage` und sichtbare `Team-Board`-Texte laufen nun als `NEONTRIP Gesamtlage`, `Eingang`, `Dringlichkeitslage`, `Führungsfall`, `Kaufsignal-Spur`, `Abschlusslage` und `Teamübersicht`
+- Auch die sichtbaren Eingangs- und Dringlichkeitsreste sind nachgezogen: `Ops-Eingang`, `Inbox kopieren`, `Inbox sofort öffnen`, `Inbox-Fälle`, der Radar-Sessiontitel und der letzte `Commercial`-Zähler sprechen jetzt als `Eingang`, `Eingang kopieren`, `Eingang sofort öffnen`, `Eingangsfälle`, `Dringlichkeitslage` und `Abschluss`
+- Auch der verbleibende Brief-/Kartenlisten-Jargon ist weiter enttechnisiert: `Deep Brief`, `Case Brief`, `Aktives Board`, `Ops-Status`, `ohne Ops-Status`, `Slack` und der explizite `Mockup*`-Hinweis sprechen jetzt als `Vollbild`, `Aktive Kartenliste`, `Arbeitsstatus`, `ohne Arbeitsstatus`, `Team-Updates` und neutrale Entwurfsbild-Texte
+- Auch die verbliebenen sichtbaren `Action Queue`-/`Case Plan`-Reste sind jetzt auf Arbeitsbegriffe gezogen: Panels, Sessiontitel, Assistenten und Nutzergründe sprechen nun als `Aktionsspur`, `Fallplan` und `Fallplan-Assistent` statt mit den alten Mischbegriffen
+- Auch die letzten sichtbaren `Sonderfall`-Reste sind jetzt auf die etablierte `Problemfall`-Sprache gezogen: Briefings, Playbooks, Queue-Details, Formularoptionen und offene Problemfall-Hinweise sprechen nun konsequent als `Problemfall`
+- Auch die sichtbaren `Watchlist`-/`Führungsfall`-Reste sind jetzt auf lesbare Arbeitsbegriffe gezogen: Nutzertexte, Briefings, Leerzustände und Schnellzugriffe sprechen nun als `Merkliste` und `Leitfall`, dazu ist der Fallback beim letzten Sprachanruf auf sauberes Deutsch gebracht
+- Auch die verbliebenen Rohformulierungen `Top-Fall`, `Boards`, `Deal(s)`, `kein Link`, die kleine Zugangsmeldung und der letzte `Gap-Details`-Fallback sind geglättet: Briefings und Kartenkontext sprechen jetzt als `Leitfall`, `Kartenlisten`, `verknüpfte Deals`, `kein Link hinterlegt`, `Zugang aktiv` und `Kein weiterer Kontext sichtbar`
+- Auch die letzten sichtbaren `Queue`- und Rohformulierungen sind weiter auf Arbeitsbegriffe gezogen: `Diese Queue ordnet ...`, `Queue, Plänen ...`, `Systemlücken-Queue`, `System Gap Queue`, `Problemfall-Queue`, `Noch dünn` und `harte Systembrüche` sprechen jetzt als `Diese Spur ordnet ...`, `Spuren, Plänen ...`, `Systemlückenspur`, `Problemspur`, `Noch lückenhaft` und `kritische Systembrüche`
+- Auch der sichtbare kaufnahe Rückgewinnungs- und Systemlücken-Jargon ist weiter bereinigt: `Recovery`, `Recovery offen`, `kaufnahe Recovery-Arbeit`, `kommerzielle Fälle`, `Deal- oder Segmentkontext`, `dedizierter Recovery-Start`, `direkte Recovery` und `System-Gap-Sammelaktion` sprechen jetzt als `Rückgewinnung`, `Rückgewinnung offen`, `kaufnahe Rückgewinnung`, `Abschluss-Fälle`, `Deal- oder Anfragebereich`, `dedizierter Rückgewinnungs-Start`, `direkte Rückgewinnung` und `Systemlücken-Sammelaktion`
+- Auch die verbliebenen sichtbaren `...-Brief`-Texte sind jetzt konsequent auf `Lage` gezogen: `Tagesbriefing`, `Ablauf-Brief`, `Abschluss-Brief`, `Übergabe-Brief`, `Problemfall-Brief`, die knappen `Brief`-Buttons, `Briefing konnte nicht kopiert werden.` und Brief-Kopfzeilen wie `NEONTRIP Abschluss-Brief` sprechen jetzt als `Tageslage`, `...-Lage`, `Lage`, `Lage konnte nicht kopiert werden.` und `NEONTRIP Abschluss-Lage`
+- Auch einige letzte sichtbare `Ops`-/`Session`-Reste sind geglättet: Nutzergründe aus `Ops Radar`, der Satz `für diese Session bereits durchgegangen` sowie die sichtbaren `Von: ... Ops`- und `Ops ...`-Fragmente in Kontakt- und Übergabelagen sprechen jetzt als `Dringlichkeitslage`, `für diese Lage bereits durchgegangen`, `Team` und `Arbeitsstatus ...`
+- Auch der sichtbare `Kontakt-Cluster`-Begriff ist jetzt auf die etablierte Lage-Sprache gezogen: Panels, Schnellzugriffe, Sammellagen, Teamübersicht und Kontaktsteuerung sprechen nun als `Kontaktlage`, `Meine Kontaktlage` und `NEONTRIP Kontaktlage` statt als `Kontakt-Cluster`
+- Auch der verbleibende sichtbare `Ops`-Jargon ist weiter enttechnisiert: `Ops-Zugang`, `Ops-Aktionen`, `Ops-Befehlszeile`, `Ops-Sequenzen`, `Actions`, der letzte `Ops`-Fallback im Übergabe-Center und der Leersatz `aktive Flows` sprechen jetzt als `Arbeitszugang`, `Arbeitsaktionen`, `Befehlszeile der Zentrale`, `Arbeitssequenzen`, `Aktionen`, `Team` und `aktive Abläufe`
+- Auch die letzten holprigen Lagenamen sind geglättet: `Abschluss-Spur Lage`, `Abschluss-Spur-Lage`, `Meine Abschluss-Lage`, `Abläufe-Lage`, `Meine Abläufe-Lage` und `NEONTRIP Aktive-Abläufe-Lage` sprechen jetzt sauber als `Abschlusslage`, `Meine Abschlusslage`, `Ablauflage`, `Meine Ablauflage` und `NEONTRIP Ablauflage`
+- Auch die verbliebenen Mischformen mit Bindestrichen sind jetzt konsistent eingedeutscht: `Problemfall-Lage`, `Reparatur-Lage`, `Ablauf-Lage`, `Abschluss-Lage`, `Übergabe-Lage` und zugehörige Copy-Meldungen laufen jetzt als `Problemfalllage`, `Reparaturlage`, `Ablauflage`, `Abschlusslage` und `Übergabelage`
+- Auch die letzten generischen Lagebegriffe sind geschärft: `Kaufsignal-Lage` spricht jetzt als `Kaufsignallage`, und die bisher zu allgemeine persönliche Copy `Meine Lage` bzw. `NEONTRIP Lage • ...` läuft nun als `Meine Falllage` und `NEONTRIP Falllage • ...`
+- Auch die Copy-Buttons und Erfolgsmeldungen im Lageblock sind jetzt deckungsgleich: `Eingang kopieren`, `Spuren kopieren`, `Reparatur kopieren`, `Problemfälle kopieren`, `Aktive Abläufe kopieren`, `Übergabe kopieren` und nackte Meldungen wie `Problemfall kopiert.` sprechen jetzt als die jeweilige konkrete Lage (`Eingangslage`, `Spurenlage`, `Reparaturlage`, `Problemfalllage`, `Ablauflage`, `Übergabelage`)
+- Auch die persönlichen Kopfüberschriften der kopierten Lagen sind jetzt vereinheitlicht: operatorbezogene Titel wie `NEONTRIP Kaufsignale • ...`, `NEONTRIP Problemfälle • ...` und `NEONTRIP Aktive Abläufe • ...` laufen nun als `NEONTRIP Kaufsignallage • ...`, `NEONTRIP Problemfalllage • ...` und `NEONTRIP Ablauflage • ...`
+- Auch der sichtbare `Übergabe-Center`-/`Team-Status`-Block spricht jetzt konsistent als Zentrale: `Übergabe-Center`, `Offene Übergabe aus Übergabe-Center.`, `Direkt aus Übergabe-Center ...`, `Team-Status` und `Noch kein Team-Status gesetzt.` laufen nun als `Übergabezentrale`, `Offene Übergabe aus der Übergabezentrale.`, `Direkt aus der Übergabezentrale ...`, `Zuständigkeitsstatus` und `Noch kein Zuständigkeitsstatus gesetzt.`
+- Auch der sichtbare `Portfolio`-Restbegriff ist jetzt auf die etablierte Dossier-Sprache gezogen: `Kontakt-Portfolio`, `Im Portfolio ...` und die Kopfzeile `Portfolio: ...` sprechen nun als `Kontakt-Dossier`, `Im Kontakt-Dossier ...` und `Dossier: ...`
+- Auch der letzte kleine Mischblock aus `Flow`, `Statuslage`, `Status fehlt`, `Status unbekannt` und `Kein Detailtext vorhanden.` ist jetzt geglättet: diese sichtbaren UI-Stellen sprechen nun als `Ablauf`, `Bearbeitungsstand`, `Stand fehlt`, `Stand unbekannt` und `Keine Details sichtbar.`
+- Auch die sichtbaren ASCII-/Recovery-Reste sind jetzt bereinigt: `verknuepfter Auftrag`, `Rueckruf`, `Recovery-Modus`, `offener Status` und die Hero-Formulierung `Detailsteuerung und Sonderwerkzeuge` sprechen nun als `verknüpfter Auftrag`, `Rückruf`, `Rückgewinnungsmodus`, `offener Bearbeitungsstand` sowie `Feinsteuerung und Zusatzwerkzeuge`.
+- Auch die Such- und Ablaufspurtexte sind jetzt glatter: die Erfolgsnachricht `Erster Fall als Review-Session geöffnet.` spricht nun als `Ersten Fall direkt geöffnet.`, und die Ablaufspur nutzt eine saubere Singular-/Pluralform `aktiver Ablauffall` bzw. `aktive Ablauffälle`.
+- Auch kleine sichtbare Grammatikreste werden weiter geglättet: im einfachen Bildblock spricht die Zusatzzeile nun korrekt als `1 weiteres Bild` bzw. `2 weitere Bilder` statt mit der alten Mischform `weiteres Bilder`.
+- Auch die sichtbaren Werkzeug- und ASCII-Reste sind weiter bereinigt: Nutzergründe und Übergabehinweise sprechen jetzt von der `Aktionsleiste` statt von der `Action-Palette`, und Formulierungen wie `naechsten`, `uebernommen`, `enthaelt`, `zusaetzlich` und `Systemluecken` sind auf normale Umlaute gezogen.
+- Auch der verbleibende Rückgewinnungs-ASCII-Block ist jetzt glatt: sichtbare Gründe und Sammelvorschauen sprechen nun mit `überführt`, `überführen`, `Rückgewinnungs-Fälle` und `Drift-Fälle` statt mit den alten `ueber...`-/`Faelle`-Formen.
+- Auch die letzten sichtbaren ASCII-Reste in Reparatur-, Ablauf-, Briefing- und Zuständigkeitscopy sind bereinigt: `geoeffneten`, `Uebergabebrief`, `fuer` und `uebernimmt` sprechen nun mit normalen Umlauten.
+- Auch der letzte sichtbare `Portfolio`-Rest im Kommandozeilenbereich ist weg: `kontaktweites Portfolio` spricht nun als `kontaktweites Dossier`.
+- Auch der Such- und Hilfeblock klingt jetzt weniger technisch: `Deal-ID` spricht sichtbar als `Dealnummer`, `Das Tool zeigt ...` als `Die Vorschau zeigt ...`, der Platzhalter nutzt `Vorgangs-ID` statt nur `ID`, und `Diagnose oder Spezialwerkzeuge` ist auf `Prüfdetails oder Zusatzwerkzeuge` gezogen.
+- Auch der Abgleichs- und Quellenjargon klingt jetzt natürlicher: `Masterkontakt`, `Folgeprozesse`, `Spiegel sauber`, `Projektionen` und `Datenquelle` sprechen in den sichtbaren Sync-/Hero-Texten nun als `führender Kontakt`, `Folgesysteme`, `Abgleich sauber` und `führender Stand`.
+- Auch der verbleibende Sync-/Landing-Jargon ist weiter geglättet: sichtbare Texte wie `Masterkontakt`, `Folgeprozesse`, `Projektionen`, `Die Datenbank fuehrt`, `direkte Reparatur noetig` und `was dieses Tool macht` sprechen nun als `führender Kontakt`, `Folgesysteme`, `Die Datenbank führt`, `direkte Reparatur nötig` und `was diese Oberfläche kann`.
+- Auch die letzten kleinen Reste im Sync-/Radar-Block sind nachgezogen: `Folgeprozesse`, `Naechste Erinnerung`, `Noch lueckenhaft`, `Rückgewinnung noetig` und `überfuehrt` sprechen dort jetzt sauber als `Folgesysteme`, `Nächste Erinnerung`, `Noch lückenhaft`, `Rückgewinnung nötig` und `überführt`.
+- Auch die sichtbare Zugangsfehler-Sprache ist jetzt konsistent: `Session abgelaufen. Bitte erneut entsperren.` spricht im Screen und in der Inline-Hilfe nun als `Arbeitszugang abgelaufen. Bitte erneut entsperren.`
+- Auch die verbleibende `interne ...`-Sprache ist im UI weiter enttechnisiert: Angebotslink, Kurzfassung, Copy-CTA, Notizeingabe und Hero-Kicker sprechen nun als `Angebotsdokument-Link`, `Team-Kurzfassung`, `Fürs Team kopieren`, `Teamnotiz` und `Kommandozentrale ...` statt mit den alten `interne`-Formulierungen.
+- Auch einige sperrige Sync-Sätze lesen sich jetzt natürlicher: `Die Datenbank führt.`, `Der führende Kontakt ist ...`, `Führender Kontakt und Folgesysteme wirken aktuell sauber` und `Weitergabe an die Folgesysteme` sprechen nun flüssiger als `Hier siehst du ...`, `Im führenden Kontakt steht ...`, `laufen aktuell sauber zusammen` und `Auswirkungen auf die Folgesysteme`.
+- Auch ein kleiner Action-/Fokusslice klingt jetzt natürlicher: `Pending Mails`, `ohne Kontextwechsel`, `tel:-Link`, `KI-Video-Link` und `Springt direkt ...` sprechen nun als `offene Mails`, `ohne Wechsel der Arbeitsspur`, `im Telefonprogramm`, `KI-Video` und `Öffnet direkt ...`.
+- Auch die letzten zwei Restbegriffe aus Aktionsspur und Videoblock sind geglättet: `Kontextwechsel` spricht dort jetzt als `Wechsel der Arbeitsspur`, und `KI-Video-Link` wurde auf `KI-Video` verkürzt.
+- Auch der nächste kleine Verständlichkeits-Slice ist nachgezogen: `Eingangs-Thread`, `Dokumentenfluss` und `Zentrale Quelle` sprechen nun als `eingehende Spur`, `Dokumentenstand` und `Ausgangspunkt`.
+- Auch der zweite Kommunikations-Fallback ist jetzt mitgezogen: der verbleibende Satz `kein sichtbarer Eingangs-Thread` spricht nun ebenfalls als `keine sichtbare eingehende Spur`.
+- Auch der nächste kleine Kommunikations- und Designblock ist geglättet: sichtbare `Thread`-, `Video-Link`-, `Dokumentenstand`-, `Angebotsdokument-Link`- und `Ausgangspunkt`-Texte sprechen jetzt als `Spur`, `Video`, `Dokumentenlage`, `Angebotsdokument` und `Arbeitsstart`.
+- Auch der nächste sichtbare Statusblock ist geglättet: `Alle Status`, `Fallstatus`, `Statusfilter`, `Status`, `Angebotsstatus`, `Status leeren` und die zugehörigen Brief-/Checkbox-Texte sprechen jetzt als `Stand`, `Fallstand`, `Standfilter` und `Angebotsstand`.
+- Auch der kleine Karten-/Designrest ist jetzt natürlicher: `Design-Kontext`, `Kartenkontext`, `Kontext dünn` und `Zusatzkontext` sprechen in den sichtbaren Nutzerflächen jetzt als `Designlage`, `Kartenlage`, `Lage lückenhaft` und `Zusatzdetails`.
+- Auch die letzten direkten Design-`Kontext`-Reste sind jetzt weg: Hinweise wie `Designkontext prüfen`, `Karten- und Designkontext` oder `Medienkontext` sprechen nun als `Designlage`, `Karten- und Designlage` und `Medienlage`.
+- Auch die restlichen Medienhinweise sprechen jetzt konsistent als Lage: `Kartenlink da, aber kaum Medienkontext` und `Karten- oder Medienkontext geladen` laufen nun als `Medienlage`.
+- Auch der kleine Fälligkeits- und Arbeitsstandsrest ist jetzt natürlicher: sichtbare Begriffe wie `Zeittrigger`, `Radar-Signale` und `Outcome` sprechen nun als `Fälligkeit`, `Dringlichkeitssignale` und `Bearbeitungsstand`.
+- Auch die kleinen Leerzustands- und Listenhinweise klingen jetzt weniger nach Rendering: `sichtbare Fälle` und `sichtbare Listen` sprechen in mehreren Spur-Panels nun als `geladene Fälle` und `geladene Listen`.
+- Auch die letzten beiden Bestandsreste sind weg: `sichtbare Fälle` im Bewegungsstrom und der `Outcome-Ereignisse`-Hinweis sprechen jetzt als `geladene Fälle` und `Bearbeitungsereignisse`.
+- Auch der kleine Team-/Leerzustandsrest klingt jetzt weniger intern: `gebündelte Reparaturspur sichtbar`, `Bewegungsstrom`, `operatorbezogen`, `geladene Listen` und `Verteilung sichtbar` sprechen nun natürlicher als geladener Bestand, aktuelle Bewegungen und vorhandene Verteilung.
+- Auch der kleine Angebots-/Kommunikationsrest ist geglättet: `sichtbare Kommunikationslogs`, `sichtbares Angebot`, `Angebotswert sichtbar`, `Deal-Lage sichtbar`, `Anfrageprofile sichtbar` und `letzter Impuls sichtbar` sprechen jetzt als vorhandene Kommunikationsspuren, Angebote, Deal-Lagen, Anfrageprofile und Kontaktimpulse.
+- Auch der kleine Arbeitsjargon rund um Abschluss- und Spurenlogik ist geglättet: `operativ offen`, `kaufnahe Nacharbeit` und mehrere `gebündelt`-Formulierungen sprechen jetzt als offene Fälle, kaufnahe Weiterarbeit, gesammelte Spuren oder gemeinsame Läufe.
+- Auch ein kleiner Detail-Fallback-Slice spricht jetzt konsistenter von vorhandenen statt sichtbaren Daten: Bildmaterial, Anrufeinträge, Mailspuren, Verlaufseinträge, Bestellhistorie und weitere Vorgänge laufen in den Leerzuständen nun als `vorhanden`.
+- Auch der nächste kleine Detailblock ist auf `vorhanden` gezogen: Mail-Kontext, Anfrageprofil, Kontakt-Vorgang, verknüpfter Auftrag, Versionshistorie und die beiden `Keine Details ...`-Fallbacks sprechen jetzt nicht mehr als `sichtbar`.
+- Auch der kleine Präsenz-/Leerzustandsblock im Fall- und Designraum ist nachgezogen: fehlende Befehle, Dokumente, Kontakt- und Rückrufdaten, Videos, E-Mails und Anrufeinträge sprechen jetzt konsistent als `vorhanden` statt als `sichtbar` oder `geladen`.
+- Auch mehrere Spuren- und Leerzustände sprechen jetzt konsistenter von vorhandenen statt sichtbaren Fällen: Leitfälle, priorisierte Fälle, operative Last, kritische Systembrüche, Feed-Einträge und kontaktweite Mehrfach-Vorgangs-Cluster laufen nun in derselben Präsenzsprache.
+- Auch Diagnose-, Vorschau- und Batch-Texte sprechen jetzt natürlicher: sichtbare Telefonnummern, eingehende Spuren, Kartenlisten, Aufträge, markierte Sammelfälle und der Änderungsverlauf laufen nun ohne die alten `sichtbar`-Formulierungen.
+- Auch Palette, Problem-/Reparaturspuren, Diagnose-Blocker und kaufnahe Detailtexte sprechen jetzt ohne die letzten `sichtbar`-Reste: aktuelle Fälle, vorhandene Angebotslagen, vorhandene Aufträge, operative Touchpoints und vorhandene Folgekontexte sind sprachlich konsistent nachgezogen.
+- Auch mehrere Arbeits- und Hilfetexte sprechen jetzt direkter: `operativ`, `Kontext` und `Top-5` wurden in sichtbaren CTA-, Batch- und Hero-Texten auf natürlichere Begriffe wie `direkte Fallarbeit`, `Lage` und `fünf ausgewählte Fälle` gezogen.
+- Auch die noch technischen `geladen`-Leerzustände sind geglättet: Kartenlagen, Medienlagen, Reparaturspuren, Bewegungen, aktive Falllagen und globale Ladeboxen sprechen jetzt als `vorhanden`, `gefunden` oder `werden zusammengestellt` statt mit rohen Ladeformulierungen.
+- Auch die verbleibenden sichtbaren `Kontext`-Begriffe in Plan-, Übergabe- und Teamflächen sind auf die etablierte Lage-Sprache gezogen: aus `Kontext prüfen`, `Team-Kontext` oder `Ablauf-Kontext` wurden `Lage prüfen`, `Teamlage` und `Ablauflage`.
+- Auch ein sichtbarer `operativ`-Restblock ist geglättet: Panels, Warnhinweise, Touchpoint-Texte und Abschlussmeldungen sprechen jetzt direkter von Arbeit, Fokus, Berührungspunkten, Bearbeitung und wichtigen Warnungen statt vom alten Prozessjargon.
+- Auch kleine englisch-technische Arbeitsbegriffe sind weiter bereinigt: `Replies`, `Callback-Lanes` und `Fokusblock` sprechen jetzt in sichtbaren Palette- und Schnellzugriffstexten als `Antworten`, `Rückrufspuren` und `Fokusrunde`.
+- Auch sichtbare `...-Fokus`-Begriffe in Team- und Steuerungsflächen sind auf die etablierte Lage-Sprache gezogen: `Kaufsignal-Fokus`, `Abschluss-Fokus` und `Reparatur-Fokus` laufen nun als `Kaufsignallage`, `Abschlusslage` und `Reparaturlage`.
+- Auch die sichtbaren `Session`-/`Kontext`-Reste im Arbeitsfluss sind bereinigt: `Session starten`, `Session verlassen`, `Ablauf für diese Session`, `passender Mail-Kontext`, `Tool-Hopping`, `Cluster öffnen` und mehrere `...Kontext`-Hilfetexte sprechen jetzt als `Spur`, `Lage`, `Mailbezug`, `Kontaktlage` oder direkter über Mail, Karten und Notizen.
+- Auch der kleine Kommunikations- und Teamjargon ist weiter geglättet: `Callback-Fenster`, `Outcome` und der kleine `Cluster`-Zähler in der Teamübersicht sprechen jetzt als `Rückruffenster`, `Bearbeitungsstand` und `Kontaktlagen`.
+- Auch der letzte sichtbare Leerzustand mit `Mehrfach-Vorgangs-Cluster` spricht jetzt als `Mehrfach-Vorgangslagen` statt mit dem alten Cluster-Begriff.
+- Auch die sichtbaren `Fokus`-Reste sind auf Schritt- und Lage-Sprache gezogen: `nächster Fokus`, `Dossier-Fokus`, `persönlicher Fokus`, `Spur-Fokus` und `Fokusrunde` sprechen jetzt als `nächster Schritt`, `Dossierschritt`, `persönliche Lage`, `nächster Schritt` und `Arbeitsrunde`.
+- Auch der kaufnahe Restblock spricht jetzt konsistenter als Lage- und Abschlusssprache: `Angebotskontext`, `Deal-/Angebotskontext`, `kommerziell` und ähnliche Formulierungen laufen jetzt als `Angebotslage`, `Deal-/Angebotslage`, `Abschluss-Spur` oder `abschlussnahe Fälle`.
+- Auch die sichtbaren `Leitfall`-Formulierungen sind auf direktere Nutzersprache gezogen: Listen, Leerzustände und Zusatzdetails sprechen jetzt vom `führenden Fall` statt vom internen `Leitfall`.
+- Auch der sichtbare `Deal`-Bereich ist konsistenter in die Kommandozentrale-Sprache gezogen: Bereichslabels, Buttons und Hilfetexte sprechen jetzt als `Verkauf & Herkunft`, `Verkaufsfall`, `Verkaufsabgleich` oder `Verkaufs-/Angebotslage` statt mit den alten `Deal`-Mischbegriffen.
+- Auch der sichtbare `interne`-Nachlauf ist bereinigt: Verkaufsraum, Übergabetexte und Notizflächen sprechen jetzt als `Arbeitslinks`, `Team-Übergaben`, `Teamnotiz` oder `Entwurf intern` statt mit alten `interne`-Formulierungen.
+- Auch die sichtbaren Such- und Ladezustände sprechen jetzt konsistenter: `Kunde laden` und rohe `lädt...`-Texte laufen nun als `Fall laden`, `Fall wird geladen...` und `wird geladen...`.
+- Auch der sichtbare Verkaufs-/Herkunftsblock ist weiter enttechnisiert: `Deal`-Reste sprechen jetzt als `Verkaufsfall` oder `Dealnummer`, `Anfrageprofil` als `Anfragedaten`, `Herkunftsparameter` als `Herkunftsdaten`, `Verkaufssystem` als `Verkaufsdaten` und generische `Original öffnen`-Links als `Quelle öffnen`.
+- Auch die verbleibenden kaufnahen Restformulierungen sind geglättet: `Dealphase` und `Dealstatus` sprechen jetzt als `Verkaufsphase` und `Verkaufsstand`, `Verkaufssystem`-Hinweise als `Verkaufsdaten`, `Entwurfslink` als `Entwurf`, `Kunde suchen` als `Fall suchen` und die letzten `Kontext`-Fallbacks als `Lage` oder `Details`.
+- Auch der sichtbare `Datensatz`-Nachlauf ist weiter auf Fallsprache gezogen: Fehlermeldungen, Leerzustände, Suchhilfe, Hero-Texte und mehrere `...im Datensatz`-Hinweise sprechen jetzt als `Fall`, `Fallsuche` oder `...im Fall`; dazu wurden `Kommunikationskontext` und `Arbeitskontext` auf `Kommunikationslage` und `Arbeitslage` gezogen.
+- Auch der sichtbare Kommunikationswortschatz ist weiter geglättet: `Kunde` und `Kundenmail` sprechen in Reaktions-CTAs, Mailkarten, Zeitachsen, Briefzeilen und Formularvorgaben jetzt als `Kontakt`, `Antwort` oder `letzte eingehende Mail`.
+- Auch mehrere generische Fallbacks und Statuschips sind geglättet: `Kein WhatsApp`, `Kein Wert`, `Noch keiner`, `Keine Spur`, `Lage lückenhaft` und rohe ID-Hinweise sprechen jetzt klarer als `Noch kein ...`, `Antwort eingegangen`, `Noch unvollständig` oder `... verknüpft`.
+- Auch die Detail-Fallbacks in Angebots-, Auftrags- und Herkunftskarten sind natürlicher: `Stand fehlt`, `Versandstatus fehlt`, `Keine Beschreibung`, `Keine Farben`, `Unbekannt`, `Keiner` und ähnliche Platzhalter sprechen jetzt als `… nicht hinterlegt`, `Farbangaben`, `Nicht verknüpft` oder `Noch kein …`.
+- Auch die letzten offenen Status-Fallbacks im Detailbereich sind geschlossen: sichtbare `Stand fehlt`-, `Unbekannt`- und `Keiner`-Reste laufen jetzt ebenfalls als `Stand nicht hinterlegt`, `Nicht hinterlegt` oder `Noch keiner`.
+- Auch der kleine Angebots-/Versions-Slice ist geglättet: `Mail schreiben`, `Bestellung ohne Nummer`, `Kein Kontaktfeld`, `locked`, `Versionen-Bilder`, `keiner offen` und `ohne Bearbeiter` sprechen jetzt als `Mail vorbereiten`, `Auftrag ohne Nummer`, `Kein Kontakteintrag`, `gesperrt`, `Versionsbilder`, `kein offener Problemfall` und `ohne Namen`.
+- Auch der Karten-/Brief-Nachlauf ist weiter enttechnisiert: sichtbare `Trello:`-Zeilen sprechen jetzt als `Karte:`, `Trello/Design` als `Karten & Design`, `Entwurf intern` als `Team-Entwurf`, `Bestellkontext` als `Bestelllage` und die rohe Angebotszeile mit `Projekt`/`Live` als `Projektnummer` und `Aktueller Kundenwert`.
+- Auch der sichtbare `Kunde`-/`Kundendaten`-Nachlauf ist weiter auf Kontakt- und Fallsprache gezogen: `Kundensignal`, `Kundenmail`, `Kundendaten`, `Kundenzentrale`, `Nächsten Kunden öffnen` und ähnliche Formulierungen sprechen jetzt als `Kontaktimpuls`, `eingehende Mail`, `Kontaktdaten`, `Fallzentrale` und `Nächsten Fall öffnen`.
+- Auch die letzten Hero-Reste dieses Slices sind nachgezogen: `Offene Kundenfälle` und `Kundendaten` sprechen dort jetzt ebenfalls als `Offene Fälle` und `Kontaktdaten`.
+- Auch der kleine Angebots-Slice ist weiter geglättet: `Kundenereignis`, `Noch kein Angebotsereignis`, `Kontakt im Angebotsstand` und `Angebots- oder Projektlage` sprechen jetzt als `Kontaktimpuls zum Angebot`, `Noch kein Kontaktimpuls zum Angebot`, `Kontakt im Angebot` und `Angebots- oder Projektdaten`.
+- Auch der kleine Verkauf-/Karten-Slice ist auf Fall- und Lagesprache gezogen: `Kartenlink`, `geladene Medienlage`, `Vorgangskontext`, `Angebotsstand vorhanden`, `Vorgang ... verknüpft`, `Verkaufsfall-Verknüpfung` und `Dealnummer` sprechen jetzt als `Kartenbezug`, `vorhandene Medienlage`, `Falllage`, `Angebot vorhanden`, `Fall ... verknüpft`, `mit Verkaufsfall` und `Verkaufsfallnummer`.
+- Auch die letzten sichtbaren `Bearbeitungsstand`-Reste sind auf die etablierte Zustandssprache gezogen: `Bearbeitungsstand` spricht jetzt in Warnhinweisen, Karten und Quick-Actions durchgängig als `Fallstand`.
+- Auch der kleine Medien-/Kartenstatus-Slice ist geglättet: `Kartenlage fehlt`, `Entwurfsbilder live`, `Noch lückenhaft`, `Keine Kartenlage vorhanden`, `Keine editierbare Karte erkannt` und `Noch keine Karten` sprechen jetzt als `Keine Kartenlage`, `Entwurfsbilder vorhanden`, `Medienlage lückenhaft`, `Keine Kartenlage verfügbar`, `Keine bearbeitbare Karte erkannt` und `Keine Karten gefunden`.
+- Auch der kleine Kontakteditor-/Hilfetext-Slice ist weiter enttechnisiert: `Billing E-Mail`, `Korrigierte E-Mail`, `betroffene Tabellen`, `Startpunkt ... Nachschlagen` und `Themenblöcke` sprechen jetzt als `Rechnungs-E-Mail`, `Aktualisierte E-Mail`, `betroffene Bereiche`, `Arbeitsstart ... statt nur zum Nachschlagen` und `Arbeitsblöcke`.
+- Auch der sichtbare `Mailbox`-Slice ist auf klare Telefonsprache gezogen: Buttons, Schnellaktionen, Prüftexte und Rückrufmeldungen sprechen jetzt als `Anrufbeantworter` statt als `Mailbox`.
+- Auch der kleine Status-Fallback-Slice ist kompakter gezogen: `Stand nicht hinterlegt`, `Versandstand nicht hinterlegt`, `Verkaufsphase fehlt`, `Verkaufsstand fehlt` und sichtbare `Noch nicht verknüpft`-Fälle sprechen jetzt als `Kein Stand hinterlegt`, `Kein Versandstand`, `Keine Verkaufsphase`, `Kein Verkaufsstand` und `Nicht verknüpft`.
+- Auch der kleine Kontaktdaten-/Editor-Slice ist geglättet: `Fuehrende Stammdaten`, `Stammdaten mit Folgewirkung`, `Stammdaten-Editor` und die zugehörige Reparaturmeldung sprechen jetzt als `Führende Kontaktdaten`, `Kontaktdaten mit Folgewirkung`, `Kontaktdaten bearbeiten` und `... mit den aktuellen Kontaktdaten repariert`.
+- Auch der sichtbare `Vollbild`-Slice ist auf Lagesprache gezogen: `Vollbild`, `Vollbild kopieren` und `NEONTRIP Vollbild` sprechen jetzt als `Gesamtlage`, `Gesamtlage kopieren` und `NEONTRIP Gesamtlage`.
+- Auch der kleine Kartenaktions-Slice ist konsistenter gezogen: `Karte öffnen`, `Karte speichern` und `Kartenfelder ...` sprechen jetzt als `Kartenansicht öffnen`, `Kartenänderungen speichern` und `Kartenangaben ...`.
+- Auch der kleine Folgesysteme-/Kontaktdaten-Slice ist natürlicher formuliert: `E-Mail driftet`, `Stammdaten stehen`, mehrere `Folgesysteme`-Hinweise und die begleitenden Hero-/Infotexte sprechen jetzt als `E-Mail weicht ab`, `Kontaktdaten vollständig`, `Folgeprozesse` und `... greifen sauber ineinander`.
+- Auch der kleine Abschluss-/Angebots-Slice ist geglättet: `Angebotslage aktiv`, `Abschluss offen`, `Angebots-/Bildlage vorhanden`, `Verkaufs-/Angebotslage aktiv` und ähnliche Paneltexte sprechen jetzt als `Angebotsdaten aktiv`, `Abschluss noch offen`, `Angebots- oder Bilddaten vorhanden` und `Verkaufs- oder Angebotsdaten aktiv`.
+- Auch der sichtbare Arbeitsflächen-Slice ist auf die neue Zentralsprache gezogen: `Meine Spuren`, `Operative Spuren` und `Nach Themen` sprechen jetzt als `Meine Arbeitsspuren`, `Arbeitsspuren` und `Nach Arbeitsblöcken`, inklusive der zugehörigen Schnellaktionen, Themenumschalter und Lade-/Leerzustände.
+- Auch der Kontakt-Dossier-Slice ist natürlicher gezogen: `Clusterfälle`, `Mehrfach-Vorgangs...` und die zugehörigen Kontaktlagen-Hinweise sprechen jetzt als `Dossierfälle`, `Kontakte mit mehreren Vorgängen`, `Kontaktlage` oder `kontaktweite Dossiers`.
+- Auch der kleine Zuweisungs-Slice ist geglättet: `Mir ziehen`, `fokus`, `Kontaktsteuerung` und die holprigen Zuständigkeitsleersätze sprechen jetzt als `Mir zuweisen`, `anzeigen`, `Kontaktzuordnung` und klarere Zuweisungsformulierungen.
+- Auch der kleine Kaufsignal-/Rückgewinnungs-Slice ist präzisiert: `Kontakt-Kaufsignal`, `Rückgewinnungs-Ablauf` und `Verkaufs-/Angebotsraum` sprechen jetzt als `Kaufsignal im Kontakt-Dossier`, `Rückgewinnungsablauf` und `Verkaufs- oder Angebotsdaten`.
+- Auch der kleine Ablauf-Slice ist vereinfacht: `geführte Arbeitssequenzen`, `Arbeitsläufe`, `geführte Arbeit` und `Arbeitssequenzen` sprechen jetzt als `begonnene Abläufe`, `laufende Abläufe` oder einfach `Abläufe`.
+- Auch der kleine Kaufinteresse-Slice ist geglättet: sichtbare `Kaufsignal`-/`Signale`-Begriffe sprechen jetzt als `Kaufinteresse`, `Kaufinteressenlage`, `Kaufinteressen-Spur`, `Hinweise` oder `Fälle mit Kaufinteresse`.
+- Auch der kleine Kollaborations-/Abschluss-Slice ist geglättet: `Verkaufs-Tab`, `Nebentools`, `freie Zurufe`, `mitgezogen` und mehrere formale Dossier-/Kaufinteresse-Sätze sprechen jetzt natürlicher als `Verkaufsansicht`, `Nebenbereiche`, `lose Zurufe`, `mitaktualisiert` und `gemeinsam bearbeitet`.
+- Auch der kleine Qualitäts-/Diagnose-Slice ist geglättet: mehrere `sauber`-/`konsistent`-/`uneinheitlich`-Formulierungen sprechen jetzt als `stimmig`, `passen`, `weichen voneinander ab` oder `eindeutig verknüpft`.
+- Auch der kleine Diagnose-/Telefon-Slice ist präzisiert: `belastbar`/`nutzbar`, `Kerndaten`, `Zusatzdetails`, `Klarstatus`/`Kurzdiagnose` und die alte ASCII-Stelle sprechen jetzt als `verlässlich`, `wichtige Daten`, `weitere Details`, `Status`/`Kurzprüfung` und `eingeschränkt`.
+- Auch der kleine Diagnose-Status-Slice ist vereinheitlicht: die verbleibenden `sauber`-Statusmarker und Überschriften im Fall-Check/Datenabgleich sprechen jetzt als `stimmig`.
+- Auch der kleine Übersichts-Slice ist enttechnisiert: `Reparatursteuerung`, `Abschlusssteuerung` und `Ablauf-Steuerung` sprechen jetzt als `Reparaturübersicht`, `Abschlussübersicht` und `Ablaufübersicht`, inklusive der zugehörigen Übergabe- und Nutzergründe.
+- Auch der kleine Kartenlink-Slice ist vereinheitlicht: die verbleibenden sichtbaren Quicklinks `Karte` sprechen jetzt als `Kartenansicht`, damit sie zur übrigen Karten-/Designsprache passen.
+- Auch der kleine Such-/Merkliste-Slice ist bereinigt: die verbliebenen sichtbaren `Datensatz`-Formulierungen sprechen jetzt als `Fall`, `Falllage` oder `Fall laden`.
+- Auch der kleine Problemfall-Ton ist geglättet: offene Frage-, Kulanz- und Nachverfolgungstexte sprechen jetzt klarer als `klare Antwort`, `eindeutig geklärt` und `verlässlich nachverfolgt`.
+- Auch der kleine Angebots-Fallback-Slice ist geglättet: kompakte Leerzustände sprechen jetzt als `Kein Angebot` bzw. `kein Angebot` statt weiter als `Kein Angebotsstand`.
+- Auch der letzte sichtbare `Sonderfälle`-Nachlauf ist bereinigt: die verbleibenden UI-Texte sprechen jetzt konsequent als `Problemfälle`.
+- Auch der kleine `Kunden`-Nachlauf ist bereinigt: verbleibende Hilfetexte und Labels sprechen jetzt als `Fall`, `Kontaktwert`, `Kontaktnotiz` und `letzter Kontakt`.
+- Auch der kleine Playbook-/Reparatur-Ton ist geglättet: verbliebene `sauber`-/`bewusst`-Formulierungen sprechen jetzt als `klar`, `verlässlich`, `korrekt` oder `strukturiert`.
+- Auch der kleine Hero-/Übergabe-Ton ist geglättet: verbleibende `sauber`-/`bewusst`-Formulierungen sprechen jetzt direkter als `gezielt`, `klar`, `direkt`, `korrekt` oder `sicher`.
+- Auch der letzte kleine `sauber`-Nachlauf ist bereinigt: Angebots-, Übergabe- und Ausgangstexte sprechen jetzt als `eindeutig verknüpft`, `klar rausgehen` und `korrekt abschließen`.
+- Auch der kleine `Angebotsstand`-Nachlauf ist geglättet: sichtbare Nutzertexte sprechen dort jetzt direkter als `Angebot` oder `Angebotsdaten`.
+- Auch der kleine Karten-/Medien-Slice ist geglättet: der sichtbare `Kartenbezug`-Wortlaut spricht jetzt natürlicher als vorhandene Karten, Kartenlage oder Karten und Angebotsdaten.
+- Auch der kleine `Anfragekarte`-Nachlauf ist geglättet: die sichtbare Kartenquellen-Sprache spricht jetzt als `Hauptkarte`.
+- Auch der kleine Merkliste-Slice ist geglättet: `angepinnt`/`anpinnen` spricht jetzt als `gemerkt`, `Merken` oder `zur Merkliste hinzufügen`.
+- Auch der kleine Hero-/Hilfetext-Slice ist geglättet: `direkt im Griff`, `Feinsteuerung`, `Zusatzwerkzeuge`, `Arbeitsstart` und die `wichtigste Arbeitslage` sprechen jetzt als klarere Arbeitsbegriffe.
+- Auch der kleine Medienblock ist geglättet: sichtbare Dateimuster und das rohe `Item` sprechen jetzt als Bilddateien, Referenzbild und `Motiv`.
+- Auch der sichtbare Session-Helferblock ist geglättet: Fokusleiste und Session-Hilfetexte sprechen jetzt als `Arbeitsspur`, `Eingang`, `Abschlusslage`, `Kaufinteresse`, `Kontakt-Dossiers` und `Merkliste` statt mit `Session`-, `Commercial`-, `Cluster`- oder `Watchlist`-Resten.
+- Auch der kleine Verkaufs-/Detail-Slice ist geglättet: `Kauf- und Anrufkontext`, `Verkaufslage`, `Vorgangs-Wert`, `mit Verkaufsfall` und `aktiv/offen` sprechen jetzt als `...lage`, `Verkaufsdaten`, `Fallwert`, `mit verknüpftem Verkaufsfall` und `aktiv oder offen`.
+- Auch der kleine Such-/Briefing-Slice ist geglättet: `Vorgangs-ID`, `Vorgangsbeschreibung`, `Geladene Vorgänge` und ähnliche Suchhilfen sprechen jetzt als `Fall-ID`, `Fallbeschreibung` und `Geladene Fälle`.
+- Auch der kleine Zuordnungs-Slice ist geglättet: sichtbare `verknüpft`-Reste sprechen jetzt als `zugeordnet` oder `hinterlegt`, etwa bei Aufträgen, Verkaufsfällen, Entwürfen, Konversationen und Dossier-Vorgängen.
+- Auch der kleine Medien-/Fallback-Slice ist geglättet: `Weitere Anfrage`, `Angebotsbild`, `Angebotsbilder`, `Herkunft unbekannt`, `Noch kein Wert` und `Verkaufsfall öffnen` sprechen jetzt als `Weiteren Fall`, `Angebotsmotiv`, `Angebotsmotive`, `Keine Herkunft hinterlegt`, `Kein Wert hinterlegt` und `Verkaufsdaten öffnen`.
+- Auch der kleine Status-Fallback-Slice ist geglättet: `Kein Stand hinterlegt`, `Kein Versandstand`, `Nicht zugeordnet`, `Kein Verkaufsfall zugeordnet` und `Kein Wert hinterlegt` sprechen jetzt knapper als `Kein Stand`, `Kein Versandstatus`, `Nicht hinterlegt`, `Kein Verkaufsfall` und `Kein Wert`.
+- Auch der kleine Spur-Konsistenz-Slice ist geglättet: sichtbare `Rückgewinnungs-Spur`, `Abschluss-Spur` und `Kaufinteressen-Spur` sprechen jetzt einheitlich als `Rückgewinnungsspur`, `Abschlussspur` und `Kaufinteressenspur`.
+- Auch der kleine Such-/Fokus-Slice ist geglättet: `Verkaufsfallnummer`, `Problemfälle offen`, `Problemfälle überfällig` und `Kaufinteresse offen` sprechen jetzt als `Verkaufsfall`, `Offene Problemfälle`, `Überfällige Problemfälle` und `Offenes Kaufinteresse`.
+- Auch der kleine Verkaufs-/Fallback-Slice ist geglättet: `Noch kein Auftrag`, `Angebot offen`, `kein aktives Angebot`, `kein offener Problemfall`, `kein Link hinterlegt`, `Keine Verkaufsphase`, `Kein Bereich` und `Noch kein WhatsApp` sprechen jetzt natürlicher als `Kein Auftrag`, `Angebot noch offen`, `Kein aktives Angebot`, `Kein offener Problemfall`, `Kein Link hinterlegt`, `Keine Verkaufsphase hinterlegt`, `Kein Bereich hinterlegt` und `Noch nicht per WhatsApp gesendet`.
+- Auch der kleine Session-Helfer-Slice ist geglättet: Fokusleisten- und CTA-Texte aus `customer-records-session-meta.ts` sprechen jetzt klarer als `Arbeitsspur`, `Verkaufs- und Angebotslage`, `Kaufinteressenlage`, `Ablaufspur`, `Kontakt-Dossier` und `Nächsten Abschlussfall öffnen` statt mit den alten Strecken- und Mischformulierungen.
+- Auch der kleine Puls-/Diagnose-Slice ist geglättet: `Momentum`, `Signiert`, `Fehlt`, `Nur Ausgangsspuren` und `Noch keine Spur` sprechen jetzt als `Kaufstand`, `Unterschrieben`, `Nicht hinterlegt`, `Bisher nur Ausgangsspur` und `Noch keine Kommunikationsspur`.
+- Auch der kleine Bereitschafts-/Fallback-Slice ist geglättet: `Gestoppt`, `Erlaubt`, `Noch nicht aktiv`, `Keine Angebots- oder Projektdaten`, `Keine Herkunftsdaten gespeichert.`, `Keine Fallbeschreibung gespeichert.`, `Noch kein protokollierter Anruf aus Direktquelle oder Prüfspur`, `Noch nicht protokolliert`, `Keine Details vorhanden.` und `Noch nicht versendet` sprechen jetzt klarer als `Kontaktstopp`, `Aktiv`, `Noch nicht gestartet`, `Keine Angebotsdaten hinterlegt`, `Keine Herkunftsdaten hinterlegt.`, `Keine Fallbeschreibung hinterlegt.`, `Noch kein protokollierter Anruf vorhanden`, `Nicht protokolliert`, `Keine Details hinterlegt.` und `Nicht versendet`.
+- Auch der kleine `offen`-/`aktiv`-/Ablauf-Slice ist geglättet: `Antworten offen`, `Antwort offen`, `Ablauf fortsetzen`, `Ablauf aktiv`, `Ablauf veraltet`, `Offene Rückfrage schließen`, `Offenen Folgeprozess steuern`, `Meine aktiven Abläufe`, `Offene Übergaben`, `Offene Problemfälle`, `Problemfall offen` und `Auftrag vorhanden, Fall noch offen` sprechen jetzt natürlicher als `Antworten ausstehend`, `Antwort ausstehend`, `Im Ablauf weitermachen`, `Ablauf läuft`, `Ablauf stockt`, `Rückfrage klären`, `Folgeprozess weiterführen`, `Meine laufenden Abläufe`, `Ausstehende Übergaben`, `Ungelöste Problemfälle`, `Ungelöster Problemfall` und `Auftrag vorhanden, Fall noch in Arbeit`.
+- Auch der kleine Ablauf-/Bewegungs-Slice ist jetzt konsistent: Sichtbare `Aktive Abläufe`-Texte und der leere `Feed-Einträge`-Hinweis sprechen jetzt als `Laufende Abläufe` und `Bewegungen aus den geladenen Fällen`.
+- Auch der kleine Prüf-/Anruf-Slice ist geglättet: Sichtbare `Prüfspur`-, `Direktquellen`-, `Kurzprüfung`- und `Vorschau + Prüfspur`-Texte sprechen jetzt als `Prüfeinträge`, `direkte Anrufe`, `Kurzüberblick` und `Vorschau + Prüfung`.
+- Auch der kleine Herkunfts-/Hero-Slice ist geglättet: `E-Mail-Fallback`, `master_orders` und `live offen` sprechen jetzt als `E-Mail-Abgleich`, `Auftragsdaten` und `jetzt offen`.
+- Auch der kleine Kommunikations-Slice ist geglättet: Die sichtbaren Kurzformen `raus` und `rein` sprechen jetzt als `gesendet` und `eingegangen`.
+- Auch der kleine Fallback-/Zähler-Slice ist geglättet: `Keins`, `aktiv oder offen`, `Noch keiner`, `keiner gesetzt`, `noch nicht gesetzt` und `noch nicht zugeordnet` sprechen jetzt klarer als `Kein Angebot`, `Verkaufsfälle in Arbeit`, `Noch nicht geplant`, `nicht geplant`, `nicht zugewiesen` und `kein Auftrag hinterlegt`.
+- Auch der kleine Telefon-/Angebots-Slice ist geglättet: `Aktiver Standardfall ohne Abschlussstatus`, `Kontakt derzeit blockiert`, `Kontakt auf Rückruf gesetzt`, `Kontakt normal erreichbar`, `Noch keine Anrufspur vorhanden`, `Noch keine verlässliche Anrufspur ...`, `Per WhatsApp gesendet`, `Signiert`, `Zuletzt angesehen`, `Noch kein Rückruf- oder Anrufplan hinterlegt` und `Nicht protokolliert` sprechen jetzt natürlicher als `Standardfall ohne Abschlussstatus`, `Kontakt aktuell gesperrt`, `Rückruf vorgesehen`, `Kontakt erreichbar`, `Noch kein Anrufeintrag vorhanden`, `Noch keine verlässliche Anrufnotiz ...`, `Über WhatsApp gesendet`, `Unterschrieben`, `Zuletzt geöffnet`, `Noch kein Rückruf- oder Anrufplan vorhanden` und `Kein Eintrag`.
+- Auch der kleine Mail-/Anrufspur-Slice ist geglättet: `Anrufspur`, `Anrufspuren`, `Zieladressen`, `Mail-Ziele`, `Erinnerungszeile`, `Dokumentenzeile`, `Dokumentenhistorie` und `letzte Mail-/Anrufspur` sprechen jetzt als `Anrufeintrag`, `Anrufeinträge`, `E-Mail-Ziele`, `Aktuelle E-Mail-Ziele`, `Erinnerungseintrag`, `Dokumenteintrag`, `Dokumenteinträge` und `letzte Mail oder letzter Anruf`.
+- Auch der kleine Design-Slice ist geglättet: `Design-Snapshot` und `Visual(s)` sprechen jetzt als `Designüberblick` und `Motiv(e)`.
+- Auch der kleine Erreichbarkeits-Slice ist geglättet: `Anrufregeln`, `Kontaktierbarkeit`, `Kontakt blockiert` und `Noch keine Anrufhistorie` sprechen jetzt als `Erreichbarkeit`, `Erreichbarkeit`, `Kontakt gesperrt` und `Noch keine Anrufe`.
+- Auch der kleine Telefon-Slice ist geglättet: `Telefon ergänzen`, `Rückruf ohne Nummer`, `Noch keine Anrufe`, `Anrufe prüfen` und `Anrufbereitschaft` sprechen jetzt als `Telefonnummer ergänzen`, `Rückruf ohne Telefonnummer`, `Keine Anrufe erfasst`, `Anrufe ansehen` und `Telefonlage`.
+- Auch der kleine Verkaufs-Hinweis-Slice ist geglättet: `Vertrieb prüfen`, `Verkaufs- und Herkunftsraum` und `Verkaufsansicht` sprechen jetzt als `Verkaufsdaten öffnen`, `Verkaufs- und Herkunftslage` und `Verkaufsdaten`.
+- Auch der kleine Karten-/Medien-Slice ist geglättet: `Karten & Design`, `Karten- und Designlage`, `Karten- oder Designlage`, `Designlage nachziehen` und die zugehörigen Öffnen-Texte sprechen jetzt als `Karten & Medien`, `Karten- und Medienlage`, `Karten- oder Medienlage`, `Medienlage nachziehen` und `Karten & Medien öffnen`.
+- Auch der kleine Offen-/Übergabe-Slice ist geglättet: sichtbare Resttexte wie `offen`, `Erinnerung offen`, `Auslöser offen` und `Übergabe offen` sprechen jetzt als `ungelöst`, `Erinnerung ausstehend`, `Auslöser ausstehend` und `Übergabe ausstehend`.
+- Auch der kleine Angebots-/Leerdaten-Slice ist geglättet: `Kein aktives Angebot`, `Noch kein Auftrag vorhanden`, `Kein aktiver Kaufimpuls vorhanden`, `Noch keine E-Mail vorhanden`, `Kein Bereich hinterlegt`, `Kein Angebotssummenwert` und ähnliche Leerzustände sprechen jetzt kompakter als `Kein aktuelles Angebot`, `Kein Auftrag vorhanden`, `Kein Kaufimpuls vorhanden`, `Keine E-Mail vorhanden`, `Kein Bereich` und `Kein Angebotswert`.
+- Auch der kleine Dossier-/Verkaufsfallback-Slice ist geglättet: aus `offene Erinnerungen`, `Noch kein nächster Auslöser gesetzt`, `Weitere Vorgänge desselben Kontakts`, `Noch kein dedizierter Rückgewinnungs-Start geloggt`, `Noch kein protokollierter Anruf vorhanden`, `Noch kein Lieferdatum` und `Kein Rechnungs-/Abgleichhinweis` wurden natürlichere Formulierungen wie `ausstehende Erinnerungen`, `Noch kein nächster Schritt geplant`, `Weitere Fälle im Kontakt-Dossier`, `Noch kein Start der Rückgewinnung erfasst`, `Noch kein Anruf protokolliert`, `Kein Lieferdatum` und `Kein Rechnungs- oder Abgleichhinweis`.
+- Auch der kleine Offen-/Ablauf-Slice ist geglättet: `Mehrfach-Vorgänge parallel offen`, `Rückgewinnung offen`, `Aktuell steht kein harter Folgeprozess mehr offen.`, `Fällige Erinnerungen aktiv steuern` und `Keine offenen Erinnerungen` sprechen jetzt als `Mehrere Vorgänge gleichzeitig in Arbeit`, `Rückgewinnung ausstehend`, `Aktuell ist kein nächster Folgeprozess geplant.`, `Fällige Erinnerungen bearbeiten` und `Keine ausstehenden Erinnerungen`.
+- Auch der kleine Verkaufs-/Detailfallback-Slice ist geglättet: `Keine Verkaufsphase hinterlegt`, `Kein Entwurf hinterlegt`, `Noch keine Beschreibung hinterlegt`, `Noch kein besonderer Fallstand gesetzt`, `Noch keine Mailspuren im Fall vorhanden`, `Noch kein aktives Dokument`, `Keine Angebotsdaten hinterlegt`, `Keine Herkunftsdaten hinterlegt`, `Keine Fallbeschreibung hinterlegt` und `Noch keine Sendungsverfolgung` sprechen jetzt direkter als `Keine Verkaufsphase`, `Kein Entwurf`, `Keine Beschreibung`, `Kein besonderer Fallstand`, `Keine Mailspuren im Fall`, `Kein aktives Dokument`, `Keine Angebotsdaten`, `Keine Herkunftsdaten`, `Keine Fallbeschreibung` und `Keine Sendungsverfolgung`.
+- Auch der kleine `Nicht hinterlegt`-/`Kein Link`-Slice ist geglättet: rohe Kurzfallbacks wie `Nicht hinterlegt`, `kein Auftrag hinterlegt`, `kein Entwurf hinterlegt`, `Kein Link hinterlegt`, `Noch nicht gesetzt`, `Keine Details hinterlegt.` und `Keine Zusammenfassung aus Anruf oder Prüfung hinterlegt.` sprechen jetzt als `Kein Auftrag`, `Kein Verkaufsfall`, `Keine Verkaufsphase`, `Kein Eingangsdatum`, `kein Entwurf`, `Kein Link`, `Nicht zugewiesen`, `Keine Details.` und `Keine Zusammenfassung aus Anruf oder Prüfung.`.
+- Auch der kleine Angebotskarten-Slice ist geglättet: `Noch nicht über WhatsApp gesendet`, `Kein Wert hinterlegt`, `Keine Herkunft hinterlegt`, `Kein letzter Stand`, `Keine kompakten Anfragedaten vorhanden.`, `Kein Angebots-Abgleichhinweis`, `Noch nicht` und `Noch nicht terminiert` sprechen jetzt direkter als `Nicht über WhatsApp gesendet`, `Kein Wert`, `Keine Herkunft`, `Noch kein letzter Stand`, `Keine kompakten Anfragedaten.`, `Kein Angebotsabgleich`, `Nicht gestartet` und `Nicht terminiert`.
+- Auch der kleine Empty-State-Slice ist geglättet: `Noch keine Fälle gemerkt`, `Noch keine zuletzt geöffneten Fälle gespeichert.`, `Noch keine aktuellen Bewegungen vorhanden`, `Noch keine Verteilung vorhanden.`, `Noch keine aktive Falllage vorhanden`, `Noch keine Teamnotiz vorhanden.`, `Noch keine Teamnotizen vorhanden.`, `Noch keine E-Mail` und `Noch kein Name` sprechen jetzt kürzer als `Keine gemerkten Fälle`, `Keine zuletzt geöffneten Fälle`, `Keine aktuellen Bewegungen`, `Keine Verteilung.`, `Keine aktive Falllage vorhanden`, `Keine Teamnotiz vorhanden.`, `Keine Teamnotizen vorhanden.`, `Keine E-Mail` und `Kein Name`.
+- Auch der kleine Diagnose-/Blocker-Slice ist geglättet: `Keine weiteren Details zum führenden Fall.`, `Kein Feldvergleich vorhanden`, `Noch keine eingehende Mail oder Antwortspur im Fall gespeichert.`, `Keine eingehende Spur im Fall`, `Keine primäre E-Mail am Kontakt`, `Keine bearbeitbare Karte erkannt` und `Keine Telefonnummer für Rückruf vorhanden` sprechen jetzt als `Keine zusätzlichen Details zum führenden Fall.`, `Keine geänderten Felder`, `Keine eingehende Mail oder Antwortspur im Fall.`, `Keine eingehende Spur`, `Keine Haupt-E-Mail am Kontakt`, `Keine bearbeitbare Karte` und `Keine Telefonnummer für Rückruf`.
+- Auch der kleine Kommunikations-/Angebotsfallback-Slice ist geglättet: `Noch keine Kommunikationsspur`, `Noch keine Kommunikationsspuren am Fall vorhanden.`, `Noch keine Mail`, `Noch keine Antwort erkannt` und `Kein aktuelles Angebot` sprechen jetzt direkter als `Keine Kommunikationsspur`, `Keine Kommunikationsspuren am Fall.`, `Keine Mail`, `Keine Antwort erkannt` und `Kein Angebot`.
+- Auch der kleine Verkaufsstatus-Slice ist geglättet: `Kein Stand`, `Kein Versandstatus`, `Kein Verkaufs- oder Fallstand`, `Kein letzter Kontaktimpuls`, `Kein Kontakteintrag`, `Kein Kontakt im Angebot` und `Kein Bestell-/Rechnungshinweis` sprechen jetzt als `Stand offen`, `Versand offen`, `Stand offen`, `Noch kein Kontaktimpuls`, `Kein Kontakt`, `Kein Kontakt` und `Kein Bestell- oder Rechnungshinweis`.
+- Auch der kleine Hinweis-/Beschreibungsslice ist geglättet: `Kein Zusatztext hinterlegt.`, `Kein Zusatzhinweis`, `Kein weiterer Vorschautext hinterlegt.` und `Kein weiterer Beschreibungstext vorhanden.` sprechen jetzt als `Kein zusätzlicher Hinweis.`, `Kein Hinweis`, `Keine weitere Vorschau.` und `Keine weitere Beschreibung.`.
+- Auch der kleine Anfrage-/Herkunftsslice ist geglättet: `Kein Bereich`, `Keine Herkunftsdaten`, `Keine weiteren Anfragedaten.`, `Keine Farbangaben`, `Kein Verkaufs- oder Anfragebereich`, `Keine kompakten Anfragedaten.`, `Kein Angebotsabgleich` und `Kein weiterer Kontaktfall vorhanden` sprechen jetzt als `Kein Bereich angegeben`, `Keine Herkunftsangaben`, `Keine zusätzlichen Anfragedaten.`, `Keine Farben angegeben`, `Kein Bereich zum Verkaufsfall`, `Keine kompakten Anfragedaten`, `Kein Abgleich zum Angebot` und `Kein weiterer Kontaktfall`.
+- Auch der kleine Kommunikations-/Historien-Empty-State-Slice ist geglättet: `... keine Kommunikationsspuren vorhanden`, `Noch kein passender Mailbezug vorhanden.`, `... keine Verlaufseinträge vorhanden`, `... keine Bestellhistorie vorhanden`, `... keine weiteren Vorgänge vorhanden`, `... keine Anrufeinträge vorhanden` und `... keine gespeicherten Versionsbilder vor` sprechen jetzt als `... keine Kommunikationsspuren`, `Noch kein passender Mailbezug.`, `... keine Verlaufseinträge`, `... keine Bestellhistorie`, `... keine weiteren Vorgänge`, `... keine Anrufeinträge` und `... keine gespeicherten Versionsbilder`.
+- Auch der kleine Stammdaten-/Mailfallback-Slice ist geglättet: `Keine E-Mail vorhanden.` und `Nicht vorhanden` sprechen jetzt als `Keine E-Mail.` und `Nicht hinterlegt`.
+- Auch der kleine Medien-/Detail-Slice ist geglättet: Mehrere sichtbare `vorhanden`-Formulierungen sprechen dort jetzt natürlicher als `liegen vor`, `hinterlegt`, `sofort nutzbar` oder schlicht `mit Angebotsdaten`.
+- Auch der kleine Diagnose-/Hero-Slice ist geglättet: `keine allgemeine Analyse`, `Keine generische Gesamtansicht`, `direktem Sprung`, `Kein weiterer Diagnoseblock` und `Keine allgemeine Diagnose` sprechen dort jetzt als klarere Arbeits- und Diagnoseformeln.
+- Auch der kleine Hilfetext-Slice ist geglättet: rohe `direkte`-Formulierungen rund um Antwortspur, Reparaturen, Erinnerungen, Angebotsfälle und die globale Rückgewinnung sprechen dort jetzt klarer als `klare`, `schnellste`, `neu aufsetzen`, `sofortige Aufmerksamkeit` oder `sofort weiterführen`.
+- Auch der kleine Aktionsleisten-Slice ist geglättet: Mehrere `Öffnet direkt`- und `Springt direkt`-Hilfetexte in der Schnellleiste sprechen dort jetzt knapper als `Öffnet ...` oder `Öffnet ... im ...`.
+- Auch der kleine Empty-State-Slice ist geglättet: Mehrere sichtbare `aktuell`-Leerzustände in Panels und Detailbereichen sprechen dort jetzt direkter und ohne Füllwörter.
+- Auch der kleine Bereichs-Slice ist geglättet: Team-, Reparatur-, Abschluss-, Karten-, Datenabgleichs- und Übergabe-Beschreibungen sprechen dort jetzt knapper statt mit vielen `direkt`-Formulierungen.
+- Auch der kleine CTA-/Hilfetext-Slice ist geglättet: Befehlsmodus, persönlicher Einstieg, Problemfälle, Bewegungen, Kurz-Erklärung und Suchbestätigung sprechen dort jetzt knapper statt mit weiteren `direkt`-Formulierungen.
+- Auch der kleine Aktionsleisten-Restblock ist geglättet: Viele Detailtexte rund um den offenen Fall sprechen dort jetzt knapper ohne wiederholtes `aktuell geöffneten`, `gerade geöffneten` oder `direkt`.
+- Auch der kleine Status-/Hinweis-Slice ist geglättet: Mehrere sichtbare `aktuell`- und Rest-`direkt`-Formulierungen rund um Drift, Rückruf, Urlaub, Suchhinweise, Batch-Freigabe und Statusmeldungen sprechen dort jetzt klarer und knapper.
+- Auch der kleine Übersichts-Slice ist geglättet: Arbeitsspuren, Dringlichkeitslage, Bewegungen, Verkaufsspur und Hero-Hinweise sprechen dort jetzt direkter ohne unnötige `aktuell`- oder `direkte`-Formulierungen.
+- Auch der kleine Copy-/Sammel-Slice ist geglättet: Mehrere Kopier- und Sammelaktionen für Ablauflage, Abschlusslage, Gesamtlage, Reparaturspur und Problemfälle sprechen dort jetzt knapper ohne unnötige `aktuelle`-Wiederholungen.
+- Auch der kleine Bestand-/Plan-Slice ist geglättet: leere Zuständigkeitsflächen, Plan-Fallbacks, der Badge für den geöffneten Fall, der telefonische Rückgewinnungshinweis sowie kurze Prüf- und Abgleichsmeldungen sprechen dort jetzt knapper und klarer.
+- Auch der kleine Badge-/Vorschau-Slice ist geglättet: `Vorschau aktuell`, `aktueller`-Markierungen im Kontakt-Dossier und der kurze Eingangshinweis sprechen dort jetzt natürlicher als `Vorschau bereit`, `dieser Fall` oder `danach weitermachen`.
+- Auch der kleine Reparatur-/Karten-Slice ist geglättet: Die verbliebenen `aktuell`- und `direkt`-Formulierungen in Reparaturspur, Kartenlage, Aktionsspur und Anruf-Badge sprechen dort jetzt klarer als `geladen`, `dieser Lage`, `Einzel- oder Sammelreparaturen` oder `Live-Anrufe`.
+- Auch der letzte kleine Kartenabgleich-Slice ist geglättet: Der sichtbare Hinweis zur Kartenprojektion spricht dort jetzt schlicht von `Falllage` statt noch von der `aktuellen Falllage`.
+- Auch der kleine Session-Badge-Slice ist geglättet: Die sichtbaren Badge-Namen `Commercial-Session` und `Cluster-Session` sprechen jetzt als `Abschluss-Session` und `Dossier-Session`, inklusive der Session-Helfer, Fallbacks und Quote-Assertions.
+- Auch der große Badge-Nachlauf ist jetzt auf reine Nutzersprache gezogen: Der komplette sichtbare `...-Session`-Satz spricht in Helpern, UI-Fallbacks und Quote-Tests jetzt als `Eingang`, `Arbeitsspur`, `Problemfälle`, `Reparaturspur`, `Antworten`, `Rückrufe`, `Erinnerungen`, `Abschlusslage`, `Kaufinteressenlage`, `Übergaben`, `Meine Arbeitsspur`, `Ablaufspur` und `Kontakt-Dossier`.
+- Auch der kleine Focus-Helfer-Nachlauf ist jetzt sauber deutsch: `Watchlist` und `Meine Queue • ...` dienen im Session-Helfer nur noch als Fallbacks, während die sichtbaren Fokuslabels jetzt von `Merkliste` und `Meine Arbeitsspur • ...` ausgehen.
+- Auch der kleine Telefon-Detailblock ist geglättet: Die generischen Fallbacks `Kein Eintrag` und die schwere Sprachanruf-Formulierung sprechen dort jetzt präziser als `Kein Anrufeintrag`, `Kein Sprachanruf`, `Keine Zusammenfassung zum letzten Anruf.` und `Keine Details zum letzten Sprachanruf.`.
+- Auch der kleine Seitenleisten-Telefonblock ist geglättet: Der technische Zähler `Live-Anrufe` spricht dort jetzt schlicht als `Anrufe`.
+- Auch der kleine Karten-Speicherslice ist geglättet: Die sichtbare Rückmeldung `Trello-Felder gespeichert` spricht jetzt als `Kartenangaben gespeichert`.
+- Auch der kleine Kontakteditor-/Detailfallback-Slice ist geglättet: optionale Kontaktdaten sprechen jetzt als `... vorhanden` statt `... hinterlegt`, frühere Kontaktdaten als `Keine Angabe`, und der Bildstatus-Fallback läuft jetzt als `Stand offen`.
+- Auch der kleine `hinterlegt`-Nachlauf ist geglättet: E-Mail-Drift, Karten- und Medienlage, der Telefon-CTA, die Rückgewinnungskarte und die Angebotszeile sprechen dort jetzt als `vorhanden`, `Entwurfsbilder vorhanden`, `im Telefonkontext`, `Kein Auftrag` und `Angebot ... vorhanden`.
+- Auch der kleine Status-Fallback-Slice ist geglättet: sichtbare Platzhalter wie `Stand offen` und `Versand offen` sprechen jetzt konsistenter als `Stand ausstehend` und `Versand ausstehend`.
+- Auch der letzte Bildstatus-Fallback ist jetzt nachgezogen: der verbleibende Platzhalter `Stand offen` spricht dort ebenfalls als `Stand ausstehend`.
+- Auch der kleine Kurzfallback-Slice ist geglättet: `Keine Details.`, `Noch unvollständig`, `Kein Bereich angegeben` und `Kein Angebotswert` sprechen jetzt als `Keine Kurzbeschreibung.`, `Medienlage fehlt`, `Bereich fehlt` und `Kein Wert`.
+- Auch der kleine Telefonjargon-Slice ist geglättet: `Prüfeintrag(e)` und `Anrufprotokoll(e)` sprechen jetzt als `Prüfnotiz(en)` und `Anrufeintrag(e)`.
+- Auch der kleine Ablauf-CTA-Slice ist geglättet: Die technischen Fallbacks `... Ablauf aufgebaut ist` und `... Fallplan ... aufgebaut ist` sprechen jetzt als `... Ablauf bereitsteht` und `... nächster Plan-Schritt bereitsteht`.
+- Auch der kleine `sofort`-Slice ist geglättet: Erinnerungs-, Angebots- und Palettentexte sprechen jetzt ruhiger als `jetzt Aufmerksamkeit brauchen`, `jetzt weitergeführt werden können`, `Fälle, Spuren und Suche öffnen` und `Enter öffnet den ersten Treffer`.
+- Auch der kleine `verlässlich`-Slice ist geglättet: Warn- und Hilfetexte rund um Telefonnummern, Kartenlage, Medienlage, Anrufnotizen und Problemfälle sprechen jetzt als `passend`, `klar` oder `gut nutzbar` statt mit der alten Kontrollsprache.
+- Auch der letzte `verlässlich`-Treffer ist nachgezogen: `Ersatz verlässlich nachhalten` spricht jetzt als `Ersatz klar nachhalten`.
+- Auch der kleine Paletten-CTA-Slice ist geglättet: `priorisierte Fälle sofort neu ziehen`, `E-Mail-Drift ... sofort` und `Eingang sofort öffnen` sprechen jetzt als `priorisierte Fälle neu laden`, `E-Mail-Drift ... reparieren` und `Eingang öffnen`.
+- Auch der kleine Erklärtext-Slice ist geglättet: Mehrere Hero- und Bereichsbeschreibungen sprechen jetzt ohne das wiederholte `sofort`, etwa als `So erkennst du ...`, `So sieht das Team ...` und `Hier siehst du ...`.
+- Auch der kleine Sammelaktions-Slice ist geglättet: `Batch`-Hinweise und die Reparaturüberschrift sprechen jetzt als `Sammelaktion` und `Welche Reparaturen bei wem gerade hängen`.
+- Auch der kleine Techniksprach-Slice ist geglättet: Bereichsbeschreibungen und Vorschautitel sprechen jetzt als `fehlende Verbindungen zwischen den Systemen`, `Widersprüche beim Kontaktstopp`, `Systemlücken: ...` und `Vorschau Systemlücken`.
+- Auch der kleine Dossier-Slice ist geglättet: `Verknüpfte Vorgänge`, `weitere Vorgänge` und `Dossierfälle` sprechen jetzt als `Weitere Fälle im Kontakt-Dossier`, `weitere Fälle` und `Fälle im Kontakt-Dossier`.
+- Auch der kleine Abweichungs-Slice ist geglättet: `Drift`-Formulierungen sprechen jetzt als `E-Mail-Abweichung` oder `Fall mit E-Mail-Abweichung`.
+- Auch der kleine Kontaktstopp-/Reparatur-Slice ist geglättet: `kollidiert`, `Sequenzen` und `Systemlückenspur` sprechen dort jetzt als `passt noch nicht`, `Abläufe` und `Reparaturspur`.
+- Auch der kleine Abschluss-Slice ist geglättet: `kaufnah` und `Kontakt-Dossier-Ablauf` sprechen jetzt als `abschlussnah` und `Ablauf im Kontakt-Dossier`.
+- Auch der kleine Abschlussnähe-Slice ist geglättet: `abschlussnah` spricht jetzt als `nah am Abschluss` oder `Schritt nah am Abschluss`.
+- Auch der kleine Auftrags-Slice ist geglättet: `zugeordneter Auftrag` und `Auftrag ist zugeordnet` sprechen jetzt als `passender Auftrag`, `Auftrag vorhanden` oder `Auftrag ist schon da`.
+- Auch der kleine Verkaufsfall-/Dossier-Slice ist geglättet: `zugeordnet` spricht dort jetzt als `weiterer Vorgang`, `schon da`, `vorhanden`, `zugewiesen` oder einfach `ohne Verkaufsfall`.
+- Auch der kleine Abgleich-/Systembruch-Slice ist geglättet: `Datenabgleich` und `Systemlücken` sprechen dort jetzt als `Abgleich`, `Systembrüche` und `Vorschau Systembrüche`.
+- Auch der kleine Hilfetext-Slice ist geglättet: `Nebenbereiche` und `Systemarbeit` sprechen jetzt als `andere Bereiche` und `konkrete Reparaturen`.
+- Auch der kleine Abgleich-/Verkaufsslice ist geglättet: `Abgleich driftet` und `Vertriebslage` sprechen jetzt als `Abgleich weicht ab` und `Verkaufslage`.
+- Auch der kleine Auslöser-Slice ist geglättet: `Kontakt-Auslöser`, `Verlauf & Auslöser` und `Kein nächster Auslöser` sprechen jetzt als `Offene Signale im Kontakt`, `Verlauf & nächste Schritte` und `Kein nächster Schritt`.
+- Auch der kleine System-Slice ist geglättet: `Folgesysteme` spricht dort jetzt als `weitere Systeme`.
+- Auch der kleine Anschluss-Slice ist geglättet: Die restlichen sichtbaren `Folgesysteme`-Labels und Hinweise sprechen jetzt ebenfalls als `weitere Systeme`.
+- Auch der kleine Statuschip-Slice ist geglättet: `Abgleich stimmig`, `stimmig`, `kritisch` und `beobachten` sprechen jetzt als `Abgleich passt`, `klar`, `akut` und `im Blick`.
+- Auch der kleine Schnellleisten-Slice ist geglättet: `Befehlsmodus` spricht jetzt in Rückruf-, Reparatur- und Anrufnotizen als `Schnellleiste`.
+- Auch der kleine Abgleichs-CTA-Slice ist geglättet: `Abgleich reparieren` spricht jetzt als `Abgleich beheben`.
+- Auch der kleine Prioritäten-Slice ist geglättet: `priorisierte` Fälle, Kontaktlagen und Aktionshilfen sprechen jetzt als `vorrangige`.
+- Auch der kleine Dossier-Slice ist geglättet: `Kontakt-Dossier` spricht jetzt durchgängig als `Kontaktdossier`.
+- Auch der kleine Rückgewinnungs-Slice ist geglättet: `Rückgewinnungsspur` spricht jetzt durchgängig als `Rückgewinnung`.
+- Auch der kleine Systemfehler-Slice ist geglättet: `Systembrüche` sprechen jetzt durchgängig als `Systemfehler`.
+- Auch der kleine Arbeitsbereich-Slice ist geglättet: sichtbare `Arbeitsspur`- und `Arbeitsspuren`-Texte in der Kommandozentrale sprechen jetzt als `Arbeitsbereich` oder `Arbeitsbereiche`.
+- Auch der kleine Abläufe-Slice ist geglättet: `Ablaufspur` spricht jetzt durchgängig als `Abläufe`.
+- Auch der kleine Kaufinteresse-Slice ist geglättet: `Kaufinteressenlage` spricht jetzt durchgängig als `Kaufinteresse`.
+- Auch der kleine Reparaturen-Slice ist geglättet: `Reparaturspur` spricht jetzt durchgängig als `Reparaturen`.
+- Auch der kleine Abschluss-Slice ist geglättet: `Abschlusslage` spricht jetzt durchgängig als `Abschluss`.
+- Auch der kleine Session-Arbeitsbereich-Slice ist geglättet: `Arbeitsspur` und `Meine Arbeitsspur` sprechen in den Session-Helfern jetzt als `Arbeitsbereich` und `Mein Arbeitsbereich`.
+- Auch der kleine Telefonat-Slice ist geglättet: `Sprachanruf`-Formulierungen sprechen jetzt als `Telefonat` oder `Telefonate`.
+- Auch der kleine Kontaktdossier-Slice ist geglättet: die letzten sichtbaren `Vorgang`-Formulierungen im Dossier sprechen jetzt als `Fall` oder `Fälle`.
+- Auch der kleine Reparatur-Fallback-Slice ist geglättet: die letzten `Details`-Fallbacks im Reparaturbereich sprechen jetzt als `Hinweis`.
+- Auch der kleine Kontaktstopp-Slice ist geglättet: die letzten sichtbaren `Do-not-contact`-Formulierungen sprechen jetzt als `Kontaktstopp`.
+- Auch der kleine Dokumenten-Slice ist geglättet: `Dokumentenstrecke` spricht jetzt als `Dokumente`.
+- Auch der kleine Prüf-Slice ist geglättet: `Prüfprotokoll` spricht jetzt als `Prüfverlauf`.
+- Auch der kleine Ansichts-Slice ist geglättet: `Zusatzbereiche` und der rohe `erweiterte Modus` sprechen jetzt als `weitere Bereiche` und `erweiterte Ansicht`.
+- Auch der kleine Ansichts-Hilfe-Slice ist geglättet: `Teamsteuerung`, `Prüfdetails` und `Spezialspuren` sprechen jetzt als `Teamübersicht`, `Prüfhinweise` und `Sonderbereiche`.
+- Auch der kleine Anruffallback-Slice ist geglättet: `Kurzbeschreibung`, `Zusammenfassung` und `Details` sprechen dort jetzt als `Kurztext` oder `Hinweis`.
+- Auch der kleine Dokument-/Kontakt-Slice ist geglättet: `Masterkontakt` und `Dokumentenwert` sprechen jetzt als `Führender Kontakt` und `Angebotswert`.
+- Auch der kleine Zugangs-Slice ist geglättet: `Arbeitszugang` und `Lokalmodus` sprechen jetzt als `Zugang` und `Lokal`.
+- Auch der kleine Aktionsleisten-Slice ist geglättet: die wiederholten `Direkt aus der Schnellleiste`- und `Direkt aus der Aktionsleiste`-Formulierungen sprechen jetzt kürzer als `Aus der ...`.
+- Auch der kleine Detailkarten-Slice ist geglättet: die Gründe aus `Vertrieb & Anrufe` und `Verlauf` sprechen jetzt ebenfalls kürzer als `Aus ...`.
+
+## Einschränkungen
+
+- Actor-Auflösung ist aktuell host-/sessionbasiert, nicht personenbezogen pro Mitarbeiter
+- Mehrfachtreffer bei gleicher E-Mail werden als einzelne Request-Datensätze angezeigt und müssen gezielt pro `request_id` geändert werden
+
+## Übergabe Call-Modul
+
+- Neues Modul: `http://127.0.0.1:3103/ops/customer-records/calls`
+- Ziel: eigenständiges Sales-Call-Board ohne Eingriff in laufende Mail-Follow-ups
+- Mail-Seite bleibt unangetastet: keine Änderung an `followup_queue`, keine Änderung an produktiven n8n-Mail-Workflows
+
+### Aktueller Stand
+
+- Es gibt jetzt oben eine einfache Tagesliste `Heute anrufen`
+- Darunter läuft das breite 3-Spalten-Board:
+  - `Anfrage-Call`
+  - `Angebots-Call`
+  - `Reminder-Call`
+- Detail- und Ergebnispflege öffnen jetzt als Overlay/Popup statt in einer engen rechten Seitenleiste
+- Nach `Reminder-Call` ist eine explizite Folgeentscheidung möglich:
+  - `Manuell weiterführen`
+  - `Angebot anpassen`
+  - `Standardstrecke beenden`
+- Sekundäre Arbeitslisten bleiben sichtbar:
+  - `Rückrufe`
+  - `Manuell weiterführen`
+  - `Angebot anpassen`
+  - `Datenproblem`
+  - `Beendet`
+
+### Wichtige Dateien
+
+- Backend-Logik: [customer-call-module.ts](/Users/danielklesse/Desktop/neontrip/src/lib/ops/customer-call-module.ts)
+- API: [calls/route.ts](/Users/danielklesse/Desktop/neontrip/src/app/api/ops/customer-records/calls/route.ts)
+- UI: [calls/page-client.tsx](/Users/danielklesse/Desktop/neontrip/src/app/ops/customer-records/calls/page-client.tsx)
+- Tests: [customer-call-module.test.ts](/Users/danielklesse/Desktop/neontrip/tests/quotes/customer-call-module.test.ts)
+
+### Datenmodell / Migrationen
+
+- Verwendete Tabellen:
+  - `sales_call_runs`
+  - `sales_call_list_items`
+  - `sales_call_results`
+  - `sales_call_cadence_state`
+- `sales_call_list_items` speichert jetzt zusätzlich einen stabilen Bild-Snapshot:
+  - `visual_candidates_json`
+  - `visual_snapshot_created_at`
+- Zugehörige Migrationen:
+  - [202605210001_create_sales_call_module.sql](/Users/danielklesse/Desktop/neontrip/supabase/migrations/202605210001_create_sales_call_module.sql)
+  - [202605210002_create_sales_call_cadence_state.sql](/Users/danielklesse/Desktop/neontrip/supabase/migrations/202605210002_create_sales_call_cadence_state.sql)
+  - [202605210003_create_sales_call_run_tables.sql](/Users/danielklesse/Desktop/neontrip/supabase/migrations/202605210003_create_sales_call_run_tables.sql)
+  - [202605210004_add_sales_call_visual_snapshots.sql](/Users/danielklesse/Desktop/neontrip/supabase/migrations/202605210004_add_sales_call_visual_snapshots.sql)
+
+### Preisquelle im Call-Modul
+
+- Der angezeigte Preis kommt aktuell in genau dieser Reihenfolge:
+  1. `crmQuote.customerLiveTotal`
+  2. `crmQuote.totalGross`
+  3. `quote.totalValue`
+  4. `request.finalValue`
+  5. `request.estimatedValue`
+  6. `crmSales[0].totalPrice`
+- Im Overlay wird die konkrete Preisquelle zusätzlich als Text angezeigt
+
+### Bildlogik im Call-Modul
+
+- Bildauswahl aktuell:
+  1. CRM-/Angebotsbilder aus `crmQuote.latestVersionImages`
+  2. danach Trello-Mockups bevorzugt in Reihenfolge `mockup01` -> `mockup02` -> `mockup03`
+  3. danach Trello-Referenzbild
+- Die UI springt bei Ladefehlern automatisch zum nächsten Kandidaten weiter
+- Beim Erzeugen einer Tagesliste wird diese Kandidatenliste jetzt in `sales_call_list_items.visual_candidates_json` gespeichert
+- Beim normalen Laden einer bestehenden Tagesliste liest das Call-Modul primär diesen Snapshot und lädt Trello nicht erneut nur für die Kartenbilder
+- Für alte Läufe ohne `visual_snapshot_created_at` bleibt ein Trello-Fallback aktiv, damit bestehende Listen nicht hart ohne Bilder starten
+
+### Bekannter Hauptfehler
+
+- Die wechselnden oder fehlenden Mockups sind aktuell nicht nur ein UI-Problem
+- Beim Laden der Call-Liste laufen echte `Trello 429`-Rate-Limits auf
+- Folge:
+  - manche Fälle kommen mit Trello-Medien
+  - manche Fälle verlieren trotz vorhandener Karten-Kontexte ihre Mockups im Feed
+- Deshalb ist CRM aktuell der stabilere erste Bildpfad als Trello
+- Der Bild-Snapshot reduziert diesen Fehler für neu erzeugte Tageslisten deutlich; neue Trello-Abrufe passieren dabei nur noch beim Refresh/Erzeugen der Liste, nicht bei jedem Anzeigen derselben Liste
+
+### Offene nächste Schritte
+
+- Migration `202605210004_add_sales_call_visual_snapshots.sql` in Supabase anwenden, bevor der neue Snapshot-Pfad produktiv erwartet wird
+- Danach neue Tagesliste erzeugen, damit die bestehenden Karten frische `visual_candidates_json`-Snapshots bekommen
+- Optional weitere Reduktion der Board-Karten, falls die Tagesliste künftig die Hauptarbeitsfläche werden soll
+- Optional WLAN-/Kolleginnen-Test weiter über `0.0.0.0` bzw. LAN-URL absichern, wenn das Modul gemeinsam geprüft wird

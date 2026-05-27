@@ -1,0 +1,41 @@
+{
+  "name": "neontrip",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "check:ops-deploy": "node scripts/check_customer_records_deploy_env.mjs",
+    "check:ops-schema": "node scripts/check_customer_records_schema.mjs",
+    "go-live:ops": "node scripts/go_live_customer_records_ops.mjs",
+    "smoke:ops": "node scripts/smoke_customer_records_ops.mjs",
+    "start": "next start",
+    "lint": "next lint",
+    "test:quotes": "node --import tsx --test tests/quotes/*.test.ts"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.34.3",
+    "lucide-react": "^0.475.0",
+    "next": "15.5.18",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.17",
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "eslint": "^9.22.0",
+    "eslint-config-next": "15.5.18",
+    "playwright": "^1.59.1",
+    "tailwindcss": "^3.4.19",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.3"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
+  }
+}
