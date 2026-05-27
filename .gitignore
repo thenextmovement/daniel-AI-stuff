@@ -1,0 +1,18 @@
+# System files
+.DS_Store
+.wrangler/
+.playwright-mcp/
+
+# Screenshots (for documentation, not needed in repo)
+*.png
+
+# Temporary files
+*.tmp
+*.log
+
+# Secrets — DEPLOY.md contains live Cloudflare API token
+DEPLOY.md
+.env
+.env.*
+!.env.example
+!.env.ops.example
