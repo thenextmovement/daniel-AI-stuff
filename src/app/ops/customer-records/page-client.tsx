@@ -3,13 +3,16 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  AtSign,
   BadgeCheck,
   Building2,
+  CheckSquare2,
   Clock3,
   Database,
   ExternalLink,
   History,
   Mail,
+  MessageSquareText,
   Search,
   Send,
   Star,
@@ -3833,6 +3836,12 @@ type NoteResponse = {
   note?: CustomerOpsNote;
   error?: string;
   issues?: string[];
+};
+
+type CustomerOpsNoteDraft = {
+  note: string;
+  kind: CustomerOpsNote["kind"];
+  assigneeLabel: string;
 };
 
 type ActionResponse = {
@@ -17697,14 +17706,18 @@ function NotesPanel({
   notes,
   saving,
   onAddNote,
+  currentOperator = "",
   simpleView = false,
 }: {
   notes: CustomerOpsNote[];
   saving: boolean;
-  onAddNote: (note: string) => Promise<void>;
+  onAddNote: (input: CustomerOpsNoteDraft) => Promise<void>;
+  currentOperator?: string;
   simpleView?: boolean;
 }) {
   const [draft, setDraft] = useState("");
+  const [kind, setKind] = useState<CustomerOpsNote["kind"]>("note");
+  const [assigneeLabel, setAssigneeLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -17715,11 +17728,14 @@ function NotesPanel({
     }
 
     setError(null);
-    await onAddNote(draft);
+    await onAddNote({ note: draft, kind, assigneeLabel });
     setDraft("");
+    setKind("note");
+    setAssigneeLabel("");
   }
 
   const latestNote = notes[0] || null;
+  const currentOperatorLabel = currentOperator.trim();
 
   if (simpleView) {
     return (
@@ -17742,8 +17758,33 @@ function NotesPanel({
             placeholder="Kurz notieren, was wichtig ist."
             className="w-full resize-none bg-transparent text-sm leading-6 text-black outline-none placeholder:text-black/35"
           />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <NoteKindButton value="note" current={kind} onSelect={setKind} />
+            <NoteKindButton value="task" current={kind} onSelect={setKind} />
+            <NoteKindButton value="update" current={kind} onSelect={setKind} />
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[180px] flex-1">
+              <AtSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" />
+              <input
+                value={assigneeLabel}
+                onChange={(event) => setAssigneeLabel(event.target.value)}
+                placeholder="Zuständig, z. B. Daniel"
+                className="w-full rounded-full border border-black/10 bg-white py-2 pl-9 pr-3 text-sm text-black outline-none transition placeholder:text-black/35 focus:border-[#fa31a2]"
+              />
+            </div>
+            {currentOperatorLabel ? (
+              <button
+                type="button"
+                onClick={() => setAssigneeLabel(currentOperatorLabel)}
+                className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
+              >
+                mir zuweisen
+              </button>
+            ) : null}
+          </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs text-black/45">Wird im Prüfverlauf gespeichert.</div>
+            <div className="text-xs text-black/45">Mit @Name werden Teammitglieder sichtbar markiert.</div>
             <button
               type="button"
               onClick={submit}
@@ -17761,8 +17802,12 @@ function NotesPanel({
           <div className="mt-3 rounded-xl border border-black/10 bg-white px-4 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Letzte Notiz</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <NoteKindBadge note={latestNote} />
+                  <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Letzter Teambeitrag</div>
+                </div>
                 <div className="mt-2 line-clamp-3 text-sm leading-6 text-black/75">{latestNote.note}</div>
+                <NoteMetaLine note={latestNote} />
                 <div className="mt-2 text-xs text-black/45">
                   {formatDate(latestNote.createdAt)}
                   {latestNote.authorLabel ? ` • ${latestNote.authorLabel}` : ""}
@@ -17788,7 +17833,11 @@ function NotesPanel({
             {notes.slice(1).map((entry) => (
               <div key={entry.id} className="rounded-xl border border-black/10 bg-white px-4 py-4">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="text-sm leading-6 text-black/75">{entry.note}</div>
+                  <div className="min-w-0 flex-1">
+                    <NoteKindBadge note={entry} />
+                    <div className="mt-2 text-sm leading-6 text-black/75">{entry.note}</div>
+                    <NoteMetaLine note={entry} />
+                  </div>
                   <div className="shrink-0 text-right">
                     <div className="text-xs text-black/45">{formatDate(entry.createdAt)}</div>
                     {entry.authorLabel ? <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-black/40">{entry.authorLabel}</div> : null}
@@ -17807,7 +17856,7 @@ function NotesPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">Teamnotizen</div>
-          <div className="mt-2 text-lg font-semibold text-black">Lage festhalten, ohne Karte separat zu öffnen</div>
+          <div className="mt-2 text-lg font-semibold text-black">Lage, Aufgaben und Übergaben festhalten</div>
         </div>
         <div className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-xs text-black/55">
           {notes.length} Einträge
@@ -17819,11 +17868,36 @@ function NotesPanel({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={4}
-          placeholder="Beispiel: Kontakt hat telefonisch bestätigt, dass künftig nur noch die Gmail-Adresse genutzt werden soll."
+          placeholder="Beispiel: @Daniel bitte Angebot bis morgen prüfen. Kunde wartet auf Rückmeldung zur Montage."
           className="w-full resize-none bg-transparent text-sm leading-6 text-black outline-none placeholder:text-black/35"
         />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <NoteKindButton value="note" current={kind} onSelect={setKind} />
+          <NoteKindButton value="task" current={kind} onSelect={setKind} />
+          <NoteKindButton value="update" current={kind} onSelect={setKind} />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[220px] flex-1">
+            <AtSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" />
+            <input
+              value={assigneeLabel}
+              onChange={(event) => setAssigneeLabel(event.target.value)}
+              placeholder="Zuständig, z. B. Daniel oder Franziska"
+              className="w-full rounded-full border border-black/10 bg-white py-2 pl-9 pr-3 text-sm text-black outline-none transition placeholder:text-black/35 focus:border-[#fa31a2]"
+            />
+          </div>
+          {currentOperatorLabel ? (
+            <button
+              type="button"
+              onClick={() => setAssigneeLabel(currentOperatorLabel)}
+              className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
+            >
+              mir zuweisen
+            </button>
+          ) : null}
+        </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="text-xs text-black/45">Wird als strukturierte Teamnotiz im Prüfverlauf abgelegt.</div>
+          <div className="text-xs text-black/45">Wird im Prüfverlauf abgelegt. @Name wird als Markierung gespeichert.</div>
           <button
             type="button"
             onClick={submit}
@@ -17842,7 +17916,11 @@ function NotesPanel({
           notes.map((entry) => (
             <div key={entry.id} className="rounded-xl border border-black/10 bg-white px-4 py-4">
               <div className="flex items-start justify-between gap-4">
-                <div className="text-sm leading-6 text-black/75">{entry.note}</div>
+                <div className="min-w-0 flex-1">
+                  <NoteKindBadge note={entry} />
+                  <div className="mt-2 text-sm leading-6 text-black/75">{entry.note}</div>
+                  <NoteMetaLine note={entry} />
+                </div>
                 <div className="shrink-0 text-right">
                   <div className="text-xs text-black/45">{formatDate(entry.createdAt)}</div>
                   {entry.authorLabel ? <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-black/40">{entry.authorLabel}</div> : null}
@@ -17858,6 +17936,75 @@ function NotesPanel({
       </div>
     </div>
   );
+}
+
+function noteKindPresentation(kind: CustomerOpsNote["kind"]) {
+  switch (kind) {
+    case "task":
+      return {
+        label: "Aufgabe",
+        icon: CheckSquare2,
+        className: "border-amber-200 bg-amber-50 text-amber-800",
+      };
+    case "update":
+      return {
+        label: "Update",
+        icon: MessageSquareText,
+        className: "border-sky-200 bg-sky-50 text-sky-800",
+      };
+    default:
+      return {
+        label: "Notiz",
+        icon: Send,
+        className: "border-teal-200 bg-teal-50 text-teal-800",
+      };
+  }
+}
+
+function NoteKindButton({
+  value,
+  current,
+  onSelect,
+}: {
+  value: CustomerOpsNote["kind"];
+  current: CustomerOpsNote["kind"];
+  onSelect: (value: CustomerOpsNote["kind"]) => void;
+}) {
+  const meta = noteKindPresentation(value);
+  const Icon = meta.icon;
+  const selected = current === value;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(value)}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition ${
+        selected ? meta.className : "border-black/10 bg-white text-black/55 hover:border-[#fa31a2] hover:text-black"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {meta.label}
+    </button>
+  );
+}
+
+function NoteKindBadge({ note }: { note: CustomerOpsNote }) {
+  const meta = noteKindPresentation(note.kind);
+  const Icon = meta.icon;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${meta.className}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {meta.label}
+    </span>
+  );
+}
+
+function NoteMetaLine({ note }: { note: CustomerOpsNote }) {
+  const parts = [
+    note.assigneeLabel ? `Zuständig: ${note.assigneeLabel}` : null,
+    note.mentions.length ? `Markiert: ${note.mentions.map((entry) => `@${entry}`).join(", ")}` : null,
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return <div className="mt-2 text-xs leading-5 text-black/45">{parts.join(" • ")}</div>;
 }
 
 function SimpleCaseWorkspacePanel({
@@ -17901,7 +18048,7 @@ function SimpleCaseWorkspacePanel({
   onReportSpecialCase: (requestId: string, input: SpecialCaseDraft) => Promise<void>;
   onResolveSpecialCase: (requestId: string, reason: string) => Promise<void>;
   onApplyTeamState: (requestId: string, input: CustomerTeamStateInput) => Promise<void>;
-  onAddNote: (requestId: string, note: string) => Promise<void>;
+  onAddNote: (requestId: string, note: CustomerOpsNoteDraft) => Promise<void>;
 }) {
   const [showTeam, setShowTeam] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -18005,7 +18152,13 @@ function SimpleCaseWorkspacePanel({
           />
         ) : null}
         {showNotes ? (
-          <NotesPanel notes={record.notes} saving={noteSaving} onAddNote={(note) => onAddNote(record.requestId, note)} simpleView />
+          <NotesPanel
+            notes={record.notes}
+            saving={noteSaving}
+            currentOperator={operatorName}
+            onAddNote={(note) => onAddNote(record.requestId, note)}
+            simpleView
+          />
         ) : null}
       </div>
     </div>
@@ -18064,7 +18217,7 @@ function RecordCard({
   onSave: (requestId: string, updates: CustomerUpdateFields) => Promise<void>;
   onSaveTrelloFields: (requestId: string, boardKey: string, updates: CustomerTrelloFieldUpdateInput[]) => Promise<void>;
   onSaveTrelloCard: (requestId: string, update: CustomerTrelloCardUpdateInput) => Promise<void>;
-  onAddNote: (requestId: string, note: string) => Promise<void>;
+  onAddNote: (requestId: string, note: CustomerOpsNoteDraft) => Promise<void>;
   onRollback: (requestId: string) => Promise<void>;
   onRepairDownstreamSync: (requestId: string) => Promise<void>;
   onPauseFollowups: (requestId: string) => Promise<void>;
@@ -18940,7 +19093,12 @@ function RecordCard({
           ) : null}
 
           {showAdvancedSidebar ? (
-            <NotesPanel notes={record.notes} saving={noteSaving} onAddNote={(note) => onAddNote(record.requestId, note)} />
+            <NotesPanel
+              notes={record.notes}
+              saving={noteSaving}
+              currentOperator={operatorName}
+              onAddNote={(note) => onAddNote(record.requestId, note)}
+            />
           ) : null}
 
           {showAdvancedSidebar ? (
@@ -19702,7 +19860,7 @@ export function CustomerRecordsClient({
     setSavingRequestId(null);
   }
 
-  async function addNote(requestId: string, note: string) {
+  async function addNote(requestId: string, note: CustomerOpsNoteDraft) {
     setNoteSavingRequestId(requestId);
     setError(null);
     setMessage(null);
@@ -19710,7 +19868,12 @@ export function CustomerRecordsClient({
     const response = await fetch("/api/ops/customer-records/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId, note }),
+      body: JSON.stringify({
+        requestId,
+        note: note.note,
+        kind: note.kind,
+        assigneeLabel: note.assigneeLabel,
+      }),
     });
 
     const payload = (await response.json().catch(() => null)) as NoteResponse | null;
@@ -19746,7 +19909,7 @@ export function CustomerRecordsClient({
         ),
       })),
     );
-    setMessage("Teamnotiz gespeichert.");
+    setMessage(note.kind === "task" ? "Teamaufgabe gespeichert." : note.kind === "update" ? "Team-Update gespeichert." : "Teamnotiz gespeichert.");
     setNoteSavingRequestId(null);
   }
 

@@ -9,6 +9,9 @@
 # Temporary files
 *.tmp
 *.log
+node_modules/
+.next/
+tsconfig.tsbuildinfo
 
 # Secrets — DEPLOY.md contains live Cloudflare API token
 DEPLOY.md

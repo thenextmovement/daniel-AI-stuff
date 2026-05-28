@@ -331,6 +331,39 @@ test("deriveCadenceState picks quote follow-up and important priority for higher
   assert.equal(cadence.queueBucket, "due_today");
 });
 
+test("deriveCadenceState schedules same-day first inquiry and same-day quote calls", () => {
+  const inquiryRecord = buildRecord({
+    request: {
+      ...buildRecord().request!,
+      createdAt: new Date().toISOString(),
+    },
+  });
+  const inquiryCadence = deriveCadenceState(inquiryRecord, null, null);
+
+  assert.equal(inquiryCadence.currentStage, "inquiry_call");
+  assert.equal(inquiryCadence.queueBucket, "due_today");
+  assert.ok(inquiryCadence.call1DueAt, "inquiry call due date is set");
+
+  const quoteRecord = buildRecord({
+    quote: {
+      status: "sent",
+      totalValue: 900,
+      currency: "EUR",
+      shareLink: null,
+      editLink: null,
+      sentAt: new Date().toISOString(),
+      viewedAt: null,
+      signedAt: null,
+      whatsappSentAt: null,
+    },
+  });
+  const quoteCadence = deriveCadenceState(quoteRecord, null, null);
+
+  assert.equal(quoteCadence.currentStage, "quote_call");
+  assert.equal(quoteCadence.queueBucket, "due_today");
+  assert.ok(quoteCadence.call2DueAt, "quote call due date is set");
+});
+
 test("advanceCadenceStateFromResult sends not-reached cases into retry bucket with next follow-up", () => {
   const record = buildRecord();
   const current = deriveCadenceState(record, null, null);
@@ -396,6 +429,72 @@ test("advanceCadenceStateFromResult promotes VIP purchase signals into manual fo
   assert.equal(next.currentStage, "manual_followup");
   assert.equal(next.queueBucket, "manual_followup");
   assert.equal(next.cadenceFinished, true);
+});
+
+test("advanceCadenceStateFromResult routes needs-time and price objections into the right queues", () => {
+  const record = buildRecord();
+  const current = deriveCadenceState(record, null, null);
+  const needsTime = advanceCadenceStateFromResult(
+    current,
+    {
+      id: "r_needs_time",
+      callListItemId: "i_needs_time",
+      rankAtTime: 1,
+      requestId: record.requestId,
+      acDealId: 12345,
+      preset: "needs-time",
+      callDone: "yes",
+      callOutcome: "reached_needs_time",
+      nextStep: `callback_${isoDateFromNow(4)}`,
+      validationUseful: "yes",
+      notes: "Kunde braucht intern noch Freigabe, erneuter Anruf naechste Woche sinnvoll.",
+      operatorId: "Daniel",
+      source: "test",
+      createdAt: "2026-05-21T09:00:00.000Z",
+      updatedAt: "2026-05-21T09:00:00.000Z",
+    },
+    {
+      priorityTier: null,
+      priorityReason: null,
+      purchaseSignal: null,
+      postReminderDecision: null,
+    },
+  );
+
+  assert.equal(needsTime.currentStage, "callback");
+  assert.equal(needsTime.nextCallAction, "await_callback");
+  assert.equal(needsTime.cadenceFinished, false);
+
+  const priceReview = advanceCadenceStateFromResult(
+    current,
+    {
+      id: "r_price",
+      callListItemId: "i_price",
+      rankAtTime: 1,
+      requestId: record.requestId,
+      acDealId: 12345,
+      preset: "wants-lower-price",
+      callDone: "yes",
+      callOutcome: "reached_price_objection",
+      nextStep: "price_review",
+      validationUseful: "yes",
+      notes: "Kunde findet das Angebot zu teuer und will eine guenstigere Variante pruefen.",
+      operatorId: "Daniel",
+      source: "test",
+      createdAt: "2026-05-21T09:00:00.000Z",
+      updatedAt: "2026-05-21T09:00:00.000Z",
+    },
+    {
+      priorityTier: null,
+      priorityReason: null,
+      purchaseSignal: null,
+      postReminderDecision: null,
+    },
+  );
+
+  assert.equal(priceReview.currentStage, "offer_adjustment");
+  assert.equal(priceReview.nextCallAction, "price_review");
+  assert.equal(priceReview.queueBucket, "offer_adjustment");
 });
 
 test("advanceCadenceStateFromResult routes reminder call follow-up into manual bucket when requested", () => {

@@ -31,6 +31,10 @@ const directTrelloVisualCache = new Map<string, SalesCallVisualCandidate[]>();
 export type SalesCallPreset =
   | "interested"
   | "needs-adjustment"
+  | "needs-time"
+  | "wants-lower-price"
+  | "wants-offer"
+  | "wants-update"
   | "callback"
   | "not-reached"
   | "not-interested"
@@ -94,6 +98,9 @@ export type SalesCallCadenceState = {
     | "await_callback"
     | "manual_sales_followup"
     | "offer_adjustment"
+    | "send_offer"
+    | "send_update"
+    | "price_review"
     | "blocked_no_interest"
     | "blocked_wrong_number"
     | "finished_standard_cadence";
@@ -234,6 +241,10 @@ type SalesCallOutcome =
   | ""
   | "reached_interested"
   | "reached_needs_adjustment"
+  | "reached_needs_time"
+  | "reached_price_objection"
+  | "reached_wants_offer"
+  | "reached_wants_update"
   | "reached_callback"
   | "reached_not_interested"
   | "not_reached"
@@ -333,6 +344,15 @@ type CandidateQuoteRow = {
   created_at?: string | null;
 };
 
+type CandidateCrmQuoteRow = {
+  request_id?: string | null;
+  sent_at?: string | null;
+  viewed_at?: string | null;
+  accepted_at?: string | null;
+  rejected_at?: string | null;
+  created_at?: string | null;
+};
+
 type SalesMasterCustomerRow = {
   id: string;
   request_id?: string | null;
@@ -429,7 +449,15 @@ const SALES_CALL_PRESETS: Record<
   {
     callDone: "yes" | "no";
     callOutcome: SalesCallOutcome;
-    nextStep: "send_adjusted_offer" | "close_lost" | "wait" | "no_action" | "callback";
+    nextStep:
+      | "send_adjusted_offer"
+      | "send_offer"
+      | "send_update"
+      | "price_review"
+      | "close_lost"
+      | "wait"
+      | "no_action"
+      | "callback";
     validationUseful: "yes" | "no";
   }
 > = {
@@ -443,6 +471,30 @@ const SALES_CALL_PRESETS: Record<
     callDone: "yes",
     callOutcome: "reached_needs_adjustment",
     nextStep: "send_adjusted_offer",
+    validationUseful: "yes",
+  },
+  "needs-time": {
+    callDone: "yes",
+    callOutcome: "reached_needs_time",
+    nextStep: "callback",
+    validationUseful: "yes",
+  },
+  "wants-lower-price": {
+    callDone: "yes",
+    callOutcome: "reached_price_objection",
+    nextStep: "price_review",
+    validationUseful: "yes",
+  },
+  "wants-offer": {
+    callDone: "yes",
+    callOutcome: "reached_wants_offer",
+    nextStep: "send_offer",
+    validationUseful: "yes",
+  },
+  "wants-update": {
+    callDone: "yes",
+    callOutcome: "reached_wants_update",
+    nextStep: "send_update",
     validationUseful: "yes",
   },
   callback: {
@@ -538,6 +590,21 @@ function todayInBerlin() {
   }).format(new Date());
 }
 
+function berlinDateKey(value: string | null | undefined) {
+  const parsed = parseDate(value);
+  if (!parsed) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(parsed);
+}
+
+function isTodayInBerlin(value: string | null | undefined) {
+  return berlinDateKey(value) === todayInBerlin();
+}
+
 function normalizeWhitespace(value: string | null | undefined) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
@@ -604,7 +671,7 @@ function addBusinessDays(base: Date, days: number, hour = BUSINESS_START_HOUR, m
 
 function scheduleInquiryCall(createdAt: string | null | undefined) {
   const created = parseDate(createdAt) || new Date();
-  const sameDay = new Date(created.getTime() + 60 * 60 * 1000);
+  const sameDay = new Date(created.getTime() + 30 * 60 * 1000);
   return toIso(alignToBusinessTime(sameDay));
 }
 
@@ -616,7 +683,8 @@ function scheduleQuoteCall(sentAt: string | null | undefined, viewedAt: string |
   }
   const sent = parseDate(sentAt);
   if (!sent) return null;
-  return toIso(addBusinessDays(sent, 1, 10, 0));
+  const sameDay = new Date(sent.getTime() + 30 * 60 * 1000);
+  return toIso(alignToBusinessTime(sameDay));
 }
 
 function scheduleNoResponseCall(sentAt: string | null | undefined, viewedAt: string | null | undefined) {
@@ -660,6 +728,18 @@ function deriveDealValue(record: CustomerSearchResult) {
       record.crmSales[0]?.totalPrice ??
       null,
   );
+}
+
+function quoteSentAt(record: CustomerSearchResult) {
+  return record.quote?.sentAt || record.crmQuote?.sentAt || null;
+}
+
+function quoteViewedAt(record: CustomerSearchResult) {
+  return record.quote?.viewedAt || record.crmQuote?.viewedAt || null;
+}
+
+function quoteStatus(record: CustomerSearchResult) {
+  return record.quote?.status || record.crmQuote?.status || null;
 }
 
 function visualSource(value: unknown): SalesCallVisualSource | null {
@@ -1089,7 +1169,7 @@ function buildPriorityScore(record: CustomerSearchResult, sourceKeys: CustomerWo
   if (sourceKeys.includes("callbacks")) score += 100;
   if (sourceKeys.includes("sales_recovery")) score += 90;
   if (sourceKeys.includes("due_followups")) score += 70;
-  if (record.quote?.viewedAt) score += 25;
+  if (quoteViewedAt(record)) score += 25;
   if (record.salesRecovery.status === "active") score += 15;
   if (record.affectedRows.pendingFollowups > 0) score += 10;
   score += Math.min(20, Math.floor(deriveDealValue(record) / 500));
@@ -1112,13 +1192,15 @@ function recommendedActionForGroup(priorityGroup: string, guard: SalesCallGuard)
 
 function buildContextPreview(record: CustomerSearchResult, sourceKeys: CustomerWorkboardSection["key"][], reasons: string[]) {
   const parts = [...reasons];
-  if (record.quote?.status) parts.push(`Angebotsstatus: ${record.quote.status}`);
+  const status = quoteStatus(record);
+  if (status) parts.push(`Angebotsstatus: ${status}`);
   if (record.request?.acDealStage) parts.push(`AC-Phase: ${record.request.acDealStage}`);
   if (record.callOps.latestLoggedCallSummary) parts.push(`Letzter Anruf: ${record.callOps.latestLoggedCallSummary}`);
   const inbound = latestInboundTouchLabel(record);
   if (inbound) parts.push(`Letzter Eingang: ${inbound}`);
-  if (sourceKeys.includes("sales_recovery") && record.quote?.viewedAt) {
-    parts.push(`Angebot vor ${hoursSince(record.quote.viewedAt) ?? "?"}h angesehen`);
+  const viewedAt = quoteViewedAt(record);
+  if (sourceKeys.includes("sales_recovery") && viewedAt) {
+    parts.push(`Angebot vor ${hoursSince(viewedAt) ?? "?"}h angesehen`);
   }
   return parts.slice(0, 4).join(" • ");
 }
@@ -1127,7 +1209,7 @@ function deriveAdHocSourceKeys(record: CustomerSearchResult): CustomerWorkboardS
   const sourceKeys: CustomerWorkboardSection["key"][] = [];
   if (record.callOps.nextCallbackAt || record.salesRecovery.nextCallbackAt) sourceKeys.push("callbacks");
   if (record.affectedRows.pendingFollowups > 0 || record.affectedRows.nextPendingFollowupAt) sourceKeys.push("due_followups");
-  if (record.salesRecovery.status === "active" || record.quote?.viewedAt || record.quote?.sentAt) sourceKeys.push("sales_recovery");
+  if (record.salesRecovery.status === "active" || quoteViewedAt(record) || quoteSentAt(record)) sourceKeys.push("sales_recovery");
   return [...new Set(sourceKeys)];
 }
 
@@ -1161,18 +1243,24 @@ function cutoffIso(daysBack: number) {
 }
 
 async function loadCandidateRequestIds() {
-  const [requestRows, quoteRows, cadenceRows] = await Promise.all([
+  const [requestRows, quoteRows, crmQuoteRows, cadenceRows] = await Promise.all([
     supabaseRequest<CandidateRequestRow[]>("master_requests", undefined, {
       select: "request_id,created_at",
       created_at: `gte.${cutoffIso(30)}`,
       order: "created_at.desc",
-      limit: 200,
+      limit: 500,
     }),
     supabaseRequest<CandidateQuoteRow[]>("master_quotes", undefined, {
       select: "request_id,sent_at,viewed_at,signed_at,created_at",
-      created_at: `gte.${cutoffIso(30)}`,
-      order: "created_at.desc",
-      limit: 200,
+      sent_at: `gte.${cutoffIso(30)}`,
+      order: "sent_at.desc",
+      limit: 500,
+    }),
+    supabaseRequest<CandidateCrmQuoteRow[]>("crm_quotes", undefined, {
+      select: "request_id,sent_at,viewed_at,accepted_at,rejected_at,created_at",
+      sent_at: `gte.${cutoffIso(30)}`,
+      order: "sent_at.desc",
+      limit: 500,
     }),
     (async () => {
       try {
@@ -1196,6 +1284,14 @@ async function loadCandidateRequestIds() {
   }
   for (const row of quoteRows) {
     if (!row.request_id || row.signed_at) continue;
+    requestIds.add(row.request_id);
+    const current = sourceKeysByRequestId.get(row.request_id) || [];
+    if (row.viewed_at && !current.includes("sales_recovery")) current.push("sales_recovery");
+    if (row.sent_at && !current.includes("due_followups")) current.push("due_followups");
+    sourceKeysByRequestId.set(row.request_id, current);
+  }
+  for (const row of crmQuoteRows) {
+    if (!row.request_id || row.accepted_at || row.rejected_at) continue;
     requestIds.add(row.request_id);
     const current = sourceKeysByRequestId.get(row.request_id) || [];
     if (row.viewed_at && !current.includes("sales_recovery")) current.push("sales_recovery");
@@ -1259,9 +1355,9 @@ async function previewSalesCallCandidates(limit = 20): Promise<CandidatePreview[
       email: record.email || null,
       contactName: record.displayName || [record.firstName, record.lastName].filter(Boolean).join(" ") || null,
       companyName: record.company || record.request?.title || null,
-      daysSinceSent: daysSince(record.quote?.sentAt),
-      hoursSinceView: hoursSince(record.quote?.viewedAt),
-      pandadocStatus: record.quote?.status || null,
+      daysSinceSent: daysSince(quoteSentAt(record)),
+      hoursSinceView: hoursSince(quoteViewedAt(record)),
+      pandadocStatus: quoteStatus(record),
       acLiveDecision: record.request?.dealStatus || null,
       acLiveStatus: record.request?.status || null,
       acLiveStage: record.request?.acDealStage || null,
@@ -1278,6 +1374,7 @@ async function previewSalesCallCandidates(limit = 20): Promise<CandidatePreview[
   });
 
   return candidates
+    .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence))
     .sort((left, right) => {
       if (left.guard.allowed !== right.guard.allowed) return left.guard.allowed ? -1 : 1;
       if (left.cadence.queueBucket !== right.cadence.queueBucket) {
@@ -1412,7 +1509,18 @@ function derivePriorityTier(
   }
 
   const dealValue = deriveDealValue(record);
-  if (latestResult && ["interested", "needs-adjustment", "callback"].includes(latestResult.preset || "")) {
+  if (
+    latestResult &&
+    [
+      "interested",
+      "needs-adjustment",
+      "needs-time",
+      "wants-lower-price",
+      "wants-offer",
+      "wants-update",
+      "callback",
+    ].includes(latestResult.preset || "")
+  ) {
     return {
       priorityTier: "important",
       priorityReason: "Aktives Kaufsignal oder klarer nächster Sales-Schritt.",
@@ -1456,6 +1564,20 @@ function deriveQueueBucket(
   return "due_today" as const;
 }
 
+function shouldIncludeInDailyCallList(record: CustomerSearchResult, cadence: SalesCallCadenceState) {
+  if (cadence.currentStage === "finished") return false;
+  if (record.opsState.isClosed || Boolean(record.order)) return false;
+
+  const requestToday = isTodayInBerlin(record.request?.createdAt);
+  const quoteToday = isTodayInBerlin(quoteSentAt(record));
+  if (cadence.currentStage === "inquiry_call" && requestToday) return true;
+  if (cadence.currentStage === "quote_call" && quoteToday) return true;
+
+  if (cadence.currentStage === "manual_followup" || cadence.currentStage === "offer_adjustment" || cadence.currentStage === "data_issue") return false;
+
+  return isDueToday(cadence.nextCallDueAt);
+}
+
 export function deriveCadenceState(
   record: CustomerSearchResult,
   latestResult: SalesCallResultEntry | null,
@@ -1463,10 +1585,12 @@ export function deriveCadenceState(
 ): SalesCallCadenceState {
   const priority = derivePriorityTier(record, latestResult, existing);
   const next = existing ? { ...existing } : buildEmptyCadenceState(record.requestId);
+  const sentAt = quoteSentAt(record);
+  const viewedAt = quoteViewedAt(record);
   next.requestId = record.requestId;
   next.call1DueAt = next.call1DueAt || scheduleInquiryCall(record.request?.createdAt);
-  next.call2DueAt = next.call2DueAt || scheduleQuoteCall(record.quote?.sentAt, record.quote?.viewedAt);
-  next.call3DueAt = next.call3DueAt || scheduleNoResponseCall(record.quote?.sentAt, record.quote?.viewedAt);
+  next.call2DueAt = next.call2DueAt || scheduleQuoteCall(sentAt, viewedAt);
+  next.call3DueAt = next.call3DueAt || scheduleNoResponseCall(sentAt, viewedAt);
   next.priorityTier = priority.priorityTier;
   next.priorityReason = priority.priorityReason;
   next.vipManual = priority.vipManual;
@@ -1525,13 +1649,43 @@ export function deriveCadenceState(
     next.currentStage = "offer_adjustment";
     next.nextCallAction = "offer_adjustment";
     next.nextCallDueAt = null;
+  } else if (latestResult?.preset === "needs-time") {
+    const callbackDate = latestResult.nextStep.replace(/^callback_/, "");
+    next.blocked = true;
+    next.blockingReason = "Kunde braucht noch Zeit";
+    next.pendingCallbackAt = callbackDate;
+    next.nextCallDueAt = callbackDate;
+    next.currentStage = "callback";
+    next.nextCallAction = "await_callback";
+    next.cadenceFinished = false;
+  } else if (latestResult?.preset === "wants-lower-price") {
+    next.blocked = false;
+    next.blockingReason = null;
+    next.cadenceFinished = true;
+    next.currentStage = "offer_adjustment";
+    next.nextCallAction = "price_review";
+    next.nextCallDueAt = null;
+  } else if (latestResult?.preset === "wants-offer") {
+    next.blocked = false;
+    next.blockingReason = null;
+    next.cadenceFinished = true;
+    next.currentStage = "offer_adjustment";
+    next.nextCallAction = "send_offer";
+    next.nextCallDueAt = null;
+  } else if (latestResult?.preset === "wants-update") {
+    next.blocked = false;
+    next.blockingReason = null;
+    next.cadenceFinished = true;
+    next.currentStage = "offer_adjustment";
+    next.nextCallAction = "send_update";
+    next.nextCallDueAt = null;
   } else if (!next.blocked) {
     if (!existing) {
-      if (record.quote?.sentAt && (daysSince(record.quote.sentAt) ?? 0) >= 3) {
+      if (sentAt && (daysSince(sentAt) ?? 0) >= 3) {
         next.currentStage = "no_response_call";
         next.nextCallDueAt = next.call3DueAt;
         next.nextCallAction = "call_stage_3";
-      } else if (record.quote?.sentAt) {
+      } else if (sentAt) {
         next.currentStage = "quote_call";
         next.nextCallDueAt = next.call2DueAt;
         next.nextCallAction = "call_stage_2";
@@ -1585,14 +1739,15 @@ export function advanceCadenceStateFromResult(
   }
 
   switch (result.preset) {
-    case "callback": {
+    case "callback":
+    case "needs-time": {
       const callbackDate = result.nextStep.replace(/^callback_/, "");
       next.currentStage = "callback";
       next.pendingCallbackAt = callbackDate;
       next.nextCallDueAt = callbackDate;
       next.nextCallAction = "await_callback";
       next.blocked = true;
-      next.blockingReason = "Rückruf vereinbart";
+      next.blockingReason = result.preset === "needs-time" ? "Kunde braucht noch Zeit" : "Rückruf vereinbart";
       next.cadenceFinished = false;
       break;
     }
@@ -1646,6 +1801,39 @@ export function advanceCadenceStateFromResult(
       next.cadenceFinished = true;
       if (next.priorityTier === "standard") next.priorityTier = "important";
       if (!next.priorityReason) next.priorityReason = "Angebotsanpassung im Gespräch angefordert.";
+      next.purchaseSignal = true;
+      break;
+    case "wants-lower-price":
+      next.currentStage = "offer_adjustment";
+      next.nextCallDueAt = null;
+      next.nextCallAction = "price_review";
+      next.blocked = false;
+      next.blockingReason = null;
+      next.cadenceFinished = true;
+      if (next.priorityTier === "standard") next.priorityTier = "important";
+      next.priorityReason = normalizeWhitespace(input.priorityReason) || "Kunde möchte einen günstigeren Preis.";
+      next.purchaseSignal = true;
+      break;
+    case "wants-offer":
+      next.currentStage = "offer_adjustment";
+      next.nextCallDueAt = null;
+      next.nextCallAction = "send_offer";
+      next.blocked = false;
+      next.blockingReason = null;
+      next.cadenceFinished = true;
+      if (next.priorityTier === "standard") next.priorityTier = "important";
+      next.priorityReason = normalizeWhitespace(input.priorityReason) || "Kunde möchte ein Angebot erhalten.";
+      next.purchaseSignal = true;
+      break;
+    case "wants-update":
+      next.currentStage = "offer_adjustment";
+      next.nextCallDueAt = null;
+      next.nextCallAction = "send_update";
+      next.blocked = false;
+      next.blockingReason = null;
+      next.cadenceFinished = true;
+      if (next.priorityTier === "standard") next.priorityTier = "important";
+      next.priorityReason = normalizeWhitespace(input.priorityReason) || "Kunde möchte ein Update zum Angebot.";
       next.purchaseSignal = true;
       break;
     case "not-interested":
@@ -2094,7 +2282,7 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
 
   const items = itemRows
     .filter((row): row is DailyCallListItemRow & { request_id: string; rank: number } => Boolean(row.request_id) && row.rank !== null && row.rank !== undefined)
-    .map((row) => {
+    .map<SalesCallListItem | null>((row) => {
       const record = recordByRequestId.get(row.request_id);
       if (!record) return null;
       const sourceKeys = (row.source_keys || []) as CustomerWorkboardSection["key"][];
@@ -2119,9 +2307,9 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
         email: row.email || record.email || null,
         contactName: row.contact_name || record.displayName || null,
         companyName: row.company_name || record.company || null,
-        daysSinceSent: row.days_since_sent ?? daysSince(record.quote?.sentAt),
-        hoursSinceView: row.hours_since_view ?? hoursSince(record.quote?.viewedAt),
-        pandadocStatus: row.pandadoc_status || record.quote?.status || null,
+        daysSinceSent: row.days_since_sent ?? daysSince(quoteSentAt(record)),
+        hoursSinceView: row.hours_since_view ?? hoursSince(quoteViewedAt(record)),
+        pandadocStatus: row.pandadoc_status || quoteStatus(record),
         acLiveDecision: row.ac_live_decision || record.request?.dealStatus || null,
         acLiveStatus: row.ac_live_status || record.request?.status || null,
         acLiveStage: row.ac_live_stage || record.request?.acDealStage || null,
@@ -2141,7 +2329,8 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
           deriveCadenceState(record, latestResultsByRequestId.get(row.request_id) || null, null),
       };
     })
-    .filter((item) => Boolean(item)) as SalesCallListItem[];
+    .filter((item): item is SalesCallListItem => Boolean(item))
+    .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence));
 
   const gate = evaluateSalesCallGate(items);
   const completion = decideSalesCallCompletion("ok", gate);
@@ -2185,6 +2374,13 @@ export async function getSalesCallModuleState(): Promise<SalesCallModuleState> {
 
   const latestRun = runRows[0];
   if (!latestRun?.id) {
+    return buildModuleStateFromPreview(true);
+  }
+  if (latestRun.date !== todayInBerlin()) {
+    return buildModuleStateFromPreview(true);
+  }
+  const latestRunTime = new Date(latestRun.updated_at || latestRun.started_at || latestRun.created_at || 0).getTime();
+  if (Number.isFinite(latestRunTime) && Date.now() - latestRunTime > 10 * 60 * 1000) {
     return buildModuleStateFromPreview(true);
   }
 
@@ -2316,7 +2512,17 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
 
   const requiresPostReminderDecision =
     previousCadenceState.currentStage === "no_response_call" &&
-    !["callback", "interested", "needs-adjustment", "not-interested", "wrong-number"].includes(input.preset);
+    ![
+      "callback",
+      "interested",
+      "needs-adjustment",
+      "needs-time",
+      "wants-lower-price",
+      "wants-offer",
+      "wants-update",
+      "not-interested",
+      "wrong-number",
+    ].includes(input.preset);
   if (requiresPostReminderDecision && !input.postReminderDecision) {
     throw new QuoteValidationError("Bitte festlegen, wie der Fall nach Call 3 weiterlaufen soll.", [
       "Waehle nach dem Reminder-Call eine Folgeaktion: manuell weiterfuehren, Angebot anpassen oder beenden.",

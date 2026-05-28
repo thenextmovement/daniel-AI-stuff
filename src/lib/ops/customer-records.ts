@@ -466,9 +466,18 @@ export type CustomerAuditEntry = {
 export type CustomerOpsNote = {
   id: string;
   note: string;
+  kind: "note" | "task" | "update";
+  assigneeLabel: string | null;
+  mentions: string[];
   authorLabel: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+};
+
+export type CustomerOpsNoteInput = {
+  note: string;
+  kind?: CustomerOpsNote["kind"] | null;
+  assigneeLabel?: string | null;
 };
 
 export type CustomerCommunicationEntry = {
@@ -1741,9 +1750,15 @@ function snapshotEquals(left: EditableSnapshot, right: EditableSnapshot) {
 
 function mapNoteEntry(row: WorkflowAuditRow): CustomerOpsNote {
   const metadata = row.metadata || {};
+  const kind = normalizeOpsNoteKind(typeof metadata.note_kind === "string" ? metadata.note_kind : null);
   return {
     id: row.id,
     note: typeof metadata.note_text === "string" ? metadata.note_text : row.error_message || "",
+    kind,
+    assigneeLabel: auditText(metadata, "assignee_label"),
+    mentions: Array.isArray(metadata.mentions)
+      ? metadata.mentions.map((entry) => String(entry || "").trim()).filter(Boolean)
+      : [],
     authorLabel:
       typeof metadata.actor_label === "string"
         ? metadata.actor_label
@@ -1758,6 +1773,30 @@ function mapNoteEntry(row: WorkflowAuditRow): CustomerOpsNote {
 function auditText(metadata: Record<string, unknown>, key: string) {
   const value = metadata[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeOpsNoteKind(value: string | null | undefined): CustomerOpsNote["kind"] {
+  switch (String(value || "").trim().toLowerCase()) {
+    case "task":
+    case "aufgabe":
+      return "task";
+    case "update":
+    case "status":
+      return "update";
+    default:
+      return "note";
+  }
+}
+
+function extractNoteMentions(note: string, assigneeLabel: string | null) {
+  const mentions = new Set<string>();
+  const pattern = /@([\p{L}\p{N}][\p{L}\p{N}._-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}._-]*)?)/gu;
+  for (const match of note.matchAll(pattern)) {
+    const label = match[1]?.replace(/[.,;:!?)]$/, "").trim();
+    if (label) mentions.add(label);
+  }
+  if (assigneeLabel) mentions.add(assigneeLabel);
+  return [...mentions];
 }
 
 function auditNumber(metadata: Record<string, unknown>, key: string) {
@@ -3074,10 +3113,11 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
 
   for (const row of context.audits.filter((entry) => entry.action === CUSTOMER_RECORDS_NOTE_ACTION)) {
     const metadata = row.metadata || {};
+    const noteKind = normalizeOpsNoteKind(typeof metadata.note_kind === "string" ? metadata.note_kind : null);
     entries.push({
       id: `audit-note-${row.id}`,
       source: "workflow_audit_log",
-      title: "Interne Notiz",
+      title: noteKind === "task" ? "Teamaufgabe" : noteKind === "update" ? "Team-Update" : "Interne Notiz",
       description: typeof metadata.note_text === "string" ? metadata.note_text : null,
       status: null,
       occurredAt: row.created_at || null,
@@ -4710,15 +4750,18 @@ export async function updateCustomerTrelloCard(
   };
 }
 
-export async function addCustomerOpsNote(requestId: string, note: string, actor?: UpdateActor) {
+export async function addCustomerOpsNote(requestId: string, input: string | CustomerOpsNoteInput, actor?: UpdateActor) {
   const normalizedRequestId = normalizeRequestSearch(requestId);
-  const normalizedNote = trimNullable(note);
+  const normalizedNote = trimNullable(typeof input === "string" ? input : input.note);
+  const kind = normalizeOpsNoteKind(typeof input === "string" ? null : input.kind);
+  const assigneeLabel = trimNullable(typeof input === "string" ? null : input.assigneeLabel);
 
   if (!normalizedNote) {
     throw new QuoteValidationError("Notiz darf nicht leer sein.");
   }
 
   const context = await fetchCustomerContextByRequestId(normalizedRequestId);
+  const mentions = extractNoteMentions(normalizedNote, assigneeLabel);
   const rows = await supabaseRequest<WorkflowAuditRow[]>(
     "workflow_audit_log",
     {
@@ -4732,6 +4775,9 @@ export async function addCustomerOpsNote(requestId: string, note: string, actor?
           metadata: {
             request_id: context.master.request_id,
             note_text: normalizedNote,
+            note_kind: kind,
+            assignee_label: assigneeLabel,
+            mentions,
             actor_label: actorLabel(actor),
             actor: actor || null,
           },

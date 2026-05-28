@@ -43,13 +43,26 @@ export async function POST(request: NextRequest) {
   if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) return unauthorized();
 
   try {
-    const body = (await request.json()) as { requestId?: string; note?: string };
+    const body = (await request.json()) as {
+      requestId?: string;
+      note?: string;
+      kind?: "note" | "task" | "update";
+      assigneeLabel?: string | null;
+    };
 
-    const note = await addCustomerOpsNote(String(body.requestId || ""), String(body.note || ""), {
-      host,
-      mode: isOpsPortalBypassed(host) ? "local_bypass" : "ops_session",
-      userAgent: request.headers.get("user-agent"),
-    });
+    const note = await addCustomerOpsNote(
+      String(body.requestId || ""),
+      {
+        note: String(body.note || ""),
+        kind: body.kind,
+        assigneeLabel: body.assigneeLabel,
+      },
+      {
+        host,
+        mode: isOpsPortalBypassed(host) ? "local_bypass" : "ops_session",
+        userAgent: request.headers.get("user-agent"),
+      },
+    );
 
     return NextResponse.json({ ok: true, note });
   } catch (error) {

@@ -52,6 +52,10 @@ const presetOptions: Array<{
 }> = [
   { key: "interested", label: "Interessiert", helper: "Konkrete Frage, Blocker oder nächster Bearbeitungsschritt." },
   { key: "needs-adjustment", label: "Anpassung nötig", helper: "Angebot bleibt relevant, muss aber angepasst werden." },
+  { key: "needs-time", label: "Braucht noch Zeit", helper: "Kunde ist nicht raus, Wiedervorlage mit Datum." },
+  { key: "wants-lower-price", label: "Günstigerer Preis", helper: "Preis-Einwand, Angebot oder Rabatt prüfen." },
+  { key: "wants-offer", label: "Will Angebot", helper: "Kunde möchte ein Angebot oder neues Angebot erhalten." },
+  { key: "wants-update", label: "Will Update", helper: "Kunde wartet auf Status, Mockup oder Angebotsupdate." },
   { key: "callback", label: "Rückruf vereinbart", helper: "Erreicht, mit festem Rückrufdatum." },
   { key: "not-reached", label: "Nicht erreicht", helper: "Nicht erreicht, nächster Versuch mit Datum." },
   { key: "not-interested", label: "Kein Interesse", helper: "Erreicht, aber aktuell kein Bedarf mehr." },
@@ -238,7 +242,17 @@ function stageLabel(item: SalesCallListItem) {
 
 function needsPostReminderDecision(item: SalesCallListItem | null, preset: SalesCallPreset) {
   if (!item || item.cadence.currentStage !== "no_response_call") return false;
-  return !["callback", "interested", "needs-adjustment", "not-interested", "wrong-number"].includes(preset);
+  return ![
+    "callback",
+    "interested",
+    "needs-adjustment",
+    "needs-time",
+    "wants-lower-price",
+    "wants-offer",
+    "wants-update",
+    "not-interested",
+    "wrong-number",
+  ].includes(preset);
 }
 
 function formatMoney(value: number | null | undefined, currency = "EUR") {
@@ -279,6 +293,18 @@ function deriveSearchDealValue(record: CustomerSearchResult) {
   );
 }
 
+function getRecordQuoteSentAt(record: CustomerSearchResult) {
+  return record.quote?.sentAt || record.crmQuote?.sentAt || null;
+}
+
+function getRecordQuoteViewedAt(record: CustomerSearchResult) {
+  return record.quote?.viewedAt || record.crmQuote?.viewedAt || null;
+}
+
+function getRecordQuoteStatus(record: CustomerSearchResult) {
+  return record.quote?.status || record.crmQuote?.status || null;
+}
+
 function daysSinceDate(value: string | null | undefined) {
   if (!value) return null;
   const parsed = new Date(value).getTime();
@@ -297,7 +323,7 @@ function deriveSearchSourceKeys(record: CustomerSearchResult): CustomerWorkboard
   const sourceKeys: CustomerWorkboardSection["key"][] = [];
   if (record.callOps.nextCallbackAt || record.salesRecovery.nextCallbackAt) sourceKeys.push("callbacks");
   if (record.affectedRows.pendingFollowups > 0 || record.affectedRows.nextPendingFollowupAt) sourceKeys.push("due_followups");
-  if (record.salesRecovery.status === "active" || record.quote?.viewedAt || record.quote?.sentAt) sourceKeys.push("sales_recovery");
+  if (record.salesRecovery.status === "active" || getRecordQuoteViewedAt(record) || getRecordQuoteSentAt(record)) sourceKeys.push("sales_recovery");
   return [...new Set(sourceKeys)];
 }
 
@@ -314,14 +340,16 @@ function buildAdHocCallItem(record: CustomerSearchResult): SalesCallListItem {
           ? "Keine Telefonnummer"
           : null;
   const priorityTier: SalesCallPriorityTier =
-    dealValueEur >= 2500 || record.quote?.viewedAt ? "vip" : dealValueEur >= 1000 || record.salesRecovery.status === "active" ? "important" : "standard";
-  const currentStage: SalesCallListItem["cadence"]["currentStage"] = record.quote?.sentAt
-    ? (daysSinceDate(record.quote.sentAt) ?? 0) >= 3
+    dealValueEur >= 2500 || getRecordQuoteViewedAt(record) ? "vip" : dealValueEur >= 1000 || record.salesRecovery.status === "active" ? "important" : "standard";
+  const sentAt = getRecordQuoteSentAt(record);
+  const viewedAt = getRecordQuoteViewedAt(record);
+  const currentStage: SalesCallListItem["cadence"]["currentStage"] = sentAt
+    ? (daysSinceDate(sentAt) ?? 0) >= 3
       ? "no_response_call"
       : "quote_call"
     : "inquiry_call";
   const priorityReason =
-    record.quote?.viewedAt
+    viewedAt
       ? "Suchtreffer: Angebot angesehen."
       : dealValueEur >= 1000
         ? "Suchtreffer: hoher Warenwert."
@@ -339,7 +367,7 @@ function buildAdHocCallItem(record: CustomerSearchResult): SalesCallListItem {
     recommendedAction: "call_ad_hoc_search_result",
     dealValueEur,
     reasons: [priorityReason],
-    contextPreview: [record.quote?.status ? `Angebotsstatus: ${record.quote.status}` : null, record.request?.acDealStage ? `AC-Phase: ${record.request.acDealStage}` : null]
+    contextPreview: [getRecordQuoteStatus(record) ? `Angebotsstatus: ${getRecordQuoteStatus(record)}` : null, record.request?.acDealStage ? `AC-Phase: ${record.request.acDealStage}` : null]
       .filter(Boolean)
       .join(" • "),
     phoneRaw: record.phone || record.originalPhone || null,
@@ -348,9 +376,9 @@ function buildAdHocCallItem(record: CustomerSearchResult): SalesCallListItem {
     email: record.email || null,
     contactName: record.displayName || [record.firstName, record.lastName].filter(Boolean).join(" ") || null,
     companyName: record.company || record.request?.title || null,
-    daysSinceSent: daysSinceDate(record.quote?.sentAt),
-    hoursSinceView: hoursSinceDate(record.quote?.viewedAt),
-    pandadocStatus: record.quote?.status || null,
+    daysSinceSent: daysSinceDate(sentAt),
+    hoursSinceView: hoursSinceDate(viewedAt),
+    pandadocStatus: getRecordQuoteStatus(record),
     acLiveDecision: record.request?.dealStatus || null,
     acLiveStatus: record.request?.status || null,
     acLiveStage: record.request?.acDealStage || null,
@@ -372,8 +400,8 @@ function buildAdHocCallItem(record: CustomerSearchResult): SalesCallListItem {
       currentStage: blockedReason === "Keine Telefonnummer" ? "data_issue" : blockedReason ? "finished" : currentStage,
       nextCallDueAt: dueAt,
       call1DueAt: record.request?.createdAt || null,
-      call2DueAt: record.quote?.sentAt || null,
-      call3DueAt: record.quote?.sentAt || null,
+      call2DueAt: sentAt,
+      call3DueAt: sentAt,
       call1CompletedAt: null,
       call2CompletedAt: null,
       call3CompletedAt: null,
@@ -519,6 +547,14 @@ function getCallOutcomeLabel(item: SalesCallListItem) {
       return "interessiert";
     case "needs-adjustment":
       return "Anpassung nötig";
+    case "needs-time":
+      return "braucht noch Zeit";
+    case "wants-lower-price":
+      return "Preis-Einwand";
+    case "wants-offer":
+      return "will Angebot";
+    case "wants-update":
+      return "will Update";
     case "not-interested":
       return "kein Interesse";
     case "wrong-number":
@@ -639,14 +675,14 @@ function isPriorityItem(item: SalesCallListItem) {
     item.cadence.purchaseSignal ||
     item.cadence.queueBucket === "vip_today" ||
     item.dealValueEur >= 1000 ||
-    Boolean(item.record.quote?.viewedAt)
+    Boolean(getRecordQuoteViewedAt(item.record))
   );
 }
 
 function getPriorityReason(item: SalesCallListItem) {
   if (item.cadence.priorityReason) return item.cadence.priorityReason;
   if (item.cadence.purchaseSignal) return "Kaufsignal im Gespräch";
-  if (item.record.quote?.viewedAt) return "Angebot angesehen";
+  if (getRecordQuoteViewedAt(item.record)) return "Angebot angesehen";
   if (item.dealValueEur >= 1000) return "Hoher Warenwert";
   if (item.cadence.queueBucket === "callbacks") return "Rückruf fällig";
   return "Priorisiert";
@@ -880,7 +916,7 @@ export function CustomerSalesCallsClient({
   }, [adHocItem, state, selectedItemId]);
 
   useEffect(() => {
-    if ((preset === "callback" || preset === "not-reached") && !callbackDate) {
+    if ((preset === "callback" || preset === "not-reached" || preset === "needs-time") && !callbackDate) {
       setCallbackDate(tomorrowDate());
     }
   }, [preset, callbackDate]);
@@ -928,8 +964,8 @@ export function CustomerSalesCallsClient({
             const order: Record<SalesCallPriorityTier, number> = { vip: 0, important: 1, standard: 2 };
             return order[left.cadence.priorityTier] - order[right.cadence.priorityTier];
           }
-          if (left.record.quote?.viewedAt && !right.record.quote?.viewedAt) return -1;
-          if (!left.record.quote?.viewedAt && right.record.quote?.viewedAt) return 1;
+          if (getRecordQuoteViewedAt(left.record) && !getRecordQuoteViewedAt(right.record)) return -1;
+          if (!getRecordQuoteViewedAt(left.record) && getRecordQuoteViewedAt(right.record)) return 1;
           return right.dealValueEur - left.dealValueEur;
         })
         .slice(0, 8),
@@ -1075,7 +1111,7 @@ export function CustomerSalesCallsClient({
         requestId: selectedItem.requestId,
         preset,
         notes,
-        callbackDate: preset === "callback" || preset === "not-reached" ? callbackDate : null,
+        callbackDate: preset === "callback" || preset === "not-reached" || preset === "needs-time" ? callbackDate : null,
         postReminderDecision: needsPostReminderDecision(selectedItem, preset) ? postReminderDecision : null,
         priorityTier,
         priorityReason,
@@ -1812,7 +1848,7 @@ export function CustomerSalesCallsClient({
                     />
                   </div>
 
-                  {(preset === "callback" || preset === "not-reached") ? (
+                  {(preset === "callback" || preset === "not-reached" || preset === "needs-time") ? (
                     <div className="mt-5 space-y-2">
                       <label className="text-sm font-medium text-stone-900">Rückrufdatum</label>
                       <input
