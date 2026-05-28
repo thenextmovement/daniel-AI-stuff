@@ -14,6 +14,7 @@ import {
   buildTaskFromInboundEmailSignal,
   classifyInboundEmailSignal,
   closeActiveSalesTasksForRequest,
+  closeSupersededSalesTasksForRequest,
   loadActiveSalesTasksByRequestId,
   taskTitle,
   upsertSalesTask,
@@ -1612,6 +1613,53 @@ function deriveQueueBucket(
   return "due_today" as const;
 }
 
+function deriveSourceTruthStage(record: CustomerSearchResult): Pick<SalesCallCadenceState, "currentStage" | "nextCallDueAt" | "nextCallAction"> {
+  const sentAt = quoteSentAt(record);
+  const viewedAt = quoteViewedAt(record);
+  if (sentAt && (daysSince(sentAt) ?? 0) >= 3) {
+    return {
+      currentStage: "no_response_call",
+      nextCallDueAt: scheduleNoResponseCall(sentAt, viewedAt),
+      nextCallAction: "call_stage_3",
+    };
+  }
+  if (sentAt) {
+    return {
+      currentStage: "quote_call",
+      nextCallDueAt: scheduleQuoteCall(sentAt, viewedAt),
+      nextCallAction: "call_stage_2",
+    };
+  }
+  return {
+    currentStage: "inquiry_call",
+    nextCallDueAt: scheduleInquiryCall(record.request?.createdAt),
+    nextCallAction: "call_stage_1",
+  };
+}
+
+function stageRank(stage: SalesCallCadenceStage) {
+  switch (stage) {
+    case "inquiry_call":
+      return 1;
+    case "quote_call":
+      return 2;
+    case "no_response_call":
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+function shouldSourceTruthStageOverrideCurrent(current: SalesCallCadenceState, sourceTruth: Pick<SalesCallCadenceState, "currentStage">) {
+  if (current.cadenceFinished) return false;
+  if (current.currentStage === "callback") return false;
+  if (current.currentStage === "manual_followup") return false;
+  if (current.currentStage === "offer_adjustment") return false;
+  if (current.currentStage === "data_issue") return false;
+  if (current.currentStage === "finished") return false;
+  return stageRank(sourceTruth.currentStage) > stageRank(current.currentStage);
+}
+
 function shouldIncludeInDailyCallList(record: CustomerSearchResult, cadence: SalesCallCadenceState) {
   if (cadence.currentStage === "finished") return false;
   if (record.opsState.isClosed || Boolean(record.order)) return false;
@@ -1635,6 +1683,7 @@ export function deriveCadenceState(
   const next = existing ? { ...existing } : buildEmptyCadenceState(record.requestId);
   const sentAt = quoteSentAt(record);
   const viewedAt = quoteViewedAt(record);
+  const sourceTruthStage = deriveSourceTruthStage(record);
   next.requestId = record.requestId;
   next.call1DueAt = next.call1DueAt || scheduleInquiryCall(record.request?.createdAt);
   next.call2DueAt = next.call2DueAt || scheduleQuoteCall(sentAt, viewedAt);
@@ -1743,19 +1792,16 @@ export function deriveCadenceState(
     next.nextCallDueAt = null;
   } else if (!next.blocked) {
     if (!existing) {
-      if (sentAt && (daysSince(sentAt) ?? 0) >= 3) {
-        next.currentStage = "no_response_call";
-        next.nextCallDueAt = next.call3DueAt;
-        next.nextCallAction = "call_stage_3";
-      } else if (sentAt) {
-        next.currentStage = "quote_call";
-        next.nextCallDueAt = next.call2DueAt;
-        next.nextCallAction = "call_stage_2";
-      } else {
-        next.currentStage = "inquiry_call";
-        next.nextCallDueAt = next.call1DueAt;
-        next.nextCallAction = "call_stage_1";
-      }
+      next.currentStage = sourceTruthStage.currentStage;
+      next.nextCallDueAt = sourceTruthStage.nextCallDueAt;
+      next.nextCallAction = sourceTruthStage.nextCallAction;
+    } else if (shouldSourceTruthStageOverrideCurrent(next, sourceTruthStage)) {
+      next.currentStage = sourceTruthStage.currentStage;
+      next.nextCallDueAt = sourceTruthStage.nextCallDueAt;
+      next.nextCallAction = sourceTruthStage.nextCallAction;
+      next.blocked = false;
+      next.blockingReason = null;
+      next.cadenceFinished = false;
     }
   }
 
@@ -2084,12 +2130,25 @@ async function syncSalesTaskFromCandidate(item: Pick<SalesCallListItem, "cadence
       priorityTier: mapTaskPriority(item.cadence.priorityTier),
       preview: emailSignal.preview,
     });
+    await closeSupersededSalesTasksForRequest({
+      requestId: item.cadence.requestId,
+      keepIdempotencyKey: task.idempotencyKey,
+      reason: "inbound_email_signal_supersedes_call_task",
+      sourceRef: emailSignal.sourceRef,
+    });
     await upsertSalesTask(task);
     return;
   }
 
   const task = buildSalesTaskFromCadence(item.cadence, "sales_call_candidate");
-  if (task) await upsertSalesTask(task);
+  if (task) {
+    await closeSupersededSalesTasksForRequest({
+      requestId: item.cadence.requestId,
+      keepIdempotencyKey: task.idempotencyKey,
+      reason: `current_stage:${item.cadence.currentStage}`,
+    });
+    await upsertSalesTask(task);
+  }
 }
 
 async function syncSalesTaskFromResult(cadence: SalesCallCadenceState, result: SalesCallResultEntry) {

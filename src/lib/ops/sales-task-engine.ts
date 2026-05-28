@@ -437,3 +437,47 @@ export async function closeActiveSalesTasksForRequest(input: {
   }
 }
 
+const SUPERSEDED_SALES_TASK_TYPES: SalesTaskType[] = [
+  "call_new_inquiry",
+  "call_quote_sent",
+  "call_reminder_1",
+  "call_reminder_2",
+  "call_reminder_3",
+  "callback_scheduled",
+  "waiting_customer_response",
+];
+
+export async function closeSupersededSalesTasksForRequest(input: {
+  requestId: string;
+  keepIdempotencyKey: string;
+  reason: string;
+  sourceRef?: string | null;
+}) {
+  try {
+    await supabaseRequest(
+      SALES_TASKS_TABLE,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "done",
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          payload: {
+            closed_reason: input.reason,
+            closed_source_ref: input.sourceRef || null,
+          },
+        }),
+        headers: { Prefer: "return=minimal" },
+      },
+      {
+        request_id: `eq.${input.requestId}`,
+        status: "in.(open,waiting,blocked)",
+        task_type: `in.(${SUPERSEDED_SALES_TASK_TYPES.join(",")})`,
+        idempotency_key: `neq.${input.keepIdempotencyKey}`,
+      },
+    );
+  } catch (error) {
+    if (isMissingRelationError(error, SALES_TASKS_TABLE)) return;
+    throw error;
+  }
+}

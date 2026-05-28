@@ -621,6 +621,13 @@ function getCallOutcomeLabel(item: SalesCallListItem) {
 function getCallStageSummary(item: SalesCallListItem) {
   const nextCallName = getNextCallName(item);
   const outcome = getCallOutcomeLabel(item);
+  const missed: string[] = [];
+  if ((item.cadence.currentStage === "quote_call" || item.cadence.currentStage === "no_response_call") && !item.cadence.call1CompletedAt) {
+    missed.push("Call 1 nicht erledigt");
+  }
+  if (item.cadence.currentStage === "no_response_call" && !item.cadence.call2CompletedAt) {
+    missed.push("Call 2 nicht erledigt");
+  }
   if (item.cadence.cadenceFinished) {
     return outcome ? `Strecke beendet • zuletzt ${outcome}` : "Strecke beendet";
   }
@@ -632,6 +639,7 @@ function getCallStageSummary(item: SalesCallListItem) {
       ? `${item.cadence.standardCallCount}/3 erledigt • zuletzt ${outcome} • jetzt ${nextCallName}`
       : `${item.cadence.standardCallCount}/3 erledigt • jetzt ${nextCallName}`;
   }
+  if (missed.length) return `${nextCallName} steht an • ${missed.join(" • ")}`;
   return `${nextCallName} steht an • noch kein Ergebnis`;
 }
 

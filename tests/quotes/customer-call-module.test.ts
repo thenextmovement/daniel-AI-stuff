@@ -369,6 +369,34 @@ test("deriveCadenceState schedules same-day first inquiry and same-day quote cal
   assert.ok(quoteCadence.call2DueAt, "quote call due date is set");
 });
 
+test("deriveCadenceState promotes stale inquiry tasks when an offer has since been sent", () => {
+  const inquiryRecord = buildRecord();
+  const existing = deriveCadenceState(inquiryRecord, null, null);
+  assert.equal(existing.currentStage, "inquiry_call");
+  assert.equal(existing.standardCallCount, 0);
+
+  const quoteRecord = buildRecord({
+    quote: {
+      status: "sent",
+      totalValue: 1400,
+      currency: "EUR",
+      shareLink: null,
+      editLink: null,
+      sentAt: new Date().toISOString(),
+      viewedAt: null,
+      signedAt: null,
+      whatsappSentAt: null,
+    },
+  });
+  const promoted = deriveCadenceState(quoteRecord, null, existing);
+  const task = buildSalesTaskFromCadence(promoted, "sales_call_candidate");
+
+  assert.equal(promoted.currentStage, "quote_call");
+  assert.equal(promoted.standardCallCount, 0);
+  assert.equal(promoted.call1CompletedAt, null);
+  assert.equal(task?.taskType, "call_quote_sent");
+});
+
 test("advanceCadenceStateFromResult sends not-reached cases into retry bucket with next follow-up", () => {
   const record = buildRecord();
   const current = deriveCadenceState(record, null, null);
