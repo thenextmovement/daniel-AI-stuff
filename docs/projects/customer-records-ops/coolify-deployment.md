@@ -1,6 +1,6 @@
 # Coolify Deployment
 
-Stand: 2026-05-27
+Stand: 2026-05-28
 
 Ziel: `Customer Records` und `Sales Calls` auf dem bestehenden Hetzner/Coolify-Server betreiben, ohne Render und ohne oeffentlichen ungeschuetzten Zugriff.
 
@@ -19,7 +19,21 @@ Coolify ist fuer dieses Projekt ein guter Zielhost, weil bereits ein Hetzner-Ser
 
 ## Aktueller Repo-Hinweis
 
-Der lokale Checkout hat aktuell keinen Git-Remote eingetragen. Viele Ops-Dateien sind lokal noch untracked. Coolify kann diese App erst bauen, wenn die relevanten Dateien in einem von Coolify erreichbaren Git-Repo liegen oder anderweitig nach Coolify uebertragen wurden.
+Der produktive Coolify-Service nutzt aktuell dieses GitHub-Repo:
+
+```text
+https://github.com/thenextmovement/daniel-AI-stuff
+```
+
+Branch: `main`
+
+Der lokale saubere Arbeits-Checkout liegt hier:
+
+```text
+/Users/danielklesse/Desktop/neontrip-ops-coolify
+```
+
+Code-Aenderungen werden dort gemacht, getestet, committed und nach GitHub gepusht. Danach wird Coolify redeployed.
 
 Relevante Dateien:
 
@@ -101,13 +115,9 @@ Aktueller oeffentlicher Befund:
 - `neontrip.de` nutzt `ns.udag.*`.
 - `neontrip.de` und `www.neontrip.de` zeigen auf Shopify.
 - `anfrage.neontrip.de` zeigt auf Cloudflare Pages.
-- `ops.neontrip.de` existiert noch nicht.
+- `ops.neontrip.de` zeigt per `A` Record auf `91.99.61.158`.
 
-Fuer Coolify:
-
-1. Bei United Domains einen DNS-Record fuer `ops.neontrip.de` setzen.
-2. Wenn Coolify direkt erreichbar sein soll: `A` Record auf die Hetzner-Server-IP.
-3. Wenn Cloudflare Access genutzt werden soll: Subdomain/Route so einrichten, dass Traffic ueber Cloudflare laeuft. Ohne Cloudflare-Proxy gibt es kein Cloudflare-Access-JWT.
+Wichtig: DNS fuer `neontrip.de`, `www.neontrip.de` oder `anfrage.neontrip.de` nicht fuer diese App aendern. Die Ops-App nutzt nur die Subdomain `ops.neontrip.de`.
 
 ## Zugriffsschutz
 

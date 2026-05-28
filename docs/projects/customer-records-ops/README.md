@@ -1,6 +1,6 @@
 # Customer Records Ops Projekt
 
-Stand: 2026-05-21
+Stand: 2026-05-28
 
 Dieser Ordner bündelt die Dokumentation zum Customer-Records-Ops-Projekt: Ops-Portal, Call-Modul, Request-Segmentierung und die dazugehörigen Sicherheitsregeln.
 
@@ -10,6 +10,8 @@ Dieser Ordner bündelt die Dokumentation zum Customer-Records-Ops-Projekt: Ops-P
 - [Request Segmentation](./request-segmentation.md): Anfrage-Segmentierung, n8n-Workflow, Postgres-Felder und manuelle Korrektur im Portal.
 - [Internal Deployment](./internal-deployment.md): Interne Veroeffentlichung mit Cloudflare Access, Deployment-Env, Pfadvalidierung und Rollback.
 - [Internal Launch Checklist](./internal-launch-checklist.md): Schrittfolge fuer Datenbank-, Hosting-, Access-, Build-, Smoke- und Rollback-Gates vor interner Nutzung.
+- [Coolify Deployment](./coolify-deployment.md): Hosting-Ziel, Dockerfile, Env Vars, DNS, Zugriffsschutz und Validierung fuer Hetzner/Coolify.
+- [Operations Runbook](./operations-runbook.md): Alltag nach Go-Live: Code aendern, testen, pushen, redeployen, Login/Secrets verwalten und Stoerungen eingrenzen.
 - [Go-Live Status 2026-05-26](./go-live-status-2026-05-26.md): Heutiger Ist-Stand, Blocker und naechste Schritte fuer interne Nutzung.
 
 ## Projektgrenzen
@@ -24,6 +26,7 @@ Dieser Ordner bündelt die Dokumentation zum Customer-Records-Ops-Projekt: Ops-P
 
 - `customer-records-ops.md` enthält den laufenden Handover-Stand für `/ops/customer-records` und `/ops/customer-records/calls`.
 - `request-segmentation.md` ist bewusst Teil dieses Projektordners, weil Segmentierung direkt im Ops-Portal sichtbar und korrigierbar ist.
+- `operations-runbook.md` ist die operative Anleitung fuer Aenderungen nach dem Deployment auf `ops.neontrip.de`.
 - Der alte Operations-Pfad bleibt als schlanker Hinweis erhalten, damit bestehende Links nicht brechen.
 
 ## Nächste sinnvolle Ordnungsschritte
