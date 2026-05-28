@@ -640,6 +640,72 @@ test("buildSalesTaskFromCadence creates persistent call and callback tasks", () 
   assert.equal(callbackTask?.sourceRef, "callback_result");
 });
 
+test("advanceCadenceStateFromResult closes task creation for won and do-not-call outcomes", () => {
+  const record = buildRecord();
+  const current = deriveCadenceState(record, null, null);
+  const bought = advanceCadenceStateFromResult(
+    current,
+    {
+      id: "won_result",
+      callListItemId: "item_1",
+      rankAtTime: 1,
+      requestId: record.requestId,
+      acDealId: 12345,
+      preset: "bought",
+      callDone: "yes",
+      callOutcome: "reached_bought",
+      nextStep: "close_won",
+      validationUseful: "yes",
+      notes: "Kunde bestätigt den Auftrag, weitere Sales-Calls sind nicht mehr nötig.",
+      operatorId: "Daniel",
+      source: "test",
+      createdAt: "2026-05-21T09:00:00.000Z",
+      updatedAt: "2026-05-21T09:00:00.000Z",
+    },
+    {
+      priorityTier: null,
+      priorityReason: null,
+      purchaseSignal: null,
+      postReminderDecision: null,
+    },
+  );
+
+  assert.equal(bought.currentStage, "finished");
+  assert.equal(bought.nextCallAction, "closed_won");
+  assert.equal(buildSalesTaskFromCadence(bought, "sales_call_result", "won_result"), null);
+
+  const doNotCall = advanceCadenceStateFromResult(
+    current,
+    {
+      id: "stop_result",
+      callListItemId: "item_1",
+      rankAtTime: 1,
+      requestId: record.requestId,
+      acDealId: 12345,
+      preset: "do-not-call",
+      callDone: "yes",
+      callOutcome: "do_not_call_requested",
+      nextStep: "do_not_contact",
+      validationUseful: "yes",
+      notes: "Kontakt bittet darum, keine weiteren Anrufe zu erhalten.",
+      operatorId: "Daniel",
+      source: "test",
+      createdAt: "2026-05-21T09:00:00.000Z",
+      updatedAt: "2026-05-21T09:00:00.000Z",
+    },
+    {
+      priorityTier: null,
+      priorityReason: null,
+      purchaseSignal: null,
+      postReminderDecision: null,
+    },
+  );
+
+  assert.equal(doNotCall.currentStage, "finished");
+  assert.equal(doNotCall.nextCallAction, "blocked_do_not_call");
+  assert.equal(buildSalesTaskFromCadence(doNotCall, "sales_call_result", "stop_result"), null);
+});
+
 test("classifyInboundEmailSignal turns customer will-respond emails into waiting tasks", () => {
   const signal = classifyInboundEmailSignal({
     subject: "Re: Angebot",

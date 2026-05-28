@@ -43,6 +43,7 @@ Siehe auch: [Request Segmentation](./request-segmentation.md)
   - Tageslisten sind nicht mehr die alleinige Wahrheit, sondern nur eine Ansicht auf offene/faellige Aufgaben.
   - Beim Erzeugen einer Call-Liste wird je Fall eine idempotente Aufgabe angelegt, z. B. `call_new_inquiry`, `call_quote_sent`, `call_reminder_1/2/3` oder `callback_scheduled`.
   - Beim Speichern eines Call-Ergebnisses werden offene Aufgaben des Falls abgeschlossen und die nächste Aufgabe wird deterministisch angelegt.
+  - Harte Endzustände erzeugen keine neue Aufgabe: `Kauft / Auftrag`, `Kein Interesse`, `Nicht mehr anrufen`, vorhandener Kontaktstopp oder verknüpfter Auftrag beenden die Call-Strecke.
   - Eingehende E-Mail-Signale werden regelbasiert vorbereitet: `wir melden uns`/`brauchen Zeit` erzeugt `waiting_customer_response`, Preis-Einwände erzeugen `price_review`, Update-Fragen erzeugen `send_update`, Angebotsfragen erzeugen `send_offer`.
   - AI darf hierfür später nur JSON-Vorschläge liefern; die Ausführung bleibt deterministisch validiert.
   - Migration: `supabase/migrations/202605280001_create_sales_tasks.sql`. Vor Produktivnutzung muss sie in Supabase angewendet werden.

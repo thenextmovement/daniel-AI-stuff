@@ -59,6 +59,8 @@ const presetOptions: Array<{
   { key: "wants-update", label: "Will Update", helper: "Kunde wartet auf Status, Mockup oder Angebotsupdate." },
   { key: "callback", label: "Rückruf vereinbart", helper: "Erreicht, mit festem Rückrufdatum." },
   { key: "not-reached", label: "Nicht erreicht", helper: "Nicht erreicht, nächster Versuch mit Datum." },
+  { key: "bought", label: "Kauft / Auftrag", helper: "Call-Strecke beenden, weil der Fall gewonnen ist." },
+  { key: "do-not-call", label: "Nicht mehr anrufen", helper: "Kontaktstopp für Calls: keine weiteren Anrufe." },
   { key: "not-interested", label: "Kein Interesse", helper: "Erreicht, aber aktuell kein Bedarf mehr." },
   { key: "wrong-number", label: "Falsche Nummer", helper: "Nummer passt nicht zum Fall." },
   { key: "review-useful", label: "Review sinnvoll", helper: "Nur fachlich geprüft, für die Liste relevant." },
@@ -251,6 +253,8 @@ function needsPostReminderDecision(item: SalesCallListItem | null, preset: Sales
     "wants-lower-price",
     "wants-offer",
     "wants-update",
+    "bought",
+    "do-not-call",
     "not-interested",
     "wrong-number",
   ].includes(preset);
@@ -556,6 +560,10 @@ function getCallOutcomeLabel(item: SalesCallListItem) {
       return "will Angebot";
     case "wants-update":
       return "will Update";
+    case "bought":
+      return "kauft / Auftrag";
+    case "do-not-call":
+      return "keine weiteren Anrufe";
     case "not-interested":
       return "kein Interesse";
     case "wrong-number":

@@ -50,6 +50,8 @@ export type SalesCallPreset =
   | "wants-update"
   | "callback"
   | "not-reached"
+  | "bought"
+  | "do-not-call"
   | "not-interested"
   | "wrong-number"
   | "review-useful"
@@ -115,6 +117,8 @@ export type SalesCallCadenceState = {
     | "send_update"
     | "price_review"
     | "blocked_no_interest"
+    | "blocked_do_not_call"
+    | "closed_won"
     | "blocked_wrong_number"
     | "finished_standard_cadence";
   queueBucket: SalesCallQueueBucket;
@@ -267,6 +271,8 @@ type SalesCallOutcome =
   | "reached_wants_offer"
   | "reached_wants_update"
   | "reached_callback"
+  | "reached_bought"
+  | "do_not_call_requested"
   | "reached_not_interested"
   | "not_reached"
   | "wrong_number";
@@ -475,7 +481,9 @@ const SALES_CALL_PRESETS: Record<
       | "send_offer"
       | "send_update"
       | "price_review"
+      | "close_won"
       | "close_lost"
+      | "do_not_contact"
       | "wait"
       | "no_action"
       | "callback";
@@ -528,6 +536,18 @@ const SALES_CALL_PRESETS: Record<
     callDone: "yes",
     callOutcome: "not_reached",
     nextStep: "callback",
+    validationUseful: "yes",
+  },
+  bought: {
+    callDone: "yes",
+    callOutcome: "reached_bought",
+    nextStep: "close_won",
+    validationUseful: "yes",
+  },
+  "do-not-call": {
+    callDone: "yes",
+    callOutcome: "do_not_call_requested",
+    nextStep: "do_not_contact",
     validationUseful: "yes",
   },
   "not-interested": {
@@ -1622,13 +1642,13 @@ export function deriveCadenceState(
     next.blockingReason = "Kontaktstopp aktiv";
     next.cadenceFinished = true;
     next.currentStage = "finished";
-    next.nextCallAction = "finished_standard_cadence";
+    next.nextCallAction = "blocked_do_not_call";
   } else if (record.opsState.isClosed || Boolean(record.order)) {
     next.blocked = true;
     next.blockingReason = "Fall bereits abgeschlossen";
     next.cadenceFinished = true;
     next.currentStage = "finished";
-    next.nextCallAction = "finished_standard_cadence";
+    next.nextCallAction = record.order ? "closed_won" : "finished_standard_cadence";
   } else if (phoneQuality(record.phone || record.originalPhone) === "missing") {
     next.blocked = true;
     next.blockingReason = "Keine Telefonnummer";
@@ -1648,6 +1668,20 @@ export function deriveCadenceState(
     next.cadenceFinished = true;
     next.currentStage = "finished";
     next.nextCallAction = "blocked_no_interest";
+  } else if (latestResult?.preset === "do-not-call") {
+    next.blocked = true;
+    next.blockingReason = "Keine weiteren Anrufe gewünscht";
+    next.cadenceFinished = true;
+    next.currentStage = "finished";
+    next.nextCallAction = "blocked_do_not_call";
+    next.nextCallDueAt = null;
+  } else if (latestResult?.preset === "bought") {
+    next.blocked = true;
+    next.blockingReason = "Kauf oder Auftrag im Gespräch bestätigt";
+    next.cadenceFinished = true;
+    next.currentStage = "finished";
+    next.nextCallAction = "closed_won";
+    next.nextCallDueAt = null;
   } else if (latestResult?.preset === "callback") {
     const callbackDate = latestResult.nextStep.replace(/^callback_/, "");
     next.blocked = true;
@@ -1856,6 +1890,23 @@ export function advanceCadenceStateFromResult(
       if (next.priorityTier === "standard") next.priorityTier = "important";
       next.priorityReason = normalizeWhitespace(input.priorityReason) || "Kunde möchte ein Update zum Angebot.";
       next.purchaseSignal = true;
+      break;
+    case "bought":
+      next.currentStage = "finished";
+      next.nextCallDueAt = null;
+      next.nextCallAction = "closed_won";
+      next.blocked = true;
+      next.blockingReason = "Kauf oder Auftrag im Gespräch bestätigt";
+      next.cadenceFinished = true;
+      next.purchaseSignal = true;
+      break;
+    case "do-not-call":
+      next.currentStage = "finished";
+      next.nextCallDueAt = null;
+      next.nextCallAction = "blocked_do_not_call";
+      next.blocked = true;
+      next.blockingReason = "Keine weiteren Anrufe gewünscht";
+      next.cadenceFinished = true;
       break;
     case "not-interested":
       next.currentStage = "finished";
@@ -2662,6 +2713,8 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       "wants-lower-price",
       "wants-offer",
       "wants-update",
+      "bought",
+      "do-not-call",
       "not-interested",
       "wrong-number",
     ].includes(input.preset);
