@@ -222,6 +222,47 @@ function completionTone(complete: boolean) {
     : "text-slate-700 bg-slate-50 border-slate-200";
 }
 
+function gateLabel(gate: SalesCallModuleState["gate"]["gate"] | null | undefined) {
+  switch (gate) {
+    case "green":
+      return "Gut";
+    case "yellow":
+      return "Prüfen";
+    case "red":
+      return "Kritisch";
+    case "invalid":
+      return "Fehler";
+    case "incomplete":
+      return "Offen";
+    default:
+      return "…";
+  }
+}
+
+function completionLabel(complete: boolean | null | undefined) {
+  if (complete === undefined || complete === null) return "…";
+  return complete ? "Vollständig" : "Offen";
+}
+
+function completionReasonLabel(reason: string | null | undefined) {
+  switch (reason) {
+    case "storage unavailable":
+      return "Speicherung ist noch nicht aktiv.";
+    case "not enough reviewed":
+      return "Es sind noch nicht genug Fälle geprüft.";
+    case "too few concrete next steps":
+      return "Es fehlen konkrete nächste Schritte.";
+    case "low useful rate":
+      return "Die geprüften Fälle liefern zu wenig nutzbare Ergebnisse.";
+    case "learning signal not stable":
+      return "Die Notizen reichen noch nicht für ein stabiles Muster.";
+    case "complete":
+      return "Die Liste ist für heute ausreichend geprüft.";
+    default:
+      return reason || "Lade Status …";
+  }
+}
+
 function stageLabel(item: SalesCallListItem) {
   switch (item.cadence.currentStage) {
     case "inquiry_call":
@@ -1261,11 +1302,11 @@ export function CustomerSalesCallsClient({
         <div className="rounded-[2rem] bg-stone-950 px-8 py-8 text-white shadow-xl shadow-stone-950/10">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Follow-up Sales Calls</p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Eigenständiges Call-Modul</h1>
+              <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Sales Calls</p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Call-Zentrale</h1>
               <p className="mt-4 text-base leading-7 text-stone-300">
-                Eigene Tagesliste, eigene Ergebnisspeicherung, aber dieselben Guards wie das bestehende Follow-up-System.
-                Die laufenden Mail-Workflows werden hier nicht verändert.
+                Zeigt neue Anfragen, heute gesendete Angebote und fällige Rückrufe. Gespeicherte Ergebnisse
+                verschieben oder schließen Fälle automatisch.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -1281,7 +1322,7 @@ export function CustomerSalesCallsClient({
                 className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-medium text-stone-950 transition hover:bg-stone-100 disabled:opacity-60"
               >
                 <RefreshCcw className="h-4 w-4" />
-                {refreshing ? "Erzeuge…" : "Tagesliste erzeugen"}
+                {refreshing ? "Aktualisiere…" : "Liste aktualisieren"}
               </button>
             </div>
           </div>
@@ -1296,16 +1337,16 @@ export function CustomerSalesCallsClient({
 
         <div className="grid gap-4 md:grid-cols-4">
           <div className={`rounded-3xl border px-5 py-4 ${state ? gateTone(state.gate.gate) : "border-stone-200 bg-white text-stone-700"}`}>
-            <p className="text-xs uppercase tracking-[0.24em]">Top-10 Gate</p>
-            <p className="mt-3 text-2xl font-semibold">{state?.gate.gate || "…"}</p>
+            <p className="text-xs uppercase tracking-[0.24em]">Listenprüfung</p>
+            <p className="mt-3 text-2xl font-semibold">{gateLabel(state?.gate.gate)}</p>
             <p className="mt-2 text-sm">
-              {state ? `${state.gate.reviewed}/${state.gate.topN} geprüft • ${state.gate.concreteNextSteps} konkrete Sales-Schritte` : "Lade Status …"}
+              {state ? `${state.gate.reviewed}/${state.gate.topN} geprüft • ${state.gate.concreteNextSteps} nächste Schritte` : "Lade Status …"}
             </p>
           </div>
           <div className={`rounded-3xl border px-5 py-4 ${state ? completionTone(state.completion.complete) : "border-stone-200 bg-white text-stone-700"}`}>
-            <p className="text-xs uppercase tracking-[0.24em]">Completion</p>
-            <p className="mt-3 text-2xl font-semibold">{state?.completion.complete ? "complete" : "not complete"}</p>
-            <p className="mt-2 text-sm">{state?.completion.reason || "Lade Status …"}</p>
+            <p className="text-xs uppercase tracking-[0.24em]">Arbeitsstand</p>
+            <p className="mt-3 text-2xl font-semibold">{completionLabel(state?.completion.complete)}</p>
+            <p className="mt-2 text-sm">{completionReasonLabel(state?.completion.reason)}</p>
           </div>
           <div className="rounded-3xl border border-stone-200 bg-white px-5 py-4 text-stone-700">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Lauf</p>
@@ -1615,7 +1656,7 @@ export function CustomerSalesCallsClient({
                 )
               ) : (
                 <div className="rounded-3xl border border-dashed border-stone-300 px-5 py-8 text-sm text-stone-500">
-                  Noch keine Tagesliste vorhanden. Erzeuge zuerst einen Lauf aus den bestehenden Guards.
+                  Noch keine Liste vorhanden. Klicke zuerst auf „Liste aktualisieren“.
                 </div>
               )}
             </div>
@@ -2033,7 +2074,7 @@ export function CustomerSalesCallsClient({
             <div className="rounded-3xl border border-stone-200 bg-white p-5 text-sm text-stone-700">
               <div className="flex items-center gap-2 text-stone-900">
                 <Clock3 className="h-4 w-4" />
-                Completion-Regel
+                Nächster Schritt
               </div>
               <p className="mt-3 leading-6">{state.completion.nextRequiredAction}</p>
             </div>

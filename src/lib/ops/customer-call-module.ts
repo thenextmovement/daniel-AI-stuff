@@ -39,6 +39,7 @@ const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
 const VIP_VALUE_THRESHOLD = 1000;
 const SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT = 20;
+const SALES_CALL_PREVIEW_LIMIT = 80;
 const directTrelloVisualCache = new Map<string, SalesCallVisualCandidate[]>();
 
 export type SalesCallPreset =
@@ -1353,12 +1354,12 @@ async function loadCandidateRequestIds() {
   };
 }
 
-async function previewSalesCallCandidates(limit = 20): Promise<CandidatePreview[]> {
+async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Promise<CandidatePreview[]> {
   const { requestIds, sourceKeysByRequestId } = await loadCandidateRequestIds();
   const records = await loadLightweightSalesCallRecords(requestIds, { includeTrello: false });
   const latestResultsByRequestId = await loadLatestActiveResultsByRequestId(records.map((record) => record.requestId));
   const cadenceByRequestId = await loadCadenceStatesByRequestId(records.map((record) => record.requestId));
-  const directVisualCandidatesByRequestId = await loadDirectTrelloVisualCandidates(records, limit);
+  const directVisualCandidatesByRequestId = await loadDirectTrelloVisualCandidates(records);
 
   const candidates = records.map((record) => {
     const sourceKeys = sourceKeysByRequestId.get(record.requestId) || [];
@@ -1418,6 +1419,12 @@ async function previewSalesCallCandidates(limit = 20): Promise<CandidatePreview[
     .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence))
     .sort((left, right) => {
       if (left.guard.allowed !== right.guard.allowed) return left.guard.allowed ? -1 : 1;
+      const leftIsTodayInquiry = left.cadence.currentStage === "inquiry_call" && isTodayInBerlin(left.record.request?.createdAt);
+      const rightIsTodayInquiry = right.cadence.currentStage === "inquiry_call" && isTodayInBerlin(right.record.request?.createdAt);
+      if (leftIsTodayInquiry !== rightIsTodayInquiry) return leftIsTodayInquiry ? -1 : 1;
+      const leftIsTodayQuote = left.cadence.currentStage === "quote_call" && isTodayInBerlin(quoteSentAt(left.record));
+      const rightIsTodayQuote = right.cadence.currentStage === "quote_call" && isTodayInBerlin(quoteSentAt(right.record));
+      if (leftIsTodayQuote !== rightIsTodayQuote) return leftIsTodayQuote ? -1 : 1;
       if (left.cadence.queueBucket !== right.cadence.queueBucket) {
         const bucketOrder = [
           "callbacks",
@@ -2275,7 +2282,7 @@ export function decideSalesCallCompletion(technicalStatus: "ok" | "pending" | "f
       technicalStatus,
       complete: false,
       reason: "technical_verification_pending",
-      nextRequiredAction: "Tagesliste erzeugen oder die technische Speicherung aktivieren, bevor der Status bewertet wird.",
+      nextRequiredAction: "Liste aktualisieren oder die technische Speicherung aktivieren, bevor der Status bewertet wird.",
     };
   }
   if (technicalStatus !== "ok") {
@@ -2347,7 +2354,7 @@ async function loadSalesCallListItemRows(runId: string) {
       select: SALES_CALL_LIST_ITEM_SELECT,
       run_id: `eq.${runId}`,
       order: "rank.asc",
-      limit: 50,
+      limit: SALES_CALL_PREVIEW_LIMIT,
     });
   } catch (error) {
     if (
@@ -2358,7 +2365,7 @@ async function loadSalesCallListItemRows(runId: string) {
         select: SALES_CALL_LIST_ITEM_SELECT_WITHOUT_VISUAL_SNAPSHOT,
         run_id: `eq.${runId}`,
         order: "rank.asc",
-        limit: 50,
+        limit: SALES_CALL_PREVIEW_LIMIT,
       });
     }
     throw error;
@@ -2406,7 +2413,7 @@ function buildSalesCallListItemInsertRow(
 }
 
 async function buildModuleStateFromPreview(storageReady: boolean): Promise<SalesCallModuleState> {
-  const preview = await previewSalesCallCandidates(20);
+  const preview = await previewSalesCallCandidates(SALES_CALL_PREVIEW_LIMIT);
   const requestIds = preview.map((item) => item.requestId);
   let latestResultsByRequestId = new Map<string, SalesCallResultEntry>();
   let cadenceByRequestId = new Map<string, SalesCallCadenceState>();
@@ -2572,7 +2579,7 @@ export async function getSalesCallModuleState(): Promise<SalesCallModuleState> {
     return buildModuleStateFromPreview(true);
   }
   const latestRunTime = new Date(latestRun.updated_at || latestRun.started_at || latestRun.created_at || 0).getTime();
-  if (Number.isFinite(latestRunTime) && Date.now() - latestRunTime > 10 * 60 * 1000) {
+  if (Number.isFinite(latestRunTime) && Date.now() - latestRunTime > 2 * 60 * 1000) {
     return buildModuleStateFromPreview(true);
   }
 
@@ -2590,7 +2597,7 @@ export async function getSalesCallModuleState(): Promise<SalesCallModuleState> {
 }
 
 export async function refreshSalesCallList(actor?: SalesCallActor): Promise<SalesCallModuleState> {
-  const preview = await previewSalesCallCandidates(20);
+  const preview = await previewSalesCallCandidates(SALES_CALL_PREVIEW_LIMIT);
   const nowIso = new Date().toISOString();
   const runKey = `sales-calls:${todayInBerlin()}:${nowIso}`;
   const [run] = await insertRows<DailyCallRunRow>(SALES_CALL_RUNS_TABLE, [
