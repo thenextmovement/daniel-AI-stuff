@@ -3,12 +3,17 @@ import assert from "node:assert/strict";
 import type { CustomerSearchResult } from "../../src/lib/ops/customer-records";
 import {
   advanceCadenceStateFromResult,
+  buildSalesTaskFromCadence,
   buildSalesCallResultFromPreset,
   buildSalesCallVisualCandidates,
   decideSalesCallCompletion,
   deriveCadenceState,
   evaluateSalesCallGate,
 } from "../../src/lib/ops/customer-call-module";
+import {
+  buildTaskFromInboundEmailSignal,
+  classifyInboundEmailSignal,
+} from "../../src/lib/ops/sales-task-engine";
 import { QuoteValidationError } from "../../src/lib/quotes/validation";
 
 function isoDateFromNow(days: number) {
@@ -595,6 +600,101 @@ test("advanceCadenceStateFromResult routes reminder review into finished bucket 
   assert.equal(next.currentStage, "finished");
   assert.equal(next.queueBucket, "finished");
   assert.equal(next.cadenceFinished, true);
+});
+
+test("buildSalesTaskFromCadence creates persistent call and callback tasks", () => {
+  const record = buildRecord();
+  const inquiry = deriveCadenceState(record, null, null);
+  const inquiryTask = buildSalesTaskFromCadence(inquiry, "sales_call_candidate");
+
+  assert.equal(inquiryTask?.taskType, "call_new_inquiry");
+  assert.equal(inquiryTask?.idempotencyKey, `call_new_inquiry:${record.requestId}`);
+
+  const callbackResult = {
+    id: "callback_result",
+    callListItemId: "item_1",
+    rankAtTime: 1,
+    requestId: record.requestId,
+    acDealId: 12345,
+    preset: "needs-time" as const,
+    callDone: "yes" as const,
+    callOutcome: "reached_needs_time" as const,
+    nextStep: `callback_${isoDateFromNow(14)}`,
+    validationUseful: "yes" as const,
+    notes: "Kunde braucht intern noch Zeit und möchte in zwei Wochen wieder angerufen werden.",
+    operatorId: "Daniel",
+    source: "test",
+    createdAt: "2026-05-21T09:00:00.000Z",
+    updatedAt: "2026-05-21T09:00:00.000Z",
+  };
+  const callback = advanceCadenceStateFromResult(inquiry, callbackResult, {
+    priorityTier: null,
+    priorityReason: null,
+    purchaseSignal: null,
+    postReminderDecision: null,
+  });
+  const callbackTask = buildSalesTaskFromCadence(callback, "sales_call_result", callbackResult.id);
+
+  assert.equal(callbackTask?.taskType, "callback_scheduled");
+  assert.equal(callbackTask?.status, "waiting");
+  assert.equal(callbackTask?.sourceRef, "callback_result");
+});
+
+test("classifyInboundEmailSignal turns customer will-respond emails into waiting tasks", () => {
+  const signal = classifyInboundEmailSignal({
+    subject: "Re: Angebot",
+    body: "Danke, wir melden uns nach interner Abstimmung wieder.",
+  });
+
+  assert.equal(signal?.kind, "customer_will_respond");
+
+  const task = signal
+    ? buildTaskFromInboundEmailSignal({
+        requestId: "req_email_1",
+        signal,
+        sourceRef: "message_1",
+        priorityTier: "important",
+        preview: "Danke, wir melden uns nach interner Abstimmung wieder.",
+      })
+    : null;
+
+  assert.equal(task?.taskType, "waiting_customer_response");
+  assert.equal(task?.status, "waiting");
+  assert.equal(task?.idempotencyKey, "email-waiting:req_email_1:message_1");
+  assert.equal(task?.priorityTier, "important");
+});
+
+test("classifyInboundEmailSignal routes price and update emails into action tasks", () => {
+  const priceSignal = classifyInboundEmailSignal({
+    body: "Das ist uns leider zu teuer. Gibt es einen Rabatt?",
+  });
+  const updateSignal = classifyInboundEmailSignal({
+    body: "Gibt es schon ein Update zum Mockup?",
+  });
+
+  assert.equal(priceSignal?.kind, "price_objection");
+  assert.equal(updateSignal?.kind, "wants_update");
+
+  assert.equal(
+    priceSignal
+      ? buildTaskFromInboundEmailSignal({
+          requestId: "req_price",
+          signal: priceSignal,
+          sourceRef: "message_price",
+        }).taskType
+      : null,
+    "price_review",
+  );
+  assert.equal(
+    updateSignal
+      ? buildTaskFromInboundEmailSignal({
+          requestId: "req_update",
+          signal: updateSignal,
+          sourceRef: "message_update",
+        }).taskType
+      : null,
+    "send_update",
+  );
 });
 
 test("buildSalesCallVisualCandidates snapshots ordered follow-up mockups before Trello and CRM images", () => {

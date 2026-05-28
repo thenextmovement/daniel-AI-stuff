@@ -23,6 +23,7 @@ import type {
   SalesCallPreset,
   SalesCallVisualCandidate,
 } from "@/lib/ops/customer-call-module";
+import type { SalesTask } from "@/lib/ops/sales-task-engine";
 import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 
@@ -589,6 +590,28 @@ function getCallStageDetail(item: SalesCallListItem) {
   const due = item.cadence.nextCallDueAt ? `fällig ab ${item.cadence.nextCallDueAt.slice(0, 16).replace("T", " ")}` : null;
   const bucket = bucketLabels[item.cadence.queueBucket];
   return [bucket, due, item.cadence.priorityReason].filter(Boolean).join(" • ");
+}
+
+function taskStatusLabel(task: SalesTask) {
+  switch (task.status) {
+    case "open":
+      return "offen";
+    case "waiting":
+      return "wartet";
+    case "blocked":
+      return "blockiert";
+    case "done":
+      return "erledigt";
+    case "closed":
+      return "geschlossen";
+  }
+}
+
+function taskTone(task: SalesTask) {
+  if (task.status === "blocked") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (task.source === "inbound_email_signal") return "border-sky-200 bg-sky-50 text-sky-800";
+  if (task.status === "waiting") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  return "border-stone-200 bg-stone-50 text-stone-800";
 }
 
 function getDesignStatus(item: SalesCallListItem) {
@@ -1263,7 +1286,7 @@ export function CustomerSalesCallsClient({
           <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-700">{message}</div>
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <div className={`rounded-3xl border px-5 py-4 ${state ? gateTone(state.gate.gate) : "border-stone-200 bg-white text-stone-700"}`}>
             <p className="text-xs uppercase tracking-[0.24em]">Top-10 Gate</p>
             <p className="mt-3 text-2xl font-semibold">{state?.gate.gate || "…"}</p>
@@ -1283,6 +1306,15 @@ export function CustomerSalesCallsClient({
             </p>
             <p className="mt-2 text-sm">
               {state ? `${state.run.eligibleCount} anrufbar • ${state.run.blockedCount} geblockt` : "Lade Lauf …"}
+            </p>
+          </div>
+          <div className="rounded-3xl border border-sky-200 bg-sky-50 px-5 py-4 text-sky-800">
+            <p className="text-xs uppercase tracking-[0.24em]">Aufgaben</p>
+            <p className="mt-3 text-2xl font-semibold">
+              {state ? state.taskCounts.open + state.taskCounts.waiting + state.taskCounts.blocked : "…"}
+            </p>
+            <p className="mt-2 text-sm">
+              {state ? `${state.taskCounts.overdue} überfällig • ${state.taskCounts.emailDriven} aus E-Mail` : "Lade Aufgaben …"}
             </p>
           </div>
         </div>
@@ -1789,6 +1821,27 @@ export function CustomerSalesCallsClient({
                         {selectedItem.latestResult.preset || "ohne Preset"} • {selectedItem.latestResult.nextStep}
                       </p>
                       <p className="mt-2">{selectedItem.latestResult.notes}</p>
+                    </div>
+                  ) : null}
+
+                  {selectedItem.activeTasks?.length ? (
+                    <div className="mt-5 space-y-2">
+                      <p className="text-sm font-medium text-stone-900">Aktive Aufgaben</p>
+                      {selectedItem.activeTasks.map((task) => (
+                        <div key={task.id} className={`rounded-[1.2rem] border px-4 py-3 text-sm ${taskTone(task)}`}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium">{task.title}</p>
+                            <span className="rounded-full border border-black/10 bg-white/70 px-2.5 py-1 text-[11px] font-medium">
+                              {taskStatusLabel(task)}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 opacity-80">
+                            {[task.dueAt ? `fällig ${formatDateLabel(task.dueAt)}` : null, task.source === "inbound_email_signal" ? "aus E-Mail" : null, task.detail]
+                              .filter(Boolean)
+                              .join(" • ")}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   ) : null}
                 </div>

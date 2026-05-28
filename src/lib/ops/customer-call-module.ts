@@ -10,6 +10,19 @@ import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { getTrelloCardVisuals } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import {
+  buildTaskFromInboundEmailSignal,
+  classifyInboundEmailSignal,
+  closeActiveSalesTasksForRequest,
+  loadActiveSalesTasksByRequestId,
+  taskTitle,
+  upsertSalesTask,
+  type InboundEmailSignal,
+  type SalesTask,
+  type SalesTaskDraft,
+  type SalesTaskPriority,
+  type SalesTaskType,
+} from "@/lib/ops/sales-task-engine";
 
 const SALES_CALL_WORKFLOW_NAME = "customer_records_sales_calls";
 const SALES_CALL_LIST_REFRESH_ACTION = "sales_call_list_refreshed";
@@ -183,6 +196,7 @@ export type SalesCallListItem = {
   record: CustomerSearchResult;
   latestResult: SalesCallResultEntry | null;
   cadence: SalesCallCadenceState;
+  activeTasks?: SalesTask[];
 };
 
 export type SalesCallGateSummary = {
@@ -222,6 +236,13 @@ export type SalesCallModuleState = {
   gate: SalesCallGateSummary;
   completion: SalesCallCompletionSummary;
   bucketCounts: Record<SalesCallQueueBucket, number>;
+  taskCounts: {
+    open: number;
+    waiting: number;
+    blocked: number;
+    overdue: number;
+    emailDriven: number;
+  };
 };
 
 export type SalesCallResultInput = {
@@ -1911,6 +1932,118 @@ function countBuckets(items: SalesCallListItem[]): Record<SalesCallQueueBucket, 
   return counts;
 }
 
+function countTasks(items: SalesCallListItem[]): SalesCallModuleState["taskCounts"] {
+  const tasks = items.flatMap((item) => item.activeTasks || []);
+  return {
+    open: tasks.filter((task) => task.status === "open").length,
+    waiting: tasks.filter((task) => task.status === "waiting").length,
+    blocked: tasks.filter((task) => task.status === "blocked").length,
+    overdue: tasks.filter((task) => task.dueAt && new Date(task.dueAt).getTime() < Date.now() && task.status !== "done").length,
+    emailDriven: tasks.filter((task) => task.source === "inbound_email_signal").length,
+  };
+}
+
+function mapTaskPriority(priorityTier: SalesCallPriorityTier): SalesTaskPriority {
+  return priorityTier === "vip" ? "vip" : priorityTier === "important" ? "important" : "standard";
+}
+
+function callTaskTypeForCadence(cadence: SalesCallCadenceState): SalesTaskType | null {
+  switch (cadence.currentStage) {
+    case "inquiry_call":
+      return "call_new_inquiry";
+    case "quote_call":
+      return "call_quote_sent";
+    case "no_response_call":
+      return cadence.standardCallCount <= 1 ? "call_reminder_1" : cadence.standardCallCount === 2 ? "call_reminder_2" : "call_reminder_3";
+    case "callback":
+      return "callback_scheduled";
+    case "manual_followup":
+      return "manual_followup";
+    case "offer_adjustment":
+      if (cadence.nextCallAction === "price_review") return "price_review";
+      if (cadence.nextCallAction === "send_offer") return "send_offer";
+      if (cadence.nextCallAction === "send_update") return "send_update";
+      return "offer_adjustment";
+    case "data_issue":
+      return "blocked_data_issue";
+    case "finished":
+      return null;
+  }
+}
+
+export function buildSalesTaskFromCadence(cadence: SalesCallCadenceState, source: "sales_call_candidate" | "sales_call_result", sourceRef?: string | null): SalesTaskDraft | null {
+  const taskType = callTaskTypeForCadence(cadence);
+  if (!taskType) return null;
+  const isWaiting = Boolean(cadence.nextCallDueAt && new Date(cadence.nextCallDueAt).getTime() > Date.now());
+  const status = taskType === "blocked_data_issue" ? "blocked" : isWaiting ? "waiting" : "open";
+  return {
+    requestId: cadence.requestId,
+    taskType,
+    status,
+    title: taskTitle(taskType),
+    detail: cadence.blockingReason || cadence.priorityReason || null,
+    dueAt: cadence.nextCallDueAt,
+    priorityTier: mapTaskPriority(cadence.priorityTier),
+    source,
+    sourceRef: sourceRef || null,
+    idempotencyKey: `${taskType}:${cadence.requestId}`,
+    payload: {
+      current_stage: cadence.currentStage,
+      next_call_action: cadence.nextCallAction,
+      queue_bucket: cadence.queueBucket,
+      standard_call_count: cadence.standardCallCount,
+      retry_count: cadence.retryCount,
+      priority_reason: cadence.priorityReason,
+    },
+  };
+}
+
+function latestInboundEmailSignal(record: CustomerSearchResult): { signal: InboundEmailSignal; sourceRef: string; preview: string | null } | null {
+  const inbound = [...(record.communications || [])]
+    .filter((entry) => String(entry.direction || "").toLowerCase() === "inbound")
+    .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())[0] || null;
+  if (!inbound) return null;
+  const signal = classifyInboundEmailSignal({
+    subject: inbound.title,
+    body: inbound.body || inbound.preview,
+    classification: inbound.classification,
+  });
+  if (!signal) return null;
+  return {
+    signal,
+    sourceRef: inbound.messageId || inbound.conversationId || inbound.id,
+    preview: inbound.preview || inbound.body || inbound.title,
+  };
+}
+
+async function syncSalesTaskFromCandidate(item: Pick<SalesCallListItem, "cadence" | "record">) {
+  const emailSignal = latestInboundEmailSignal(item.record);
+  if (emailSignal) {
+    const task = buildTaskFromInboundEmailSignal({
+      requestId: item.cadence.requestId,
+      signal: emailSignal.signal,
+      sourceRef: emailSignal.sourceRef,
+      priorityTier: mapTaskPriority(item.cadence.priorityTier),
+      preview: emailSignal.preview,
+    });
+    await upsertSalesTask(task);
+    return;
+  }
+
+  const task = buildSalesTaskFromCadence(item.cadence, "sales_call_candidate");
+  if (task) await upsertSalesTask(task);
+}
+
+async function syncSalesTaskFromResult(cadence: SalesCallCadenceState, result: SalesCallResultEntry) {
+  await closeActiveSalesTasksForRequest({
+    requestId: cadence.requestId,
+    reason: `sales_call_result:${result.preset || "unknown"}`,
+    sourceRef: result.id,
+  });
+  const task = buildSalesTaskFromCadence(cadence, "sales_call_result", result.id);
+  if (task) await upsertSalesTask(task);
+}
+
 async function loadLightweightSalesCallRecords(
   requestIds: string[],
   options: { includeTrello?: boolean } = {},
@@ -2226,13 +2359,16 @@ async function buildModuleStateFromPreview(storageReady: boolean): Promise<Sales
   const requestIds = preview.map((item) => item.requestId);
   let latestResultsByRequestId = new Map<string, SalesCallResultEntry>();
   let cadenceByRequestId = new Map<string, SalesCallCadenceState>();
+  let activeTasksByRequestId = new Map<string, SalesTask[]>();
   if (storageReady && requestIds.length) {
-    const [results, cadence] = await Promise.all([
+    const [results, cadence, tasks] = await Promise.all([
       loadLatestActiveResultsByRequestId(requestIds),
       loadCadenceStatesByRequestId(requestIds),
+      loadActiveSalesTasksByRequestId(requestIds),
     ]);
     latestResultsByRequestId = results;
     cadenceByRequestId = cadence;
+    activeTasksByRequestId = tasks;
   }
   const items: SalesCallListItem[] = preview.map((item, index) => ({
     ...item,
@@ -2241,6 +2377,7 @@ async function buildModuleStateFromPreview(storageReady: boolean): Promise<Sales
     topTen: index < MANUAL_GATE_TOP_N,
     latestResult: latestResultsByRequestId.get(item.requestId) || null,
     cadence: cadenceByRequestId.get(item.requestId) || item.cadence,
+    activeTasks: activeTasksByRequestId.get(item.requestId) || [],
   }));
   const gate = evaluateSalesCallGate(items);
   const completion = decideSalesCallCompletion(storageReady ? "pending" : "failed", gate);
@@ -2262,6 +2399,7 @@ async function buildModuleStateFromPreview(storageReady: boolean): Promise<Sales
     gate,
     completion,
     bucketCounts: countBuckets(items),
+    taskCounts: countTasks(items),
   };
 }
 
@@ -2271,10 +2409,11 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
   const requestIds = itemRows
     .map((row) => row.request_id)
     .filter((value): value is string => Boolean(value));
-  const [records, latestResultsByRequestId, cadenceByRequestId] = await Promise.all([
+  const [records, latestResultsByRequestId, cadenceByRequestId, activeTasksByRequestId] = await Promise.all([
     loadLightweightSalesCallRecords(requestIds, { includeTrello: false }),
     loadLatestActiveResultsByRequestId(requestIds),
     loadCadenceStatesByRequestId(requestIds),
+    loadActiveSalesTasksByRequestId(requestIds),
   ]);
 
   const recordByRequestId = new Map(records.map((record) => [record.requestId, record] as const));
@@ -2327,6 +2466,7 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
         cadence:
           cadenceByRequestId.get(row.request_id) ||
           deriveCadenceState(record, latestResultsByRequestId.get(row.request_id) || null, null),
+        activeTasks: activeTasksByRequestId.get(row.request_id) || [],
       };
     })
     .filter((item): item is SalesCallListItem => Boolean(item))
@@ -2353,6 +2493,7 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
     gate,
     completion,
     bucketCounts: countBuckets(items),
+    taskCounts: countTasks(items),
   };
 }
 
@@ -2438,6 +2579,7 @@ export async function refreshSalesCallList(actor?: SalesCallActor): Promise<Sale
   }
 
   await Promise.all(preview.map((item) => upsertCadenceState(item.cadence)));
+  await Promise.all(preview.map((item) => syncSalesTaskFromCandidate(item)));
 
   await insertSalesCallAuditLog({
     requestId: runKey,
@@ -2592,6 +2734,7 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
     },
   );
   await upsertCadenceState(nextCadenceState);
+  await syncSalesTaskFromResult(nextCadenceState, mapResultRow(created));
 
   const state = await getSalesCallModuleState();
   return {
