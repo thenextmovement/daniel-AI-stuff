@@ -26,6 +26,7 @@ import type {
 import type { SalesTask } from "@/lib/ops/sales-task-engine";
 import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import { OpsLoginCard } from "../../ops-login-card";
 
 type SalesCallApiResponse = {
   ok: boolean;
@@ -1276,31 +1277,17 @@ export function CustomerSalesCallsClient({
 
   if (opsEnabled && !hasSession && !localMode) {
     return (
-      <div className="min-h-screen bg-stone-50 px-6 py-12">
-        <div className="mx-auto max-w-xl rounded-3xl border border-stone-200 bg-white p-8 shadow-sm">
-          <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Sales-Calls</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">Interner Zugang</h1>
-          <p className="mt-4 text-base leading-7 text-stone-600">
-            Entsperre den Bereich mit dem internen Ops-Token. Es werden keine Call-Ergebnisse ohne Server-Validierung gespeichert.
-          </p>
-          <div className="mt-8 space-y-3">
-            <input
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-base outline-none transition focus:border-stone-900"
-              placeholder="Ops-Token"
-              type="password"
-            />
-            <button
-              onClick={() => void login()}
-              className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
-            >
-              Entsperren
-            </button>
-          </div>
-          {error ? <p className="mt-4 text-sm text-rose-700">{error}</p> : null}
-        </div>
-      </div>
+      <OpsLoginCard
+        eyebrow="Sales Calls"
+        title="Call-Zentrale anmelden"
+        description="Melde dich für die interne Call-Liste an. Ergebnisse, Notizen und Aufgaben werden danach serverseitig gespeichert."
+        operatorName={operatorName}
+        password={token}
+        error={error}
+        onOperatorNameChange={setOperatorName}
+        onPasswordChange={setToken}
+        onSubmit={login}
+      />
     );
   }
 

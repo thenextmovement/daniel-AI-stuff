@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import { OpsLoginCard } from "../ops-login-card";
 import type {
   CustomerAuditEntry,
   CustomerCommunicationEntry,
@@ -21047,6 +21048,22 @@ export function CustomerRecordsClient({
     setOpsStatusFilter("all");
   }, [opsStatusCounts, opsStatusFilter]);
 
+  if (opsEnabled && !localMode && !hasSession) {
+    return (
+      <OpsLoginCard
+        eyebrow="Customer Records"
+        title="Customer Records anmelden"
+        description="Melde dich für die interne Kundenakte an. Suche, Notizen, Trello-Änderungen und Aufgaben bleiben geschützt und nachvollziehbar."
+        operatorName={operatorName}
+        password={token}
+        error={error}
+        onOperatorNameChange={setOperatorName}
+        onPasswordChange={setToken}
+        onSubmit={login}
+      />
+    );
+  }
+
   return (
     <CaseFlowProgressContext.Provider value={caseFlowProgressApi}>
     <main className="min-h-screen bg-[#fffdf9] text-black">
@@ -21315,30 +21332,18 @@ export function CustomerRecordsClient({
                 `OPS_PORTAL_TOKEN` oder `QUOTE_INTERNAL_API_TOKEN`.
               </div>
             ) : !localMode && !hasSession ? (
-              <div className="mt-6 grid gap-4 rounded-2xl border border-black/10 bg-black/[0.02] p-5 md:max-w-xl">
-                <Field
-                  label="Zuständig"
-                  hint="Dein Name für Zuständigkeit, Übergaben und deine persönlichen Fälle."
-                  value={operatorName}
-                  onChange={setOperatorName}
-                  icon={<UserRound className="h-4 w-4" />}
+              <div className="-mx-6 -my-6 md:-mx-7 md:-my-7">
+                <OpsLoginCard
+                  eyebrow="Customer Records"
+                  title="Customer Records anmelden"
+                  description="Melde dich für die interne Kundenakte an. Suche, Notizen, Trello-Änderungen und Aufgaben bleiben geschützt und nachvollziehbar."
+                  operatorName={operatorName}
+                  password={token}
+                  error={error}
+                  onOperatorNameChange={setOperatorName}
+                  onPasswordChange={setToken}
+                  onSubmit={login}
                 />
-                <Field
-                  label="Zugangscode"
-                  hint="Nur für produktive oder dauerhaft erreichbare Zugänge."
-                  value={token}
-                  onChange={setToken}
-                  type="password"
-                  icon={<BadgeCheck className="h-4 w-4" />}
-                />
-                <button
-                  type="button"
-                  onClick={login}
-                  className="inline-flex w-fit items-center gap-2 rounded-full bg-[#0A0A0A] px-5 py-3 text-sm font-medium text-white transition hover:bg-black/90"
-                >
-                  Bereich entsperren
-                  <ArrowRight className="h-4 w-4" />
-                </button>
               </div>
             ) : simpleRecordMode ? (
               <div className="space-y-2">
