@@ -118,11 +118,38 @@ Nach Aenderungen an Env Vars immer Service neu starten oder redeployen.
 ## Was welche Aenderung ausloest
 
 - UI, Call-Logik, API-Routen, Bilder, Trello-/Supabase-Code: Code-Aenderung, Commit, Push, Coolify Redeploy.
-- Supabase URL, Service Role, Trello Key/Token, Ops Token: Coolify Env Var aendern, Restart/Redeploy.
+- Supabase URL, Service Role, Trello Key/Token, Ops Token, Offers API Key: Coolify Env Var aendern, Restart/Redeploy.
 - Basic Auth Username/Passwort: Coolify General Settings, Restart falls noetig.
 - Domain `ops.neontrip.de`: DNS-Anbieter fuer `neontrip.de`.
 - Server-Firewall: Hetzner Cloud Console.
 - Container-Routing/HTTPS: Coolify Proxy/Traefik.
+
+## Angebotseditor in Customer Records
+
+Der Tab `Angebot` kann ein Angebot aus `neontrip-offers` ueber die Trello-Karten-ID laden und bearbeiten. Die Ops-App schreibt dabei nicht direkt in die Offers-Datenbank. Alle Aenderungen laufen serverseitig ueber die interne Offers-API.
+
+Erlaubt:
+
+- DRAFT und SENT bearbeiten.
+- VIEWED nur mit Aenderungsgrund bearbeiten.
+- Texte, Preise, Mengen, Vergleichspreise, Rabattlabels, Gültigkeit, Lieferzeit und aktivierte Bilder anpassen.
+- Danach das aktualisierte Angebot separat per E-Mail senden.
+
+Gesperrt:
+
+- ACCEPTED, DOWNLOADED oder Angebote mit Acceptance.
+- EXPIRED in V1.
+- Neue Positionen oder neue Bild-URLs direkt aus Ops anlegen.
+- Finale PDFs erzeugen oder Annahmen ausloesen.
+
+Noetige Env Vars in `neontrip-ops-calls`:
+
+```env
+NEONTRIP_OFFERS_BASE_URL=https://angebote.neontrip.de
+NEONTRIP_OFFERS_INTERNAL_API_KEY=<secret>
+```
+
+Das gleiche Secret muss in `neontrip-offers` als `NEONTRIP_OFFERS_INTERNAL_API_KEY` gesetzt sein.
 
 ## Smoke-Tests
 
@@ -179,4 +206,3 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
 Diese Aenderung betrifft nur die Server-Stabilitaet, nicht die App-Logik.
-

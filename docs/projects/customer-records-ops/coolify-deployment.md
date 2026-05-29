@@ -106,7 +106,11 @@ Optional:
 ```env
 OPS_ALLOWED_EMAILS=person1@neontrip.de,person2@neontrip.de
 OPS_PLACETEL_CONTACT_URL_TEMPLATE=<template>
+NEONTRIP_OFFERS_BASE_URL=https://angebote.neontrip.de
+NEONTRIP_OFFERS_INTERNAL_API_KEY=<gleiches-secret-wie-in-neontrip-offers>
 ```
+
+`NEONTRIP_OFFERS_INTERNAL_API_KEY` verbindet die Ops-App mit der internen API von `neontrip-offers`. Der Wert muss in beiden Coolify-Services identisch sein: in `neontrip-offers` als `NEONTRIP_OFFERS_INTERNAL_API_KEY` und in `neontrip-ops-calls` ebenfalls als `NEONTRIP_OFFERS_INTERNAL_API_KEY`. Der Key darf nicht ins Repo.
 
 ## DNS
 

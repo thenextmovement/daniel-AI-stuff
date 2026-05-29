@@ -62,6 +62,7 @@ import {
   type SessionBadgeLabel,
 } from "@/lib/ops/customer-records-session-meta";
 import { buildRequestIdSessionMaps, type RequestIdSessionMaps } from "@/lib/ops/customer-records-session-maps";
+import type { OpsOfferImage, OpsOfferItem, OpsOfferPatchInput, OpsOfferSnapshot } from "@/lib/ops/offers";
 
 type CustomerUpdateResponse = {
   ok: boolean;
@@ -3908,6 +3909,26 @@ type TrelloCardResponse = {
   ok: boolean;
   record?: CustomerSearchResult;
   count?: number;
+  error?: string;
+  issues?: string[];
+};
+
+type OfferBridgeResponse = {
+  ok: boolean;
+  offer?: OpsOfferSnapshot;
+  dryRun?: boolean;
+  diff?: {
+    changedKeys: string[];
+  };
+  error?: string;
+  issues?: string[];
+};
+
+type OfferSendBridgeResponse = {
+  ok: boolean;
+  sent?: boolean;
+  duplicate?: boolean;
+  eventId?: string;
   error?: string;
   issues?: string[];
 };
@@ -15107,6 +15128,522 @@ function DealAttributionPanel({
   );
 }
 
+function getRecordOfferTrelloCardId(record: CustomerSearchResult) {
+  return record.trello?.cards.find((card) => card.cardId)?.cardId || null;
+}
+
+function offerDateInputValue(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function offerDateInputToIso(value: string) {
+  if (!value.trim()) return null;
+  const date = new Date(`${value}T23:59:59`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function buildOfferEditSignature(
+  offerFields: OpsOfferSnapshot["offer"],
+  items: OpsOfferItem[],
+  images: OpsOfferImage[],
+  validUntilDate: string,
+) {
+  return JSON.stringify({
+    offer: {
+      projectTitle: offerFields.projectTitle || "",
+      productionTime: offerFields.productionTime || "",
+      notes: offerFields.notes || "",
+      discountText: offerFields.discountText || "",
+      validUntil: validUntilDate || "",
+    },
+    items: items.map((item) => ({
+      id: item.id,
+      title: item.title || "",
+      description: item.description || "",
+      quantity: item.quantity,
+      unitPriceNet: item.unitPriceNet,
+      listPriceNet: item.listPriceNet,
+      discountLabel: item.discountLabel || "",
+      selectable: item.selectable,
+      selectedByDefault: item.selectedByDefault,
+      quantityEditable: item.quantityEditable,
+      minQuantity: item.minQuantity,
+      maxQuantity: item.maxQuantity,
+      sortOrder: item.sortOrder,
+    })),
+    images: images.map((image) => ({
+      id: image.id,
+      title: image.title || "",
+      enabled: image.enabled,
+      sortOrder: image.sortOrder,
+    })),
+  });
+}
+
+function OfferTextArea({
+  label,
+  hint,
+  value,
+  onChange,
+  rows = 3,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-sm font-medium text-black">{label}</span>
+      <span className="text-xs leading-5 text-black/50">{hint}</span>
+      <textarea
+        rows={rows}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-xl border-2 border-black/10 bg-white px-4 py-3 text-sm leading-6 text-black outline-none transition focus:border-[#fa31a2] focus:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]"
+      />
+    </label>
+  );
+}
+
+function OfferEditorPanel({
+  record,
+  operatorName,
+  onNotify,
+  simpleView = false,
+}: {
+  record: CustomerSearchResult;
+  operatorName: string;
+  onNotify: (message: string) => void;
+  simpleView?: boolean;
+}) {
+  const trelloCardId = getRecordOfferTrelloCardId(record);
+  const [offer, setOffer] = useState<OpsOfferSnapshot | null>(null);
+  const [offerFields, setOfferFields] = useState<OpsOfferSnapshot["offer"] | null>(null);
+  const [items, setItems] = useState<OpsOfferItem[]>([]);
+  const [images, setImages] = useState<OpsOfferImage[]>([]);
+  const [validUntilDate, setValidUntilDate] = useState("");
+  const [initialSignature, setInitialSignature] = useState("");
+  const [revisionReason, setRevisionReason] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
+  const [sendRecipient, setSendRecipient] = useState(record.email || "");
+  const [sendCcOne, setSendCcOne] = useState(record.ccEmails?.[0] || "");
+  const [sendCcTwo, setSendCcTwo] = useState(record.ccEmails?.[1] || "");
+  const [sendSubject, setSendSubject] = useState("Ihr aktualisiertes NEONTRIP Angebot");
+  const [sendMessage, setSendMessage] = useState(
+    "Hallo,\n\nwie besprochen haben wir Ihr Angebot aktualisiert. Sie können es über den Angebotslink erneut öffnen.\n\nViele Grüße\nNEONTRIP",
+  );
+
+  function resetFromOffer(nextOffer: OpsOfferSnapshot) {
+    const nextValidUntilDate = offerDateInputValue(nextOffer.offer.validUntil);
+    setOffer(nextOffer);
+    setOfferFields(nextOffer.offer);
+    setItems(nextOffer.items);
+    setImages(nextOffer.images);
+    setValidUntilDate(nextValidUntilDate);
+    setInitialSignature(buildOfferEditSignature(nextOffer.offer, nextOffer.items, nextOffer.images, nextValidUntilDate));
+    setCheckedKeys([]);
+    setRevisionReason("");
+  }
+
+  async function loadOffer() {
+    if (!trelloCardId) return;
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/ops/customer-records/offers/by-trello/${encodeURIComponent(trelloCardId)}`, {
+        method: "GET",
+      });
+      const payload = (await response.json().catch(() => null)) as OfferBridgeResponse | null;
+      if (!response.ok || !payload?.ok || !payload.offer) {
+        throw new Error(formatApiError(payload));
+      }
+      resetFromOffer(payload.offer);
+    } catch (loadError) {
+      setOffer(null);
+      setOfferFields(null);
+      setItems([]);
+      setImages([]);
+      setError(loadError instanceof Error ? loadError.message : "Angebot konnte nicht geladen werden.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    setOffer(null);
+    setOfferFields(null);
+    setItems([]);
+    setImages([]);
+    setInitialSignature("");
+    setError(null);
+    setMessage(null);
+    setSendRecipient(record.email || "");
+    setSendCcOne(record.ccEmails?.[0] || "");
+    setSendCcTwo(record.ccEmails?.[1] || "");
+    if (trelloCardId) void loadOffer();
+  }, [record.requestId, trelloCardId]);
+
+  const currentSignature = offerFields ? buildOfferEditSignature(offerFields, items, images, validUntilDate) : "";
+  const hasChanges = Boolean(offer && offerFields && currentSignature !== initialSignature);
+  const needsReason = Boolean(offer?.lock.requiresRevisionReason);
+  const canEdit = Boolean(offer?.lock.editable && offerFields);
+  const canSave = canEdit && hasChanges && (!needsReason || revisionReason.trim().length >= 3);
+  const draftNetTotal = items.reduce((sum, item) => sum + Number(item.unitPriceNet || 0) * Number(item.quantity || 0), 0);
+  const currency = offerFields?.currency || "EUR";
+
+  function buildPatch(): OpsOfferPatchInput {
+    if (!offer || !offerFields) throw new Error("Kein Angebot geladen.");
+    return {
+      expectedUpdatedAt: offer.updatedAt,
+      actor: operatorName || "Ops",
+      reason: "ops_app_edit",
+      revisionReason: needsReason ? revisionReason.trim() : undefined,
+      offer: {
+        projectTitle: offerFields.projectTitle || null,
+        productionTime: offerFields.productionTime || null,
+        notes: offerFields.notes || null,
+        discountText: offerFields.discountText || null,
+        validUntil: offerDateInputToIso(validUntilDate),
+      },
+      items: items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description || null,
+        quantity: item.quantity,
+        unitPriceNet: item.unitPriceNet,
+        listPriceNet: item.listPriceNet,
+        discountLabel: item.discountLabel || null,
+        selectable: item.selectable,
+        selectedByDefault: item.selectedByDefault,
+        quantityEditable: item.quantityEditable,
+        minQuantity: item.minQuantity,
+        maxQuantity: item.maxQuantity,
+        sortOrder: item.sortOrder,
+      })),
+      images: images.map((image) => ({
+        id: image.id,
+        title: image.title || null,
+        enabled: image.enabled,
+        sortOrder: image.sortOrder,
+      })),
+    };
+  }
+
+  async function patchOffer(dryRun: boolean) {
+    if (!trelloCardId) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/ops/customer-records/offers/by-trello/${encodeURIComponent(trelloCardId)}${dryRun ? "?dryRun=true" : ""}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPatch()),
+      });
+      const payload = (await response.json().catch(() => null)) as OfferBridgeResponse | null;
+      if (!response.ok || !payload?.ok || !payload.offer) {
+        throw new Error(formatApiError(payload));
+      }
+      if (dryRun) {
+        setCheckedKeys(payload.diff?.changedKeys || []);
+        setMessage("Prüfung erfolgreich. Du kannst die Änderung jetzt speichern.");
+      } else {
+        resetFromOffer(payload.offer);
+        setMessage("Angebot gespeichert. Danach bei Bedarf aktualisiertes Angebot senden.");
+        onNotify("Angebot gespeichert.");
+      }
+    } catch (patchError) {
+      setError(patchError instanceof Error ? patchError.message : "Angebot konnte nicht gespeichert werden.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sendOffer() {
+    if (!offer) return;
+    setSending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const cc = [sendCcOne, sendCcTwo].map((entry) => entry.trim()).filter(Boolean);
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `offer-send-${offer.offerId}-${Date.now()}`;
+      const response = await fetch(`/api/ops/customer-records/offers/${encodeURIComponent(offer.offerId)}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientEmail: sendRecipient.trim(),
+          cc,
+          subject: sendSubject.trim(),
+          message: sendMessage.trim(),
+          actor: operatorName || "Ops",
+          reason: "Aktualisiertes Angebot aus Customer Records erneut versendet.",
+          idempotencyKey,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as OfferSendBridgeResponse | null;
+      if (!response.ok || !payload?.ok || !payload.sent) {
+        throw new Error(formatApiError(payload));
+      }
+      setMessage(payload.duplicate ? "Diese Angebotsmail wurde bereits gesendet." : "Aktualisiertes Angebot wurde gesendet.");
+      onNotify("Aktualisiertes Angebot wurde gesendet.");
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Angebotsmail konnte nicht gesendet werden.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function updateOfferField<K extends keyof OpsOfferSnapshot["offer"]>(key: K, value: OpsOfferSnapshot["offer"][K]) {
+    setOfferFields((current) => current ? { ...current, [key]: value } : current);
+  }
+
+  function updateItem(itemId: string, patch: Partial<OpsOfferItem>) {
+    setItems((current) => current.map((item) => (item.id === itemId ? { ...item, ...patch } : item)));
+  }
+
+  function updateImage(imageId: string, patch: Partial<OpsOfferImage>) {
+    setImages((current) => current.map((image) => (image.id === imageId ? { ...image, ...patch } : image)));
+  }
+
+  if (!trelloCardId) {
+    return (
+      <div className="rounded-2xl border border-dashed border-black/10 bg-white p-5">
+        <div className="text-sm font-semibold text-black">Angebotseditor</div>
+        <div className="mt-2 text-sm leading-6 text-black/55">
+          Für diesen Fall wurde keine Trello-Karte gefunden, über die ein Angebot eindeutig geladen werden kann.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#fa31a2]/20 bg-[#fff8fc] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#c21876]">Angebotsseite</div>
+          <div className="mt-2 text-lg font-semibold text-black">Angebot bearbeiten und erneut senden</div>
+          <div className="mt-2 max-w-3xl text-sm leading-6 text-black/60">
+            Änderungen laufen über die Angebots-App. Angenommene oder finale Angebote bleiben gesperrt.
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void loadOffer()}
+            disabled={loading || saving}
+            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Lädt..." : offer ? "Neu laden" : "Angebot laden"}
+          </button>
+          {offer?.publicUrl ? <QuickLink href={offer.publicUrl} label="Angebotsseite öffnen" /> : null}
+        </div>
+      </div>
+
+      {error ? (
+        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
+          {error}
+        </div>
+      ) : null}
+      {message ? (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">
+          {message}
+        </div>
+      ) : null}
+
+      {!offer || !offerFields ? (
+        <div className="mt-4 rounded-xl border border-dashed border-black/10 bg-white px-4 py-4 text-sm leading-6 text-black/55">
+          {loading ? "Angebot wird geladen..." : "Noch kein Angebot geladen."}
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <MiniSystem title="Status" value={offer.status} detail={offer.lock.lockReason || "Bearbeitbar"} tone={offer.lock.lockLevel === "hard" ? "amber" : offer.lock.lockLevel === "soft" ? "blue" : "good"} />
+            <MiniSystem title="Angebot" value={offer.offerNumber || offer.documentReference} detail={`Zuletzt ${formatDate(offer.updatedAt)}`} tone="neutral" />
+            <MiniSystem title="Entwurfswert netto" value={formatMoney(draftNetTotal, currency)} detail={`${items.length} Position${items.length === 1 ? "" : "en"}`} tone="accent" />
+            <MiniSystem title="Bilder" value={images.filter((image) => image.enabled).length} detail={`${images.length} insgesamt`} tone="blue" />
+          </div>
+
+          {offer.lock.lockLevel === "hard" ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+              Dieses Angebot ist gesperrt. Für Änderungen bitte ein neues Angebot oder eine saubere Revision in der Angebots-App anlegen.
+            </div>
+          ) : null}
+
+          <div className={`grid gap-4 ${simpleView ? "" : "xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"}`}>
+            <div className="rounded-2xl border border-black/10 bg-white p-4">
+              <div className="text-sm font-semibold text-black">Kopfdaten</div>
+              <div className="mt-4 grid gap-4">
+                <Field label="Projekttitel" hint="Wird auf Angebot und PDF angezeigt." value={offerFields.projectTitle || ""} onChange={(value) => updateOfferField("projectTitle", value)} icon={<BadgeCheck className="h-4 w-4" />} />
+                <Field label="Lieferzeit" hint="z. B. ca. 3 Wochen oder Wunschtermin." value={offerFields.productionTime || ""} onChange={(value) => updateOfferField("productionTime", value)} icon={<Clock3 className="h-4 w-4" />} />
+                <Field label="Gültig bis" hint="Leer lassen, wenn keine Frist gesetzt werden soll." value={validUntilDate} onChange={setValidUntilDate} type="date" icon={<Clock3 className="h-4 w-4" />} />
+                <OfferTextArea label="Rabatt-/Hinweistext" hint="Kurzer Text, falls ein Rabatt oder Sonderpreis erklärt werden soll." value={offerFields.discountText || ""} onChange={(value) => updateOfferField("discountText", value)} />
+                <OfferTextArea label="Interne / öffentliche Notiz" hint="Nur verwenden, wenn der Text im Angebot wirklich stimmen soll." value={offerFields.notes || ""} onChange={(value) => updateOfferField("notes", value)} rows={4} />
+                {needsReason ? (
+                  <OfferTextArea
+                    label="Änderungsgrund"
+                    hint="Pflicht, weil der Kunde dieses Angebot bereits gesehen hat."
+                    value={revisionReason}
+                    onChange={setRevisionReason}
+                    rows={3}
+                  />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-black/10 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-black">Positionen</div>
+                  <div className="mt-1 text-xs text-black/45">Preise, Größen, Farben und Szenario stehen aktuell in Titel/Beschreibung.</div>
+                </div>
+                <span className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-xs text-black/55">
+                  {items.length} Position{items.length === 1 ? "" : "en"}
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {items.map((item, index) => (
+                  <div key={item.id} className="rounded-xl border border-black/10 bg-black/[0.015] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs uppercase tracking-[0.14em] text-black/40">
+                        {item.section || `Position ${index + 1}`}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <ToggleCheck label="Auswählbar" checked={item.selectable} onChange={(next) => updateItem(item.id, { selectable: next })} />
+                        <ToggleCheck label="Vorausgewählt" checked={item.selectedByDefault} onChange={(next) => updateItem(item.id, { selectedByDefault: next })} />
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <Field label="Titel" hint="Produkt- oder Variantenname." value={item.title || ""} onChange={(value) => updateItem(item.id, { title: value })} icon={<BadgeCheck className="h-4 w-4" />} />
+                      <Field label="Rabattlabel" hint="z. B. Sonderpreis oder Aktionsrabatt." value={item.discountLabel || ""} onChange={(value) => updateItem(item.id, { discountLabel: value || null })} icon={<BadgeCheck className="h-4 w-4" />} />
+                      <Field label="Menge" hint="Anzahl für diese Position." value={String(item.quantity)} onChange={(value) => updateItem(item.id, { quantity: Math.max(1, Number(value) || 1) })} type="number" icon={<Database className="h-4 w-4" />} />
+                      <Field label="Preis netto" hint="Netto-Einzelpreis." value={String(item.unitPriceNet)} onChange={(value) => updateItem(item.id, { unitPriceNet: Math.max(0, Number(value) || 0) })} type="number" icon={<Database className="h-4 w-4" />} />
+                      <Field label="Vergleichspreis netto" hint="Optional, leer = kein Vergleichspreis." value={item.listPriceNet === null ? "" : String(item.listPriceNet)} onChange={(value) => updateItem(item.id, { listPriceNet: value.trim() ? Math.max(0, Number(value) || 0) : null })} type="number" icon={<Database className="h-4 w-4" />} />
+                      <Field label="Sortierung" hint="Reihenfolge im Angebot." value={String(item.sortOrder)} onChange={(value) => updateItem(item.id, { sortOrder: Math.max(0, Number(value) || 0) })} type="number" icon={<Database className="h-4 w-4" />} />
+                    </div>
+                    <div className="mt-3">
+                      <OfferTextArea
+                        label="Description / Hintergrund"
+                        hint="Größe, Farbe, Einsatzort oder Szenario für KI-Mockups."
+                        value={item.description || ""}
+                        onChange={(value) => updateItem(item.id, { description: value || null })}
+                        rows={4}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {images.length ? (
+            <div className="rounded-2xl border border-black/10 bg-white p-4">
+              <div className="text-sm font-semibold text-black">Bilder im Angebot</div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {images.map((image) => (
+                  <div key={image.id} className="rounded-xl border border-black/10 bg-black/[0.015] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-medium text-black">{image.title || image.linkedItemTitle || image.kind}</div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.14em] text-black/40">{image.kind} • {image.importStatus}</div>
+                      </div>
+                      <ToggleCheck label={image.enabled ? "Aktiv" : "Inaktiv"} checked={image.enabled} onChange={(next) => updateImage(image.id, { enabled: next })} />
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <Field label="Bildtitel" hint="Optionaler Name im Angebot." value={image.title || ""} onChange={(value) => updateImage(image.id, { title: value || null })} icon={<BadgeCheck className="h-4 w-4" />} />
+                      <Field label="Sortierung" hint="Reihenfolge in Galerie/PDF." value={String(image.sortOrder)} onChange={(value) => updateImage(image.id, { sortOrder: Math.max(0, Number(value) || 0) })} type="number" icon={<Database className="h-4 w-4" />} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="rounded-2xl border border-black/10 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-black">Prüfen, speichern, senden</div>
+                <div className="mt-1 text-sm leading-6 text-black/55">
+                  Erst Prüfung, dann speichern. Die E-Mail wird danach bewusst separat versendet.
+                </div>
+                {checkedKeys.length ? (
+                  <div className="mt-2 text-xs leading-5 text-black/50">
+                    Geprüfte Änderungen: {checkedKeys.slice(0, 6).join(", ")}{checkedKeys.length > 6 ? ` +${checkedKeys.length - 6}` : ""}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!canSave || saving}
+                  onClick={() => void patchOffer(true)}
+                  className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? "Prüft..." : "Änderungen prüfen"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canSave || saving}
+                  onClick={() => void patchOffer(false)}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#0A0A0A] px-5 py-2 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+                >
+                  {saving ? "Speichert..." : "Speichern"}
+                  {!saving ? <CheckSquare2 className="h-4 w-4" /> : null}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-black/10 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-black">Aktualisiertes Angebot per E-Mail senden</div>
+                <div className="mt-1 text-sm leading-6 text-black/55">
+                  Das verschickt nur den Link zum aktuellen Angebot. Es akzeptiert nichts und erzeugt kein finales PDF.
+                </div>
+              </div>
+              {offer.publicUrl ? <QuickLink href={offer.publicUrl} label="Link prüfen" /> : null}
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Field label="Empfänger" hint="Hauptadresse des Kunden." value={sendRecipient} onChange={setSendRecipient} type="email" icon={<Mail className="h-4 w-4" />} />
+              <Field label="Betreff" hint="Betreff der Angebotsmail." value={sendSubject} onChange={setSendSubject} icon={<Mail className="h-4 w-4" />} />
+              <Field label="CC 1" hint="Optional, maximal zwei CC-Adressen." value={sendCcOne} onChange={setSendCcOne} type="email" icon={<Mail className="h-4 w-4" />} />
+              <Field label="CC 2" hint="Optional, maximal zwei CC-Adressen." value={sendCcTwo} onChange={setSendCcTwo} type="email" icon={<Mail className="h-4 w-4" />} />
+              <div className="md:col-span-2">
+                <OfferTextArea label="Nachricht" hint="Kurzer Begleittext, der vor dem Angebotslink steht." value={sendMessage} onChange={setSendMessage} rows={5} />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                disabled={sending || !sendRecipient.trim() || offer.lock.lockLevel === "hard"}
+                onClick={() => void sendOffer()}
+                className="inline-flex items-center gap-2 rounded-full bg-[#fa31a2] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#d9238b] disabled:cursor-not-allowed disabled:bg-[#fa31a2]/25"
+              >
+                {sending ? "Sendet..." : "Aktualisiertes Angebot senden"}
+                {!sending ? <Send className="h-4 w-4" /> : null}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DealSourceWorkspace({
   record,
   onOpenRequestId,
@@ -15176,6 +15713,9 @@ function DealSourceWorkspace({
 
     return (
       <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
+        <div className="mb-4">
+          <OfferEditorPanel record={record} operatorName={currentOperator} onNotify={onNotify} simpleView />
+        </div>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">Angebot</div>
@@ -15243,6 +15783,7 @@ function DealSourceWorkspace({
 
   return (
     <div className="space-y-5">
+      <OfferEditorPanel record={record} operatorName={currentOperator} onNotify={onNotify} />
       <DealAttributionPanel record={record} />
 
       <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">

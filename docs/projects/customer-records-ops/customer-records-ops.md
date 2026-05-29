@@ -1131,3 +1131,12 @@ Auch diese Aktionen werden im `workflow_audit_log` protokolliert.
 - Danach neue Tagesliste erzeugen, damit die bestehenden Karten frische `visual_candidates_json`-Snapshots bekommen
 - Optional weitere Reduktion der Board-Karten, falls die Tagesliste künftig die Hauptarbeitsfläche werden soll
 - Optional WLAN-/Kolleginnen-Test weiter über `0.0.0.0` bzw. LAN-URL absichern, wenn das Modul gemeinsam geprüft wird
+
+## Angebotseditor via neontrip-offers
+
+- Customer Records hat im Tab `Angebot` jetzt einen Angebotseditor fuer die neue Angebotsseite aus `neontrip-offers`.
+- Die Verknuepfung erfolgt ueber `Offer.trelloCardId`; Trello bleibt damit nur Zuordnung/Projektion, nicht Angebots-Datenbank.
+- Die Ops-App ruft nur eigene serverseitige Proxy-Routen auf. Der Browser bekommt den internen Offers-Key nicht.
+- Bearbeitbar sind bestehende Kopfdaten, Positionstexte, Preise, Mengen, Rabattlabel und bestehende Bild-Schalter/Reihenfolge.
+- `VIEWED` braucht einen Aenderungsgrund. `ACCEPTED`, `DOWNLOADED`, Offers mit Acceptance und `EXPIRED` sind gesperrt.
+- Nach dem Speichern kann ein aktualisiertes Angebot separat per E-Mail erneut gesendet werden. Speichern loest keinen automatischen Versand aus.
