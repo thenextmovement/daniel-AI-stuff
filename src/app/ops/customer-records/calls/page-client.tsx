@@ -1006,6 +1006,19 @@ export function CustomerSalesCallsClient({
 
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search);
+      const query = (params.get("q") || params.get("query") || "").trim();
+      if (query.length >= 2) {
+        setSearchQuery(query);
+        void runSearchFor(query);
+      }
+    } catch {
+      // ignore malformed browser URLs
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
       const raw = window.localStorage.getItem(sharedOperatorNameKey) || window.localStorage.getItem(operatorNameKey);
       if (raw) setOperatorName(raw);
     } catch {
@@ -1139,8 +1152,8 @@ export function CustomerSalesCallsClient({
     setMessage(null);
   }
 
-  async function runSearch() {
-    const query = searchQuery.trim();
+  async function runSearchFor(queryInput: string) {
+    const query = queryInput.trim();
     if (query.length < 2) {
       setError("Bitte mindestens zwei Zeichen für die Suche eingeben.");
       return;
@@ -1156,8 +1169,16 @@ export function CustomerSalesCallsClient({
       setSearchLoading(false);
       return;
     }
-    setSearchResults(payload.results || []);
+    const results = payload.results || [];
+    setSearchResults(results);
+    if (results.length === 1) {
+      openSearchResult(results[0]);
+    }
     setSearchLoading(false);
+  }
+
+  async function runSearch() {
+    await runSearchFor(searchQuery);
   }
 
   async function login() {

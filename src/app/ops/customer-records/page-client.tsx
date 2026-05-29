@@ -4196,11 +4196,6 @@ function buildQuickCallDraft(
   };
 }
 
-function readQuickCallSurface(call: CallLogDraft) {
-  const match = call.note.match(/^Direkt aus (.+?) als /);
-  return match?.[1] || "der Kommandozentrale";
-}
-
 function opsStatePillClass(record: CustomerSearchResult) {
   switch (record.opsState.status) {
     case "won":
@@ -17576,9 +17571,9 @@ function ActionPanel({
         </div>
 
         <div className="rounded-xl border border-black/10 bg-white px-4 py-4">
-          <div className="text-sm font-medium text-black">Anruf protokollieren</div>
+          <div className="text-sm font-medium text-black">In Call-Zentrale öffnen</div>
           <div className="mt-1 text-sm leading-6 text-black/60">
-            Hake den Gesprächsstatus ab. Der Eintrag landet im Verlauf und im Prüfverlauf.
+            Anrufe werden zentral in der Call-Zentrale gespeichert, damit Ergebnis, Taktung und Folgeschritte zusammenbleiben.
           </div>
           <div className="mt-4 grid gap-3 rounded-2xl border border-black/10 bg-black/[0.02] p-4">
             <div>
@@ -17614,7 +17609,7 @@ function ActionPanel({
             onClick={() => onLogCall(call)}
             className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-[#0A0A0A] px-4 py-3 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
           >
-            Anruf loggen
+            In Call-Zentrale speichern
           </button>
         </div>
 
@@ -20116,57 +20111,29 @@ export function CustomerRecordsClient({
   }
 
   async function logCall(requestId: string, call: CallLogDraft) {
-    await runRecordAction(requestId, "log_customer_call", {
-      call,
-    });
+    const callUrl = `/ops/customer-records/calls?q=${encodeURIComponent(requestId)}`;
+    const target = typeof window !== "undefined" ? window.open(callUrl, "_blank", "noopener,noreferrer") : null;
+    if (!target && typeof window !== "undefined") {
+      window.location.href = callUrl;
+      return;
+    }
+    const intent =
+      call.leftVoicemail
+        ? "Anrufbeantworter"
+        : call.reached
+          ? "erreichter Anruf"
+          : call.customerOnVacation
+            ? "Urlaub / später"
+            : call.noInterest
+              ? "kein Interesse"
+              : call.deleteRequested
+                ? "Kontaktstopp"
+                : "Anruf";
+    setMessage(`${intent} bitte in der Call-Zentrale speichern. Dort bleibt die Anruflogik einheitlich.`);
   }
 
   async function runQuickCallPreset(requestId: string, call: CallLogDraft) {
     await logCall(requestId, call);
-
-    const surface = readQuickCallSurface(call);
-
-    if (
-      call.leftVoicemail &&
-      !call.reached &&
-      !call.noInterest &&
-      !call.customerOnVacation &&
-      !call.askedForCallback &&
-      !call.deleteRequested
-    ) {
-      await scheduleCallback(
-        requestId,
-        buildTomorrowAt(10),
-        `Automatisch nach Anrufbeantworter aus ${surface} auf morgen gesetzt.`,
-      );
-      return;
-    }
-
-    if (call.customerOnVacation) {
-      await applyCaseOutcome(requestId, {
-        outcome: "vacation",
-        resumeAt: buildDaysFromNowAt(14, 10),
-        reason: `Direkt aus ${surface} als Urlaub vermerkt und um zwei Wochen verschoben.`,
-      });
-      return;
-    }
-
-    if (call.deleteRequested) {
-      await applyCaseOutcome(requestId, {
-        outcome: "do_not_contact",
-        resumeAt: "",
-        reason: `Direkt aus ${surface} als Lösch-/Kontaktstopp markiert.`,
-      });
-      return;
-    }
-
-    if (call.noInterest && !call.deleteRequested) {
-      await applyCaseOutcome(requestId, {
-        outcome: "lost",
-        resumeAt: "",
-        reason: `Direkt aus ${surface} als kein Interesse abgeschlossen.`,
-      });
-    }
   }
 
   async function syncCaseFlowStateAction(requestId: string, flowState: CaseFlowStateDraft) {
