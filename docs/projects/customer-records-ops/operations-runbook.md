@@ -126,7 +126,7 @@ Nach Aenderungen an Env Vars immer Service neu starten oder redeployen.
 
 ## Angebotseditor in Customer Records
 
-Der Tab `Angebot` kann ein Angebot aus `neontrip-offers` ueber die Trello-Karten-ID laden und bearbeiten. Die Ops-App schreibt dabei nicht direkt in die Offers-Datenbank. Alle Aenderungen laufen serverseitig ueber die interne Offers-API.
+Der Tab `Angebot` kann ein Angebot aus `neontrip-offers` ueber die Trello-Karten-ID laden und bearbeiten. Falls keine eindeutige Karte vorhanden ist, kann nach Angebotsnummer, Angebotslink, E-Mail, Firma, Name oder Trello-Link gesucht werden. Die Ops-App schreibt dabei nicht direkt in die Offers-Datenbank. Alle Aenderungen laufen serverseitig ueber die interne Offers-API.
 
 Erlaubt:
 
@@ -134,6 +134,7 @@ Erlaubt:
 - VIEWED nur mit Aenderungsgrund bearbeiten.
 - Texte, Preise, Mengen, Vergleichspreise, Rabattlabels, Gültigkeit, Lieferzeit und aktivierte Bilder anpassen.
 - Danach das aktualisierte Angebot separat per E-Mail senden.
+- Manuell gefundene Angebote oeffnen, ohne sie automatisch mit dem Customer-Record zu verknuepfen.
 
 Gesperrt:
 
@@ -141,6 +142,7 @@ Gesperrt:
 - EXPIRED in V1.
 - Neue Positionen oder neue Bild-URLs direkt aus Ops anlegen.
 - Finale PDFs erzeugen oder Annahmen ausloesen.
+- Versand aus Customer Records, wenn die Kunden-E-Mail im Angebot nicht zur E-Mail des geoeffneten Datensatzes passt.
 
 Noetige Env Vars in `neontrip-ops-calls`:
 

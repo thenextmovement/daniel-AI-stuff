@@ -47,6 +47,11 @@ export type OpsOfferSnapshot = {
   acceptance: { id: string; signedAt: string } | null;
   lock: OpsOfferLock;
   offer: {
+    customerCompany: string | null;
+    customerFirstName: string | null;
+    customerLastName: string | null;
+    customerEmail: string | null;
+    customerPhone: string | null;
     validUntil: string | null;
     productionTime: string | null;
     notes: string | null;
@@ -58,6 +63,30 @@ export type OpsOfferSnapshot = {
   items: OpsOfferItem[];
   images: OpsOfferImage[];
   totals: Record<string, unknown>;
+};
+
+export type OpsOfferSearchMatchType = "exact" | "contact" | "fuzzy";
+
+export type OpsOfferSearchResult = {
+  offerId: string;
+  offerNumber: string | null;
+  documentReference: string;
+  trelloCardId: string | null;
+  publicUrl: string;
+  status: string;
+  updatedAt: string;
+  customerCompany: string | null;
+  customerFirstName: string | null;
+  customerLastName: string | null;
+  customerEmail: string | null;
+  lock: OpsOfferLock;
+  matchType: OpsOfferSearchMatchType;
+  matchReasons: string[];
+};
+
+export type OpsOfferSearchPayload = {
+  query: string;
+  results: OpsOfferSearchResult[];
 };
 
 export type OpsOfferPatchInput = {
@@ -172,8 +201,43 @@ export async function getOfferByTrelloCardId(trelloCardId: string) {
   return payload.offer;
 }
 
+export async function getOfferById(offerId: string) {
+  const payload = await offerFetch(`/api/internal/offers/${encodeURIComponent(offerId)}`, {
+    method: "GET",
+  });
+  if (!payload.offer) throw new OpsOfferApiError("Angebot nicht gefunden.", 404, "offer_not_found");
+  return payload.offer;
+}
+
+export async function searchOffers(query: string, limit = 10) {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const payload = await offerFetch(`/api/internal/offers/search?${params.toString()}`, {
+    method: "GET",
+  });
+  const results = Array.isArray((payload as { results?: unknown }).results)
+    ? ((payload as { results: OpsOfferSearchResult[] }).results)
+    : [];
+  return {
+    query: String((payload as { query?: string }).query || query),
+    results,
+  } satisfies OpsOfferSearchPayload;
+}
+
 export async function patchOfferByTrelloCardId(trelloCardId: string, input: OpsOfferPatchInput, dryRun = false) {
   const payload = await offerFetch(`/api/internal/offers/by-trello/${encodeURIComponent(trelloCardId)}${dryRun ? "?dryRun=true" : ""}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  if (!payload.offer) throw new OpsOfferApiError("Angebot konnte nicht aktualisiert werden.", 502, "offer_update_failed");
+  return {
+    offer: payload.offer,
+    dryRun: payload.dryRun,
+    diff: payload.diff,
+  } satisfies OpsOfferPatchResult;
+}
+
+export async function patchOfferById(offerId: string, input: OpsOfferPatchInput, dryRun = false) {
+  const payload = await offerFetch(`/api/internal/offers/${encodeURIComponent(offerId)}${dryRun ? "?dryRun=true" : ""}`, {
     method: "PATCH",
     body: JSON.stringify(input),
   });

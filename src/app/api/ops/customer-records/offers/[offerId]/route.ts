@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
-import { getOfferById, OpsOfferApiError, sendOfferUpdateMail, type OpsOfferSendInput } from "@/lib/ops/offers";
+import { getOfferById, OpsOfferApiError, patchOfferById, type OpsOfferPatchInput } from "@/lib/ops/offers";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ function failureResponse(error: unknown) {
       { status: error.status },
     );
   }
-  console.error("ops customer-records offers send route failed", error);
+  console.error("ops customer-records offers by-id route failed", error);
   return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
 }
 
@@ -36,42 +36,28 @@ async function authorize(request: NextRequest) {
   return { ok: true as const };
 }
 
-function normalizeEmail(value: unknown) {
-  return String(value || "").trim().toLowerCase();
-}
-
-export async function POST(request: NextRequest, { params }: { params: Promise<{ offerId: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ offerId: string }> }) {
   const authorized = await authorize(request);
   if (!authorized.ok) return authorized.response;
 
   try {
     const { offerId } = await params;
-    const decodedOfferId = decodeURIComponent(offerId);
-    const body = (await request.json()) as OpsOfferSendInput & { recordEmail?: string | null };
-    const offer = await getOfferById(decodedOfferId);
-    const offerEmail = normalizeEmail(offer.offer.customerEmail);
-    const recordEmail = normalizeEmail(body.recordEmail);
-    if (offerEmail && recordEmail && offerEmail !== recordEmail) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Versand blockiert: Das Angebot gehoert zu ${offer.offer.customerEmail}, der geoeffnete Datensatz zu ${body.recordEmail}.`,
-          code: "offer_record_email_mismatch",
-        },
-        { status: 409 },
-      );
-    }
+    const offer = await getOfferById(decodeURIComponent(offerId));
+    return NextResponse.json({ ok: true, offer });
+  } catch (error) {
+    return failureResponse(error);
+  }
+}
 
-    const sendInput: OpsOfferSendInput = {
-      recipientEmail: body.recipientEmail,
-      cc: body.cc,
-      subject: body.subject,
-      message: body.message,
-      actor: body.actor,
-      reason: body.reason,
-      idempotencyKey: body.idempotencyKey,
-    };
-    const result = await sendOfferUpdateMail(decodedOfferId, sendInput);
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ offerId: string }> }) {
+  const authorized = await authorize(request);
+  if (!authorized.ok) return authorized.response;
+
+  try {
+    const { offerId } = await params;
+    const url = new URL(request.url);
+    const body = (await request.json()) as OpsOfferPatchInput;
+    const result = await patchOfferById(decodeURIComponent(offerId), body, url.searchParams.get("dryRun") === "true");
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return failureResponse(error);

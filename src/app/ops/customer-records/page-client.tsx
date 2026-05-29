@@ -62,7 +62,7 @@ import {
   type SessionBadgeLabel,
 } from "@/lib/ops/customer-records-session-meta";
 import { buildRequestIdSessionMaps, type RequestIdSessionMaps } from "@/lib/ops/customer-records-session-maps";
-import type { OpsOfferImage, OpsOfferItem, OpsOfferPatchInput, OpsOfferSnapshot } from "@/lib/ops/offers";
+import type { OpsOfferImage, OpsOfferItem, OpsOfferPatchInput, OpsOfferSearchResult, OpsOfferSnapshot } from "@/lib/ops/offers";
 
 type CustomerUpdateResponse = {
   ok: boolean;
@@ -3920,6 +3920,14 @@ type OfferBridgeResponse = {
   diff?: {
     changedKeys: string[];
   };
+  error?: string;
+  issues?: string[];
+};
+
+type OfferSearchBridgeResponse = {
+  ok: boolean;
+  query?: string;
+  results?: OpsOfferSearchResult[];
   error?: string;
   issues?: string[];
 };
@@ -15235,6 +15243,10 @@ function OfferEditorPanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
+  const [manualOfferId, setManualOfferId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<OpsOfferSearchResult[]>([]);
   const [sendRecipient, setSendRecipient] = useState(record.email || "");
   const [sendCcOne, setSendCcOne] = useState(record.ccEmails?.[0] || "");
   const [sendCcTwo, setSendCcTwo] = useState(record.ccEmails?.[1] || "");
@@ -15255,13 +15267,16 @@ function OfferEditorPanel({
     setRevisionReason("");
   }
 
-  async function loadOffer() {
-    if (!trelloCardId) return;
+  async function loadOffer(offerId?: string) {
+    if (!trelloCardId && !offerId && !manualOfferId) return;
+    const targetOfferId = offerId || manualOfferId;
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/ops/customer-records/offers/by-trello/${encodeURIComponent(trelloCardId)}`, {
+      const response = await fetch(targetOfferId
+        ? `/api/ops/customer-records/offers/${encodeURIComponent(targetOfferId)}`
+        : `/api/ops/customer-records/offers/by-trello/${encodeURIComponent(trelloCardId || "")}`, {
         method: "GET",
       });
       const payload = (await response.json().catch(() => null)) as OfferBridgeResponse | null;
@@ -15269,6 +15284,7 @@ function OfferEditorPanel({
         throw new Error(formatApiError(payload));
       }
       resetFromOffer(payload.offer);
+      setManualOfferId(targetOfferId || null);
     } catch (loadError) {
       setOffer(null);
       setOfferFields(null);
@@ -15280,12 +15296,39 @@ function OfferEditorPanel({
     }
   }
 
+  async function searchOffer() {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    setSearching(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/ops/customer-records/offers/search?q=${encodeURIComponent(trimmed)}&limit=10`, {
+        method: "GET",
+      });
+      const payload = (await response.json().catch(() => null)) as OfferSearchBridgeResponse | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(formatApiError(payload));
+      }
+      setSearchResults(payload.results || []);
+      if (!payload.results?.length) setMessage("Keine Angebote gefunden.");
+    } catch (searchError) {
+      setSearchResults([]);
+      setError(searchError instanceof Error ? searchError.message : "Angebotssuche fehlgeschlagen.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
   useEffect(() => {
     setOffer(null);
     setOfferFields(null);
     setItems([]);
     setImages([]);
     setInitialSignature("");
+    setManualOfferId(null);
+    setSearchQuery("");
+    setSearchResults([]);
     setError(null);
     setMessage(null);
     setSendRecipient(record.email || "");
@@ -15296,11 +15339,21 @@ function OfferEditorPanel({
 
   const currentSignature = offerFields ? buildOfferEditSignature(offerFields, items, images, validUntilDate) : "";
   const hasChanges = Boolean(offer && offerFields && currentSignature !== initialSignature);
-  const needsReason = Boolean(offer?.lock.requiresRevisionReason);
-  const canEdit = Boolean(offer?.lock.editable && offerFields);
-  const canSave = canEdit && hasChanges && (!needsReason || revisionReason.trim().length >= 3);
-  const draftNetTotal = items.reduce((sum, item) => sum + Number(item.unitPriceNet || 0) * Number(item.quantity || 0), 0);
-  const currency = offerFields?.currency || "EUR";
+	  const needsReason = Boolean(offer?.lock.requiresRevisionReason);
+	  const canEdit = Boolean(offer?.lock.editable && offerFields);
+	  const canSave = canEdit && hasChanges && (!needsReason || revisionReason.trim().length >= 3);
+	  const draftNetTotal = items.reduce((sum, item) => sum + Number(item.unitPriceNet || 0) * Number(item.quantity || 0), 0);
+	  const currency = offerFields?.currency || "EUR";
+	  const normalizedRecordEmail = String(record.email || "").trim().toLowerCase();
+	  const normalizedOfferCustomerEmail = String(offerFields?.customerEmail || "").trim().toLowerCase();
+	  const offerEmailMismatch = Boolean(
+	    offer &&
+	      normalizedRecordEmail &&
+	      normalizedOfferCustomerEmail &&
+	      normalizedRecordEmail !== normalizedOfferCustomerEmail,
+	  );
+	  const canSendOffer = Boolean(offer && sendRecipient.trim() && offer.lock.lockLevel !== "hard" && !offerEmailMismatch);
+	  const canReloadOffer = Boolean(trelloCardId || manualOfferId);
 
   function buildPatch(): OpsOfferPatchInput {
     if (!offer || !offerFields) throw new Error("Kein Angebot geladen.");
@@ -15341,12 +15394,12 @@ function OfferEditorPanel({
   }
 
   async function patchOffer(dryRun: boolean) {
-    if (!trelloCardId) return;
+    if (!offer) return;
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/ops/customer-records/offers/by-trello/${encodeURIComponent(trelloCardId)}${dryRun ? "?dryRun=true" : ""}`, {
+      const response = await fetch(`/api/ops/customer-records/offers/${encodeURIComponent(offer.offerId)}${dryRun ? "?dryRun=true" : ""}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildPatch()),
@@ -15370,11 +15423,19 @@ function OfferEditorPanel({
     }
   }
 
-  async function sendOffer() {
-    if (!offer) return;
-    setSending(true);
-    setError(null);
-    setMessage(null);
+	  async function sendOffer() {
+	    if (!offer) return;
+	    if (offerEmailMismatch) {
+	      setError(
+	        `Versand blockiert: Das Angebot gehört zu ${offerFields?.customerEmail || "einer anderen E-Mail"}, der geöffnete Datensatz zu ${
+	          record.email || "keiner E-Mail"
+	        }.`,
+	      );
+	      return;
+	    }
+	    setSending(true);
+	    setError(null);
+	    setMessage(null);
     try {
       const cc = [sendCcOne, sendCcTwo].map((entry) => entry.trim()).filter(Boolean);
       const idempotencyKey =
@@ -15389,11 +15450,12 @@ function OfferEditorPanel({
           cc,
           subject: sendSubject.trim(),
           message: sendMessage.trim(),
-          actor: operatorName || "Ops",
-          reason: "Aktualisiertes Angebot aus Customer Records erneut versendet.",
-          idempotencyKey,
-        }),
-      });
+	          actor: operatorName || "Ops",
+	          reason: "Aktualisiertes Angebot aus Customer Records erneut versendet.",
+	          idempotencyKey,
+	          recordEmail: record.email || null,
+	        }),
+	      });
       const payload = (await response.json().catch(() => null)) as OfferSendBridgeResponse | null;
       if (!response.ok || !payload?.ok || !payload.sent) {
         throw new Error(formatApiError(payload));
@@ -15419,19 +15481,8 @@ function OfferEditorPanel({
     setImages((current) => current.map((image) => (image.id === imageId ? { ...image, ...patch } : image)));
   }
 
-  if (!trelloCardId) {
-    return (
-      <div className="rounded-2xl border border-dashed border-black/10 bg-white p-5">
-        <div className="text-sm font-semibold text-black">Angebotseditor</div>
-        <div className="mt-2 text-sm leading-6 text-black/55">
-          Für diesen Fall wurde keine Trello-Karte gefunden, über die ein Angebot eindeutig geladen werden kann.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl border border-[#fa31a2]/20 bg-[#fff8fc] p-5">
+	  return (
+	    <div className="rounded-2xl border border-[#fa31a2]/20 bg-[#fff8fc] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#c21876]">Angebotsseite</div>
@@ -15441,20 +15492,115 @@ function OfferEditorPanel({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void loadOffer()}
-            disabled={loading || saving}
-            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Lädt..." : offer ? "Neu laden" : "Angebot laden"}
-          </button>
+	          <button
+	            type="button"
+	            onClick={() => void loadOffer()}
+	            disabled={loading || saving || !canReloadOffer}
+	            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+	          >
+	            {loading ? "Lädt..." : offer ? "Neu laden" : "Angebot laden"}
+	          </button>
           {offer?.publicUrl ? <QuickLink href={offer.publicUrl} label="Angebotsseite öffnen" /> : null}
-        </div>
-      </div>
+	        </div>
+	      </div>
 
-      {error ? (
-        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
+	      <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
+	        <div className="flex flex-wrap items-start justify-between gap-3">
+	          <div>
+	            <div className="text-sm font-semibold text-black">Angebot suchen</div>
+	            <div className="mt-1 text-sm leading-6 text-black/55">
+	              Suche nach Angebotsnummer, Angebotslink, E-Mail, Firma, Name oder Trello-Link. Das ausgewählte Angebot wird nicht automatisch mit diesem Datensatz verknüpft.
+	            </div>
+	          </div>
+	          {trelloCardId ? (
+	            <span className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-xs text-black/55">
+	              Trello-ID vorhanden
+	            </span>
+	          ) : (
+	            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-800">
+	              Keine Trello-ID
+	            </span>
+	          )}
+	        </div>
+	        <form
+	          className="mt-4 flex flex-col gap-2 sm:flex-row"
+	          onSubmit={(event) => {
+	            event.preventDefault();
+	            void searchOffer();
+	          }}
+	        >
+	          <input
+	            value={searchQuery}
+	            onChange={(event) => setSearchQuery(event.target.value)}
+	            placeholder="A/N 13977, kunde@mail.de, Firma, /offer/..."
+	            className="min-w-0 flex-1 rounded-xl border-2 border-black/10 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-[#fa31a2] focus:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]"
+	          />
+	          <button
+	            type="submit"
+	            disabled={searching || searchQuery.trim().length < 3}
+	            className="rounded-xl bg-[#0A0A0A] px-5 py-3 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+	          >
+	            {searching ? "Sucht..." : "Suchen"}
+	          </button>
+	        </form>
+	        {searchResults.length ? (
+	          <div className="mt-4 grid gap-2">
+	            {searchResults.map((result) => {
+	              const customerName =
+	                result.customerCompany ||
+	                [result.customerFirstName, result.customerLastName].filter(Boolean).join(" ") ||
+	                result.customerEmail ||
+	                "Kein Kunde";
+	              const lockLabel =
+	                result.lock.lockLevel === "hard"
+	                  ? "Gesperrt"
+	                  : result.lock.lockLevel === "soft"
+	                    ? "Gesehen, Grund nötig"
+	                    : "Bearbeitbar";
+	              const lockClass =
+	                result.lock.lockLevel === "hard"
+	                  ? "border-amber-200 bg-amber-50 text-amber-800"
+	                  : result.lock.lockLevel === "soft"
+	                    ? "border-blue-200 bg-blue-50 text-blue-800"
+	                    : "border-emerald-200 bg-emerald-50 text-emerald-800";
+
+	              return (
+	                <div key={result.offerId} className="rounded-xl border border-black/10 bg-black/[0.015] p-3">
+	                  <div className="flex flex-wrap items-start justify-between gap-3">
+	                    <div className="min-w-0 flex-1">
+	                      <div className="text-sm font-semibold text-black">
+	                        {result.offerNumber || result.documentReference}
+	                      </div>
+	                      <div className="mt-1 text-sm leading-6 text-black/55">
+	                        {customerName}
+	                        {result.customerEmail ? ` • ${result.customerEmail}` : ""}
+	                        {result.matchReasons.length ? ` • Treffer: ${result.matchReasons.join(", ")}` : ""}
+	                      </div>
+	                    </div>
+	                    <div className="flex flex-wrap items-center gap-2">
+	                      <span className={`rounded-full border px-3 py-1 text-xs ${lockClass}`}>{lockLabel}</span>
+	                      <button
+	                        type="button"
+	                        onClick={() => {
+	                          setManualOfferId(result.offerId);
+	                          setSearchResults([]);
+	                          void loadOffer(result.offerId);
+	                        }}
+	                        className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
+	                      >
+	                        Öffnen
+	                      </button>
+	                    </div>
+	                  </div>
+	                </div>
+	              );
+	            })}
+	          </div>
+	        ) : null}
+	      </div>
+
+	      {error ? (
+	        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
           {error}
         </div>
       ) : null}
@@ -15464,11 +15610,15 @@ function OfferEditorPanel({
         </div>
       ) : null}
 
-      {!offer || !offerFields ? (
-        <div className="mt-4 rounded-xl border border-dashed border-black/10 bg-white px-4 py-4 text-sm leading-6 text-black/55">
-          {loading ? "Angebot wird geladen..." : "Noch kein Angebot geladen."}
-        </div>
-      ) : (
+	      {!offer || !offerFields ? (
+	        <div className="mt-4 rounded-xl border border-dashed border-black/10 bg-white px-4 py-4 text-sm leading-6 text-black/55">
+	          {loading
+	            ? "Angebot wird geladen..."
+	            : trelloCardId
+	              ? "Noch kein Angebot geladen."
+	              : "Für diesen Fall wurde keine Trello-Karte gefunden. Suche oben nach Angebotsnummer, E-Mail oder Angebotslink."}
+	        </div>
+	      ) : (
         <div className="mt-4 space-y-4">
           <div className="grid gap-3 md:grid-cols-4">
             <MiniSystem title="Status" value={offer.status} detail={offer.lock.lockReason || "Bearbeitbar"} tone={offer.lock.lockLevel === "hard" ? "amber" : offer.lock.lockLevel === "soft" ? "blue" : "good"} />
@@ -15477,11 +15627,18 @@ function OfferEditorPanel({
             <MiniSystem title="Bilder" value={images.filter((image) => image.enabled).length} detail={`${images.length} insgesamt`} tone="blue" />
           </div>
 
-          {offer.lock.lockLevel === "hard" ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
-              Dieses Angebot ist gesperrt. Für Änderungen bitte ein neues Angebot oder eine saubere Revision in der Angebots-App anlegen.
-            </div>
-          ) : null}
+	          {offer.lock.lockLevel === "hard" ? (
+	            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+	              Dieses Angebot ist gesperrt. Für Änderungen bitte ein neues Angebot oder eine saubere Revision in der Angebots-App anlegen.
+	            </div>
+	          ) : null}
+
+	          {offerEmailMismatch ? (
+	            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-950">
+	              Dieses Angebot gehört laut Angebots-App zu {offerFields.customerEmail || "einer anderen E-Mail"}, der geöffnete Datensatz zu {record.email || "keiner E-Mail"}.
+	              Versand aus diesem Datensatz ist blockiert.
+	            </div>
+	          ) : null}
 
           <div className={`grid gap-4 ${simpleView ? "" : "xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"}`}>
             <div className="rounded-2xl border border-black/10 bg-white p-4">
@@ -15627,11 +15784,11 @@ function OfferEditorPanel({
               </div>
             </div>
             <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                disabled={sending || !sendRecipient.trim() || offer.lock.lockLevel === "hard"}
-                onClick={() => void sendOffer()}
-                className="inline-flex items-center gap-2 rounded-full bg-[#fa31a2] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#d9238b] disabled:cursor-not-allowed disabled:bg-[#fa31a2]/25"
+	              <button
+	                type="button"
+	                disabled={sending || !canSendOffer}
+	                onClick={() => void sendOffer()}
+	                className="inline-flex items-center gap-2 rounded-full bg-[#fa31a2] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#d9238b] disabled:cursor-not-allowed disabled:bg-[#fa31a2]/25"
               >
                 {sending ? "Sendet..." : "Aktualisiertes Angebot senden"}
                 {!sending ? <Send className="h-4 w-4" /> : null}
