@@ -346,6 +346,28 @@ type WorkboardCallbackRow = {
   contactability_status?: string | null;
 };
 
+type CustomerCaseStateRow = {
+  request_id: string;
+  state: "active" | "handled" | "snoozed";
+  snoozed_until?: string | null;
+  reason?: string | null;
+  updated_by?: string | null;
+  source_action?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type CustomerCardViewRow = {
+  request_id: string;
+  viewer_key: string;
+  operator_name: string;
+  last_seen_at: string;
+  user_agent?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 const CUSTOMER_RECORDS_WORKFLOW_NAME = "customer_records_console";
 const CUSTOMER_RECORDS_UPDATE_ACTION = "customer_record_update";
 const CUSTOMER_RECORDS_CC_EMAILS_ACTION = "customer_record_cc_emails_updated";
@@ -436,6 +458,8 @@ type CustomerContext = {
   quoteEmails: QuoteEmailLogRow[];
   inboundEmails: EmailAgentLogRow[];
   audits: WorkflowAuditRow[];
+  caseState: CustomerCaseStateRow | null;
+  activeViews: CustomerCardViewRow[];
   trello: CustomerTrelloContext | null;
   relatedCustomers: MasterCustomerRow[];
   relatedRequestRows: MasterRequestRow[];
@@ -868,6 +892,12 @@ export type CustomerTrelloEditableCard = {
   fields: CustomerTrelloField[];
 };
 
+export type CustomerActiveViewer = {
+  operatorName: string;
+  lastSeenAt: string;
+  viewerKey: string | null;
+};
+
 export type CustomerSearchResult = {
   masterCustomerId: string;
   requestId: string;
@@ -908,6 +938,7 @@ export type CustomerSearchResult = {
   caseCoordination: CustomerCaseCoordinationSummary;
   caseFlow: CustomerCaseFlowSummary;
   opsState: CustomerOpsStateSummary;
+  activeViewers: CustomerActiveViewer[];
   relatedRequests: CustomerRelatedRequest[];
   trello: CustomerTrelloContext | null;
   communications: CustomerCommunicationEntry[];
@@ -1038,6 +1069,10 @@ export type CustomerSearchMode = "request_id" | "email" | "name" | "phone" | "de
 function trimNullable(value: string | null | undefined) {
   const normalized = String(value || "").trim();
   return normalized ? normalized : null;
+}
+
+function activeViewerCutoffIso() {
+  return new Date(Date.now() - 90 * 1000).toISOString();
 }
 
 function normalizeOptionalEmail(value: string | null | undefined) {
@@ -2669,6 +2704,16 @@ function buildOpsStateSummary(
   return deriveCustomerOpsState(context.audits, callOps);
 }
 
+function mapActiveViewers(context: Pick<CustomerContext, "activeViews">): CustomerActiveViewer[] {
+  return context.activeViews
+    .map((row) => ({
+      operatorName: trimNullable(row.operator_name) || "Team",
+      lastSeenAt: row.last_seen_at,
+      viewerKey: trimNullable(row.viewer_key),
+    }))
+    .filter((entry) => Boolean(entry.lastSeenAt));
+}
+
 function createOrderDiagnostic(
   master: MasterCustomerRow,
   request: MasterRequestRow | null,
@@ -3282,7 +3327,7 @@ async function fetchDownstreamRows(
     ...emails.map((email) => `cc_emails.cs.{${encodeURIComponent(email)}}`),
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
-  const [requestRows, quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, inboundEmails, audits] = await Promise.all([
+  const [requestRows, quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
     supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
       select: "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
       request_id: `eq.${master.request_id}`,
@@ -3374,6 +3419,18 @@ async function fetchDownstreamRows(
       document_id: `eq.${master.request_id}`,
       order: "created_at.desc",
       limit: 40,
+    }),
+    supabaseRequest<CustomerCaseStateRow[]>("customer_case_state", undefined, {
+      select: "request_id,state,snoozed_until,reason,updated_by,source_action,metadata,created_at,updated_at",
+      request_id: `eq.${master.request_id}`,
+      limit: 1,
+    }),
+    supabaseRequest<CustomerCardViewRow[]>("ops_card_views", undefined, {
+      select: "request_id,viewer_key,operator_name,last_seen_at,user_agent,created_at,updated_at",
+      request_id: `eq.${master.request_id}`,
+      last_seen_at: `gte.${activeViewerCutoffIso()}`,
+      order: "last_seen_at.desc",
+      limit: 8,
     }),
   ]);
 
@@ -3503,6 +3560,8 @@ async function fetchDownstreamRows(
     quoteEmails,
     inboundEmails,
     audits,
+    caseState: caseStates[0] || null,
+    activeViews: activeViews || [],
     trello,
     relatedCustomers,
     relatedRequestRows,
@@ -3648,6 +3707,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
     caseCoordination,
     caseFlow,
     opsState: buildOpsStateSummary(context, callOps),
+    activeViewers: mapActiveViewers(context),
     relatedRequests: context.relatedCustomers.map((row) => {
       const relatedRequest = context.relatedRequestRows.find((entry) => entry.request_id === row.request_id) || null;
       const relatedQuote = context.relatedQuoteRows.find((entry) => entry.request_id === row.request_id) || null;
@@ -3924,6 +3984,38 @@ async function insertWorkflowAuditLog(input: {
     }),
     headers: { Prefer: "return=minimal" },
   });
+}
+
+async function upsertCustomerCaseState(input: {
+  requestId: string;
+  state: CustomerCaseStateRow["state"];
+  snoozedUntil?: string | null;
+  reason?: string | null;
+  actor?: UpdateActor;
+  sourceAction: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const now = new Date().toISOString();
+  await supabaseRequest(
+    "customer_case_state",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: input.requestId,
+        state: input.state,
+        snoozed_until: input.snoozedUntil || null,
+        reason: input.reason || null,
+        updated_by: actorLabel(input.actor),
+        source_action: input.sourceAction,
+        metadata: input.metadata || {},
+        updated_at: now,
+      }),
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+    },
+    { on_conflict: "request_id" },
+  );
 }
 
 async function rollbackChanges(steps: Array<() => Promise<unknown>>) {
@@ -4220,7 +4312,7 @@ export async function listCustomerRecordsInbox(limit = 6) {
 }
 
 export async function listCustomerRecordsWorkboard(limitPerSection = 4): Promise<CustomerWorkboardSection[]> {
-  const [pendingRows, callbackRows, replyAuditRows, contactStopRows, salesRecoveryRows, workboardStateRows] = await Promise.all([
+  const [pendingRows, callbackRows, replyAuditRows, contactStopRows, salesRecoveryRows] = await Promise.all([
     supabaseRequest<InboxFollowupRow[]>("followup_queue", undefined, {
       select: "request_id,scheduled_for",
       status: "eq.pending",
@@ -4252,13 +4344,6 @@ export async function listCustomerRecordsWorkboard(limitPerSection = 4): Promise
       action: `eq.${CUSTOMER_RECORDS_SALES_RECOVERY_ACTION}`,
       order: "created_at.desc",
       limit: Math.max(limitPerSection * 4, 12),
-    }),
-    supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
-      select: "id,document_id,action,status,metadata,created_at",
-      workflow_name: `eq.${CUSTOMER_RECORDS_WORKFLOW_NAME}`,
-      or: `(action.eq.${CUSTOMER_RECORDS_WORKBOARD_HANDLED_ACTION},action.eq.${CUSTOMER_RECORDS_WORKBOARD_SNOOZED_ACTION})`,
-      order: "created_at.desc",
-      limit: 120,
     }),
   ]);
 
@@ -4343,31 +4428,18 @@ export async function listCustomerRecordsWorkboard(limitPerSection = 4): Promise
     }),
   );
 
-  const stateByRequestId = new Map<string, WorkflowAuditRow>();
-  for (const row of workboardStateRows) {
-    const requestId = auditText(row.metadata || {}, "request_id") || row.document_id;
-    if (!requestId || stateByRequestId.has(requestId)) continue;
-    stateByRequestId.set(requestId, row);
-  }
+  const caseStateRows = await supabaseRequest<CustomerCaseStateRow[]>("customer_case_state", undefined, {
+    select: "request_id,state,snoozed_until,reason,updated_by,source_action,metadata,created_at,updated_at",
+    request_id: `in.(${allRequestIds.join(",")})`,
+    limit: Math.max(allRequestIds.length, 12),
+  });
+  const stateByRequestId = new Map(caseStateRows.map((row) => [row.request_id, row] as const));
 
   function isSuppressed(record: CustomerSearchResult) {
     const state = stateByRequestId.get(record.requestId);
     if (!state) return false;
-    const stateAt = new Date(state.created_at || 0).getTime();
-    const latestActivity = new Date(
-      record.timeline[0]?.occurredAt ||
-      record.affectedRows.nextPendingFollowupAt ||
-      record.request?.updatedAt ||
-      record.updatedAt ||
-      0,
-    ).getTime();
-    if (latestActivity > stateAt) return false;
-    if (state.action === CUSTOMER_RECORDS_WORKBOARD_HANDLED_ACTION) return true;
-    if (state.action === CUSTOMER_RECORDS_WORKBOARD_SNOOZED_ACTION) {
-      const snoozeUntil = auditText(state.metadata || {}, "snooze_until");
-      if (!snoozeUntil) return true;
-      return new Date(snoozeUntil).getTime() > Date.now();
-    }
+    if (state.state === "handled") return true;
+    if (state.state === "snoozed") return state.snoozed_until ? new Date(state.snoozed_until).getTime() > Date.now() : true;
     return false;
   }
 
@@ -4837,6 +4909,39 @@ export async function addCustomerOpsNote(requestId: string, input: string | Cust
   );
 
   return mapNoteEntry(rows[0]);
+}
+
+export async function recordCustomerCardView(input: {
+  requestId: string;
+  operatorName?: string | null;
+  viewerKey?: string | null;
+  userAgent?: string | null;
+}) {
+  const requestId = normalizeRequestSearch(input.requestId);
+  const viewerKey = trimNullable(input.viewerKey) || "browser";
+  const operatorName = trimNullable(input.operatorName) || "Team";
+  const now = new Date().toISOString();
+
+  await supabaseRequest(
+    "ops_card_views",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: requestId,
+        viewer_key: viewerKey.slice(0, 120),
+        operator_name: operatorName.slice(0, 120),
+        user_agent: trimNullable(input.userAgent)?.slice(0, 300) || null,
+        last_seen_at: now,
+        updated_at: now,
+      }),
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+    },
+    { on_conflict: "request_id,viewer_key" },
+  );
+
+  return { count: 1 };
 }
 
 export async function reschedulePendingCustomerFollowups(
@@ -5379,6 +5484,19 @@ export async function setCustomerWorkboardState(
 
   if (input.state === "snoozed") {
     const snoozeUntil = parseFutureIsoDate(input.snoozeUntil || "");
+    await upsertCustomerCaseState({
+      requestId: context.master.request_id,
+      state: "snoozed",
+      snoozedUntil: snoozeUntil,
+      reason: normalizedReason || "Später bearbeiten.",
+      actor,
+      sourceAction: CUSTOMER_RECORDS_WORKBOARD_SNOOZED_ACTION,
+      metadata: {
+        request_id: context.master.request_id,
+        snooze_until: snoozeUntil,
+        reason: normalizedReason || "Später bearbeiten.",
+      },
+    });
     await insertWorkflowAuditLog({
       requestId: context.master.request_id,
       action: CUSTOMER_RECORDS_WORKBOARD_SNOOZED_ACTION,
@@ -5393,6 +5511,17 @@ export async function setCustomerWorkboardState(
       },
     });
   } else {
+    await upsertCustomerCaseState({
+      requestId: context.master.request_id,
+      state: "handled",
+      reason: normalizedReason || "Operativ erledigt.",
+      actor,
+      sourceAction: CUSTOMER_RECORDS_WORKBOARD_HANDLED_ACTION,
+      metadata: {
+        request_id: context.master.request_id,
+        reason: normalizedReason || "Operativ erledigt.",
+      },
+    });
     await insertWorkflowAuditLog({
       requestId: context.master.request_id,
       action: CUSTOMER_RECORDS_WORKBOARD_HANDLED_ACTION,

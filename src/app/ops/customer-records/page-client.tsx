@@ -3360,8 +3360,11 @@ function InboxCard({
                 : record.request?.status || "Offen"}
             </div>
           </button>
-          <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/55">
-            {record.affectedRows.pendingFollowups > 0 ? `${record.affectedRows.pendingFollowups} offen` : "bereit"}
+          <div className="flex flex-wrap justify-end gap-2">
+            <ActiveViewerBadge record={record} />
+            <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/55">
+              {record.affectedRows.pendingFollowups > 0 ? `${record.affectedRows.pendingFollowups} offen` : "bereit"}
+            </div>
           </div>
         </div>
         <div className="mt-3">
@@ -3398,8 +3401,11 @@ function InboxCard({
             <div className="text-sm font-semibold text-black">{record.displayName || record.request?.title || record.requestId}</div>
             <div className="mt-1 text-xs uppercase tracking-[0.14em] text-black/40">{record.requestId}</div>
           </div>
-          <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/55">
-            {record.affectedRows.pendingFollowups > 0 ? `${record.affectedRows.pendingFollowups} offen` : "frisch"}
+          <div className="flex flex-wrap justify-end gap-2">
+            <ActiveViewerBadge record={record} />
+            <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/55">
+              {record.affectedRows.pendingFollowups > 0 ? `${record.affectedRows.pendingFollowups} offen` : "frisch"}
+            </div>
           </div>
         </div>
         <div className="mt-3 text-sm leading-6 text-black/60">
@@ -3614,7 +3620,10 @@ function WorkboardLane({
                 onClick={() => onOpen(record)}
                 className="w-full text-left"
               >
-                <div className="text-sm font-semibold text-black">{record.displayName || record.request?.title || record.requestId}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-semibold text-black">{record.displayName || record.request?.title || record.requestId}</div>
+                  <ActiveViewerBadge record={record} />
+                </div>
                 <div className="mt-2 text-sm leading-6 text-black/60">
                   {simpleView
                     ? record.affectedRows.nextPendingFollowupAt
@@ -3951,12 +3960,47 @@ function formatDate(value: string | null | undefined) {
 }
 
 const FLOW_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+const opsViewerKey = "neontrip-ops-viewer-key";
+
+function getOrCreateOpsViewerKey() {
+  if (typeof window === "undefined") return "server";
+  const existing = window.localStorage.getItem(opsViewerKey);
+  if (existing) return existing;
+  const next =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `viewer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.localStorage.setItem(opsViewerKey, next);
+  return next;
+}
 
 function getRelativeDurationLabel(ms: number) {
   if (ms < 2 * 60 * 60 * 1000) return "seit über 1 Stunde";
   if (ms < 24 * 60 * 60 * 1000) return `seit ${Math.max(2, Math.floor(ms / (60 * 60 * 1000)))} Stunden`;
   const days = Math.max(1, Math.floor(ms / (24 * 60 * 60 * 1000)));
   return days === 1 ? "seit 1 Tag" : `seit ${days} Tagen`;
+}
+
+function getShortRelativeSeenLabel(value: string | null | undefined) {
+  if (!value) return "gerade";
+  const age = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(age) || age < 60 * 1000) return "gerade";
+  return `seit ${Math.max(1, Math.floor(age / 60000))} Min`;
+}
+
+function ActiveViewerBadge({ record }: { record: CustomerSearchResult }) {
+  const currentViewerKey = typeof window !== "undefined" ? window.localStorage.getItem(opsViewerKey) : null;
+  const viewers = (record.activeViewers || []).filter((viewer) => viewer.viewerKey !== currentViewerKey);
+  if (!viewers.length) return null;
+  const lead = viewers[0];
+  return (
+    <span
+      title="Dieser Hinweis ist nur ein Live-Hinweis, kein Sperrmechanismus."
+      className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-800"
+    >
+      {lead.operatorName} {getShortRelativeSeenLabel(lead.lastSeenAt)}
+    </span>
+  );
 }
 
 function getActiveFlowAgeMs(record: CustomerSearchResult) {
@@ -13002,7 +13046,10 @@ function OperationsOverview({
       <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">Anfrage & Systeme</div>
       <div className="mt-4 space-y-4">
         <div className="rounded-xl border border-black/10 bg-black/[0.02] p-4">
-          <div className="text-sm font-medium text-black">{record.request?.title || record.displayName || "Anfrage"}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-medium text-black">{record.request?.title || record.displayName || "Anfrage"}</div>
+            <ActiveViewerBadge record={record} />
+          </div>
           <div className="mt-2 text-sm leading-6 text-black/60">
             {getAiSegmentLabel(record.request)} • {record.request?.status || "Stand ausstehend"}
           </div>
@@ -19301,6 +19348,34 @@ export function CustomerRecordsClient({
     window.localStorage.setItem(sharedOperatorNameKey, operatorName);
     window.localStorage.setItem(operatorNameKey, operatorName);
   }, [operatorName]);
+
+  useEffect(() => {
+    const requestId = results[0]?.requestId;
+    if (!requestId || (opsEnabled && !hasSession && !localMode)) return;
+    let stopped = false;
+    async function heartbeat() {
+      if (stopped) return;
+      try {
+        await fetch("/api/ops/customer-records/views", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId,
+            operatorName: operatorName || "Team",
+            viewerKey: getOrCreateOpsViewerKey(),
+          }),
+        });
+      } catch {
+        // soft awareness only; never block the operator workflow
+      }
+    }
+    void heartbeat();
+    const interval = window.setInterval(() => void heartbeat(), 20_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [hasSession, localMode, operatorName, opsEnabled, results[0]?.requestId]);
 
   useEffect(() => {
     window.localStorage.setItem(quietLayoutKey, quietLayout ? "1" : "0");
