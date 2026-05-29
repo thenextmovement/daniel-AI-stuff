@@ -106,8 +106,8 @@ const workTabs: Array<{
   },
   {
     key: "my_calls",
-    title: "Meine Anrufe",
-    helper: "Rückrufe, Reminder und eigene Follow-ups.",
+    title: "Fällige Anrufe",
+    helper: "Rückrufe, Reminder, überfällige und manuelle Aufgaben.",
   },
 ];
 
@@ -761,6 +761,8 @@ function isPriorityItem(item: SalesCallListItem) {
 }
 
 function getPriorityReason(item: SalesCallListItem) {
+  const visibleTask = getVisibleTask(item);
+  if (visibleTask) return `Offene Aufgabe: ${visibleTask.title}`;
   if (item.cadence.priorityReason) return item.cadence.priorityReason;
   if (item.cadence.purchaseSignal) return "Kaufsignal im Gespräch";
   if (getRecordQuoteViewedAt(item.record)) return "Angebot angesehen";
@@ -769,7 +771,21 @@ function getPriorityReason(item: SalesCallListItem) {
   return "Priorisiert";
 }
 
+function getVisibleTask(item: SalesCallListItem) {
+  return (item.activeTasks || []).find((task) => {
+    if (task.status === "open" || task.status === "blocked") return true;
+    if (task.status !== "waiting" || !task.dueAt) return false;
+    const due = new Date(task.dueAt).getTime();
+    return Number.isFinite(due) && due <= Date.now();
+  }) || null;
+}
+
 function isOverdue(item: SalesCallListItem) {
+  const visibleTask = getVisibleTask(item);
+  if (visibleTask?.dueAt) {
+    const due = new Date(visibleTask.dueAt).getTime();
+    if (Number.isFinite(due) && due < Date.now()) return true;
+  }
   if (!item.cadence.nextCallDueAt) return false;
   const due = new Date(item.cadence.nextCallDueAt).getTime();
   return Number.isFinite(due) && due < Date.now();
@@ -1460,10 +1476,10 @@ export function CustomerSalesCallsClient({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Priorität</p>
-                <h2 className="mt-2 text-2xl font-semibold text-stone-950">VIP / Heute zuerst</h2>
+                <h2 className="mt-2 text-2xl font-semibold text-stone-950">Wichtige offene Fälle</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
-                  Diese Spur liegt über allen Tabs: hohe Werte, angesehene Angebote, Kaufsignale und fällige Rückrufe
-                  sind sofort sichtbar.
+                  Diese Spur ist ein Prioritätsfilter: hohe Werte, angesehene Angebote, Kaufsignale und fällige
+                  Aufgaben. Neue Tagesfälle bleiben separat in den Tabs.
                 </p>
               </div>
               <button
@@ -1514,7 +1530,7 @@ export function CustomerSalesCallsClient({
                 ))
               ) : (
                 <div className="rounded-3xl border border-dashed border-stone-300 px-5 py-8 text-sm text-stone-500">
-                  Keine VIP- oder Prioritätsfälle in der aktuellen Liste.
+                  Keine wichtigen offenen Fälle in der aktuellen Liste.
                 </div>
               )}
             </div>

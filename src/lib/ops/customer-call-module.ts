@@ -15,6 +15,8 @@ import {
   classifyInboundEmailSignal,
   closeActiveSalesTasksForRequest,
   closeSupersededSalesTasksForRequest,
+  isActiveSalesTaskVisibleNow,
+  loadActiveSalesTaskRequestIds,
   loadActiveSalesTasksByRequestId,
   taskTitle,
   upsertSalesTask,
@@ -41,6 +43,7 @@ const BUSINESS_END_HOUR = 17;
 const VIP_VALUE_THRESHOLD = 1000;
 const SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT = 20;
 const SALES_CALL_PREVIEW_LIMIT = 80;
+const SALES_CALL_RUN_ITEM_LOAD_LIMIT = 500;
 const directTrelloVisualCache = new Map<string, SalesCallVisualCandidate[]>();
 
 export type SalesCallPreset =
@@ -1286,7 +1289,7 @@ function cutoffIso(daysBack: number) {
 }
 
 async function loadCandidateRequestIds() {
-  const [requestRows, quoteRows, crmQuoteRows, cadenceRows] = await Promise.all([
+  const [requestRows, quoteRows, crmQuoteRows, cadenceRows, activeTaskRefs] = await Promise.all([
     supabaseRequest<CandidateRequestRow[]>("master_requests", undefined, {
       select: "request_id,created_at",
       created_at: `gte.${cutoffIso(30)}`,
@@ -1317,10 +1320,17 @@ async function loadCandidateRequestIds() {
         throw error;
       }
     })(),
+    loadActiveSalesTaskRequestIds(500),
   ]);
 
   const sourceKeysByRequestId = new Map<string, CustomerWorkboardSection["key"][]>();
   const requestIds = new Set<string>();
+
+  const addSourceKey = (requestId: string, key: CustomerWorkboardSection["key"]) => {
+    const current = sourceKeysByRequestId.get(requestId) || [];
+    if (!current.includes(key)) current.push(key);
+    sourceKeysByRequestId.set(requestId, current);
+  };
 
   for (const row of requestRows) {
     if (row.request_id) requestIds.add(row.request_id);
@@ -1328,29 +1338,45 @@ async function loadCandidateRequestIds() {
   for (const row of quoteRows) {
     if (!row.request_id || row.signed_at) continue;
     requestIds.add(row.request_id);
-    const current = sourceKeysByRequestId.get(row.request_id) || [];
-    if (row.viewed_at && !current.includes("sales_recovery")) current.push("sales_recovery");
-    if (row.sent_at && !current.includes("due_followups")) current.push("due_followups");
-    sourceKeysByRequestId.set(row.request_id, current);
+    if (row.viewed_at) addSourceKey(row.request_id, "sales_recovery");
+    if (row.sent_at) addSourceKey(row.request_id, "due_followups");
   }
   for (const row of crmQuoteRows) {
     if (!row.request_id || row.accepted_at || row.rejected_at) continue;
     requestIds.add(row.request_id);
-    const current = sourceKeysByRequestId.get(row.request_id) || [];
-    if (row.viewed_at && !current.includes("sales_recovery")) current.push("sales_recovery");
-    if (row.sent_at && !current.includes("due_followups")) current.push("due_followups");
-    sourceKeysByRequestId.set(row.request_id, current);
+    if (row.viewed_at) addSourceKey(row.request_id, "sales_recovery");
+    if (row.sent_at) addSourceKey(row.request_id, "due_followups");
   }
   for (const row of cadenceRows) {
     if (!row.request_id) continue;
     requestIds.add(row.request_id);
-    const current = sourceKeysByRequestId.get(row.request_id) || [];
-    if (row.queue_bucket === "callbacks" && !current.includes("callbacks")) current.push("callbacks");
-    sourceKeysByRequestId.set(row.request_id, current);
+    if (row.queue_bucket === "callbacks") addSourceKey(row.request_id, "callbacks");
+  }
+  for (const task of activeTaskRefs) {
+    requestIds.add(task.requestId);
+    if (task.taskType === "callback_scheduled") {
+      addSourceKey(task.requestId, "callbacks");
+    } else if (
+      task.taskType === "call_quote_sent" ||
+      task.taskType === "call_reminder_1" ||
+      task.taskType === "call_reminder_2" ||
+      task.taskType === "call_reminder_3" ||
+      task.taskType === "waiting_customer_response"
+    ) {
+      addSourceKey(task.requestId, "due_followups");
+    } else if (
+      task.taskType === "offer_adjustment" ||
+      task.taskType === "send_offer" ||
+      task.taskType === "send_update" ||
+      task.taskType === "price_review" ||
+      task.taskType === "email_reply_needed"
+    ) {
+      addSourceKey(task.requestId, "sales_recovery");
+    }
   }
 
   return {
-    requestIds: [...requestIds].slice(0, 250),
+    requestIds: [...requestIds].slice(0, 500),
     sourceKeysByRequestId,
   };
 }
@@ -1358,14 +1384,19 @@ async function loadCandidateRequestIds() {
 async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Promise<CandidatePreview[]> {
   const { requestIds, sourceKeysByRequestId } = await loadCandidateRequestIds();
   const records = await loadLightweightSalesCallRecords(requestIds, { includeTrello: false });
-  const latestResultsByRequestId = await loadLatestActiveResultsByRequestId(records.map((record) => record.requestId));
-  const cadenceByRequestId = await loadCadenceStatesByRequestId(records.map((record) => record.requestId));
+  const recordIds = records.map((record) => record.requestId);
+  const [latestResultsByRequestId, cadenceByRequestId, activeTasksByRequestId] = await Promise.all([
+    loadLatestActiveResultsByRequestId(recordIds),
+    loadCadenceStatesByRequestId(recordIds),
+    loadActiveSalesTasksByRequestId(recordIds),
+  ]);
   const directVisualCandidatesByRequestId = await loadDirectTrelloVisualCandidates(records);
 
   const candidates = records.map((record) => {
     const sourceKeys = sourceKeysByRequestId.get(record.requestId) || [];
     const latestResult = latestResultsByRequestId.get(record.requestId) || null;
     const cadence = deriveCadenceState(record, latestResult, cadenceByRequestId.get(record.requestId) || null);
+    const activeTasks = activeTasksByRequestId.get(record.requestId) || [];
     const guard = deriveSalesCallGuard(record, sourceKeys);
     const priorityGroup = derivePriorityGroup(sourceKeys, guard);
     const priorityScore =
@@ -1412,12 +1443,13 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
         directVisualCandidatesByRequestId.get(record.requestId) || [],
       ),
       cadence,
+      activeTasks,
       record,
     };
   });
 
   return candidates
-    .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence))
+    .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence, item.activeTasks || []))
     .sort((left, right) => {
       if (left.guard.allowed !== right.guard.allowed) return left.guard.allowed ? -1 : 1;
       const leftIsTodayInquiry = left.cadence.currentStage === "inquiry_call" && isTodayInBerlin(left.record.request?.createdAt);
@@ -1426,6 +1458,13 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
       const leftIsTodayQuote = left.cadence.currentStage === "quote_call" && isTodayInBerlin(quoteSentAt(left.record));
       const rightIsTodayQuote = right.cadence.currentStage === "quote_call" && isTodayInBerlin(quoteSentAt(right.record));
       if (leftIsTodayQuote !== rightIsTodayQuote) return leftIsTodayQuote ? -1 : 1;
+      const leftHasVisibleTask = visibleActiveSalesTasks(left.activeTasks).length > 0;
+      const rightHasVisibleTask = visibleActiveSalesTasks(right.activeTasks).length > 0;
+      if (leftHasVisibleTask !== rightHasVisibleTask) return leftHasVisibleTask ? -1 : 1;
+      if (leftHasVisibleTask && rightHasVisibleTask) {
+        const dueDiff = earliestVisibleSalesTaskDueTime(left.activeTasks) - earliestVisibleSalesTaskDueTime(right.activeTasks);
+        if (dueDiff !== 0) return dueDiff;
+      }
       if (left.cadence.queueBucket !== right.cadence.queueBucket) {
         const bucketOrder = [
           "callbacks",
@@ -1443,7 +1482,7 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
       if (left.dealValueEur !== right.dealValueEur) return right.dealValueEur - left.dealValueEur;
       return left.requestId.localeCompare(right.requestId);
     })
-    .slice(0, limit)
+    .filter((item, index) => index < limit || visibleActiveSalesTasks(item.activeTasks).length > 0)
     .map((item, index) => ({
       ...item,
       rank: index + 1,
@@ -1660,9 +1699,11 @@ function shouldSourceTruthStageOverrideCurrent(current: SalesCallCadenceState, s
   return stageRank(sourceTruth.currentStage) > stageRank(current.currentStage);
 }
 
-function shouldIncludeInDailyCallList(record: CustomerSearchResult, cadence: SalesCallCadenceState) {
+function shouldIncludeInDailyCallList(record: CustomerSearchResult, cadence: SalesCallCadenceState, activeTasks: SalesTask[] = []) {
   if (cadence.currentStage === "finished") return false;
   if (record.opsState.isClosed || Boolean(record.order)) return false;
+
+  if (activeTasks.some(isActiveSalesTaskVisibleNow)) return true;
 
   const requestToday = isTodayInBerlin(record.request?.createdAt);
   const quoteToday = isTodayInBerlin(quoteSentAt(record));
@@ -1672,6 +1713,22 @@ function shouldIncludeInDailyCallList(record: CustomerSearchResult, cadence: Sal
   if (cadence.currentStage === "manual_followup" || cadence.currentStage === "offer_adjustment" || cadence.currentStage === "data_issue") return false;
 
   return isDueToday(cadence.nextCallDueAt);
+}
+
+function visibleActiveSalesTasks(tasks: SalesTask[] | undefined) {
+  return (tasks || []).filter(isActiveSalesTaskVisibleNow);
+}
+
+function earliestVisibleSalesTaskDueTime(tasks: SalesTask[] | undefined) {
+  const visibleTasks = visibleActiveSalesTasks(tasks);
+  if (!visibleTasks.length) return Number.POSITIVE_INFINITY;
+  return Math.min(
+    ...visibleTasks.map((task) => {
+      if (!task.dueAt) return 0;
+      const dueTime = new Date(task.dueAt).getTime();
+      return Number.isFinite(dueTime) ? dueTime : 0;
+    }),
+  );
 }
 
 export function deriveCadenceState(
@@ -2413,7 +2470,7 @@ async function loadSalesCallListItemRows(runId: string) {
       select: SALES_CALL_LIST_ITEM_SELECT,
       run_id: `eq.${runId}`,
       order: "rank.asc",
-      limit: SALES_CALL_PREVIEW_LIMIT,
+      limit: SALES_CALL_RUN_ITEM_LOAD_LIMIT,
     });
   } catch (error) {
     if (
@@ -2424,7 +2481,7 @@ async function loadSalesCallListItemRows(runId: string) {
         select: SALES_CALL_LIST_ITEM_SELECT_WITHOUT_VISUAL_SNAPSHOT,
         run_id: `eq.${runId}`,
         order: "rank.asc",
-        limit: SALES_CALL_PREVIEW_LIMIT,
+        limit: SALES_CALL_RUN_ITEM_LOAD_LIMIT,
       });
     }
     throw error;
@@ -2587,7 +2644,7 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
       };
     })
     .filter((item): item is SalesCallListItem => Boolean(item))
-    .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence));
+    .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence, item.activeTasks || []));
 
   const gate = evaluateSalesCallGate(items);
   const completion = decideSalesCallCompletion("ok", gate);

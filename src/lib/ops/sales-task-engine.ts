@@ -373,6 +373,34 @@ export async function loadActiveSalesTasksByRequestId(requestIds: string[]) {
   }
 }
 
+export function isActiveSalesTaskVisibleNow(task: Pick<SalesTask, "status" | "dueAt">) {
+  if (task.status === "open" || task.status === "blocked") return true;
+  if (task.status !== "waiting" || !task.dueAt) return false;
+  const dueTime = new Date(task.dueAt).getTime();
+  return Number.isFinite(dueTime) && dueTime <= Date.now();
+}
+
+export async function loadActiveSalesTaskRequestIds(limit = 500) {
+  try {
+    const rows = await supabaseRequest<SalesTaskRow[]>(SALES_TASKS_TABLE, undefined, {
+      select: "id,request_id,task_type,status,title,detail,due_at,priority_tier,assignee_label,source,source_ref,idempotency_key,payload,created_at,updated_at,completed_at",
+      status: "in.(open,waiting,blocked)",
+      order: "due_at.asc.nullslast,updated_at.desc",
+      limit,
+    });
+    return rows
+      .map(mapTaskRow)
+      .filter((task) => task.requestId && isActiveSalesTaskVisibleNow(task))
+      .map((task) => ({
+        requestId: task.requestId,
+        taskType: task.taskType,
+      }));
+  } catch (error) {
+    if (isMissingRelationError(error, SALES_TASKS_TABLE)) return [];
+    throw error;
+  }
+}
+
 export async function upsertSalesTask(input: SalesTaskDraft) {
   try {
     const existing = await supabaseRequest<SalesTaskRow[]>(SALES_TASKS_TABLE, undefined, {

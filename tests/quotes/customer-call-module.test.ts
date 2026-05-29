@@ -13,6 +13,7 @@ import {
 import {
   buildTaskFromInboundEmailSignal,
   classifyInboundEmailSignal,
+  isActiveSalesTaskVisibleNow,
 } from "../../src/lib/ops/sales-task-engine";
 import { QuoteValidationError } from "../../src/lib/quotes/validation";
 
@@ -666,6 +667,14 @@ test("buildSalesTaskFromCadence creates persistent call and callback tasks", () 
   assert.equal(callbackTask?.taskType, "callback_scheduled");
   assert.equal(callbackTask?.status, "waiting");
   assert.equal(callbackTask?.sourceRef, "callback_result");
+});
+
+test("isActiveSalesTaskVisibleNow keeps open and due tasks visible but hides future waiting tasks", () => {
+  assert.equal(isActiveSalesTaskVisibleNow({ status: "open", dueAt: null }), true);
+  assert.equal(isActiveSalesTaskVisibleNow({ status: "blocked", dueAt: null }), true);
+  assert.equal(isActiveSalesTaskVisibleNow({ status: "waiting", dueAt: isoDateTimeFromNow(-1) }), true);
+  assert.equal(isActiveSalesTaskVisibleNow({ status: "waiting", dueAt: isoDateTimeFromNow(7) }), false);
+  assert.equal(isActiveSalesTaskVisibleNow({ status: "done", dueAt: isoDateTimeFromNow(-1) }), false);
 });
 
 test("advanceCadenceStateFromResult closes task creation for won and do-not-call outcomes", () => {
