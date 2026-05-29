@@ -27,6 +27,7 @@ import type { SalesTask } from "@/lib/ops/sales-task-engine";
 import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../../ops-login-card";
+import { OpsAppSwitcher } from "../../ops-app-switcher";
 
 type SalesCallApiResponse = {
   ok: boolean;
@@ -955,6 +956,7 @@ export function CustomerSalesCallsClient({
   opsEnabled: boolean;
   localMode: boolean;
 }) {
+  const sharedOperatorNameKey = "neontrip-ops-operator";
   const operatorNameKey = "neontrip-sales-calls-operator";
   const [hasSession, setHasSession] = useState(initialHasSession);
   const [token, setToken] = useState("");
@@ -985,7 +987,7 @@ export function CustomerSalesCallsClient({
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(operatorNameKey);
+      const raw = window.localStorage.getItem(sharedOperatorNameKey) || window.localStorage.getItem(operatorNameKey);
       if (raw) setOperatorName(raw);
     } catch {
       // ignore local storage issues
@@ -994,6 +996,7 @@ export function CustomerSalesCallsClient({
 
   useEffect(() => {
     if (operatorName) {
+      window.localStorage.setItem(sharedOperatorNameKey, operatorName);
       window.localStorage.setItem(operatorNameKey, operatorName);
     }
   }, [operatorName]);
@@ -1297,6 +1300,7 @@ export function CustomerSalesCallsClient({
         eyebrow="Sales Calls"
         title="Call-Zentrale anmelden"
         description="Melde dich für die interne Call-Liste an. Ergebnisse, Notizen und Aufgaben werden danach serverseitig gespeichert."
+        activeApp="calls"
         operatorName={operatorName}
         password={token}
         error={error}
@@ -1321,6 +1325,7 @@ export function CustomerSalesCallsClient({
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
+              <OpsAppSwitcher active="calls" tone="dark" />
               <input
                 value={operatorName}
                 onChange={(event) => setOperatorName(event.target.value)}

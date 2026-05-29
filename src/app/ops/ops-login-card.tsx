@@ -1,11 +1,13 @@
 "use client";
 
 import { ArrowRight, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
+import { OpsAppSwitcher } from "./ops-app-switcher";
 
 type OpsLoginCardProps = {
   title: string;
   eyebrow?: string;
   description?: string;
+  activeApp?: "records" | "calls";
   operatorName: string;
   password: string;
   error?: string | null;
@@ -19,6 +21,7 @@ export function OpsLoginCard({
   title,
   eyebrow = "NEONTRIP Ops",
   description = "Melde dich mit deinem internen Zugang an. Die Sitzung wird als sicherer Cookie gespeichert.",
+  activeApp = "records",
   operatorName,
   password,
   error,
@@ -57,6 +60,9 @@ export function OpsLoginCard({
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">{eyebrow}</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-stone-600">{description}</p>
+            <div className="mt-5">
+              <OpsAppSwitcher active={activeApp} tone="light" />
+            </div>
 
             <div className="mt-8 grid gap-4">
               <label className="grid gap-2">

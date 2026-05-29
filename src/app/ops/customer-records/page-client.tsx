@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../ops-login-card";
+import { OpsAppSwitcher } from "../ops-app-switcher";
 import type {
   CustomerAuditEntry,
   CustomerCommunicationEntry,
@@ -19161,6 +19162,7 @@ export function CustomerRecordsClient({
 }) {
   const pinnedCasesKey = "neontrip-customer-records-pinned";
   const recentCasesKey = "neontrip-customer-records-recent";
+  const sharedOperatorNameKey = "neontrip-ops-operator";
   const operatorNameKey = "neontrip-customer-records-operator";
   const quietLayoutKey = "neontrip-customer-records-quiet-layout";
   const caseFlowProgressKey = "neontrip-customer-records-flow-progress";
@@ -19260,7 +19262,7 @@ export function CustomerRecordsClient({
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(operatorNameKey);
+      const raw = window.localStorage.getItem(sharedOperatorNameKey) || window.localStorage.getItem(operatorNameKey);
       if (!raw) return;
       setOperatorName(raw);
     } catch {
@@ -19301,6 +19303,7 @@ export function CustomerRecordsClient({
   }, [recentCases]);
 
   useEffect(() => {
+    window.localStorage.setItem(sharedOperatorNameKey, operatorName);
     window.localStorage.setItem(operatorNameKey, operatorName);
   }, [operatorName]);
 
@@ -21080,6 +21083,7 @@ export function CustomerRecordsClient({
         eyebrow="Customer Records"
         title="Customer Records anmelden"
         description="Melde dich für die interne Kundenakte an. Suche, Notizen, Trello-Änderungen und Aufgaben bleiben geschützt und nachvollziehbar."
+        activeApp="records"
         operatorName={operatorName}
         password={token}
         error={error}
@@ -21180,6 +21184,7 @@ export function CustomerRecordsClient({
               <div className="hidden text-sm text-white/55 md:block">{quietLayout ? "Fallzentrale" : "Kommandozentrale"}</div>
             </div>
             <div className="flex items-center gap-2">
+              <OpsAppSwitcher active="records" tone="dark" />
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
@@ -21363,6 +21368,7 @@ export function CustomerRecordsClient({
                   eyebrow="Customer Records"
                   title="Customer Records anmelden"
                   description="Melde dich für die interne Kundenakte an. Suche, Notizen, Trello-Änderungen und Aufgaben bleiben geschützt und nachvollziehbar."
+                  activeApp="records"
                   operatorName={operatorName}
                   password={token}
                   error={error}
