@@ -12079,12 +12079,15 @@ function TrelloCardEditor({
 }) {
   const [name, setName] = useState(board.cardName || "");
   const [desc, setDesc] = useState(board.cardDescription || "");
+  const [usage, setUsage] = useState(String(board.usageField?.value ?? ""));
   const [listId, setListId] = useState(board.listId || "");
   const [editorOpen, setEditorOpen] = useState(false);
+  const usageValue = String(board.usageField?.value ?? "");
 
   useEffect(() => {
     setName(board.cardName || "");
     setDesc(board.cardDescription || "");
+    setUsage(String(board.usageField?.value ?? ""));
     setListId(board.listId || "");
   }, [board]);
 
@@ -12105,6 +12108,7 @@ function TrelloCardEditor({
   const changed =
     name.trim() !== (board.cardName || "") ||
     desc.trim() !== (board.cardDescription || "") ||
+    (board.usageField ? usage.trim() !== usageValue : false) ||
     listId !== (board.listId || "");
 
   return (
@@ -12130,6 +12134,14 @@ function TrelloCardEditor({
         </div>
         <div className="mt-4 rounded-2xl border border-black/10 bg-black/[0.02] px-4 py-4">
           <div className="break-words text-sm font-medium leading-6 text-black">{board.cardName || "Ohne Titel"}</div>
+          {board.usageField ? (
+            <div className="mt-3 rounded-xl border border-black/10 bg-white px-3 py-3">
+              <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-black/40">Usage</div>
+              <div className="mt-1 break-words text-sm leading-6 text-black/70">
+                {board.usageField.displayValue || "Noch nicht gesetzt."}
+              </div>
+            </div>
+          ) : null}
           {board.cardDescription ? (
             <div className="mt-2 max-h-24 overflow-hidden break-words text-sm leading-6 text-black/55">
               {board.cardDescription}
@@ -12143,7 +12155,7 @@ function TrelloCardEditor({
         open={editorOpen}
         onClose={() => setEditorOpen(false)}
         title={`${board.boardName} bearbeiten`}
-        subtitle="Titel, Beschreibung und Zielliste werden an der Karte aktualisiert."
+        subtitle="Titel, Usage, Description und Zielliste werden an der Karte aktualisiert."
       >
         <div className="grid gap-4">
           <label className="grid gap-2">
@@ -12155,8 +12167,21 @@ function TrelloCardEditor({
               className="rounded-xl border border-black/10 bg-white px-3 py-3 text-sm text-black outline-none focus:border-[#fa31a2]"
             />
           </label>
+          {board.usageField ? (
+            <label className="grid gap-2">
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-black/45">Usage</span>
+              <textarea
+                rows={4}
+                value={usage}
+                onChange={(event) => setUsage(event.target.value)}
+                className="rounded-xl border border-black/10 bg-white px-3 py-3 text-sm leading-6 text-black outline-none focus:border-[#fa31a2]"
+              />
+            </label>
+          ) : null}
           <label className="grid gap-2">
-            <span className="text-xs font-medium uppercase tracking-[0.14em] text-black/45">Beschreibung</span>
+            <span className="text-xs font-medium uppercase tracking-[0.14em] text-black/45">
+              Description (Hintergrund/Szenario für KI-Mockups)
+            </span>
             <textarea
               rows={12}
               value={desc}
@@ -12196,6 +12221,7 @@ function TrelloCardEditor({
                   cardId: board.cardId!,
                   name,
                   desc,
+                  ...(board.usageField ? { usageFieldId: board.usageField.fieldId, usage } : {}),
                   listId: listId || null,
                 });
                 setEditorOpen(false);

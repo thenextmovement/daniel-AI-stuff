@@ -810,6 +810,7 @@ export type CustomerTrelloBoardCard = {
     listId: string;
     label: string;
   }>;
+  usageField: CustomerTrelloField | null;
   attachmentCount: number;
   mockupCount: number;
   hasReferenceImage: boolean;
@@ -986,6 +987,8 @@ export type CustomerTrelloCardUpdateInput = {
   cardId: string;
   name?: string;
   desc?: string;
+  usageFieldId?: string;
+  usage?: string | null;
   listId?: string | null;
 };
 
@@ -1321,6 +1324,10 @@ function mapEditableTrelloField(field: TrelloEditableCustomField): CustomerTrell
   };
 }
 
+function isUsageTrelloField(field: CustomerTrelloField) {
+  return field.name.trim().toLowerCase() === "usage";
+}
+
 function uniqueVideoLinks<
   T extends {
     url: string;
@@ -1519,6 +1526,7 @@ async function fetchTrelloContext(
     cards: TRELLO_BOARD_CONFIGS.map((board) => {
       const detail = details.find((entry) => entry.board.id === board.id);
       const mockups = detail ? listMockupTrelloAttachments(detail.attachments) : [];
+      const usageField = detail?.editableFields.find(isUsageTrelloField) || null;
       return {
         boardId: board.id,
         boardKey: board.key,
@@ -1533,6 +1541,7 @@ async function fetchTrelloContext(
         listId: detail?.listId || null,
         listName: detail?.listName || null,
         listOptions: detail?.listOptions || [],
+        usageField,
         attachmentCount: detail?.attachments.length || 0,
         mockupCount: mockups.length,
         hasReferenceImage: detail ? Boolean(selectReferenceTrelloAttachment(detail.attachments)) : false,
@@ -4662,15 +4671,35 @@ export async function updateCustomerTrelloCard(
   const nextName = input.name === undefined ? boardCard.cardName : trimNullable(input.name);
   const nextDesc = input.desc === undefined ? boardCard.cardDescription : trimNullable(input.desc);
   const nextListId = input.listId === undefined ? boardCard.listId : trimNullable(input.listId);
+  const editableCard = context.trello?.editableCards.find(
+    (card) => card.boardKey === input.boardKey && card.cardId === input.cardId,
+  );
+  const usageField =
+    input.usageFieldId && editableCard
+      ? editableCard.fields.find((field) => field.fieldId === input.usageFieldId && isUsageTrelloField(field)) || null
+      : null;
+  const nextUsage =
+    input.usage === undefined || !usageField ? undefined : normalizeTrelloFieldUpdate(usageField, input.usage);
+  const currentUsage =
+    usageField?.type === "checkbox"
+      ? Boolean(usageField.value)
+      : usageField?.value === null || usageField?.value === undefined || usageField.value === ""
+        ? null
+        : String(usageField.value);
 
   if (!nextName) {
     throw new QuoteValidationError("Trello-Kartentitel darf nicht leer sein.");
   }
 
+  if (input.usage !== undefined && input.usageFieldId && !usageField) {
+    throw new QuoteValidationError("Das Usage-Feld wurde auf dieser Trello-Karte nicht gefunden.");
+  }
+
   if (
     nextName === boardCard.cardName &&
     nextDesc === boardCard.cardDescription &&
-    nextListId === boardCard.listId
+    nextListId === boardCard.listId &&
+    (nextUsage === undefined || nextUsage === currentUsage)
   ) {
     throw new QuoteValidationError("Keine Trello-Kartenänderung erkannt.");
   }
@@ -4700,6 +4729,24 @@ export async function updateCustomerTrelloCard(
       );
     }
 
+    if (usageField && nextUsage !== undefined && nextUsage !== currentUsage) {
+      await updateTrelloCustomField({
+        cardId: boardCard.cardId,
+        fieldId: usageField.fieldId,
+        type: usageField.type,
+        value: nextUsage,
+      });
+      changedFields.push("usage");
+      rollbackSteps.push(() =>
+        updateTrelloCustomField({
+          cardId: boardCard.cardId!,
+          fieldId: usageField.fieldId,
+          type: usageField.type,
+          value: usageField.value,
+        }),
+      );
+    }
+
     if (nextListId !== boardCard.listId && nextListId) {
       await moveTrelloCardToList(boardCard.cardId, nextListId);
       changedFields.push("card_list");
@@ -4721,12 +4768,14 @@ export async function updateCustomerTrelloCard(
         before: {
           card_name: boardCard.cardName,
           card_description: boardCard.cardDescription,
+          usage: currentUsage,
           list_id: boardCard.listId,
           list_name: boardCard.listName,
         },
         after: {
           card_name: nextName,
           card_description: nextDesc,
+          usage: nextUsage === undefined ? currentUsage : nextUsage,
           list_id: nextListId,
           list_name: boardCard.listOptions.find((option) => option.listId === nextListId)?.label || null,
         },
