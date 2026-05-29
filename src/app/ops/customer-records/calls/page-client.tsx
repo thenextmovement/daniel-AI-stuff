@@ -21,6 +21,8 @@ import type {
   SalesCallListItem,
   SalesCallModuleState,
   SalesCallPreset,
+  SalesCallProcessedTodayItem,
+  SalesCallResultEntry,
   SalesCallVisualCandidate,
 } from "@/lib/ops/customer-call-module";
 import type { SalesTask } from "@/lib/ops/sales-task-engine";
@@ -554,6 +556,19 @@ function formatDateLabel(value: string | null | undefined) {
   }).format(parsed);
 }
 
+function formatDateTimeLabel(value: string | null | undefined) {
+  if (!value) return "Kein Datum";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Kein Datum";
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
+}
+
 function callStatusLabel(item: SalesCallListItem) {
   const count = item.record.callOps.totalCallCount || 0;
   if (count > 0) {
@@ -586,7 +601,11 @@ function getNextCallName(item: SalesCallListItem) {
 }
 
 function getCallOutcomeLabel(item: SalesCallListItem) {
-  switch (item.latestResult?.preset) {
+  return getResultOutcomeLabel(item.latestResult?.preset || null);
+}
+
+function getResultOutcomeLabel(preset: SalesCallResultEntry["preset"] | null | undefined) {
+  switch (preset) {
     case "not-reached":
       return "nicht erreicht";
     case "callback":
@@ -1102,6 +1121,24 @@ export function CustomerSalesCallsClient({
     setMessage(null);
   }
 
+  function openProcessedToday(entry: SalesCallProcessedTodayItem) {
+    if (!entry.record) {
+      setMessage("Der bearbeitete Fall kann gerade nicht vollständig geöffnet werden.");
+      return;
+    }
+    const baseItem = buildAdHocCallItem(entry.record);
+    const item = {
+      ...baseItem,
+      latestResult: entry.latestResult,
+      cadence: entry.cadence || baseItem.cadence,
+    };
+    setAdHocItem(item);
+    setSelectedItemId(`ad-hoc:${entry.requestId}`);
+    setDetailOpen(true);
+    setError(null);
+    setMessage(null);
+  }
+
   async function runSearch() {
     const query = searchQuery.trim();
     if (query.length < 2) {
@@ -1216,6 +1253,7 @@ export function CustomerSalesCallsClient({
         priorityTier,
         priorityReason,
         purchaseSignal,
+        expectedLatestResultId: selectedItem.latestResult?.id || null,
       }),
     });
     const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
@@ -1678,6 +1716,56 @@ export function CustomerSalesCallsClient({
             </div>
           </div>
 
+          {state?.processedToday?.length ? (
+            <details className="rounded-[2rem] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+              <summary className="cursor-pointer list-none">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-emerald-700">Heute bearbeitet</p>
+                    <h2 className="mt-2 text-xl font-semibold text-stone-950">
+                      Gespeicherte Ergebnisse nachprüfen
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-emerald-900/70">
+                      Diese Fälle sind nicht weg, sondern wurden heute verarbeitet oder auf einen späteren Schritt verschoben.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-800">
+                    {state.processedToday.length}
+                  </span>
+                </div>
+              </summary>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {state.processedToday.slice(0, 12).map((entry) => (
+                  <button
+                    key={entry.latestResult.id}
+                    type="button"
+                    onClick={() => openProcessedToday(entry)}
+                    className="rounded-2xl border border-emerald-200 bg-white px-4 py-4 text-left transition hover:border-emerald-400"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-stone-950">
+                          {entry.contactName || entry.requestId}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-stone-500">{entry.companyName || entry.email || "Ohne Firma"}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">
+                        {getResultOutcomeLabel(entry.latestResult.preset) || "gespeichert"}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm leading-5 text-stone-700">
+                      {entry.latestResult.nextStep || "Kein nächster Schritt"}
+                    </p>
+                    <p className="mt-2 text-xs text-stone-500">
+                      {entry.latestResult.operatorId ? `${entry.latestResult.operatorId} • ` : ""}
+                      {formatDateTimeLabel(entry.latestResult.createdAt)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </details>
+          ) : null}
+
           {state ? (
             <div className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
@@ -1883,7 +1971,11 @@ export function CustomerSalesCallsClient({
                     <div className="mt-5 rounded-[1.6rem] border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                       <p className="font-medium">Letztes Ergebnis</p>
                       <p className="mt-2">
-                        {selectedItem.latestResult.preset || "ohne Preset"} • {selectedItem.latestResult.nextStep}
+                        {getResultOutcomeLabel(selectedItem.latestResult.preset) || selectedItem.latestResult.preset || "ohne Preset"} • {selectedItem.latestResult.nextStep}
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-800/70">
+                        {selectedItem.latestResult.operatorId ? `${selectedItem.latestResult.operatorId} • ` : ""}
+                        {formatDateTimeLabel(selectedItem.latestResult.createdAt)}
                       </p>
                       <p className="mt-2">{selectedItem.latestResult.notes}</p>
                     </div>

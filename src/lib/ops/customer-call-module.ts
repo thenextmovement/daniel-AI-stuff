@@ -6,7 +6,7 @@ import {
   selectReferenceTrelloAttachment,
 } from "@/lib/ops/customer-records";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
-import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { SupabaseRestError, supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { getTrelloCardVisuals } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -44,6 +44,7 @@ const VIP_VALUE_THRESHOLD = 1000;
 const SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT = 20;
 const SALES_CALL_PREVIEW_LIMIT = 80;
 const SALES_CALL_RUN_ITEM_LOAD_LIMIT = 500;
+const SALES_CALL_REFRESH_COOLDOWN_SECONDS = 60;
 const directTrelloVisualCache = new Map<string, SalesCallVisualCandidate[]>();
 
 export type SalesCallPreset =
@@ -208,6 +209,16 @@ export type SalesCallListItem = {
   activeTasks?: SalesTask[];
 };
 
+export type SalesCallProcessedTodayItem = {
+  requestId: string;
+  contactName: string | null;
+  companyName: string | null;
+  email: string | null;
+  latestResult: SalesCallResultEntry;
+  cadence: SalesCallCadenceState | null;
+  record: CustomerSearchResult | null;
+};
+
 export type SalesCallGateSummary = {
   gate: "invalid" | "incomplete" | "red" | "yellow" | "green";
   topN: number;
@@ -242,6 +253,7 @@ export type SalesCallModuleState = {
   storageReady: boolean;
   run: SalesCallRunSummary;
   items: SalesCallListItem[];
+  processedToday: SalesCallProcessedTodayItem[];
   gate: SalesCallGateSummary;
   completion: SalesCallCompletionSummary;
   bucketCounts: Record<SalesCallQueueBucket, number>;
@@ -265,6 +277,7 @@ export type SalesCallResultInput = {
   priorityTier?: SalesCallPriorityTier | null;
   priorityReason?: string | null;
   purchaseSignal?: boolean | null;
+  expectedLatestResultId?: string | null;
 };
 
 type SalesCallOutcome =
@@ -352,6 +365,14 @@ type SalesCallResultRow = {
   created_at?: string | null;
   updated_at?: string | null;
   superseded_at?: string | null;
+};
+
+type SalesCallResultRpcResponse = {
+  ok?: boolean;
+  error?: string;
+  latest_result_id?: string | null;
+  result?: SalesCallResultRow;
+  superseded_count?: number;
 };
 
 type WorkflowAuditRow = {
@@ -649,6 +670,18 @@ function berlinDateKey(value: string | null | undefined) {
 
 function isTodayInBerlin(value: string | null | undefined) {
   return berlinDateKey(value) === todayInBerlin();
+}
+
+function berlinDayStartIso(dateKey = todayInBerlin()) {
+  const noonUtc = new Date(`${dateKey}T12:00:00.000Z`);
+  const timeZoneName = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Berlin",
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(noonUtc)
+    .find((part) => part.type === "timeZoneName")?.value;
+  const offset = timeZoneName?.match(/GMT([+-]\d{2}):?(\d{2})?/) || null;
+  return `${dateKey}T00:00:00${offset ? `${offset[1]}:${offset[2] || "00"}` : "+01:00"}`;
 }
 
 function normalizeWhitespace(value: string | null | undefined) {
@@ -1010,6 +1043,12 @@ function isMissingColumnError(error: unknown, table: string, column: string) {
   return message.includes(column) && (message.includes(table) || message.includes("schema cache"));
 }
 
+function isMissingRpcError(error: unknown, functionName: string) {
+  if (!(error instanceof SupabaseRestError)) return false;
+  const message = [error.message, error.details].filter(Boolean).join(" ");
+  return message.includes(functionName) && (message.includes("schema cache") || message.includes("function"));
+}
+
 async function insertRows<T>(table: string, rows: Record<string, unknown>[]): Promise<T[]> {
   if (!rows.length) return [];
   return supabaseRequest<T[]>(
@@ -1022,17 +1061,103 @@ async function insertRows<T>(table: string, rows: Record<string, unknown>[]): Pr
   );
 }
 
-async function patchById<T>(table: string, id: string, patch: Record<string, unknown>): Promise<T | null> {
-  const rows = await supabaseRequest<T[]>(
-    table,
+async function insertSalesCallResultWithOptimisticGuard(
+  row: {
+    call_list_item_id: string | null;
+    rank_at_time: number | null;
+    request_id: string;
+    ac_deal_id: number | null;
+    preset: SalesCallPreset | null;
+    call_done: "yes" | "no";
+    call_outcome: SalesCallOutcome;
+    next_step: string;
+    validation_useful: "yes" | "no";
+    notes: string;
+    operator_id: string | null;
+    source: string | null;
+  },
+  expectedLatestResultId: string | null | undefined,
+) {
+  const expected = normalizeWhitespace(expectedLatestResultId);
+  try {
+    const response = await supabaseRpc<SalesCallResultRpcResponse>("ops_record_sales_call_result", {
+      p_expected_latest_result_id: expected || null,
+      p_call_list_item_id: row.call_list_item_id || null,
+      p_rank_at_time: row.rank_at_time,
+      p_request_id: row.request_id,
+      p_ac_deal_id: row.ac_deal_id,
+      p_preset: row.preset,
+      p_call_done: row.call_done,
+      p_call_outcome: row.call_outcome,
+      p_next_step: row.next_step,
+      p_validation_useful: row.validation_useful,
+      p_notes: row.notes,
+      p_operator_id: row.operator_id,
+      p_source: row.source,
+    });
+
+    if (response?.ok && response.result?.id) {
+      return {
+        created: response.result,
+        supersededResultIds: [] as string[],
+        usedRpc: true,
+      };
+    }
+
+    if (response?.error === "stale_result") {
+      throw new QuoteValidationError(
+        "Dieser Fall wurde inzwischen aktualisiert. Bitte kurz neu laden und den letzten Stand prüfen.",
+        ["Jemand hat nach dem Öffnen dieses Falls bereits ein Ergebnis gespeichert."],
+        409,
+      );
+    }
+
+    throw new SupabaseRestError("Call-Ergebnis konnte nicht gespeichert werden.", 500, response);
+  } catch (error) {
+    if (!isMissingRpcError(error, "ops_record_sales_call_result")) throw error;
+  }
+
+  const previousRows = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
+    select:
+      "id,request_id,call_list_item_id,rank_at_time,ac_deal_id,preset,call_done,call_outcome,next_step,validation_useful,notes,operator_id,source,created_at,updated_at,superseded_at",
+    request_id: `eq.${row.request_id}`,
+    superseded_at: "is.null",
+    order: "created_at.desc",
+    limit: 10,
+  });
+  const latest = previousRows[0]?.id || "";
+  if (latest !== expected) {
+    throw new QuoteValidationError(
+      "Dieser Fall wurde inzwischen aktualisiert. Bitte kurz neu laden und den letzten Stand prüfen.",
+      ["Jemand hat nach dem Öffnen dieses Falls bereits ein Ergebnis gespeichert."],
+      409,
+    );
+  }
+
+  const [created] = await insertRows<SalesCallResultRow>(SALES_CALL_RESULTS_TABLE, [row]);
+  if (!created?.id) {
+    throw new SupabaseRestError("Call-Ergebnis konnte nicht gespeichert werden.", 500);
+  }
+
+  await supabaseRequest(
+    SALES_CALL_RESULTS_TABLE,
     {
       method: "PATCH",
-      body: JSON.stringify(patch),
-      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ superseded_at: created.created_at || new Date().toISOString() }),
+      headers: { Prefer: "return=minimal" },
     },
-    { id: `eq.${id}` },
+    {
+      request_id: `eq.${row.request_id}`,
+      superseded_at: "is.null",
+      id: `neq.${created.id}`,
+    },
   );
-  return rows[0] || null;
+
+  return {
+    created,
+    supersededResultIds: previousRows.map((previous) => previous.id),
+    usedRpc: false,
+  };
 }
 
 async function upsertCadenceState(state: SalesCallCadenceState) {
@@ -2458,6 +2583,60 @@ async function loadLatestActiveResultsByRequestId(requestIds: string[]) {
   return resultByRequestId;
 }
 
+async function loadProcessedTodayItems(limit = 40): Promise<SalesCallProcessedTodayItem[]> {
+  try {
+    const rows = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
+      select:
+        "id,call_list_item_id,rank_at_time,request_id,ac_deal_id,preset,call_done,call_outcome,next_step,validation_useful,notes,operator_id,source,created_at,updated_at,superseded_at",
+      superseded_at: "is.null",
+      created_at: `gte.${berlinDayStartIso()}`,
+      order: "created_at.desc",
+      limit,
+    });
+    const requestIds = [...new Set(rows.map((row) => row.request_id).filter((value): value is string => Boolean(value)))];
+    const [records, cadenceByRequestId] = await Promise.all([
+      requestIds.length ? loadLightweightSalesCallRecords(requestIds, { includeTrello: false }) : [],
+      requestIds.length ? loadCadenceStatesByRequestId(requestIds) : new Map<string, SalesCallCadenceState>(),
+    ]);
+    const recordByRequestId = new Map(records.map((record) => [record.requestId, record] as const));
+    return rows
+      .map((row) => {
+        const result = mapResultRow(row);
+        const record = row.request_id ? recordByRequestId.get(row.request_id) || null : null;
+        return {
+          requestId: result.requestId,
+          contactName: record?.displayName || record?.request?.title || null,
+          companyName: record?.company || null,
+          email: record?.email || null,
+          latestResult: result,
+          cadence: cadenceByRequestId.get(result.requestId) || null,
+          record,
+        };
+      })
+      .filter((entry) => Boolean(entry.requestId));
+  } catch (error) {
+    if (isMissingRelationError(error, SALES_CALL_RESULTS_TABLE)) return [];
+    throw error;
+  }
+}
+
+async function loadLatestTodayRun() {
+  const rows = await supabaseRequest<DailyCallRunRow[]>(SALES_CALL_RUNS_TABLE, undefined, {
+    select:
+      "id,run_key,date,timezone,status,started_at,finished_at,candidate_count,eligible_count,error_count,created_at,updated_at",
+    date: `eq.${todayInBerlin()}`,
+    order: "created_at.desc",
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+function isFreshRun(run: DailyCallRunRow | null, seconds = SALES_CALL_REFRESH_COOLDOWN_SECONDS) {
+  if (!run?.id) return false;
+  const updatedAt = new Date(run.updated_at || run.started_at || run.created_at || 0).getTime();
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt <= seconds * 1000;
+}
+
 const SALES_CALL_LIST_ITEM_SELECT =
   "id,run_id,rank,request_id,ac_deal_id,priority_group,priority_score,recommended_action,deal_value_eur,reasons_json,context_preview,phone_raw,phone_normalized,phone_quality,email,contact_name,company_name,days_since_sent,hours_since_view,pandadoc_status,ac_live_decision,ac_live_status,ac_live_stage,blocked_reason,source_keys,visual_candidates_json,visual_snapshot_created_at,created_at";
 
@@ -2555,6 +2734,7 @@ async function buildModuleStateFromPreview(storageReady: boolean): Promise<Sales
   }));
   const gate = evaluateSalesCallGate(items);
   const completion = decideSalesCallCompletion(storageReady ? "pending" : "failed", gate);
+  const processedToday = storageReady ? await loadProcessedTodayItems() : [];
   return {
     storageReady,
     run: {
@@ -2570,6 +2750,7 @@ async function buildModuleStateFromPreview(storageReady: boolean): Promise<Sales
       blockedCount: items.filter((item) => !item.guard.allowed).length,
     },
     items,
+    processedToday,
     gate,
     completion,
     bucketCounts: countBuckets(items),
@@ -2648,6 +2829,7 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
 
   const gate = evaluateSalesCallGate(items);
   const completion = decideSalesCallCompletion("ok", gate);
+  const processedToday = await loadProcessedTodayItems();
 
   return {
     storageReady: true,
@@ -2664,6 +2846,7 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
       blockedCount: runRow.error_count ?? items.filter((item) => !item.guard.allowed).length,
     },
     items,
+    processedToday,
     gate,
     completion,
     bucketCounts: countBuckets(items),
@@ -2713,6 +2896,28 @@ export async function getSalesCallModuleState(): Promise<SalesCallModuleState> {
 }
 
 export async function refreshSalesCallList(actor?: SalesCallActor): Promise<SalesCallModuleState> {
+  try {
+    const latestRun = await loadLatestTodayRun();
+    if (isFreshRun(latestRun)) return buildModuleStateFromRun(latestRun);
+
+    const claimed = await supabaseRpc<boolean>("ops_claim_refresh_lock", {
+      p_lock_key: `sales-call-refresh:${todayInBerlin()}`,
+      p_cooldown_seconds: SALES_CALL_REFRESH_COOLDOWN_SECONDS,
+    });
+    if (!claimed) {
+      if (latestRun?.id) return buildModuleStateFromRun(latestRun);
+      throw new QuoteValidationError("Die Tagesliste wird gerade aktualisiert. Bitte in ein paar Sekunden erneut laden.", [], 409);
+    }
+  } catch (error) {
+    if (
+      !isMissingRpcError(error, "ops_claim_refresh_lock") &&
+      !isMissingRelationError(error, "ops_refresh_locks") &&
+      !isMissingRelationError(error, SALES_CALL_RUNS_TABLE)
+    ) {
+      throw error;
+    }
+  }
+
   const preview = await previewSalesCallCandidates(SALES_CALL_PREVIEW_LIMIT);
   const nowIso = new Date().toISOString();
   const runKey = `sales-calls:${todayInBerlin()}:${nowIso}`;
@@ -2847,21 +3052,7 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
     ], 400);
   }
 
-  const previousRows = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
-    select:
-      "id,request_id,call_list_item_id,rank_at_time,ac_deal_id,preset,call_done,call_outcome,next_step,validation_useful,notes,operator_id,source,created_at,updated_at,superseded_at",
-    request_id: `eq.${requestId}`,
-    superseded_at: "is.null",
-    order: "created_at.desc",
-    limit: 10,
-  });
-
-  const supersededAt = new Date().toISOString();
-  for (const previous of previousRows) {
-    await patchById(SALES_CALL_RESULTS_TABLE, previous.id, { superseded_at: supersededAt });
-  }
-
-  const [created] = await insertRows<SalesCallResultRow>(SALES_CALL_RESULTS_TABLE, [
+  const { created, supersededResultIds, usedRpc } = await insertSalesCallResultWithOptimisticGuard(
     {
       call_list_item_id: callListItemId,
       rank_at_time: item?.rank ?? null,
@@ -2876,11 +3067,8 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       operator_id: derived.operatorId,
       source: derived.source,
     },
-  ]);
-
-  if (!created?.id) {
-    throw new SupabaseRestError("Call-Ergebnis konnte nicht gespeichert werden.", 500);
-  }
+    input.expectedLatestResultId ?? null,
+  );
 
   await insertSalesCallAuditLog({
     requestId,
@@ -2895,7 +3083,9 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       preset: input.preset,
       next_step: derived.nextStep,
       validation_useful: derived.validationUseful,
-      superseded_result_ids: previousRows.map((row) => row.id),
+      expected_latest_result_id: input.expectedLatestResultId || null,
+      storage_mode: usedRpc ? "rpc" : "rest_fallback",
+      superseded_result_ids: supersededResultIds,
     },
   });
 

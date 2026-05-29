@@ -11,6 +11,7 @@ import {
   evaluateSalesCallGate,
 } from "../../src/lib/ops/customer-call-module";
 import {
+  addBusinessDaysIso,
   buildTaskFromInboundEmailSignal,
   classifyInboundEmailSignal,
   isActiveSalesTaskVisibleNow,
@@ -765,6 +766,16 @@ test("classifyInboundEmailSignal turns customer will-respond emails into waiting
   assert.equal(task?.status, "waiting");
   assert.equal(task?.idempotencyKey, "email-waiting:req_email_1:message_1");
   assert.equal(task?.priorityTier, "important");
+});
+
+test("addBusinessDaysIso moves weekend follow-ups to Monday", () => {
+  const saturday = addBusinessDaysIso(1, new Date("2026-05-29T12:00:00.000Z"));
+  const sunday = addBusinessDaysIso(2, new Date("2026-05-29T12:00:00.000Z"));
+  const monday = addBusinessDaysIso(3, new Date("2026-05-29T12:00:00.000Z"));
+
+  assert.equal(saturday.slice(0, 10), "2026-06-01");
+  assert.equal(sunday.slice(0, 10), "2026-06-01");
+  assert.equal(monday.slice(0, 10), "2026-06-01");
 });
 
 test("classifyInboundEmailSignal routes price and update emails into action tasks", () => {

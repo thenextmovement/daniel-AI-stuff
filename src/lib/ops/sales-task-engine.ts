@@ -123,9 +123,12 @@ function parseDate(value: string | null | undefined) {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
-function addDaysIso(days: number) {
-  const next = new Date();
+export function addBusinessDaysIso(days: number, from: Date = new Date()) {
+  const next = new Date(from);
   next.setUTCDate(next.getUTCDate() + days);
+  while (next.getUTCDay() === 0 || next.getUTCDay() === 6) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
   next.setUTCHours(9, 30, 0, 0);
   return next.toISOString();
 }
@@ -308,7 +311,7 @@ export function buildTaskFromInboundEmailSignal(input: {
         status: "waiting",
         title: taskTitle("waiting_customer_response"),
         detail: input.signal.reason,
-        dueAt: addDaysIso(input.signal.followUpDays),
+        dueAt: addBusinessDaysIso(input.signal.followUpDays),
         idempotencyKey: `email-waiting:${input.requestId}:${input.sourceRef || input.signal.kind}`,
       };
     case "price_objection":
