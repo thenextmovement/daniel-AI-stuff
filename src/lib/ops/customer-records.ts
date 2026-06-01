@@ -104,6 +104,7 @@ type MasterRequestRow = {
   customer_id?: string | null;
   ac_deal_id?: number | null;
   ac_deal_stage?: string | null;
+  trello_card_id?: string | null;
   trello_card_url?: string | null;
   title?: string | null;
   description?: string | null;
@@ -264,6 +265,26 @@ type CrmQuoteVersionImageRow = {
   versioned_url?: string | null;
   copy_status?: string | null;
   created_at?: string | null;
+};
+
+type OfferTrackingRollupRow = {
+  offer_id: string;
+  offer_public_token?: string | null;
+  offer_number?: string | null;
+  trello_card_id?: string | null;
+  request_id?: string | null;
+  first_viewed_at?: string | null;
+  last_viewed_at?: string | null;
+  view_count?: number | string | null;
+  unique_visitor_count?: number | string | null;
+  total_active_seconds?: number | string | null;
+  pdf_download_count?: number | string | null;
+  video_play_count?: number | string | null;
+  accept_started_at?: string | null;
+  accepted_at?: string | null;
+  last_event_type?: string | null;
+  last_event_at?: string | null;
+  updated_at?: string | null;
 };
 
 type CallLogRow = {
@@ -449,6 +470,7 @@ type CustomerContext = {
   crmQuotes: CrmQuoteRow[];
   crmQuoteVersions: CrmQuoteVersionRow[];
   crmQuoteVersionImages: CrmQuoteVersionImageRow[];
+  offerTracking: OfferTrackingRollupRow | null;
   callLogs: CallLogRow[];
   voiceCalls: VoiceAgentCallRow[];
   followups: FollowupQueueRow[];
@@ -691,6 +713,25 @@ export type CustomerCrmQuoteSummary = {
   latestVersionImages: CustomerCrmQuoteImage[];
 };
 
+export type CustomerOfferTrackingSummary = {
+  offerId: string;
+  offerNumber: string | null;
+  trelloCardId: string | null;
+  requestId: string | null;
+  publicUrl: string | null;
+  firstViewedAt: string | null;
+  lastViewedAt: string | null;
+  viewCount: number;
+  uniqueVisitorCount: number;
+  totalActiveSeconds: number;
+  pdfDownloadCount: number;
+  videoPlayCount: number;
+  acceptStartedAt: string | null;
+  acceptedAt: string | null;
+  lastEventType: string | null;
+  lastEventAt: string | null;
+};
+
 export type CustomerFollowupMockupImage = {
   url: string;
   label: string;
@@ -931,6 +972,7 @@ export type CustomerSearchResult = {
   orderDiagnostic: CustomerOrderDiagnostic;
   crmSales: CustomerCrmSalesEntry[];
   crmQuote: CustomerCrmQuoteSummary | null;
+  offerTracking: CustomerOfferTrackingSummary | null;
   followupMockups: CustomerFollowupMockupImage[];
   callOps: CustomerCallOpsSummary;
   salesRecovery: CustomerSalesRecoverySummary;
@@ -1855,6 +1897,77 @@ function buildOrFilter(clauses: string[]) {
   return normalized.length ? `(${normalized.join(",")})` : "";
 }
 
+function offerTrackingLookupClauses({
+  requestId,
+  request,
+  crmQuotes,
+  trelloCardIdHint,
+}: {
+  requestId: string;
+  request: MasterRequestRow | null;
+  crmQuotes: CrmQuoteRow[];
+  trelloCardIdHint: string | null;
+}) {
+  const trelloIds = uniqueValues([
+    request?.trello_card_id,
+    trelloCardIdHint,
+    parseTrelloCardIdentifier(request?.trello_card_url),
+  ]);
+  const quoteNumbers = uniqueValues(crmQuotes.map((row) => row.quote_number));
+  return [
+    `request_id.eq.${encodeURIComponent(requestId)}`,
+    ...trelloIds.map((value) => `trello_card_id.eq.${encodeURIComponent(value)}`),
+    ...quoteNumbers.map((value) => `offer_number.eq.${encodeURIComponent(value)}`),
+  ];
+}
+
+function scoreOfferTrackingMatch(row: OfferTrackingRollupRow, requestId: string, request: MasterRequestRow | null, crmQuotes: CrmQuoteRow[]) {
+  const requestMatches = trimNullable(row.request_id) === requestId ? 100 : 0;
+  const trelloIds = new Set(
+    uniqueValues([
+      request?.trello_card_id,
+      parseTrelloCardIdentifier(request?.trello_card_url),
+    ]),
+  );
+  const trelloMatches = trimNullable(row.trello_card_id) && trelloIds.has(trimNullable(row.trello_card_id) as string) ? 30 : 0;
+  const quoteNumbers = new Set(uniqueValues(crmQuotes.map((entry) => entry.quote_number)));
+  const quoteMatches = trimNullable(row.offer_number) && quoteNumbers.has(trimNullable(row.offer_number) as string) ? 20 : 0;
+  const recentScore = new Date(row.last_event_at || row.updated_at || 0).getTime() / 1000000000000;
+  return requestMatches + trelloMatches + quoteMatches + recentScore;
+}
+
+async function fetchOfferTrackingRollup({
+  requestId,
+  request,
+  crmQuotes,
+  trelloCardIdHint,
+}: {
+  requestId: string;
+  request: MasterRequestRow | null;
+  crmQuotes: CrmQuoteRow[];
+  trelloCardIdHint: string | null;
+}) {
+  const or = buildOrFilter(offerTrackingLookupClauses({ requestId, request, crmQuotes, trelloCardIdHint }));
+  if (!or) return null;
+  try {
+    const rows = await supabaseRequest<OfferTrackingRollupRow[]>("offer_tracking_rollups", undefined, {
+      select:
+        "offer_id,offer_public_token,offer_number,trello_card_id,request_id,first_viewed_at,last_viewed_at,view_count,unique_visitor_count,total_active_seconds,pdf_download_count,video_play_count,accept_started_at,accepted_at,last_event_type,last_event_at,updated_at",
+      or,
+      order: "last_event_at.desc",
+      limit: 8,
+    });
+    return (rows || []).sort((left, right) => {
+      const rightScore = scoreOfferTrackingMatch(right, requestId, request, crmQuotes);
+      const leftScore = scoreOfferTrackingMatch(left, requestId, request, crmQuotes);
+      return rightScore - leftScore;
+    })[0] || null;
+  } catch (error) {
+    console.warn("customer records offer tracking unavailable", { requestId, error });
+    return null;
+  }
+}
+
 function communicationAuditHref(metadata: Record<string, unknown>) {
   return (
     auditText(metadata, "pandadoc_link") ||
@@ -2164,6 +2277,36 @@ function mapCrmQuoteSummary(
     easybillInvoiceNumber: trimNullable(row.easybill_invoice_number),
     versions: mappedVersions,
     latestVersionImages,
+  };
+}
+
+function offerTrackingPublicUrl(row: OfferTrackingRollupRow) {
+  const publicToken = trimNullable(row.offer_public_token);
+  if (!publicToken) return null;
+  const baseUrl = trimNullable(process.env.NEONTRIP_OFFERS_BASE_URL) || trimNullable(process.env.NEXT_PUBLIC_NEONTRIP_OFFERS_BASE_URL);
+  if (!baseUrl) return null;
+  return `${baseUrl.replace(/\/$/, "")}/offer/${encodeURIComponent(publicToken)}`;
+}
+
+function mapOfferTrackingSummary(row: OfferTrackingRollupRow | null): CustomerOfferTrackingSummary | null {
+  if (!row) return null;
+  return {
+    offerId: row.offer_id,
+    offerNumber: trimNullable(row.offer_number),
+    trelloCardId: trimNullable(row.trello_card_id),
+    requestId: trimNullable(row.request_id),
+    publicUrl: offerTrackingPublicUrl(row),
+    firstViewedAt: row.first_viewed_at || null,
+    lastViewedAt: row.last_viewed_at || null,
+    viewCount: numericValue(row.view_count) ?? 0,
+    uniqueVisitorCount: numericValue(row.unique_visitor_count) ?? 0,
+    totalActiveSeconds: numericValue(row.total_active_seconds) ?? 0,
+    pdfDownloadCount: numericValue(row.pdf_download_count) ?? 0,
+    videoPlayCount: numericValue(row.video_play_count) ?? 0,
+    acceptStartedAt: row.accept_started_at || null,
+    acceptedAt: row.accepted_at || null,
+    lastEventType: trimNullable(row.last_event_type),
+    lastEventAt: row.last_event_at || null,
   };
 }
 
@@ -3329,7 +3472,7 @@ async function fetchDownstreamRows(
   ]);
   const [requestRows, quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
     supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
-      select: "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+      select: "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
       request_id: `eq.${master.request_id}`,
       order: "updated_at.desc",
       limit: 1,
@@ -3450,7 +3593,7 @@ async function fetchDownstreamRows(
     ? await Promise.all([
         supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
           select:
-            "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+            "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
           request_id: `in.(${relatedRequestIds.join(",")})`,
           order: "updated_at.desc",
           limit: relatedRequestIds.length,
@@ -3508,6 +3651,12 @@ async function fetchDownstreamRows(
       })
     : [];
   const trelloCardIdHint = parseTrelloCardIdFromNotes(crmQuotes[0]?.notes_internal);
+  const offerTracking = await fetchOfferTrackingRollup({
+    requestId: master.request_id,
+    request,
+    crmQuotes: crmQuotes || [],
+    trelloCardIdHint,
+  });
   let trello: CustomerTrelloContext | null = null;
   if (includeTrello) {
     try {
@@ -3551,6 +3700,7 @@ async function fetchDownstreamRows(
     crmQuotes: crmQuotes || [],
     crmQuoteVersions,
     crmQuoteVersionImages,
+    offerTracking,
     callLogs: callLogs || [],
     voiceCalls: voiceCalls || [],
     followups,
@@ -3700,6 +3850,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
     orderDiagnostic: context.orderDiagnostic,
     crmSales: context.crmSales.map(mapCrmSalesEntry),
     crmQuote: latestCrmQuote ? mapCrmQuoteSummary(latestCrmQuote, latestCrmQuoteVersions, latestCrmQuoteImages) : null,
+    offerTracking: mapOfferTrackingSummary(context.offerTracking),
     followupMockups: mapFollowupMockups(context.followups),
     callOps,
     salesRecovery,

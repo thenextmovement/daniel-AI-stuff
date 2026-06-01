@@ -3989,6 +3989,47 @@ function formatDate(value: string | null | undefined) {
   }).format(date);
 }
 
+function formatActiveSeconds(value: number | null | undefined) {
+  const seconds = Math.max(0, Math.round(Number(value || 0)));
+  if (!seconds) return "Keine aktive Zeit";
+  if (seconds < 60) return `${seconds} Sek.`;
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = seconds % 60;
+  if (minutes < 60) return restSeconds ? `${minutes} Min ${restSeconds} Sek.` : `${minutes} Min`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes ? `${hours} Std ${restMinutes} Min` : `${hours} Std`;
+}
+
+function getOfferTrackingEventLabel(value: string | null | undefined) {
+  switch (String(value || "").trim()) {
+    case "offer_opened":
+      return "Angebot geöffnet";
+    case "heartbeat":
+      return "Aktive Zeit";
+    case "video_played":
+      return "Video gestartet";
+    case "video_completed":
+      return "Video abgeschlossen";
+    case "pdf_downloaded":
+      return "PDF heruntergeladen";
+    case "cta_clicked":
+      return "Aktion geklickt";
+    case "options_changed":
+      return "Auswahl geändert";
+    case "accept_started":
+      return "Freigabe gestartet";
+    case "accepted":
+      return "Angenommen";
+    case "contact_clicked":
+      return "Kontakt geklickt";
+    case "contact_sent":
+      return "Nachricht gesendet";
+    default:
+      return value || "Noch kein Ereignis";
+  }
+}
+
 const FLOW_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const opsViewerKey = "neontrip-ops-viewer-key";
 
@@ -15219,6 +15260,88 @@ function OfferTextArea({
   );
 }
 
+function OfferTrackingActivityBlock({ record }: { record: CustomerSearchResult }) {
+  const tracking = record.offerTracking;
+  if (!tracking) {
+    return (
+      <div className="rounded-2xl border border-dashed border-black/10 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-black">Angebotsaktivität</div>
+            <div className="mt-1 text-sm leading-6 text-black/55">
+              Noch kein Tracking-Rollup zur neuen Angebotsseite gefunden.
+            </div>
+          </div>
+          <span className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-xs text-black/50">
+            Nur Lesedaten
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const hasOpened = Boolean(tracking.firstViewedAt || tracking.lastViewedAt || tracking.viewCount > 0);
+  const lastEventLabel = getOfferTrackingEventLabel(tracking.lastEventType);
+
+  return (
+    <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-sm font-semibold text-black">Angebotsaktivität</div>
+          <div className="mt-1 text-sm leading-6 text-black/60">
+            {hasOpened
+              ? `Zuletzt: ${lastEventLabel}${tracking.lastEventAt ? ` am ${formatDate(tracking.lastEventAt)}` : ""}`
+              : "Das Angebot wurde noch nicht geöffnet."}
+          </div>
+          <div className="mt-1 text-xs leading-5 text-black/45">
+            Quelle: Supabase offer_tracking_rollups
+            {tracking.offerNumber ? ` • ${tracking.offerNumber}` : ""}
+          </div>
+        </div>
+        {tracking.publicUrl ? <QuickLink href={tracking.publicUrl} label="Neue Angebotsseite öffnen" /> : null}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <MiniSystem
+          title="Geöffnet"
+          value={hasOpened ? "Ja" : "Nein"}
+          detail={tracking.lastViewedAt ? `Zuletzt ${formatDate(tracking.lastViewedAt)}` : "Noch kein Öffnen"}
+          tone={hasOpened ? "good" : "neutral"}
+        />
+        <MiniSystem
+          title="Aufrufe"
+          value={tracking.viewCount}
+          detail={`${tracking.uniqueVisitorCount} Unique Besucher`}
+          tone="blue"
+        />
+        <MiniSystem
+          title="Aktive Zeit"
+          value={formatActiveSeconds(tracking.totalActiveSeconds)}
+          detail={tracking.firstViewedAt ? `Erstkontakt ${formatDate(tracking.firstViewedAt)}` : "Noch keine Aktivität"}
+          tone="accent"
+        />
+        <MiniSystem
+          title="Downloads / Video"
+          value={`${tracking.pdfDownloadCount} / ${tracking.videoPlayCount}`}
+          detail="PDF-Downloads / Video-Plays"
+          tone="neutral"
+        />
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm leading-6 text-black/65">
+          <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Freigabe gestartet</div>
+          <div className="mt-1 font-medium text-black">{tracking.acceptStartedAt ? formatDate(tracking.acceptStartedAt) : "Noch nicht"}</div>
+        </div>
+        <div className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm leading-6 text-black/65">
+          <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Angenommen</div>
+          <div className="mt-1 font-medium text-black">{tracking.acceptedAt ? formatDate(tracking.acceptedAt) : "Noch nicht"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OfferEditorPanel({
   record,
   operatorName,
@@ -15617,6 +15740,12 @@ function OfferEditorPanel({
         </div>
       ) : null}
 
+	      {!offer && record.offerTracking ? (
+	        <div className="mt-4">
+	          <OfferTrackingActivityBlock record={record} />
+	        </div>
+	      ) : null}
+
 	      {!offer || !offerFields ? (
 	        <div className="mt-4 rounded-xl border border-dashed border-black/10 bg-white px-4 py-4 text-sm leading-6 text-black/55">
 	          {loading
@@ -15633,6 +15762,8 @@ function OfferEditorPanel({
             <MiniSystem title="Entwurfswert netto" value={formatMoney(draftNetTotal, currency)} detail={`${items.length} Position${items.length === 1 ? "" : "en"}`} tone="accent" />
             <MiniSystem title="Bilder" value={images.filter((image) => image.enabled).length} detail={`${images.length} insgesamt`} tone="blue" />
           </div>
+
+          <OfferTrackingActivityBlock record={record} />
 
 	          {offer.lock.lockLevel === "hard" ? (
 	            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
