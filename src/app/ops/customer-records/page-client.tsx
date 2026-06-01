@@ -15647,6 +15647,48 @@ function OfferEditorPanel({
 	            </div>
 	          ) : null}
 
+          {offer.lock.lockLevel !== "hard" ? (
+            <div className={`sticky top-3 z-20 rounded-2xl border p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur ${
+              hasChanges
+                ? "border-emerald-200 bg-emerald-50/95"
+                : "border-black/10 bg-white/95"
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-black">
+                    {hasChanges ? "Ungespeicherte Angebotsänderungen" : "Angebot ist gespeichert"}
+                  </div>
+                  <div className="mt-1 text-sm leading-6 text-black/55">
+                    {hasChanges
+                      ? needsReason && revisionReason.trim().length < 3
+                        ? "Bitte unten einen Änderungsgrund eintragen, dann speichern."
+                        : "Du kannst die Änderung erst prüfen oder direkt speichern."
+                      : "Änderungen an Preisen, Texten oder Bildern erscheinen hier sofort als speicherbare Änderung."}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!canSave || saving}
+                    onClick={() => void patchOffer(true)}
+                    className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saving ? "Prüft..." : "Änderungen prüfen"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canSave || saving}
+                    onClick={() => void patchOffer(false)}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#0A0A0A] px-5 py-2 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+                  >
+                    {saving ? "Speichert..." : "Speichern"}
+                    {!saving ? <CheckSquare2 className="h-4 w-4" /> : null}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className={`grid gap-4 ${simpleView ? "" : "xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"}`}>
             <div className="rounded-2xl border border-black/10 bg-white p-4">
               <div className="text-sm font-semibold text-black">Kopfdaten</div>
