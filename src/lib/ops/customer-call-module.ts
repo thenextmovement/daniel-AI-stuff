@@ -1376,6 +1376,105 @@ function buildContextPreview(record: CustomerSearchResult, sourceKeys: CustomerW
   return parts.slice(0, 4).join(" • ");
 }
 
+function mergeRuntimeSourceKeys(
+  sourceKeys: CustomerWorkboardSection["key"][],
+  record: CustomerSearchResult,
+  activeTasks: SalesTask[] = [],
+) {
+  const next = new Set<CustomerWorkboardSection["key"]>(sourceKeys);
+  if (record.callOps.nextCallbackAt || record.salesRecovery.nextCallbackAt) next.add("callbacks");
+  if (quoteSentAt(record) || record.affectedRows.pendingFollowups > 0 || record.affectedRows.nextPendingFollowupAt) {
+    next.add("due_followups");
+  }
+  if (record.salesRecovery.status === "active" || quoteViewedAt(record)) next.add("sales_recovery");
+  for (const task of activeTasks) {
+    if (task.taskType === "callback_scheduled") {
+      next.add("callbacks");
+    } else if (
+      task.taskType === "call_quote_sent" ||
+      task.taskType === "call_reminder_1" ||
+      task.taskType === "call_reminder_2" ||
+      task.taskType === "call_reminder_3" ||
+      task.taskType === "waiting_customer_response"
+    ) {
+      next.add("due_followups");
+    } else if (
+      task.taskType === "offer_adjustment" ||
+      task.taskType === "send_offer" ||
+      task.taskType === "send_update" ||
+      task.taskType === "price_review" ||
+      task.taskType === "email_reply_needed"
+    ) {
+      next.add("sales_recovery");
+    }
+  }
+  return [...next];
+}
+
+function taskStageRank(taskType: SalesTaskType) {
+  switch (taskType) {
+    case "call_new_inquiry":
+      return 1;
+    case "call_quote_sent":
+      return 2;
+    case "call_reminder_1":
+    case "call_reminder_2":
+    case "call_reminder_3":
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+function filterRuntimeActiveTasks(tasks: SalesTask[], cadence: SalesCallCadenceState) {
+  const currentRank = stageRank(cadence.currentStage);
+  return tasks.filter((task) => {
+    const taskRank = taskStageRank(task.taskType);
+    if (!taskRank) return true;
+    if (!currentRank) return false;
+    return taskRank >= currentRank;
+  });
+}
+
+export function resolveRuntimeSalesCallState(input: {
+  record: CustomerSearchResult;
+  sourceKeys: CustomerWorkboardSection["key"][];
+  latestResult: SalesCallResultEntry | null;
+  existingCadence: SalesCallCadenceState | null;
+  activeTasks?: SalesTask[];
+}) {
+  const cadence = deriveCadenceState(input.record, input.latestResult, input.existingCadence);
+  const activeTasks = filterRuntimeActiveTasks(input.activeTasks || [], cadence);
+  const sourceKeys = mergeRuntimeSourceKeys(input.sourceKeys, input.record, activeTasks);
+  const guard = deriveSalesCallGuard(input.record, sourceKeys);
+  const priorityGroup = derivePriorityGroup(sourceKeys, guard);
+  const priorityScore =
+    buildPriorityScore(input.record, sourceKeys, guard) +
+    (cadence.priorityTier === "vip" ? 40 : cadence.priorityTier === "important" ? 15 : 0) +
+    (cadence.queueBucket === "callbacks" ? 50 : cadence.queueBucket === "vip_today" ? 30 : cadence.queueBucket === "due_today" ? 20 : 0);
+  const reasons = guard.allowed
+    ? [
+        ...guard.attentionReasons,
+        sourceKeys.includes("callbacks") ? "Rückrufzeitpunkt stammt aus dem bestehenden Follow-up-Plan." : null,
+        sourceKeys.includes("due_followups") ? "Fall liegt bereits in den fälligen Follow-ups." : null,
+        sourceKeys.includes("sales_recovery") ? "Verkaufschance ohne verknüpften Auftrag." : null,
+        cadence.priorityReason,
+      ].filter((value): value is string => Boolean(value))
+    : [...guard.attentionReasons];
+
+  return {
+    cadence,
+    sourceKeys,
+    guard,
+    priorityGroup,
+    priorityScore,
+    recommendedAction: recommendedActionForGroup(priorityGroup, guard),
+    reasons,
+    contextPreview: buildContextPreview(input.record, sourceKeys, reasons),
+    activeTasks,
+  };
+}
+
 function deriveAdHocSourceKeys(record: CustomerSearchResult): CustomerWorkboardSection["key"][] {
   const sourceKeys: CustomerWorkboardSection["key"][] = [];
   if (record.callOps.nextCallbackAt || record.salesRecovery.nextCallbackAt) sourceKeys.push("callbacks");
@@ -1520,37 +1619,28 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
   const candidates = records.map((record) => {
     const sourceKeys = sourceKeysByRequestId.get(record.requestId) || [];
     const latestResult = latestResultsByRequestId.get(record.requestId) || null;
-    const cadence = deriveCadenceState(record, latestResult, cadenceByRequestId.get(record.requestId) || null);
     const activeTasks = activeTasksByRequestId.get(record.requestId) || [];
-    const guard = deriveSalesCallGuard(record, sourceKeys);
-    const priorityGroup = derivePriorityGroup(sourceKeys, guard);
-    const priorityScore =
-      buildPriorityScore(record, sourceKeys, guard) +
-      (cadence.priorityTier === "vip" ? 40 : cadence.priorityTier === "important" ? 15 : 0) +
-      (cadence.queueBucket === "callbacks" ? 50 : cadence.queueBucket === "vip_today" ? 30 : cadence.queueBucket === "due_today" ? 20 : 0);
-    const reasons = guard.allowed
-      ? [
-          ...guard.attentionReasons,
-          sourceKeys.includes("callbacks") ? "Rückrufzeitpunkt stammt aus dem bestehenden Follow-up-Plan." : null,
-          sourceKeys.includes("due_followups") ? "Fall liegt bereits in den fälligen Follow-ups." : null,
-          sourceKeys.includes("sales_recovery") ? "Verkaufschance ohne verknüpften Auftrag." : null,
-          cadence.priorityReason,
-        ].filter((value): value is string => Boolean(value))
-      : [...guard.attentionReasons];
+    const runtime = resolveRuntimeSalesCallState({
+      record,
+      sourceKeys,
+      latestResult,
+      existingCadence: cadenceByRequestId.get(record.requestId) || null,
+      activeTasks,
+    });
 
     return {
       rank: 0,
       requestId: record.requestId,
       acDealId: record.request?.acDealId ?? null,
-      priorityGroup,
-      priorityScore,
-      recommendedAction: recommendedActionForGroup(priorityGroup, guard),
+      priorityGroup: runtime.priorityGroup,
+      priorityScore: runtime.priorityScore,
+      recommendedAction: runtime.recommendedAction,
       dealValueEur: deriveDealValue(record),
-      reasons,
-      contextPreview: buildContextPreview(record, sourceKeys, reasons),
+      reasons: runtime.reasons,
+      contextPreview: runtime.contextPreview,
       phoneRaw: record.phone || record.originalPhone || null,
       phoneNormalized: normalizePhone(record.phone || record.originalPhone),
-      phoneQuality: guard.phoneQuality,
+      phoneQuality: runtime.guard.phoneQuality,
       email: record.email || null,
       contactName: record.displayName || [record.firstName, record.lastName].filter(Boolean).join(" ") || null,
       companyName: record.company || record.request?.title || null,
@@ -1560,14 +1650,14 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
       acLiveDecision: record.request?.dealStatus || null,
       acLiveStatus: record.request?.status || null,
       acLiveStage: record.request?.acDealStage || null,
-      blockedReason: guard.blockedReason,
-      guard,
-      sourceKeys,
+      blockedReason: runtime.guard.blockedReason,
+      guard: runtime.guard,
+      sourceKeys: runtime.sourceKeys,
       visualCandidates: mergeSalesCallVisualCandidates(
         buildSalesCallVisualCandidates(record),
         directVisualCandidatesByRequestId.get(record.requestId) || [],
       ),
-      cadence,
+      cadence: runtime.cadence,
       activeTasks,
       record,
     };
@@ -2729,8 +2819,19 @@ async function buildModuleStateFromPreview(storageReady: boolean): Promise<Sales
     runId: null,
     topTen: index < MANUAL_GATE_TOP_N,
     latestResult: latestResultsByRequestId.get(item.requestId) || null,
-    cadence: cadenceByRequestId.get(item.requestId) || item.cadence,
-    activeTasks: activeTasksByRequestId.get(item.requestId) || [],
+    ...(() => {
+      const runtime = resolveRuntimeSalesCallState({
+        record: item.record,
+        sourceKeys: item.sourceKeys,
+        latestResult: latestResultsByRequestId.get(item.requestId) || null,
+        existingCadence: cadenceByRequestId.get(item.requestId) || item.cadence,
+        activeTasks: activeTasksByRequestId.get(item.requestId) || [],
+      });
+      return {
+        cadence: runtime.cadence,
+        activeTasks: runtime.activeTasks,
+      };
+    })(),
   }));
   const gate = evaluateSalesCallGate(items);
   const completion = decideSalesCallCompletion(storageReady ? "pending" : "failed", gate);
@@ -2783,21 +2884,30 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
       const guard = deriveSalesCallGuard(record, sourceKeys);
       const snapshotVisualCandidates = normalizeVisualCandidates(row.visual_candidates_json);
       const liveVisualCandidates = directVisualCandidatesByRequestId.get(row.request_id) || [];
+      const latestResult = latestResultsByRequestId.get(row.request_id) || null;
+      const activeTasks = activeTasksByRequestId.get(row.request_id) || [];
+      const runtime = resolveRuntimeSalesCallState({
+        record,
+        sourceKeys,
+        latestResult,
+        existingCadence: cadenceByRequestId.get(row.request_id) || null,
+        activeTasks,
+      });
       return {
         id: row.id,
         runId: row.run_id || null,
         rank: row.rank,
         requestId: row.request_id,
         acDealId: row.ac_deal_id ?? record.request?.acDealId ?? null,
-        priorityGroup: row.priority_group || "review",
-        priorityScore: row.priority_score ?? 0,
-        recommendedAction: row.recommended_action || "review_case",
+        priorityGroup: runtime.priorityGroup,
+        priorityScore: runtime.priorityScore,
+        recommendedAction: runtime.recommendedAction,
         dealValueEur: row.deal_value_eur ?? deriveDealValue(record),
-        reasons: row.reasons_json || [],
-        contextPreview: row.context_preview || "",
+        reasons: runtime.reasons.length ? runtime.reasons : row.reasons_json || [],
+        contextPreview: runtime.contextPreview || row.context_preview || "",
         phoneRaw: row.phone_raw || record.phone || record.originalPhone || null,
         phoneNormalized: row.phone_normalized || normalizePhone(record.phone || record.originalPhone),
-        phoneQuality: row.phone_quality || guard.phoneQuality,
+        phoneQuality: runtime.guard.phoneQuality || row.phone_quality || guard.phoneQuality,
         email: row.email || record.email || null,
         contactName: row.contact_name || record.displayName || null,
         companyName: row.company_name || record.company || null,
@@ -2807,9 +2917,9 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
         acLiveDecision: row.ac_live_decision || record.request?.dealStatus || null,
         acLiveStatus: row.ac_live_status || record.request?.status || null,
         acLiveStage: row.ac_live_stage || record.request?.acDealStage || null,
-        blockedReason: row.blocked_reason || guard.blockedReason,
-        guard,
-        sourceKeys,
+        blockedReason: runtime.guard.blockedReason || row.blocked_reason || null,
+        guard: runtime.guard,
+        sourceKeys: runtime.sourceKeys,
         visualCandidates: mergeSalesCallVisualCandidates(
           snapshotVisualCandidates,
           snapshotVisualCandidates.length ? liveVisualCandidates : buildSalesCallVisualCandidates(record),
@@ -2817,11 +2927,9 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
         ),
         topTen: row.rank <= MANUAL_GATE_TOP_N,
         record,
-        latestResult: latestResultsByRequestId.get(row.request_id) || null,
-        cadence:
-          cadenceByRequestId.get(row.request_id) ||
-          deriveCadenceState(record, latestResultsByRequestId.get(row.request_id) || null, null),
-        activeTasks: activeTasksByRequestId.get(row.request_id) || [],
+        latestResult,
+        cadence: runtime.cadence,
+        activeTasks: runtime.activeTasks,
       };
     })
     .filter((item): item is SalesCallListItem => Boolean(item))
@@ -3028,8 +3136,8 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       throw error;
     }
   })();
-  const previousCadenceState =
-    previousStateRows[0] ? mapCadenceStateRow(previousStateRows[0]) : deriveCadenceState(record, null, null);
+  const previousStoredCadenceState = previousStateRows[0] ? mapCadenceStateRow(previousStateRows[0]) : null;
+  const previousCadenceState = deriveCadenceState(record, null, previousStoredCadenceState);
 
   const requiresPostReminderDecision =
     previousCadenceState.currentStage === "no_response_call" &&

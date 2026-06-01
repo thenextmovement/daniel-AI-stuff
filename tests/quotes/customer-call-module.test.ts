@@ -9,6 +9,7 @@ import {
   decideSalesCallCompletion,
   deriveCadenceState,
   evaluateSalesCallGate,
+  resolveRuntimeSalesCallState,
 } from "../../src/lib/ops/customer-call-module";
 import {
   addBusinessDaysIso,
@@ -397,6 +398,58 @@ test("deriveCadenceState promotes stale inquiry tasks when an offer has since be
   assert.equal(promoted.standardCallCount, 0);
   assert.equal(promoted.call1CompletedAt, null);
   assert.equal(task?.taskType, "call_quote_sent");
+});
+
+test("resolveRuntimeSalesCallState does not keep stale inquiry stage after offer is sent", () => {
+  const inquiryRecord = buildRecord();
+  const staleExisting = deriveCadenceState(inquiryRecord, null, null);
+  assert.equal(staleExisting.currentStage, "inquiry_call");
+
+  const quoteRecord = buildRecord({
+    quote: {
+      status: "sent",
+      totalValue: 1400,
+      currency: "EUR",
+      shareLink: null,
+      editLink: null,
+      sentAt: new Date().toISOString(),
+      viewedAt: null,
+      signedAt: null,
+      whatsappSentAt: null,
+    },
+  });
+
+  const runtime = resolveRuntimeSalesCallState({
+    record: quoteRecord,
+    sourceKeys: [],
+    latestResult: null,
+    existingCadence: staleExisting,
+    activeTasks: [
+      {
+        id: "stale_task_1",
+        requestId: quoteRecord.requestId,
+        taskType: "call_new_inquiry",
+        status: "open",
+        title: "Neue Anfrage anrufen",
+        detail: null,
+        dueAt: new Date().toISOString(),
+        priorityTier: "standard",
+        assigneeLabel: null,
+        source: "sales_call_candidate",
+        sourceRef: null,
+        idempotencyKey: `call_new_inquiry:${quoteRecord.requestId}`,
+        payload: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: null,
+      },
+    ],
+  });
+
+  assert.equal(runtime.cadence.currentStage, "quote_call");
+  assert.equal(runtime.cadence.nextCallAction, "call_stage_2");
+  assert.ok(runtime.sourceKeys.includes("due_followups"));
+  assert.equal(runtime.activeTasks.length, 0);
 });
 
 test("advanceCadenceStateFromResult sends not-reached cases into retry bucket with next follow-up", () => {
