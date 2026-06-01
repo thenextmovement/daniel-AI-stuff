@@ -3937,6 +3937,7 @@ type OfferSendBridgeResponse = {
   sent?: boolean;
   duplicate?: boolean;
   eventId?: string;
+  opsSync?: { ok: boolean; error?: string };
   error?: string;
   issues?: string[];
 };
@@ -15450,18 +15451,24 @@ function OfferEditorPanel({
           cc,
           subject: sendSubject.trim(),
           message: sendMessage.trim(),
-	          actor: operatorName || "Ops",
-	          reason: "Aktualisiertes Angebot aus Customer Records erneut versendet.",
-	          idempotencyKey,
-	          recordEmail: record.email || null,
+          actor: operatorName || "Ops",
+          reason: "Aktualisiertes Angebot aus Customer Records erneut versendet.",
+          idempotencyKey,
+          recordEmail: record.email || null,
+          requestId: record.requestId,
+          trelloCardId,
 	        }),
 	      });
       const payload = (await response.json().catch(() => null)) as OfferSendBridgeResponse | null;
       if (!response.ok || !payload?.ok || !payload.sent) {
         throw new Error(formatApiError(payload));
       }
-      setMessage(payload.duplicate ? "Diese Angebotsmail wurde bereits gesendet." : "Aktualisiertes Angebot wurde gesendet.");
-      onNotify("Aktualisiertes Angebot wurde gesendet.");
+      const syncWarning =
+        payload.opsSync && !payload.opsSync.ok
+          ? " Die Call-Liste wurde noch nicht aktualisiert; bitte kurz neu laden oder den Fall manuell prüfen."
+          : "";
+      setMessage((payload.duplicate ? "Diese Angebotsmail wurde bereits gesendet." : "Aktualisiertes Angebot wurde gesendet.") + syncWarning);
+      onNotify(payload.opsSync && !payload.opsSync.ok ? "Angebot gesendet, Call-Sync prüfen." : "Aktualisiertes Angebot wurde gesendet.");
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Angebotsmail konnte nicht gesendet werden.");
     } finally {

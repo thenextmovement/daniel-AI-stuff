@@ -2374,6 +2374,65 @@ export function buildSalesTaskFromCadence(cadence: SalesCallCadenceState, source
   };
 }
 
+type RecordOfferSentRpcResponse =
+  | {
+      ok: true;
+      request_id: string;
+      offer_event_id: string;
+      sales_task_id: string;
+      closed_inquiry_tasks: number;
+      next_call_due_at: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      request_id?: string;
+    };
+
+export type RecordOfferSentForSalesCallsInput = {
+  requestId?: string | null;
+  trelloCardId?: string | null;
+  offerId: string;
+  offerNumber?: string | null;
+  documentReference?: string | null;
+  publicUrl?: string | null;
+  recipientEmail?: string | null;
+  sentAt?: string | null;
+  source?: string | null;
+  sourceEventId?: string | null;
+  idempotencyKey?: string | null;
+  actor?: string | null;
+  payload?: Record<string, unknown>;
+};
+
+export async function recordOfferSentForSalesCalls(input: RecordOfferSentForSalesCallsInput) {
+  const response = await supabaseRpc<RecordOfferSentRpcResponse>("ops_record_offer_sent", {
+    p_request_id: normalizeWhitespace(input.requestId),
+    p_trello_card_id: normalizeWhitespace(input.trelloCardId),
+    p_offer_id: normalizeWhitespace(input.offerId),
+    p_offer_number: normalizeWhitespace(input.offerNumber),
+    p_document_reference: normalizeWhitespace(input.documentReference),
+    p_public_url: normalizeWhitespace(input.publicUrl),
+    p_recipient_email: normalizeWhitespace(input.recipientEmail),
+    p_sent_at: normalizeWhitespace(input.sentAt) || new Date().toISOString(),
+    p_source: normalizeWhitespace(input.source) || "neontrip_offers",
+    p_source_event_id: normalizeWhitespace(input.sourceEventId),
+    p_idempotency_key: normalizeWhitespace(input.idempotencyKey),
+    p_actor: normalizeWhitespace(input.actor),
+    p_payload: input.payload || {},
+  });
+
+  if (!response?.ok) {
+    throw new QuoteValidationError(
+      "Angebot wurde gesendet, aber die Call-Liste konnte nicht aktualisiert werden.",
+      [response?.error || "ops_record_offer_sent_failed"],
+      502,
+    );
+  }
+
+  return response;
+}
+
 function latestInboundEmailSignal(record: CustomerSearchResult): { signal: InboundEmailSignal; sourceRef: string; preview: string | null } | null {
   const inbound = [...(record.communications || [])]
     .filter((entry) => String(entry.direction || "").toLowerCase() === "inbound")
