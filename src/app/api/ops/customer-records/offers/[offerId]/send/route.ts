@@ -67,9 +67,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
+    const cc = Array.isArray(body.cc) ? body.cc : [];
     const sendInput: OpsOfferSendInput = {
       recipientEmail: body.recipientEmail,
-      cc: body.cc,
+      cc,
       subject: body.subject,
       message: body.message,
       actor: body.actor,
@@ -94,8 +95,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         actor: body.actor,
         payload: {
           duplicate: result.duplicate,
-          cc_count: body.cc.length,
+          cc_count: cc.length,
           reason: body.reason,
+          subject: body.subject,
+          direction: "outbound",
+          subtype: "quote_update",
         },
       });
     } catch (syncError) {

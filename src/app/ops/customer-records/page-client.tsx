@@ -4136,6 +4136,10 @@ function formatMoney(value: number | null | undefined, currency = "EUR") {
   }).format(value);
 }
 
+function isOfferItemSelected(item: Pick<OpsOfferItem, "selectable" | "selectedByDefault">) {
+  return !item.selectable || item.selectedByDefault;
+}
+
 function formatSegmentConfidence(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
   const normalized = value <= 1 ? value * 100 : value;
@@ -14477,9 +14481,9 @@ function CasePulseStrip({
         ? `${inboundTouchpoints.length} Antwort${inboundTouchpoints.length === 1 ? "" : "en"}`
         : outboundTouchpoints.length
           ? "Warten auf Antwort"
-          : "Keine Mail"
-      : `${outboundTouchpoints.length} gesendet / ${inboundTouchpoints.length} eingegangen`,
-    detail: latestInbound ? latestInbound.title : "Keine Antwort erkannt",
+          : "Keine synchronisierte Mail"
+      : `${outboundTouchpoints.length} synchronisiert gesendet / ${inboundTouchpoints.length} synchronisiert eingegangen`,
+    detail: latestInbound ? latestInbound.title : "Keine synchronisierte Antwort erkannt",
     tone: latestInbound ? "border-[#fa31a2]/20 bg-[#fff3fa] text-[#571333]" : "border-zinc-200 bg-white text-zinc-950",
     icon: <Mail className={`h-4 w-4 ${latestInbound ? "text-[#c21876]" : "text-zinc-700"}`} />,
   };
@@ -14774,7 +14778,7 @@ function ReplyContextPanel({
             <div className="mt-2 text-lg font-semibold text-black">
               {latestInbound ? "Antwort liegt vor" : "Antwort vorbereiten"}
             </div>
-            <div className="mt-2 text-sm leading-6 text-black/60">{latestInbound ? "Die letzte eingehende Mail steht hier." : "Du kannst hier eine Mail vorbereiten."}</div>
+            <div className="mt-2 text-sm leading-6 text-black/60">{latestInbound ? "Die letzte eingehende Mail steht hier." : "Du kannst hier eine Mail vorbereiten. Echte Verläufe erscheinen nur, wenn sie synchronisiert wurden."}</div>
           </div>
           <QuickLink href={replyHref} label={latestInbound ? "Jetzt antworten" : "Mail vorbereiten"} />
         </div>
@@ -14808,7 +14812,7 @@ function ReplyContextPanel({
                 </div>
               </>
             ) : (
-              <div className="mt-2 text-sm leading-6 text-black/55">Keine E-Mail.</div>
+              <div className="mt-2 text-sm leading-6 text-black/55">Keine synchronisierte E-Mail.</div>
             )}
           </div>
 
@@ -14857,7 +14861,7 @@ function ReplyContextPanel({
                   {entry.href ? <QuickLink href={entry.href} label="Quelle öffnen" /> : null}
                 </div>
               ) : (
-                <div className="mt-3 text-sm leading-6 text-black/55">Noch kein passender Mailbezug.</div>
+                <div className="mt-3 text-sm leading-6 text-black/55">Noch kein synchronisierter Mailbezug.</div>
               )}
             </div>
           ),
@@ -15464,19 +15468,21 @@ function OfferEditorPanel({
 
   const currentSignature = offerFields ? buildOfferEditSignature(offerFields, items, images, validUntilDate) : "";
   const hasChanges = Boolean(offer && offerFields && currentSignature !== initialSignature);
-	  const needsReason = Boolean(offer?.lock.requiresRevisionReason);
-	  const canEdit = Boolean(offer?.lock.editable && offerFields);
-	  const canSave = canEdit && hasChanges && (!needsReason || revisionReason.trim().length >= 3);
-	  const draftNetTotal = items.reduce((sum, item) => sum + Number(item.unitPriceNet || 0) * Number(item.quantity || 0), 0);
-	  const currency = offerFields?.currency || "EUR";
-	  const normalizedRecordEmail = String(record.email || "").trim().toLowerCase();
-	  const normalizedOfferCustomerEmail = String(offerFields?.customerEmail || "").trim().toLowerCase();
-	  const offerEmailMismatch = Boolean(
-	    offer &&
-	      normalizedRecordEmail &&
-	      normalizedOfferCustomerEmail &&
-	      normalizedRecordEmail !== normalizedOfferCustomerEmail,
-	  );
+  const needsReason = Boolean(offer?.lock.requiresRevisionReason);
+  const canEdit = Boolean(offer?.lock.editable && offerFields);
+  const canSave = canEdit && hasChanges && (!needsReason || revisionReason.trim().length >= 3);
+  const draftNetTotal = items
+    .filter(isOfferItemSelected)
+    .reduce((sum, item) => sum + Number(item.unitPriceNet || 0) * Number(item.quantity || 0), 0);
+  const currency = offerFields?.currency || "EUR";
+  const normalizedRecordEmail = String(record.email || "").trim().toLowerCase();
+  const normalizedOfferCustomerEmail = String(offerFields?.customerEmail || "").trim().toLowerCase();
+  const offerEmailMismatch = Boolean(
+    offer &&
+      normalizedRecordEmail &&
+      normalizedOfferCustomerEmail &&
+      normalizedRecordEmail !== normalizedOfferCustomerEmail,
+  );
 	  const canSendOffer = Boolean(offer && sendRecipient.trim() && offer.lock.lockLevel !== "hard" && !offerEmailMismatch);
 	  const canReloadOffer = Boolean(trelloCardId || manualOfferId);
 

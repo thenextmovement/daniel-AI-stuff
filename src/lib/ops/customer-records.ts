@@ -342,6 +342,8 @@ type MasterCommunicationRow = {
 
 type QuoteEmailLogRow = {
   id: number | string;
+  card_id?: string | null;
+  deal_id?: string | null;
   recipient_email?: string | null;
   recipient_name?: string | null;
   subject?: string | null;
@@ -528,7 +530,7 @@ export type CustomerOpsNoteInput = {
 
 export type CustomerCommunicationEntry = {
   id: string;
-  source: "quote_email_log" | "master_communications" | "followup_queue" | "document_journey" | "workflow_audit_log";
+  source: "quote_email_log" | "master_communications" | "followup_queue" | "document_journey" | "workflow_audit_log" | "email_agent_log";
   title: string;
   preview: string | null;
   body: string | null;
@@ -1972,6 +1974,7 @@ function communicationAuditHref(metadata: Record<string, unknown>) {
   return (
     auditText(metadata, "pandadoc_link") ||
     auditText(metadata, "share_link") ||
+    auditText(metadata, "public_url") ||
     auditText(metadata, "card_url") ||
     auditText(metadata, "trello_card_url")
   );
@@ -2979,7 +2982,7 @@ function mapCommunicationFeed(context: CustomerContext): CustomerCommunicationEn
   for (const row of context.inboundEmails) {
     entries.push({
       id: `inbound-email-${row.id}`,
-      source: "workflow_audit_log",
+      source: "email_agent_log",
       title: trimNullable(row.subject) || "Eingehende Kundenmail",
       preview: trimNullable(row.body_preview) || trimNullable(row.from_email) || null,
       body: trimNullable(row.body_preview) || trimNullable(row.from_email) || null,
@@ -3445,7 +3448,19 @@ async function fetchDownstreamRows(
 ) {
   const { includeTrello = true } = options;
   const emails = emailCandidates(master);
-  const emailOr = buildOrFilter(emails.map((email) => `recipient_email.eq.${encodeURIComponent(email)}`));
+  const requestRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+    select:
+      "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+    request_id: `eq.${master.request_id}`,
+    order: "updated_at.desc",
+    limit: 1,
+  });
+  const request = requestRows[0] || null;
+  const quoteEmailOr = buildOrFilter([
+    ...emails.map((email) => `recipient_email.eq.${encodeURIComponent(email)}`),
+    ...(request?.trello_card_id ? [`card_id.eq.${encodeURIComponent(request.trello_card_id)}`] : []),
+    ...(request?.ac_deal_id ? [`deal_id.eq.${encodeURIComponent(String(request.ac_deal_id))}`] : []),
+  ]);
   const inboundEmailOr = buildOrFilter(emails.map((email) => `from_email.eq.${encodeURIComponent(email)}`));
   const ordersByEmailOr = buildOrFilter(emails.map((email) => `email.eq.${encodeURIComponent(email)}`));
   const phone = trimNullable(master.phone);
@@ -3470,13 +3485,7 @@ async function fetchDownstreamRows(
     ...emails.map((email) => `cc_emails.cs.{${encodeURIComponent(email)}}`),
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
-  const [requestRows, quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
-    supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
-      select: "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
-      request_id: `eq.${master.request_id}`,
-      order: "updated_at.desc",
-      limit: 1,
-    }),
+  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
     supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
       select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
       request_id: `eq.${master.request_id}`,
@@ -3546,8 +3555,8 @@ async function fetchDownstreamRows(
       limit: 6,
     }),
     supabaseRequest<QuoteEmailLogRow[]>("quote_email_log", undefined, {
-      select: "id,recipient_email,recipient_name,subject,status,sent_at,created_at,card_url",
-      ...(emailOr ? { or: emailOr } : {}),
+      select: "id,card_id,deal_id,recipient_email,recipient_name,subject,status,sent_at,created_at,card_url",
+      ...(quoteEmailOr ? { or: quoteEmailOr } : {}),
       order: "created_at.desc",
       limit: 6,
     }),
@@ -3577,7 +3586,6 @@ async function fetchDownstreamRows(
     }),
   ]);
 
-  const request = requestRows[0] || null;
   const relatedCustomers =
     relatedCustomersOr
       ? (
