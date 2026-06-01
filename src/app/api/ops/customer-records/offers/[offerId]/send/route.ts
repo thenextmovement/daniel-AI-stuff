@@ -41,6 +41,10 @@ function normalizeEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isInternalNeontripEmail(email: string) {
+  return /@(neontrip\.de|neontrip\.com)$/i.test(email);
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ offerId: string }> }) {
   const authorized = await authorize(request);
   if (!authorized.ok) return authorized.response;
@@ -56,12 +60,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const offer = await getOfferById(decodedOfferId);
     const offerEmail = normalizeEmail(offer.offer.customerEmail);
     const recordEmail = normalizeEmail(body.recordEmail);
+    const recipientEmail = normalizeEmail(body.recipientEmail);
     if (offerEmail && recordEmail && offerEmail !== recordEmail) {
       return NextResponse.json(
         {
           ok: false,
           error: `Versand blockiert: Das Angebot gehoert zu ${offer.offer.customerEmail}, der geoeffnete Datensatz zu ${body.recordEmail}.`,
           code: "offer_record_email_mismatch",
+        },
+        { status: 409 },
+      );
+    }
+    if (recipientEmail && isInternalNeontripEmail(recipientEmail)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Versand blockiert: Die Hauptadresse ist eine interne NEONTRIP-Adresse. Bitte zuerst die echte Kunden-E-Mail im Datensatz oder Angebot korrigieren.",
+          code: "internal_recipient_detected",
         },
         { status: 409 },
       );
