@@ -15637,6 +15637,7 @@ function OfferEditorPanel({
 	          >
 	            {loading ? "Lädt..." : offer ? "Neu laden" : "Angebot laden"}
 	          </button>
+          {offer ? <QuickLink href={`/api/ops/customer-records/offers/${encodeURIComponent(offer.offerId)}/admin`} label="Im Angebots-Admin öffnen" /> : null}
           {offer?.publicUrl ? <QuickLink href={offer.publicUrl} label="Angebotsseite öffnen" /> : null}
 	        </div>
 	      </div>
@@ -15727,6 +15728,7 @@ function OfferEditorPanel({
 	                      >
 	                        Öffnen
 	                      </button>
+	                      <QuickLink href={`/api/ops/customer-records/offers/${encodeURIComponent(result.offerId)}/admin`} label="Admin" />
 	                    </div>
 	                  </div>
 	                </div>
