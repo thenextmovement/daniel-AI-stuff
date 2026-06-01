@@ -19023,6 +19023,7 @@ function RecordCard({
   const [showOptionalContactFields, setShowOptionalContactFields] = useState(false);
   const [showSimpleContactEditor, setShowSimpleContactEditor] = useState(false);
   const [activeTab, setActiveTab] = useState<RecordDetailTab>("contact");
+  const lastRecordRequestIdRef = useRef(record.requestId);
   const visibleTabs = simpleView
     ? ([
         ["contact", "Daten"],
@@ -19056,6 +19057,8 @@ function RecordCard({
   }
 
   useEffect(() => {
+    const isSameRecord = lastRecordRequestIdRef.current === record.requestId;
+    lastRecordRequestIdRef.current = record.requestId;
     setEmail(record.email);
     setBillingEmail(record.billingEmail || "");
     setCcEmailOne(record.ccEmails?.[0] || "");
@@ -19067,8 +19070,10 @@ function RecordCard({
     setPreview(null);
     setPreviewSignature(null);
     setPreviewError(null);
-    setShowOptionalContactFields(false);
-    setShowSimpleContactEditor(false);
+    if (!isSameRecord) {
+      setShowOptionalContactFields(false);
+      setShowSimpleContactEditor(false);
+    }
     setActiveTab(resolveVisibleTab(preferredTab));
   }, [record, preferredTab, simpleView]);
 
@@ -19182,6 +19187,17 @@ function RecordCard({
       setPreviewError(error instanceof Error ? error.message : "Vorschau konnte nicht erstellt werden.");
     } finally {
       setPreviewing(false);
+    }
+  }
+
+  async function handleSave() {
+    setPreviewError(null);
+    try {
+      await onSave(record.requestId, updates);
+      setPreview(null);
+      setPreviewSignature(null);
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Speichern fehlgeschlagen.");
     }
   }
 
@@ -19453,6 +19469,15 @@ function RecordCard({
                   ) : null}
                 </div>
 
+                {saveSucceeded && !hasUnsavedChanges ? (
+                  <div role="status" className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                    <div className="font-semibold">Gespeichert.</div>
+                    <div className="mt-1 text-emerald-800/80">
+                      {saveSummary ? `Aktualisiert: ${saveSummary}.` : "Die sichtbaren Kontaktdaten wurden aktualisiert."}
+                    </div>
+                  </div>
+                ) : null}
+
                 {simpleView && !showExpandedSimpleContactEditor ? (
                   <div className="space-y-4">
                     <div className="grid gap-3 md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
@@ -19577,7 +19602,7 @@ function RecordCard({
                           <button
                             type="button"
                             disabled={saving || previewing || !preview || previewStale}
-                            onClick={() => onSave(record.requestId, updates)}
+                            onClick={() => void handleSave()}
                             className="inline-flex items-center gap-2 rounded-full bg-[#0A0A0A] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
                           >
                             {saving ? "Speichert..." : "Speichern"}
@@ -19644,7 +19669,7 @@ function RecordCard({
                         <button
                           type="button"
                           disabled={saving || previewing || !preview || previewStale}
-                          onClick={() => onSave(record.requestId, updates)}
+                          onClick={() => void handleSave()}
                           className="inline-flex items-center gap-2 rounded-full bg-[#0A0A0A] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
                         >
                           {saving ? "Speichert..." : "Änderungen speichern"}
@@ -20244,7 +20269,11 @@ export function CustomerRecordsClient({
   }
 
   function applyRecordUpdate(record: CustomerSearchResult) {
-    setResults((current) => current.map((entry) => (entry.requestId === record.requestId ? record : entry)));
+    setResults((current) => {
+      const hasRecord = current.some((entry) => entry.requestId === record.requestId);
+      if (!hasRecord) return [record, ...current];
+      return current.map((entry) => (entry.requestId === record.requestId ? record : entry));
+    });
     setInbox((current) => current.map((entry) => (entry.requestId === record.requestId ? record : entry)));
     setWorkboard((current) =>
       current.map((section) => ({
@@ -20629,33 +20658,38 @@ export function CustomerRecordsClient({
     setLastSavedSummary(null);
     setLastAdvanceableActionRequestId(null);
 
-    const response = await fetch("/api/ops/customer-records", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId, updates }),
-    });
+    try {
+      const response = await fetch("/api/ops/customer-records", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, updates }),
+      });
 
-    const payload = (await response.json().catch(() => null)) as CustomerUpdateResponse | null;
+      const payload = (await response.json().catch(() => null)) as CustomerUpdateResponse | null;
 
-    if (response.status === 401) {
-      setHasSession(false);
-      setError("Zugang abgelaufen. Bitte erneut entsperren.");
+      if (response.status === 401) {
+        const authError = "Zugang abgelaufen. Bitte erneut entsperren.";
+        setHasSession(false);
+        setError(authError);
+        throw new Error(authError);
+      }
+
+      if (!response.ok || !payload?.ok || !payload.record || !payload.changedTables) {
+        throw new Error(formatApiError(payload));
+      }
+
+      applyRecordUpdate(payload.record);
+      const saveSummary = formatChangedTables(payload.changedTables);
+      setMessage(`Änderungen gespeichert. Aktualisiert: ${saveSummary}.`);
+      setLastSavedRequestId(requestId);
+      setLastSavedSummary(saveSummary);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Speichern fehlgeschlagen.";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
       setSavingRequestId(null);
-      return;
     }
-
-    if (!response.ok || !payload?.ok || !payload.record || !payload.changedTables) {
-      setError(formatApiError(payload));
-      setSavingRequestId(null);
-      return;
-    }
-
-    applyRecordUpdate(payload.record);
-    const saveSummary = formatChangedTables(payload.changedTables);
-    setMessage(`Änderungen gespeichert. Aktualisiert: ${saveSummary}.`);
-    setLastSavedRequestId(requestId);
-    setLastSavedSummary(saveSummary);
-    setSavingRequestId(null);
   }
 
   async function addNote(requestId: string, note: CustomerOpsNoteDraft) {
