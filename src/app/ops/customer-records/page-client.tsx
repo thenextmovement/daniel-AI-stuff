@@ -4248,9 +4248,9 @@ function SegmentConfirmControl({
             type="button"
             disabled={!canApply}
             onClick={() => selectedOption ? onApply(selectedOption.segment) : undefined}
-            className="h-10 rounded-lg border border-[#0A0A0A] bg-[#0A0A0A] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-black/90 disabled:cursor-not-allowed disabled:border-black/25 disabled:bg-white disabled:text-black/65 disabled:shadow-none"
+            className="h-10 min-w-[132px] whitespace-nowrap rounded-lg border border-[#0A0A0A] bg-[#0A0A0A] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-black/90 disabled:cursor-not-allowed disabled:border-black/25 disabled:bg-white disabled:text-[#111111] disabled:shadow-none"
           >
-            {running ? "Speichert..." : changed ? "Segment speichern" : "Segment bestätigen"}
+            {running ? "Speichert..." : changed ? "Segment speichern" : needsReview ? "Segment bestätigen" : "Bestätigt"}
           </button>
         </div>
       </div>
