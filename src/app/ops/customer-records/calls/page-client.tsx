@@ -956,7 +956,7 @@ function SegmentConfirmControl({
             type="button"
             disabled={!canApply}
             onClick={() => selectedOption ? onApply(selectedOption.segment) : undefined}
-            className="h-11 rounded-2xl bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+            className="h-11 rounded-2xl border border-stone-950 bg-stone-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:border-stone-300 disabled:bg-white disabled:text-stone-700 disabled:shadow-none"
           >
             {running ? "Speichert..." : changed ? "Speichern" : "Bestätigen"}
           </button>
