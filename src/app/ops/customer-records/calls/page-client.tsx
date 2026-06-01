@@ -1299,7 +1299,7 @@ export function CustomerSalesCallsClient({
         completion: payload.completion,
       };
     });
-    setMessage("Ergebnis gespeichert.");
+    setMessage("Ergebnis gespeichert. Die Call-Liste wurde aktualisiert.");
     setSaving(false);
     void loadState();
   }
@@ -1407,7 +1407,15 @@ export function CustomerSalesCallsClient({
           <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700">{error}</div>
         ) : null}
         {message ? (
-          <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-700">{message}</div>
+          <div role="status" className="rounded-3xl border border-emerald-300 bg-emerald-50 px-6 py-4 text-sm text-emerald-900 shadow-sm">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <div className="font-semibold">Gespeichert.</div>
+                <div className="mt-1 text-emerald-900/75">{message}</div>
+              </div>
+            </div>
+          </div>
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-4">
@@ -2151,10 +2159,10 @@ export function CustomerSalesCallsClient({
                     <button
                       onClick={() => void saveResult()}
                       disabled={saving}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800 disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                     >
                       <CheckCircle2 className="h-4 w-4" />
-                      {saving ? "Speichere…" : "Ergebnis speichern"}
+                      {saving ? "Speichert Ergebnis…" : "Ergebnis jetzt speichern"}
                     </button>
                     <button
                       onClick={() => setDetailOpen(false)}
@@ -2165,8 +2173,14 @@ export function CustomerSalesCallsClient({
                   </div>
 
                   {message ? (
-                    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                      {message}
+                    <div role="status" className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div>
+                          <div className="font-semibold">Gespeichert.</div>
+                          <div className="mt-1 text-emerald-900/75">{message}</div>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
                   {error ? (

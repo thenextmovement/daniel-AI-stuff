@@ -4215,17 +4215,17 @@ function SegmentConfirmControl({
     <div
       className={`mt-3 rounded-xl border p-3 ${
         needsReview
-          ? "border-amber-300/25 bg-amber-300/10"
-          : "border-white/12 bg-white/8"
+          ? "border-amber-200 bg-amber-50"
+          : "border-black/10 bg-white"
       }`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/46">Segment</div>
-          <div className="mt-1 text-sm font-semibold text-white">
+          <div className={`text-[11px] font-medium uppercase tracking-[0.18em] ${needsReview ? "text-amber-700" : "text-black/45"}`}>Segment</div>
+          <div className="mt-1 text-sm font-semibold text-black">
             {getAiSegmentLabel(request)}
           </div>
-          <div className="mt-1 text-xs text-white/52">
+          <div className={`mt-1 text-xs ${needsReview ? "text-amber-900/70" : "text-black/55"}`}>
             {needsReview ? "Bitte Segment prüfen und bestätigen." : getAiSegmentDetail(request)}
           </div>
         </div>
@@ -4233,8 +4233,9 @@ function SegmentConfirmControl({
           <select
             value={selectedSegment}
             onChange={(event) => setSelectedSegment(event.target.value)}
-            className="h-10 min-w-[220px] rounded-lg border border-white/14 bg-black/35 px-3 text-sm font-medium text-white outline-none transition focus:border-[#fa31a2]"
+            className="h-10 min-w-[220px] rounded-lg border border-black/10 bg-white px-3 text-sm font-medium text-black outline-none transition focus:border-[#fa31a2] focus:shadow-[0_0_0_2px_rgba(250,49,162,0.12)] disabled:cursor-not-allowed disabled:bg-black/[0.03] disabled:text-black/35"
             aria-label="Segment auswählen"
+            disabled={running}
           >
             <option value="">Segment wählen</option>
             {CUSTOMER_SEGMENT_OPTIONS.map((option) => (
@@ -4247,9 +4248,9 @@ function SegmentConfirmControl({
             type="button"
             disabled={!canApply}
             onClick={() => selectedOption ? onApply(selectedOption.segment) : undefined}
-            className="h-10 rounded-lg bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/16 disabled:text-white/40"
+            className="h-10 rounded-lg bg-[#0A0A0A] px-4 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/15 disabled:text-black/35"
           >
-            {changed ? "Speichern" : "Bestätigen"}
+            {running ? "Speichert..." : changed ? "Segment speichern" : "Segment bestätigen"}
           </button>
         </div>
       </div>
@@ -15735,8 +15736,9 @@ function OfferEditorPanel({
         </div>
       ) : null}
       {message ? (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">
-          {message}
+        <div role="status" className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950 shadow-sm">
+          <div className="font-semibold">Gespeichert.</div>
+          <div className="mt-1 text-emerald-900/75">{message}</div>
         </div>
       ) : null}
 
@@ -15781,19 +15783,21 @@ function OfferEditorPanel({
           {offer.lock.lockLevel !== "hard" ? (
             <div className={`sticky top-3 z-20 rounded-2xl border p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur ${
               hasChanges
-                ? "border-emerald-200 bg-emerald-50/95"
+                ? "border-amber-200 bg-amber-50/95"
                 : "border-black/10 bg-white/95"
             }`}>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <div className="text-sm font-semibold text-black">
-                    {hasChanges ? "Ungespeicherte Angebotsänderungen" : "Angebot ist gespeichert"}
+                    {saving ? "Speichert gerade..." : hasChanges ? "Ungespeicherte Angebotsänderungen" : "Angebot ist gespeichert"}
                   </div>
                   <div className="mt-1 text-sm leading-6 text-black/55">
-                    {hasChanges
+                    {saving
+                      ? "Bitte kurz warten, bis die Angebots-App die Änderung bestätigt."
+                      : hasChanges
                       ? needsReason && revisionReason.trim().length < 3
                         ? "Bitte unten einen Änderungsgrund eintragen, dann speichern."
-                        : "Du kannst die Änderung erst prüfen oder direkt speichern."
+                        : "Bitte mit dem schwarzen Speichern-Button sichern. Danach erscheint eine Bestätigung."
                       : "Änderungen an Preisen, Texten oder Bildern erscheinen hier sofort als speicherbare Änderung."}
                   </div>
                 </div>
@@ -19634,6 +19638,46 @@ function RecordCard({
 
           {activeTab === "contact" ? (
             <>
+              {saving || hasUnsavedChanges || saveSucceeded ? (
+                <div
+                  role="status"
+                  className={`rounded-2xl border px-5 py-4 ${
+                    saving
+                      ? "border-blue-200 bg-blue-50 text-blue-950"
+                      : hasUnsavedChanges
+                        ? "border-amber-200 bg-amber-50 text-amber-950"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-950"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">
+                        {saving ? "Speichert gerade..." : hasUnsavedChanges ? "Änderungen noch nicht gespeichert" : "Änderungen gespeichert"}
+                      </div>
+                      <div className="mt-1 text-sm leading-6 opacity-75">
+                        {saving
+                          ? "Bitte kurz warten, bis der Datensatz aktualisiert wurde."
+                          : hasUnsavedChanges
+                            ? "Erst prüfen, dann speichern. Danach erscheint hier die Bestätigung."
+                            : saveSummary
+                              ? `Aktualisiert: ${saveSummary}.`
+                              : "Der Fall ist auf dem neuesten Stand."}
+                      </div>
+                    </div>
+                    {hasUnsavedChanges ? (
+                      <button
+                        type="button"
+                        disabled={previewing || saving || !hasUnsavedChanges}
+                        onClick={handlePreview}
+                        className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-950 transition hover:border-amber-400 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {previewing ? "Prüft..." : preview ? "Neu prüfen" : "Änderung prüfen"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
                 <div className="mb-5">
                   <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">
