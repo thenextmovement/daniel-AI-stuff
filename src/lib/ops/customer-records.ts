@@ -3444,9 +3444,10 @@ function entryTitleFromAuditAction(action: string | null | undefined) {
 
 async function fetchDownstreamRows(
   master: MasterCustomerRow,
-  options: { includeTrello?: boolean } = {},
+  options: { includeTrello?: boolean; includeOfferTracking?: boolean } = {},
 ) {
   const { includeTrello = true } = options;
+  const { includeOfferTracking = true } = options;
   const emails = emailCandidates(master);
   const requestRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
     select:
@@ -3659,12 +3660,14 @@ async function fetchDownstreamRows(
       })
     : [];
   const trelloCardIdHint = parseTrelloCardIdFromNotes(crmQuotes[0]?.notes_internal);
-  const offerTracking = await fetchOfferTrackingRollup({
-    requestId: master.request_id,
-    request,
-    crmQuotes: crmQuotes || [],
-    trelloCardIdHint,
-  });
+  const offerTracking = includeOfferTracking
+    ? await fetchOfferTrackingRollup({
+        requestId: master.request_id,
+        request,
+        crmQuotes: crmQuotes || [],
+        trelloCardIdHint,
+      })
+    : null;
   let trello: CustomerTrelloContext | null = null;
   if (includeTrello) {
     try {
@@ -4379,7 +4382,7 @@ async function mapWithConcurrency<T, R>(
 
 export async function listCustomerRecordsByRequestIds(
   requestIds: string[],
-  options?: { includeTrello?: boolean },
+  options?: { includeTrello?: boolean; includeOfferTracking?: boolean },
 ): Promise<CustomerSearchResult[]> {
   const normalizedRequestIds = uniqueValues(requestIds.map((requestId) => normalizeRequestSearch(requestId)));
   if (!normalizedRequestIds.length) return [];
@@ -4394,13 +4397,25 @@ export async function listCustomerRecordsByRequestIds(
     rows,
     4,
     async (row) => {
-      const downstream = await fetchDownstreamRows(row, { includeTrello: options?.includeTrello ?? false });
-      return { master: applyAuditCcEmails(row, downstream.audits), ...downstream };
+      try {
+        const includeTrello = options?.includeTrello ?? false;
+        const downstream = await fetchDownstreamRows(row, {
+          includeTrello,
+          includeOfferTracking: options?.includeOfferTracking ?? includeTrello,
+        });
+        return { master: applyAuditCcEmails(row, downstream.audits), ...downstream };
+      } catch (error) {
+        console.warn("customer records lightweight request context unavailable", {
+          requestId: row.request_id,
+          error,
+        });
+        return null;
+      }
     },
   );
 
   const recordByRequestId = new Map(
-    contexts.map((context) => {
+    contexts.filter((context): context is NonNullable<typeof context> => Boolean(context)).map((context) => {
       const record = mapSearchResult(context);
       return [record.requestId, record] as const;
     }),
