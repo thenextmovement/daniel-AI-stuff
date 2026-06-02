@@ -94,6 +94,12 @@ const TASK_STATUSES: OpsInternalTaskStatus[] = ["open", "in_progress", "waiting"
 const TASK_PRIORITIES: OpsInternalTaskPriority[] = ["low", "normal", "high", "urgent"];
 const TASK_CATEGORIES: OpsInternalTaskCategory[] = ["customer", "call", "problem", "product_restock", "offer", "admin", "other"];
 
+function useDedicatedTaskTable() {
+  return String(process.env.OPS_INTERNAL_TASKS_USE_DEDICATED_TABLE || "")
+    .trim()
+    .toLowerCase() === "true";
+}
+
 type SalesTaskFallbackRow = {
   id: string;
   request_id: string;
@@ -471,6 +477,8 @@ async function updateFallbackTask(taskId: string, input: OpsInternalTaskInput, a
 }
 
 export async function listOpsInternalTasks(options: OpsInternalTaskListOptions = {}) {
+  if (!useDedicatedTaskTable()) return listFallbackTasks(options);
+
   const limit = Math.min(Math.max(Number(options.limit || 80), 1), 150);
   const query: Record<string, string | number | boolean | null> = {
     select: TASK_SELECT,
@@ -493,6 +501,8 @@ export async function listOpsInternalTasks(options: OpsInternalTaskListOptions =
 }
 
 export async function createOpsInternalTask(input: OpsInternalTaskInput, actor?: OpsInternalTaskActor) {
+  if (!useDedicatedTaskTable()) return createFallbackTask(input, actor);
+
   try {
     const [row] = await supabaseRequest<OpsInternalTaskRow[]>(
       TASK_TABLE,
@@ -513,6 +523,7 @@ export async function createOpsInternalTask(input: OpsInternalTaskInput, actor?:
 export async function updateOpsInternalTask(taskId: string, input: OpsInternalTaskInput, actor?: OpsInternalTaskActor) {
   const id = cleanText(taskId, 80);
   if (!id) throw new QuoteValidationError("Aufgaben-ID fehlt.", ["Aufgaben-ID fehlt."], 422);
+  if (!useDedicatedTaskTable()) return updateFallbackTask(id, input, actor);
 
   try {
     const rows = await supabaseRequest<OpsInternalTaskRow[]>(
