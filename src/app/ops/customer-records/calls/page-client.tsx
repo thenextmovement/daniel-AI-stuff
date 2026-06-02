@@ -1013,6 +1013,7 @@ export function CustomerSalesCallsClient({
   const [purchaseSignal, setPurchaseSignal] = useState(false);
   const [postReminderDecision, setPostReminderDecision] = useState<SalesCallPostReminderDecision | "">("");
   const [loading, setLoading] = useState(false);
+  const [stateLoadFailed, setStateLoadFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [segmentSaving, setSegmentSaving] = useState(false);
@@ -1056,10 +1057,10 @@ export function CustomerSalesCallsClient({
   }, [operatorName]);
 
   useEffect(() => {
-    if ((!opsEnabled || hasSession || localMode) && !state && !loading) {
+    if ((!opsEnabled || hasSession || localMode) && !state && !loading && !stateLoadFailed) {
       void loadState();
     }
-  }, [hasSession, localMode, opsEnabled, state, loading]);
+  }, [hasSession, localMode, opsEnabled, state, loading, stateLoadFailed]);
 
   useEffect(() => {
     if (!selectedItemId || !state?.items.length) return;
@@ -1218,6 +1219,7 @@ export function CustomerSalesCallsClient({
       }
       setHasSession(true);
       setToken("");
+      setStateLoadFailed(false);
       setMessage("Zugang aktiv.");
       void loadState();
     } catch (error) {
@@ -1227,6 +1229,7 @@ export function CustomerSalesCallsClient({
 
   async function loadState() {
     setLoading(true);
+    setStateLoadFailed(false);
     setError(null);
     try {
       const response = await fetchWithTimeout("/api/ops/customer-records/calls");
@@ -1234,15 +1237,19 @@ export function CustomerSalesCallsClient({
 
       if (response.status === 401) {
         setHasSession(false);
+        setStateLoadFailed(true);
         return;
       }
       if (!response.ok || !payload?.ok || !payload.state) {
         setError(formatApiError(payload));
+        setStateLoadFailed(true);
         return;
       }
       setState(payload.state);
+      setStateLoadFailed(false);
     } catch (error) {
       setError(formatFetchError(error));
+      setStateLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -1267,6 +1274,7 @@ export function CustomerSalesCallsClient({
         return;
       }
       setState(payload.state);
+      setStateLoadFailed(false);
       setMessage("Tagesliste neu erzeugt.");
     } catch (error) {
       setError(formatFetchError(error));
