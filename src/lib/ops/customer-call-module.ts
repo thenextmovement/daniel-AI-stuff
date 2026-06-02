@@ -3058,7 +3058,11 @@ export async function getSalesCallModuleState(): Promise<SalesCallModuleState> {
     ) {
       return buildModuleStateFromPreview(false);
     }
-    throw error;
+    console.warn("sales call stored run unavailable; falling back to preview", {
+      runId: latestRun.id,
+      error,
+    });
+    return buildModuleStateFromPreview(false);
   }
 }
 
