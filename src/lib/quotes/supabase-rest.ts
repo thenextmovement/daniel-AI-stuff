@@ -112,6 +112,13 @@ export async function supabaseRequest<T>(
   return JSON.parse(body) as T;
 }
 
+export async function supabaseRpc<T>(functionName: string, args: Record<string, unknown> = {}) {
+  return supabaseRequest<T>(`rpc/${functionName}`, {
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
 function numericQuote(record: QuoteRecord): QuoteRecord {
   return {
     ...record,
