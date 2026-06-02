@@ -224,6 +224,76 @@ function formatFetchError(error: unknown) {
   return error instanceof Error ? error.message : "Anfrage fehlgeschlagen.";
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildClientFailedState(reason = "internal_error"): SalesCallModuleState {
+  return {
+    storageReady: false,
+    run: {
+      id: null,
+      runKey: null,
+      date: todayIsoDate(),
+      timezone: "Europe/Berlin",
+      status: "preview",
+      startedAt: null,
+      finishedAt: null,
+      candidateCount: 0,
+      eligibleCount: 0,
+      blockedCount: 0,
+    },
+    items: [],
+    processedToday: [],
+    gate: {
+      gate: "red",
+      topN: 10,
+      reviewed: 0,
+      remainingToReview: 0,
+      remainingReviewRanks: [],
+      useful: 0,
+      notUseful: 0,
+      usefulRate: 0,
+      concreteNextSteps: 0,
+      concreteNextStepValue: 0,
+      informativeUseful: 0,
+      distinctInformativeNotes: 0,
+      clearLearningSignal: false,
+      usefulNeededForGreen: 0,
+      concreteNextStepsNeededForGreen: 0,
+      informativeUsefulNeededForLearningSignal: 0,
+      distinctInformativeNotesNeededForLearningSignal: 0,
+      criticalDataErrors: 0,
+      wrongNumbers: 0,
+      validationErrors: [reason],
+    },
+    completion: {
+      technicalStatus: "failed",
+      complete: false,
+      reason,
+      nextRequiredAction:
+        "Die Call-Datenquelle meldet gerade einen Fehler. Customer Records und Aufgaben bleiben erreichbar; bitte Tagesliste neu laden oder den Server-Log prüfen.",
+    },
+    bucketCounts: {
+      due_today: 0,
+      vip_today: 0,
+      not_reached: 0,
+      callbacks: 0,
+      manual_followup: 0,
+      offer_adjustment: 0,
+      data_issue: 0,
+      finished: 0,
+    },
+    taskCounts: {
+      open: 0,
+      waiting: 0,
+      blocked: 0,
+      overdue: 0,
+      emailDriven: 0,
+    },
+  };
+}
+
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = OPS_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -1316,15 +1386,19 @@ export function CustomerSalesCallsClient({
         return;
       }
       if (!response.ok || !payload?.ok || !payload.state) {
-        setError(formatApiError(payload));
-        setStateLoadFailed(true);
+        const message = formatApiError(payload);
+        setState(buildClientFailedState(message));
+        setError(message);
+        setStateLoadFailed(false);
         return;
       }
       setState(payload.state);
       setStateLoadFailed(false);
     } catch (error) {
-      setError(formatFetchError(error));
-      setStateLoadFailed(true);
+      const message = formatFetchError(error);
+      setState(buildClientFailedState(message));
+      setError(message);
+      setStateLoadFailed(false);
     } finally {
       setLoading(false);
     }
