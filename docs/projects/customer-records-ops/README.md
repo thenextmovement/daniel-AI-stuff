@@ -8,6 +8,7 @@ Dieser Ordner bündelt die Dokumentation zum Customer-Records-Ops-Projekt: Ops-P
 
 - [Customer Records Ops](./customer-records-ops.md): Hauptdoku für Portal, Arbeitsmodi, Call-Modul, Datenmodell und Handover.
 - [Request Segmentation](./request-segmentation.md): Anfrage-Segmentierung, n8n-Workflow, Postgres-Felder und manuelle Korrektur im Portal.
+- [Interne Aufgaben](./internal-tasks.md): Aufgabenboard fuer Team-To-dos, Problemfaelle, Nachbestellungen, Deadlines und Sichtbarkeit in der Call-Zentrale.
 - [Internal Deployment](./internal-deployment.md): Interne Veroeffentlichung mit Cloudflare Access, Deployment-Env, Pfadvalidierung und Rollback.
 - [Internal Launch Checklist](./internal-launch-checklist.md): Schrittfolge fuer Datenbank-, Hosting-, Access-, Build-, Smoke- und Rollback-Gates vor interner Nutzung.
 - [Coolify Deployment](./coolify-deployment.md): Hosting-Ziel, Dockerfile, Env Vars, DNS, Zugriffsschutz und Validierung fuer Hetzner/Coolify.
