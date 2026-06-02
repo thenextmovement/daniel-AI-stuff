@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
+  buildFailedSalesCallModuleState,
   getSalesCallModuleState,
   recordSalesCallResult,
   type SalesCallPostReminderDecision,
@@ -65,7 +66,12 @@ export async function GET(request: NextRequest) {
     const state = await withTimeout(getSalesCallModuleState(), 35_000, "sales_call_state_timeout");
     return NextResponse.json({ ok: true, state });
   } catch (error) {
-    return failureResponse(error);
+    console.error("ops customer-records calls state unavailable", error);
+    return NextResponse.json({
+      ok: true,
+      degraded: true,
+      state: buildFailedSalesCallModuleState(error instanceof Error ? error.message : "sales_call_state_unavailable"),
+    });
   }
 }
 

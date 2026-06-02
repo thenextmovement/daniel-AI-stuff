@@ -2319,6 +2319,57 @@ function countTasks(items: SalesCallListItem[]): SalesCallModuleState["taskCount
   };
 }
 
+export function buildFailedSalesCallModuleState(reason = "sales_call_state_unavailable"): SalesCallModuleState {
+  return {
+    storageReady: false,
+    run: {
+      id: null,
+      runKey: null,
+      date: todayInBerlin(),
+      timezone: "Europe/Berlin",
+      status: "preview",
+      startedAt: null,
+      finishedAt: null,
+      candidateCount: 0,
+      eligibleCount: 0,
+      blockedCount: 0,
+    },
+    items: [],
+    processedToday: [],
+    gate: {
+      gate: "red",
+      topN: MANUAL_GATE_TOP_N,
+      reviewed: 0,
+      remainingToReview: 0,
+      remainingReviewRanks: [],
+      useful: 0,
+      notUseful: 0,
+      usefulRate: 0,
+      concreteNextSteps: 0,
+      concreteNextStepValue: 0,
+      informativeUseful: 0,
+      distinctInformativeNotes: 0,
+      clearLearningSignal: false,
+      usefulNeededForGreen: 0,
+      concreteNextStepsNeededForGreen: 0,
+      informativeUsefulNeededForLearningSignal: 0,
+      distinctInformativeNotesNeededForLearningSignal: 0,
+      criticalDataErrors: 0,
+      wrongNumbers: 0,
+      validationErrors: [reason],
+    },
+    completion: {
+      technicalStatus: "failed",
+      complete: false,
+      reason,
+      nextRequiredAction:
+        "Die Call-Daten konnten gerade nicht geladen werden. Customer Records funktionieren weiter; bitte neu laden oder die Datenquelle prüfen.",
+    },
+    bucketCounts: countBuckets([]),
+    taskCounts: countTasks([]),
+  };
+}
+
 function mapTaskPriority(priorityTier: SalesCallPriorityTier): SalesTaskPriority {
   return priorityTier === "vip" ? "vip" : priorityTier === "important" ? "important" : "standard";
 }
