@@ -44,13 +44,25 @@ function getOpsHost(request: NextRequest) {
   return request.headers.get("x-forwarded-host") || request.headers.get("host");
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export async function GET(request: NextRequest) {
   const host = getOpsHost(request);
   if (!isOpsPortalConfigured(host)) return notConfigured();
   if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) return unauthorized();
 
   try {
-    const state = await getSalesCallModuleState();
+    const state = await withTimeout(getSalesCallModuleState(), 35_000, "sales_call_state_timeout");
     return NextResponse.json({ ok: true, state });
   } catch (error) {
     return failureResponse(error);
