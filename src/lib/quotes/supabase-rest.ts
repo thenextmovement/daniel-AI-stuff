@@ -51,6 +51,17 @@ function shouldRetrySupabaseRequest(init: RequestInit, response?: Response) {
   return !response || response.status === 502 || response.status === 503 || response.status === 504;
 }
 
+const SUPABASE_REST_TIMEOUT_MS = 15_000;
+
+function createTimeoutSignal(timeoutMs = SUPABASE_REST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
+}
+
 export async function supabaseRequest<T>(
   path: string,
   init: RequestInit = {},
@@ -72,12 +83,18 @@ export async function supabaseRequest<T>(
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    const timeout = createTimeoutSignal();
     try {
-      response = await fetch(url, requestInit);
+      response = await fetch(url, {
+        ...requestInit,
+        signal: requestInit.signal || timeout.signal,
+      });
       if (response.ok || !shouldRetrySupabaseRequest(init, response) || attempt === 2) break;
     } catch (error) {
       lastError = error;
       if (!shouldRetrySupabaseRequest(init) || attempt === 2) throw error;
+    } finally {
+      timeout.clear();
     }
     await delay(180 * (attempt + 1));
   }
@@ -93,13 +110,6 @@ export async function supabaseRequest<T>(
   const body = await response.text();
   if (!body.trim()) return null as T;
   return JSON.parse(body) as T;
-}
-
-export async function supabaseRpc<T>(functionName: string, args: Record<string, unknown> = {}) {
-  return supabaseRequest<T>(`rpc/${functionName}`, {
-    method: "POST",
-    body: JSON.stringify(args),
-  });
 }
 
 function numericQuote(record: QuoteRecord): QuoteRecord {
@@ -187,7 +197,7 @@ export async function insertQuoteItems(quoteId: string, items: QuoteItemInput[])
   if (!items.length) return [];
   const rows = await supabaseRequest<QuoteItemRecord[]>("quote_items", {
     method: "POST",
-    body: JSON.stringify(items.map(({ id: _id, ...item }) => ({ ...item, quote_id: quoteId }))),
+    body: JSON.stringify(items.map(({ id: id, ...item }) => ({ ...item, quoteid: quoteId }))),
     headers: { Prefer: "return=representation" },
   });
   return rows.map(numericItem);
