@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ClipboardList,
   Clock3,
   ExternalLink,
   Mail,
@@ -27,6 +28,7 @@ import type {
 } from "@/lib/ops/customer-call-module";
 import type { SalesTask } from "@/lib/ops/sales-task-engine";
 import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
+import type { OpsInternalTask } from "@/lib/ops/internal-tasks";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsAppSwitcher } from "../../ops-app-switcher";
@@ -46,6 +48,13 @@ type SalesCallApiResponse = {
 type CustomerRecordsSearchResponse = {
   ok: boolean;
   results?: CustomerSearchResult[];
+  error?: string;
+  issues?: string[];
+};
+
+type OpsTasksApiResponse = {
+  ok: boolean;
+  tasks?: OpsInternalTask[];
   error?: string;
   issues?: string[];
 };
@@ -591,6 +600,48 @@ function formatDateTimeLabel(value: string | null | undefined) {
   }).format(parsed);
 }
 
+function formatTaskDue(value: string | null | undefined) {
+  if (!value) return "Keine Frist";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Keine Frist";
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
+}
+
+function isTaskOverdue(task: OpsInternalTask) {
+  if (!task.dueAt || task.status === "done" || task.status === "archived") return false;
+  return new Date(task.dueAt).getTime() < Date.now();
+}
+
+function taskPriorityTone(task: OpsInternalTask) {
+  if (task.priority === "urgent") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (task.priority === "high") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
+function taskCategoryLabel(task: OpsInternalTask) {
+  switch (task.category) {
+    case "customer":
+      return "Kundenfall";
+    case "call":
+      return "Call";
+    case "problem":
+      return "Problemfall";
+    case "product_restock":
+      return "Nachbestellen";
+    case "offer":
+      return "Angebot";
+    case "admin":
+      return "Intern";
+    default:
+      return "Sonstiges";
+  }
+}
+
 function callStatusLabel(item: SalesCallListItem) {
   const count = item.record.callOps.totalCallCount || 0;
   if (count > 0) {
@@ -1026,6 +1077,8 @@ export function CustomerSalesCallsClient({
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchHasRun, setSearchHasRun] = useState(false);
   const [adHocItem, setAdHocItem] = useState<SalesCallListItem | null>(null);
+  const [internalTasks, setInternalTasks] = useState<OpsInternalTask[]>([]);
+  const [internalTasksLoading, setInternalTasksLoading] = useState(false);
 
   useEffect(() => {
     try {
@@ -1061,6 +1114,12 @@ export function CustomerSalesCallsClient({
       void loadState();
     }
   }, [hasSession, localMode, opsEnabled, state, loading, stateLoadFailed]);
+
+  useEffect(() => {
+    if ((!opsEnabled || hasSession || localMode) && !internalTasksLoading) {
+      void loadInternalTasks();
+    }
+  }, [hasSession, localMode, opsEnabled]);
 
   useEffect(() => {
     if (!selectedItemId || !state?.items.length) return;
@@ -1125,6 +1184,22 @@ export function CustomerSalesCallsClient({
         })
         .slice(0, 8),
     [state],
+  );
+
+  const visibleInternalTasks = useMemo(
+    () =>
+      [...internalTasks]
+        .filter((task) => task.status !== "done" && task.status !== "archived")
+        .sort((left, right) => {
+          if (isTaskOverdue(left) !== isTaskOverdue(right)) return isTaskOverdue(left) ? -1 : 1;
+          const rank: Record<OpsInternalTask["priority"], number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+          if (left.priority !== right.priority) return rank[left.priority] - rank[right.priority];
+          const leftDue = left.dueAt ? new Date(left.dueAt).getTime() : Number.POSITIVE_INFINITY;
+          const rightDue = right.dueAt ? new Date(right.dueAt).getTime() : Number.POSITIVE_INFINITY;
+          return leftDue - rightDue;
+        })
+        .slice(0, 6),
+    [internalTasks],
   );
 
   const visibleWorkItems = useMemo(
@@ -1252,6 +1327,25 @@ export function CustomerSalesCallsClient({
       setStateLoadFailed(true);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadInternalTasks() {
+    setInternalTasksLoading(true);
+    try {
+      const response = await fetchWithTimeout("/api/ops/tasks?limit=40");
+      const payload = (await response.json().catch(() => null)) as OpsTasksApiResponse | null;
+      if (response.status === 401) {
+        setHasSession(false);
+        return;
+      }
+      if (response.ok && payload?.ok && payload.tasks) {
+        setInternalTasks(payload.tasks);
+      }
+    } catch {
+      // Internal task visibility is secondary; the call list must remain usable.
+    } finally {
+      setInternalTasksLoading(false);
     }
   }
 
@@ -1494,6 +1588,56 @@ export function CustomerSalesCallsClient({
             </p>
           </div>
         </div>
+
+        <section className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Interne Aufgaben</p>
+              <h2 className="mt-2 text-2xl font-semibold text-stone-950">Team-Aufgaben für heute</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
+                Nachbestellungen, Problemfälle und interne To-dos aus dem Aufgabenboard. Call-Arbeit bleibt oben, interne Arbeit ist hier sichtbar.
+              </p>
+            </div>
+            <a
+              href="/ops/tasks"
+              className="inline-flex items-center gap-2 rounded-2xl bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800"
+            >
+              <ClipboardList className="h-4 w-4" />
+              Aufgaben öffnen
+            </a>
+          </div>
+          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+            {visibleInternalTasks.length ? (
+              visibleInternalTasks.map((task) => (
+                <article key={task.id} className={`rounded-3xl border p-4 ${isTaskOverdue(task) ? "border-rose-200 bg-rose-50" : "border-stone-200 bg-stone-50"}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${taskPriorityTone(task)}`}>
+                      {task.priority === "urgent" ? "Dringend" : task.priority === "high" ? "Wichtig" : "Normal"}
+                    </span>
+                    <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600">
+                      {taskCategoryLabel(task)}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-base font-semibold text-stone-950">{task.title}</h3>
+                  <p className="mt-2 text-sm text-stone-600">{task.assigneeLabel || "Nicht zugewiesen"} • {formatTaskDue(task.dueAt)}</p>
+                  {task.requestId ? (
+                    <a
+                      href={`/ops/customer-records?query=${encodeURIComponent(task.requestId)}`}
+                      className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-stone-800 underline-offset-4 hover:underline"
+                    >
+                      Kundenfall öffnen
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  ) : null}
+                </article>
+              ))
+            ) : (
+              <div className="rounded-3xl border border-dashed border-stone-300 px-5 py-8 text-sm text-stone-500 lg:col-span-3">
+                {internalTasksLoading ? "Lade interne Aufgaben..." : "Keine offenen internen Aufgaben."}
+              </div>
+            )}
+          </div>
+        </section>
 
         <div className="space-y-6">
           <div className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">

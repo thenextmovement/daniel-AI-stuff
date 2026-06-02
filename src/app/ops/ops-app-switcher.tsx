@@ -1,8 +1,8 @@
 "use client";
 
-import { PhoneCall, type LucideIcon, UsersRound } from "lucide-react";
+import { ClipboardList, PhoneCall, type LucideIcon, UsersRound } from "lucide-react";
 
-type OpsAppKey = "records" | "calls";
+export type OpsAppKey = "records" | "calls" | "tasks";
 
 type OpsAppSwitcherProps = {
   active: OpsAppKey;
@@ -26,6 +26,12 @@ const OPS_APPS: Array<{
     label: "Call-Zentrale",
     href: "/ops/customer-records/calls",
     Icon: PhoneCall,
+  },
+  {
+    key: "tasks",
+    label: "Aufgaben",
+    href: "/ops/tasks",
+    Icon: ClipboardList,
   },
 ];
 

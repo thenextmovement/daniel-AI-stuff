@@ -1,13 +1,13 @@
 "use client";
 
 import { ArrowRight, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
-import { OpsAppSwitcher } from "./ops-app-switcher";
+import { OpsAppSwitcher, type OpsAppKey } from "./ops-app-switcher";
 
 type OpsLoginCardProps = {
   title: string;
   eyebrow?: string;
   description?: string;
-  activeApp?: "records" | "calls";
+  activeApp?: OpsAppKey;
   operatorName: string;
   password: string;
   error?: string | null;
