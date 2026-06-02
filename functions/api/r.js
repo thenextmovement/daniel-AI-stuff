@@ -33,6 +33,21 @@ function corsHeaders(origin) {
   };
 }
 
+function dryRunResponse(cors) {
+  return new Response('{"ok":true,"dry_run":true}', {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      ...cors,
+    },
+  });
+}
+
+function isDryRunValue(value) {
+  return value === "1" || value === 1 || value === true;
+}
+
 export async function onRequestOptions({ request }) {
   return new Response(null, {
     status: 204,
@@ -70,6 +85,22 @@ async function handlePost(request) {
     },
   });
 
+  const contentType = request.headers.get("Content-Type") || "";
+  let parsedForm = null;
+  if (
+    contentType.includes("multipart/form-data") ||
+    contentType.includes("application/x-www-form-urlencoded")
+  ) {
+    try {
+      parsedForm = await request.clone().formData();
+      if (isDryRunValue(parsedForm.get("nt_dry_run"))) {
+        return dryRunResponse(cors);
+      }
+    } catch {
+      parsedForm = null;
+    }
+  }
+
   let bodyText;
   try {
     bodyText = await request.text();
@@ -92,24 +123,32 @@ async function handlePost(request) {
       received_at: new Date().toISOString(),
     };
   } catch {
-    // Body wasn't JSON — wrap it so n8n still gets something structured
-    enriched = {
-      raw: bodyText.slice(0, 2000),
-      received_at: new Date().toISOString(),
-    };
+    if (parsedForm) {
+      const formPayload = {};
+      for (const [key, value] of parsedForm.entries()) {
+        formPayload[key] = typeof value === "string" ? value : value.name || "[file]";
+      }
+      enriched = {
+        ...formPayload,
+        cf_country: cf.country || null,
+        cf_city: cf.city || null,
+        cf_colo: cf.colo || null,
+        proxy_ip: request.headers.get("CF-Connecting-IP") || null,
+        received_at: new Date().toISOString(),
+      };
+    } else {
+      // Body wasn't JSON — wrap it so n8n still gets something structured
+      enriched = {
+        raw: bodyText.slice(0, 2000),
+        received_at: new Date().toISOString(),
+      };
+    }
   }
 
   // Synthetic deploy smoke test. Confirms /api/r exists and parses JSON
-  // without sending an operational failure email.
-  if (enriched.nt_dry_run === "1") {
-    return new Response('{"ok":true,"dry_run":true}', {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        ...cors,
-      },
-    });
+  // without sending an operational alert.
+  if (isDryRunValue(enriched.nt_dry_run)) {
+    return dryRunResponse(cors);
   }
 
   // Forward to n8n with short timeout. Any error here is logged
