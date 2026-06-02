@@ -7,7 +7,7 @@ import type {
   TrelloEditableCustomField,
 } from "./types";
 
-type TrelloCustomField = {
+export type TrelloCustomField = {
   id: string;
   name: string;
   type?: string;
@@ -70,6 +70,14 @@ export type TrelloBoardList = {
   name?: string;
   closed?: boolean;
   pos?: number;
+};
+
+export type CreatedTrelloCard = {
+  id: string;
+  idBoard?: string;
+  name?: string;
+  url?: string;
+  shortUrl?: string;
 };
 
 function customFieldValue(item: TrelloCustomFieldItem) {
@@ -270,6 +278,41 @@ export async function updateTrelloCustomField(params: {
   if (!response.ok) {
     throw new Error(`Trello Custom Field Update fehlgeschlagen: ${response.status}`);
   }
+}
+
+export async function createTrelloCard(input: {
+  listId: string;
+  name: string;
+  desc?: string | null;
+}) {
+  const { key, token } = trelloConfig();
+  const url = new URL("https://api.trello.com/1/cards");
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+  url.searchParams.set("idList", input.listId);
+  url.searchParams.set("name", input.name);
+  if (input.desc) url.searchParams.set("desc", input.desc);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Karte konnte nicht erstellt werden: ${response.status}`);
+  }
+
+  return (await response.json()) as CreatedTrelloCard;
+}
+
+export async function getTrelloBoardCustomFields(boardId: string) {
+  return trelloFetch<TrelloCustomField[]>(`/boards/${encodeURIComponent(boardId)}/customFields`);
+}
+
+export async function findTrelloCustomFieldByName(boardId: string, names: string[]) {
+  const wanted = new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean));
+  const fields = await getTrelloBoardCustomFields(boardId);
+  return fields.find((field) => wanted.has(String(field.name || "").trim().toLowerCase())) || null;
 }
 
 export async function getTrelloBoardLists(boardId: string) {

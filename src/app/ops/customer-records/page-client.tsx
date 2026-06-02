@@ -92,6 +92,72 @@ type SearchResponse = {
   issues?: string[];
 };
 
+type ManualImportDraft = {
+  firstName: string;
+  lastName: string;
+  company: string;
+  email: string;
+  phone: string;
+  country: string;
+  title: string;
+  description: string;
+  product: string;
+  size: string;
+  color: string;
+  application: string;
+  deliveryTime: string;
+  customerType: string;
+  segment: string;
+  priority: "standard" | "important" | "vip";
+  dueAt: string;
+  createTrelloCard: boolean;
+};
+
+type ManualImportResponse = {
+  ok: boolean;
+  result?: {
+    requestId: string;
+    customerId: string;
+    customerCreated: boolean;
+    requestCreated: boolean;
+    salesTaskCreated: boolean;
+    trello: {
+      requested: boolean;
+      ok: boolean;
+      cardId: string | null;
+      cardUrl: string | null;
+      customFieldSet: boolean;
+      error: string | null;
+    };
+    warnings: string[];
+  };
+  error?: string;
+  issues?: string[];
+};
+
+function defaultManualImportDraft(): ManualImportDraft {
+  return {
+    firstName: "",
+    lastName: "",
+    company: "",
+    email: "",
+    phone: "",
+    country: "DE",
+    title: "",
+    description: "",
+    product: "",
+    size: "",
+    color: "",
+    application: "",
+    deliveryTime: "",
+    customerType: "",
+    segment: "",
+    priority: "standard",
+    dueAt: "",
+    createTrelloCard: true,
+  };
+}
+
 type RecordDetailTab = "contact" | "deal" | "trello" | "communication" | "sales" | "history";
 
 function getRecordTabLabel(tab: RecordDetailTab) {
@@ -20175,6 +20241,9 @@ export function CustomerRecordsClient({
   const [showSimpleOperatorSettings, setShowSimpleOperatorSettings] = useState(false);
   const [showSimpleRecordSwitcher, setShowSimpleRecordSwitcher] = useState(false);
   const [showSimpleSearchExamples, setShowSimpleSearchExamples] = useState(false);
+  const [showManualImport, setShowManualImport] = useState(false);
+  const [manualImportSaving, setManualImportSaving] = useState(false);
+  const [manualImportDraft, setManualImportDraft] = useState<ManualImportDraft>(() => defaultManualImportDraft());
   const [query, setQuery] = useState("");
   const [inbox, setInbox] = useState<CustomerSearchResult[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
@@ -20617,6 +20686,83 @@ export function CustomerRecordsClient({
       rememberRecentCase(foundResults[0]);
     }
     setLoading(false);
+  }
+
+  function updateManualImportDraft<K extends keyof ManualImportDraft>(key: K, value: ManualImportDraft[K]) {
+    setManualImportDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function createManualImport() {
+    setManualImportSaving(true);
+    setError(null);
+    setMessage(null);
+
+    const idempotencyKey = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const payload = {
+      idempotencyKey,
+      operatorName: operatorName || null,
+      customer: {
+        firstName: manualImportDraft.firstName,
+        lastName: manualImportDraft.lastName,
+        company: manualImportDraft.company,
+        email: manualImportDraft.email,
+        phone: manualImportDraft.phone,
+        country: manualImportDraft.country,
+      },
+      request: {
+        title: manualImportDraft.title,
+        description: manualImportDraft.description,
+        product: manualImportDraft.product,
+        size: manualImportDraft.size,
+        color: manualImportDraft.color,
+        application: manualImportDraft.application,
+        deliveryTime: manualImportDraft.deliveryTime,
+        customerType: manualImportDraft.customerType,
+        segment: manualImportDraft.segment,
+        priority: manualImportDraft.priority,
+        dueAt: manualImportDraft.dueAt,
+      },
+      trello: {
+        createCard: manualImportDraft.createTrelloCard,
+      },
+    };
+
+    try {
+      const response = await fetch("/api/ops/customer-records/manual-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json().catch(() => null)) as ManualImportResponse | null;
+
+      if (response.status === 401) {
+        setHasSession(false);
+        setError("Zugang abgelaufen. Bitte erneut entsperren.");
+        setManualImportSaving(false);
+        return;
+      }
+
+      if (!response.ok || !body?.ok || !body.result) {
+        throw new Error(formatApiError(body));
+      }
+
+      const warningText = body.result.warnings.length ? ` ${body.result.warnings.join(" ")}` : "";
+      const trelloText = body.result.trello.requested
+        ? body.result.trello.ok
+          ? " Trello-Karte mit nerdyforms_id wurde erstellt."
+          : " Trello-Projektion ist fehlgeschlagen, DB-Fall ist angelegt."
+        : "";
+      setMessage(`Manuelle Anfrage ${body.result.requestId} wurde angelegt. Call-Aufgabe ist erstellt.${trelloText}${warningText}`);
+      setManualImportDraft(defaultManualImportDraft());
+      setShowManualImport(false);
+      await loadRecordByRequestId(body.result.requestId, "contact");
+      void loadInbox();
+      void loadWorkboard();
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Manuelle Anfrage konnte nicht angelegt werden.");
+    } finally {
+      setManualImportSaving(false);
+    }
   }
 
   async function loadRecordByRequestId(requestId: string, preferredTab: RecordDetailTab | null = null) {
@@ -22570,6 +22716,216 @@ export function CustomerRecordsClient({
                     {loading ? "Fall wird geladen..." : "Fall laden"}
                     {!loading ? <ArrowRight className="h-4 w-4" /> : null}
                   </button>
+                </div>
+
+                <div className="rounded-2xl border border-black/10 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-black/40">Manuelle Einspielung</div>
+                      <div className="mt-1 text-sm font-semibold text-black">Kunden / Anfrage neu anlegen</div>
+                      <div className="mt-1 max-w-2xl text-sm leading-6 text-black/58">
+                        Legt einen Fall in Supabase an, erzeugt eine Call-Aufgabe und setzt optional `nerdyforms_id` auf einer neuen Trello-Karte. Auto-Reply bleibt ausdrücklich aus.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowManualImport((current) => !current)}
+                      className="rounded-full border border-black/10 bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85"
+                    >
+                      {showManualImport ? "Schließen" : "Neu einspielen"}
+                    </button>
+                  </div>
+
+                  {showManualImport ? (
+                    <div className="mt-5 space-y-5 border-t border-black/10 pt-5">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field
+                          label="Vorname"
+                          hint="Echter Kundenname, kein Platzhalter."
+                          value={manualImportDraft.firstName}
+                          onChange={(value) => updateManualImportDraft("firstName", value)}
+                          icon={<UserRound className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Nachname"
+                          hint="Echter Kundenname, kein Platzhalter."
+                          value={manualImportDraft.lastName}
+                          onChange={(value) => updateManualImportDraft("lastName", value)}
+                          icon={<UserRound className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Firma"
+                          hint="Optional, aber hilfreich für B2B."
+                          value={manualImportDraft.company}
+                          onChange={(value) => updateManualImportDraft("company", value)}
+                          icon={<Building2 className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="E-Mail"
+                          hint="Pflichtfeld. Keine interne NEONTRIP-Adresse verwenden."
+                          value={manualImportDraft.email}
+                          onChange={(value) => updateManualImportDraft("email", value)}
+                          type="email"
+                          icon={<AtSign className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Telefon"
+                          hint="Für die Call-Aufgabe und Placetel-Kontext."
+                          value={manualImportDraft.phone}
+                          onChange={(value) => updateManualImportDraft("phone", value)}
+                          icon={<PhoneFallback />}
+                        />
+                        <Field
+                          label="Land"
+                          hint="ISO oder Klartext, Standard ist DE."
+                          value={manualImportDraft.country}
+                          onChange={(value) => updateManualImportDraft("country", value)}
+                          icon={<Database className="h-4 w-4" />}
+                        />
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field
+                          label="Anfragetitel"
+                          hint="Interner Titel für den Fall und optional die Trello-Karte."
+                          value={manualImportDraft.title}
+                          onChange={(value) => updateManualImportDraft("title", value)}
+                          icon={<MessageSquareText className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Produkt"
+                          hint="Zum Beispiel LED Flex, 3D Frontlit oder Leuchtkasten."
+                          value={manualImportDraft.product}
+                          onChange={(value) => updateManualImportDraft("product", value)}
+                          icon={<CheckSquare2 className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Größe"
+                          hint="Gewünschte Größe oder Größenbereich."
+                          value={manualImportDraft.size}
+                          onChange={(value) => updateManualImportDraft("size", value)}
+                          icon={<Database className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Farbe"
+                          hint="Farbe, Logo-Farbe oder noch offen."
+                          value={manualImportDraft.color}
+                          onChange={(value) => updateManualImportDraft("color", value)}
+                          icon={<Star className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Einsatz"
+                          hint="Indoor, Outdoor, Messe, Laden, Büro usw."
+                          value={manualImportDraft.application}
+                          onChange={(value) => updateManualImportDraft("application", value)}
+                          icon={<Building2 className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Lieferzeit"
+                          hint="Wunschdatum oder Zeitrahmen."
+                          value={manualImportDraft.deliveryTime}
+                          onChange={(value) => updateManualImportDraft("deliveryTime", value)}
+                          icon={<Clock3 className="h-4 w-4" />}
+                        />
+                      </div>
+
+                      <label className="grid gap-2">
+                        <span className="text-sm font-medium text-black">Anfragebeschreibung</span>
+                        <span className="text-xs leading-5 text-black/50">Interner Kontext. Keine automatische Kundenkommunikation wird daraus erzeugt.</span>
+                        <textarea
+                          value={manualImportDraft.description}
+                          onChange={(event) => updateManualImportDraft("description", event.target.value)}
+                          rows={4}
+                          className="w-full rounded-xl border-2 border-black/10 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-[#fa31a2] focus:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]"
+                        />
+                      </label>
+
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <label className="grid gap-2">
+                          <span className="text-sm font-medium text-black">Segment</span>
+                          <select
+                            value={manualImportDraft.segment}
+                            onChange={(event) => updateManualImportDraft("segment", event.target.value)}
+                            className="rounded-xl border-2 border-black/10 bg-white px-4 py-3.5 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                          >
+                            <option value="">Später prüfen</option>
+                            {CUSTOMER_SEGMENT_OPTIONS.map((option) => (
+                              <option key={option.segment} value={option.segment}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="grid gap-2">
+                          <span className="text-sm font-medium text-black">Kundentyp</span>
+                          <input
+                            value={manualImportDraft.customerType}
+                            onChange={(event) => updateManualImportDraft("customerType", event.target.value)}
+                            placeholder="Privat / Gewerblich"
+                            className="rounded-xl border-2 border-black/10 bg-white px-4 py-3.5 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                          />
+                        </label>
+                        <label className="grid gap-2">
+                          <span className="text-sm font-medium text-black">Priorität</span>
+                          <select
+                            value={manualImportDraft.priority}
+                            onChange={(event) => updateManualImportDraft("priority", event.target.value as ManualImportDraft["priority"])}
+                            className="rounded-xl border-2 border-black/10 bg-white px-4 py-3.5 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                          >
+                            <option value="standard">Normal</option>
+                            <option value="important">Wichtig</option>
+                            <option value="vip">VIP</option>
+                          </select>
+                        </label>
+                        <label className="grid gap-2">
+                          <span className="text-sm font-medium text-black">Erster Call fällig</span>
+                          <input
+                            type="datetime-local"
+                            value={manualImportDraft.dueAt}
+                            onChange={(event) => updateManualImportDraft("dueAt", event.target.value)}
+                            className="rounded-xl border-2 border-black/10 bg-white px-4 py-3.5 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                          />
+                        </label>
+                      </div>
+
+                      <label className="flex items-start gap-3 rounded-2xl border border-black/10 bg-black/[0.02] px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={manualImportDraft.createTrelloCard}
+                          onChange={(event) => updateManualImportDraft("createTrelloCard", event.target.checked)}
+                          className="mt-1 h-4 w-4 rounded border-black/20"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-black">Neue Trello-Karte als Projektion erstellen</span>
+                          <span className="mt-1 block text-xs leading-5 text-black/55">
+                            Erst Supabase, dann Trello. Die neue UUID wird ins Custom Field `nerdyforms_id` geschrieben. Bei Trello-Fehler bleibt der DB-Fall bestehen.
+                          </span>
+                        </span>
+                      </label>
+
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">
+                        Vorschau: Es wird ein Supabase-Fall mit neuer UUID, eine Call-Aufgabe und ein Audit-Eintrag erstellt. Auto-Reply, Follow-up-Mail und Kundenversand bleiben aus.
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void createManualImport()}
+                          disabled={manualImportSaving || !manualImportDraft.email.trim()}
+                          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0A0A0A] px-6 py-3 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+                        >
+                          {manualImportSaving ? "Wird angelegt..." : "Fall jetzt anlegen"}
+                          {!manualImportSaving ? <ArrowRight className="h-4 w-4" /> : null}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setManualImportDraft(defaultManualImportDraft())}
+                          disabled={manualImportSaving}
+                          className="rounded-full border border-black/10 bg-white px-4 py-3 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:opacity-50"
+                        >
+                          Leeren
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {quietLayout && !inlineSearchError ? (
