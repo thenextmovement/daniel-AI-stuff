@@ -206,6 +206,28 @@ function formatApiError(payload: { error?: string; issues?: string[] } | null) {
   return payload.error || "Unbekannter Fehler.";
 }
 
+const OPS_FETCH_TIMEOUT_MS = 30_000;
+
+function formatFetchError(error: unknown) {
+  if (error instanceof Error && error.name === "AbortError") {
+    return "Die Anfrage hat zu lange gedauert. Bitte Seite neu laden oder Tagesliste erneut abrufen.";
+  }
+  return error instanceof Error ? error.message : "Anfrage fehlgeschlagen.";
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = OPS_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: init.signal || controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 function gateTone(gate: SalesCallModuleState["gate"]["gate"]) {
   switch (gate) {
     case "green":
@@ -1162,7 +1184,7 @@ export function CustomerSalesCallsClient({
     setSearchHasRun(true);
     setError(null);
     setMessage(null);
-    const response = await fetch(`/api/ops/customer-records?query=${encodeURIComponent(query)}`);
+    const response = await fetchWithTimeout(`/api/ops/customer-records?query=${encodeURIComponent(query)}`);
     const payload = (await response.json().catch(() => null)) as CustomerRecordsSearchResponse | null;
     if (!response.ok || !payload?.ok) {
       setError(formatApiError(payload));
@@ -1183,63 +1205,74 @@ export function CustomerSalesCallsClient({
 
   async function login() {
     setError(null);
-    const response = await fetch("/api/ops/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string; issues?: string[] } | null;
-    if (!response.ok) {
-      setError(formatApiError(payload));
-      return;
+    try {
+      const response = await fetchWithTimeout("/api/ops/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string; issues?: string[] } | null;
+      if (!response.ok) {
+        setError(formatApiError(payload));
+        return;
+      }
+      setHasSession(true);
+      setToken("");
+      setMessage("Zugang aktiv.");
+      void loadState();
+    } catch (error) {
+      setError(formatFetchError(error));
     }
-    setHasSession(true);
-    setToken("");
-    setMessage("Zugang aktiv.");
-    void loadState();
   }
 
   async function loadState() {
     setLoading(true);
     setError(null);
-    const response = await fetch("/api/ops/customer-records/calls");
-    const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
+    try {
+      const response = await fetchWithTimeout("/api/ops/customer-records/calls");
+      const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
 
-    if (response.status === 401) {
-      setHasSession(false);
+      if (response.status === 401) {
+        setHasSession(false);
+        return;
+      }
+      if (!response.ok || !payload?.ok || !payload.state) {
+        setError(formatApiError(payload));
+        return;
+      }
+      setState(payload.state);
+    } catch (error) {
+      setError(formatFetchError(error));
+    } finally {
       setLoading(false);
-      return;
     }
-    if (!response.ok || !payload?.ok || !payload.state) {
-      setError(formatApiError(payload));
-      setLoading(false);
-      return;
-    }
-    setState(payload.state);
-    setLoading(false);
   }
 
   async function refreshList() {
     setRefreshing(true);
     setError(null);
     setMessage(null);
-    const response = await fetch("/api/ops/customer-records/calls", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "refresh_list",
-        operatorName: operatorName || null,
-      }),
-    });
-    const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
-    if (!response.ok || !payload?.ok || !payload.state) {
-      setError(formatApiError(payload));
+    try {
+      const response = await fetchWithTimeout("/api/ops/customer-records/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "refresh_list",
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
+      if (!response.ok || !payload?.ok || !payload.state) {
+        setError(formatApiError(payload));
+        return;
+      }
+      setState(payload.state);
+      setMessage("Tagesliste neu erzeugt.");
+    } catch (error) {
+      setError(formatFetchError(error));
+    } finally {
       setRefreshing(false);
-      return;
     }
-    setState(payload.state);
-    setMessage("Tagesliste neu erzeugt.");
-    setRefreshing(false);
   }
 
   async function saveResult() {
@@ -1259,49 +1292,52 @@ export function CustomerSalesCallsClient({
     setError(null);
     setMessage(null);
 
-    const response = await fetch("/api/ops/customer-records/calls", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "record_result",
-        operatorName: operatorName || null,
-        callListItemId: selectedItem.id || null,
-        requestId: selectedItem.requestId,
-        preset,
-        notes,
-        callbackDate: preset === "callback" || preset === "not-reached" || preset === "needs-time" ? callbackDate : null,
-        postReminderDecision: needsPostReminderDecision(selectedItem, preset) ? postReminderDecision : null,
-        priorityTier,
-        priorityReason,
-        purchaseSignal,
-        expectedLatestResultId: selectedItem.latestResult?.id || null,
-      }),
-    });
-    const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
-    if (!response.ok || !payload?.ok) {
-      setError(formatApiError(payload));
-      setSaving(false);
-      return;
-    }
-
-    setNotes("");
-    if (adHocItem && payload.result) {
-      setAdHocItem({
-        ...adHocItem,
-        latestResult: payload.result,
+    try {
+      const response = await fetchWithTimeout("/api/ops/customer-records/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "record_result",
+          operatorName: operatorName || null,
+          callListItemId: selectedItem.id || null,
+          requestId: selectedItem.requestId,
+          preset,
+          notes,
+          callbackDate: preset === "callback" || preset === "not-reached" ? callbackDate : null,
+          postReminderDecision: needsPostReminderDecision(selectedItem, preset) ? postReminderDecision : null,
+          priorityTier,
+          priorityReason,
+          purchaseSignal,
+        }),
       });
+      const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
+      if (!response.ok || !payload?.ok) {
+        setError(formatApiError(payload));
+        return;
+      }
+
+      setNotes("");
+      if (adHocItem && payload.result) {
+        setAdHocItem({
+          ...adHocItem,
+          latestResult: payload.result,
+        });
+      }
+      setState((current) => {
+        if (!current || !payload.gate || !payload.completion) return current;
+        return {
+          ...current,
+          gate: payload.gate,
+          completion: payload.completion,
+        };
+      });
+      setMessage("Ergebnis gespeichert.");
+      void loadState();
+    } catch (error) {
+      setError(formatFetchError(error));
+    } finally {
+      setSaving(false);
     }
-    setState((current) => {
-      if (!current || !payload.gate || !payload.completion) return current;
-      return {
-        ...current,
-        gate: payload.gate,
-        completion: payload.completion,
-      };
-    });
-    setMessage("Ergebnis gespeichert. Die Call-Liste wurde aktualisiert.");
-    setSaving(false);
-    void loadState();
   }
 
   async function applySegment(segment: string) {
@@ -1310,7 +1346,7 @@ export function CustomerSalesCallsClient({
     setError(null);
     setMessage(null);
 
-    const response = await fetch("/api/ops/customer-records/actions", {
+    const response = await fetchWithTimeout("/api/ops/customer-records/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
