@@ -38,6 +38,7 @@ type SalesCallApiResponse = {
   state?: SalesCallModuleState;
   action?: string;
   degraded?: boolean;
+  warning?: string;
   error?: string;
   issues?: string[];
   gate?: SalesCallModuleState["gate"];
@@ -1445,7 +1446,7 @@ export function CustomerSalesCallsClient({
       setState(payload.state);
       setStateLoadFailed(false);
       if (payload.degraded || payload.state.completion.technicalStatus === "failed") {
-        setError(payload.state.completion.reason || "Die Tagesliste konnte gerade nicht neu erzeugt werden.");
+        setError(payload.warning || payload.state.completion.reason || "Die Tagesliste konnte gerade nicht neu erzeugt werden.");
       } else {
         setMessage("Tagesliste neu erzeugt.");
       }

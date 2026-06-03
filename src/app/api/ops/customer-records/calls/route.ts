@@ -57,6 +57,22 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
+function publicSalesCallFailureReason(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+  const cause = error instanceof Error ? (error.cause as { code?: string; message?: string } | undefined) : undefined;
+  if (
+    message === "fetch failed" ||
+    cause?.code === "UND_ERR_HEADERS_OVERFLOW" ||
+    cause?.message?.includes("Headers Overflow")
+  ) {
+    return "Die Datenquelle konnte gerade nicht stabil erreicht werden. Der zuletzt bekannte Stand bleibt sichtbar; bitte gleich erneut versuchen.";
+  }
+  if (message === "sales_call_refresh_timeout" || message === "sales_call_state_timeout") {
+    return "Die Call-Datenquelle hat zu lange gebraucht. Der zuletzt bekannte Stand bleibt sichtbar; bitte gleich erneut versuchen.";
+  }
+  return message || fallback;
+}
+
 export async function GET(request: NextRequest) {
   const host = getOpsHost(request);
   if (!isOpsPortalConfigured(host)) return notConfigured();
@@ -67,10 +83,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, state });
   } catch (error) {
     console.error("ops customer-records calls state unavailable", error);
+    const reason = publicSalesCallFailureReason(error, "sales_call_state_unavailable");
     return NextResponse.json({
       ok: true,
       degraded: true,
-      state: buildFailedSalesCallModuleState(error instanceof Error ? error.message : "sales_call_state_unavailable"),
+      warning: reason,
+      state: buildFailedSalesCallModuleState(reason),
     });
   }
 }
@@ -109,12 +127,28 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true, action: body.action, state });
       } catch (error) {
         console.error("ops customer-records calls refresh unavailable", error);
-        return NextResponse.json({
-          ok: true,
-          action: body.action,
-          degraded: true,
-          state: buildFailedSalesCallModuleState(error instanceof Error ? error.message : "sales_call_refresh_unavailable"),
-        });
+        const reason = publicSalesCallFailureReason(error, "sales_call_refresh_unavailable");
+        try {
+          const state = await withTimeout(getSalesCallModuleState(), 20_000, "sales_call_state_timeout");
+          return NextResponse.json({
+            ok: true,
+            action: body.action,
+            degraded: true,
+            warning: reason,
+            state,
+          });
+        } catch (stateError) {
+          console.error("ops customer-records calls refresh fallback state unavailable", stateError);
+          const fallbackReason = publicSalesCallFailureReason(stateError, reason);
+          const warning = fallbackReason === "sales_call_state_unavailable" ? reason : fallbackReason;
+          return NextResponse.json({
+            ok: true,
+            action: body.action,
+            degraded: true,
+            warning,
+            state: buildFailedSalesCallModuleState(warning),
+          });
+        }
       }
     }
 
