@@ -84,7 +84,9 @@ git push
    Falls kein automatisches Deployment startet:
    - GitHub -> `thenextmovement/daniel-AI-stuff` -> Actions -> `Deploy Ops App to Coolify` pruefen.
    - Wenn der Workflow mit `COOLIFY_DEPLOY_WEBHOOK is not configured` scheitert, das Secret nachtragen.
+   - Wenn der Workflow mit `COOLIFY_API_TOKEN is not configured` scheitert, einen Coolify API Token als Secret nachtragen.
    - Das Secret muss der app-spezifische Deploy-Webhook aus Coolify fuer `neontrip-ops-calls` sein, nicht der generische GitHub-Webhook.
+   - Der Deploy-Webhook in Coolify ist als `auth required` markiert. Deshalb braucht GitHub Actions zusaetzlich `COOLIFY_API_TOKEN`.
 
 7. In Coolify nur noch manuell redeployen, wenn GitHub Actions ausgefallen ist oder eine Env-Var geaendert wurde.
 
