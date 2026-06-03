@@ -43,6 +43,7 @@ const BUSINESS_END_HOUR = 17;
 const VIP_VALUE_THRESHOLD = 1000;
 const SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT = 20;
 const SALES_CALL_PREVIEW_LIMIT = 80;
+const SALES_CALL_CANDIDATE_CONTEXT_LIMIT = 160;
 const SALES_CALL_RUN_ITEM_LOAD_LIMIT = 500;
 const SALES_CALL_REFRESH_COOLDOWN_SECONDS = 60;
 const directTrelloVisualCache = new Map<string, SalesCallVisualCandidate[]>();
@@ -1612,7 +1613,7 @@ async function loadCandidateRequestIds() {
   }
 
   return {
-    requestIds: [...requestIds].slice(0, 500),
+    requestIds: [...requestIds].slice(0, SALES_CALL_CANDIDATE_CONTEXT_LIMIT),
     sourceKeysByRequestId,
   };
 }

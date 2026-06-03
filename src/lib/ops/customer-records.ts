@@ -1193,6 +1193,14 @@ function emailListEqual(left: string[], right: string[]) {
   return left.every((value, index) => value === right[index]);
 }
 
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function normalizePhoneSearch(value: string) {
   return value.replace(/[^\d+]/g, "");
 }
@@ -4387,15 +4395,20 @@ export async function listCustomerRecordsByRequestIds(
   const normalizedRequestIds = uniqueValues(requestIds.map((requestId) => normalizeRequestSearch(requestId)));
   if (!normalizedRequestIds.length) return [];
 
-  const rows = await selectMasterCustomerRows({
-    request_id: `in.(${normalizedRequestIds.join(",")})`,
-    order: "updated_at.desc",
-    limit: Math.max(normalizedRequestIds.length, 1),
-  });
+  const rowBatches = await mapWithConcurrency(
+    chunkArray(normalizedRequestIds, 20),
+    2,
+    async (requestIdBatch) => selectMasterCustomerRows({
+      request_id: `in.(${requestIdBatch.join(",")})`,
+      order: "updated_at.desc",
+      limit: Math.max(requestIdBatch.length, 1),
+    }),
+  );
+  const rows = rowBatches.flat();
 
   const contexts = await mapWithConcurrency(
     rows,
-    4,
+    options?.includeTrello ? 4 : 2,
     async (row) => {
       try {
         const includeTrello = options?.includeTrello ?? false;
