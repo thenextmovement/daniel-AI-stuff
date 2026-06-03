@@ -104,8 +104,18 @@ export async function POST(request: NextRequest) {
     };
 
     if (body.action === "refresh_list") {
-      const state = await refreshSalesCallList(actor);
-      return NextResponse.json({ ok: true, action: body.action, state });
+      try {
+        const state = await withTimeout(refreshSalesCallList(actor), 35_000, "sales_call_refresh_timeout");
+        return NextResponse.json({ ok: true, action: body.action, state });
+      } catch (error) {
+        console.error("ops customer-records calls refresh unavailable", error);
+        return NextResponse.json({
+          ok: true,
+          action: body.action,
+          degraded: true,
+          state: buildFailedSalesCallModuleState(error instanceof Error ? error.message : "sales_call_refresh_unavailable"),
+        });
+      }
     }
 
     if (body.action === "record_result") {
