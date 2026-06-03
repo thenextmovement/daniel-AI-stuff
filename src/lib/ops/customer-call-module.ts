@@ -1049,6 +1049,18 @@ function isMissingRpcError(error: unknown, functionName: string) {
   return message.includes(functionName) && (message.includes("schema cache") || message.includes("function"));
 }
 
+function isSupabaseTransportError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const cause = error.cause as { code?: string; message?: string } | undefined;
+  return (
+    error.message === "fetch failed" ||
+    cause?.code === "UND_ERR_HEADERS_OVERFLOW" ||
+    cause?.message?.includes("Headers Overflow") ||
+    cause?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+    cause?.code === "UND_ERR_SOCKET"
+  );
+}
+
 async function insertRows<T>(table: string, rows: Record<string, unknown>[]): Promise<T[]> {
   if (!rows.length) return [];
   return supabaseRequest<T[]>(
@@ -2543,6 +2555,28 @@ async function syncSalesTaskFromResult(cadence: SalesCallCadenceState, result: S
   if (task) await upsertSalesTask(task);
 }
 
+async function runRefreshSideEffects<T>(
+  label: string,
+  items: T[],
+  batchSize: number,
+  worker: (item: T) => Promise<void>,
+) {
+  let failureCount = 0;
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize);
+    const results = await Promise.allSettled(batch.map((item) => worker(item)));
+    failureCount += results.filter((result) => result.status === "rejected").length;
+  }
+  if (failureCount) {
+    console.warn("sales call refresh side effects incomplete", {
+      label,
+      failureCount,
+      totalCount: items.length,
+    });
+  }
+  return failureCount;
+}
+
 async function loadLightweightSalesCallRecords(
   requestIds: string[],
   options: { includeTrello?: boolean } = {},
@@ -3118,8 +3152,9 @@ export async function getSalesCallModuleState(): Promise<SalesCallModuleState> {
 }
 
 export async function refreshSalesCallList(actor?: SalesCallActor): Promise<SalesCallModuleState> {
+  let latestRun: DailyCallRunRow | null = null;
   try {
-    const latestRun = await loadLatestTodayRun();
+    latestRun = await loadLatestTodayRun();
     if (isFreshRun(latestRun)) return buildModuleStateFromRun(latestRun);
 
     const claimed = await supabaseRpc<boolean>("ops_claim_refresh_lock", {
@@ -3131,6 +3166,12 @@ export async function refreshSalesCallList(actor?: SalesCallActor): Promise<Sale
       throw new QuoteValidationError("Die Tagesliste wird gerade aktualisiert. Bitte in ein paar Sekunden erneut laden.", [], 409);
     }
   } catch (error) {
+    if (isSupabaseTransportError(error) && latestRun?.id) {
+      console.warn("sales call refresh lock unavailable; using latest run", {
+        runId: latestRun.id,
+      });
+      return buildModuleStateFromRun(latestRun);
+    }
     if (
       !isMissingRpcError(error, "ops_claim_refresh_lock") &&
       !isMissingRelationError(error, "ops_refresh_locks") &&
@@ -3179,23 +3220,41 @@ export async function refreshSalesCallList(actor?: SalesCallActor): Promise<Sale
     }
   }
 
-  await Promise.all(preview.map((item) => upsertCadenceState(item.cadence)));
-  await Promise.all(preview.map((item) => syncSalesTaskFromCandidate(item)));
+  const cadenceFailures = await runRefreshSideEffects(
+    "cadence_state",
+    preview,
+    5,
+    (item) => upsertCadenceState(item.cadence),
+  );
+  const taskFailures = await runRefreshSideEffects(
+    "sales_tasks",
+    preview,
+    3,
+    (item) => syncSalesTaskFromCandidate(item),
+  );
 
-  await insertSalesCallAuditLog({
-    requestId: runKey,
-    actor,
-    action: SALES_CALL_LIST_REFRESH_ACTION,
-    status: "success",
-    summary: "Neue Tagesliste für Sales-Calls erzeugt",
-    extraMetadata: {
-      run_id: run.id,
-      run_key: runKey,
-      candidate_count: preview.length,
-      eligible_count: preview.filter((item) => item.guard.allowed).length,
-      blocked_count: preview.filter((item) => !item.guard.allowed).length,
-    },
-  });
+  try {
+    await insertSalesCallAuditLog({
+      requestId: runKey,
+      actor,
+      action: SALES_CALL_LIST_REFRESH_ACTION,
+      status: cadenceFailures || taskFailures ? "info" : "success",
+      summary: cadenceFailures || taskFailures
+        ? "Neue Tagesliste erzeugt; nachgelagerte Syncs teilweise übersprungen"
+        : "Neue Tagesliste für Sales-Calls erzeugt",
+      extraMetadata: {
+        run_id: run.id,
+        run_key: runKey,
+        candidate_count: preview.length,
+        eligible_count: preview.filter((item) => item.guard.allowed).length,
+        blocked_count: preview.filter((item) => !item.guard.allowed).length,
+        cadence_sync_failures: cadenceFailures,
+        task_sync_failures: taskFailures,
+      },
+    });
+  } catch (error) {
+    console.warn("sales call refresh audit log unavailable", error);
+  }
 
   return buildModuleStateFromRun(run);
 }
