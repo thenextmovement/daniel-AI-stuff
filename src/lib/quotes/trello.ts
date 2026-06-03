@@ -309,10 +309,19 @@ export async function getTrelloBoardCustomFields(boardId: string) {
   return trelloFetch<TrelloCustomField[]>(`/boards/${encodeURIComponent(boardId)}/customFields`);
 }
 
+function customFieldNameKey(name: string) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 export async function findTrelloCustomFieldByName(boardId: string, names: string[]) {
   const wanted = new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean));
+  const wantedKeys = new Set(names.map(customFieldNameKey).filter(Boolean));
   const fields = await getTrelloBoardCustomFields(boardId);
-  return fields.find((field) => wanted.has(String(field.name || "").trim().toLowerCase())) || null;
+  return (
+    fields.find((field) => wanted.has(String(field.name || "").trim().toLowerCase())) ||
+    fields.find((field) => wantedKeys.has(customFieldNameKey(String(field.name || "")))) ||
+    null
+  );
 }
 
 export async function getTrelloBoardLists(boardId: string) {

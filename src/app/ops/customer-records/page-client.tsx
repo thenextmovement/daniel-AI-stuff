@@ -127,6 +127,8 @@ type ManualImportResponse = {
       cardId: string | null;
       cardUrl: string | null;
       customFieldSet: boolean;
+      usageFieldSet?: boolean;
+      usageFieldError?: string | null;
       error: string | null;
     };
     warnings: string[];
@@ -20749,7 +20751,7 @@ export function CustomerRecordsClient({
       const warningText = body.result.warnings.length ? ` ${body.result.warnings.join(" ")}` : "";
       const trelloText = body.result.trello.requested
         ? body.result.trello.ok
-          ? " Trello-Karte mit nerdyforms_id wurde erstellt."
+          ? ` Trello-Karte mit nerdy-forms-id wurde erstellt.${body.result.trello.usageFieldSet ? " Usage wurde gesetzt." : ""}`
           : " Trello-Projektion ist fehlgeschlagen, DB-Fall ist angelegt."
         : "";
       setMessage(`Manuelle Anfrage ${body.result.requestId} wurde angelegt. Call-Aufgabe ist erstellt.${trelloText}${warningText}`);

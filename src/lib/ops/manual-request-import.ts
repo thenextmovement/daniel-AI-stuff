@@ -85,6 +85,8 @@ export type ManualRequestImportResult = {
     cardId: string | null;
     cardUrl: string | null;
     customFieldSet: boolean;
+    usageFieldSet: boolean;
+    usageFieldError: string | null;
     error: string | null;
   };
   warnings: string[];
@@ -93,6 +95,16 @@ export type ManualRequestImportResult = {
 const DEFAULT_MANUAL_TRELLO_LIST_ID = "64ca588f8bd547afc087a6ea";
 const MANUAL_IMPORT_SOURCE = "ops_manual_import";
 const INTERNAL_EMAIL_DOMAINS = new Set(["neontrip.de", "angebote.neontrip.de", "fuajob.online"]);
+const NERDY_FORMS_CUSTOM_FIELD_NAMES = [
+  "nerdy-forms-id",
+  "nerdy_forms_id",
+  "nerdyforms_id",
+  "nerdyform_id",
+  "Nerdy-Forms-ID",
+  "Nerdy Forms ID",
+  "NerdyForms ID",
+  "request_id",
+];
 
 function trimNullable(value: unknown) {
   const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
@@ -123,6 +135,10 @@ function normalizeDueAt(value: unknown) {
 function isInternalEmail(email: string) {
   const domain = email.split("@")[1]?.toLowerCase();
   return domain ? INTERNAL_EMAIL_DOMAINS.has(domain) : false;
+}
+
+function looseFieldValueKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9äöüß]/g, "");
 }
 
 function displayName(input: ManualRequestImportInput) {
@@ -322,6 +338,8 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
       cardId: null,
       cardUrl: null,
       customFieldSet: false,
+      usageFieldSet: false,
+      usageFieldError: null,
       error: null,
     };
   }
@@ -336,9 +354,9 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
   if (!boardId) {
     throw new Error("Trello Board-ID fehlt nach Kartenerstellung.");
   }
-  const field = await findTrelloCustomFieldByName(boardId, ["nerdyforms_id", "nerdyform_id", "NerdyForms ID"]);
+  const field = await findTrelloCustomFieldByName(boardId, NERDY_FORMS_CUSTOM_FIELD_NAMES);
   if (!field) {
-    throw new Error("Trello Custom Field nerdyforms_id wurde nicht gefunden.");
+    throw new Error("Trello Custom Field nerdy-forms-id wurde nicht gefunden.");
   }
   await updateTrelloCustomField({
     cardId: card.id,
@@ -346,12 +364,50 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
     type: field.type || "text",
     value: requestId,
   });
+
+  let usageFieldSet = false;
+  let usageFieldError: string | null = null;
+  const usage = trimNullable(input.request?.application);
+  if (usage) {
+    const usageField = await findTrelloCustomFieldByName(boardId, ["Usage"]);
+    if (!usageField) {
+      usageFieldError = "Trello Custom Field Usage wurde nicht gefunden.";
+    } else {
+      let usageValue: string | boolean | null = usage;
+      if (usageField.type === "list") {
+        const usageKey = looseFieldValueKey(usage);
+        const option = (usageField.options || []).find((candidate) => {
+          const label = String(candidate.value?.text || "");
+          return looseFieldValueKey(label) === usageKey;
+        });
+        if (option?.id) {
+          usageValue = option.id;
+        } else {
+          usageValue = null;
+          usageFieldError = `Usage-Option "${usage}" wurde auf dem Trello-Board nicht gefunden.`;
+        }
+      }
+
+      if (usageValue !== null) {
+        await updateTrelloCustomField({
+          cardId: card.id,
+          fieldId: usageField.id,
+          type: usageField.type || "text",
+          value: usageValue,
+        });
+        usageFieldSet = true;
+      }
+    }
+  }
+
   return {
     requested: true,
     ok: true,
     cardId: card.id,
     cardUrl: card.url || card.shortUrl || null,
     customFieldSet: true,
+    usageFieldSet,
+    usageFieldError,
     error: null,
   };
 }
@@ -408,6 +464,8 @@ export async function createManualRequestImport(
           cardId: row.trello_card_id || null,
           cardUrl: row.trello_card_url || null,
           customFieldSet: Boolean(row.trello_card_id),
+          usageFieldSet: false,
+          usageFieldError: null,
           error: null,
         },
         warnings: ["Diese manuelle Einspielung wurde bereits verarbeitet."],
@@ -469,6 +527,7 @@ export async function createManualRequestImport(
   let trello: ManualRequestImportResult["trello"];
   try {
     trello = await projectToTrello(input, requestId);
+    if (trello.usageFieldError) warnings.push(trello.usageFieldError);
     if (trello.ok) {
       await patchRequestTrelloProjection(requestId, {
         cardId: trello.cardId,
@@ -481,7 +540,11 @@ export async function createManualRequestImport(
           request_id: requestId,
           trello_card_id: trello.cardId,
           trello_card_url: trello.cardUrl,
-          custom_field: "nerdyforms_id",
+          custom_field: "nerdy-forms-id",
+          custom_field_value: requestId,
+          usage_field_set: trello.usageFieldSet,
+          usage_field_error: trello.usageFieldError,
+          usage_value: trimNullable(input.request?.application),
           source: MANUAL_IMPORT_SOURCE,
         },
       });
@@ -494,6 +557,8 @@ export async function createManualRequestImport(
       cardId: null,
       cardUrl: null,
       customFieldSet: false,
+      usageFieldSet: false,
+      usageFieldError: null,
       error: message,
     };
     warnings.push("Trello-Projektion fehlgeschlagen. DB-Datensatz und Call-Aufgabe wurden trotzdem angelegt.");
@@ -505,7 +570,7 @@ export async function createManualRequestImport(
       metadata: {
         request_id: requestId,
         source: MANUAL_IMPORT_SOURCE,
-        custom_field: "nerdyforms_id",
+        custom_field: "nerdy-forms-id",
       },
     });
   }
