@@ -78,9 +78,17 @@ git commit -m "Kurze Beschreibung der Aenderung"
 git push
 ```
 
-6. In Coolify `neontrip-ops-calls` redeployen, falls Auto Deploy nicht aktiv ist.
+6. Nach dem Push startet GitHub Actions den Coolify-Deploy automatisch, wenn das
+   GitHub Secret `COOLIFY_DEPLOY_WEBHOOK` gesetzt ist.
 
-7. Nach dem Deploy pruefen:
+   Falls kein automatisches Deployment startet:
+   - GitHub -> `thenextmovement/daniel-AI-stuff` -> Actions -> `Deploy Ops App to Coolify` pruefen.
+   - Wenn der Workflow mit `COOLIFY_DEPLOY_WEBHOOK is not configured` scheitert, das Secret nachtragen.
+   - Das Secret muss der app-spezifische Deploy-Webhook aus Coolify fuer `neontrip-ops-calls` sein, nicht der generische GitHub-Webhook.
+
+7. In Coolify nur noch manuell redeployen, wenn GitHub Actions ausgefallen ist oder eine Env-Var geaendert wurde.
+
+8. Nach dem Deploy pruefen:
 
 ```bash
 curl -I https://ops.neontrip.de/ops/customer-records/calls

@@ -1,0 +1,35 @@
+name: Deploy Ops App to Coolify
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: coolify-ops-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Trigger Coolify deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deploy webhook secret
+        env:
+          COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
+        run: |
+          if [ -z "$COOLIFY_DEPLOY_WEBHOOK" ]; then
+            echo "COOLIFY_DEPLOY_WEBHOOK is not configured as a GitHub Actions secret."
+            echo "Set it to the app-specific Coolify deploy webhook for neontrip-ops-calls."
+            exit 1
+          fi
+
+      - name: Trigger Coolify
+        env:
+          COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            "$COOLIFY_DEPLOY_WEBHOOK"
+          echo "Coolify deployment webhook accepted the request."
