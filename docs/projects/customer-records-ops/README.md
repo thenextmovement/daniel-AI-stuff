@@ -12,7 +12,7 @@ Dieser Ordner bündelt die Dokumentation zum Customer-Records-Ops-Projekt: Ops-P
 - [Internal Deployment](./internal-deployment.md): Interne Veroeffentlichung mit Cloudflare Access, Deployment-Env, Pfadvalidierung und Rollback.
 - [Internal Launch Checklist](./internal-launch-checklist.md): Schrittfolge fuer Datenbank-, Hosting-, Access-, Build-, Smoke- und Rollback-Gates vor interner Nutzung.
 - [Coolify Deployment](./coolify-deployment.md): Hosting-Ziel, Dockerfile, Env Vars, DNS, Zugriffsschutz und Validierung fuer Hetzner/Coolify.
-- [Operations Runbook](./operations-runbook.md): Alltag nach Go-Live: Code aendern, testen, pushen, redeployen, Login/Secrets verwalten und Stoerungen eingrenzen.
+- [Operations Runbook](./operations-runbook.md): Alltag nach Go-Live: Code aendern, testen, pushen, redeployen, Login/Secrets verwalten, Mailverlauf/Visual-Requests betreiben und Stoerungen eingrenzen.
 - [Go-Live Status 2026-05-26](./go-live-status-2026-05-26.md): Heutiger Ist-Stand, Blocker und naechste Schritte fuer interne Nutzung.
 
 ## Projektgrenzen

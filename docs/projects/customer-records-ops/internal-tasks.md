@@ -1,6 +1,6 @@
 # Interne Aufgaben
 
-Stand: 2026-06-02
+Stand: 2026-06-04
 
 ## Zweck
 
@@ -39,15 +39,15 @@ Wichtige Felder:
 
 ## Fallback
 
-Die Supabase-Migration konnte am 2026-06-02 nicht ueber das MCP angewendet werden, weil die Verbindung DDL nur read-only erlaubt hat.
+Die Primaertabelle `public.ops_internal_tasks` existiert im Ops-Supabase-Projekt.
 
-Damit das Modul trotzdem produktiv nutzbar ist, verwendet der Code automatisch einen Fallback auf die bestehende Tabelle:
+Der Code behaelt trotzdem einen Fallback auf die bestehende Tabelle:
 
 - `public.sales_tasks`
 - nur Rows mit `source = 'ops_internal'`
 - interne Zusatzfelder liegen in `payload`
 
-Sobald `ops_internal_tasks` in Supabase existiert, nutzt die App automatisch die neue Tabelle. Der Fallback bleibt nur als Uebergangspfad.
+Dieser Fallback ist nur fuer Rollback-/Uebergangssituationen gedacht. Im Normalbetrieb nutzt die App `ops_internal_tasks`.
 
 ## API
 
@@ -76,7 +76,7 @@ Migration:
 supabase/migrations/202606020001_create_ops_internal_tasks.sql
 ```
 
-Wenn Supabase wieder DDL-Zugriff erlaubt, diese Migration auf dem Ops-Projekt anwenden. Danach optional die Fallback-Rows mit `source = 'ops_internal'` aus `sales_tasks` in `ops_internal_tasks` migrieren.
+Die Migration ist fachlich der Zielzustand. Vor weiteren Schema-Aenderungen trotzdem immer erst Tabellenbestand und vorhandene Daten pruefen.
 
 ## Rollback
 

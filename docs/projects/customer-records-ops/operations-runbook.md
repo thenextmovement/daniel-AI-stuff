@@ -1,6 +1,6 @@
 # Operations Runbook
 
-Stand: 2026-05-28
+Stand: 2026-06-04
 
 Dieses Runbook beschreibt, wie die interne NEONTRIP Ops-App betrieben, geaendert und sicher deployed wird.
 
@@ -162,6 +162,51 @@ NEONTRIP_OFFERS_INTERNAL_API_KEY=<secret>
 ```
 
 Das gleiche Secret muss in `neontrip-offers` als `NEONTRIP_OFFERS_INTERNAL_API_KEY` gesetzt sein.
+
+## Mailverlauf in Customer Records
+
+Der Mailverlauf liest aus `public.customer_email_messages` im Ops-Supabase-Projekt.
+
+Wichtige Felder:
+
+- `linked_request_id`: interne UUID aus `master_requests.id`, nicht die sichtbare `request_id`.
+- `linked_customer_id`: UUID aus `master_customers.id`.
+- `received_at`, `sent_at`, `message_created_at`: echte Outlook-/Graph-Zeitstempel.
+- `created_at`: nur Sync-/Insert-Zeit und kein fachlicher Mail-Zeitpunkt.
+
+Der n8n-Workflow `NEONTRIP Outlook Customer Email Sync v1.0` muss die Outlook-Nodes mit `output = raw` lesen. Ohne Raw-Output fehlen die Microsoft-Graph-Zeitfelder und die Ops-App kann nur den Sync-Zeitpunkt anzeigen.
+
+Read-only Kontrollquery:
+
+```sql
+select
+  count(*) as total,
+  count(*) filter (where linked_request_id is not null) as linked_request_rows,
+  count(*) filter (where received_at is not null or sent_at is not null or message_created_at is not null) as rows_with_message_time,
+  count(*) filter (where received_at is null and sent_at is null and message_created_at is null) as rows_without_message_time
+from public.customer_email_messages;
+```
+
+Wenn `rows_with_message_time = 0`, zuerst den n8n-Outlook-Sync pruefen. Keine UI- oder Supabase-Anzeige kann echte Zeiten rekonstruieren, wenn der Sync sie nicht speichert.
+
+## Visualisierungen anfordern
+
+Im Customer-Records-Tab `Angebot` gibt es einen Block `Neue Visualisierung anfordern`.
+
+Verhalten:
+
+- Mit `OPS_VISUAL_REQUEST_WEBHOOK_URL`: die App sendet eine Generator-Anfrage an den konfigurierten Webhook.
+- Ohne `OPS_VISUAL_REQUEST_WEBHOOK_URL`: die App erstellt eine interne Aufgabe im Aufgabenboard.
+- Optionaler Bearer-Schutz fuer den Webhook: `OPS_VISUAL_REQUEST_WEBHOOK_TOKEN`.
+
+Die Anfrage aendert kein Angebot und macht nichts kundensichtbar. Ein fertiges Bild wird erst kundensichtbar, wenn es spaeter bewusst im Angebot aktiviert wird.
+
+Noetige Env Vars nur falls ein Generator-/n8n-Webhook angebunden wird:
+
+```env
+OPS_VISUAL_REQUEST_WEBHOOK_URL=<webhook-url>
+OPS_VISUAL_REQUEST_WEBHOOK_TOKEN=<secret-optional>
+```
 
 ## Smoke-Tests
 
