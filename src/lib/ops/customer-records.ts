@@ -1149,6 +1149,9 @@ type CustomerDownstreamRepairContext = Pick<CustomerContext, "master" | "followu
 
 export type CustomerSearchMode = "request_id" | "email" | "name" | "phone" | "deal" | "trello";
 
+const INTERNAL_CUSTOMER_EMAIL_DOMAINS = new Set(["neontrip.de", "neontrip.com", "angebote.neontrip.de", "fuajob.online"]);
+const CUSTOMER_EMAIL_PLACEHOLDER_DOMAIN = "no-customer-email.invalid";
+
 function trimNullable(value: string | null | undefined) {
   const normalized = String(value || "").trim();
   return normalized ? normalized : null;
@@ -1164,12 +1167,37 @@ function normalizeOptionalEmail(value: string | null | undefined) {
   if (!isValidEmail(normalized)) {
     throw new QuoteValidationError("Gueltige E-Mail-Adresse erforderlich.");
   }
-  return normalizeEmail(normalized);
+  const email = normalizeEmail(normalized);
+  if (isInternalCustomerEmail(email)) {
+    throw new QuoteValidationError(
+      "Interne NEONTRIP-Adresse darf nicht als Kundenmail gespeichert werden.",
+      ["Bitte echte Kunden-E-Mail eintragen oder das Feld leer lassen."],
+    );
+  }
+  return email;
 }
 
 function normalizeStoredEmail(value: string | null | undefined) {
   const normalized = trimNullable(value);
-  return normalized && isValidEmail(normalized) ? normalizeEmail(normalized) : normalized;
+  if (!normalized || !isValidEmail(normalized)) return normalized;
+  const email = normalizeEmail(normalized);
+  return isCustomerEmailPlaceholder(email) ? null : email;
+}
+
+function isInternalCustomerEmail(email: string) {
+  const domain = email.split("@")[1]?.toLowerCase();
+  return domain ? INTERNAL_CUSTOMER_EMAIL_DOMAINS.has(domain) : false;
+}
+
+function isCustomerEmailPlaceholder(email: string) {
+  return email.split("@")[1]?.toLowerCase() === CUSTOMER_EMAIL_PLACEHOLDER_DOMAIN;
+}
+
+function normalizeCustomerContactEmail(value: string | null | undefined) {
+  const normalized = normalizeStoredEmail(value);
+  if (!normalized || !isValidEmail(normalized)) return null;
+  if (isInternalCustomerEmail(normalized)) return null;
+  return normalized;
 }
 
 function normalizeCcEmails(value: string[] | string | null | undefined) {
@@ -1277,7 +1305,7 @@ function companyValue(row: Pick<MasterCustomerRow, "company" | "company_name">) 
 
 function toEditableSnapshot(row: MasterCustomerRow): EditableSnapshot {
   return {
-    email: normalizeEmail(row.email),
+    email: normalizeCustomerContactEmail(row.email) || "",
     billingEmail: normalizeStoredEmail(row.billing_email),
     ccEmails: normalizeStoredCcEmails(row.cc_emails),
     firstName: trimNullable(row.first_name),
@@ -2171,7 +2199,9 @@ function mapOrderHistoryEntry(row: MasterOrderRow): CustomerOrderHistoryEntry {
 }
 
 function emailCandidates(master: MasterCustomerRow) {
-  return uniqueValues([master.email, master.billing_email, master.original_email, ...(master.cc_emails || [])]).map((email) => normalizeEmail(email));
+  return uniqueValues([master.email, master.billing_email, master.original_email, ...(master.cc_emails || [])])
+    .map((email) => normalizeCustomerContactEmail(email))
+    .filter(Boolean) as string[];
 }
 
 function emailArrayPreview(values: string[] | null | undefined) {
@@ -3964,7 +3994,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
     phone: snapshot.phone,
     company: snapshot.company,
     displayName: snapshot.displayName,
-    originalEmail: trimNullable(context.master.original_email),
+    originalEmail: normalizeStoredEmail(context.master.original_email),
     originalPhone: trimNullable(context.master.original_phone),
     updatedAt: context.master.updated_at || null,
     affectedRows: {

@@ -126,6 +126,23 @@ test("buildCustomerUpdatePlan rejects invalid CC emails", () => {
   );
 });
 
+test("buildCustomerUpdatePlan rejects internal emails as customer contact", () => {
+  assert.throws(
+    () =>
+      buildCustomerUpdatePlan(current, {
+        email: "support@neontrip.de",
+      }),
+    QuoteValidationError,
+  );
+  assert.throws(
+    () =>
+      buildCustomerUpdatePlan(current, {
+        billingEmail: "angebote@neontrip.de",
+      }),
+    QuoteValidationError,
+  );
+});
+
 test("buildCustomerUpdatePlan rejects empty updates", () => {
   assert.throws(() => buildCustomerUpdatePlan(current, {}), QuoteValidationError);
 });
