@@ -355,15 +355,15 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
     throw new Error("Trello Board-ID fehlt nach Kartenerstellung.");
   }
   const field = await findTrelloCustomFieldByName(boardId, NERDY_FORMS_CUSTOM_FIELD_NAMES);
-  if (!field) {
-    throw new Error("Trello Custom Field nerdy-forms-id wurde nicht gefunden.");
+  const customFieldError = field ? null : "Trello Custom Field nerdyforms_id wurde nicht gefunden.";
+  if (field) {
+    await updateTrelloCustomField({
+      cardId: card.id,
+      fieldId: field.id,
+      type: field.type || "text",
+      value: requestId,
+    });
   }
-  await updateTrelloCustomField({
-    cardId: card.id,
-    fieldId: field.id,
-    type: field.type || "text",
-    value: requestId,
-  });
 
   let usageFieldSet = false;
   let usageFieldError: string | null = null;
@@ -405,10 +405,10 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
     ok: true,
     cardId: card.id,
     cardUrl: card.url || card.shortUrl || null,
-    customFieldSet: true,
+    customFieldSet: Boolean(field),
     usageFieldSet,
     usageFieldError,
-    error: null,
+    error: customFieldError,
   };
 }
 
@@ -528,6 +528,7 @@ export async function createManualRequestImport(
   try {
     trello = await projectToTrello(input, requestId);
     if (trello.usageFieldError) warnings.push(trello.usageFieldError);
+    if (trello.error) warnings.push(trello.error);
     if (trello.ok) {
       await patchRequestTrelloProjection(requestId, {
         cardId: trello.cardId,
@@ -541,7 +542,9 @@ export async function createManualRequestImport(
           trello_card_id: trello.cardId,
           trello_card_url: trello.cardUrl,
           custom_field: "nerdy-forms-id",
-          custom_field_value: requestId,
+          custom_field_set: trello.customFieldSet,
+          custom_field_value: trello.customFieldSet ? requestId : null,
+          custom_field_error: trello.customFieldSet ? null : trello.error,
           usage_field_set: trello.usageFieldSet,
           usage_field_error: trello.usageFieldError,
           usage_value: trimNullable(input.request?.application),
