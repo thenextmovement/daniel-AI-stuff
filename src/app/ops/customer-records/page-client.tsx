@@ -3914,6 +3914,7 @@ function FocusSessionBar({
 type NoteResponse = {
   ok: boolean;
   note?: CustomerOpsNote;
+  taskError?: string | null;
   error?: string;
   issues?: string[];
 };
@@ -21086,6 +21087,7 @@ export function CustomerRecordsClient({
         note: note.note,
         kind: note.kind,
         assigneeLabel: note.assigneeLabel,
+        operatorName,
       }),
     });
 
@@ -21122,7 +21124,15 @@ export function CustomerRecordsClient({
         ),
       })),
     );
-    setMessage(note.kind === "task" ? "Teamaufgabe gespeichert." : note.kind === "update" ? "Team-Update gespeichert." : "Teamnotiz gespeichert.");
+    setMessage(
+      note.kind === "task"
+        ? payload.taskError
+          ? `Teamnotiz gespeichert, aber Aufgabenboard meldet: ${payload.taskError}`
+          : "Teamaufgabe gespeichert und im Aufgabenboard angelegt."
+        : note.kind === "update"
+          ? "Team-Update gespeichert."
+          : "Teamnotiz gespeichert.",
+    );
     setNoteSavingRequestId(null);
   }
 
