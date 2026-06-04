@@ -11,6 +11,7 @@ import {
   Database,
   ExternalLink,
   History,
+  ImageIcon,
   Mail,
   MessageSquareText,
   Search,
@@ -3915,6 +3916,15 @@ type NoteResponse = {
   ok: boolean;
   note?: CustomerOpsNote;
   taskError?: string | null;
+  error?: string;
+  issues?: string[];
+};
+
+type VisualRequestResponse = {
+  ok: boolean;
+  mode?: "webhook_sent" | "task_created";
+  task?: { id: string; title: string } | null;
+  webhookStatus?: number | null;
   error?: string;
   issues?: string[];
 };
@@ -15257,6 +15267,25 @@ function getRecordOfferTrelloCardId(record: CustomerSearchResult) {
   return record.trello?.cards.find((card) => card.cardId)?.cardId || null;
 }
 
+function buildDefaultVisualPrompt(record: CustomerSearchResult) {
+  const parts = [
+    record.company || record.displayName || record.email || "Kunde",
+    record.request?.size ? `Groesse: ${record.request.size}` : null,
+    record.request?.application ? `Einsatz: ${record.request.application}` : null,
+    record.request?.colors.length ? `Farben: ${record.request.colors.join(", ")}` : null,
+  ].filter(Boolean);
+  return `Erstelle eine realistische NEONTRIP Visualisierung fuer ${parts.join(" | ")}. Fokus: hochwertiges LED-/Neon-Schild im passenden Hintergrund, gut lesbar, kundentauglich.`;
+}
+
+function getRecordReferenceVisualUrl(record: CustomerSearchResult) {
+  return (
+    record.trello?.referenceImage?.proxyUrl ||
+    record.trello?.mockups[0]?.proxyUrl ||
+    record.crmQuote?.latestVersionImages.find((image) => image.url)?.url ||
+    null
+  );
+}
+
 function offerDateInputValue(value: string | null | undefined) {
   if (!value) return "";
   const date = new Date(value);
@@ -15453,6 +15482,9 @@ function OfferEditorPanel({
   const [sendMessage, setSendMessage] = useState(
     "Hallo,\n\nwie besprochen haben wir Ihr Angebot aktualisiert. Sie können es über den Angebotslink erneut öffnen.\n\nViele Grüße\nNEONTRIP",
   );
+  const [visualPrompt, setVisualPrompt] = useState(buildDefaultVisualPrompt(record));
+  const [visualCount, setVisualCount] = useState(1);
+  const [visualRequesting, setVisualRequesting] = useState(false);
 
   function resetFromOffer(nextOffer: OpsOfferSnapshot) {
     const nextValidUntilDate = offerDateInputValue(nextOffer.offer.validUntil);
@@ -15533,6 +15565,8 @@ function OfferEditorPanel({
     setSendRecipient(record.email || "");
     setSendCcOne(record.ccEmails?.[0] || "");
     setSendCcTwo(record.ccEmails?.[1] || "");
+    setVisualPrompt(buildDefaultVisualPrompt(record));
+    setVisualCount(1);
     if (trelloCardId) void loadOffer();
   }, [record.requestId, trelloCardId]);
 
@@ -15555,6 +15589,7 @@ function OfferEditorPanel({
   );
 	  const canSendOffer = Boolean(offer && sendRecipient.trim() && offer.lock.lockLevel !== "hard" && !offerEmailMismatch);
 	  const canReloadOffer = Boolean(trelloCardId || manualOfferId);
+  const referenceVisualUrl = getRecordReferenceVisualUrl(record);
 
   function buildPatch(): OpsOfferPatchInput {
     if (!offer || !offerFields) throw new Error("Kein Angebot geladen.");
@@ -15673,6 +15708,51 @@ function OfferEditorPanel({
       setError(sendError instanceof Error ? sendError.message : "Angebotsmail konnte nicht gesendet werden.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function requestVisual() {
+    const prompt = visualPrompt.trim();
+    if (prompt.length < 12) {
+      setError("Bitte einen konkreteren Prompt für die Visualisierung eintragen.");
+      return;
+    }
+
+    setVisualRequesting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/visual-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: record.requestId,
+          offerId: offer?.offerId || null,
+          offerNumber: offer?.offerNumber || null,
+          trelloCardId,
+          customerName: record.displayName || record.company || null,
+          customerEmail: record.email || null,
+          prompt,
+          usage: record.request?.application || null,
+          referenceImageUrl: referenceVisualUrl,
+          count: visualCount,
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as VisualRequestResponse | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(formatApiError(payload));
+      }
+      const resultMessage =
+        payload.mode === "webhook_sent"
+          ? "Visualisierungs-Anfrage wurde an den Generator-Workflow gesendet."
+          : "Visualisierungs-Aufgabe wurde im Aufgabenboard angelegt.";
+      setMessage(resultMessage);
+      onNotify(resultMessage);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Visualisierung konnte nicht angefordert werden.");
+    } finally {
+      setVisualRequesting(false);
     }
   }
 
@@ -15990,6 +16070,49 @@ function OfferEditorPanel({
               </div>
             </div>
           ) : null}
+
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-black">Neue Visualisierung anfordern</div>
+                <div className="mt-1 text-sm leading-6 text-black/60">
+                  Prompt anpassen und als Generator-Anfrage oder interne Aufgabe speichern. Kundensichtbar wird erst etwas, wenn das fertige Mockup im Angebot aktiviert wird.
+                </div>
+              </div>
+              {referenceVisualUrl ? <QuickLink href={referenceVisualUrl} label="Referenzbild öffnen" /> : null}
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_160px]">
+              <OfferTextArea
+                label="Prompt"
+                hint="Beschreibe Änderung, Hintergrund, Einsatzort, Farben und gewünschte Wirkung."
+                value={visualPrompt}
+                onChange={setVisualPrompt}
+                rows={5}
+              />
+              <Field
+                label="Anzahl"
+                hint="1 bis 4 Varianten."
+                value={String(visualCount)}
+                onChange={(value) => setVisualCount(Math.min(Math.max(Number(value) || 1, 1), 4))}
+                type="number"
+                icon={<ImageIcon className="h-4 w-4" />}
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs leading-5 text-black/45">
+                Ohne Generator-Webhook landet die Anfrage als Aufgabe im Aufgabenboard.
+              </div>
+              <button
+                type="button"
+                disabled={visualRequesting || visualPrompt.trim().length < 12}
+                onClick={() => void requestVisual()}
+                className="inline-flex items-center gap-2 rounded-full bg-[#0A0A0A] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+              >
+                {visualRequesting ? "Fordert an..." : "Visualisierung anfordern"}
+                {!visualRequesting ? <ImageIcon className="h-4 w-4" /> : null}
+              </button>
+            </div>
+          </div>
 
           <div className="rounded-2xl border border-black/10 bg-white p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
