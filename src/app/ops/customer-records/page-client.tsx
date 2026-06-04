@@ -4200,7 +4200,8 @@ function formatMoney(value: number | null | undefined, currency = "EUR") {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -13387,7 +13388,7 @@ function OperationsOverview({
                 ? `Letzte Antwort: ${latestInbound.title}`
                 : latestOutbound
                   ? `Letzte Mail: ${latestOutbound.title}`
-                  : "Keine Mailspuren im Fall."}
+                  : "Keine synchronisierten Mailspuren im CRM."}
             </div>
             <div className="mt-3 text-xs text-black/45">
               {formatDate(latestInbound?.occurredAt || latestOutbound?.occurredAt || null)}
@@ -14768,7 +14769,7 @@ function CommunicationFeed({
           ))
         ) : (
           <div className="rounded-xl border border-dashed border-black/10 bg-black/[0.015] px-4 py-4 text-sm leading-6 text-black/55">
-            Für diesen Fall gibt es keine Kommunikationsspuren.
+            Für diesen Fall gibt es keine synchronisierten Kommunikationsspuren. Wenn Outlook-Mails existieren, fehlt wahrscheinlich noch der Mail-Sync in Supabase.
           </div>
         )}
       </div>
@@ -15837,7 +15838,7 @@ function OfferEditorPanel({
           <div className="grid gap-3 md:grid-cols-4">
             <MiniSystem title="Status" value={offer.status} detail={offer.lock.lockReason || "Bearbeitbar"} tone={offer.lock.lockLevel === "hard" ? "amber" : offer.lock.lockLevel === "soft" ? "blue" : "good"} />
             <MiniSystem title="Angebot" value={offer.offerNumber || offer.documentReference} detail={`Zuletzt ${formatDate(offer.updatedAt)}`} tone="neutral" />
-            <MiniSystem title="Entwurfswert netto" value={formatMoney(draftNetTotal, currency)} detail={`${items.length} Position${items.length === 1 ? "" : "en"}`} tone="accent" />
+            <MiniSystem title="Angebotswert netto" value={formatMoney(draftNetTotal, currency)} detail={`${items.length} Position${items.length === 1 ? "" : "en"} aus der Angebots-App`} tone="accent" />
             <MiniSystem title="Bilder" value={images.filter((image) => image.enabled).length} detail={`${images.length} insgesamt`} tone="blue" />
           </div>
 
@@ -15908,7 +15909,7 @@ function OfferEditorPanel({
                 <Field label="Lieferzeit" hint="z. B. ca. 3 Wochen oder Wunschtermin." value={offerFields.productionTime || ""} onChange={(value) => updateOfferField("productionTime", value)} icon={<Clock3 className="h-4 w-4" />} />
                 <Field label="Gültig bis" hint="Leer lassen, wenn keine Frist gesetzt werden soll." value={validUntilDate} onChange={setValidUntilDate} type="date" icon={<Clock3 className="h-4 w-4" />} />
                 <OfferTextArea label="Rabatt-/Hinweistext" hint="Kurzer Text, falls ein Rabatt oder Sonderpreis erklärt werden soll." value={offerFields.discountText || ""} onChange={(value) => updateOfferField("discountText", value)} />
-                <OfferTextArea label="Interne / öffentliche Notiz" hint="Nur verwenden, wenn der Text im Angebot wirklich stimmen soll." value={offerFields.notes || ""} onChange={(value) => updateOfferField("notes", value)} rows={4} />
+                <OfferTextArea label="Öffentlicher Angebotshinweis" hint="Keine internen Trello-Notizen oder Kartentitel eintragen. Dieses Feld kann in Angebots-/PDF-Kontexten auftauchen." value={offerFields.notes || ""} onChange={(value) => updateOfferField("notes", value)} rows={4} />
                 {needsReason ? (
                   <OfferTextArea
                     label="Änderungsgrund"
@@ -16937,8 +16938,8 @@ function SalesCallsPanel({
                   </div>
                   <div className="mt-2 text-sm leading-6 text-black/60">
                     {record.crmQuote.projectNumber ? `Projektnummer ${record.crmQuote.projectNumber} • ` : ""}
-                    {record.crmQuote.totalGross !== null ? formatMoney(record.crmQuote.totalGross, "EUR") : "Kein Gesamtwert"}
-                    {record.crmQuote.customerLiveTotal !== null ? ` • Aktueller Kontaktwert ${formatMoney(record.crmQuote.customerLiveTotal, "EUR")}` : ""}
+                    {record.crmQuote.totalGross !== null ? `Gesamt brutto ${formatMoney(record.crmQuote.totalGross, "EUR")}` : "Kein Gesamtwert"}
+                    {record.crmQuote.customerLiveTotal !== null ? ` • Live-Gesamt ${formatMoney(record.crmQuote.customerLiveTotal, "EUR")}` : ""}
                   </div>
                   <div className="mt-3 grid gap-3 text-sm leading-6 text-black/65 md:grid-cols-2">
                     <div>

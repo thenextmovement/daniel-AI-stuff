@@ -353,6 +353,19 @@ type QuoteEmailLogRow = {
   card_url?: string | null;
 };
 
+type QuoteByEmailRow = {
+  email?: string | null;
+  document_id?: string | null;
+  customer_name?: string | null;
+  status?: string | null;
+  total_value?: number | string | null;
+  share_link?: string | null;
+  created_at?: string | null;
+  sent_at?: string | null;
+  viewed_at?: string | null;
+  signed_at?: string | null;
+};
+
 type InboxFollowupRow = {
   request_id?: string | null;
   scheduled_for?: string | null;
@@ -480,6 +493,7 @@ type CustomerContext = {
   documents: DocumentJourneyRow[];
   communications: MasterCommunicationRow[];
   quoteEmails: QuoteEmailLogRow[];
+  emailQuotes: QuoteByEmailRow[];
   inboundEmails: EmailAgentLogRow[];
   audits: WorkflowAuditRow[];
   caseState: CustomerCaseStateRow | null;
@@ -530,7 +544,7 @@ export type CustomerOpsNoteInput = {
 
 export type CustomerCommunicationEntry = {
   id: string;
-  source: "quote_email_log" | "master_communications" | "followup_queue" | "document_journey" | "workflow_audit_log" | "email_agent_log";
+  source: "quote_email_log" | "quotes_by_email" | "master_communications" | "followup_queue" | "document_journey" | "workflow_audit_log" | "email_agent_log";
   title: string;
   preview: string | null;
   body: string | null;
@@ -547,6 +561,7 @@ export type CustomerTimelineEntry = {
   id: string;
   source:
     | "quote_email_log"
+    | "quotes_by_email"
     | "master_communications"
     | "followup_queue"
     | "document_journey"
@@ -2930,6 +2945,29 @@ function mapCommunicationFeed(context: CustomerContext): CustomerCommunicationEn
     });
   }
 
+  for (const row of context.emailQuotes) {
+    entries.push({
+      id: `quote-by-email-${row.document_id || row.email || row.created_at || entries.length}`,
+      source: "quotes_by_email",
+      title: "Angebotsdokument per E-Mail",
+      preview: trimNullable(row.email) || trimNullable(row.customer_name) || null,
+      body: [
+        trimNullable(row.customer_name) ? `Kontakt: ${trimNullable(row.customer_name)}` : null,
+        trimNullable(row.email) ? `E-Mail: ${trimNullable(row.email)}` : null,
+        numericValue(row.total_value) !== null ? `Wert: ${numericValue(row.total_value)} EUR` : null,
+      ]
+        .filter(Boolean)
+        .join("\n") || null,
+      status: trimNullable(row.status),
+      occurredAt: row.sent_at || row.viewed_at || row.signed_at || row.created_at || null,
+      href: trimNullable(row.share_link),
+      direction: "outbound",
+      messageId: trimNullable(row.document_id),
+      conversationId: null,
+      classification: null,
+    });
+  }
+
   for (const row of context.communications) {
     entries.push({
       id: `master-communication-${row.id}`,
@@ -3092,6 +3130,21 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
       body: trimNullable(row.recipient_name)
         ? `Empfänger: ${trimNullable(row.recipient_name)} <${trimNullable(row.recipient_email) || ""}>`
         : trimNullable(row.recipient_email),
+    });
+  }
+
+  for (const row of context.emailQuotes) {
+    entries.push({
+      id: `quote-by-email-${row.document_id || row.email || row.created_at || entries.length}`,
+      source: "quotes_by_email",
+      title: "Angebot per E-Mail zugeordnet",
+      description: trimNullable(row.email) ? `Empfänger: ${trimNullable(row.email)}` : trimNullable(row.customer_name),
+      status: trimNullable(row.status),
+      occurredAt: row.sent_at || row.viewed_at || row.signed_at || row.created_at || null,
+      href: trimNullable(row.share_link),
+      direction: "outbound",
+      valueLabel: numericValue(row.total_value) !== null ? `${numericValue(row.total_value)} EUR` : null,
+      body: null,
     });
   }
 
@@ -3470,7 +3523,12 @@ async function fetchDownstreamRows(
     ...(request?.trello_card_id ? [`card_id.eq.${encodeURIComponent(request.trello_card_id)}`] : []),
     ...(request?.ac_deal_id ? [`deal_id.eq.${encodeURIComponent(String(request.ac_deal_id))}`] : []),
   ]);
+  const emailQuoteOr = buildOrFilter(emails.map((email) => `email.eq.${encodeURIComponent(email)}`));
   const inboundEmailOr = buildOrFilter(emails.map((email) => `from_email.eq.${encodeURIComponent(email)}`));
+  const documentJourneyOr = buildOrFilter([
+    `customer_id.eq.${master.id}`,
+    ...emails.map((email) => `customer_email.eq.${encodeURIComponent(email)}`),
+  ]);
   const ordersByEmailOr = buildOrFilter(emails.map((email) => `email.eq.${encodeURIComponent(email)}`));
   const phone = trimNullable(master.phone);
   const crmSalesOr = buildOrFilter([
@@ -3494,7 +3552,7 @@ async function fetchDownstreamRows(
     ...emails.map((email) => `cc_emails.cs.{${encodeURIComponent(email)}}`),
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
-  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
+  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
     supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
       select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
       request_id: `eq.${master.request_id}`,
@@ -3510,7 +3568,7 @@ async function fetchDownstreamRows(
     }),
     supabaseRequest<OrdersByEmailRow[]>("v_orders_by_email", undefined, {
       select: "email,order_number,total_price,financial_status,fulfillment_status,tracking_number,carrier,created_at",
-      ...(ordersByEmailOr ? { or: ordersByEmailOr } : {}),
+      ...(ordersByEmailOr ? { or: ordersByEmailOr } : { email: "eq.__no_email__" }),
       order: "created_at.desc",
       limit: 5,
     }),
@@ -3554,7 +3612,7 @@ async function fetchDownstreamRows(
     }),
     supabaseRequest<DocumentJourneyRow[]>("document_journey", undefined, {
       select: "id,customer_id,customer_email,current_status,document_name,pandadoc_link,total_value,sent_at,first_viewed_at,completed_at,reminder_1_sent,reminder_2_sent,reminder_3_sent,reply_detected_at,reply_classification,updated_at",
-      or: `(customer_id.eq.${master.id},customer_email.eq.${encodeURIComponent(master.email)})`,
+      ...(documentJourneyOr ? { or: documentJourneyOr } : {}),
       order: "updated_at.desc",
     }),
     supabaseRequest<MasterCommunicationRow[]>("master_communications", undefined, {
@@ -3565,13 +3623,19 @@ async function fetchDownstreamRows(
     }),
     supabaseRequest<QuoteEmailLogRow[]>("quote_email_log", undefined, {
       select: "id,card_id,deal_id,recipient_email,recipient_name,subject,status,sent_at,created_at,card_url",
-      ...(quoteEmailOr ? { or: quoteEmailOr } : {}),
+      ...(quoteEmailOr ? { or: quoteEmailOr } : { recipient_email: "eq.__no_email__" }),
+      order: "created_at.desc",
+      limit: 6,
+    }),
+    supabaseRequest<QuoteByEmailRow[]>("v_quotes_by_email", undefined, {
+      select: "email,document_id,customer_name,status,total_value,share_link,created_at,sent_at,viewed_at,signed_at",
+      ...(emailQuoteOr ? { or: emailQuoteOr } : { email: "eq.__no_email__" }),
       order: "created_at.desc",
       limit: 6,
     }),
     supabaseRequest<EmailAgentLogRow[]>("email_agent_log", undefined, {
       select: "id,from_email,from_name,subject,body_preview,category,draft_created,created_at",
-      ...(inboundEmailOr ? { or: inboundEmailOr } : {}),
+      ...(inboundEmailOr ? { or: inboundEmailOr } : { from_email: "eq.__no_email__" }),
       order: "created_at.desc",
       limit: 8,
     }),
@@ -3727,6 +3791,7 @@ async function fetchDownstreamRows(
     documents,
     communications,
     quoteEmails,
+    emailQuotes,
     inboundEmails,
     audits,
     caseState: caseStates[0] || null,
