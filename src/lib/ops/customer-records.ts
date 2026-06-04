@@ -330,6 +330,28 @@ type EmailAgentLogRow = {
   created_at?: string | null;
 };
 
+type CustomerEmailMessageRow = {
+  id: string;
+  message_id?: string | null;
+  internet_message_id?: string | null;
+  conversation_id?: string | null;
+  mailbox?: string | null;
+  direction?: "inbound" | "outbound" | string | null;
+  from_email?: string | null;
+  from_name?: string | null;
+  to_emails?: string[] | null;
+  cc_emails?: string[] | null;
+  matched_email?: string | null;
+  linked_request_id?: string | null;
+  linked_customer_id?: string | null;
+  subject?: string | null;
+  body_preview?: string | null;
+  received_at?: string | null;
+  sent_at?: string | null;
+  message_created_at?: string | null;
+  created_at?: string | null;
+};
+
 type MasterCommunicationRow = {
   id: string;
   type?: string | null;
@@ -494,6 +516,7 @@ type CustomerContext = {
   communications: MasterCommunicationRow[];
   quoteEmails: QuoteEmailLogRow[];
   emailQuotes: QuoteByEmailRow[];
+  outlookMessages: CustomerEmailMessageRow[];
   inboundEmails: EmailAgentLogRow[];
   audits: WorkflowAuditRow[];
   caseState: CustomerCaseStateRow | null;
@@ -544,7 +567,7 @@ export type CustomerOpsNoteInput = {
 
 export type CustomerCommunicationEntry = {
   id: string;
-  source: "quote_email_log" | "quotes_by_email" | "master_communications" | "followup_queue" | "document_journey" | "workflow_audit_log" | "email_agent_log";
+  source: "quote_email_log" | "quotes_by_email" | "customer_email_messages" | "master_communications" | "followup_queue" | "document_journey" | "workflow_audit_log" | "email_agent_log";
   title: string;
   preview: string | null;
   body: string | null;
@@ -562,6 +585,7 @@ export type CustomerTimelineEntry = {
   source:
     | "quote_email_log"
     | "quotes_by_email"
+    | "customer_email_messages"
     | "master_communications"
     | "followup_queue"
     | "document_journey"
@@ -1993,6 +2017,19 @@ async function fetchOfferTrackingRollup({
   }
 }
 
+async function safeOptionalSupabaseRows<T>(
+  path: string,
+  query: Record<string, string | number | boolean | null>,
+  context: Record<string, unknown>,
+) {
+  try {
+    return await supabaseRequest<T[]>(path, undefined, query);
+  } catch (error) {
+    console.warn(`optional Supabase source unavailable: ${path}`, { ...context, error });
+    return [];
+  }
+}
+
 function communicationAuditHref(metadata: Record<string, unknown>) {
   return (
     auditText(metadata, "pandadoc_link") ||
@@ -2135,6 +2172,19 @@ function mapOrderHistoryEntry(row: MasterOrderRow): CustomerOrderHistoryEntry {
 
 function emailCandidates(master: MasterCustomerRow) {
   return uniqueValues([master.email, master.billing_email, master.original_email, ...(master.cc_emails || [])]).map((email) => normalizeEmail(email));
+}
+
+function emailArrayPreview(values: string[] | null | undefined) {
+  return uniqueValues(values || []).slice(0, 3).join(", ") || null;
+}
+
+function emailMessageOccurredAt(row: CustomerEmailMessageRow) {
+  return row.received_at || row.sent_at || row.message_created_at || row.created_at || null;
+}
+
+function emailMessageCounterparty(row: CustomerEmailMessageRow) {
+  if (row.direction === "inbound") return trimNullable(row.from_email) || trimNullable(row.from_name);
+  return emailArrayPreview(row.to_emails) || trimNullable(row.matched_email);
 }
 
 function mapOrdersByEmailRow(row: OrdersByEmailRow, index: number): MasterOrderRow {
@@ -2968,6 +3018,30 @@ function mapCommunicationFeed(context: CustomerContext): CustomerCommunicationEn
     });
   }
 
+  for (const row of context.outlookMessages) {
+    const direction = row.direction === "inbound" ? "inbound" : row.direction === "outbound" ? "outbound" : null;
+    const counterparty = emailMessageCounterparty(row);
+    entries.push({
+      id: `outlook-message-${row.id}`,
+      source: "customer_email_messages",
+      title: trimNullable(row.subject) || (direction === "inbound" ? "Outlook-Mail empfangen" : "Outlook-Mail gesendet"),
+      preview: trimNullable(row.body_preview) || counterparty,
+      body: [
+        counterparty ? `${direction === "inbound" ? "Von" : "An"}: ${counterparty}` : null,
+        trimNullable(row.body_preview),
+      ]
+        .filter(Boolean)
+        .join("\n") || null,
+      status: trimNullable(row.mailbox),
+      occurredAt: emailMessageOccurredAt(row),
+      href: null,
+      direction,
+      messageId: trimNullable(row.internet_message_id) || trimNullable(row.message_id),
+      conversationId: trimNullable(row.conversation_id),
+      classification: null,
+    });
+  }
+
   for (const row of context.communications) {
     entries.push({
       id: `master-communication-${row.id}`,
@@ -3145,6 +3219,23 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
       direction: "outbound",
       valueLabel: numericValue(row.total_value) !== null ? `${numericValue(row.total_value)} EUR` : null,
       body: null,
+    });
+  }
+
+  for (const row of context.outlookMessages) {
+    const direction = row.direction === "inbound" ? "inbound" : row.direction === "outbound" ? "outbound" : "system";
+    const counterparty = emailMessageCounterparty(row);
+    entries.push({
+      id: `outlook-message-${row.id}`,
+      source: "customer_email_messages",
+      title: trimNullable(row.subject) || (direction === "inbound" ? "Outlook-Mail empfangen" : "Outlook-Mail gesendet"),
+      description: counterparty ? `${direction === "inbound" ? "Von" : "An"}: ${counterparty}` : trimNullable(row.mailbox),
+      status: trimNullable(row.mailbox),
+      occurredAt: emailMessageOccurredAt(row),
+      href: null,
+      direction,
+      valueLabel: trimNullable(row.conversation_id) ? "Outlook" : null,
+      body: trimNullable(row.body_preview),
     });
   }
 
@@ -3525,6 +3616,14 @@ async function fetchDownstreamRows(
   ]);
   const emailQuoteOr = buildOrFilter(emails.map((email) => `email.eq.${encodeURIComponent(email)}`));
   const inboundEmailOr = buildOrFilter(emails.map((email) => `from_email.eq.${encodeURIComponent(email)}`));
+  const outlookMessageOr = buildOrFilter([
+    `linked_request_id.eq.${master.request_id}`,
+    `linked_customer_id.eq.${master.id}`,
+    ...emails.map((email) => `matched_email.eq.${encodeURIComponent(email)}`),
+    ...emails.map((email) => `from_email.eq.${encodeURIComponent(email)}`),
+    ...emails.map((email) => `to_emails.cs.{${encodeURIComponent(email)}}`),
+    ...emails.map((email) => `cc_emails.cs.{${encodeURIComponent(email)}}`),
+  ]);
   const documentJourneyOr = buildOrFilter([
     `customer_id.eq.${master.id}`,
     ...emails.map((email) => `customer_email.eq.${encodeURIComponent(email)}`),
@@ -3552,7 +3651,7 @@ async function fetchDownstreamRows(
     ...emails.map((email) => `cc_emails.cs.{${encodeURIComponent(email)}}`),
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
-  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
+  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, outlookMessages, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
     supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
       select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
       request_id: `eq.${master.request_id}`,
@@ -3633,6 +3732,19 @@ async function fetchDownstreamRows(
       order: "created_at.desc",
       limit: 6,
     }),
+    outlookMessageOr
+      ? safeOptionalSupabaseRows<CustomerEmailMessageRow>(
+        "customer_email_messages",
+        {
+          select:
+            "id,message_id,internet_message_id,conversation_id,mailbox,direction,from_email,from_name,to_emails,cc_emails,matched_email,linked_request_id,linked_customer_id,subject,body_preview,received_at,sent_at,message_created_at,created_at",
+          or: outlookMessageOr,
+          order: "updated_at.desc",
+          limit: 12,
+        },
+        { requestId: master.request_id, customerId: master.id },
+      )
+      : Promise.resolve([]),
     supabaseRequest<EmailAgentLogRow[]>("email_agent_log", undefined, {
       select: "id,from_email,from_name,subject,body_preview,category,draft_created,created_at",
       ...(inboundEmailOr ? { or: inboundEmailOr } : { from_email: "eq.__no_email__" }),
@@ -3792,6 +3904,7 @@ async function fetchDownstreamRows(
     communications,
     quoteEmails,
     emailQuotes,
+    outlookMessages,
     inboundEmails,
     audits,
     caseState: caseStates[0] || null,
