@@ -31,7 +31,9 @@ function task(overrides: Partial<OpsInternalTask>): OpsInternalTask {
 
 test("summarizeOpsInternalTasks counts active urgent overdue and today tasks", () => {
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const today = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const todayDate = new Date();
+  todayDate.setHours(23, 59, 0, 0);
+  const today = todayDate.toISOString();
   const summary = summarizeOpsInternalTasks([
     task({ id: "overdue", dueAt: yesterday, priority: "urgent" }),
     task({ id: "today", dueAt: today, priority: "high" }),

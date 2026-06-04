@@ -94,33 +94,35 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       idempotencyKey: body.idempotencyKey,
     };
     const result = await sendOfferUpdateMail(decodedOfferId, sendInput);
-    let opsSync: Awaited<ReturnType<typeof recordOfferSentForSalesCalls>> | { ok: false; error: string } | null = null;
-    try {
-      opsSync = await recordOfferSentForSalesCalls({
-        requestId: body.requestId,
-        trelloCardId: body.trelloCardId || offer.trelloCardId,
-        offerId: offer.offerId,
-        offerNumber: offer.offerNumber,
-        documentReference: offer.documentReference,
-        publicUrl: offer.publicUrl,
-        recipientEmail: body.recipientEmail,
-        sentAt: new Date().toISOString(),
-        source: "ops_customer_records_offer_send",
-        sourceEventId: result.eventId,
-        idempotencyKey: `ops-offer-send:${body.requestId || offer.trelloCardId || offer.offerId}:${offer.offerId}:${result.eventId}`,
-        actor: body.actor,
-        payload: {
-          duplicate: result.duplicate,
-          cc_count: cc.length,
-          reason: body.reason,
-          subject: body.subject,
-          direction: "outbound",
-          subtype: "quote_update",
-        },
-      });
-    } catch (syncError) {
-      console.error("offer sent but sales call sync failed", syncError);
-      opsSync = { ok: false, error: syncError instanceof Error ? syncError.message : "ops_sync_failed" };
+    let opsSync: Awaited<ReturnType<typeof recordOfferSentForSalesCalls>> | { ok: boolean; error?: string; skipped?: boolean } | null = result.opsSync || null;
+    if (!opsSync) {
+      try {
+        opsSync = await recordOfferSentForSalesCalls({
+          requestId: body.requestId,
+          trelloCardId: body.trelloCardId || offer.trelloCardId,
+          offerId: offer.offerId,
+          offerNumber: offer.offerNumber,
+          documentReference: offer.documentReference,
+          publicUrl: offer.publicUrl,
+          recipientEmail: body.recipientEmail,
+          sentAt: new Date().toISOString(),
+          source: "ops_customer_records_offer_send",
+          sourceEventId: result.eventId,
+          idempotencyKey: `neontrip-offers-send:${offer.offerId}:${body.idempotencyKey}`,
+          actor: body.actor,
+          payload: {
+            duplicate: result.duplicate,
+            cc_count: cc.length,
+            reason: body.reason,
+            subject: body.subject,
+            direction: "outbound",
+            subtype: "quote_update",
+          },
+        });
+      } catch (syncError) {
+        console.error("offer sent but sales call sync failed", syncError);
+        opsSync = { ok: false, error: syncError instanceof Error ? syncError.message : "ops_sync_failed" };
+      }
     }
     return NextResponse.json({ ok: true, ...result, opsSync });
   } catch (error) {

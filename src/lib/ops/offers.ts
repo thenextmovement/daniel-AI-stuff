@@ -129,6 +129,7 @@ export type OpsOfferSendResult = {
   sent: boolean;
   duplicate: boolean;
   eventId: string;
+  opsSync?: { ok: boolean; error?: string; skipped?: boolean } | null;
 };
 
 export class OpsOfferApiError extends Error {
@@ -165,6 +166,7 @@ async function parseOfferResponse(response: Response) {
     sent?: boolean;
     duplicate?: boolean;
     eventId?: string;
+    opsSync?: { ok: boolean; error?: string; skipped?: boolean } | null;
     diff?: OpsOfferPatchResult["diff"];
     dryRun?: boolean;
   } | null;
@@ -259,5 +261,6 @@ export async function sendOfferUpdateMail(offerId: string, input: OpsOfferSendIn
     sent: payload.sent,
     duplicate: Boolean(payload.duplicate),
     eventId: payload.eventId,
+    opsSync: payload.opsSync || null,
   } satisfies OpsOfferSendResult;
 }
