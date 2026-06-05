@@ -12,8 +12,8 @@ test("manualSegmentStatus keeps missing segments in review state", () => {
   assert.equal(manualSegmentStatus(null), "needs_review");
 });
 
-test("resolveManualCustomerRequestId replaces orphaned request ids on retry", () => {
+test("resolveManualCustomerRequestId always promotes the newly imported request", () => {
   assert.equal(resolveManualCustomerRequestId("old-orphan-request", "new-request", false), "new-request");
-  assert.equal(resolveManualCustomerRequestId("existing-request", "new-request", true), "existing-request");
+  assert.equal(resolveManualCustomerRequestId("existing-request", "new-request", true), "new-request");
   assert.equal(resolveManualCustomerRequestId(null, "new-request", false), "new-request");
 });

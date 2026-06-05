@@ -12,6 +12,7 @@ import { taskTitle, upsertSalesTask } from "@/lib/ops/sales-task-engine";
 type ManualImportCustomerRow = {
   id: string;
   email: string;
+  billing_email?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   phone?: string | null;
@@ -87,6 +88,8 @@ export type ManualRequestImportResult = {
     customFieldSet: boolean;
     usageFieldSet: boolean;
     usageFieldError: string | null;
+    offerCustomerFieldsSet: string[];
+    offerCustomerFieldWarnings: string[];
     error: string | null;
   };
   warnings: string[];
@@ -131,8 +134,9 @@ export function resolveManualCustomerRequestId(
   nextRequestId: string,
   existingRequestFound: boolean,
 ) {
-  const existing = trimNullable(existingRequestId);
-  return existing && existingRequestFound ? existing : nextRequestId;
+  void existingRequestId;
+  void existingRequestFound;
+  return nextRequestId;
 }
 
 function normalizeDueAt(value: unknown) {
@@ -224,7 +228,7 @@ async function auditManualImport(input: {
 
 async function findCustomerByEmail(email: string) {
   const rows = await supabaseRequest<ManualImportCustomerRow[]>("master_customers", undefined, {
-    select: "id,email,first_name,last_name,phone,company,company_name,name,request_id",
+    select: "id,email,billing_email,first_name,last_name,phone,company,company_name,name,request_id",
     email: `eq.${email}`,
     limit: 1,
   });
@@ -234,7 +238,7 @@ async function findCustomerByEmail(email: string) {
 async function findCustomerByPhone(phone: string | null) {
   if (!phone) return null;
   const rows = await supabaseRequest<ManualImportCustomerRow[]>("master_customers", undefined, {
-    select: "id,email,first_name,last_name,phone,company,company_name,name,request_id",
+    select: "id,email,billing_email,first_name,last_name,phone,company,company_name,name,request_id",
     or: `(phone.eq.${encodeURIComponent(phone)},original_phone.eq.${encodeURIComponent(phone)})`,
     limit: 1,
   });
@@ -257,6 +261,7 @@ async function upsertCustomer(input: ManualRequestImportInput, email: string, ph
   const customerRequestId = resolveManualCustomerRequestId(existing?.request_id, requestId, existingRequestFound);
   const customerPatch = {
     email,
+    billing_email: email,
     original_email: email,
     first_name: trimNullable(input.customer?.firstName),
     last_name: trimNullable(input.customer?.lastName),
@@ -365,6 +370,8 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
       customFieldSet: false,
       usageFieldSet: false,
       usageFieldError: null,
+      offerCustomerFieldsSet: [],
+      offerCustomerFieldWarnings: [],
       error: null,
     };
   }
@@ -425,6 +432,48 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
     }
   }
 
+  const offerCustomerFieldsSet: string[] = [];
+  const offerCustomerFieldWarnings: string[] = [];
+  const customerOfferFields: Array<{ names: string[]; value: string | null }> = [
+    {
+      names: ["customer_email", "customer email", "kunden email", "kunden e-mail", "e-mail", "email"],
+      value: normalizeEmail(trimNullable(input.customer?.email) || ""),
+    },
+    {
+      names: ["customer_first_name", "customer first name", "first_name", "vorname", "kunden vorname"],
+      value: trimNullable(input.customer?.firstName),
+    },
+    {
+      names: ["customer_last_name", "customer last name", "last_name", "nachname", "kunden nachname"],
+      value: trimNullable(input.customer?.lastName),
+    },
+    {
+      names: ["customer_phone", "customer phone", "phone", "telefon", "kunden telefon"],
+      value: normalizePhone(input.customer?.phone),
+    },
+    {
+      names: ["customer_company", "customer company", "company", "firma", "kunden firma"],
+      value: trimNullable(input.customer?.company),
+    },
+  ];
+
+  for (const customerField of customerOfferFields) {
+    if (!customerField.value) continue;
+    const offerField = await findTrelloCustomFieldByName(boardId, customerField.names);
+    const canonicalName = customerField.names[0] || "customer_field";
+    if (!offerField) {
+      offerCustomerFieldWarnings.push(`Trello Custom Field ${canonicalName} wurde nicht gefunden.`);
+      continue;
+    }
+    await updateTrelloCustomField({
+      cardId: card.id,
+      fieldId: offerField.id,
+      type: offerField.type || "text",
+      value: customerField.value,
+    });
+    offerCustomerFieldsSet.push(offerField.name || canonicalName);
+  }
+
   return {
     requested: true,
     ok: true,
@@ -433,6 +482,8 @@ async function projectToTrello(input: ManualRequestImportInput, requestId: strin
     customFieldSet: Boolean(field),
     usageFieldSet,
     usageFieldError,
+    offerCustomerFieldsSet,
+    offerCustomerFieldWarnings,
     error: customFieldError,
   };
 }
@@ -491,6 +542,8 @@ export async function createManualRequestImport(
           customFieldSet: Boolean(row.trello_card_id),
           usageFieldSet: false,
           usageFieldError: null,
+          offerCustomerFieldsSet: [],
+          offerCustomerFieldWarnings: [],
           error: null,
         },
         warnings: ["Diese manuelle Einspielung wurde bereits verarbeitet."],
@@ -554,6 +607,9 @@ export async function createManualRequestImport(
     trello = await projectToTrello(input, requestId);
     if (trello.usageFieldError) warnings.push(trello.usageFieldError);
     if (trello.error) warnings.push(trello.error);
+    if (trello.offerCustomerFieldWarnings.length) {
+      warnings.push(...trello.offerCustomerFieldWarnings);
+    }
     if (trello.ok) {
       await patchRequestTrelloProjection(requestId, {
         cardId: trello.cardId,
@@ -573,6 +629,8 @@ export async function createManualRequestImport(
           usage_field_set: trello.usageFieldSet,
           usage_field_error: trello.usageFieldError,
           usage_value: trimNullable(input.request?.application),
+          offer_customer_fields_set: trello.offerCustomerFieldsSet,
+          offer_customer_field_warnings: trello.offerCustomerFieldWarnings,
           source: MANUAL_IMPORT_SOURCE,
         },
       });
@@ -587,6 +645,8 @@ export async function createManualRequestImport(
       customFieldSet: false,
       usageFieldSet: false,
       usageFieldError: null,
+      offerCustomerFieldsSet: [],
+      offerCustomerFieldWarnings: [],
       error: message,
     };
     warnings.push("Trello-Projektion fehlgeschlagen. DB-Datensatz und Call-Aufgabe wurden trotzdem angelegt.");
