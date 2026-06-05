@@ -7,6 +7,11 @@ import {
   normalizeCarrierStatus,
   normalizeShippingCarrier,
 } from "../../src/lib/ops/shipping";
+import {
+  buildInboundBoardFromRows,
+  normalizeInboundCarrierStatus,
+  parseInboundTrackingValue,
+} from "../../src/lib/ops/inbound-shipping";
 import { buildShippingNotificationEmail, type ClaimedShippingNotificationRow } from "../../src/lib/ops/shipping-notifications";
 
 const baseShipment = {
@@ -260,6 +265,108 @@ test("buildShippingNotificationEmail blocks customer pickup mails to internal or
     } as ClaimedShippingNotificationRow),
     /interne oder Test-Adressen/,
   );
+});
+
+test("parseInboundTrackingValue extracts DHL Express and FedEx tracking numbers from Trello custom fields", () => {
+  const dhl = parseInboundTrackingValue("DHL Express 123 456 7890");
+  const fedex = parseInboundTrackingValue("FedEx 1234-5678-9012");
+
+  assert.equal(dhl.valid, true);
+  assert.equal(dhl.carrier, "dhl");
+  assert.equal(dhl.trackingNumber, "1234567890");
+  assert.equal(fedex.valid, true);
+  assert.equal(fedex.carrier, "fedex");
+  assert.equal(fedex.trackingNumber, "123456789012");
+});
+
+test("normalizeInboundCarrierStatus maps clearance, out-for-delivery and label-only states", () => {
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "fedex", statusCode: "CD", statusText: "Clearance delay - additional information required" }), "clearance_action_required");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusCode: "CP", statusText: "Clearance event in progress" }), "clearance_in_progress");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "fedex", statusCode: "OD", statusText: "On vehicle for delivery" }), "out_for_delivery");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusText: "Shipment information sent to DHL" }), "label_created");
+});
+
+test("buildInboundBoardFromRows prioritizes urgent inbound incidents and counts operational states", () => {
+  const baseInboundShipment = {
+    id: "inbound-1",
+    shipment_key: "trello:card-1:dhl:1234567890",
+    source: "trello",
+    trello_card_id: "card-1",
+    trello_card_name: "China Los 1",
+    trello_card_url: "https://trello.example/card-1",
+    trello_list_id: "list-1",
+    trello_list_name: "sign shipped",
+    carrier: "dhl",
+    tracking_number: "1234567890",
+    tracking_raw: "DHL 1234567890",
+    status: "in_transit",
+    status_reason: null,
+    risk_level: "normal",
+    first_seen_at: "2026-06-01T08:00:00.000Z",
+    tracking_first_seen_at: "2026-06-01T08:00:00.000Z",
+    tendered_at: null,
+    last_event_at: "2026-06-02T08:00:00.000Z",
+    last_movement_at: "2026-06-02T08:00:00.000Z",
+    last_checked_at: "2026-06-02T09:00:00.000Z",
+    next_check_at: null,
+    delivered_at: null,
+    created_at: "2026-06-01T08:00:00.000Z",
+    updated_at: "2026-06-02T09:00:00.000Z",
+  } as const;
+
+  const board = buildInboundBoardFromRows(
+    [
+      baseInboundShipment as never,
+      {
+        ...baseInboundShipment,
+        id: "inbound-2",
+        shipment_key: "trello:card-2:fedex:123456789012",
+        trello_card_id: "card-2",
+        trello_card_name: "China Los 2",
+        carrier: "fedex",
+        tracking_number: "123456789012",
+        tracking_raw: "FedEx 123456789012",
+        status: "clearance_action_required",
+        risk_level: "urgent",
+        updated_at: "2026-06-05T08:00:00.000Z",
+      } as never,
+      {
+        ...baseInboundShipment,
+        id: "inbound-3",
+        shipment_key: "trello:card-3:dhl:9876543210",
+        tracking_number: "9876543210",
+        status: "out_for_delivery",
+        risk_level: "high",
+      } as never,
+    ],
+    [
+      {
+        id: "incident-1",
+        shipment_id: "inbound-2",
+        incident_key: "inbound:inbound-2:clearance_action_required",
+        incident_type: "clearance_action_required",
+        severity: "urgent",
+        status: "open",
+        title: "Clearance Event: Aktion erforderlich",
+        description: "Additional information required.",
+        first_detected_at: "2026-06-05T08:00:00.000Z",
+        last_detected_at: "2026-06-05T08:00:00.000Z",
+        resolved_at: null,
+        rule_version: "test",
+        source_event_id: null,
+        active_task_id: "task-1",
+        created_at: "2026-06-05T08:00:00.000Z",
+        updated_at: "2026-06-05T08:00:00.000Z",
+      } as never,
+    ],
+    [],
+  );
+
+  assert.equal(board.items[0].shipment.id, "inbound-2");
+  assert.equal(board.counts.actionRequired, 1);
+  assert.equal(board.counts.clearance, 1);
+  assert.equal(board.counts.outForDelivery, 1);
+  assert.equal(board.counts.withOpenTask, 1);
 });
 
 test("buildShippingNotificationEmail routes return and failed delivery as internal warnings", () => {

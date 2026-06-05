@@ -1,8 +1,8 @@
 "use client";
 
-import { ClipboardList, PhoneCall, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { ClipboardList, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
-export type OpsAppKey = "records" | "calls" | "tasks" | "shipping";
+export type OpsAppKey = "records" | "calls" | "tasks" | "shipping" | "inboundShipping";
 
 type OpsAppSwitcherProps = {
   active: OpsAppKey;
@@ -38,6 +38,12 @@ const OPS_APPS: Array<{
     label: "Shipping",
     href: "/ops/customer-records/shipping",
     Icon: Truck,
+  },
+  {
+    key: "inboundShipping",
+    label: "Inbound",
+    href: "/ops/customer-records/inbound-shipping",
+    Icon: PlaneLanding,
   },
 ];
 
