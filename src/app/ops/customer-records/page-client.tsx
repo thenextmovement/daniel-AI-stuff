@@ -18409,26 +18409,34 @@ function SimpleActionPanel({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
+          aria-expanded={expanded}
           onClick={() => setExpanded((current) => !current)}
-          className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
+          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
         >
+          <span className="text-black/35">{expanded ? "−" : "+"}</span>
           {expanded ? "Weniger Aktionen" : "Mehr Aktionen"}
         </button>
       </div>
 
       {expanded ? (
-        <div className="space-y-3">
+        <div className="rounded-2xl border border-black/10 bg-white p-3 shadow-sm shadow-black/[0.03]">
+          <div className="flex items-start justify-between gap-3 px-1">
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/40">Weitere Aktionen</div>
+              <div className="mt-1 text-sm font-semibold text-black">Werkzeuge nach Arbeitsschritt</div>
+            </div>
+          </div>
           {quickActions.length ? (
-            <div className="rounded-xl border border-black/10 bg-white p-3">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Direkt</div>
-              <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 rounded-xl border border-black/10 bg-black/[0.02] p-3">
+              <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Schnellaktionen</div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                 {quickActions.map((action) => (
                   <button
                     key={action.key}
                     type="button"
                     disabled={running}
                     onClick={action.onClick}
-                    className={`rounded-full px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`inline-flex min-h-10 items-center justify-center rounded-xl px-3 py-2 text-center text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                       action.danger
                         ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100"
                         : "border border-black/10 bg-white text-black/65 hover:border-[#fa31a2] hover:text-black"
@@ -18440,17 +18448,19 @@ function SimpleActionPanel({
               </div>
             </div>
           ) : null}
-          <ActionPanel
-            record={record}
-            running={running}
-            onRollback={onRollback}
-            onPauseFollowups={onPauseFollowups}
-            onReschedule={onReschedule}
-            onBlockContact={onBlockContact}
-            onLogCall={onLogCall}
-            onScheduleCallback={onScheduleCallback}
-            onApplyOutcome={onApplyOutcome}
-          />
+          <div className="mt-3">
+            <ActionPanel
+              record={record}
+              running={running}
+              onRollback={onRollback}
+              onPauseFollowups={onPauseFollowups}
+              onReschedule={onReschedule}
+              onBlockContact={onBlockContact}
+              onLogCall={onLogCall}
+              onScheduleCallback={onScheduleCallback}
+              onApplyOutcome={onApplyOutcome}
+            />
+          </div>
         </div>
       ) : null}
     </div>
@@ -18631,22 +18641,24 @@ function ActionPanel({
             : "Setzt einen Kontaktstopp, stoppt offene Erinnerungen und nimmt den Fall aus der aktiven Bearbeitung.";
 
   return (
-    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
-      <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">Aktionen</div>
-      <div className="mt-2 text-lg font-semibold text-black">Direkte Eingriffe aus der Kommandozentrale</div>
+    <div className="space-y-4">
       {suggestions.length ? (
-        <div className="mt-4 space-y-3">
-          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/45">Nächste beste Schritte</div>
+        <section className="rounded-2xl border border-black/10 bg-white p-4">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/45">Empfohlen</div>
           {suggestions.slice(0, 3).map((suggestion) => (
-            <div key={suggestion.id} className={`rounded-xl border px-4 py-4 ${suggestion.tone}`}>
+            <div key={suggestion.id} className={`mt-3 rounded-xl border px-4 py-4 ${suggestion.tone}`}>
               <div className="text-sm font-medium text-black">{suggestion.title}</div>
               <div className="mt-1 text-sm leading-6 text-black/60">{suggestion.detail}</div>
               <div className="mt-3">{suggestion.action}</div>
             </div>
           ))}
-        </div>
+        </section>
       ) : null}
-      <div className="mt-4 space-y-3">
+
+      <section className="space-y-3">
+        <div className="px-1">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/40">1 · Fallstatus</div>
+        </div>
         <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-4">
           <div className="text-sm font-medium text-black">Fallausgang setzen</div>
           <div className="mt-1 text-sm leading-6 text-black/60">
@@ -18705,7 +18717,12 @@ function ActionPanel({
             Fallausgang anwenden
           </button>
         </div>
+      </section>
 
+      <section className="space-y-3">
+        <div className="px-1">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/40">2 · Telefon & Rückruf</div>
+        </div>
         <div className="rounded-xl border border-black/10 bg-white px-4 py-4">
           <div className="text-sm font-medium text-black">In Call-Zentrale öffnen</div>
           <div className="mt-1 text-sm leading-6 text-black/60">
@@ -18776,7 +18793,12 @@ function ActionPanel({
             Rückruf terminieren
           </button>
         </div>
+      </section>
 
+      <section className="space-y-3">
+        <div className="px-1">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/40">3 · Erinnerungen</div>
+        </div>
         <div className="rounded-xl border border-black/10 bg-black/[0.02] px-4 py-4">
           <div id={`followup-reschedule-${record.requestId}`} />
           <div className="text-sm font-medium text-black">Erinnerungen nach hinten schieben</div>
@@ -18819,7 +18841,12 @@ function ActionPanel({
           </div>
           <div className="text-xs text-black/45">{record.affectedRows.pendingFollowups} offen</div>
         </button>
+      </section>
 
+      <section className="space-y-3">
+        <div className="px-1">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/40">4 · Risiko & Korrektur</div>
+        </div>
         <div className="rounded-xl border border-[#fa31a2]/20 bg-[#fa31a2]/5 px-4 py-4">
           <div id={`contact-stop-${record.requestId}`} />
           <div className="text-sm font-medium text-[#a61764]">Notfall: Kein weiterer Kontakt</div>
@@ -18856,7 +18883,7 @@ function ActionPanel({
           </div>
           <div className="text-xs text-black/45">{record.auditTrail.length ? "verfügbar" : "nicht vorhanden"}</div>
         </button>
-      </div>
+      </section>
     </div>
   );
 }
