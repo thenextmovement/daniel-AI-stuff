@@ -837,7 +837,7 @@ function visualSource(value: unknown): SalesCallVisualSource | null {
 function visualMockupOrder(name: string) {
   const normalized = name.toLowerCase();
   const match =
-    normalized.match(/\bmoc\s*ab[\s_-]*(0?[123])(?:\D|$)/) ||
+    normalized.match(/\bmoc[\s_-]*ab[\s_-]*(0?[123])(?:\D|$)/) ||
     normalized.match(/\bmockup[\s_-]*(0?[123])(?:\D|$)/);
   if (match?.[1]) return Number(match[1]) - 1;
   return 9;

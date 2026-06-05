@@ -584,7 +584,7 @@ function getLiveRecordVisualCandidates(item: SalesCallListItem): SalesCallVisual
     const score = (name: string) => {
       const normalized = name.toLowerCase();
       const match =
-        normalized.match(/\bmoc\s*ab[\s_-]*(0?[123])(?:\D|$)/) ||
+        normalized.match(/\bmoc[\s_-]*ab[\s_-]*(0?[123])(?:\D|$)/) ||
         normalized.match(/\bmockup[\s_-]*(0?[123])(?:\D|$)/);
       if (match?.[1]) return Number(match[1]) - 1;
       return 9;
@@ -630,7 +630,7 @@ function visualCandidateOrder(candidate: SalesCallVisualCandidate) {
   };
   const normalized = candidate.label.toLowerCase();
   const match =
-    normalized.match(/\bmoc\s*ab[\s_-]*(0?[123])(?:\D|$)/) ||
+    normalized.match(/\bmoc[\s_-]*ab[\s_-]*(0?[123])(?:\D|$)/) ||
     normalized.match(/\bmockup[\s_-]*(0?[123])(?:\D|$)/);
   const mockupOrder = match?.[1] ? Number(match[1]) - 1 : 9;
   return sourceRank[candidate.source] * 20 + mockupOrder;
