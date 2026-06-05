@@ -77,7 +77,7 @@ Automatische Kundenmail:
 - Empfaenger ist die Kunden-E-Mail aus der Sendung.
 - Interne `@neontrip.de`- und `@neontrip.test`-Adressen werden blockiert.
 - Text ist deterministisch, ohne KI-Freiformulierung.
-- Inhalt: Paket liegt zur Abholung bereit, Trackingdaten/Ort falls vorhanden, Bitte zeitnah abholen, Signatur `Fabienne / NEONTRIP`.
+- Inhalt: Paket liegt zur Abholung bereit, Trackingdaten/Ort falls vorhanden, Bitte zeitnah abholen, Fabienne-Trapp-HTML-Signatur mit Foto, Rolle, Telefon, E-Mail, Website, Adresse und NEONTRIP-Logo.
 - Erinnerung: Wenn der Abholstatus weiter offen ist, wird fruehestens alle 48 Stunden erneut erinnert, maximal drei Erinnerungen nach der Erstmail.
 
 Interne Warnung:
@@ -95,6 +95,16 @@ Idempotenz:
 - Interne Warnung: ein Key pro Incident, `internal:delivery_problem:{incident_id}`.
 - n8n claimt `pending` Notifications, sendet ueber Outlook und markiert danach `sent`.
 - Wenn Outlook oder Markierung fehlschlaegt, bleibt der Eintrag retryfaehig und wird nach Stale-Timeout erneut geclaimt.
+
+Monitoring:
+
+- n8n fragt `shipping_claim_notification_monitor_alert()` stuendlich ab.
+- Interner Outlook-Digest an `info@neontrip.de`, wenn Notifications haengen:
+  - `sending` aelter als 45 Minuten.
+  - `pending` aelter als 2 Stunden.
+  - `failed` mit mindestens 3 Versuchen.
+- Deduplizierung pro UTC-Stunde ueber `shipping_audit_log.idempotency_key`.
+- Keine Kundenkommunikation im Monitoring-Zweig.
 
 Rollback:
 

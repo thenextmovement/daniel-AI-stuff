@@ -190,7 +190,10 @@ test("buildShippingNotificationEmail sends pickup notices only as deterministic 
   assert.equal(notification.recipientEmail, "ada@example.com");
   assert.match(notification.subject, /Abholung bereit/);
   assert.match(notification.bodyHtml, /zeitnah ab/);
-  assert.match(notification.bodyHtml, /Fabienne/);
+  assert.match(notification.bodyHtml, /Fabienne Trapp/);
+  assert.match(notification.bodyHtml, /Beratung &amp; Realisierung/);
+  assert.match(notification.bodyHtml, /\+49 211 54257240/);
+  assert.match(notification.bodyHtml, /weiss_logo_NEONTRIP/);
   assert.doesNotMatch(notification.bodyHtml, /Daniel/);
 });
 
@@ -224,7 +227,7 @@ test("buildShippingNotificationEmail labels pickup reminder mails clearly", () =
 
   assert.match(notification.subject, /^Erinnerung:/);
   assert.match(notification.bodyHtml, /weiterhin zur Abholung bereitliegt/);
-  assert.match(notification.bodyHtml, /Fabienne/);
+  assert.match(notification.bodyHtml, /Fabienne Trapp/);
 });
 
 test("buildShippingNotificationEmail blocks customer pickup mails to internal or test addresses", () => {

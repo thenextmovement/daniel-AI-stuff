@@ -78,6 +78,59 @@ function trackingLink(url: string | null, label = "Sendungsverfolgung oeffnen") 
   return `<p><a href="${escapeHtml(url)}">${escapeHtml(label)}</a></p>`;
 }
 
+const FABIENNE_SIGNATURE_HTML = `
+<br><br>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-family: Arial, Helvetica, sans-serif; color:#111111;">
+  <tbody>
+    <tr>
+      <td style="padding:0;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%;">
+          <tbody>
+            <tr>
+              <td style="padding:16px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                  <tbody>
+                    <tr>
+                      <td valign="top" style="width:140px; padding-right:16px;">
+                        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653" alt="Fabienne Trapp" width="120" height="120" style="display:block; width:120px; height:120px; border-radius:60px; border:2px solid #111111; object-fit:cover;">
+                      </td>
+                      <td valign="top" style="padding-top:2px;">
+                        <div style="font-size:16px; font-weight:700; color:#111111; margin:0 0 4px 0;">Fabienne Trapp</div>
+                        <div style="font-size:12px; color:#6b7280; margin:0 0 10px 0;">Beratung &amp; Realisierung</div>
+                        <div style="font-size:13px; font-weight:700; color:#111111; margin:0 0 8px 0;">NEONTRIP&reg;</div>
+                        <div style="font-size:13px; line-height:1.6; color:#111111;">
+                          Tel: <a href="tel:+4921154257240" style="color:#111111; text-decoration:none;">+49 211 54257240</a><br>
+                          E-Mail: <a href="mailto:support@neontrip.de" style="color:#111111; text-decoration:none;">support@neontrip.de</a><br>
+                          Web: <a href="https://www.neontrip.de" style="color:#111111; text-decoration:none;">www.neontrip.de</a><br>
+                          Adresse: Bilker Allee 29, 40219 D&uuml;sseldorf
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#121212; border-radius:10px;">
+                  <tbody>
+                    <tr>
+                      <td align="center" style="padding:18px 16px;">
+                        <img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450" alt="NEONTRIP" width="420" style="display:block; width:100%; max-width:420px; height:auto; border:0; outline:none; text-decoration:none;">
+                        <div style="margin-top:8px; font-size:11px; font-weight:700; letter-spacing:0.6px; color:#ffffff;">UNIQUE LIGHTING AND BRANDING</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>`.trim();
+
 function firstName(name: string | null) {
   const first = trimNullable(name)?.split(/\s+/)[0] || null;
   if (!first || first.length < 2) return null;
@@ -140,7 +193,8 @@ export function buildPickupAvailableCustomerEmail(row: ClaimedShippingNotificati
     details ? `<ul>${details}</ul>` : "",
     trackingLink(row.tracking_url),
     paragraph("Falls Sie dazu Fragen haben, antworten Sie einfach auf diese E-Mail."),
-    "<p>Viele Gruesse<br>Fabienne<br>NEONTRIP</p>",
+    paragraph("Viele Gruesse"),
+    FABIENNE_SIGNATURE_HTML,
   ].filter(Boolean).join("\n");
 
   return { recipientEmail, subject, bodyHtml };
