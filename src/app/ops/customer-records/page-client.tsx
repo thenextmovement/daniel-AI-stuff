@@ -11641,6 +11641,8 @@ function Field({
   onChange,
   type = "text",
   icon,
+  step,
+  meta,
 }: {
   label: string;
   hint: string;
@@ -11648,6 +11650,8 @@ function Field({
   onChange: (value: string) => void;
   type?: string;
   icon: React.ReactNode;
+  step?: string;
+  meta?: string | null;
 }) {
   return (
     <label className="grid gap-2">
@@ -11657,11 +11661,13 @@ function Field({
         <span className="text-black/40">{icon}</span>
         <input
           type={type}
+          step={step}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="w-full bg-transparent text-sm text-black outline-none placeholder:text-black/40"
         />
       </span>
+      {meta ? <span className="text-xs leading-5 text-black/45">{meta}</span> : null}
     </label>
   );
 }
@@ -16029,8 +16035,8 @@ function OfferEditorPanel({
                       <Field label="Titel" hint="Produkt- oder Variantenname." value={item.title || ""} onChange={(value) => updateItem(item.id, { title: value })} icon={<BadgeCheck className="h-4 w-4" />} />
                       <Field label="Rabattlabel" hint="z. B. Sonderpreis oder Aktionsrabatt." value={item.discountLabel || ""} onChange={(value) => updateItem(item.id, { discountLabel: value || null })} icon={<BadgeCheck className="h-4 w-4" />} />
                       <Field label="Menge" hint="Anzahl für diese Position." value={String(item.quantity)} onChange={(value) => updateItem(item.id, { quantity: Math.max(1, Number(value) || 1) })} type="number" icon={<Database className="h-4 w-4" />} />
-                      <Field label="Preis netto" hint="Netto-Einzelpreis." value={String(item.unitPriceNet)} onChange={(value) => updateItem(item.id, { unitPriceNet: Math.max(0, Number(value) || 0) })} type="number" icon={<Database className="h-4 w-4" />} />
-                      <Field label="Vergleichspreis netto" hint="Optional, leer = kein Vergleichspreis." value={item.listPriceNet === null ? "" : String(item.listPriceNet)} onChange={(value) => updateItem(item.id, { listPriceNet: value.trim() ? Math.max(0, Number(value) || 0) : null })} type="number" icon={<Database className="h-4 w-4" />} />
+                      <Field label="Preis netto (EUR)" hint="Netto-Einzelpreis in Euro, nicht Cent." value={String(item.unitPriceNet)} onChange={(value) => updateItem(item.id, { unitPriceNet: Math.max(0, Number(value) || 0) })} type="number" step="0.01" meta={`Wird als ${formatMoney(item.unitPriceNet, currency)} netto gespeichert.`} icon={<Database className="h-4 w-4" />} />
+                      <Field label="Vergleichspreis netto (EUR)" hint="Optional, leer = kein Vergleichspreis. Ebenfalls Euro, nicht Cent." value={item.listPriceNet === null ? "" : String(item.listPriceNet)} onChange={(value) => updateItem(item.id, { listPriceNet: value.trim() ? Math.max(0, Number(value) || 0) : null })} type="number" step="0.01" meta={item.listPriceNet === null ? "Kein Vergleichspreis sichtbar." : `Wird als ${formatMoney(item.listPriceNet, currency)} netto gespeichert.`} icon={<Database className="h-4 w-4" />} />
                       <Field label="Sortierung" hint="Reihenfolge im Angebot." value={String(item.sortOrder)} onChange={(value) => updateItem(item.id, { sortOrder: Math.max(0, Number(value) || 0) })} type="number" icon={<Database className="h-4 w-4" />} />
                     </div>
                     <div className="mt-3">

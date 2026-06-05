@@ -66,6 +66,79 @@ async function captureSupabaseSearch(
   return calls[0];
 }
 
+async function captureCustomerRecordUrls(query: string) {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const calls: URL[] = [];
+
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    calls.push(url);
+
+    if (url.pathname.endsWith("/rest/v1/master_customers") && url.searchParams.get("limit") === "10") {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "customer_1",
+            request_id: "request_public_1",
+            email: "samuele@example.com",
+            billing_email: "samuele@example.com",
+            original_email: null,
+            cc_emails: ["kollegin@example.com"],
+            first_name: "Samuele",
+            last_name: "Micacchioni",
+            name: "Samuele Micacchioni",
+            phone: "+49 123",
+            company: "NEONTRIP",
+            company_name: "NEONTRIP",
+            updated_at: "2026-06-05T09:00:00.000Z",
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    if (url.pathname.endsWith("/rest/v1/master_requests") && url.searchParams.get("request_id") === "eq.request_public_1") {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "request_row_1",
+            request_id: "request_public_1",
+            customer_id: "customer_1",
+            title: "Samuele Micacchioni",
+            status: "new",
+            updated_at: "2026-06-05T09:00:00.000Z",
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await searchCustomerRecords(query);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) {
+      delete process.env.SUPABASE_URL;
+    } else {
+      process.env.SUPABASE_URL = originalUrl;
+    }
+    if (originalKey === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+    }
+  }
+
+  return calls;
+}
+
 test("buildCustomerUpdatePlan normalizes email and keeps billing email in sync when both matched before", () => {
   const plan = buildCustomerUpdatePlan(current, {
     email: "  leonlaegender@gmail.com ",
@@ -295,6 +368,16 @@ test("searchCustomerRecords builds phone filters without encoded wildcards", asy
   );
 });
 
+test("searchCustomerRecords builds email filters without double encoding", async () => {
+  const url = await captureSupabaseSearch("samuele@example.com", "/rest/v1/master_customers");
+
+  assert.equal(
+    url.searchParams.get("or"),
+    "(email.eq.samuele@example.com,billing_email.eq.samuele@example.com,original_email.eq.samuele@example.com,cc_emails.cs.{samuele@example.com})",
+  );
+  assert.equal(url.searchParams.get("or")?.includes("%40"), false);
+});
+
 test("searchCustomerRecords builds trello filters without double encoding", async () => {
   const url = await captureSupabaseSearch("trello:FYXcIQ9K", "/rest/v1/master_requests");
 
@@ -302,6 +385,18 @@ test("searchCustomerRecords builds trello filters without double encoding", asyn
     url.searchParams.get("or"),
     "(trello_card_id.eq.FYXcIQ9K,trello_card_url.ilike.*FYXcIQ9K*)",
   );
+});
+
+test("searchCustomerRecords builds Outlook mail filters with raw email values", async () => {
+  const urls = await captureCustomerRecordUrls("samuele@example.com");
+  const url = urls.find((entry) => entry.pathname.endsWith("/rest/v1/customer_email_messages"));
+
+  assert.ok(url);
+  assert.equal(
+    url.searchParams.get("or"),
+    "(linked_request_id.eq.request_row_1,linked_customer_id.eq.customer_1,matched_email.eq.samuele@example.com,matched_email.eq.kollegin@example.com,from_email.eq.samuele@example.com,from_email.eq.kollegin@example.com,to_emails.cs.{samuele@example.com},to_emails.cs.{kollegin@example.com},cc_emails.cs.{samuele@example.com},cc_emails.cs.{kollegin@example.com})",
+  );
+  assert.equal(url.searchParams.get("or")?.includes("%40"), false);
 });
 
 test("parseTrelloCardIdentifier extracts short links from Trello URLs", () => {

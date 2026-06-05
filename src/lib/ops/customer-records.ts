@@ -1200,6 +1200,18 @@ function normalizeCustomerContactEmail(value: string | null | undefined) {
   return normalized;
 }
 
+function postgrestEmailValue(value: string) {
+  return normalizeEmail(value).replace(/[(),{}"]/g, "");
+}
+
+function emailEqualsClause(column: string, email: string) {
+  return `${column}.eq.${postgrestEmailValue(email)}`;
+}
+
+function emailArrayContainsClause(column: string, email: string) {
+  return `${column}.cs.{${postgrestEmailValue(email)}}`;
+}
+
 function normalizeCcEmails(value: string[] | string | null | undefined) {
   const rawValues = Array.isArray(value)
     ? value
@@ -3640,34 +3652,34 @@ async function fetchDownstreamRows(
   });
   const request = requestRows[0] || null;
   const quoteEmailOr = buildOrFilter([
-    ...emails.map((email) => `recipient_email.eq.${encodeURIComponent(email)}`),
+    ...emails.map((email) => emailEqualsClause("recipient_email", email)),
     ...(request?.trello_card_id ? [`card_id.eq.${encodeURIComponent(request.trello_card_id)}`] : []),
     ...(request?.ac_deal_id ? [`deal_id.eq.${encodeURIComponent(String(request.ac_deal_id))}`] : []),
   ]);
-  const emailQuoteOr = buildOrFilter(emails.map((email) => `email.eq.${encodeURIComponent(email)}`));
-  const inboundEmailOr = buildOrFilter(emails.map((email) => `from_email.eq.${encodeURIComponent(email)}`));
+  const emailQuoteOr = buildOrFilter(emails.map((email) => emailEqualsClause("email", email)));
+  const inboundEmailOr = buildOrFilter(emails.map((email) => emailEqualsClause("from_email", email)));
   const outlookMessageOr = buildOrFilter([
     ...(request?.id ? [`linked_request_id.eq.${encodeURIComponent(request.id)}`] : []),
     `linked_customer_id.eq.${master.id}`,
-    ...emails.map((email) => `matched_email.eq.${encodeURIComponent(email)}`),
-    ...emails.map((email) => `from_email.eq.${encodeURIComponent(email)}`),
-    ...emails.map((email) => `to_emails.cs.{${encodeURIComponent(email)}}`),
-    ...emails.map((email) => `cc_emails.cs.{${encodeURIComponent(email)}}`),
+    ...emails.map((email) => emailEqualsClause("matched_email", email)),
+    ...emails.map((email) => emailEqualsClause("from_email", email)),
+    ...emails.map((email) => emailArrayContainsClause("to_emails", email)),
+    ...emails.map((email) => emailArrayContainsClause("cc_emails", email)),
   ]);
   const documentJourneyOr = buildOrFilter([
     `customer_id.eq.${master.id}`,
-    ...emails.map((email) => `customer_email.eq.${encodeURIComponent(email)}`),
+    ...emails.map((email) => emailEqualsClause("customer_email", email)),
   ]);
-  const ordersByEmailOr = buildOrFilter(emails.map((email) => `email.eq.${encodeURIComponent(email)}`));
+  const ordersByEmailOr = buildOrFilter(emails.map((email) => emailEqualsClause("email", email)));
   const phone = trimNullable(master.phone);
   const crmSalesOr = buildOrFilter([
     `request_id.eq.${master.request_id}`,
-    ...emails.map((email) => `customer_email.eq.${encodeURIComponent(email)}`),
+    ...emails.map((email) => emailEqualsClause("customer_email", email)),
   ]);
   const crmQuotesOr = buildOrFilter([
     `request_id.eq.${master.request_id}`,
     `customer_id.eq.${master.id}`,
-    ...emails.map((email) => `contact_email.eq.${encodeURIComponent(email)}`),
+    ...emails.map((email) => emailEqualsClause("contact_email", email)),
     ...(phone ? [`contact_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
   const voiceCallsOr = buildOrFilter([
@@ -3675,10 +3687,10 @@ async function fetchDownstreamRows(
     ...(phone ? [`caller_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
   const relatedCustomersOr = buildOrFilter([
-    ...emails.map((email) => `email.eq.${encodeURIComponent(email)}`),
-    ...emails.map((email) => `billing_email.eq.${encodeURIComponent(email)}`),
-    ...emails.map((email) => `original_email.eq.${encodeURIComponent(email)}`),
-    ...emails.map((email) => `cc_emails.cs.{${encodeURIComponent(email)}}`),
+    ...emails.map((email) => emailEqualsClause("email", email)),
+    ...emails.map((email) => emailEqualsClause("billing_email", email)),
+    ...emails.map((email) => emailEqualsClause("original_email", email)),
+    ...emails.map((email) => emailArrayContainsClause("cc_emails", email)),
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
   const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, outlookMessages, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
@@ -4548,7 +4560,12 @@ export async function searchCustomerRecords(query: string) {
     rows = await selectMasterCustomerRows({
       ...(searchMode === "email"
         ? {
-            or: `(email.eq.${normalizedEmail},billing_email.eq.${normalizedEmail},original_email.eq.${normalizedEmail},cc_emails.cs.{${encodeURIComponent(normalizedEmail)}})`,
+            or: `(${[
+              emailEqualsClause("email", normalizedEmail),
+              emailEqualsClause("billing_email", normalizedEmail),
+              emailEqualsClause("original_email", normalizedEmail),
+              emailArrayContainsClause("cc_emails", normalizedEmail),
+            ].join(",")})`,
           }
         : searchMode === "request_id"
           ? { request_id: `eq.${normalized}` }
@@ -5473,7 +5490,7 @@ export async function blockCustomerContact(
   const email = normalizeEmail(context.master.email);
   const blacklistRows = await supabaseRequest<FollowupBlacklistRow[]>("followup_blacklist", undefined, {
     select: "id,email,domain,reason,added_by,expires_at",
-    email: `eq.${encodeURIComponent(email)}`,
+    email: `eq.${postgrestEmailValue(email)}`,
     limit: 1,
   });
   const existingBlacklist = blacklistRows[0] || null;

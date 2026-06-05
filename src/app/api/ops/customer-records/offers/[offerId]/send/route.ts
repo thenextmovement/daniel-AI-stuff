@@ -45,6 +45,14 @@ function isInternalNeontripEmail(email: string) {
   return /@(neontrip\.de|neontrip\.com)$/i.test(email);
 }
 
+function isPlaceholderCustomerEmail(email: string) {
+  return email.endsWith("@no-customer-email.invalid");
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ offerId: string }> }) {
   const authorized = await authorize(request);
   if (!authorized.ok) return authorized.response;
@@ -78,6 +86,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           error:
             "Versand blockiert: Die Hauptadresse ist eine interne NEONTRIP-Adresse. Bitte zuerst die echte Kunden-E-Mail im Datensatz oder Angebot korrigieren.",
           code: "internal_recipient_detected",
+        },
+        { status: 409 },
+      );
+    }
+    if (!recipientEmail || isPlaceholderCustomerEmail(recipientEmail) || !isValidEmail(recipientEmail)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Versand blockiert: Es ist keine echte Kunden-E-Mail hinterlegt. Bitte zuerst die Kunden-E-Mail im Datensatz oder Angebot korrigieren.",
+          code: "no_valid_customer_email",
         },
         { status: 409 },
       );
