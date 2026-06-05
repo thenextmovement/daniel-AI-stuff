@@ -49,6 +49,7 @@ const SALES_CALL_REFRESH_COOLDOWN_SECONDS = 60;
 const directTrelloVisualCache = new Map<string, SalesCallVisualCandidate[]>();
 
 export type SalesCallPreset =
+  | "called-done"
   | "interested"
   | "needs-adjustment"
   | "needs-time"
@@ -517,6 +518,12 @@ const SALES_CALL_PRESETS: Record<
     validationUseful: "yes" | "no";
   }
 > = {
+  "called-done": {
+    callDone: "yes",
+    callOutcome: "",
+    nextStep: "no_action",
+    validationUseful: "yes",
+  },
   interested: {
     callDone: "yes",
     callOutcome: "reached_interested",
@@ -2132,6 +2139,15 @@ export function advanceCadenceStateFromResult(
   }
 
   switch (result.preset) {
+    case "called-done":
+      next.currentStage = "finished";
+      next.nextCallDueAt = null;
+      next.nextCallAction = "finished_standard_cadence";
+      next.blocked = false;
+      next.blockingReason = null;
+      next.pendingCallbackAt = null;
+      next.cadenceFinished = true;
+      break;
     case "callback":
     case "needs-time": {
       const callbackDate = result.nextStep.replace(/^callback_/, "");

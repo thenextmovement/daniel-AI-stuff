@@ -66,6 +66,7 @@ const presetOptions: Array<{
   label: string;
   helper: string;
 }> = [
+  { key: "called-done", label: "Anruf erledigt", helper: "Neutral abgeschlossen, ohne Kaufsignal oder Absage." },
   { key: "interested", label: "Interessiert", helper: "Konkrete Frage, Blocker oder nächster Bearbeitungsschritt." },
   { key: "needs-adjustment", label: "Anpassung nötig", helper: "Angebot bleibt relevant, muss aber angepasst werden." },
   { key: "needs-time", label: "Braucht noch Zeit", helper: "Kunde ist nicht raus, Wiedervorlage mit Datum." },
@@ -751,6 +752,8 @@ function getCallOutcomeLabel(item: SalesCallListItem) {
 
 function getResultOutcomeLabel(preset: SalesCallResultEntry["preset"] | null | undefined) {
   switch (preset) {
+    case "called-done":
+      return "Anruf erledigt";
     case "not-reached":
       return "nicht erreicht";
     case "callback":
@@ -1139,6 +1142,7 @@ export function CustomerSalesCallsClient({
   const [stateLoadFailed, setStateLoadFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [quickSavingId, setQuickSavingId] = useState<string | null>(null);
   const [segmentSaving, setSegmentSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -1322,6 +1326,25 @@ export function CustomerSalesCallsClient({
     setMessage(null);
   }
 
+  function removeItemFromVisibleState(item: SalesCallListItem) {
+    const key = item.id || item.requestId;
+    setState((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        items: current.items.filter((entry) => (entry.id || entry.requestId) !== key),
+        bucketCounts: {
+          ...current.bucketCounts,
+          [item.cadence.queueBucket]: Math.max(0, (current.bucketCounts[item.cadence.queueBucket] || 0) - 1),
+        },
+      };
+    });
+    if (selectedItemId === key) {
+      setSelectedItemId(null);
+      setDetailOpen(false);
+    }
+  }
+
   async function runSearchFor(queryInput: string) {
     const query = queryInput.trim();
     if (query.length < 2) {
@@ -1490,6 +1513,7 @@ export function CustomerSalesCallsClient({
           priorityTier,
           priorityReason,
           purchaseSignal,
+          expectedLatestResultId: selectedItem.latestResult?.id || null,
         }),
       });
       const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
@@ -1519,6 +1543,52 @@ export function CustomerSalesCallsClient({
       setError(formatFetchError(error));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function quickRecordResult(item: SalesCallListItem, quickPreset: Extract<SalesCallPreset, "called-done" | "not-reached">) {
+    const key = item.id || item.requestId;
+    setQuickSavingId(key);
+    setError(null);
+    setMessage(null);
+
+    const note =
+      quickPreset === "not-reached"
+        ? "Schnellaktion: Kunde wurde heute im Listenablauf telefonisch nicht erreicht; nächster Versuch wird automatisch geplant."
+        : "Schnellaktion: Anruf wurde heute im Listenablauf erledigt; keine weitere Standardaktion aus dieser Tagesliste nötig.";
+
+    try {
+      const response = await fetchWithTimeout("/api/ops/customer-records/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "record_result",
+          operatorName: operatorName || null,
+          callListItemId: item.id || null,
+          requestId: item.requestId,
+          preset: quickPreset,
+          notes: note,
+          callbackDate: quickPreset === "not-reached" ? tomorrowDate() : null,
+          postReminderDecision: item.cadence.currentStage === "no_response_call" ? "finished" : null,
+          priorityTier: null,
+          priorityReason: null,
+          purchaseSignal: null,
+          expectedLatestResultId: item.latestResult?.id || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
+      if (!response.ok || !payload?.ok) {
+        setError(formatApiError(payload));
+        return;
+      }
+
+      removeItemFromVisibleState(item);
+      setMessage(quickPreset === "not-reached" ? "Nicht erreicht gespeichert. Aufgabe ist verschoben." : "Anruf erledigt. Aufgabe ist abgeschlossen.");
+      void loadState();
+    } catch (error) {
+      setError(formatFetchError(error));
+    } finally {
+      setQuickSavingId(null);
     }
   }
 
@@ -1944,12 +2014,15 @@ export function CustomerSalesCallsClient({
               ) : state ? (
                 visibleWorkItems.length ? (
                   visibleWorkItems.map((item) => (
-                    <button
+                    <div
                       key={`work-${activeTab}-${item.id || item.requestId}`}
-                      onClick={() => openItem(item.id || item.requestId)}
-                      className={`grid w-full gap-3 rounded-3xl border px-4 py-4 text-left transition hover:border-stone-500 hover:bg-white lg:grid-cols-[minmax(0,1.5fr)_150px_150px_190px_150px] ${workCardTone(item)}`}
+                      className={`grid w-full gap-3 rounded-3xl border px-4 py-4 text-left transition hover:border-stone-500 hover:bg-white lg:grid-cols-[minmax(0,1.5fr)_145px_145px_185px_145px_145px] ${workCardTone(item)}`}
                     >
-                      <div className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => openItem(item.id || item.requestId)}
+                        className="min-w-0 text-left"
+                      >
                         <div className="flex gap-3">
                           <CallVisual
                             item={item}
@@ -1976,29 +2049,72 @@ export function CustomerSalesCallsClient({
                             <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{getPriorityReason(item)}</p>
                           </div>
                         </div>
-                      </div>
-                      <div className="rounded-2xl bg-white/80 px-3 py-3">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openItem(item.id || item.requestId)}
+                        className="rounded-2xl bg-white/80 px-3 py-3 text-left transition hover:bg-white"
+                      >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Warenwert</p>
                         <p className="mt-1 text-lg font-semibold text-stone-950">
                           {formatMoney(item.dealValueEur, item.record.quote?.currency || "EUR")}
                         </p>
-                      </div>
-                      <div className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openItem(item.id || item.requestId)}
+                        className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3 text-left transition hover:bg-white"
+                      >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Anfrage</p>
                         <p className="mt-1 text-sm font-medium text-stone-900">
                           {item.record.request?.createdAt ? formatDateLabel(item.record.request.createdAt) : "Kein Datum"}
                         </p>
-                      </div>
-                      <div className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openItem(item.id || item.requestId)}
+                        className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3 text-left transition hover:bg-white"
+                      >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Anrufstatus</p>
                         <p className="mt-1 text-sm font-medium leading-5 text-stone-900">{getSimpleCallStatus(item)}</p>
-                      </div>
-                      <div className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openItem(item.id || item.requestId)}
+                        className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3 text-left transition hover:bg-white"
+                      >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Segment</p>
                         <p className="mt-1 text-sm font-medium text-stone-900">{getSegmentLabel(item)}</p>
                         <p className="mt-1 text-xs text-stone-500">{needsSegmentConfirmation(item) ? "Bestätigung offen" : "bestätigt"}</p>
+                      </button>
+                      <div className="flex flex-col gap-2 rounded-2xl border border-black/10 bg-white/90 px-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() => quickRecordResult(item, "called-done")}
+                          disabled={Boolean(quickSavingId)}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:cursor-wait disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          {quickSavingId === (item.id || item.requestId) ? "Speichert" : "Erledigt"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => quickRecordResult(item, "not-reached")}
+                          disabled={Boolean(quickSavingId)}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:cursor-wait disabled:opacity-50"
+                        >
+                          <Phone className="h-4 w-4" />
+                          Nicht erreicht
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openItem(item.id || item.requestId)}
+                          className="rounded-xl px-3 py-2 text-xs font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-950"
+                        >
+                          Details
+                        </button>
                       </div>
-                    </button>
+                    </div>
                   ))
                 ) : (
                   <div className="rounded-3xl border border-dashed border-stone-300 px-5 py-8 text-sm text-stone-500">

@@ -723,6 +723,40 @@ test("buildSalesTaskFromCadence creates persistent call and callback tasks", () 
   assert.equal(callbackTask?.sourceRef, "callback_result");
 });
 
+test("called-done quick action counts the call and closes the standard task", () => {
+  const record = buildRecord();
+  const inquiry = deriveCadenceState(record, null, null);
+  const result = buildSalesCallResultFromPreset({
+    requestId: record.requestId,
+    preset: "called-done",
+    notes: "Schnellaktion: Anruf wurde heute im Listenablauf erledigt; keine weitere Standardaktion aus dieser Tagesliste nötig.",
+  });
+
+  assert.equal(result.callDone, "yes");
+  assert.equal(result.nextStep, "no_action");
+
+  const next = advanceCadenceStateFromResult(
+    inquiry,
+    {
+      ...result,
+      id: "quick_done_result",
+      createdAt: "2026-05-21T09:00:00.000Z",
+      updatedAt: "2026-05-21T09:00:00.000Z",
+    },
+    {
+      priorityTier: null,
+      priorityReason: null,
+      purchaseSignal: null,
+      postReminderDecision: null,
+    },
+  );
+
+  assert.equal(next.standardCallCount, 1);
+  assert.equal(next.currentStage, "finished");
+  assert.equal(next.queueBucket, "finished");
+  assert.equal(buildSalesTaskFromCadence(next, "sales_call_result", "quick_done_result"), null);
+});
+
 test("isActiveSalesTaskVisibleNow keeps open and due tasks visible but hides future waiting tasks", () => {
   assert.equal(isActiveSalesTaskVisibleNow({ status: "open", dueAt: null }), true);
   assert.equal(isActiveSalesTaskVisibleNow({ status: "blocked", dueAt: null }), true);

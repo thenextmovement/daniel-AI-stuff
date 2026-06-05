@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
         priorityTier?: SalesCallPriorityTier | null;
         priorityReason?: string | null;
         purchaseSignal?: boolean | null;
+        expectedLatestResultId?: string | null;
       };
 
     const actor = {
@@ -165,6 +166,7 @@ export async function POST(request: NextRequest) {
           priorityTier: (body.priorityTier || null) as SalesCallPriorityTier | null,
           priorityReason: body.priorityReason || null,
           purchaseSignal: body.purchaseSignal ?? null,
+          expectedLatestResultId: body.expectedLatestResultId || null,
         },
         actor,
       );
