@@ -122,6 +122,10 @@ function normalizePriority(value: unknown): "standard" | "important" | "vip" {
   return "standard";
 }
 
+export function manualSegmentStatus(segment: unknown): "accepted" | "needs_review" {
+  return trimNullable(segment) ? "accepted" : "needs_review";
+}
+
 function normalizeDueAt(value: unknown) {
   const normalized = trimNullable(value);
   if (!normalized) return new Date().toISOString();
@@ -304,7 +308,7 @@ async function insertManualRequest(input: ManualRequestImportInput, customerId: 
       title: requestTitle(input),
       description: trimNullable(input.request?.description),
       segment: trimNullable(input.request?.segment),
-      segment_status: trimNullable(input.request?.segment) ? "confirmed" : "needs_review",
+      segment_status: manualSegmentStatus(input.request?.segment),
       segment_confidence: trimNullable(input.request?.segment) ? 1 : null,
       segment_source: MANUAL_IMPORT_SOURCE,
       segment_classified_at: trimNullable(input.request?.segment) ? now : null,
