@@ -4596,6 +4596,39 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+type OfferBridgeLookupInput = {
+  offerId?: string | null;
+  offerNumber?: string | null;
+  documentReference?: string | null;
+};
+
+type OfferBridgeEventRow = {
+  request_id?: string | null;
+};
+
+export async function listCustomerRecordsByOfferBridge(
+  input: OfferBridgeLookupInput,
+  options?: { includeTrello?: boolean; includeOfferTracking?: boolean },
+): Promise<CustomerSearchResult[]> {
+  const filters = [
+    input.offerId ? `offer_id.eq.${encodeURIComponent(input.offerId)}` : null,
+    input.offerNumber ? `offer_number.eq.${encodeURIComponent(input.offerNumber)}` : null,
+    input.documentReference ? `document_reference.eq.${encodeURIComponent(input.documentReference)}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  if (!filters.length) return [];
+
+  const rows = await supabaseRequest<OfferBridgeEventRow[]>("ops_offer_events", undefined, {
+    select: "request_id",
+    or: `(${filters.join(",")})`,
+    order: "event_at.desc",
+    limit: 10,
+  });
+  const requestIds = uniqueValues(rows.map((row) => trimNullable(row.request_id)));
+  if (!requestIds.length) return [];
+  return listCustomerRecordsByRequestIds(requestIds, options);
+}
+
 export async function listCustomerRecordsByRequestIds(
   requestIds: string[],
   options?: { includeTrello?: boolean; includeOfferTracking?: boolean },
