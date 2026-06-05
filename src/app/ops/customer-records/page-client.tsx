@@ -12470,8 +12470,32 @@ function TrelloMediaPanel({
   const anfrageCard = trello?.cards.find((card) => card.boardKey === "anfrage_management") || null;
   const [selectedVideo, setSelectedVideo] = useState<(NonNullable<CustomerSearchResult["trello"]>["videoLinks"][number]) | null>(null);
   const [showAllSimpleMockups, setShowAllSimpleMockups] = useState(false);
-  const primarySimpleVisual = trello?.referenceImage || trello?.mockups[0] || null;
-  const additionalSimpleMockups = trello?.mockups.slice(trello?.referenceImage ? 0 : 1) || [];
+  const fallbackOfferVisuals = (record.crmQuote?.latestVersionImages || [])
+    .filter((image) => image.url)
+    .slice(0, 6)
+    .map((image) => ({
+      attachmentId: image.id,
+      proxyUrl: image.url!,
+      name: `Angebotsbild ${image.itemIndex ?? 0}-${image.imageIndex ?? 0}`,
+      cardUrl: image.url!,
+      sourceLabel: "Angebot",
+    }));
+  const primarySimpleVisual =
+    trello?.referenceImage
+      ? { attachmentId: trello.referenceImage.attachmentId, proxyUrl: trello.referenceImage.proxyUrl, name: trello.referenceImage.name, cardUrl: trello.referenceImage.cardUrl, sourceLabel: "Trello" }
+      : trello?.mockups[0]
+        ? { attachmentId: trello.mockups[0].attachmentId, proxyUrl: trello.mockups[0].proxyUrl, name: trello.mockups[0].name, cardUrl: trello.mockups[0].cardUrl, sourceLabel: "Trello" }
+        : fallbackOfferVisuals[0] || null;
+  const additionalSimpleMockups =
+    trello?.mockups.length
+      ? trello.mockups.slice(trello.referenceImage ? 0 : 1).map((asset) => ({
+          attachmentId: asset.attachmentId,
+          proxyUrl: asset.proxyUrl,
+          name: asset.name,
+          cardUrl: asset.cardUrl,
+          sourceLabel: "Trello",
+        }))
+      : fallbackOfferVisuals.slice(1);
   const visibleSimpleMockups = showAllSimpleMockups ? additionalSimpleMockups : additionalSimpleMockups.slice(0, 2);
 
   if (simpleView) {
@@ -12508,13 +12532,15 @@ function TrelloMediaPanel({
             <div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Hauptbild</div>
               <div className="mt-1 text-lg font-semibold text-black">
-                {trello?.referenceImage ? "Referenzbild" : trello?.mockups.length ? "Erstes Entwurfsbild" : "Noch kein Bildmaterial"}
+                {trello?.referenceImage ? "Referenzbild" : trello?.mockups.length ? "Erstes Entwurfsbild" : fallbackOfferVisuals.length ? "Angebotsbild" : "Noch kein Bildmaterial"}
               </div>
               <div className="mt-2 text-sm leading-6 text-black/60">
                 {trello?.referenceImage
                   ? `${trello.mockups.length} ${trello.mockups.length === 1 ? "weiteres Bild" : "weitere Bilder"}${trello.videoLinks.length ? ` • ${trello.videoLinks.length} Video${trello.videoLinks.length === 1 ? "" : "s"}` : ""}`
                   : trello?.mockups.length
                     ? `${trello.mockups.length} Bild${trello.mockups.length === 1 ? "" : "er"} gefunden${trello.videoLinks.length ? ` • ${trello.videoLinks.length} Video${trello.videoLinks.length === 1 ? "" : "s"}` : ""}`
+                    : fallbackOfferVisuals.length
+                      ? `${fallbackOfferVisuals.length} Angebotsbild${fallbackOfferVisuals.length === 1 ? "" : "er"} als Fallback gefunden.`
                     : "Kein Referenzbild oder Entwurfsbild auf der Hauptkarte gefunden."}
               </div>
             </div>
@@ -12543,6 +12569,7 @@ function TrelloMediaPanel({
                 <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Weitere Bilder</div>
                 <div className="mt-1 text-sm leading-6 text-black/60">
                   {additionalSimpleMockups.length} {additionalSimpleMockups.length === 1 ? "weiteres Bild" : "weitere Bilder"} bei Bedarf ansehen.
+                  {!trello?.mockups.length && fallbackOfferVisuals.length ? " Quelle: Angebotsversion." : ""}
                 </div>
               </div>
               <button
@@ -15926,7 +15953,7 @@ function OfferEditorPanel({
           <div className="grid gap-3 md:grid-cols-4">
             <MiniSystem title="Status" value={offer.status} detail={offer.lock.lockReason || "Bearbeitbar"} tone={offer.lock.lockLevel === "hard" ? "amber" : offer.lock.lockLevel === "soft" ? "blue" : "good"} />
             <MiniSystem title="Angebot" value={offer.offerNumber || offer.documentReference} detail={`Zuletzt ${formatDate(offer.updatedAt)}`} tone="neutral" />
-            <MiniSystem title="Angebotswert netto" value={formatMoney(draftNetTotal, currency)} detail={`${items.length} Position${items.length === 1 ? "" : "en"} aus der Angebots-App`} tone="accent" />
+            <MiniSystem title="Verkaufswert netto" value={formatMoney(draftNetTotal, currency)} detail={`${items.length} Position${items.length === 1 ? "" : "en"} aus der Angebots-App`} tone="accent" />
             <MiniSystem title="Bilder" value={images.filter((image) => image.enabled).length} detail={`${images.length} insgesamt`} tone="blue" />
           </div>
 
@@ -16036,8 +16063,8 @@ function OfferEditorPanel({
                       <Field label="Titel" hint="Produkt- oder Variantenname." value={item.title || ""} onChange={(value) => updateItem(item.id, { title: value })} icon={<BadgeCheck className="h-4 w-4" />} />
                       <Field label="Rabattlabel" hint="z. B. Sonderpreis oder Aktionsrabatt." value={item.discountLabel || ""} onChange={(value) => updateItem(item.id, { discountLabel: value || null })} icon={<BadgeCheck className="h-4 w-4" />} />
                       <Field label="Menge" hint="Anzahl für diese Position." value={String(item.quantity)} onChange={(value) => updateItem(item.id, { quantity: Math.max(1, Number(value) || 1) })} type="number" icon={<Database className="h-4 w-4" />} />
-                      <Field label="Preis netto (EUR)" hint="Netto-Einzelpreis in Euro, nicht Cent." value={String(item.unitPriceNet)} onChange={(value) => updateItem(item.id, { unitPriceNet: Math.max(0, Number(value) || 0) })} type="number" step="0.01" meta={`Wird als ${formatMoney(item.unitPriceNet, currency)} netto gespeichert.`} icon={<Database className="h-4 w-4" />} />
-                      <Field label="Vergleichspreis netto (EUR)" hint="Optional, leer = kein Vergleichspreis. Ebenfalls Euro, nicht Cent." value={item.listPriceNet === null ? "" : String(item.listPriceNet)} onChange={(value) => updateItem(item.id, { listPriceNet: value.trim() ? Math.max(0, Number(value) || 0) : null })} type="number" step="0.01" meta={item.listPriceNet === null ? "Kein Vergleichspreis sichtbar." : `Wird als ${formatMoney(item.listPriceNet, currency)} netto gespeichert.`} icon={<Database className="h-4 w-4" />} />
+                      <Field label="Verkaufspreis netto (EUR)" hint="Kundensichtbarer Netto-Einzelpreis in Euro, nicht Einkaufswert und nicht Cent." value={String(item.unitPriceNet)} onChange={(value) => updateItem(item.id, { unitPriceNet: Math.max(0, Number(value) || 0) })} type="number" step="0.01" meta={`Wird als ${formatMoney(item.unitPriceNet, currency)} netto im Angebot gespeichert.`} icon={<Database className="h-4 w-4" />} />
+                      <Field label="Vergleichspreis netto (EUR)" hint="Optionaler kundensichtbarer Vergleichspreis. Ebenfalls Euro, nicht Cent." value={item.listPriceNet === null ? "" : String(item.listPriceNet)} onChange={(value) => updateItem(item.id, { listPriceNet: value.trim() ? Math.max(0, Number(value) || 0) : null })} type="number" step="0.01" meta={item.listPriceNet === null ? "Kein Vergleichspreis sichtbar." : `Wird als ${formatMoney(item.listPriceNet, currency)} netto im Angebot gespeichert.`} icon={<Database className="h-4 w-4" />} />
                       <Field label="Sortierung" hint="Reihenfolge im Angebot." value={String(item.sortOrder)} onChange={(value) => updateItem(item.id, { sortOrder: Math.max(0, Number(value) || 0) })} type="number" icon={<Database className="h-4 w-4" />} />
                     </div>
                     <div className="mt-3">
@@ -18386,8 +18413,11 @@ function SimpleActionPanel({
       ) : null}
 
       <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-        <div className="text-sm leading-6 text-black/60">{toSimpleActionDetail(nextAction)}</div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-rose-900/55">
+          Empfohlener nächster Schritt
+        </div>
+        <div className="mt-2 text-sm leading-6 text-black/65">{toSimpleActionDetail(nextAction)}</div>
+        <div className="mt-4 flex flex-wrap gap-2">
           {primaryAction?.kind === "link" ? <QuickLink href={primaryAction.href} label={primaryAction.label} /> : null}
           {primaryAction?.kind === "button" ? (
             <button
@@ -18407,6 +18437,36 @@ function SimpleActionPanel({
         </div>
       </div>
 
+      {quickActions.length ? (
+        <div className="rounded-2xl border border-black/10 bg-white p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/40">Direkt abhaken</div>
+              <div className="mt-1 text-sm leading-6 text-black/60">
+                Für die häufigsten Telefon-Ergebnisse, ohne den Fall weiter aufzuklappen.
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+            {quickActions.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                disabled={running}
+                onClick={action.onClick}
+                className={`inline-flex min-h-11 items-center justify-center rounded-xl px-3 py-2 text-center text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  action.danger
+                    ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100"
+                    : "border border-black/10 bg-black/[0.02] text-black/70 hover:border-[#fa31a2] hover:bg-white hover:text-black"
+                }`}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -18415,7 +18475,7 @@ function SimpleActionPanel({
           className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
         >
           <span className="text-black/35">{expanded ? "−" : "+"}</span>
-          {expanded ? "Weniger Aktionen" : "Mehr Aktionen"}
+          {expanded ? "Details ausblenden" : "Sonderfälle und Details"}
         </button>
       </div>
 
@@ -18427,28 +18487,6 @@ function SimpleActionPanel({
               <div className="mt-1 text-sm font-semibold text-black">Werkzeuge nach Arbeitsschritt</div>
             </div>
           </div>
-          {quickActions.length ? (
-            <div className="mt-3 rounded-xl border border-black/10 bg-black/[0.02] p-3">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Schnellaktionen</div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                {quickActions.map((action) => (
-                  <button
-                    key={action.key}
-                    type="button"
-                    disabled={running}
-                    onClick={action.onClick}
-                    className={`inline-flex min-h-10 items-center justify-center rounded-xl px-3 py-2 text-center text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      action.danger
-                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100"
-                        : "border border-black/10 bg-white text-black/65 hover:border-[#fa31a2] hover:text-black"
-                    }`}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
           <div className="mt-3">
             <ActionPanel
               record={record}
@@ -19342,28 +19380,70 @@ function SimpleCaseWorkspacePanel({
           onOpenSpecialCase={() => setShowSpecialCase(true)}
         />
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setShowSpecialCase((current) => !current)}
-            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
-          >
-            {showSpecialCase ? "Problemfall schließen" : record.specialCase.status === "open" ? "Problemfall" : "Problemfall melden"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowTeam((current) => !current)}
-            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
-          >
-            {showTeam ? "Zuständigkeit schließen" : "Zuständigkeit"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowNotes((current) => !current)}
-            className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/60 transition hover:border-[#fa31a2] hover:text-black"
-          >
-            {showNotes ? "Notiz schließen" : "Notiz"}
-          </button>
+        <div className="rounded-2xl border border-black/10 bg-black/[0.015] p-3">
+          <div className="flex items-start justify-between gap-3 px-1">
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-black/40">Fallarbeit</div>
+              <div className="mt-1 text-sm leading-6 text-black/60">
+                Nur öffnen, wenn du wirklich etwas eintragen oder zuweisen willst.
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2">
+            <button
+              type="button"
+              onClick={() => setShowSpecialCase((current) => !current)}
+              className={`flex min-h-16 items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                showSpecialCase || record.specialCase.status === "open"
+                  ? "border-rose-200 bg-rose-50 text-rose-950"
+                  : "border-black/10 bg-white text-black/70 hover:border-[#fa31a2] hover:text-black"
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">
+                  {showSpecialCase ? "Problemfall schließen" : record.specialCase.status === "open" ? "Problemfall offen" : "Problemfall melden"}
+                </span>
+                <span className="mt-0.5 block text-xs leading-5 text-current opacity-65">
+                  Reklamation, Sonderfall oder offene Klärung festhalten.
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTeam((current) => !current)}
+              className={`flex min-h-16 items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                showTeam
+                  ? "border-sky-200 bg-sky-50 text-sky-950"
+                  : "border-black/10 bg-white text-black/70 hover:border-[#fa31a2] hover:text-black"
+              }`}
+            >
+              <UserRound className="h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{showTeam ? "Zuständigkeit schließen" : "Zuständigkeit"}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-current opacity-65">
+                  Fall zuweisen, übergeben oder bei dir markieren.
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNotes((current) => !current)}
+              className={`flex min-h-16 items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                showNotes
+                  ? "border-teal-200 bg-teal-50 text-teal-950"
+                  : "border-black/10 bg-white text-black/70 hover:border-[#fa31a2] hover:text-black"
+              }`}
+            >
+              <MessageSquareText className="h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{showNotes ? "Notizen schließen" : "Notiz oder Aufgabe"}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-current opacity-65">
+                  Interne Notiz, Aufgabe oder @Markierung hinzufügen.
+                </span>
+              </span>
+            </button>
+          </div>
         </div>
 
         {showTeam ? (
