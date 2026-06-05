@@ -3660,6 +3660,7 @@ async function fetchDownstreamRows(
   const inboundEmailOr = buildOrFilter(emails.map((email) => emailEqualsClause("from_email", email)));
   const outlookMessageOr = buildOrFilter([
     ...(request?.id ? [`linked_request_id.eq.${encodeURIComponent(request.id)}`] : []),
+    `linked_request_id.eq.${encodeURIComponent(master.request_id)}`,
     `linked_customer_id.eq.${master.id}`,
     ...emails.map((email) => emailEqualsClause("matched_email", email)),
     ...emails.map((email) => emailEqualsClause("from_email", email)),

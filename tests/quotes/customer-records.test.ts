@@ -394,7 +394,7 @@ test("searchCustomerRecords builds Outlook mail filters with raw email values", 
   assert.ok(url);
   assert.equal(
     url.searchParams.get("or"),
-    "(linked_request_id.eq.request_row_1,linked_customer_id.eq.customer_1,matched_email.eq.samuele@example.com,matched_email.eq.kollegin@example.com,from_email.eq.samuele@example.com,from_email.eq.kollegin@example.com,to_emails.cs.{samuele@example.com},to_emails.cs.{kollegin@example.com},cc_emails.cs.{samuele@example.com},cc_emails.cs.{kollegin@example.com})",
+    "(linked_request_id.eq.request_row_1,linked_request_id.eq.request_public_1,linked_customer_id.eq.customer_1,matched_email.eq.samuele@example.com,matched_email.eq.kollegin@example.com,from_email.eq.samuele@example.com,from_email.eq.kollegin@example.com,to_emails.cs.{samuele@example.com},to_emails.cs.{kollegin@example.com},cc_emails.cs.{samuele@example.com},cc_emails.cs.{kollegin@example.com})",
   );
   assert.equal(url.searchParams.get("or")?.includes("%40"), false);
 });
