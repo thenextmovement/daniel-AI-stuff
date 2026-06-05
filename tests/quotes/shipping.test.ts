@@ -194,6 +194,39 @@ test("buildShippingNotificationEmail sends pickup notices only as deterministic 
   assert.doesNotMatch(notification.bodyHtml, /Daniel/);
 });
 
+test("buildShippingNotificationEmail labels pickup reminder mails clearly", () => {
+  const notification = buildShippingNotificationEmail({
+    notification_id: "notification-reminder-1",
+    notification_key: "customer:pickup_available:shipment-1:reminder:1",
+    kind: "customer_pickup_available",
+    recipient_type: "customer",
+    recipient_email: "ada@example.com",
+    attempts: 1,
+    shipment_id: "shipment-1",
+    incident_id: "incident-1",
+    shipment_key: "carrier:dpd:TRACK-1",
+    shopify_order_number: "#1001",
+    request_id: "req-1",
+    customer_name: "Ada Lovelace",
+    customer_email: "ada@example.com",
+    carrier: "dpd",
+    tracking_number: "TRACK-1",
+    tracking_url: "https://example.test/track",
+    status: "pickup_available",
+    incident_type: "pickup_available",
+    incident_title: "Paket liegt zur Abholung bereit",
+    incident_description: "Paketshop.",
+    incident_severity: "watch",
+    latest_event_time: "2026-06-05T09:00:00.000Z",
+    latest_event_location: "Paketshop Berlin",
+    latest_event_status_text: "Abholung bereit",
+  } as ClaimedShippingNotificationRow);
+
+  assert.match(notification.subject, /^Erinnerung:/);
+  assert.match(notification.bodyHtml, /weiterhin zur Abholung bereitliegt/);
+  assert.match(notification.bodyHtml, /Fabienne/);
+});
+
 test("buildShippingNotificationEmail blocks customer pickup mails to internal or test addresses", () => {
   assert.throws(
     () => buildShippingNotificationEmail({

@@ -89,6 +89,10 @@ function greeting(row: Pick<ClaimedShippingNotificationRow, "customer_name">) {
   return name ? `Guten Tag ${escapeHtml(name)},` : "Guten Tag,";
 }
 
+function isPickupReminder(row: Pick<ClaimedShippingNotificationRow, "notification_key">) {
+  return row.notification_key.includes(":reminder:");
+}
+
 function assertValidCustomerRecipient(email: string | null) {
   const normalized = normalizeEmail(email || "");
   if (!normalized || !isValidEmail(normalized)) {
@@ -116,7 +120,9 @@ export function buildPickupAvailableCustomerEmail(row: ClaimedShippingNotificati
   const location = trimNullable(row.latest_event_location);
   const statusText = trimNullable(row.latest_event_status_text);
   const orderLabel = trimNullable(row.shopify_order_number);
-  const subject = orderLabel ? `Ihr NEONTRIP Paket liegt zur Abholung bereit (${orderLabel})` : "Ihr NEONTRIP Paket liegt zur Abholung bereit";
+  const reminder = isPickupReminder(row);
+  const subjectPrefix = reminder ? "Erinnerung: Ihr NEONTRIP Paket liegt zur Abholung bereit" : "Ihr NEONTRIP Paket liegt zur Abholung bereit";
+  const subject = orderLabel ? `${subjectPrefix} (${orderLabel})` : subjectPrefix;
 
   const details = [
     trackingNumber ? `<li><strong>Sendungsnummer:</strong> ${escapeHtml(trackingNumber)}</li>` : null,
@@ -127,7 +133,9 @@ export function buildPickupAvailableCustomerEmail(row: ClaimedShippingNotificati
 
   const bodyHtml = [
     paragraph(greeting(row)),
-    paragraph("laut Sendungsverfolgung liegt Ihr NEONTRIP Paket aktuell zur Abholung bereit."),
+    paragraph(reminder
+      ? "wir moechten Sie kurz daran erinnern, dass Ihr NEONTRIP Paket laut Sendungsverfolgung weiterhin zur Abholung bereitliegt."
+      : "laut Sendungsverfolgung liegt Ihr NEONTRIP Paket aktuell zur Abholung bereit."),
     paragraph("Bitte holen Sie die Sendung zeitnah ab, damit sie nicht an uns zurueckgeschickt wird."),
     details ? `<ul>${details}</ul>` : "",
     trackingLink(row.tracking_url),

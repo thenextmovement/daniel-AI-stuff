@@ -78,6 +78,7 @@ Automatische Kundenmail:
 - Interne `@neontrip.de`- und `@neontrip.test`-Adressen werden blockiert.
 - Text ist deterministisch, ohne KI-Freiformulierung.
 - Inhalt: Paket liegt zur Abholung bereit, Trackingdaten/Ort falls vorhanden, Bitte zeitnah abholen, Signatur `Fabienne / NEONTRIP`.
+- Erinnerung: Wenn der Abholstatus weiter offen ist, wird fruehestens alle 48 Stunden erneut erinnert, maximal drei Erinnerungen nach der Erstmail.
 
 Interne Warnung:
 
@@ -90,6 +91,7 @@ Idempotenz:
 
 - Supabase-Tabelle `shipping_notifications` ist die Source of Truth fuer Mail-Side-Effects.
 - Kunden-Abholmail: ein Key pro Sendung, `customer:pickup_available:{shipment_id}`.
+- Kunden-Abhol-Reminder: ein Key pro Sendung und Reminder-Stufe, `customer:pickup_available:{shipment_id}:reminder:{sent_count}`.
 - Interne Warnung: ein Key pro Incident, `internal:delivery_problem:{incident_id}`.
 - n8n claimt `pending` Notifications, sendet ueber Outlook und markiert danach `sent`.
 - Wenn Outlook oder Markierung fehlschlaegt, bleibt der Eintrag retryfaehig und wird nach Stale-Timeout erneut geclaimt.
