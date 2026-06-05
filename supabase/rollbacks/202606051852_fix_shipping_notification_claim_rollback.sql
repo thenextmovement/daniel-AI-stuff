@@ -1,0 +1,1 @@
+-- Re-apply supabase/migrations/202606051840_create_shipping_notifications.sql if this fix needs to be reverted.

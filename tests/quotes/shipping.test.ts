@@ -7,6 +7,7 @@ import {
   normalizeCarrierStatus,
   normalizeShippingCarrier,
 } from "../../src/lib/ops/shipping";
+import { buildShippingNotificationEmail, type ClaimedShippingNotificationRow } from "../../src/lib/ops/shipping-notifications";
 
 const baseShipment = {
   id: "shipment-1",
@@ -156,4 +157,105 @@ test("buildShippingBoardFromRows prioritizes urgent incidents and keeps tasks as
   assert.equal(board.items[0].shipment.id, "shipment-2");
   assert.equal(board.counts.actionRequired, 1);
   assert.equal(board.counts.withOpenTask, 1);
+});
+
+test("buildShippingNotificationEmail sends pickup notices only as deterministic customer mail", () => {
+  const notification = buildShippingNotificationEmail({
+    notification_id: "notification-1",
+    notification_key: "customer:pickup_available:shipment-1",
+    kind: "customer_pickup_available",
+    recipient_type: "customer",
+    recipient_email: "ada@example.com",
+    attempts: 1,
+    shipment_id: "shipment-1",
+    incident_id: "incident-1",
+    shipment_key: "carrier:dpd:TRACK-1",
+    shopify_order_number: "#1001",
+    request_id: "req-1",
+    customer_name: "Ada Lovelace",
+    customer_email: "ada@example.com",
+    carrier: "dpd",
+    tracking_number: "TRACK-1",
+    tracking_url: "https://example.test/track",
+    status: "pickup_available",
+    incident_type: "pickup_available",
+    incident_title: "Paket liegt zur Abholung bereit",
+    incident_description: "Paketshop.",
+    incident_severity: "watch",
+    latest_event_time: "2026-06-05T09:00:00.000Z",
+    latest_event_location: "Paketshop Berlin",
+    latest_event_status_text: "Abholung bereit",
+  } as ClaimedShippingNotificationRow);
+
+  assert.equal(notification.recipientEmail, "ada@example.com");
+  assert.match(notification.subject, /Abholung bereit/);
+  assert.match(notification.bodyHtml, /zeitnah ab/);
+  assert.match(notification.bodyHtml, /Fabienne/);
+  assert.doesNotMatch(notification.bodyHtml, /Daniel/);
+});
+
+test("buildShippingNotificationEmail blocks customer pickup mails to internal or test addresses", () => {
+  assert.throws(
+    () => buildShippingNotificationEmail({
+      notification_id: "notification-1",
+      notification_key: "customer:pickup_available:shipment-1",
+      kind: "customer_pickup_available",
+      recipient_type: "customer",
+      recipient_email: "support@neontrip.de",
+      attempts: 1,
+      shipment_id: "shipment-1",
+      incident_id: "incident-1",
+      shipment_key: "carrier:dpd:TRACK-1",
+      shopify_order_number: "#1001",
+      request_id: "req-1",
+      customer_name: "Ada Lovelace",
+      customer_email: "support@neontrip.de",
+      carrier: "dpd",
+      tracking_number: "TRACK-1",
+      tracking_url: "https://example.test/track",
+      status: "pickup_available",
+      incident_type: "pickup_available",
+      incident_title: "Paket liegt zur Abholung bereit",
+      incident_description: "Paketshop.",
+      incident_severity: "watch",
+      latest_event_time: "2026-06-05T09:00:00.000Z",
+      latest_event_location: "Paketshop Berlin",
+      latest_event_status_text: "Abholung bereit",
+    } as ClaimedShippingNotificationRow),
+    /interne oder Test-Adressen/,
+  );
+});
+
+test("buildShippingNotificationEmail routes return and failed delivery as internal warnings", () => {
+  const notification = buildShippingNotificationEmail({
+    notification_id: "notification-2",
+    notification_key: "internal:delivery_problem:incident-2",
+    kind: "internal_delivery_problem",
+    recipient_type: "internal",
+    recipient_email: "info@neontrip.de",
+    attempts: 1,
+    shipment_id: "shipment-2",
+    incident_id: "incident-2",
+    shipment_key: "carrier:dhl:TRACK-2",
+    shopify_order_number: "#1002",
+    request_id: "req-2",
+    customer_name: "Max Mustermann",
+    customer_email: "max@example.com",
+    carrier: "dhl",
+    tracking_number: "TRACK-2",
+    tracking_url: "https://example.test/track-2",
+    status: "returning",
+    incident_type: "return_to_sender",
+    incident_title: "Sendung kommt zurueck",
+    incident_description: "Ruecksendung.",
+    incident_severity: "urgent",
+    latest_event_time: "2026-06-05T09:00:00.000Z",
+    latest_event_location: "Depot",
+    latest_event_status_text: "Zurueck an Absender",
+  } as ClaimedShippingNotificationRow);
+
+  assert.equal(notification.recipientEmail, "info@neontrip.de");
+  assert.match(notification.subject, /Shipping Warnung/);
+  assert.match(notification.bodyHtml, /intern pruefen/);
+  assert.match(notification.bodyHtml, /TRACK-2/);
 });

@@ -12,6 +12,12 @@ import {
   type ShippingCarrier,
   type ShippingShipmentInput,
 } from "@/lib/ops/shipping";
+import {
+  claimPendingShippingNotifications,
+  enqueueShippingNotifications,
+  markShippingNotificationFailed,
+  markShippingNotificationSent,
+} from "@/lib/ops/shipping-notifications";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -106,11 +112,27 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | {
-        action?: "upsert_shipment" | "record_event" | "evaluate_shipment" | "create_task" | "acknowledge" | "resolve" | "ignore";
+        action?:
+          | "upsert_shipment"
+          | "record_event"
+          | "evaluate_shipment"
+          | "create_task"
+          | "acknowledge"
+          | "resolve"
+          | "ignore"
+          | "enqueue_notifications"
+          | "claim_notifications"
+          | "mark_notification_sent"
+          | "mark_notification_failed";
         shipment?: ShippingShipmentInput;
         event?: CarrierEventInput;
         shipmentId?: string;
         incidentId?: string;
+        notificationId?: string;
+        providerMessageId?: string | null;
+        notificationError?: string | null;
+        limit?: number | null;
+        metadata?: Record<string, unknown>;
         operatorName?: string | null;
         agentToken?: string | null;
       }
@@ -158,6 +180,31 @@ export async function POST(request: NextRequest) {
       const incident = await updateShippingIncidentStatus(String(body.incidentId || ""), "ignored", actor);
       const board = await listShippingBoard({ scope: "problems" });
       return NextResponse.json({ ok: true, action: body.action, incident, board });
+    }
+    if (body?.action === "enqueue_notifications") {
+      const notifications = await enqueueShippingNotifications();
+      return NextResponse.json({ ok: true, action: body.action, notifications });
+    }
+    if (body?.action === "claim_notifications") {
+      await enqueueShippingNotifications();
+      const notifications = await claimPendingShippingNotifications(Number(body.limit || 20));
+      return NextResponse.json({ ok: true, action: body.action, notifications });
+    }
+    if (body?.action === "mark_notification_sent") {
+      const notification = await markShippingNotificationSent({
+        notificationId: String(body.notificationId || ""),
+        providerMessageId: body.providerMessageId || null,
+        metadata: body.metadata || {},
+      });
+      return NextResponse.json({ ok: true, action: body.action, notification });
+    }
+    if (body?.action === "mark_notification_failed") {
+      const notification = await markShippingNotificationFailed({
+        notificationId: String(body.notificationId || ""),
+        error: body.notificationError || "unknown",
+        metadata: body.metadata || {},
+      });
+      return NextResponse.json({ ok: true, action: body.action, notification });
     }
     return NextResponse.json({ ok: false, error: "unsupported_action" }, { status: 400 });
   } catch (error) {

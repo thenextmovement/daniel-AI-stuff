@@ -65,4 +65,36 @@ Aktivierungsstand:
 
 Shopify-Fulfillment-Events sind nur so gut wie die Carrier-Events, die Shopify empfaengt. Fuer vollstaendige DPD/DHL-Abdeckung braucht der Agent spaeter direkte Carrier-Polling-Schritte mit verifizierten Credentials.
 
-Der aktuelle Draft sendet keine automatische Kundenkommunikation. Er erzeugt nur Tracking-Events, Incidents und interne Sichtbarkeit.
+Der aktuelle Draft sendet nur eine eng begrenzte automatische Kundenkommunikation: eine deterministische Abholbenachrichtigung bei `pickup_available`. Ruecklauf- und Zustellproblemfaelle werden intern gemeldet, aber nicht automatisch an Kunden kommuniziert.
+
+## Benachrichtigungen
+
+Ziel: Fruehwarnung, bevor Pakete zurueckgehen.
+
+Automatische Kundenmail:
+
+- Nur bei `pickup_available`.
+- Empfaenger ist die Kunden-E-Mail aus der Sendung.
+- Interne `@neontrip.de`- und `@neontrip.test`-Adressen werden blockiert.
+- Text ist deterministisch, ohne KI-Freiformulierung.
+- Inhalt: Paket liegt zur Abholung bereit, Trackingdaten/Ort falls vorhanden, Bitte zeitnah abholen, Signatur `Fabienne / NEONTRIP`.
+
+Interne Warnung:
+
+- Bei `delivery_failed`, `return_to_sender` und `returned`.
+- Empfaenger: `info@neontrip.de`.
+- Inhalt: Kunde, Request-ID, Shopify-Nummer, Carrier, Trackingnummer, letzter Carrier-Status und Link zum Shipping Board.
+- Keine automatische Kundenmail bei Ruecklauf oder nicht zugestellt, weil der Fall zuerst intern geprueft werden muss.
+
+Idempotenz:
+
+- Supabase-Tabelle `shipping_notifications` ist die Source of Truth fuer Mail-Side-Effects.
+- Kunden-Abholmail: ein Key pro Sendung, `customer:pickup_available:{shipment_id}`.
+- Interne Warnung: ein Key pro Incident, `internal:delivery_problem:{incident_id}`.
+- n8n claimt `pending` Notifications, sendet ueber Outlook und markiert danach `sent`.
+- Wenn Outlook oder Markierung fehlschlaegt, bleibt der Eintrag retryfaehig und wird nach Stale-Timeout erneut geclaimt.
+
+Rollback:
+
+- n8n: Notification-Nodes entfernen oder Workflow auf `workflows/backups/neontrip-shipping-agent-v0.1.pre-notifications-20260605.json` zuruecksetzen.
+- DB: `supabase/rollbacks/202606051840_create_shipping_notifications_rollback.sql`.
