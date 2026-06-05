@@ -18,6 +18,7 @@ import {
   Send,
   Star,
   ShieldCheck,
+  Truck,
   UserRound,
   X,
 } from "lucide-react";
@@ -19124,6 +19125,54 @@ function NotesPanel({
   );
 }
 
+function ShippingSnapshotPanel({ record }: { record: CustomerSearchResult }) {
+  const trackingNumber = record.order?.trackingNumber || record.crmSales.find((sale) => sale.trackingNumber)?.trackingNumber || null;
+  const trackingUrl = record.crmSales.find((sale) => sale.trackingUrl)?.trackingUrl || null;
+  const carrier = record.order?.carrier || record.crmSales.find((sale) => sale.trackingCompany)?.trackingCompany || null;
+  const hasShipmentContext = Boolean(trackingNumber || record.order?.orderNumber);
+
+  return (
+    <div className={`rounded-2xl border p-5 ${hasShipmentContext ? "border-sky-200 bg-sky-50" : "border-black/10 bg-white"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">Versand</div>
+          <div className="mt-2 text-lg font-semibold text-black">
+            {trackingNumber ? `Tracking ${trackingNumber}` : hasShipmentContext ? "Bestellung ohne Tracking-Kontext" : "Keine aktive Sendung sichtbar"}
+          </div>
+          <div className="mt-1 text-sm leading-6 text-black/60">
+            {carrier ? `${carrier} · ` : ""}
+            {record.order?.fulfillmentStatus || record.order?.status || record.orderDiagnostic.summary}
+          </div>
+        </div>
+        <a
+          href={`/ops/customer-records/shipping?requestId=${encodeURIComponent(record.requestId)}`}
+          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
+        >
+          <Truck className="h-4 w-4" />
+          Shipping
+        </a>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {trackingUrl ? (
+          <a
+            href={trackingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/65 transition hover:border-black/20 hover:text-black"
+          >
+            Carrier-Tracking öffnen
+          </a>
+        ) : null}
+        {record.order?.orderNumber ? (
+          <span className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/55">
+            Shopify {record.order.orderNumber}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function noteKindPresentation(kind: CustomerOpsNote["kind"]) {
   switch (kind) {
     case "task":
@@ -20341,6 +20390,10 @@ function RecordCard({
                 />
               </div>
             </div>
+          ) : null}
+
+          {showAdvancedSidebar ? (
+            <ShippingSnapshotPanel record={record} />
           ) : null}
 
           {showAdvancedSidebar ? (
