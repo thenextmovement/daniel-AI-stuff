@@ -126,6 +126,15 @@ export function manualSegmentStatus(segment: unknown): "accepted" | "needs_revie
   return trimNullable(segment) ? "accepted" : "needs_review";
 }
 
+export function resolveManualCustomerRequestId(
+  existingRequestId: unknown,
+  nextRequestId: string,
+  existingRequestFound: boolean,
+) {
+  const existing = trimNullable(existingRequestId);
+  return existing && existingRequestFound ? existing : nextRequestId;
+}
+
 function normalizeDueAt(value: unknown) {
   const normalized = trimNullable(value);
   if (!normalized) return new Date().toISOString();
@@ -232,8 +241,20 @@ async function findCustomerByPhone(phone: string | null) {
   return rows[0] || null;
 }
 
+async function requestExists(requestId: string | null) {
+  if (!requestId) return false;
+  const rows = await supabaseRequest<Array<{ request_id: string }>>("master_requests", undefined, {
+    select: "request_id",
+    request_id: `eq.${requestId}`,
+    limit: 1,
+  });
+  return Boolean(rows[0]?.request_id);
+}
+
 async function upsertCustomer(input: ManualRequestImportInput, email: string, phone: string | null, requestId: string) {
   const existing = await findCustomerByEmail(email);
+  const existingRequestFound = existing?.request_id ? await requestExists(existing.request_id) : false;
+  const customerRequestId = resolveManualCustomerRequestId(existing?.request_id, requestId, existingRequestFound);
   const customerPatch = {
     email,
     original_email: email,
@@ -246,7 +267,7 @@ async function upsertCustomer(input: ManualRequestImportInput, email: string, ph
     name: displayName(input),
     country: trimNullable(input.customer?.country) || "DE",
     source: MANUAL_IMPORT_SOURCE,
-    request_id: existing?.request_id || requestId,
+    request_id: customerRequestId,
     updated_at: new Date().toISOString(),
   };
 
