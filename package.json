@@ -11,6 +11,7 @@
     "smoke:ops": "node scripts/smoke_customer_records_ops.mjs",
     "start": "next start",
     "lint": "next lint",
+    "verify": "npm run test:quotes && npm run build",
     "test:quotes": "node --import tsx --test tests/quotes/*.test.ts"
   },
   "dependencies": {
