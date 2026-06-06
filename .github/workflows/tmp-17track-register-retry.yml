@@ -11,10 +11,6 @@ on:
         description: Max due shipments to register with 17TRACK
         required: true
         default: "20"
-      supabase_project_ref:
-        description: Supabase project ref
-        required: true
-        default: klibiejfisijpagzkxls
 
 concurrency:
   group: tmp-17track-register-retry
@@ -22,7 +18,7 @@ concurrency:
 
 jobs:
   retry:
-    name: Mark failed registrations due and call register endpoint
+    name: Call register endpoint
     runs-on: ubuntu-latest
     steps:
       - name: Retry 17TRACK registrations
@@ -31,7 +27,6 @@ jobs:
           COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
           APP_UUID: ${{ inputs.app_uuid }}
           REGISTER_LIMIT: ${{ inputs.register_limit }}
-          SUPABASE_PROJECT_REF: ${{ inputs.supabase_project_ref }}
         run: |
           set -euo pipefail
 
@@ -41,9 +36,8 @@ jobs:
           import urllib.error
           import urllib.parse
           import urllib.request
-          from datetime import datetime, timezone
 
-          required = ["COOLIFY_API_TOKEN", "COOLIFY_DEPLOY_WEBHOOK", "APP_UUID", "SUPABASE_PROJECT_REF"]
+          required = ["COOLIFY_API_TOKEN", "COOLIFY_DEPLOY_WEBHOOK", "APP_UUID"]
           missing = [name for name in required if not os.environ.get(name)]
           if missing:
               raise SystemExit(f"Missing required secrets/env: {', '.join(missing)}")
@@ -94,9 +88,6 @@ jobs:
               "OPS_INTERNAL_API_KEY",
               "QUOTE_INTERNAL_API_TOKEN",
               "INTERNAL_API_KEY",
-              "SUPABASE_URL",
-              "NEXT_PUBLIC_SUPABASE_URL",
-              "SUPABASE_SERVICE_ROLE_KEY",
               "SEVENTEEN_TRACK_API_TOKEN",
               "SEVENTEEN_TRACK_WEBHOOK_TOKEN",
           ]
@@ -114,41 +105,6 @@ jobs:
           if not internal_key or len(internal_key) < 24:
               raise SystemExit("No readable internal API key found in Coolify envs.")
           print(f"Register auth will use Coolify env key: {internal_key_name}")
-
-          supabase_url_name, supabase_url = env_value("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")
-          service_key_name, service_key = env_value("SUPABASE_SERVICE_ROLE_KEY")
-          if supabase_url.startswith("PLACEHOLDER_") or not urllib.parse.urlparse(supabase_url).scheme:
-              supabase_url_name = "SUPABASE_PROJECT_REF"
-              supabase_url = f"https://{os.environ['SUPABASE_PROJECT_REF']}.supabase.co"
-          if not supabase_url or not service_key:
-              raise SystemExit("No readable Supabase service configuration found in Coolify envs.")
-          print(f"Supabase write will use Coolify env keys: {supabase_url_name}, {service_key_name}")
-
-          now_iso = datetime.now(timezone.utc).isoformat(timespec="microseconds")
-          supabase_url = supabase_url.rstrip("/")
-          params = {
-              "provider": "eq.17track",
-              "status": "eq.failed",
-              "last_error": "eq.17TRACK API Token fehlt.",
-              "next_attempt_at": f"gt.{now_iso}",
-              "select": "id,shipment_id,carrier,status,attempts,last_attempt_at,next_attempt_at,last_error,updated_at",
-          }
-          query = urllib.parse.urlencode(params)
-          patch_url = f"{supabase_url}/rest/v1/inbound_tracking_registrations?{query}"
-          headers = {
-              "apikey": service_key,
-              "Authorization": f"Bearer {service_key}",
-              "Content-Type": "application/json",
-              "Prefer": "return=representation",
-          }
-          status, raw = request("PATCH", patch_url, {"next_attempt_at": now_iso, "updated_at": now_iso}, headers, timeout=60)
-          if status not in (200, 204):
-              raise SystemExit(f"Supabase retry update failed: HTTP {status}; body={raw[:500]}")
-          updated = parse_json(raw) or []
-          print(json.dumps({
-              "retry_rows_updated": len(updated),
-              "updated_statuses": sorted(set(str(item.get("status")) for item in updated if isinstance(item, dict))),
-          }, ensure_ascii=True))
 
           register_url = "https://ops.neontrip.de/api/internal/inbound-shipping/17track-register"
           headers = {
