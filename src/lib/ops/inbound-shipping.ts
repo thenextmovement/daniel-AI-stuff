@@ -221,15 +221,15 @@ export function normalizeInboundCarrierStatus(input: {
   const code = String(input.statusCode || "").trim().toUpperCase();
   const text = `${input.carrier || ""} ${input.statusCode || ""} ${input.statusText || ""}`.toLowerCase();
   if (code === "DL" || /delivered|zugestellt|delivery complete/.test(text)) return "delivered";
-  if (code === "OD" || /out for delivery|with courier|in zustellung|wird zugestellt/.test(text)) return "out_for_delivery";
+  if (code === "OD" || /out for delivery|outfordelivery|with courier|in zustellung|wird zugestellt/.test(text)) return "out_for_delivery";
   if (code === "CD" || /clearance delay|additional information required|customs.*required|clearance.*required|zoll.*information|zoll.*erforder/.test(text)) {
     return "clearance_action_required";
   }
   if (code === "CP" || /clearance event|clearance in progress|customs clearance|processed for clearance|zoll|verzoll/.test(text)) {
     return "clearance_in_progress";
   }
-  if (["DE", "DD", "SE"].includes(code) || /exception|delay|delayed|on hold|shipment is on hold|problem|failed/.test(text)) return "exception";
-  if (code === "OC" || /shipment information sent|label created|label generated|sendungsdaten|daten.*uebermittelt|daten.*übermittelt/.test(text)) return "label_created";
+  if (["DE", "DD", "SE"].includes(code) || /exception|expired|delay|delayed|on hold|shipment is on hold|problem|failed/.test(text)) return "exception";
+  if (code === "OC" || /shipment information sent|inforeceived|info received|label created|label generated|sendungsdaten|daten.*uebermittelt|daten.*übermittelt/.test(text)) return "label_created";
   if (["PU", "IP"].includes(code) || /picked up|in fedex possession|accepted|received by carrier|shipment picked up|abgeholt|uebernommen|übernommen/.test(text)) {
     return "tendered";
   }
