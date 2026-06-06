@@ -61,7 +61,7 @@ export function InboundShippingClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [board, setBoard] = useState<InboundBoard | null>(null);
-  const [scope, setScope] = useState<"active" | "problems" | "all">("problems");
+  const [scope, setScope] = useState<"active" | "problems" | "all">("active");
   const [carrier, setCarrier] = useState<"all" | "dhl" | "fedex">("all");
   const [loading, setLoading] = useState(false);
   const [savingIncidentId, setSavingIncidentId] = useState<string | null>(null);
@@ -218,8 +218,8 @@ export function InboundShippingClient({
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
           <div className="grid gap-3 md:grid-cols-[180px_180px_160px_1fr]">
             <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
-              <option value="problems">Problemfälle</option>
               <option value="active">Aktive Sendungen</option>
+              <option value="problems">Problemfälle</option>
               <option value="all">Alle Sendungen</option>
             </select>
             <select value={carrier} onChange={(event) => setCarrier(event.target.value as typeof carrier)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
