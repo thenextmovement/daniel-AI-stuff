@@ -184,6 +184,11 @@ export function InboundShippingClient({
 
         <section className="grid gap-3 md:grid-cols-6">
           <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
+            <Truck className="h-5 w-5 text-stone-600" />
+            <p className="mt-3 text-2xl font-semibold">{items.length}</p>
+            <p className="text-sm text-stone-500">Aktive Sendungen</p>
+          </div>
+          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
             <AlertTriangle className="h-5 w-5 text-rose-600" />
             <p className="mt-3 text-2xl font-semibold">{board?.counts.actionRequired || 0}</p>
             <p className="text-sm text-stone-500">Handlungsbedarf</p>
@@ -202,11 +207,6 @@ export function InboundShippingClient({
             <Clock3 className="h-5 w-5 text-sky-600" />
             <p className="mt-3 text-2xl font-semibold">{board?.counts.stale || 0}</p>
             <p className="text-sm text-stone-500">72h/Stale</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <Truck className="h-5 w-5 text-stone-600" />
-            <p className="mt-3 text-2xl font-semibold">{items.length}</p>
-            <p className="text-sm text-stone-500">Sendungen</p>
           </div>
           <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
             <CheckCircle2 className="h-5 w-5 text-emerald-600" />
