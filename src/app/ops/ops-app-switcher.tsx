@@ -53,7 +53,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
   return (
     <nav
       aria-label="Ops-Bereiche"
-      className={`flex flex-wrap items-center gap-2 rounded-2xl border p-1 ${
+      className={`flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto rounded-2xl border p-1 [-webkit-overflow-scrolling:touch] ${
         dark ? "border-white/15 bg-white/5" : "border-black/10 bg-black/[0.03]"
       }`}
     >
@@ -64,7 +64,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
             key={key}
             href={href}
             aria-current={isActive ? "page" : undefined}
-            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+            className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition ${
               dark
                 ? isActive
                   ? "bg-white text-stone-950"

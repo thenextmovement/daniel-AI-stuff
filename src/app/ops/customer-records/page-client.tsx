@@ -22642,17 +22642,19 @@ export function CustomerRecordsClient({
 
       <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-4 py-4 md:px-6 lg:px-8 lg:py-6">
         <header className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.22),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_24%),linear-gradient(135deg,#060606_0%,#111111_58%,#171717_100%)] text-white shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-          <div className="flex items-center justify-between gap-4 px-5 py-4 md:px-6">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between md:gap-4 md:px-6">
+            <div className="flex items-center justify-between gap-4">
               <img src="/assets/logo_weiss_neontrip.png" alt="NEONTRIP" className="h-7 w-auto md:h-8" />
-              <div className="hidden text-sm text-white/55 md:block">{quietLayout ? "Fallzentrale" : "Kommandozentrale"}</div>
+              <div className="text-sm text-white/55">{quietLayout ? "Fallzentrale" : "Kommandozentrale"}</div>
             </div>
-            <div className="flex items-center gap-2">
-              <OpsAppSwitcher active="records" tone="dark" />
+            <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:gap-2">
+              <div className="-mx-1 min-w-0 overflow-hidden px-1 md:mx-0 md:px-0">
+                <OpsAppSwitcher active="records" tone="dark" />
+              </div>
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/78 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/78 transition hover:border-white/30 hover:bg-white/10 hover:text-white md:w-auto md:justify-start"
               >
                 <Search className="h-4 w-4" />
                 Schnellzugriff
@@ -22662,14 +22664,14 @@ export function CustomerRecordsClient({
               </button>
               <a
                 href="tel:+4921154257240"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+                className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white sm:flex"
                 aria-label="NEONTRIP anrufen"
               >
                 <PhoneFallback />
               </a>
               <a
                 href="mailto:support@neontrip.de"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+                className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white sm:flex"
                 aria-label="NEONTRIP E-Mail"
               >
                 <Mail className="h-4 w-4" />
