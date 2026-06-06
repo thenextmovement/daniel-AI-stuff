@@ -12,6 +12,8 @@
 node_modules/
 .next/
 tsconfig.tsbuildinfo
+next-env.d.ts
+supabase/.temp/
 
 # Secrets — DEPLOY.md contains live Cloudflare API token
 DEPLOY.md
