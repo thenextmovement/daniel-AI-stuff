@@ -14,6 +14,7 @@ import {
   ImageIcon,
   Mail,
   MessageSquareText,
+  PlaneLanding,
   Search,
   Send,
   Star,
@@ -19182,13 +19183,22 @@ function ShippingSnapshotPanel({ record }: { record: CustomerSearchResult }) {
             {record.order?.fulfillmentStatus || record.order?.status || record.orderDiagnostic.summary}
           </div>
         </div>
-        <a
-          href={`/ops/customer-records/shipping?requestId=${encodeURIComponent(record.requestId)}`}
-          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
-        >
-          <Truck className="h-4 w-4" />
-          Shipping
-        </a>
+        <div className="flex flex-wrap justify-end gap-2">
+          <a
+            href={`/ops/customer-records/shipping?requestId=${encodeURIComponent(record.requestId)}`}
+            className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
+          >
+            <Truck className="h-4 w-4" />
+            Shipping
+          </a>
+          <a
+            href={`/ops/customer-records/inbound-shipping?requestId=${encodeURIComponent(record.requestId)}`}
+            className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
+          >
+            <PlaneLanding className="h-4 w-4" />
+            Inbound
+          </a>
+        </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {trackingUrl ? (
