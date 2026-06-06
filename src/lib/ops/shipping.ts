@@ -36,6 +36,7 @@ export type ShippingIncidentType =
 
 export const SHIPPING_RULE_VERSION = "shipping_rules_v1_20260605";
 export const SHIPPING_MAPPING_VERSION = "carrier_status_mapping_v2_20260605";
+export const SHIPPING_LOOKBACK_DAYS = 60;
 
 type ShippingShipmentRow = {
   id: string;
@@ -245,6 +246,24 @@ function parseTime(value: string | null | undefined) {
   return Number.isFinite(time) ? time : null;
 }
 
+function shippingReferenceTime(shipment: Pick<ShippingShipment, "shippedAt" | "lastEventAt" | "createdAt" | "updatedAt">) {
+  return parseTime(shipment.shippedAt) || parseTime(shipment.lastEventAt) || parseTime(shipment.createdAt) || parseTime(shipment.updatedAt);
+}
+
+export function isShipmentWithinShippingLookback(
+  shipment: Pick<ShippingShipment, "shippedAt" | "lastEventAt" | "createdAt" | "updatedAt">,
+  now = new Date(),
+) {
+  const referenceTime = shippingReferenceTime(shipment);
+  if (!referenceTime) return true;
+  return now.getTime() - referenceTime <= SHIPPING_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+}
+
+export function isInternalShippingProblemIncident(incident: Pick<ShippingIncident, "incidentType" | "status">) {
+  return ["delivery_failed", "return_to_sender", "returned"].includes(incident.incidentType)
+    && (incident.status === "open" || incident.status === "acknowledged");
+}
+
 function businessDaysBetween(from: string | null | undefined, to: Date) {
   const fromTime = parseTime(from);
   if (!fromTime) return null;
@@ -451,7 +470,7 @@ export function buildShippingBoardFromRows(
     }
   }
 
-  const items = shipmentRows.map((row) => {
+  const items = shipmentRows.filter((row) => isShipmentWithinShippingLookback(mapShipment(row))).map((row) => {
     const shipment = mapShipment(row);
     return {
       shipment,
@@ -469,7 +488,7 @@ export function buildShippingBoardFromRows(
   return {
     items,
     counts: {
-      actionRequired: items.filter((item) => item.incidents.some((incident) => incident.status === "open" && incident.severity !== "watch")).length,
+      actionRequired: items.filter((item) => item.incidents.some(isInternalShippingProblemIncident)).length,
       watch: items.filter((item) => item.shipment.riskLevel === "watch" || item.incidents.some((incident) => incident.severity === "watch")).length,
       inTransit: items.filter((item) => ["in_transit", "out_for_delivery", "pickup_available"].includes(item.shipment.status)).length,
       delivered: items.filter((item) => item.shipment.status === "delivered").length,
@@ -481,11 +500,20 @@ export function buildShippingBoardFromRows(
 }
 
 export function deriveShippingIncidentCandidates(
-  shipment: Pick<ShippingShipment, "id" | "status" | "carrier" | "trackingNumber" | "lastEventAt" | "shippedAt">,
+  shipment: Pick<ShippingShipment, "id" | "status" | "carrier" | "trackingNumber" | "lastEventAt" | "shippedAt"> & Partial<Pick<ShippingShipment, "createdAt" | "updatedAt">>,
   latestEvent: Pick<ShippingTrackingEvent, "id" | "eventTime" | "carrierStatusText"> | null,
   now = new Date(),
 ): IncidentCandidate[] {
   const candidates: IncidentCandidate[] = [];
+  if (!isShipmentWithinShippingLookback({
+    shippedAt: shipment.shippedAt,
+    lastEventAt: latestEvent?.eventTime || shipment.lastEventAt,
+    createdAt: shipment.createdAt || null,
+    updatedAt: shipment.updatedAt || null,
+  }, now)) {
+    return candidates;
+  }
+
   const lastMovementAt = latestEvent?.eventTime || shipment.lastEventAt || shipment.shippedAt;
   const businessDaysIdle = businessDaysBetween(lastMovementAt, now);
 
@@ -835,7 +863,7 @@ export async function listShippingBoard(options?: {
   if (options?.scope === "problems") {
     return {
       ...board,
-      items: board.items.filter((item) => item.incidents.some((incident) => incident.status === "open" || incident.status === "acknowledged")),
+      items: board.items.filter((item) => item.incidents.some(isInternalShippingProblemIncident)),
     };
   }
   return board;

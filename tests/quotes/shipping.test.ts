@@ -4,6 +4,7 @@ import {
   buildCarrierEventKey,
   buildShippingBoardFromRows,
   deriveShippingIncidentCandidates,
+  isInternalShippingProblemIncident,
   normalizeCarrierStatus,
   normalizeShippingCarrier,
 } from "../../src/lib/ops/shipping";
@@ -118,6 +119,36 @@ test("deriveShippingIncidentCandidates escalates failed delivery and return-to-s
   assert.equal(failed[0].severity, "urgent");
   assert.equal(returning[0].incidentType, "return_to_sender");
   assert.equal(returning[0].severity, "urgent");
+});
+
+test("deriveShippingIncidentCandidates ignores shipments outside the 60 day shipping window", () => {
+  const incidents = deriveShippingIncidentCandidates(
+    {
+      id: "shipment-old",
+      carrier: "dpd",
+      trackingNumber: "TRACK-OLD",
+      status: "delivery_failed",
+      shippedAt: "2026-03-01T08:00:00.000Z",
+      lastEventAt: "2026-03-02T09:00:00.000Z",
+      createdAt: "2026-03-01T08:00:00.000Z",
+      updatedAt: "2026-03-02T09:00:00.000Z",
+    },
+    {
+      id: "event-old",
+      eventTime: "2026-03-02T09:00:00.000Z",
+      carrierStatusText: "Zustellung fehlgeschlagen",
+    },
+    new Date("2026-06-05T10:00:00.000Z"),
+  );
+
+  assert.equal(incidents.length, 0);
+});
+
+test("pickup incidents are customer notices, not internal delivery problems", () => {
+  assert.equal(isInternalShippingProblemIncident({ incidentType: "pickup_available", status: "open" }), false);
+  assert.equal(isInternalShippingProblemIncident({ incidentType: "delivery_failed", status: "open" }), true);
+  assert.equal(isInternalShippingProblemIncident({ incidentType: "return_to_sender", status: "acknowledged" }), true);
+  assert.equal(isInternalShippingProblemIncident({ incidentType: "returned", status: "resolved" }), false);
 });
 
 test("buildShippingBoardFromRows prioritizes urgent incidents and keeps tasks as projections", () => {

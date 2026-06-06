@@ -48,6 +48,12 @@ function severityTone(severity: ShippingIncidentSeverity) {
   return "border-sky-200 bg-sky-50 text-sky-900";
 }
 
+function incidentKindLabel(incident: ShippingIncident) {
+  if (incident.incidentType === "pickup_available") return "Kundenhinweis";
+  if (["delivery_failed", "return_to_sender", "returned"].includes(incident.incidentType)) return "Fehlermeldung";
+  return "Pruefung";
+}
+
 function leadIncident(item: ShippingBoardItem) {
   return item.incidents.find((incident) => incident.status === "open") || item.incidents[0] || null;
 }
@@ -185,7 +191,7 @@ export function CustomerShippingClient({
               <p className="text-sm uppercase text-stone-400">Customer Records</p>
               <h1 className="mt-2 text-3xl font-semibold">Shipping Ops</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
-                Globale Versand-Queue fuer DPD/DHL-Probleme. Kundenkontakt bleibt Aufgabe/Entwurf, nicht automatische Nachricht.
+                Globale Versand-Queue fuer DPD/DHL. Geprueft werden nur aktuelle Sendungen der letzten 60 Tage; Paketshop-Faelle sind Kundenhinweise, echte Fehlermeldungen sind Ruecklauf oder fehlgeschlagene Zustellung.
               </p>
             </div>
             <OpsAppSwitcher active="shipping" tone="dark" />
@@ -196,7 +202,7 @@ export function CustomerShippingClient({
           <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
             <AlertTriangle className="h-5 w-5 text-rose-600" />
             <p className="mt-3 text-2xl font-semibold">{board?.counts.actionRequired || 0}</p>
-            <p className="text-sm text-stone-500">Handlungsbedarf</p>
+            <p className="text-sm text-stone-500">Echte Fehler</p>
           </div>
           <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
             <Clock3 className="h-5 w-5 text-sky-600" />
@@ -240,7 +246,7 @@ export function CustomerShippingClient({
               />
             </label>
             <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
-              <option value="problems">Problemfälle</option>
+              <option value="problems">Echte Fehler</option>
               <option value="active">Aktive Sendungen</option>
               <option value="all">Alle Sendungen</option>
             </select>
@@ -307,6 +313,7 @@ export function CustomerShippingClient({
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <div className="flex flex-wrap items-center gap-2 text-xs uppercase">
+                                <span>{incidentKindLabel(entry)}</span>
                                 <span>{entry.severity}</span>
                                 <span>{entry.status}</span>
                                 {entry.activeTaskId ? <span>Aufgabe verknüpft</span> : null}
