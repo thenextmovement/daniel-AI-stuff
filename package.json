@@ -5,12 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "verify": "npm run test:quotes && npm run build",
     "check:ops-deploy": "node scripts/check_customer_records_deploy_env.mjs",
     "check:ops-schema": "node scripts/check_customer_records_schema.mjs",
     "go-live:ops": "node scripts/go_live_customer_records_ops.mjs",
     "smoke:ops": "node scripts/smoke_customer_records_ops.mjs",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --config ./codex-eslint.config.mjs",
     "test:quotes": "node --import tsx --test tests/quotes/*.test.ts"
   },
   "dependencies": {
