@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { supabaseRpc } from "@/lib/quotes/supabase-rest";
+import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 
 const API_BASE_URL = "https://api.17track.net/track/v2.2";
 const MAX_WEBHOOK_BYTES = 1_000_000;
@@ -362,12 +362,39 @@ async function recordFailed17TrackRegistration(claim: RegistrationClaimRow, erro
   return supabaseRpc("inbound_record_17track_registration", failedRegistrationPayload(claim, error));
 }
 
+async function resolveAccepted17TrackIncidents(shipmentId: string) {
+  try {
+    await supabaseRequest("inbound_incidents", {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }),
+      headers: { Prefer: "return=minimal" },
+    }, {
+      shipment_id: `eq.${shipmentId}`,
+      status: "eq.open",
+      incident_type: "eq.tracking_error",
+      title: "ilike.*17TRACK*",
+    });
+  } catch (error) {
+    console.error("17track incident auto-resolution failed", { shipmentId, error });
+  }
+}
+
+async function record17TrackRegistrationPayload(payload: ReturnType<typeof parse17TrackRegistrationResult>) {
+  const result = await supabaseRpc("inbound_record_17track_registration", { p_payload: payload });
+  if (payload.status === "accepted") await resolveAccepted17TrackIncidents(payload.shipmentId);
+  return result;
+}
+
 async function register17TrackShipmentBatch(claims: RegistrationClaimRow[]) {
   try {
     const response = await call17Track("/register", claims.map(build17TrackRegistrationItem));
     return Promise.all(claims.map((claim) => {
       const payload = parse17TrackRegistrationResult(response, claim);
-      return supabaseRpc("inbound_record_17track_registration", { p_payload: payload });
+      return record17TrackRegistrationPayload(payload);
     }));
   } catch (error) {
     return Promise.all(claims.map((claim) => recordFailed17TrackRegistration(claim, error)));
