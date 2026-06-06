@@ -11,6 +11,10 @@ on:
         description: Max due shipments to register with 17TRACK
         required: true
         default: "20"
+      supabase_project_ref:
+        description: Supabase project ref
+        required: true
+        default: klibiejfisijpagzkxls
 
 concurrency:
   group: tmp-17track-register-retry
@@ -27,6 +31,7 @@ jobs:
           COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
           APP_UUID: ${{ inputs.app_uuid }}
           REGISTER_LIMIT: ${{ inputs.register_limit }}
+          SUPABASE_PROJECT_REF: ${{ inputs.supabase_project_ref }}
         run: |
           set -euo pipefail
 
@@ -38,7 +43,7 @@ jobs:
           import urllib.request
           from datetime import datetime, timezone
 
-          required = ["COOLIFY_API_TOKEN", "COOLIFY_DEPLOY_WEBHOOK", "APP_UUID"]
+          required = ["COOLIFY_API_TOKEN", "COOLIFY_DEPLOY_WEBHOOK", "APP_UUID", "SUPABASE_PROJECT_REF"]
           missing = [name for name in required if not os.environ.get(name)]
           if missing:
               raise SystemExit(f"Missing required secrets/env: {', '.join(missing)}")
@@ -112,6 +117,9 @@ jobs:
 
           supabase_url_name, supabase_url = env_value("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")
           service_key_name, service_key = env_value("SUPABASE_SERVICE_ROLE_KEY")
+          if supabase_url.startswith("PLACEHOLDER_") or not urllib.parse.urlparse(supabase_url).scheme:
+              supabase_url_name = "SUPABASE_PROJECT_REF"
+              supabase_url = f"https://{os.environ['SUPABASE_PROJECT_REF']}.supabase.co"
           if not supabase_url or not service_key:
               raise SystemExit("No readable Supabase service configuration found in Coolify envs.")
           print(f"Supabase write will use Coolify env keys: {supabase_url_name}, {service_key_name}")
