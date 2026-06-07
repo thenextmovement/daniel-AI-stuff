@@ -1,3 +1,4 @@
+import { OpsIdeaBox } from "./ops-idea-box";
 import { OpsTaskNotifier } from "./ops-task-notifier";
 
 export default function OpsLayout({
@@ -8,6 +9,7 @@ export default function OpsLayout({
   return (
     <>
       {children}
+      <OpsIdeaBox />
       <OpsTaskNotifier />
     </>
   );
