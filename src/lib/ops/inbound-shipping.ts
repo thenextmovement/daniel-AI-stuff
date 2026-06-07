@@ -314,6 +314,10 @@ function mapIncident(row: InboundIncidentRow): InboundIncident {
   };
 }
 
+function isActiveInboundIncident(incident: InboundIncident) {
+  return incident.status === "open" || incident.status === "acknowledged";
+}
+
 export function buildInboundBoardFromRows(
   shipmentRows: InboundShipmentRow[],
   incidentRows: InboundIncidentRow[],
@@ -338,15 +342,15 @@ export function buildInboundBoardFromRows(
 
   const items = shipmentRows.map((row) => {
     const shipment = mapShipment(row);
-    const incidents = (incidentsByShipment.get(shipment.id) || []).sort((left, right) => riskRank(left.severity) - riskRank(right.severity));
+    const incidents = (incidentsByShipment.get(shipment.id) || [])
+      .filter(isActiveInboundIncident)
+      .sort((left, right) => riskRank(left.severity) - riskRank(right.severity));
     return { shipment, incidents, latestEvent: latestEventByShipment.get(shipment.id) || null };
   });
 
   items.sort((left, right) => {
-    const leftOpen = left.incidents.filter((incident) => incident.status === "open" || incident.status === "acknowledged");
-    const rightOpen = right.incidents.filter((incident) => incident.status === "open" || incident.status === "acknowledged");
-    const leftRank = leftOpen.length ? Math.min(...leftOpen.map((incident) => riskRank(incident.severity))) : left.shipment.riskLevel === "urgent" ? 0 : left.shipment.riskLevel === "high" ? 1 : 3;
-    const rightRank = rightOpen.length ? Math.min(...rightOpen.map((incident) => riskRank(incident.severity))) : right.shipment.riskLevel === "urgent" ? 0 : right.shipment.riskLevel === "high" ? 1 : 3;
+    const leftRank = left.incidents.length ? Math.min(...left.incidents.map((incident) => riskRank(incident.severity))) : left.shipment.riskLevel === "urgent" ? 0 : left.shipment.riskLevel === "high" ? 1 : 3;
+    const rightRank = right.incidents.length ? Math.min(...right.incidents.map((incident) => riskRank(incident.severity))) : right.shipment.riskLevel === "urgent" ? 0 : right.shipment.riskLevel === "high" ? 1 : 3;
     if (leftRank !== rightRank) return leftRank - rightRank;
     return new Date(right.shipment.updatedAt || 0).getTime() - new Date(left.shipment.updatedAt || 0).getTime();
   });
@@ -402,7 +406,7 @@ export async function listInboundBoard(options?: {
   if (options?.scope === "problems") {
     return {
       ...board,
-      items: board.items.filter((item) => item.incidents.some((incident) => incident.status === "open" || incident.status === "acknowledged")),
+      items: board.items.filter((item) => item.incidents.length > 0),
     };
   }
   return board;

@@ -389,11 +389,30 @@ test("buildInboundBoardFromRows prioritizes urgent inbound incidents and counts 
         created_at: "2026-06-05T08:00:00.000Z",
         updated_at: "2026-06-05T08:00:00.000Z",
       } as never,
+      {
+        id: "incident-2",
+        shipment_id: "inbound-1",
+        incident_key: "inbound:inbound-1:tracking_error",
+        incident_type: "tracking_error",
+        severity: "urgent",
+        status: "resolved",
+        title: "Tracking API Fehler",
+        description: "DHL konnte nicht abgefragt werden.",
+        first_detected_at: "2026-06-05T08:00:00.000Z",
+        last_detected_at: "2026-06-05T08:00:00.000Z",
+        resolved_at: "2026-06-05T09:00:00.000Z",
+        rule_version: "test",
+        source_event_id: null,
+        active_task_id: "task-2",
+        created_at: "2026-06-05T08:00:00.000Z",
+        updated_at: "2026-06-05T09:00:00.000Z",
+      } as never,
     ],
     [],
   );
 
   assert.equal(board.items[0].shipment.id, "inbound-2");
+  assert.equal(board.items.find((item) => item.shipment.id === "inbound-1")?.incidents.length, 0);
   assert.equal(board.counts.actionRequired, 1);
   assert.equal(board.counts.clearance, 1);
   assert.equal(board.counts.outForDelivery, 1);
