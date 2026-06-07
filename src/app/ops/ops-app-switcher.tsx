@@ -66,7 +66,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
   return (
     <nav
       aria-label="Ops-Bereiche"
-      className={`grid w-full max-w-full grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-1.5 rounded-[1rem] border p-1 ${
+      className={`grid w-full max-w-full grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-1.5 rounded-[1rem] border p-1 ${
         dark ? "border-white/15 bg-white/5" : "border-black/10 bg-black/[0.03]"
       }`}
     >
