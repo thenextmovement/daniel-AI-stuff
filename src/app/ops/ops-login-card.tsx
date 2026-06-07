@@ -42,7 +42,7 @@ export function OpsLoginCard({
               </div>
               <h1 className="mt-8 text-4xl font-semibold tracking-tight">NEONTRIP Kommandozentrale</h1>
               <p className="mt-5 max-w-sm text-sm leading-7 text-stone-300">
-                Kundenakte, Anrufe, Teamaufgaben, Office, Paketversand und Wareneingang bleiben geschützt. Änderungen werden serverseitig geprüft und protokolliert.
+                Kundenakte, Anrufe, Teamaufgaben, Angebote, Paketversand und Wareneingang bleiben geschützt. Änderungen werden serverseitig geprüft und protokolliert.
               </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-stone-300">
