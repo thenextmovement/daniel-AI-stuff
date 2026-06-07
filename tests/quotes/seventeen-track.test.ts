@@ -133,6 +133,30 @@ test("build17TrackSyncCarrierPayload keeps the original inbound carrier and ship
   assert.equal(payload?.events.length, 1);
 });
 
+test("buildInboundCarrierPayloadFrom17Track uses a stable event key for latest-status snapshots", () => {
+  const snapshot = {
+    code: 0,
+    data: {
+      accepted: [
+        {
+          number: "3328106036",
+          carrier: 7041,
+          track_info: {
+            latest_status: { status: "NotFound", sub_status: "NotFound_Other" },
+          },
+        },
+      ],
+    },
+  };
+
+  const first = buildInboundCarrierPayloadFrom17Track(snapshot);
+  const second = buildInboundCarrierPayloadFrom17Track(snapshot);
+
+  assert.equal(first?.events.length, 1);
+  assert.equal(first?.events[0]?.eventKey, "inbound:17track:3328106036:latest:notfound:notfound-other");
+  assert.equal(first?.events[0]?.eventKey, second?.events[0]?.eventKey);
+});
+
 test("parse17TrackRegistrationResult records accepted registrations with provider carrier id", () => {
   const result = parse17TrackRegistrationResult(
     {

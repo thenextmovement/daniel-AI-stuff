@@ -45,6 +45,7 @@ type InboundCarrierPayload = {
   trackingNumber: string;
   shipmentId: string | null;
   events: Array<{
+    eventKey?: string;
     carrierEventId: string | null;
     statusCode: string | null;
     statusText: string | null;
@@ -128,6 +129,14 @@ function eventLocationOf(event: Record<string, unknown>) {
     ].map(cleanText).filter(Boolean).join(", ") || null;
   }
   return firstText(event.event_location, event.eventLocation, event.place, event.address);
+}
+
+function eventKeyPart(value: unknown) {
+  return (cleanText(value) || "unknown")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "unknown";
 }
 
 function looksLikeEvent(value: unknown) {
@@ -228,7 +237,7 @@ export function buildInboundCarrierPayloadFrom17Track(input: unknown): InboundCa
 
   const shipmentId = shipmentIdFromTag(item.tag);
   const eventArrays = collectEventArrays(item);
-  const events = eventArrays.flatMap((array) => array.filter(looksLikeEvent) as Record<string, unknown>[]).map((event) => ({
+  const events: InboundCarrierPayload["events"] = eventArrays.flatMap((array) => array.filter(looksLikeEvent) as Record<string, unknown>[]).map((event) => ({
     carrierEventId: firstText(event.id, event.event_id, event.eventId, event.status_code, event.status, event.description),
     statusCode: statusCodeOf(item, event),
     statusText: statusTextOf(item, event),
@@ -240,9 +249,18 @@ export function buildInboundCarrierPayloadFrom17Track(input: unknown): InboundCa
   if (!events.length) {
     const statusText = statusTextOf(item);
     if (statusText) {
+      const statusCode = statusCodeOf(item);
       events.push({
+        eventKey: [
+          "inbound",
+          "17track",
+          eventKeyPart(number),
+          "latest",
+          eventKeyPart(statusCode),
+          eventKeyPart(statusText),
+        ].join(":"),
         carrierEventId: firstText(getPath(item, ["track_info", "latest_status", "sub_status"]), getPath(item, ["track_info", "latest_status", "status"]), "latest"),
-        statusCode: statusCodeOf(item),
+        statusCode,
         statusText,
         eventTime: new Date().toISOString(),
         eventLocation: null,
