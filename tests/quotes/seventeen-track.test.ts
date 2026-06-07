@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeInboundCarrierStatus } from "../../src/lib/ops/inbound-shipping";
 import {
+  build17TrackSyncCarrierPayload,
   buildInboundCarrierPayloadFrom17Track,
   build17TrackRegistrationItem,
   default17TrackCarrierId,
@@ -45,6 +46,91 @@ test("buildInboundCarrierPayloadFrom17Track maps tagged 17TRACK events into carr
   assert.equal(payload?.events.length, 1);
   assert.equal(payload?.events[0]?.statusText, "Clearance event - additional information required");
   assert.equal(payload?.events[0]?.eventLocation, "Leipzig, DE");
+});
+
+test("buildInboundCarrierPayloadFrom17Track reads gettrackinfo accepted envelopes", () => {
+  const payload = buildInboundCarrierPayloadFrom17Track({
+    code: 0,
+    data: {
+      accepted: [
+        {
+          number: "3328106036",
+          carrier: 7041,
+          tag: "25d72523-b171-4267-98e0-2b9859c0feb2",
+          track_info: {
+            latest_status: { status: "InTransit" },
+            tracking: {
+              providers: [
+                {
+                  events: [
+                    {
+                      time_iso: "2026-06-06T10:30:00+02:00",
+                      description: "Shipment picked up",
+                      location: { city: "Hong Kong", country_code: "HK" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      rejected: [],
+    },
+  });
+
+  assert.equal(payload?.shipmentId, "25d72523-b171-4267-98e0-2b9859c0feb2");
+  assert.equal(payload?.trackingNumber, "3328106036");
+  assert.equal(payload?.events.length, 1);
+  assert.equal(payload?.events[0]?.statusText, "Shipment picked up");
+});
+
+test("build17TrackSyncCarrierPayload keeps the original inbound carrier and shipment id", () => {
+  const payload = build17TrackSyncCarrierPayload(
+    {
+      code: 0,
+      data: {
+        accepted: [
+          {
+            number: "3328106036",
+            carrier: 7041,
+            track_info: {
+              latest_status: { status: "InTransit" },
+              tracking: {
+                providers: [
+                  {
+                    events: [
+                      {
+                        time_iso: "2026-06-06T10:30:00+02:00",
+                        description: "Arrived at sort facility",
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    },
+    {
+      shipment_id: "25d72523-b171-4267-98e0-2b9859c0feb2",
+      shipment_key: "trello:card:dhl:3328106036",
+      carrier: "dhl",
+      tracking_number: "3328106036",
+      provider_carrier_id: 7041,
+      provider_tag: "25d72523-b171-4267-98e0-2b9859c0feb2",
+      trello_card_id: "card-1",
+      trello_card_name: "China Los",
+      trello_card_url: null,
+      status: "tracking_created",
+    },
+  );
+
+  assert.equal(payload?.carrier, "dhl");
+  assert.equal(payload?.shipmentId, "25d72523-b171-4267-98e0-2b9859c0feb2");
+  assert.equal(payload?.trackingNumber, "3328106036");
+  assert.equal(payload?.events.length, 1);
 });
 
 test("parse17TrackRegistrationResult records accepted registrations with provider carrier id", () => {

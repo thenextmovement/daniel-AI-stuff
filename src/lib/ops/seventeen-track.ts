@@ -19,6 +19,19 @@ type RegistrationClaimRow = {
   attempts: number;
 };
 
+export type SeventeenTrackTrackingClaimRow = {
+  shipment_id: string;
+  shipment_key: string;
+  carrier: "dhl" | "fedex" | "other" | "unknown";
+  tracking_number: string;
+  provider_carrier_id: number | null;
+  provider_tag: string | null;
+  trello_card_id: string | null;
+  trello_card_name: string | null;
+  trello_card_url: string | null;
+  status: string;
+};
+
 type SeventeenTrackEnvelope = {
   code?: number;
   data?: {
@@ -184,8 +197,30 @@ function normalizeProviderItem(input: unknown) {
   return input;
 }
 
+function collectProviderItems(input: unknown) {
+  const items: Record<string, unknown>[] = [];
+  const seen = new Set<unknown>();
+  function visit(value: unknown, depth: number) {
+    if (depth > 5 || !value || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    if (!isObject(value)) return;
+    if (firstText(value.number, value.tracking_number, value.trackingNumber, getPath(value, ["tracking", "number"]))) {
+      items.push(value);
+    }
+    for (const key of ["data", "accepted", "rejected", "trackings", "items", "list"]) {
+      visit(value[key], depth + 1);
+    }
+  }
+  visit(input, 0);
+  return items;
+}
+
 export function buildInboundCarrierPayloadFrom17Track(input: unknown): InboundCarrierPayload | null {
-  const item = normalizeProviderItem(input);
+  const item = collectProviderItems(input)[0] || normalizeProviderItem(input);
   if (!isObject(item)) return null;
 
   const number = firstText(item.number, item.tracking_number, item.trackingNumber, getPath(item, ["tracking", "number"]));
@@ -343,6 +378,17 @@ export async function fetch17TrackInfo(number: string, carrier?: number | null) 
   return call17Track("/gettrackinfo", [{ number, carrier: carrier || 0 }]);
 }
 
+export function build17TrackSyncCarrierPayload(snapshot: unknown, claim: SeventeenTrackTrackingClaimRow) {
+  const payload = buildInboundCarrierPayloadFrom17Track(snapshot);
+  if (!payload) return null;
+  return {
+    ...payload,
+    carrier: claim.carrier,
+    trackingNumber: claim.tracking_number,
+    shipmentId: payload.shipmentId || claim.shipment_id,
+  };
+}
+
 function failedRegistrationPayload(claim: RegistrationClaimRow, error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return {
@@ -426,6 +472,56 @@ async function register17TrackShipments(claims: RegistrationClaimRow[]) {
 export async function claimAndRegister17TrackShipments(limit = 20) {
   const claims = await supabaseRpc<RegistrationClaimRow[]>("inbound_claim_due_17track_registrations", { p_limit: limit });
   const results = await register17TrackShipments(claims || []);
+  return { claimed: claims?.length || 0, results };
+}
+
+async function sync17TrackShipment(claim: SeventeenTrackTrackingClaimRow) {
+  try {
+    const snapshot = await fetch17TrackInfo(claim.tracking_number, claim.provider_carrier_id || default17TrackCarrierId(claim.carrier));
+    const payload = build17TrackSyncCarrierPayload(snapshot, claim);
+    if (!payload?.events.length) {
+      return {
+        shipmentId: claim.shipment_id,
+        trackingNumber: claim.tracking_number,
+        status: "no_events",
+        eventCount: 0,
+      };
+    }
+    const result = await record17TrackInboundPayload(payload);
+    await resolveAccepted17TrackIncidents(claim.shipment_id);
+    return {
+      shipmentId: claim.shipment_id,
+      trackingNumber: claim.tracking_number,
+      status: "recorded",
+      eventCount: payload.events.length,
+      result,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const result = await record17TrackTrackingError({
+      shipmentId: claim.shipment_id,
+      carrier: claim.carrier,
+      trackingNumber: claim.tracking_number,
+      detail,
+      rawResponse: { error: detail },
+    });
+    return {
+      shipmentId: claim.shipment_id,
+      trackingNumber: claim.tracking_number,
+      status: "error",
+      error: detail,
+      result,
+    };
+  }
+}
+
+export async function claimAndSync17TrackShipments(limit = 20) {
+  const claims = await supabaseRpc<SeventeenTrackTrackingClaimRow[]>("inbound_claim_due_17track_tracking_shipments", { p_limit: limit });
+  const results = [];
+  for (const [index, claim] of (claims || []).entries()) {
+    if (index > 0) await delay(450);
+    results.push(await sync17TrackShipment(claim));
+  }
   return { claimed: claims?.length || 0, results };
 }
 
