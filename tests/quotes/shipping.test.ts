@@ -12,6 +12,7 @@ import {
   buildInboundBoardFromRows,
   normalizeInboundCarrierStatus,
   parseInboundTrackingValue,
+  selectInboundTrelloVisualAttachment,
 } from "../../src/lib/ops/inbound-shipping";
 import { buildShippingNotificationEmail, type ClaimedShippingNotificationRow } from "../../src/lib/ops/shipping-notifications";
 
@@ -315,6 +316,16 @@ test("normalizeInboundCarrierStatus maps clearance, out-for-delivery and label-o
   assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusCode: "CP", statusText: "Clearance event in progress" }), "clearance_in_progress");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "fedex", statusCode: "OD", statusText: "On vehicle for delivery" }), "out_for_delivery");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusText: "Shipment information sent to DHL" }), "label_created");
+});
+
+test("selectInboundTrelloVisualAttachment prefers image.png before mockups and other images", () => {
+  const selected = selectInboundTrelloVisualAttachment([
+    { id: "mockup", name: "Mockup 1.png", url: "https://example.test/mockup.png" },
+    { id: "other", name: "photo.webp", url: "https://example.test/photo.webp", mimeType: "image/webp" },
+    { id: "reference", name: "image.png", url: "https://example.test/image.png" },
+  ]);
+
+  assert.equal(selected?.id, "reference");
 });
 
 test("buildInboundBoardFromRows prioritizes urgent inbound incidents and counts operational states", () => {

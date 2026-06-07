@@ -1,5 +1,8 @@
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
+import { attachmentName, selectMockupAttachments } from "@/lib/quotes/mockups";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { getTrelloCardVisuals } from "@/lib/quotes/trello";
+import type { TrelloAttachment } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const INBOUND_STATUS_VALUES = [
@@ -94,6 +97,39 @@ type InboundIncidentRow = {
   updated_at: string | null;
 };
 
+type InboundRequestRow = {
+  id: string;
+  request_id: string;
+  trello_card_id: string | null;
+  updated_at: string | null;
+};
+
+type InboundCrmQuoteRow = {
+  id: string;
+  request_id: string | null;
+  quote_number: string | null;
+  status: string | null;
+  created_at: string | null;
+};
+
+type InboundCrmQuoteVersionRow = {
+  id: string;
+  quote_id: string | null;
+  label: string | null;
+  created_at: string | null;
+};
+
+type InboundCrmQuoteVersionImageRow = {
+  id: string;
+  version_id: string | null;
+  item_index: number | null;
+  image_index: number | null;
+  original_url: string | null;
+  copied_url: string | null;
+  versioned_url: string | null;
+  created_at: string | null;
+};
+
 export type InboundShipment = {
   id: string;
   shipmentKey: string;
@@ -156,10 +192,19 @@ export type InboundIncident = {
   updatedAt: string | null;
 };
 
+export type InboundShipmentVisual = {
+  source: "quote_image" | "trello_reference" | "trello_mockup";
+  sourceLabel: string;
+  url: string;
+  label: string;
+  cardUrl: string | null;
+};
+
 export type InboundBoardItem = {
   shipment: InboundShipment;
   incidents: InboundIncident[];
   latestEvent: InboundTrackingEvent | null;
+  visual: InboundShipmentVisual | null;
 };
 
 export type InboundBoard = {
@@ -187,6 +232,42 @@ function trimNullable(value: unknown) {
 
 function encodeFilterValue(value: string) {
   return encodeURIComponent(value);
+}
+
+function uniqueValues(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((value) => trimNullable(value)).filter(Boolean) as string[]));
+}
+
+function isLikelyImageAttachment(attachment: TrelloAttachment) {
+  const name = attachmentName(attachment);
+  return /\.(png|jpe?g|webp|avif)$/i.test(name) || Boolean(attachment.mimeType && /^image\//i.test(attachment.mimeType));
+}
+
+export function selectInboundTrelloVisualAttachment(attachments: TrelloAttachment[]) {
+  const sortedImages = attachments
+    .filter(isLikelyImageAttachment)
+    .sort((left, right) => attachmentName(left).localeCompare(attachmentName(right), "de", { numeric: true }));
+  return (
+    sortedImages.find((attachment) => /^image\.png$/i.test(attachmentName(attachment))) ||
+    sortedImages.find((attachment) => /^image[_-]?\d*\.(png|jpe?g|webp|avif)$/i.test(attachmentName(attachment))) ||
+    selectMockupAttachments(attachments)[0] ||
+    sortedImages[0] ||
+    null
+  );
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {
+  const results: R[] = [];
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export function normalizeInboundCarrier(value: string | null | undefined): InboundCarrier {
@@ -345,7 +426,7 @@ export function buildInboundBoardFromRows(
     const incidents = (incidentsByShipment.get(shipment.id) || [])
       .filter(isActiveInboundIncident)
       .sort((left, right) => riskRank(left.severity) - riskRank(right.severity));
-    return { shipment, incidents, latestEvent: latestEventByShipment.get(shipment.id) || null };
+    return { shipment, incidents, latestEvent: latestEventByShipment.get(shipment.id) || null, visual: null };
   });
 
   items.sort((left, right) => {
@@ -365,6 +446,159 @@ export function buildInboundBoardFromRows(
       delivered: items.filter((item) => item.shipment.status === "delivered").length,
       withOpenTask: items.filter((item) => item.incidents.some((incident) => Boolean(incident.activeTaskId))).length,
     },
+  };
+}
+
+function crmQuoteImageUrl(image: InboundCrmQuoteVersionImageRow) {
+  return trimNullable(image.versioned_url) || trimNullable(image.copied_url) || trimNullable(image.original_url);
+}
+
+async function fetchQuoteVisualsByTrelloCardId(cardIds: string[]) {
+  const visualsByCardId = new Map<string, InboundShipmentVisual>();
+  if (!cardIds.length) return visualsByCardId;
+
+  const requests = await supabaseRequest<InboundRequestRow[]>("master_requests", undefined, {
+    select: "id,request_id,trello_card_id,updated_at",
+    trello_card_id: `in.(${cardIds.map(encodeFilterValue).join(",")})`,
+    order: "updated_at.desc",
+    limit: Math.min(Math.max(cardIds.length * 2, 10), 120),
+  });
+  const cardIdByRequestId = new Map<string, string>();
+  for (const request of requests) {
+    const requestId = trimNullable(request.id);
+    const cardId = trimNullable(request.trello_card_id);
+    if (requestId && cardId && !cardIdByRequestId.has(requestId)) cardIdByRequestId.set(requestId, cardId);
+  }
+  const requestIds = Array.from(cardIdByRequestId.keys());
+  if (!requestIds.length) return visualsByCardId;
+
+  const quotes = await supabaseRequest<InboundCrmQuoteRow[]>("crm_quotes", undefined, {
+    select: "id,request_id,quote_number,status,created_at",
+    request_id: `in.(${requestIds.map(encodeFilterValue).join(",")})`,
+    order: "created_at.desc",
+    limit: Math.min(Math.max(requestIds.length * 4, 10), 160),
+  });
+  const quoteIds = uniqueValues(quotes.map((quote) => quote.id));
+  if (!quoteIds.length) return visualsByCardId;
+
+  const versions = await supabaseRequest<InboundCrmQuoteVersionRow[]>("crm_quote_versions", undefined, {
+    select: "id,quote_id,label,created_at",
+    quote_id: `in.(${quoteIds.map(encodeFilterValue).join(",")})`,
+    order: "created_at.desc",
+    limit: Math.min(Math.max(quoteIds.length * 3, 10), 200),
+  });
+  const versionIds = uniqueValues(versions.map((version) => version.id));
+  if (!versionIds.length) return visualsByCardId;
+
+  const images = await supabaseRequest<InboundCrmQuoteVersionImageRow[]>("crm_quote_version_images", undefined, {
+    select: "id,version_id,item_index,image_index,original_url,copied_url,versioned_url,created_at",
+    version_id: `in.(${versionIds.map(encodeFilterValue).join(",")})`,
+    order: "created_at.desc",
+    limit: Math.min(Math.max(versionIds.length * 4, 10), 300),
+  });
+  const versionsByQuoteId = new Map<string, InboundCrmQuoteVersionRow[]>();
+  for (const version of versions) {
+    if (!version.quote_id) continue;
+    const list = versionsByQuoteId.get(version.quote_id) || [];
+    list.push(version);
+    versionsByQuoteId.set(version.quote_id, list);
+  }
+  const imagesByVersionId = new Map<string, InboundCrmQuoteVersionImageRow[]>();
+  for (const image of images) {
+    if (!image.version_id || !crmQuoteImageUrl(image)) continue;
+    const list = imagesByVersionId.get(image.version_id) || [];
+    list.push(image);
+    imagesByVersionId.set(image.version_id, list);
+  }
+
+  for (const quote of quotes) {
+    const requestId = trimNullable(quote.request_id);
+    const cardId = requestId ? cardIdByRequestId.get(requestId) : null;
+    if (!cardId || visualsByCardId.has(cardId)) continue;
+    const quoteVersions = (versionsByQuoteId.get(quote.id) || []).sort(
+      (left, right) => new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime(),
+    );
+    let selectedImage: InboundCrmQuoteVersionImageRow | null = null;
+    for (const version of quoteVersions) {
+      const versionImages = (imagesByVersionId.get(version.id) || []).sort((left, right) => {
+        const leftItem = Number(left.item_index ?? 0);
+        const rightItem = Number(right.item_index ?? 0);
+        if (leftItem !== rightItem) return leftItem - rightItem;
+        return Number(left.image_index ?? 0) - Number(right.image_index ?? 0);
+      });
+      selectedImage = versionImages[0] || null;
+      if (selectedImage) break;
+    }
+    const url = selectedImage ? crmQuoteImageUrl(selectedImage) : null;
+    if (!selectedImage || !url) continue;
+    visualsByCardId.set(cardId, {
+      source: "quote_image",
+      sourceLabel: "Angebotsbild",
+      url,
+      label: trimNullable(quote.quote_number) || "Angebotsbild",
+      cardUrl: null,
+    });
+  }
+
+  return visualsByCardId;
+}
+
+async function fetchTrelloVisual(item: InboundBoardItem): Promise<InboundShipmentVisual | null> {
+  const cardId = trimNullable(item.shipment.trelloCardId);
+  if (!cardId) return null;
+
+  try {
+    const card = await getTrelloCardVisuals(cardId);
+    const attachment = selectInboundTrelloVisualAttachment(card.attachments || []);
+    if (!attachment) return null;
+    const proxyCardId = trimNullable(card.id) || cardId;
+    const attachmentId = trimNullable(attachment.id);
+    if (!proxyCardId || !attachmentId) return null;
+    const params = new URLSearchParams({ cardId: proxyCardId, attachmentId });
+    const name = attachmentName(attachment) || "Trello Bild";
+    const isMockup = selectMockupAttachments([attachment]).length > 0;
+    return {
+      source: isMockup ? "trello_mockup" : "trello_reference",
+      sourceLabel: isMockup ? "Trello Mockup" : "Trello Bild",
+      url: `/api/ops/customer-records/trello-attachments?${params.toString()}`,
+      label: name,
+      cardUrl: trimNullable(card.url) || item.shipment.trelloCardUrl,
+    };
+  } catch (error) {
+    console.warn("inbound shipping trello visual unavailable", { shipmentId: item.shipment.id, cardId, error });
+    return null;
+  }
+}
+
+async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<InboundBoard> {
+  const cardIds = uniqueValues(board.items.map((item) => item.shipment.trelloCardId));
+  if (!cardIds.length) return board;
+
+  let quoteVisualsByCardId = new Map<string, InboundShipmentVisual>();
+  try {
+    quoteVisualsByCardId = await fetchQuoteVisualsByTrelloCardId(cardIds);
+  } catch (error) {
+    console.warn("inbound shipping quote visuals unavailable", { error });
+  }
+
+  const itemsWithQuoteVisuals = board.items.map((item) => {
+    const cardId = trimNullable(item.shipment.trelloCardId);
+    return cardId && quoteVisualsByCardId.has(cardId) ? { ...item, visual: quoteVisualsByCardId.get(cardId) || null } : item;
+  });
+  const trelloCandidates = itemsWithQuoteVisuals.filter((item) => !item.visual && item.shipment.trelloCardId);
+  const trelloVisualPairs = await mapWithConcurrency(trelloCandidates, 5, async (item) => ({
+    shipmentId: item.shipment.id,
+    visual: await fetchTrelloVisual(item),
+  }));
+  const trelloVisualsByShipmentId = new Map(trelloVisualPairs.filter((entry) => entry.visual).map((entry) => [entry.shipmentId, entry.visual as InboundShipmentVisual]));
+
+  return {
+    ...board,
+    items: itemsWithQuoteVisuals.map((item) =>
+      item.visual || !trelloVisualsByShipmentId.has(item.shipment.id)
+        ? item
+        : { ...item, visual: trelloVisualsByShipmentId.get(item.shipment.id) || null },
+    ),
   };
 }
 
@@ -402,7 +636,7 @@ export async function listInboundBoard(options?: {
     }),
   ]);
 
-  const board = buildInboundBoardFromRows(shipmentRows, incidentRows, eventRows);
+  const board = await enrichInboundBoardWithVisuals(buildInboundBoardFromRows(shipmentRows, incidentRows, eventRows));
   if (options?.scope === "problems") {
     return {
       ...board,

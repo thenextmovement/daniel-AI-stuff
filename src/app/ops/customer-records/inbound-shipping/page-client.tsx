@@ -249,67 +249,89 @@ export function InboundShippingClient({
           {items.length ? (
             items.map((item: InboundBoardItem) => (
               <article key={item.shipment.id} className="rounded-[0.5rem] border border-stone-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs uppercase text-stone-500">
-                      <span>{item.shipment.carrier.toUpperCase()}</span>
-                      <span>{item.shipment.trackingNumber}</span>
-                      <span>{statusLabel(item.shipment.status)}</span>
-                    </div>
-                    <h2 className="mt-2 text-xl font-semibold">{item.shipment.trelloCardName || "Inbound-Sendung ohne Trello-Titel"}</h2>
-                    <p className="mt-1 text-sm text-stone-500">
-                      Letztes Event: {item.latestEvent ? `${formatDate(item.latestEvent.eventTime)} - ${item.latestEvent.carrierStatusText || statusLabel(item.latestEvent.normalizedStatus)}` : "kein Carrier-Event gespeichert"}
-                    </p>
-                    <p className="mt-1 text-xs text-stone-400">
-                      Tracking erfasst: {formatDate(item.shipment.trackingFirstSeenAt)} | letzte Prüfung: {formatDate(item.shipment.lastCheckedAt)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {item.shipment.trelloCardUrl ? (
-                      <a className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50" href={item.shipment.trelloCardUrl} target="_blank" rel="noreferrer">
-                        Trello
-                      </a>
-                    ) : null}
-                    <a className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50" href={`https://www.google.com/search?q=${encodeURIComponent(`${item.shipment.carrier} ${item.shipment.trackingNumber}`)}`} target="_blank" rel="noreferrer">
-                      Tracking
+                <div className="grid gap-4 md:grid-cols-[7rem_1fr]">
+                  {item.visual ? (
+                    <a
+                      className="block aspect-[4/3] overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100 outline-none focus-visible:ring-2 focus-visible:ring-stone-900 md:aspect-square"
+                      href={item.visual.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`${item.visual.sourceLabel}: ${item.visual.label}`}
+                    >
+                      <img
+                        src={item.visual.url}
+                        alt={item.visual.label}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
                     </a>
+                  ) : null}
+
+                  <div className={item.visual ? "" : "md:col-span-2"}>
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs uppercase text-stone-500">
+                          <span>{item.shipment.carrier.toUpperCase()}</span>
+                          <span>{item.shipment.trackingNumber}</span>
+                          <span>{statusLabel(item.shipment.status)}</span>
+                          {item.visual ? <span>{item.visual.sourceLabel}</span> : null}
+                        </div>
+                        <h2 className="mt-2 text-xl font-semibold">{item.shipment.trelloCardName || "Inbound-Sendung ohne Trello-Titel"}</h2>
+                        <p className="mt-1 text-sm text-stone-500">
+                          Letztes Event: {item.latestEvent ? `${formatDate(item.latestEvent.eventTime)} - ${item.latestEvent.carrierStatusText || statusLabel(item.latestEvent.normalizedStatus)}` : "kein Carrier-Event gespeichert"}
+                        </p>
+                        <p className="mt-1 text-xs text-stone-400">
+                          Tracking erfasst: {formatDate(item.shipment.trackingFirstSeenAt)} | letzte Prüfung: {formatDate(item.shipment.lastCheckedAt)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {item.shipment.trelloCardUrl ? (
+                          <a className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50" href={item.shipment.trelloCardUrl} target="_blank" rel="noreferrer">
+                            Trello
+                          </a>
+                        ) : null}
+                        <a className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50" href={`https://www.google.com/search?q=${encodeURIComponent(`${item.shipment.carrier} ${item.shipment.trackingNumber}`)}`} target="_blank" rel="noreferrer">
+                          Tracking
+                        </a>
+                      </div>
+                    </div>
+
+                    {item.incidents.length ? (
+                      <div className="mt-4 grid gap-3">
+                        {item.incidents.map((entry) => (
+                          <div key={entry.id} className={`rounded-[0.5rem] border px-4 py-3 ${severityTone(entry.severity)}`}>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2 text-xs uppercase">
+                                  <span>{entry.severity}</span>
+                                  <span>{entry.status}</span>
+                                  {entry.activeTaskId ? <span>Aufgabe verknüpft</span> : null}
+                                </div>
+                                <div className="mt-1 font-semibold">{entry.title}</div>
+                                {entry.description ? <p className="mt-1 text-sm leading-6 opacity-80">{entry.description}</p> : null}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "create_task")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                  Aufgabe
+                                </button>
+                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "acknowledge")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                  Gesehen
+                                </button>
+                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "resolve")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                  Erledigt
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-[0.5rem] border border-dashed border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-500">
+                        Keine offenen Inbound-Incidents.
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {item.incidents.length ? (
-                  <div className="mt-4 grid gap-3">
-                    {item.incidents.map((entry) => (
-                      <div key={entry.id} className={`rounded-[0.5rem] border px-4 py-3 ${severityTone(entry.severity)}`}>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs uppercase">
-                              <span>{entry.severity}</span>
-                              <span>{entry.status}</span>
-                              {entry.activeTaskId ? <span>Aufgabe verknüpft</span> : null}
-                            </div>
-                            <div className="mt-1 font-semibold">{entry.title}</div>
-                            {entry.description ? <p className="mt-1 text-sm leading-6 opacity-80">{entry.description}</p> : null}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "create_task")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
-                              Aufgabe
-                            </button>
-                            <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "acknowledge")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
-                              Gesehen
-                            </button>
-                            <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "resolve")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
-                              Erledigt
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-[0.5rem] border border-dashed border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-500">
-                    Keine offenen Inbound-Incidents.
-                  </div>
-                )}
               </article>
             ))
           ) : (
