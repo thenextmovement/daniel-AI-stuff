@@ -1,8 +1,8 @@
 "use client";
 
-import { ClipboardList, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { ClipboardList, MonitorSmartphone, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
-export type OpsAppKey = "records" | "calls" | "tasks" | "shipping" | "inboundShipping";
+export type OpsAppKey = "records" | "calls" | "tasks" | "office" | "shipping" | "inboundShipping";
 
 type OpsAppSwitcherProps = {
   active: OpsAppKey;
@@ -38,6 +38,13 @@ const OPS_APPS: Array<{
     Icon: ClipboardList,
   },
   {
+    key: "office",
+    label: "Office",
+    helper: "Mail & Dateien",
+    href: "/ops/office",
+    Icon: MonitorSmartphone,
+  },
+  {
     key: "shipping",
     label: "Paketversand",
     helper: "Kundenpakete raus",
@@ -59,7 +66,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
   return (
     <nav
       aria-label="Ops-Bereiche"
-      className={`grid w-full max-w-full grid-cols-2 gap-1.5 rounded-[1rem] border p-1 sm:grid-cols-3 xl:grid-cols-5 ${
+      className={`grid w-full max-w-full grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-1.5 rounded-[1rem] border p-1 ${
         dark ? "border-white/15 bg-white/5" : "border-black/10 bg-black/[0.03]"
       }`}
     >
@@ -70,7 +77,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
             key={key}
             href={href}
             aria-current={isActive ? "page" : undefined}
-            className={`grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2 rounded-[0.75rem] px-2.5 py-2 text-left text-sm font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 ${
+            className={`grid min-h-[3.25rem] min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2 rounded-[0.75rem] px-2.5 py-2 text-left text-sm font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 ${
               dark
                 ? isActive
                   ? "bg-white text-stone-950 focus-visible:ring-white/60"
