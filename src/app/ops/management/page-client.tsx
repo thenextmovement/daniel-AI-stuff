@@ -24,8 +24,8 @@ import type {
   ManagementRiskItem,
   ManagementTableRow,
 } from "@/lib/ops/management-kpis";
-import { OpsAppSwitcher } from "../ops-app-switcher";
 import { OpsLoginCard } from "../ops-login-card";
+import { OpsPageHeader } from "../ops-page-header";
 
 type ApiResponse = {
   ok: boolean;
@@ -252,18 +252,19 @@ export function ManagementKpisClient({
 
   return (
     <main className="min-h-screen bg-[#f6f5f2] text-stone-950">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <OpsPageHeader active="management" label="Management" />
+      </div>
+
       <section className="border-b border-black/10 bg-stone-950 px-4 py-5 text-white sm:px-6">
         <div className="mx-auto max-w-7xl">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">NEONTRIP Ops</p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">Management KPIs</h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-white/65">
                 Umsatz, Pipeline, Arbeit, Risiken und bekannte Kosten. Kosten/Marge werden nur dort gezeigt, wo die Datenquelle belastbar ist.
               </p>
-            </div>
-            <div className="w-full lg:max-w-4xl">
-              <OpsAppSwitcher active="management" tone="dark" />
             </div>
           </div>
         </div>

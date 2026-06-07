@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../ops-login-card";
-import { OpsAppSwitcher } from "../ops-app-switcher";
+import { OpsPageHeader } from "../ops-page-header";
 import type {
   CustomerAuditEntry,
   CustomerCommunicationEntry,
@@ -22641,42 +22641,11 @@ export function CustomerRecordsClient({
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.09),transparent_22%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_18%),linear-gradient(180deg,#fffdf9_0%,#fffaf4_38%,#ffffff_100%)]" />
 
       <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-4 py-4 md:px-6 lg:px-8 lg:py-6">
-        <header className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.22),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_24%),linear-gradient(135deg,#060606_0%,#111111_58%,#171717_100%)] text-white shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-          <div className="grid gap-4 px-5 py-4 md:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <img src="/assets/logo_weiss_neontrip.png" alt="NEONTRIP" className="h-7 w-auto md:h-8" />
-              <div className="text-sm text-white/55">{quietLayout ? "Kundenakte" : "Ops-Zentrale"}</div>
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaletteOpen(true)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/78 transition hover:border-white/30 hover:bg-white/10 hover:text-white md:w-auto md:justify-start"
-                >
-                  <Search className="h-4 w-4" />
-                  Schnellzugriff
-                  <span className="hidden rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-white/55 md:inline-flex">
-                    Cmd/Ctrl+K
-                  </span>
-                </button>
-                <a
-                  href="tel:+4921154257240"
-                  className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white sm:flex"
-                  aria-label="NEONTRIP anrufen"
-                >
-                  <PhoneFallback />
-                </a>
-                <a
-                  href="mailto:support@neontrip.de"
-                  className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white sm:flex"
-                  aria-label="NEONTRIP E-Mail"
-                >
-                  <Mail className="h-4 w-4" />
-                </a>
-              </div>
-            </div>
-            <OpsAppSwitcher active="records" tone="dark" />
-          </div>
-        </header>
+        <OpsPageHeader
+          active="records"
+          label={quietLayout ? "Kundenakte" : "Ops-Zentrale"}
+          onQuickAccess={() => setPaletteOpen(true)}
+        />
 
         <Surface className={`overflow-hidden border-white/10 text-white shadow-[0_24px_90px_rgba(0,0,0,0.18)] ${
           quietLayout

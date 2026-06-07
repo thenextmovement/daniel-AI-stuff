@@ -84,7 +84,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
             key={key}
             href={href}
             aria-current={isActive ? "page" : undefined}
-            className={`grid min-h-[3.25rem] min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2 rounded-[0.75rem] px-2.5 py-2 text-left text-sm font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 ${
+            className={`grid min-h-[3.25rem] min-w-0 grid-cols-[0.9rem_minmax(0,1fr)] items-center gap-x-1.5 rounded-[0.75rem] px-2 py-2 text-left text-[13px] font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 sm:grid-cols-[1rem_minmax(0,1fr)] sm:gap-x-2 sm:px-2.5 sm:text-sm ${
               dark
                 ? isActive
                   ? "bg-white text-stone-950 focus-visible:ring-white/60"
@@ -95,7 +95,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
             }`}
           >
             <Icon className="h-4 w-4" />
-            <span className="min-w-0 truncate">{label}</span>
+            <span className="min-w-0 whitespace-nowrap">{label}</span>
             <span className={`col-start-2 hidden min-w-0 truncate text-[11px] font-normal lg:block ${
               dark
                 ? isActive ? "text-stone-600" : "text-white/45"

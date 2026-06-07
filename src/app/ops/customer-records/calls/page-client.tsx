@@ -31,7 +31,7 @@ import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/c
 import type { OpsInternalTask } from "@/lib/ops/internal-tasks";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../../ops-login-card";
-import { OpsAppSwitcher } from "../../ops-app-switcher";
+import { OpsPageHeader } from "../../ops-page-header";
 
 type SalesCallApiResponse = {
   ok: boolean;
@@ -1661,6 +1661,8 @@ export function CustomerSalesCallsClient({
   return (
     <div className="min-h-screen bg-stone-50 px-6 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        <OpsPageHeader active="calls" label="Anrufe" />
+
         <div className="rounded-[2rem] bg-stone-950 px-8 py-8 text-white shadow-xl shadow-stone-950/10">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
@@ -1672,7 +1674,6 @@ export function CustomerSalesCallsClient({
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <OpsAppSwitcher active="calls" tone="dark" />
               <input
                 value={operatorName}
                 onChange={(event) => setOperatorName(event.target.value)}

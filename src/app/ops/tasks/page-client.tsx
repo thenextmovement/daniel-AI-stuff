@@ -18,8 +18,8 @@ import type {
   OpsInternalTaskPriority,
   OpsInternalTaskStatus,
 } from "@/lib/ops/internal-tasks";
-import { OpsAppSwitcher } from "../ops-app-switcher";
 import { OpsLoginCard } from "../ops-login-card";
+import { OpsPageHeader } from "../ops-page-header";
 
 type TasksApiResponse = {
   ok: boolean;
@@ -415,6 +415,8 @@ export function OpsTasksClient({
   return (
     <div className="min-h-screen bg-stone-50 px-6 py-8 text-stone-950">
       <div className="mx-auto max-w-7xl space-y-6">
+        <OpsPageHeader active="tasks" label="Teamaufgaben" />
+
         <header className="rounded-[2rem] bg-stone-950 px-8 py-8 text-white shadow-xl shadow-stone-950/10">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
@@ -425,7 +427,6 @@ export function OpsTasksClient({
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <OpsAppSwitcher active="tasks" tone="dark" />
               <input
                 value={operatorName}
                 onChange={(event) => setOperatorName(event.target.value)}

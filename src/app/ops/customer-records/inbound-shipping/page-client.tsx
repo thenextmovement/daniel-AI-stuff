@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, FileText, PlaneLanding, RefreshCcw, ShieldAlert, Truck } from "lucide-react";
 import type { InboundBoard, InboundBoardItem, InboundIncident, InboundIncidentSeverity, InboundStatus } from "@/lib/ops/inbound-shipping";
-import { OpsAppSwitcher } from "../../ops-app-switcher";
 import { OpsLoginCard } from "../../ops-login-card";
+import { OpsPageHeader } from "../../ops-page-header";
 
 type InboundApiResponse = {
   ok: boolean;
@@ -167,6 +167,8 @@ export function InboundShippingClient({
   return (
     <main className="min-h-screen bg-stone-100 px-4 py-6 text-stone-900 md:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <OpsPageHeader active="inboundShipping" label="Wareneingang" />
+
         <header className="rounded-[0.5rem] bg-stone-950 px-6 py-6 text-white">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -176,7 +178,6 @@ export function InboundShippingClient({
                 Eingehende China-Sendungen aus Trello `sign shipped`, mit DHL Express/FedEx Tracking, Clearance-Warnungen und Zustellvorbereitung.
               </p>
             </div>
-            <OpsAppSwitcher active="inboundShipping" tone="dark" />
           </div>
         </header>
 

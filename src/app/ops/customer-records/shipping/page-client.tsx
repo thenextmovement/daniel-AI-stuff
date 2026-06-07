@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, ListChecks, PackageCheck, RefreshCcw, Search, Truck } from "lucide-react";
 import type { ShippingBoard, ShippingBoardItem, ShippingIncident, ShippingIncidentSeverity, ShippingStatus } from "@/lib/ops/shipping";
-import { OpsAppSwitcher } from "../../ops-app-switcher";
 import { OpsLoginCard } from "../../ops-login-card";
+import { OpsPageHeader } from "../../ops-page-header";
 
 type ShippingApiResponse = {
   ok: boolean;
@@ -183,6 +183,8 @@ export function CustomerShippingClient({
   return (
     <main className="min-h-screen bg-stone-100 px-4 py-6 text-stone-900 md:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <OpsPageHeader active="shipping" label="Paketversand" />
+
         <header className="rounded-[0.5rem] bg-stone-950 px-6 py-6 text-white">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -192,7 +194,6 @@ export function CustomerShippingClient({
                 Globale Versand-Queue fuer DPD/DHL nach Kundenversand. Geprueft werden nur aktuelle Sendungen der letzten 60 Tage; Paketshop-Faelle sind Kundenhinweise, echte Fehlermeldungen sind Ruecklauf oder fehlgeschlagene Zustellung.
               </p>
             </div>
-            <OpsAppSwitcher active="shipping" tone="dark" />
           </div>
         </header>
 
