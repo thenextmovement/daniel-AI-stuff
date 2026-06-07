@@ -88,6 +88,7 @@ export type ManagementKpiDashboard = {
   costs: {
     knownAdSpend: number;
     knownAiSpendUsd: number;
+    knownVoiceSpendUsd: number;
     knownCostCoverage: "partial";
     missingSources: string[];
   };
@@ -176,6 +177,18 @@ type AnthropicCostRow = {
   total_cost_cents: number | string | null;
 };
 
+type CostEntryRow = {
+  id: string;
+  cost_key: string;
+  source: string;
+  category: "ads" | "ai" | "voice" | "shipping" | "production" | "customs" | "tool" | "manual" | "other";
+  subcategory: string | null;
+  amount: number | string;
+  currency: "EUR" | "USD";
+  occurred_on: string;
+  confidence: "actual" | "derived" | "estimated";
+};
+
 type SalesTaskRow = {
   id: string;
   request_id: string;
@@ -232,6 +245,7 @@ type KpiRows = {
   seaCampaignDaily: SeaCampaignDailyRow[];
   googleAdsDailySpend: GoogleAdsDailySpendRow[];
   anthropicCosts: AnthropicCostRow[];
+  costEntries: CostEntryRow[];
   salesTasks: SalesTaskRow[];
   salesCallResults: SalesCallResultRow[];
   shippingIncidents: ShippingIncidentRow[];
@@ -471,13 +485,13 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
   const openShippingIncidents = shippingIncidentsInRange.filter((row) => ["open", "acknowledged"].includes(normalized(row.status))).length;
   const openInboundIncidents = inboundIncidentsInRange.filter((row) => ["open", "acknowledged"].includes(normalized(row.status))).length;
 
-  const seaSpendRows = rows.seaCampaignDaily.filter((row) => dateInRange(row.date, range.from, range.to));
-  const legacyAdsRows = rows.googleAdsDailySpend.filter((row) => dateInRange(row.date, range.from, range.to));
-  const aiCostRows = rows.anthropicCosts.filter((row) => dateInRange(row.cost_date, range.from, range.to));
-  const knownAdSpend = sum(seaSpendRows, (row: SeaCampaignDailyRow) => row.cost_eur);
-  const knownAiSpendUsd = sum(aiCostRows, (row: AnthropicCostRow) => row.total_cost_usd);
+  const costEntriesInRange = rows.costEntries.filter((row) => dateInRange(row.occurred_on, range.from, range.to));
+  const knownAdSpend = sum(costEntriesInRange.filter((row) => row.category === "ads" && row.currency === "EUR"), (row) => row.amount);
+  const knownAiSpendUsd = sum(costEntriesInRange.filter((row) => row.category === "ai" && row.currency === "USD"), (row) => row.amount);
+  const knownVoiceSpendUsd = sum(costEntriesInRange.filter((row) => row.category === "voice" && row.currency === "USD"), (row) => row.amount);
   const legacyAdsLatest = latestDate(rows.googleAdsDailySpend, (row: GoogleAdsDailySpendRow) => row.date);
   const seaAdsLatest = latestDate(rows.seaCampaignDaily, (row: SeaCampaignDailyRow) => row.date);
+  const costBookLatest = latestDate(rows.costEntries, (row) => row.occurred_on);
 
   const riskFeed: ManagementRiskItem[] = [
     ...shippingIncidentsInRange
@@ -512,8 +526,9 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
   const dataQuality: ManagementKpiDataQualityItem[] = [
     statusQuality("good", "Umsatzdaten", `${activeOrders.length} aktive Shopify-Bestellungen im Zeitraum, ${cancelledOrders.length} stornierte/erstattete Fälle separat gezählt.`, "orders"),
     statusQuality(filteredRequests.filter((row) => row.utm_source || row.utm_campaign || row.landing_page_url).length ? "partial" : "missing", "Attribution", `${filteredRequests.filter((row) => row.utm_source || row.utm_campaign || row.landing_page_url).length} von ${filteredRequests.length} Anfragen haben UTM/Landingpage-Daten.`, "attribution"),
-    statusQuality(seaAdsLatest && staleDays(seaAdsLatest, now)! <= 2 ? "good" : "partial", "SEA-Kosten", `Aktuelle Quelle sea_campaign_daily bis ${seaAdsLatest || "unbekannt"}. Legacy google_ads_daily_spend bis ${legacyAdsLatest || "unbekannt"} und nicht für aktuelle KPIs verwenden.`, "ads_costs"),
-    statusQuality("partial", "Kosten/Marge", "Ads- und AI-Kosten sind vorhanden; Produktions-, Zoll- und echte Versandkosten fehlen als zentrale Kostenquelle.", "margin"),
+    statusQuality(costBookLatest && staleDays(costBookLatest, now)! <= 2 ? "good" : "partial", "Kostenbuch", `${costEntriesInRange.length} Kostenbuch-Zeilen im Zeitraum. Letzter Kostenbuch-Tag: ${costBookLatest || "unbekannt"}.`, "cost_book"),
+    statusQuality(seaAdsLatest && staleDays(seaAdsLatest, now)! <= 2 ? "good" : "partial", "SEA-Kosten", `Aktuelle Quelle sea_campaign_daily bis ${seaAdsLatest || "unbekannt"}. Legacy google_ads_daily_spend bis ${legacyAdsLatest || "unbekannt"} ist als Legacy-Kostenquelle im Kostenbuch enthalten.`, "ads_costs"),
+    statusQuality("partial", "Kosten/Marge", "Ads-, AI- und vorbereitete Voice-Kosten sind im Kostenbuch; Produktions-, Zoll- und echte Versandkosten fehlen noch.", "margin"),
     statusQuality(openShippingIncidents ? "risk" : "good", "Versand-Risiken", `${openShippingIncidents} offene ausgehende Shipping-Incidents im Zeitraum.`, "shipping"),
     statusQuality("risk", "RLS-Hinweis", "Supabase meldet deaktivierte RLS u.a. für sales_tasks und ops_offer_events. Nicht automatisch behoben, weil Policies definiert werden müssen.", "rls"),
   ];
@@ -551,14 +566,14 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
       key: "ad_spend",
       label: "SEA-Kosten",
       value: money(knownAdSpend),
-      detail: `${seaSpendRows.length} SEA-Tageszeilen im Zeitraum`,
+      detail: `${costEntriesInRange.filter((row) => row.category === "ads").length} Kostenbuch-Zeilen im Zeitraum`,
       tone: knownAdSpend > 0 ? "neutral" : "watch",
     },
     {
       key: "ai_cost",
       label: "AI-Kosten",
       value: money(knownAiSpendUsd, "USD"),
-      detail: `${aiCostRows.length} Anthropic-Kostentage im Zeitraum`,
+      detail: `${costEntriesInRange.filter((row) => row.category === "ai").length} Kostenbuch-Zeilen im Zeitraum`,
       tone: knownAiSpendUsd > 0 ? "neutral" : "watch",
     },
   ];
@@ -605,6 +620,7 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
     costs: {
       knownAdSpend,
       knownAiSpendUsd,
+      knownVoiceSpendUsd,
       knownCostCoverage: "partial",
       missingSources: [
         "Produktionskosten / Wareneinsatz",
@@ -619,7 +635,7 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
 
 async function fetchKpiRows(input: ManagementKpiInput): Promise<KpiRows> {
   const range = resolveManagementRange(input);
-  const [requests, quotes, crmQuotes, orders, seaCampaignDaily, googleAdsDailySpend, anthropicCosts, salesTasks, salesCallResults, shippingIncidents, inboundIncidents] = await Promise.all([
+  const [requests, quotes, crmQuotes, orders, seaCampaignDaily, googleAdsDailySpend, anthropicCosts, costEntries, salesTasks, salesCallResults, shippingIncidents, inboundIncidents] = await Promise.all([
     supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
       select: "id,request_id,status,deal_status,segment,s_kategorie,customer_type,country,estimated_value,final_value,utm_source,utm_medium,utm_campaign,landing_page_url,referrer,created_at,updated_at",
       and: dateAndFilter("created_at", range.from.toISOString(), range.to.toISOString()),
@@ -658,6 +674,12 @@ async function fetchKpiRows(input: ManagementKpiInput): Promise<KpiRows> {
       order: "cost_date.desc",
       limit: 500,
     }),
+    supabaseRequest<CostEntryRow[]>("ops_cost_entries", undefined, {
+      select: "id,cost_key,source,category,subcategory,amount,currency,occurred_on,confidence",
+      and: dateAndFilter("occurred_on", range.from.toISOString().slice(0, 10), range.to.toISOString().slice(0, 10)),
+      order: "occurred_on.desc",
+      limit: 5000,
+    }),
     supabaseRequest<SalesTaskRow[]>("sales_tasks", undefined, {
       select: "id,request_id,status,task_type,priority_tier,assignee_label,due_at,completed_at,created_at,updated_at",
       order: "updated_at.desc",
@@ -689,6 +711,7 @@ async function fetchKpiRows(input: ManagementKpiInput): Promise<KpiRows> {
     seaCampaignDaily,
     googleAdsDailySpend,
     anthropicCosts,
+    costEntries,
     salesTasks,
     salesCallResults,
     shippingIncidents,

@@ -14,6 +14,7 @@ const emptyRows = {
   seaCampaignDaily: [],
   googleAdsDailySpend: [],
   anthropicCosts: [],
+  costEntries: [],
   salesTasks: [],
   salesCallResults: [],
   shippingIncidents: [],
@@ -87,6 +88,30 @@ test("buildManagementKpiDashboardFromRows separates revenue, pipeline, costs and
       seaCampaignDaily: [{ date: "2026-06-06", cost_eur: 44, conversions: 2, conversion_value: 500, synced_at: "2026-06-06T23:00:00.000Z" }],
       googleAdsDailySpend: [{ date: "2026-01-29", spend: 10, synced_at: "2026-01-29T23:00:00.000Z" }],
       anthropicCosts: [{ cost_date: "2026-06-06", total_cost_usd: 3.5, total_cost_cents: 350 }],
+      costEntries: [
+        {
+          id: "cost-entry-ad-1",
+          cost_key: "sea_campaign_daily:2026-06-06:campaign-1",
+          source: "sea_campaign_daily",
+          category: "ads",
+          subcategory: "google_ads_campaign",
+          amount: 44,
+          currency: "EUR",
+          occurred_on: "2026-06-06",
+          confidence: "actual",
+        },
+        {
+          id: "cost-entry-ai-1",
+          cost_key: "anthropic_api_daily_costs:2026-06-06",
+          source: "anthropic_api_daily_costs",
+          category: "ai",
+          subcategory: "anthropic",
+          amount: 3.5,
+          currency: "USD",
+          occurred_on: "2026-06-06",
+          confidence: "actual",
+        },
+      ],
       salesTasks: [
         {
           id: "task-1",
@@ -138,6 +163,7 @@ test("buildManagementKpiDashboardFromRows separates revenue, pipeline, costs and
   assert.equal(dashboard.sales.pipelineValue, 1200);
   assert.equal(dashboard.costs.knownAdSpend, 44);
   assert.equal(dashboard.costs.knownAiSpendUsd, 3.5);
+  assert.equal(dashboard.costs.knownVoiceSpendUsd, 0);
   assert.equal(dashboard.operations.completedCalls, 1);
   assert.equal(dashboard.operations.openSalesTasks, 1);
   assert.equal(dashboard.operations.overdueSalesTasks, 1);

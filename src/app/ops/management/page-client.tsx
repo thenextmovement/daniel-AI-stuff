@@ -406,14 +406,18 @@ export function ManagementKpisClient({
                   <CircleDollarSign className="h-4 w-4 text-stone-700" />
                   <h2 className="text-sm font-semibold text-stone-950">Kostenstatus</h2>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div className="rounded-lg border border-stone-100 bg-stone-50 p-3">
-                    <p className="text-xs text-stone-500">Bekannte SEA-Kosten</p>
+                    <p className="text-xs text-stone-500">SEA-Kostenbuch</p>
                     <p className="mt-2 text-2xl font-semibold">{formatMoney(dashboard.costs.knownAdSpend)}</p>
                   </div>
                   <div className="rounded-lg border border-stone-100 bg-stone-50 p-3">
-                    <p className="text-xs text-stone-500">Bekannte AI-Kosten</p>
+                    <p className="text-xs text-stone-500">AI-Kostenbuch</p>
                     <p className="mt-2 text-2xl font-semibold">{formatMoney(dashboard.costs.knownAiSpendUsd, "USD")}</p>
+                  </div>
+                  <div className="rounded-lg border border-stone-100 bg-stone-50 p-3">
+                    <p className="text-xs text-stone-500">Voice-Kostenbuch</p>
+                    <p className="mt-2 text-2xl font-semibold">{formatMoney(dashboard.costs.knownVoiceSpendUsd, "USD")}</p>
                   </div>
                 </div>
                 <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
