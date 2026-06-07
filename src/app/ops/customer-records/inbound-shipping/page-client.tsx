@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, FileText, PlaneLanding, RefreshCcw, ShieldAlert, Truck } from "lucide-react";
 import type { InboundBoard, InboundBoardItem, InboundIncident, InboundIncidentSeverity, InboundStatus } from "@/lib/ops/inbound-shipping";
 import { OpsAppSwitcher } from "../../ops-app-switcher";
+import { OpsLoginCard } from "../../ops-login-card";
 
 type InboundApiResponse = {
   ok: boolean;
@@ -147,22 +148,19 @@ export function InboundShippingClient({
 
   if (!hasSession && !localMode) {
     return (
-      <main className="min-h-screen bg-stone-100 p-6 text-stone-900">
-        <div className="mx-auto max-w-md rounded-[0.5rem] border border-stone-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold">Wareneingang Login</h1>
-          <input
-            type="password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            className="mt-5 w-full rounded-[0.5rem] border border-stone-300 px-3 py-2"
-            placeholder="Ops Token"
-          />
-          {error ? <p className="mt-3 text-sm text-rose-700">{error}</p> : null}
-          <button onClick={() => void login()} className="mt-5 w-full rounded-[0.5rem] bg-stone-950 px-4 py-3 text-sm font-medium text-white">
-            Einloggen
-          </button>
-        </div>
-      </main>
+      <OpsLoginCard
+        eyebrow="Wareneingang"
+        title="Wareneingang anmelden"
+        description="Melde dich für eingehende China-Sendungen an. Carrier-Status, Clearance-Hinweise und Aufgaben bleiben geschützt und nachvollziehbar."
+        activeApp="inboundShipping"
+        operatorName={operatorName}
+        password={token}
+        error={error}
+        buttonLabel="Einloggen"
+        onOperatorNameChange={setOperatorName}
+        onPasswordChange={setToken}
+        onSubmit={login}
+      />
     );
   }
 
