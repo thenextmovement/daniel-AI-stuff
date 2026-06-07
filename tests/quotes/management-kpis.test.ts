@@ -111,6 +111,28 @@ test("buildManagementKpiDashboardFromRows separates revenue, pipeline, costs and
           occurred_on: "2026-06-06",
           confidence: "actual",
         },
+        {
+          id: "cost-entry-production-1",
+          cost_key: "inbound_shipments:shipment-1:final_production_price",
+          source: "inbound_shipments",
+          category: "production",
+          subcategory: "china_supplier_production",
+          amount: 120,
+          currency: "USD",
+          occurred_on: "2026-06-06",
+          confidence: "actual",
+        },
+        {
+          id: "cost-entry-inbound-shipping-1",
+          cost_key: "inbound_shipments:shipment-1:final_shipping_price",
+          source: "inbound_shipments",
+          category: "shipping",
+          subcategory: "china_inbound_shipping",
+          amount: 69,
+          currency: "USD",
+          occurred_on: "2026-06-06",
+          confidence: "actual",
+        },
       ],
       salesTasks: [
         {
@@ -164,6 +186,9 @@ test("buildManagementKpiDashboardFromRows separates revenue, pipeline, costs and
   assert.equal(dashboard.costs.knownAdSpend, 44);
   assert.equal(dashboard.costs.knownAiSpendUsd, 3.5);
   assert.equal(dashboard.costs.knownVoiceSpendUsd, 0);
+  assert.equal(dashboard.costs.knownInboundProductionSpendUsd, 120);
+  assert.equal(dashboard.costs.knownInboundShippingSpendUsd, 69);
+  assert.equal(dashboard.costs.missingSources.includes("Produktionskosten / Wareneinsatz"), false);
   assert.equal(dashboard.operations.completedCalls, 1);
   assert.equal(dashboard.operations.openSalesTasks, 1);
   assert.equal(dashboard.operations.overdueSalesTasks, 1);

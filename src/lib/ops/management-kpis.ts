@@ -89,6 +89,8 @@ export type ManagementKpiDashboard = {
     knownAdSpend: number;
     knownAiSpendUsd: number;
     knownVoiceSpendUsd: number;
+    knownInboundProductionSpendUsd: number;
+    knownInboundShippingSpendUsd: number;
     knownCostCoverage: "partial";
     missingSources: string[];
   };
@@ -489,6 +491,8 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
   const knownAdSpend = sum(costEntriesInRange.filter((row) => row.category === "ads" && row.currency === "EUR"), (row) => row.amount);
   const knownAiSpendUsd = sum(costEntriesInRange.filter((row) => row.category === "ai" && row.currency === "USD"), (row) => row.amount);
   const knownVoiceSpendUsd = sum(costEntriesInRange.filter((row) => row.category === "voice" && row.currency === "USD"), (row) => row.amount);
+  const knownInboundProductionSpendUsd = sum(costEntriesInRange.filter((row) => row.category === "production" && row.subcategory === "china_supplier_production" && row.currency === "USD"), (row) => row.amount);
+  const knownInboundShippingSpendUsd = sum(costEntriesInRange.filter((row) => row.category === "shipping" && row.subcategory === "china_inbound_shipping" && row.currency === "USD"), (row) => row.amount);
   const legacyAdsLatest = latestDate(rows.googleAdsDailySpend, (row: GoogleAdsDailySpendRow) => row.date);
   const seaAdsLatest = latestDate(rows.seaCampaignDaily, (row: SeaCampaignDailyRow) => row.date);
   const costBookLatest = latestDate(rows.costEntries, (row) => row.occurred_on);
@@ -528,7 +532,7 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
     statusQuality(filteredRequests.filter((row) => row.utm_source || row.utm_campaign || row.landing_page_url).length ? "partial" : "missing", "Attribution", `${filteredRequests.filter((row) => row.utm_source || row.utm_campaign || row.landing_page_url).length} von ${filteredRequests.length} Anfragen haben UTM/Landingpage-Daten.`, "attribution"),
     statusQuality(costBookLatest && staleDays(costBookLatest, now)! <= 2 ? "good" : "partial", "Kostenbuch", `${costEntriesInRange.length} Kostenbuch-Zeilen im Zeitraum. Letzter Kostenbuch-Tag: ${costBookLatest || "unbekannt"}.`, "cost_book"),
     statusQuality(seaAdsLatest && staleDays(seaAdsLatest, now)! <= 2 ? "good" : "partial", "SEA-Kosten", `Aktuelle Quelle sea_campaign_daily bis ${seaAdsLatest || "unbekannt"}. Legacy google_ads_daily_spend bis ${legacyAdsLatest || "unbekannt"} ist als Legacy-Kostenquelle im Kostenbuch enthalten.`, "ads_costs"),
-    statusQuality("partial", "Kosten/Marge", "Ads-, AI- und vorbereitete Voice-Kosten sind im Kostenbuch; Produktions-, Zoll- und echte Versandkosten fehlen noch.", "margin"),
+    statusQuality("partial", "Kosten/Marge", "Google Ads, AI-Token, Voice-Schaetzungen sowie Sign-SHIPPED Produktions- und China-Inbound-Versandkosten sind im Kostenbuch. Marge bleibt ohne Outbound-Versand, Zoll/Import und Refunds nur teilweise belastbar.", "margin"),
     statusQuality(openShippingIncidents ? "risk" : "good", "Versand-Risiken", `${openShippingIncidents} offene ausgehende Shipping-Incidents im Zeitraum.`, "shipping"),
     statusQuality("risk", "RLS-Hinweis", "Supabase meldet deaktivierte RLS u.a. für sales_tasks und ops_offer_events. Nicht automatisch behoben, weil Policies definiert werden müssen.", "rls"),
   ];
@@ -621,12 +625,14 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
       knownAdSpend,
       knownAiSpendUsd,
       knownVoiceSpendUsd,
+      knownInboundProductionSpendUsd,
+      knownInboundShippingSpendUsd,
       knownCostCoverage: "partial",
       missingSources: [
-        "Produktionskosten / Wareneinsatz",
-        "echte Versandkosten je Paket",
+        "ausgehende DPD/DHL-Versandkosten je Kundenpaket",
         "Zoll- und Importkosten",
         "Refund-/Chargeback-Kosten",
+        "Abo-/Toolkostenplaene",
       ],
     },
     dataQuality,
