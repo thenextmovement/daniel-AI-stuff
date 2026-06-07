@@ -130,7 +130,7 @@ export function CustomerShippingClient({
       if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
       setBoard(payload.board);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Shipping Board konnte nicht geladen werden.");
+      setError(loadError instanceof Error ? loadError.message : "Paketversand konnte nicht geladen werden.");
     } finally {
       setLoading(false);
     }
@@ -165,7 +165,7 @@ export function CustomerShippingClient({
     return (
       <main className="min-h-screen bg-stone-100 p-6 text-stone-900">
         <div className="mx-auto max-w-md rounded-[0.5rem] border border-stone-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold">Shipping Ops Login</h1>
+          <h1 className="text-2xl font-semibold">Paketversand Login</h1>
           <input
             type="password"
             value={token}
@@ -188,10 +188,10 @@ export function CustomerShippingClient({
         <header className="rounded-[0.5rem] bg-stone-950 px-6 py-6 text-white">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm uppercase text-stone-400">Customer Records</p>
-              <h1 className="mt-2 text-3xl font-semibold">Shipping Ops</h1>
+              <p className="text-sm uppercase text-stone-400">Kundenpakete raus</p>
+              <h1 className="mt-2 text-3xl font-semibold">Paketversand</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
-                Globale Versand-Queue fuer DPD/DHL. Geprueft werden nur aktuelle Sendungen der letzten 60 Tage; Paketshop-Faelle sind Kundenhinweise, echte Fehlermeldungen sind Ruecklauf oder fehlgeschlagene Zustellung.
+                Globale Versand-Queue fuer DPD/DHL nach Kundenversand. Geprueft werden nur aktuelle Sendungen der letzten 60 Tage; Paketshop-Faelle sind Kundenhinweise, echte Fehlermeldungen sind Ruecklauf oder fehlgeschlagene Zustellung.
               </p>
             </div>
             <OpsAppSwitcher active="shipping" tone="dark" />
@@ -267,7 +267,7 @@ export function CustomerShippingClient({
               className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               placeholder="Operator"
             />
-            {loading ? <span className="text-sm text-stone-500">Shipping wird geladen...</span> : null}
+            {loading ? <span className="text-sm text-stone-500">Paketversand wird geladen...</span> : null}
             {message ? <span className="text-sm text-emerald-700">{message}</span> : null}
             {error ? <span className="text-sm text-rose-700">{error}</span> : null}
           </div>
@@ -338,7 +338,7 @@ export function CustomerShippingClient({
                     </div>
                   ) : (
                     <div className="mt-4 rounded-[0.5rem] border border-dashed border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-500">
-                      Keine offenen Shipping-Incidents.
+                      Keine offenen Paketversand-Incidents.
                     </div>
                   )}
                 </article>

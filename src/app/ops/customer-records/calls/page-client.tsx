@@ -275,7 +275,7 @@ function buildClientFailedState(reason = "internal_error"): SalesCallModuleState
       complete: false,
       reason,
       nextRequiredAction:
-        "Die Call-Datenquelle meldet gerade einen Fehler. Customer Records und Aufgaben bleiben erreichbar; bitte Tagesliste neu laden oder den Server-Log prüfen.",
+        "Die Anruf-Datenquelle meldet gerade einen Fehler. Kundenakte und Teamaufgaben bleiben erreichbar; bitte Tagesliste neu laden oder den Server-Log prüfen.",
     },
     bucketCounts: {
       due_today: 0,
@@ -1644,8 +1644,8 @@ export function CustomerSalesCallsClient({
   if (opsEnabled && !hasSession && !localMode) {
     return (
       <OpsLoginCard
-        eyebrow="Sales Calls"
-        title="Call-Zentrale anmelden"
+        eyebrow="Anrufe"
+        title="Anrufe anmelden"
         description="Melde dich für die interne Call-Liste an. Ergebnisse, Notizen und Aufgaben werden danach serverseitig gespeichert."
         activeApp="calls"
         operatorName={operatorName}
@@ -1664,8 +1664,8 @@ export function CustomerSalesCallsClient({
         <div className="rounded-[2rem] bg-stone-950 px-8 py-8 text-white shadow-xl shadow-stone-950/10">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Sales Calls</p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Call-Zentrale</h1>
+              <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Anrufe</p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Anrufe</h1>
               <p className="mt-4 text-base leading-7 text-stone-300">
                 Zeigt neue Anfragen, heute gesendete Angebote und fällige Rückrufe. Gespeicherte Ergebnisse
                 verschieben oder schließen Fälle automatisch.
@@ -1743,7 +1743,7 @@ export function CustomerSalesCallsClient({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Interne Aufgaben</p>
-              <h2 className="mt-2 text-2xl font-semibold text-stone-950">Team-Aufgaben für heute</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-stone-950">Teamaufgaben für heute</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
                 Nachbestellungen, Problemfälle und interne To-dos aus dem Aufgabenboard. Call-Arbeit bleibt oben, interne Arbeit ist hier sichtbar.
               </p>

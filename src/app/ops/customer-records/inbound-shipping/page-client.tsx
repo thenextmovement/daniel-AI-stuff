@@ -114,7 +114,7 @@ export function InboundShippingClient({
       if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
       setBoard(payload.board);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Inbound Shipping Board konnte nicht geladen werden.");
+      setError(loadError instanceof Error ? loadError.message : "Wareneingang konnte nicht geladen werden.");
     } finally {
       setLoading(false);
     }
@@ -149,7 +149,7 @@ export function InboundShippingClient({
     return (
       <main className="min-h-screen bg-stone-100 p-6 text-stone-900">
         <div className="mx-auto max-w-md rounded-[0.5rem] border border-stone-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold">Inbound Shipping Login</h1>
+          <h1 className="text-2xl font-semibold">Wareneingang Login</h1>
           <input
             type="password"
             value={token}
@@ -172,8 +172,8 @@ export function InboundShippingClient({
         <header className="rounded-[0.5rem] bg-stone-950 px-6 py-6 text-white">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm uppercase text-stone-400">Customer Records</p>
-              <h1 className="mt-2 text-3xl font-semibold">Inbound Shipping</h1>
+              <p className="text-sm uppercase text-stone-400">China-Sendungen rein</p>
+              <h1 className="mt-2 text-3xl font-semibold">Wareneingang</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
                 Eingehende China-Sendungen aus Trello `sign shipped`, mit DHL Express/FedEx Tracking, Clearance-Warnungen und Zustellvorbereitung.
               </p>
@@ -239,7 +239,7 @@ export function InboundShippingClient({
             />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            {loading ? <span className="text-sm text-stone-500">Inbound Shipping wird geladen...</span> : null}
+            {loading ? <span className="text-sm text-stone-500">Wareneingang wird geladen...</span> : null}
             {message ? <span className="text-sm text-emerald-700">{message}</span> : null}
             {error ? <span className="text-sm text-rose-700">{error}</span> : null}
           </div>
@@ -276,7 +276,7 @@ export function InboundShippingClient({
                           <span>{statusLabel(item.shipment.status)}</span>
                           {item.visual ? <span>{item.visual.sourceLabel}</span> : null}
                         </div>
-                        <h2 className="mt-2 text-xl font-semibold">{item.shipment.trelloCardName || "Inbound-Sendung ohne Trello-Titel"}</h2>
+                        <h2 className="mt-2 text-xl font-semibold">{item.shipment.trelloCardName || "Wareneingang ohne Trello-Titel"}</h2>
                         <p className="mt-1 text-sm text-stone-500">
                           Letztes Event: {item.latestEvent ? `${formatDate(item.latestEvent.eventTime)} - ${item.latestEvent.carrierStatusText || statusLabel(item.latestEvent.normalizedStatus)}` : "kein Carrier-Event gespeichert"}
                         </p>
@@ -327,7 +327,7 @@ export function InboundShippingClient({
                       </div>
                     ) : (
                       <div className="mt-4 rounded-[0.5rem] border border-dashed border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-500">
-                        Keine offenen Inbound-Incidents.
+                        Keine offenen Wareneingang-Hinweise.
                       </div>
                     )}
                   </div>

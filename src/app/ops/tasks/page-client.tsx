@@ -393,9 +393,9 @@ export function OpsTasksClient({
   if (opsEnabled && !hasSession && !localMode) {
     return (
       <OpsLoginCard
-        eyebrow="Aufgaben"
-        title="Aufgaben anmelden"
-        description="Interne Team-Aufgaben, Problemfälle und Nachbestellungen bleiben geschützt und werden serverseitig gespeichert."
+        eyebrow="Teamaufgaben"
+        title="Teamaufgaben anmelden"
+        description="Interne Teamaufgaben, Problemfälle und Nachbestellungen bleiben geschützt und werden serverseitig gespeichert."
         activeApp="tasks"
         operatorName={operatorName}
         password={token}
@@ -419,9 +419,9 @@ export function OpsTasksClient({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
               <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Team Ops</p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Aufgaben</h1>
+              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Teamaufgaben</h1>
               <p className="mt-4 text-base leading-7 text-stone-300">
-                Interne Aufgaben für Kundenfälle, Call-Nacharbeit, Problemfälle und Nachbestellungen.
+                Interne Aufgaben für Kundenfälle, Anruf-Nacharbeit, Problemfälle und Nachbestellungen.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -579,7 +579,7 @@ export function OpsTasksClient({
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-[2rem] border border-stone-200 bg-white px-5 py-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Board</p>
-                <h2 className="mt-1 text-xl font-semibold">Team-Aufgaben</h2>
+                <h2 className="mt-1 text-xl font-semibold">Teamaufgaben</h2>
               </div>
               <label className="inline-flex items-center gap-2 text-sm text-stone-600">
                 <input

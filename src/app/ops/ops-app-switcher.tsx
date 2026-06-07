@@ -12,36 +12,42 @@ type OpsAppSwitcherProps = {
 const OPS_APPS: Array<{
   key: OpsAppKey;
   label: string;
+  helper: string;
   href: string;
   Icon: LucideIcon;
 }> = [
   {
     key: "records",
-    label: "Customer Records",
+    label: "Kundenakte",
+    helper: "Suche & Fallarbeit",
     href: "/ops/customer-records",
     Icon: UsersRound,
   },
   {
     key: "calls",
-    label: "Call-Zentrale",
+    label: "Anrufe",
+    helper: "Rückrufe & Callliste",
     href: "/ops/customer-records/calls",
     Icon: PhoneCall,
   },
   {
     key: "tasks",
-    label: "Aufgaben",
+    label: "Teamaufgaben",
+    helper: "To-dos & Übergaben",
     href: "/ops/tasks",
     Icon: ClipboardList,
   },
   {
     key: "shipping",
-    label: "Shipping",
+    label: "Paketversand",
+    helper: "Kundenpakete raus",
     href: "/ops/customer-records/shipping",
     Icon: Truck,
   },
   {
     key: "inboundShipping",
-    label: "Inbound",
+    label: "Wareneingang",
+    helper: "China-Sendungen rein",
     href: "/ops/customer-records/inbound-shipping",
     Icon: PlaneLanding,
   },
@@ -53,29 +59,36 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
   return (
     <nav
       aria-label="Ops-Bereiche"
-      className={`grid max-w-full grid-cols-2 gap-2 rounded-2xl border p-1 md:flex md:flex-nowrap md:items-center md:overflow-x-auto md:[-webkit-overflow-scrolling:touch] ${
+      className={`grid w-full max-w-full grid-cols-2 gap-1.5 rounded-[1rem] border p-1 sm:grid-cols-3 xl:grid-cols-5 ${
         dark ? "border-white/15 bg-white/5" : "border-black/10 bg-black/[0.03]"
       }`}
     >
-      {OPS_APPS.map(({ key, label, href, Icon }) => {
+      {OPS_APPS.map(({ key, label, helper, href, Icon }) => {
         const isActive = key === active;
         return (
           <a
             key={key}
             href={href}
             aria-current={isActive ? "page" : undefined}
-            className={`inline-flex min-w-0 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition md:justify-start ${
+            className={`grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2 rounded-[0.75rem] px-2.5 py-2 text-left text-sm font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 ${
               dark
                 ? isActive
-                  ? "bg-white text-stone-950"
-                  : "text-white/70 hover:bg-white/10 hover:text-white"
+                  ? "bg-white text-stone-950 focus-visible:ring-white/60"
+                  : "text-white/72 hover:bg-white/10 hover:text-white focus-visible:ring-white/45"
                 : isActive
-                  ? "bg-stone-950 text-white"
-                  : "text-stone-600 hover:bg-white hover:text-stone-950"
+                  ? "bg-stone-950 text-white focus-visible:ring-stone-950/30"
+                  : "text-stone-600 hover:bg-white hover:text-stone-950 focus-visible:ring-stone-950/25"
             }`}
           >
             <Icon className="h-4 w-4" />
-            {label}
+            <span className="min-w-0 truncate">{label}</span>
+            <span className={`col-start-2 hidden min-w-0 truncate text-[11px] font-normal lg:block ${
+              dark
+                ? isActive ? "text-stone-600" : "text-white/45"
+                : isActive ? "text-white/60" : "text-stone-400"
+            }`}>
+              {helper}
+            </span>
           </a>
         );
       })}
