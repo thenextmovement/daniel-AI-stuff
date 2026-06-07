@@ -1,3 +1,4 @@
+import { OpsCopilotChat } from "./ops-copilot-chat";
 import { OpsIdeaBox } from "./ops-idea-box";
 import { OpsTaskNotifier } from "./ops-task-notifier";
 
@@ -10,6 +11,7 @@ export default function OpsLayout({
     <>
       {children}
       <OpsIdeaBox />
+      <OpsCopilotChat />
       <OpsTaskNotifier />
     </>
   );
