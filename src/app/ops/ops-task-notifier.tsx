@@ -13,6 +13,7 @@ type TasksApiResponse = {
 
 const OPERATOR_STORAGE_KEY = "neontrip-ops-operator";
 const DISMISSED_STORAGE_KEY = "neontrip-ops-task-notifier-dismissed";
+const IDEA_BOX_EVENT = "neontrip:ops-idea-box";
 const POLL_INTERVAL_MS = 60_000;
 const DUE_SOON_MS = 90 * 60_000;
 
@@ -121,6 +122,7 @@ export function OpsTaskNotifier() {
   const [open, setOpen] = useState(false);
   const [dismissedKey, setDismissedKey] = useState("");
   const [lastError, setLastError] = useState<string | null>(null);
+  const [ideaBoxOpen, setIdeaBoxOpen] = useState(false);
   const latestBrowserNotificationKey = useRef("");
 
   const attentionTasks = useMemo(() => {
@@ -212,6 +214,15 @@ export function OpsTaskNotifier() {
   }, []);
 
   useEffect(() => {
+    function onIdeaBoxChange(event: Event) {
+      setIdeaBoxOpen(Boolean((event as CustomEvent<{ open?: boolean }>).detail?.open));
+    }
+
+    window.addEventListener(IDEA_BOX_EVENT, onIdeaBoxChange);
+    return () => window.removeEventListener(IDEA_BOX_EVENT, onIdeaBoxChange);
+  }, []);
+
+  useEffect(() => {
     if (!currentKey || currentKey === dismissedKey) return;
     setOpen(true);
 
@@ -227,6 +238,7 @@ export function OpsTaskNotifier() {
     }
   }, [attentionTasks, currentKey, dismissedKey, operatorName, overdueCount]);
 
+  if (ideaBoxOpen) return null;
   if (!attentionTasks.length && !lastError) return null;
 
   return (

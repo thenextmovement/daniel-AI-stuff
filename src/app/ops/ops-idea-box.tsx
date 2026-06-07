@@ -11,7 +11,12 @@ type TaskCreateResponse = {
   issues?: string[];
 };
 
+type OpsIdeaBoxProps = {
+  placement?: "floating" | "header";
+};
+
 const OPERATOR_STORAGE_KEY = "neontrip-ops-idea-operator";
+const IDEA_BOX_EVENT = "neontrip:ops-idea-box";
 const kinds: IdeaKind[] = ["Verbesserung", "Feature", "Fehlt", "Problem"];
 
 function formatApiError(payload: TaskCreateResponse | null) {
@@ -24,7 +29,7 @@ function compact(value: string, maxLength: number) {
   return value.trim().replace(/\s+/g, " ").slice(0, maxLength);
 }
 
-export function OpsIdeaBox() {
+export function OpsIdeaBox({ placement = "floating" }: OpsIdeaBoxProps) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<IdeaKind>("Verbesserung");
   const [operatorName, setOperatorName] = useState("");
@@ -52,6 +57,25 @@ export function OpsIdeaBox() {
   }, [operatorName]);
 
   const canSubmit = useMemo(() => title.trim().length >= 3 && detail.trim().length >= 8 && !saving, [detail, saving, title]);
+  const isHeaderPlacement = placement === "header";
+
+  useEffect(() => {
+    if (!isHeaderPlacement) return;
+    window.dispatchEvent(new CustomEvent(IDEA_BOX_EVENT, { detail: { open } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent(IDEA_BOX_EVENT, { detail: { open: false } }));
+    };
+  }, [isHeaderPlacement, open]);
+
+  const wrapperClass = isHeaderPlacement
+    ? "relative z-[100] w-full text-stone-950"
+    : "fixed bottom-5 left-5 z-[70] max-w-[calc(100vw-2.5rem)] text-stone-950";
+  const buttonClass = isHeaderPlacement
+    ? "inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-950 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20 sm:w-auto"
+    : "inline-flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold shadow-2xl shadow-stone-950/15 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20";
+  const panelClass = isHeaderPlacement
+    ? "w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
+    : "w-[420px] max-w-full overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20";
 
   async function submitIdea(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,7 +128,7 @@ export function OpsIdeaBox() {
   }
 
   return (
-    <div className="fixed bottom-5 left-5 z-[70] max-w-[calc(100vw-2.5rem)] text-stone-950">
+    <div className={wrapperClass}>
       {!open ? (
         <button
           type="button"
@@ -112,23 +136,28 @@ export function OpsIdeaBox() {
             setOpen(true);
             setError(null);
           }}
-          className="inline-flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold shadow-2xl shadow-stone-950/15 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20"
+          className={buttonClass}
+          aria-expanded={open}
         >
           <Lightbulb className="h-4 w-4 text-[#c21876]" />
-          Idee
+          Idee einreichen
         </button>
       ) : (
-        <aside className="w-[420px] max-w-full overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20">
-          <div className="bg-stone-950 px-5 py-4 text-white">
+        <aside className={panelClass}>
+          <div className={`${isHeaderPlacement ? "bg-stone-50 text-stone-950" : "bg-stone-950 text-white"} px-5 py-4`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/60">Mitarbeiter-Vorschlag</p>
+                <p className={`text-xs font-semibold uppercase tracking-[0.22em] ${isHeaderPlacement ? "text-stone-500" : "text-white/60"}`}>
+                  Mitarbeiter-Vorschlag
+                </p>
                 <h2 className="mt-2 text-lg font-semibold">Idee einreichen</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-full p-2 text-white/75 transition hover:bg-white/10 hover:text-white"
+                className={`rounded-full p-2 transition ${
+                  isHeaderPlacement ? "text-stone-500 hover:bg-stone-200/70 hover:text-stone-950" : "text-white/75 hover:bg-white/10 hover:text-white"
+                }`}
                 aria-label="Ideenbox schließen"
               >
                 <X className="h-4 w-4" />

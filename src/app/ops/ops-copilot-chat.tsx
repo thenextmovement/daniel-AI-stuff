@@ -45,6 +45,7 @@ type ChatMessage = {
 };
 
 const OPERATOR_STORAGE_KEY = "neontrip-ops-operator";
+const IDEA_BOX_EVENT = "neontrip:ops-idea-box";
 const MAX_HISTORY_MESSAGES = 10;
 
 const suggestions = [
@@ -87,10 +88,20 @@ export function OpsCopilotChat() {
   const [operatorName, setOperatorName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ideaBoxOpen, setIdeaBoxOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setOperatorName(readOperatorName());
+  }, []);
+
+  useEffect(() => {
+    function onIdeaBoxChange(event: Event) {
+      setIdeaBoxOpen(Boolean((event as CustomEvent<{ open?: boolean }>).detail?.open));
+    }
+
+    window.addEventListener(IDEA_BOX_EVENT, onIdeaBoxChange);
+    return () => window.removeEventListener(IDEA_BOX_EVENT, onIdeaBoxChange);
   }, []);
 
   useEffect(() => {
@@ -165,6 +176,8 @@ export function OpsCopilotChat() {
     setError(null);
     setDraft("");
   }
+
+  if (ideaBoxOpen) return null;
 
   return (
     <div className="fixed bottom-20 right-5 z-[90] max-w-[calc(100vw-2.5rem)] text-stone-950">
