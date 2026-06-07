@@ -1,6 +1,4 @@
-import { headers } from "next/headers";
-import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
-import { OpsOffersClient } from "./page-client";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Angebote - NEONTRIP Ops",
@@ -9,17 +7,6 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function OpsOffersPage() {
-  const headerStore = await headers();
-  const host = headerStore.get("x-forwarded-host") || headerStore.get("host");
-  const opsEnabled = isOpsPortalConfigured(host);
-  const localMode = isOpsPortalBypassed(host);
-
-  return (
-    <OpsOffersClient
-      initialHasSession={opsEnabled ? await hasOpsSession(host, headerStore) : false}
-      opsEnabled={opsEnabled}
-      localMode={localMode}
-    />
-  );
+export default function OpsOffersRedirectPage() {
+  redirect("https://angebote.neontrip.de/admin/offers");
 }
