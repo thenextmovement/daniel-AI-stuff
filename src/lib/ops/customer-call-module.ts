@@ -41,8 +41,9 @@ const NON_REAL_OUTCOME_NOTE_RE = /\b(simulation|simuliert|dry[- ]?run|testlauf|f
 const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
 const VIP_VALUE_THRESHOLD = 1000;
-const SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT = 20;
 const SALES_CALL_PREVIEW_LIMIT = 80;
+const SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT = SALES_CALL_PREVIEW_LIMIT;
+const SALES_CALL_TRELLO_VISUAL_LOOKUP_CONCURRENCY = 4;
 const SALES_CALL_CANDIDATE_CONTEXT_LIMIT = 160;
 const SALES_CALL_RUN_ITEM_LOAD_LIMIT = 500;
 const SALES_CALL_REFRESH_COOLDOWN_SECONDS = 60;
@@ -974,8 +975,16 @@ function listDirectMockupAttachments(attachments: TrelloAttachment[]) {
     .slice(0, 6);
 }
 
+export function recordTrelloCardIdentifier(record: CustomerSearchResult) {
+  return (
+    parseTrelloCardIdentifier(record.request?.trelloCardUrl) ||
+    normalizeWhitespace(record.request?.trelloCardId) ||
+    normalizeWhitespace(record.offerTracking?.trelloCardId)
+  );
+}
+
 async function buildDirectTrelloVisualCandidates(record: CustomerSearchResult): Promise<SalesCallVisualCandidate[]> {
-  const identifier = parseTrelloCardIdentifier(record.request?.trelloCardUrl);
+  const identifier = recordTrelloCardIdentifier(record);
   if (!identifier) return [];
   if (directTrelloVisualCache.has(identifier)) return directTrelloVisualCache.get(identifier) || [];
 
@@ -1002,14 +1011,19 @@ async function buildDirectTrelloVisualCandidates(record: CustomerSearchResult): 
 
 async function loadDirectTrelloVisualCandidates(records: CustomerSearchResult[], limit = SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT) {
   const result = new Map<string, SalesCallVisualCandidate[]>();
-  const withTrelloUrl = records.filter((record) => parseTrelloCardIdentifier(record.request?.trelloCardUrl)).slice(0, limit);
-  for (const record of withTrelloUrl) {
-    try {
-      const candidates = await buildDirectTrelloVisualCandidates(record);
-      if (candidates.length) result.set(record.requestId, candidates);
-    } catch (error) {
-      console.warn("sales call direct trello visual lookup failed", { requestId: record.requestId, error });
-    }
+  const withTrelloIdentifier = records.filter(recordTrelloCardIdentifier).slice(0, limit);
+  for (let index = 0; index < withTrelloIdentifier.length; index += SALES_CALL_TRELLO_VISUAL_LOOKUP_CONCURRENCY) {
+    const batch = withTrelloIdentifier.slice(index, index + SALES_CALL_TRELLO_VISUAL_LOOKUP_CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map((record) => buildDirectTrelloVisualCandidates(record)));
+    settled.forEach((entry, batchIndex) => {
+      const record = batch[batchIndex];
+      if (!record) return;
+      if (entry.status === "fulfilled") {
+        if (entry.value.length) result.set(record.requestId, entry.value);
+        return;
+      }
+      console.warn("sales call direct trello visual lookup failed", { requestId: record.requestId, error: entry.reason });
+    });
   }
   return result;
 }

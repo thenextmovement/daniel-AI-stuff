@@ -634,6 +634,7 @@ export type CustomerRequestSummary = {
   utmContent: string | null;
   landingPageUrl: string | null;
   referrer: string | null;
+  trelloCardId: string | null;
   trelloCardUrl: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -4054,6 +4055,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
           utmContent: trimNullable(context.request.utm_content),
           landingPageUrl: trimNullable(context.request.landing_page_url),
           referrer: trimNullable(context.request.referrer),
+          trelloCardId: trimNullable(context.request.trello_card_id),
           trelloCardUrl: trimNullable(context.request.trello_card_url),
           createdAt: context.request.created_at || null,
           updatedAt: context.request.updated_at || null,

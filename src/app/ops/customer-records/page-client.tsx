@@ -16772,6 +16772,7 @@ function RelatedRequestsPanel({
                           utmContent: record.request?.utmContent || null,
                           landingPageUrl: record.request?.landingPageUrl || null,
                           referrer: record.request?.referrer || null,
+                          trelloCardId: record.request?.trelloCardId || null,
                           trelloCardUrl: record.request?.trelloCardUrl || null,
                           createdAt: record.request?.createdAt || null,
                           updatedAt: entry.updatedAt || record.request?.updatedAt || null,

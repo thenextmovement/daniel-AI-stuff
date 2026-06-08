@@ -9,6 +9,7 @@ import {
   decideSalesCallCompletion,
   deriveCadenceState,
   evaluateSalesCallGate,
+  recordTrelloCardIdentifier,
   resolveRuntimeSalesCallState,
 } from "../../src/lib/ops/customer-call-module";
 import {
@@ -80,6 +81,7 @@ function buildRecord(overrides: Partial<CustomerSearchResult> = {}): CustomerSea
       utmContent: null,
       landingPageUrl: null,
       referrer: null,
+      trelloCardId: null,
       trelloCardUrl: null,
       createdAt: "2026-05-21T08:00:00.000Z",
       updatedAt: "2026-05-21T08:00:00.000Z",
@@ -1013,4 +1015,46 @@ test("buildSalesCallVisualCandidates snapshots ordered follow-up mockups before 
       ["trello_reference", "https://trello.example.com/ref.jpg"],
     ],
   );
+});
+
+test("recordTrelloCardIdentifier uses stored Trello card id when URL is missing", () => {
+  const record = buildRecord({
+    request: {
+      ...buildRecord().request!,
+      trelloCardId: "65f000000000000000000001",
+      trelloCardUrl: null,
+    },
+  });
+
+  assert.equal(recordTrelloCardIdentifier(record), "65f000000000000000000001");
+});
+
+test("recordTrelloCardIdentifier falls back to offer tracking Trello card id", () => {
+  const record = buildRecord({
+    request: {
+      ...buildRecord().request!,
+      trelloCardId: null,
+      trelloCardUrl: null,
+    },
+    offerTracking: {
+      offerId: "offer_1",
+      offerNumber: "A/N 1",
+      trelloCardId: "65f000000000000000000002",
+      requestId: "4423b374-e68c-4f55-8132-c6806cac687a",
+      publicUrl: null,
+      firstViewedAt: null,
+      lastViewedAt: null,
+      viewCount: 0,
+      uniqueVisitorCount: 0,
+      totalActiveSeconds: 0,
+      pdfDownloadCount: 0,
+      videoPlayCount: 0,
+      acceptStartedAt: null,
+      acceptedAt: null,
+      lastEventType: null,
+      lastEventAt: null,
+    },
+  });
+
+  assert.equal(recordTrelloCardIdentifier(record), "65f000000000000000000002");
 });
