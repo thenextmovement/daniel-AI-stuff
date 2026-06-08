@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Clock3, FileText, PlaneLanding, RefreshCcw
 import type { InboundBoard, InboundBoardItem, InboundIncident, InboundIncidentSeverity, InboundStatus } from "@/lib/ops/inbound-shipping";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
+import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
 
 type InboundApiResponse = {
   ok: boolean;
@@ -165,53 +166,23 @@ export function InboundShippingClient({
   }
 
   return (
-    <main className="min-h-screen bg-stone-100 px-4 py-6 text-stone-900 md:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
+      <div className={`${opsPageContainerClass} flex flex-col gap-6`}>
         <OpsPageHeader active="inboundShipping" label="Wareneingang" />
 
-        <header className="rounded-[0.5rem] bg-stone-950 px-6 py-6 text-white">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase text-stone-400">China-Sendungen rein</p>
-              <h1 className="mt-2 text-3xl font-semibold">Wareneingang</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
-                Eingehende China-Sendungen aus Trello `sign shipped`, mit DHL Express/FedEx Tracking, Clearance-Warnungen und Zustellvorbereitung.
-              </p>
-            </div>
-          </div>
-        </header>
+        <OpsPageIntro
+          eyebrow="Inbound Ops"
+          title="Inbound-Sendungen verfolgen. Risiken früh erkennen."
+          description="China-Sendungen, Carrier-Status und Clearance-Hinweise in einer kompakten Arbeitsansicht."
+        />
 
         <section className="grid gap-3 md:grid-cols-6">
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <Truck className="h-5 w-5 text-stone-600" />
-            <p className="mt-3 text-2xl font-semibold">{items.length}</p>
-            <p className="text-sm text-stone-500">Aktive Sendungen</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <AlertTriangle className="h-5 w-5 text-rose-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.actionRequired || 0}</p>
-            <p className="text-sm text-stone-500">Handlungsbedarf</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <ShieldAlert className="h-5 w-5 text-amber-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.clearance || 0}</p>
-            <p className="text-sm text-stone-500">Clearance</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <PlaneLanding className="h-5 w-5 text-emerald-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.outForDelivery || 0}</p>
-            <p className="text-sm text-stone-500">in Zustellung</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <Clock3 className="h-5 w-5 text-sky-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.stale || 0}</p>
-            <p className="text-sm text-stone-500">72h/Stale</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.delivered || 0}</p>
-            <p className="text-sm text-stone-500">zugestellt</p>
-          </div>
+          <OpsStatCard label="Aktiv" value={items.length} icon={<Truck className="h-5 w-5" />} detail="Offene Inbound-Läufe." />
+          <OpsStatCard label="Aktion" value={board?.counts.actionRequired || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Handlungsbedarf." />
+          <OpsStatCard label="Clearance" value={board?.counts.clearance || 0} tone="warning" icon={<ShieldAlert className="h-5 w-5" />} detail="Zoll im Blick." />
+          <OpsStatCard label="Zustellung" value={board?.counts.outForDelivery || 0} tone="success" icon={<PlaneLanding className="h-5 w-5" />} detail="Heute relevant." />
+          <OpsStatCard label="Stale" value={board?.counts.stale || 0} tone="info" icon={<Clock3 className="h-5 w-5" />} detail="72h ohne Fortschritt." />
+          <OpsStatCard label="Erledigt" value={board?.counts.delivered || 0} tone="success" icon={<CheckCircle2 className="h-5 w-5" />} detail="Zugestellt." />
         </section>
 
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">

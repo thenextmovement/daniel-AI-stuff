@@ -242,19 +242,22 @@ export function OpsTaskNotifier() {
   if (!attentionTasks.length && !lastError) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-[80] max-w-[calc(100vw-2.5rem)] text-stone-950">
+    <div className="fixed bottom-2 left-2 z-[80] max-w-[calc(100vw-1rem)] text-stone-950 sm:bottom-5 sm:left-auto sm:right-5 sm:max-w-[calc(100vw-2.5rem)]">
       {!open ? (
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-2xl transition ${
+          className={`flex h-10 w-10 items-center justify-center gap-2 rounded-full border text-sm font-semibold shadow-2xl transition sm:h-auto sm:w-auto sm:rounded-2xl sm:px-4 sm:py-3 ${
             overdueCount
               ? "border-rose-300 bg-rose-600 text-white shadow-rose-950/25 hover:bg-rose-700"
               : "border-amber-300 bg-amber-100 text-amber-950 shadow-stone-950/15 hover:bg-amber-200"
           }`}
+          aria-label={attentionTasks.length ? `${attentionTasks.length} Aufgaben prüfen` : "Aufgaben prüfen"}
         >
           <Bell className="h-4 w-4" />
-          {attentionTasks.length ? `${attentionTasks.length} Aufgabe${attentionTasks.length === 1 ? "" : "n"}` : "Aufgaben prüfen"}
+          <span className="hidden sm:inline">
+            {attentionTasks.length ? `${attentionTasks.length} Aufgabe${attentionTasks.length === 1 ? "" : "n"}` : "Aufgaben prüfen"}
+          </span>
         </button>
       ) : (
         <aside className="w-[420px] max-w-full overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20">

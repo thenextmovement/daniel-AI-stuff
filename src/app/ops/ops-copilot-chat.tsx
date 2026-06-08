@@ -180,7 +180,7 @@ export function OpsCopilotChat() {
   if (ideaBoxOpen) return null;
 
   return (
-    <div className="fixed bottom-20 right-5 z-[90] max-w-[calc(100vw-2.5rem)] text-stone-950">
+    <div className="fixed bottom-2 right-2 z-[90] max-w-[calc(100vw-1rem)] text-stone-950 sm:bottom-20 sm:right-5 sm:max-w-[calc(100vw-2.5rem)]">
       {!open ? (
         <button
           type="button"
@@ -188,10 +188,11 @@ export function OpsCopilotChat() {
             setOpen(true);
             setOperatorName(readOperatorName());
           }}
-          className="inline-flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold shadow-2xl shadow-stone-950/15 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20"
+          className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-full border border-stone-200 bg-white text-sm font-semibold shadow-2xl shadow-stone-950/15 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20 sm:h-auto sm:w-auto sm:rounded-2xl sm:px-4 sm:py-3"
+          aria-label="Copilot öffnen"
         >
           <Bot className="h-4 w-4 text-[#c21876]" />
-          Copilot
+          <span className="hidden sm:inline">Copilot</span>
         </button>
       ) : (
         <aside className="flex max-h-[min(720px,calc(100vh-7rem))] w-[460px] max-w-full flex-col overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20">

@@ -26,6 +26,7 @@ import type {
 } from "@/lib/ops/management-kpis";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
+import { OpsPageIntro, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 
 type ApiResponse = {
   ok: boolean;
@@ -251,27 +252,18 @@ export function ManagementKpisClient({
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f5f2] text-stone-950">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+    <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
+      <div className={`${opsPageContainerClass} space-y-6`}>
         <OpsPageHeader active="management" label="Management" />
-      </div>
 
-      <section className="border-b border-black/10 bg-stone-950 px-4 py-5 text-white sm:px-6">
-        <div className="mx-auto max-w-7xl">
-          <div className="flex flex-col gap-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">NEONTRIP Ops</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">Management KPIs</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/65">
-                Umsatz, Pipeline, Arbeit, Risiken und bekannte Kosten. Kosten/Marge werden nur dort gezeigt, wo die Datenquelle belastbar ist.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
+        <OpsPageIntro
+          eyebrow="NEONTRIP Ops"
+          title="Operative Lage, Kosten und Risiken im Blick."
+          description="Pipeline, Arbeit, Kosten und Datenqualität laufen in einer ruhigen Steuerungsansicht zusammen."
+        />
 
-      <section className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
-        <div className="rounded-lg border border-stone-200 bg-white p-3">
+        <section>
+          <div className="rounded-[18px] border border-[#ded8d0] bg-[#fffdf9] p-3 shadow-[0_10px_34px_rgba(20,16,12,0.05)]">
           <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr_auto]">
             <div className="flex flex-wrap gap-1.5">
               {rangeOptions.map((option) => (
@@ -312,7 +304,7 @@ export function ManagementKpisClient({
             <input value={country} onChange={(event) => setCountry(event.target.value)} placeholder="Land, z. B. DE" className="h-10 rounded-lg border border-stone-200 px-3 text-sm outline-none focus:border-stone-950" />
             <input value={customerType} onChange={(event) => setCustomerType(event.target.value)} placeholder="Kundentyp" className="h-10 rounded-lg border border-stone-200 px-3 text-sm outline-none focus:border-stone-950" />
           </div>
-        </div>
+          </div>
 
         {error ? <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
@@ -327,7 +319,7 @@ export function ManagementKpisClient({
           <>
             <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               {dashboard.summary.map((card) => (
-                <article key={card.key} className={`min-h-36 rounded-lg border p-4 ${cardTone(card)}`}>
+                <article key={card.key} className={`min-h-36 rounded-[18px] border p-4 shadow-[0_10px_30px_rgba(20,16,12,0.05)] ${cardTone(card)}`}>
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-60">{card.label}</p>
                     {card.key === "revenue" ? <CircleDollarSign className="h-4 w-4" /> : card.key === "risks" ? <ShieldAlert className="h-4 w-4" /> : <BarChart3 className="h-4 w-4" />}
@@ -456,7 +448,8 @@ export function ManagementKpisClient({
             {loading ? "Management KPIs werden geladen." : "Noch keine KPI-Daten geladen."}
           </div>
         )}
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

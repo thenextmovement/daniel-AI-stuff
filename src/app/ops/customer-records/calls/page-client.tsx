@@ -32,6 +32,7 @@ import type { OpsInternalTask } from "@/lib/ops/internal-tasks";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
+import { OpsPageIntro, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
 
 type SalesCallApiResponse = {
   ok: boolean;
@@ -1659,38 +1660,30 @@ export function CustomerSalesCallsClient({
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 px-6 py-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
+      <div className={`${opsPageContainerClass} space-y-6`}>
         <OpsPageHeader active="calls" label="Anrufe" />
 
-        <div className="rounded-[2rem] bg-stone-950 px-8 py-8 text-white shadow-xl shadow-stone-950/10">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Anrufe</p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Anrufe</h1>
-              <p className="mt-4 text-base leading-7 text-stone-300">
-                Zeigt neue Anfragen, heute gesendete Angebote und fällige Rückrufe. Gespeicherte Ergebnisse
-                verschieben oder schließen Fälle automatisch.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <input
-                value={operatorName}
-                onChange={(event) => setOperatorName(event.target.value)}
-                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white outline-none placeholder:text-stone-400"
-                placeholder="Operator"
-              />
-              <button
-                onClick={() => void refreshList()}
-                disabled={refreshing}
-                className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-medium text-stone-950 transition hover:bg-stone-100 disabled:opacity-60"
-              >
-                <RefreshCcw className="h-4 w-4" />
-                {refreshing ? "Aktualisiere…" : "Liste aktualisieren"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <OpsPageIntro
+          eyebrow="Call Ops"
+          title="Rückrufe priorisieren. Ergebnisse festhalten."
+          description="Heute fällige Kontakte, neue Anfragen und Call-Ergebnisse laufen in einer klaren Tagesliste zusammen."
+        >
+          <input
+            value={operatorName}
+            onChange={(event) => setOperatorName(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-white/12 bg-white/10 px-4 text-sm text-white outline-none transition placeholder:text-white/[0.42] focus:border-white/35 sm:w-52"
+            placeholder="Operator"
+          />
+          <button
+            onClick={() => void refreshList()}
+            disabled={refreshing}
+            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-medium text-stone-950 transition hover:bg-[#f7f2ea] disabled:opacity-60"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            {refreshing ? "Aktualisiere..." : "Liste aktualisieren"}
+          </button>
+        </OpsPageIntro>
 
         {error ? (
           <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700">{error}</div>
@@ -1708,19 +1701,19 @@ export function CustomerSalesCallsClient({
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-4">
-          <div className={`rounded-3xl border px-5 py-4 ${state ? gateTone(state.gate.gate) : "border-stone-200 bg-white text-stone-700"}`}>
+          <div className={`rounded-[18px] border px-5 py-4 shadow-[0_10px_30px_rgba(20,16,12,0.05)] ${state ? gateTone(state.gate.gate) : "border-stone-200 bg-white text-stone-700"}`}>
             <p className="text-xs uppercase tracking-[0.24em]">Listenprüfung</p>
             <p className="mt-3 text-2xl font-semibold">{gateLabel(state?.gate.gate)}</p>
             <p className="mt-2 text-sm">
               {state ? `${state.gate.reviewed}/${state.gate.topN} geprüft • ${state.gate.concreteNextSteps} nächste Schritte` : "Lade Status …"}
             </p>
           </div>
-          <div className={`rounded-3xl border px-5 py-4 ${state ? completionTone(state.completion.complete) : "border-stone-200 bg-white text-stone-700"}`}>
+          <div className={`rounded-[18px] border px-5 py-4 shadow-[0_10px_30px_rgba(20,16,12,0.05)] ${state ? completionTone(state.completion.complete) : "border-stone-200 bg-white text-stone-700"}`}>
             <p className="text-xs uppercase tracking-[0.24em]">Arbeitsstand</p>
             <p className="mt-3 text-2xl font-semibold">{completionLabel(state?.completion.complete)}</p>
             <p className="mt-2 text-sm">{completionReasonLabel(state?.completion.reason)}</p>
           </div>
-          <div className="rounded-3xl border border-stone-200 bg-white px-5 py-4 text-stone-700">
+          <div className="rounded-[18px] border border-[#ded8d0] bg-[#fffdf9] px-5 py-4 text-stone-700 shadow-[0_10px_30px_rgba(20,16,12,0.05)]">
             <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Lauf</p>
             <p className="mt-3 text-2xl font-semibold">
               {state?.run.status === "preview" ? "Vorschau" : state?.run.date || "—"}
@@ -1729,7 +1722,7 @@ export function CustomerSalesCallsClient({
               {state ? `${state.run.eligibleCount} anrufbar • ${state.run.blockedCount} geblockt` : "Lade Lauf …"}
             </p>
           </div>
-          <div className="rounded-3xl border border-sky-200 bg-sky-50 px-5 py-4 text-sky-800">
+          <div className="rounded-[18px] border border-[#bad7e8] bg-[#eef8fd] px-5 py-4 text-[#174e70] shadow-[0_10px_30px_rgba(20,16,12,0.05)]">
             <p className="text-xs uppercase tracking-[0.24em]">Aufgaben</p>
             <p className="mt-3 text-2xl font-semibold">
               {state ? state.taskCounts.open + state.taskCounts.waiting + state.taskCounts.blocked : "…"}

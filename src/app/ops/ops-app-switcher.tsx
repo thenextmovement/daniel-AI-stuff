@@ -73,8 +73,8 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
   return (
     <nav
       aria-label="Ops-Bereiche"
-      className={`grid w-full max-w-full grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-1.5 rounded-[1rem] border p-1 ${
-        dark ? "border-white/15 bg-white/5" : "border-black/10 bg-black/[0.03]"
+      className={`flex w-full max-w-full gap-1.5 overflow-x-auto rounded-[1rem] border p-1 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] sm:overflow-visible ${
+        dark ? "border-white/12 bg-white/[0.045]" : "border-black/10 bg-black/[0.03]"
       }`}
     >
       {OPS_APPS.map(({ key, label, helper, href, Icon }) => {
@@ -84,11 +84,13 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
             key={key}
             href={href}
             aria-current={isActive ? "page" : undefined}
-            className={`grid min-h-[3.25rem] min-w-0 grid-cols-[0.9rem_minmax(0,1fr)] items-center gap-x-1.5 rounded-[0.75rem] px-2 py-2 text-left text-[13px] font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 sm:grid-cols-[1rem_minmax(0,1fr)] sm:gap-x-2 sm:px-2.5 sm:text-sm ${
+            className={`grid min-h-[3.25rem] min-w-[9.25rem] grid-cols-[0.9rem_minmax(0,1fr)] items-center gap-x-1.5 rounded-[0.75rem] px-2 py-2 text-left text-[13px] font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 sm:order-none sm:min-w-0 sm:grid-cols-[1rem_minmax(0,1fr)] sm:gap-x-2 sm:px-2.5 sm:text-sm ${
+              isActive ? "order-1" : "order-2"
+            } ${
               dark
                 ? isActive
-                  ? "bg-white text-stone-950 focus-visible:ring-white/60"
-                  : "text-white/72 hover:bg-white/10 hover:text-white focus-visible:ring-white/45"
+                  ? "bg-[#f7f2ea] text-[#171412] shadow-[0_10px_28px_rgba(0,0,0,0.18)] focus-visible:ring-white/60"
+                  : "text-white/[0.68] hover:bg-white/[0.09] hover:text-white focus-visible:ring-white/45"
                 : isActive
                   ? "bg-stone-950 text-white focus-visible:ring-stone-950/30"
                   : "text-stone-600 hover:bg-white hover:text-stone-950 focus-visible:ring-stone-950/25"
@@ -98,7 +100,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
             <span className="min-w-0 whitespace-nowrap">{label}</span>
             <span className={`col-start-2 hidden min-w-0 truncate text-[11px] font-normal lg:block ${
               dark
-                ? isActive ? "text-stone-600" : "text-white/45"
+                ? isActive ? "text-[#635b52]" : "text-white/[0.38]"
                 : isActive ? "text-white/60" : "text-stone-400"
             }`}>
               {helper}

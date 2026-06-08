@@ -20,6 +20,7 @@ import type {
 } from "@/lib/ops/internal-tasks";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
+import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 
 type TasksApiResponse = {
   ok: boolean;
@@ -413,37 +414,30 @@ export function OpsTasksClient({
   }));
 
   return (
-    <div className="min-h-screen bg-stone-50 px-6 py-8 text-stone-950">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
+      <div className={`${opsPageContainerClass} space-y-6`}>
         <OpsPageHeader active="tasks" label="Teamaufgaben" />
 
-        <header className="rounded-[2rem] bg-stone-950 px-8 py-8 text-white shadow-xl shadow-stone-950/10">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Team Ops</p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Teamaufgaben</h1>
-              <p className="mt-4 text-base leading-7 text-stone-300">
-                Interne Aufgaben für Kundenfälle, Anruf-Nacharbeit, Problemfälle und Nachbestellungen.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <input
-                value={operatorName}
-                onChange={(event) => setOperatorName(event.target.value)}
-                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white outline-none placeholder:text-stone-400"
-                placeholder="Operator"
-              />
-              <button
-                onClick={() => void loadTasks()}
-                disabled={loading}
-                className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-medium text-stone-950 transition hover:bg-stone-100 disabled:opacity-60"
-              >
-                <RefreshCcw className="h-4 w-4" />
-                {loading ? "Lädt..." : "Aktualisieren"}
-              </button>
-            </div>
-          </div>
-        </header>
+        <OpsPageIntro
+          eyebrow="Team Ops"
+          title="Aufgaben steuern. Übergaben sauber schließen."
+          description="Interne To-dos, Nacharbeiten und Problemfälle bleiben in klaren Zuständen sichtbar, damit Verantwortliche ohne Kontextverlust weiterarbeiten."
+        >
+          <input
+            value={operatorName}
+            onChange={(event) => setOperatorName(event.target.value)}
+            className="h-12 w-full rounded-2xl border border-white/12 bg-white/10 px-4 text-sm text-white outline-none transition placeholder:text-white/[0.42] focus:border-white/35 sm:w-52"
+            placeholder="Operator"
+          />
+          <button
+            onClick={() => void loadTasks()}
+            disabled={loading}
+            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-medium text-stone-950 transition hover:bg-[#f7f2ea] disabled:opacity-60"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            {loading ? "Lädt..." : "Aktualisieren"}
+          </button>
+        </OpsPageIntro>
 
         {error ? <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700">{error}</div> : null}
         {message ? (
@@ -456,22 +450,10 @@ export function OpsTasksClient({
         ) : null}
 
         <section className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-3xl border border-stone-200 bg-white px-5 py-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Offen</p>
-            <p className="mt-3 text-3xl font-semibold">{summary.open}</p>
-          </div>
-          <div className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
-            <p className="text-xs uppercase tracking-[0.24em]">Wichtig</p>
-            <p className="mt-3 text-3xl font-semibold">{summary.urgent}</p>
-          </div>
-          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-rose-800">
-            <p className="text-xs uppercase tracking-[0.24em]">Überfällig</p>
-            <p className="mt-3 text-3xl font-semibold">{summary.overdue}</p>
-          </div>
-          <div className="rounded-3xl border border-sky-200 bg-sky-50 px-5 py-4 text-sky-800">
-            <p className="text-xs uppercase tracking-[0.24em]">Heute</p>
-            <p className="mt-3 text-3xl font-semibold">{summary.dueToday}</p>
-          </div>
+          <OpsStatCard label="Offen" value={summary.open} detail="Noch nicht gestartete Arbeit." />
+          <OpsStatCard label="Wichtig" value={summary.urgent} tone="warning" detail="Priorität hoch oder dringend." />
+          <OpsStatCard label="Überfällig" value={summary.overdue} tone="danger" detail="Frist liegt bereits zurück." />
+          <OpsStatCard label="Heute" value={summary.dueToday} tone="info" detail="Heute fällig oder geplant." />
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">

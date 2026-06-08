@@ -68,13 +68,13 @@ export function OpsIdeaBox({ placement = "floating" }: OpsIdeaBoxProps) {
   }, [isHeaderPlacement, open]);
 
   const wrapperClass = isHeaderPlacement
-    ? "relative z-[100] w-full text-stone-950"
+    ? "relative z-[100] text-stone-950"
     : "fixed bottom-5 left-5 z-[70] max-w-[calc(100vw-2.5rem)] text-stone-950";
   const buttonClass = isHeaderPlacement
-    ? "inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-950 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20 sm:w-auto"
+    ? "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.07] px-4 text-sm font-medium text-white/[0.78] transition hover:border-white/24 hover:bg-white/[0.11] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
     : "inline-flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold shadow-2xl shadow-stone-950/15 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950/20";
   const panelClass = isHeaderPlacement
-    ? "w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
+    ? "absolute right-0 top-12 w-[420px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl shadow-black/20"
     : "w-[420px] max-w-full overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20";
 
   async function submitIdea(event: FormEvent<HTMLFormElement>) {
@@ -139,8 +139,8 @@ export function OpsIdeaBox({ placement = "floating" }: OpsIdeaBoxProps) {
           className={buttonClass}
           aria-expanded={open}
         >
-          <Lightbulb className="h-4 w-4 text-[#c21876]" />
-          Idee einreichen
+          <Lightbulb className={`h-4 w-4 ${isHeaderPlacement ? "text-[#ff7dc5]" : "text-[#c21876]"}`} />
+          Idee
         </button>
       ) : (
         <aside className={panelClass}>

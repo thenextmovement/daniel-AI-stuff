@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Clock3, ListChecks, PackageCheck, RefreshC
 import type { ShippingBoard, ShippingBoardItem, ShippingIncident, ShippingIncidentSeverity, ShippingStatus } from "@/lib/ops/shipping";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
+import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
 
 type ShippingApiResponse = {
   ok: boolean;
@@ -52,7 +53,7 @@ function severityTone(severity: ShippingIncidentSeverity) {
 function incidentKindLabel(incident: ShippingIncident) {
   if (incident.incidentType === "pickup_available") return "Kundenhinweis";
   if (["delivery_failed", "return_to_sender", "returned"].includes(incident.incidentType)) return "Fehlermeldung";
-  return "Pruefung";
+  return "Prüfung";
 }
 
 function leadIncident(item: ShippingBoardItem) {
@@ -181,53 +182,23 @@ export function CustomerShippingClient({
   }
 
   return (
-    <main className="min-h-screen bg-stone-100 px-4 py-6 text-stone-900 md:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
+      <div className={`${opsPageContainerClass} flex flex-col gap-6`}>
         <OpsPageHeader active="shipping" label="Paketversand" />
 
-        <header className="rounded-[0.5rem] bg-stone-950 px-6 py-6 text-white">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase text-stone-400">Kundenpakete raus</p>
-              <h1 className="mt-2 text-3xl font-semibold">Paketversand</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
-                Globale Versand-Queue fuer DPD/DHL nach Kundenversand. Geprueft werden nur aktuelle Sendungen der letzten 60 Tage; Paketshop-Faelle sind Kundenhinweise, echte Fehlermeldungen sind Ruecklauf oder fehlgeschlagene Zustellung.
-              </p>
-            </div>
-          </div>
-        </header>
+        <OpsPageIntro
+          eyebrow="Kundenpakete raus"
+          title="Sendungen prüfen. Ausnahmen schließen."
+          description="Aktuelle DPD/DHL-Sendungen nach Kundenversand mit Fokus auf echte Fehler, Retoure und offene Aufgaben."
+        />
 
         <section className="grid gap-3 md:grid-cols-6">
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <AlertTriangle className="h-5 w-5 text-rose-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.actionRequired || 0}</p>
-            <p className="text-sm text-stone-500">Echte Fehler</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <Clock3 className="h-5 w-5 text-sky-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.watch || 0}</p>
-            <p className="text-sm text-stone-500">Beobachten</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <Truck className="h-5 w-5 text-stone-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.inTransit || 0}</p>
-            <p className="text-sm text-stone-500">unterwegs</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <PackageCheck className="h-5 w-5 text-emerald-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.delivered || 0}</p>
-            <p className="text-sm text-stone-500">zugestellt</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <RefreshCcw className="h-5 w-5 text-amber-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.returning || 0}</p>
-            <p className="text-sm text-stone-500">Retoure</p>
-          </div>
-          <div className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-            <ListChecks className="h-5 w-5 text-violet-600" />
-            <p className="mt-3 text-2xl font-semibold">{board?.counts.withOpenTask || 0}</p>
-            <p className="text-sm text-stone-500">mit Aufgabe</p>
-          </div>
+          <OpsStatCard label="Fehler" value={board?.counts.actionRequired || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Echte Zustellprobleme." />
+          <OpsStatCard label="Watch" value={board?.counts.watch || 0} tone="info" icon={<Clock3 className="h-5 w-5" />} detail="Aktiv beobachten." />
+          <OpsStatCard label="Unterwegs" value={board?.counts.inTransit || 0} icon={<Truck className="h-5 w-5" />} detail="Carrier-Transit." />
+          <OpsStatCard label="Zugestellt" value={board?.counts.delivered || 0} tone="success" icon={<PackageCheck className="h-5 w-5" />} detail="Sauber abgeschlossen." />
+          <OpsStatCard label="Retoure" value={board?.counts.returning || 0} tone="warning" icon={<RefreshCcw className="h-5 w-5" />} detail="Rücklauf prüfen." />
+          <OpsStatCard label="Aufgabe" value={board?.counts.withOpenTask || 0} tone="info" icon={<ListChecks className="h-5 w-5" />} detail="Mit Teamaufgabe." />
         </section>
 
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
