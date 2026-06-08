@@ -533,7 +533,7 @@ type CustomerContext = {
 
 export type UpdateActor = {
   host?: string | null;
-  mode?: "local_bypass" | "ops_session";
+  mode?: "local_bypass" | "ops_session" | "automation";
   userAgent?: string | null;
   operatorName?: string | null;
 };

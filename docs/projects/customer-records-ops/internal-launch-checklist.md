@@ -89,7 +89,9 @@ Zusatzpruefung:
 - ohne Login blockt Cloudflare Access alle Ops-Seiten und Ops-APIs
 - `/ops/customer-records` laedt
 - `/ops/customer-records/calls` laedt
+- `/ops/customer-records/price-review` laedt
 - `/api/ops/customer-records/calls` liefert `ok=true`
+- `/api/ops/customer-records/price-predictions?status=pending&limit=10` liefert `ok=true`
 - `/api/ops/customer-records?query=<request-id>` liefert `ok=true`
 - Trello-Bildproxy liefert echte Bilder und `Cache-Control: private, max-age=3600`
 - falsche Trello-IDs liefern `400`

@@ -1,0 +1,356 @@
+{
+  "name": "NEONTRIP Supplier Price Prediction Review Queue v0.1 (INACTIVE DRAFT)",
+  "nodes": [
+    {
+      "id": "review-queue-notes",
+      "name": "Review Queue Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -160
+      ],
+      "parameters": {
+        "content": "Inactive draft. Reads approved/usable Neonflex supplier quote training items from Supabase and enqueues anchored size/price suggestions into Customer Ops price review up to 300cm internal review. Supabase is source of truth. This workflow must not write Trello Price/Size fields, quote items, PandaDoc documents, or customer-visible prices. The API keeps >200cm as supplier-check only. Automation token may only call create_from_training_item.",
+        "height": 260,
+        "width": 520
+      }
+    },
+    {
+      "id": "schedule-15-min",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        180
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "supabaseUrl",
+              "value": "={{ $env.SUPABASE_URL || 'https://klibiejfisijpagzkxls.supabase.co' }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "opsApiUrl",
+              "value": "={{ ($env.NEONTRIP_OPS_BASE_URL || 'https://ops.neontrip.de').replace(/\\/$/, '') + '/api/ops/customer-records/price-predictions' }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "agentTokenConfigured",
+              "value": "={{ !!$env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN }}",
+              "type": "boolean"
+            },
+            {
+              "id": "4",
+              "name": "supabaseFetchLimit",
+              "value": 100,
+              "type": "number"
+            },
+            {
+              "id": "5",
+              "name": "stepCm",
+              "value": 20,
+              "type": "number"
+            },
+            {
+              "id": "6",
+              "name": "maxLongSideCm",
+              "value": 300,
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config-preflight",
+      "name": "Config Preflight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        180
+      ],
+      "parameters": {
+        "jsCode": "const cfg = $input.first()?.json || {};\nconst errors = [];\n\nfunction cleanUrl(value) {\n  return String(value || '').trim().replace(/\\/+$/, '');\n}\n\nconst supabaseUrl = cleanUrl(cfg.supabaseUrl);\nconst opsApiUrl = String(cfg.opsApiUrl || '').trim();\nconst supabaseFetchLimit = Number(cfg.supabaseFetchLimit || 100);\nconst stepCm = Number(cfg.stepCm || 20);\nconst maxLongSideCm = Number(cfg.maxLongSideCm || 300);\n\nif (!/^https:\\/\\//i.test(supabaseUrl)) errors.push('SUPABASE_URL must be an https URL');\nif (!/^https:\\/\\//i.test(opsApiUrl)) errors.push('NEONTRIP_OPS_BASE_URL/opsApiUrl must resolve to an https URL');\nif (cfg.agentTokenConfigured !== true) errors.push('SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN is missing');\nif (!Number.isFinite(supabaseFetchLimit) || supabaseFetchLimit < 1 || supabaseFetchLimit > 250) errors.push('supabaseFetchLimit must be 1..250');\nif (!Number.isFinite(stepCm) || stepCm < 5 || stepCm > 100) errors.push('stepCm must be 5..100');\nif (!Number.isFinite(maxLongSideCm) || maxLongSideCm < 1 || maxLongSideCm > 300) errors.push('maxLongSideCm must stay at or below 300 for internal review suggestions');\n\nif (errors.length) {\n  throw new Error('Supplier price review queue config failed: ' + errors.join('; '));\n}\n\nreturn [{\n  json: {\n    ...cfg,\n    supabaseUrl,\n    supabaseRestUrl: supabaseUrl + '/rest/v1',\n    opsApiUrl,\n    supabaseFetchLimit,\n    stepCm,\n    maxLongSideCm\n  }\n}];"
+      }
+    },
+    {
+      "id": "fetch-approved-training-items",
+      "name": "Supabase: Approved Training Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        780,
+        180
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "GET",
+        "url": "={{ $json.supabaseRestUrl + '/supplier_quote_training_items?select=id,design_id,row_index,variant_index,size_label,width_cm,height_cm,production_price,shipping_price,currency,product_model_family,excluded_from_neonflex_training,validation_status,review_status,reviewed_at,created_at&product_model_family=eq.neonflex_candidate&excluded_from_neonflex_training=eq.false&validation_status=eq.usable&review_status=eq.approved&width_cm=not.is.null&height_cm=not.is.null&production_price=not.is.null&shipping_price=not.is.null&order=reviewed_at.desc.nullslast&limit=' + $json.supabaseFetchLimit }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "build-review-queue-requests",
+      "name": "Build Review Queue Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        180
+      ],
+      "parameters": {
+        "jsCode": "const cfg = $('Config Preflight').first().json;\nconst rows = $input.all()\n  .flatMap((item) => Array.isArray(item.json) ? item.json : [item.json])\n  .filter(Boolean);\n\nfunction finiteNumber(value) {\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n}\n\nconst eligible = rows.filter((row) => {\n  return row.id &&\n    row.product_model_family === 'neonflex_candidate' &&\n    row.excluded_from_neonflex_training === false &&\n    row.validation_status === 'usable' &&\n    row.review_status === 'approved' &&\n    finiteNumber(row.width_cm) !== null &&\n    finiteNumber(row.height_cm) !== null &&\n    finiteNumber(row.production_price) !== null &&\n    finiteNumber(row.shipping_price) !== null;\n});\n\nif (!eligible.length) {\n  return [{ json: { noItems: true, message: 'No approved Neonflex training items ready for price review queue' } }];\n}\n\nreturn eligible.slice(0, cfg.supabaseFetchLimit).map((row) => ({\n  json: {\n    action: 'create_from_training_item',\n    operatorName: 'n8n Supplier Price Review Queue',\n    trainingItemId: row.id,\n    sourceSizeLabel: row.size_label || null,\n    trainingItem: {\n      trainingItemId: row.id,\n      stepCm: cfg.stepCm,\n      maxLongSideCm: cfg.maxLongSideCm,\n      sourceLabel: row.size_label || null,\n      currency: row.currency || 'USD',\n      featureValues: {\n        n8n_workflow: 'supplier_price_prediction_review_queue_v0_1',\n        source_training_reviewed_at: row.reviewed_at || null,\n        source_training_created_at: row.created_at || null\n      }\n    }\n  }\n}));"
+      }
+    },
+    {
+      "id": "has-requests",
+      "name": "Has Requests?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1300,
+        180
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.noItems }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "create-price-review-rows",
+      "name": "Ops API: Create Price Review Rows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1560,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config Preflight').first().json.opsApiUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ action: $json.action, operatorName: $json.operatorName, trainingItem: $json.trainingItem }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "build-run-summary",
+      "name": "Build Run Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        80
+      ],
+      "parameters": {
+        "jsCode": "const responses = $input.all().map((item) => item.json || {});\nlet predictionRows = 0;\nfor (const response of responses) {\n  if (Array.isArray(response.items)) predictionRows += response.items.length;\n}\n\nlet trainingItemIds = [];\ntry {\n  trainingItemIds = $('Build Review Queue Requests').all()\n    .map((item) => item.json?.trainingItemId)\n    .filter(Boolean);\n} catch (error) {\n  trainingItemIds = [];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    action: 'supplier_price_review_queue_run',\n    trainingItemsPosted: responses.length,\n    predictionRowsReturned: predictionRows,\n    trainingItemIds,\n    checkedAt: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "no-items",
+      "name": "No Items",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        300
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Config Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Preflight": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Approved Training Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Approved Training Items": {
+      "main": [
+        [
+          {
+            "node": "Build Review Queue Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Review Queue Requests": {
+      "main": [
+        [
+          {
+            "node": "Has Requests?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Requests?": {
+      "main": [
+        [
+          {
+            "node": "Ops API: Create Price Review Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ops API: Create Price Review Rows": {
+      "main": [
+        [
+          {
+            "node": "Build Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 900,
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "timezone": "Europe/Berlin"
+  }
+}
