@@ -16,7 +16,7 @@ export type OpsOfferItem = {
   discountLabel: string | null;
   selectable: boolean;
   selectedByDefault: boolean;
-  selectedFinal: boolean;
+  selectedFinal: boolean | null;
   quantityEditable: boolean;
   minQuantity: number | null;
   maxQuantity: number | null;
@@ -101,7 +101,7 @@ export type OpsOfferPatchInput = {
     discountText?: string | null;
     projectTitle?: string | null;
   };
-  items?: Array<Partial<Omit<OpsOfferItem, "section" | "selectedFinal">> & { id: string }>;
+  items?: Array<Partial<Omit<OpsOfferItem, "selectedFinal">> & { id: string }>;
   images?: Array<Partial<Pick<OpsOfferImage, "title" | "enabled" | "sortOrder">> & { id: string }>;
 };
 

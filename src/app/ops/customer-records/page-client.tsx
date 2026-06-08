@@ -15,10 +15,12 @@ import {
   Mail,
   MessageSquareText,
   PlaneLanding,
+  Plus,
   Search,
   Send,
   Star,
   ShieldCheck,
+  Trash2,
   Truck,
   UserRound,
   X,
@@ -15334,6 +15336,8 @@ function offerDateInputToIso(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+const NEW_OFFER_ITEM_ID_PREFIX = "new-item-";
+
 function buildOfferEditSignature(
   offerFields: OpsOfferSnapshot["offer"],
   items: OpsOfferItem[],
@@ -15350,6 +15354,7 @@ function buildOfferEditSignature(
     },
     items: items.map((item) => ({
       id: item.id,
+      section: item.section || "",
       title: item.title || "",
       description: item.description || "",
       quantity: item.quantity,
@@ -15370,6 +15375,32 @@ function buildOfferEditSignature(
       sortOrder: image.sortOrder,
     })),
   });
+}
+
+function isDraftOfferItem(item: OpsOfferItem) {
+  return item.id.startsWith(NEW_OFFER_ITEM_ID_PREFIX);
+}
+
+function createDraftOfferItem(items: OpsOfferItem[]): OpsOfferItem {
+  const nextSortOrder = items.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), -1) + 1;
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return {
+    id: `${NEW_OFFER_ITEM_ID_PREFIX}${Date.now()}-${suffix}`,
+    section: "LED-Leuchtschild",
+    title: "Neue Position",
+    description: "",
+    quantity: 1,
+    unitPriceNet: 0,
+    listPriceNet: null,
+    discountLabel: null,
+    selectable: true,
+    selectedByDefault: true,
+    selectedFinal: null,
+    quantityEditable: false,
+    minQuantity: 1,
+    maxQuantity: 10,
+    sortOrder: nextSortOrder,
+  };
 }
 
 function OfferTextArea({
@@ -15642,6 +15673,7 @@ function OfferEditorPanel({
       },
       items: items.map((item) => ({
         id: item.id,
+        section: item.section || "LED-Leuchtschild",
         title: item.title,
         description: item.description || null,
         quantity: item.quantity,
@@ -15797,6 +15829,14 @@ function OfferEditorPanel({
 
   function updateItem(itemId: string, patch: Partial<OpsOfferItem>) {
     setItems((current) => current.map((item) => (item.id === itemId ? { ...item, ...patch } : item)));
+  }
+
+  function addItem() {
+    setItems((current) => [...current, createDraftOfferItem(current)]);
+  }
+
+  function removeDraftItem(itemId: string) {
+    setItems((current) => current.filter((item) => item.id !== itemId));
   }
 
   function updateImage(imageId: string, patch: Partial<OpsOfferImage>) {
@@ -16044,9 +16084,20 @@ function OfferEditorPanel({
                   <div className="text-sm font-semibold text-black">Positionen</div>
                   <div className="mt-1 text-xs text-black/45">Preise, Größen, Farben und Szenario stehen aktuell in Titel/Beschreibung.</div>
                 </div>
-                <span className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-xs text-black/55">
-                  {items.length} Position{items.length === 1 ? "" : "en"}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-xs text-black/55">
+                    {items.length} Position{items.length === 1 ? "" : "en"}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!canEdit || saving}
+                    onClick={addItem}
+                    className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Position hinzufügen
+                  </button>
+                </div>
               </div>
               <div className="mt-4 space-y-3">
                 {items.map((item, index) => (
@@ -16058,10 +16109,21 @@ function OfferEditorPanel({
                       <div className="flex flex-wrap gap-2">
                         <ToggleCheck label="Auswählbar" checked={item.selectable} onChange={(next) => updateItem(item.id, { selectable: next })} />
                         <ToggleCheck label="Vorausgewählt" checked={item.selectedByDefault} onChange={(next) => updateItem(item.id, { selectedByDefault: next })} />
+                        {isDraftOfferItem(item) ? (
+                          <button
+                            type="button"
+                            onClick={() => removeDraftItem(item.id)}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Entfernen
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <Field label="Titel" hint="Produkt- oder Variantenname." value={item.title || ""} onChange={(value) => updateItem(item.id, { title: value })} icon={<BadgeCheck className="h-4 w-4" />} />
+                      <Field label="Sektion" hint="z. B. LED-Leuchtschild, Update oder Zusatzoptionen." value={item.section || ""} onChange={(value) => updateItem(item.id, { section: value || "LED-Leuchtschild" })} icon={<BadgeCheck className="h-4 w-4" />} />
                       <Field label="Rabattlabel" hint="z. B. Sonderpreis oder Aktionsrabatt." value={item.discountLabel || ""} onChange={(value) => updateItem(item.id, { discountLabel: value || null })} icon={<BadgeCheck className="h-4 w-4" />} />
                       <Field label="Menge" hint="Anzahl für diese Position." value={String(item.quantity)} onChange={(value) => updateItem(item.id, { quantity: Math.max(1, Number(value) || 1) })} type="number" icon={<Database className="h-4 w-4" />} />
                       <Field label="Verkaufspreis netto (EUR)" hint="Kundensichtbarer Netto-Einzelpreis in Euro, nicht Einkaufswert und nicht Cent." value={String(item.unitPriceNet)} onChange={(value) => updateItem(item.id, { unitPriceNet: Math.max(0, Number(value) || 0) })} type="number" step="0.01" meta={`Wird als ${formatMoney(item.unitPriceNet, currency)} netto im Angebot gespeichert.`} icon={<Database className="h-4 w-4" />} />
