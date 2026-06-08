@@ -10,11 +10,13 @@ import {
   Clock3,
   Database,
   ExternalLink,
+  Gift,
   History,
   ImageIcon,
   Mail,
   MessageSquareText,
   PlaneLanding,
+  Percent,
   Plus,
   Search,
   Send,
@@ -4220,8 +4222,62 @@ function formatMoney(value: number | null | undefined, currency = "EUR") {
   }).format(value);
 }
 
-function isOfferItemSelected(item: Pick<OpsOfferItem, "selectable" | "selectedByDefault">) {
+function isOfferItemSelected(item: Pick<OpsOfferItem, "selectable" | "selectedByDefault" | "selectedFinal">) {
+  if (item.selectedFinal !== null && item.selectedFinal !== undefined) return item.selectedFinal;
   return !item.selectable || item.selectedByDefault;
+}
+
+function roundMoney(value: number) {
+  return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
+}
+
+function parsePositiveDecimal(value: string) {
+  const parsed = Number(value.trim().replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function getOfferItemQuantity(item: Pick<OpsOfferItem, "quantity">) {
+  return Math.max(1, Number(item.quantity || 1));
+}
+
+function getOfferItemUnitPrice(item: Pick<OpsOfferItem, "unitPriceNet">) {
+  return Math.max(0, Number(item.unitPriceNet || 0));
+}
+
+function getOfferItemAnchorUnitPrice(item: Pick<OpsOfferItem, "unitPriceNet" | "listPriceNet">) {
+  const unitPrice = getOfferItemUnitPrice(item);
+  const listPrice = item.listPriceNet === null || item.listPriceNet === undefined ? null : Math.max(0, Number(item.listPriceNet || 0));
+  return listPrice !== null && listPrice > unitPrice ? listPrice : unitPrice;
+}
+
+function getOfferItemAnchorLineNet(item: Pick<OpsOfferItem, "quantity" | "unitPriceNet" | "listPriceNet">) {
+  return roundMoney(getOfferItemAnchorUnitPrice(item) * getOfferItemQuantity(item));
+}
+
+function formatPercentDiscountLabel(percent: number) {
+  const formatted = new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: Number.isInteger(percent) ? 0 : 1,
+    maximumFractionDigits: 2,
+  }).format(percent);
+  return `${formatted}% Rabatt`;
+}
+
+function buildOfferDiscountPreview(items: OpsOfferItem[]) {
+  const selectedItems = items.filter(isOfferItemSelected);
+  const currentNetTotal = selectedItems.reduce(
+    (sum, item) => sum + getOfferItemUnitPrice(item) * getOfferItemQuantity(item),
+    0,
+  );
+  const originalNetTotal = selectedItems.reduce((sum, item) => sum + getOfferItemAnchorLineNet(item), 0);
+  const discountNetTotal = Math.max(0, originalNetTotal - currentNetTotal);
+  return {
+    selectedItemCount: selectedItems.length,
+    currentNetTotal: roundMoney(currentNetTotal),
+    originalNetTotal: roundMoney(originalNetTotal),
+    discountNetTotal: roundMoney(discountNetTotal),
+    discountPercent: originalNetTotal > 0 ? roundMoney((discountNetTotal / originalNetTotal) * 100) : 0,
+    discountedItemCount: selectedItems.filter((item) => getOfferItemAnchorUnitPrice(item) > getOfferItemUnitPrice(item)).length,
+  };
 }
 
 function formatSegmentConfidence(value: number | null | undefined) {
@@ -15311,7 +15367,7 @@ function buildDefaultVisualPrompt(record: CustomerSearchResult) {
     record.request?.application ? `Einsatz: ${record.request.application}` : null,
     record.request?.colors.length ? `Farben: ${record.request.colors.join(", ")}` : null,
   ].filter(Boolean);
-  return `Erstelle eine realistische NEONTRIP Visualisierung fuer ${parts.join(" | ")}. Fokus: hochwertiges LED-/Neon-Schild im passenden Hintergrund, gut lesbar, kundentauglich.`;
+  return `Erstelle eine realistische NEONTRIP Visualisierung für ${parts.join(" | ")}. Fokus: hochwertiges LED-/Neon-Schild im passenden Hintergrund, gut lesbar, kundentauglich.`;
 }
 
 function getRecordReferenceVisualUrl(record: CustomerSearchResult) {
@@ -15548,6 +15604,8 @@ function OfferEditorPanel({
   const [sendMessage, setSendMessage] = useState(
     "Hallo,\n\nwie besprochen haben wir Ihr Angebot aktualisiert. Sie können es über den Angebotslink erneut öffnen.\n\nViele Grüße\nNEONTRIP",
   );
+  const [bulkDiscountMode, setBulkDiscountMode] = useState<"percent" | "amount">("percent");
+  const [bulkDiscountValue, setBulkDiscountValue] = useState("");
   const [visualPrompt, setVisualPrompt] = useState(buildDefaultVisualPrompt(record));
   const [visualCount, setVisualCount] = useState(1);
   const [visualRequesting, setVisualRequesting] = useState(false);
@@ -15631,6 +15689,8 @@ function OfferEditorPanel({
     setSendRecipient(record.email || "");
     setSendCcOne(record.ccEmails?.[0] || "");
     setSendCcTwo(record.ccEmails?.[1] || "");
+    setBulkDiscountMode("percent");
+    setBulkDiscountValue("");
     setVisualPrompt(buildDefaultVisualPrompt(record));
     setVisualCount(1);
     if (trelloCardId) void loadOffer();
@@ -15645,6 +15705,9 @@ function OfferEditorPanel({
     .filter(isOfferItemSelected)
     .reduce((sum, item) => sum + Number(item.unitPriceNet || 0) * Number(item.quantity || 0), 0);
   const currency = offerFields?.currency || "EUR";
+  const discountPreview = buildOfferDiscountPreview(items);
+  const parsedBulkDiscountValue = parsePositiveDecimal(bulkDiscountValue);
+  const canApplyBulkDiscount = Boolean(canEdit && !saving && discountPreview.selectedItemCount > 0 && parsedBulkDiscountValue > 0);
   const normalizedRecordEmail = String(record.email || "").trim().toLowerCase();
   const normalizedOfferCustomerEmail = String(offerFields?.customerEmail || "").trim().toLowerCase();
   const offerEmailMismatch = Boolean(
@@ -15831,6 +15894,127 @@ function OfferEditorPanel({
     setItems((current) => current.map((item) => (item.id === itemId ? { ...item, ...patch } : item)));
   }
 
+  function setDiscountTextIfEmpty(text: string) {
+    setOfferFields((current) => {
+      if (!current || current.discountText?.trim()) return current;
+      return { ...current, discountText: text };
+    });
+  }
+
+  function applyPercentDiscountToItem(item: OpsOfferItem, percent: number): OpsOfferItem {
+    const normalizedPercent = Math.min(Math.max(percent, 0), 100);
+    const anchorUnitPrice = getOfferItemAnchorUnitPrice(item);
+    if (anchorUnitPrice <= 0 || normalizedPercent <= 0) return item;
+    const nextUnitPrice = roundMoney(anchorUnitPrice * (1 - normalizedPercent / 100));
+    return {
+      ...item,
+      unitPriceNet: nextUnitPrice,
+      listPriceNet: anchorUnitPrice > nextUnitPrice ? anchorUnitPrice : item.listPriceNet,
+      discountLabel: formatPercentDiscountLabel(normalizedPercent),
+    };
+  }
+
+  function applyPercentDiscountToSelected(percent: number) {
+    if (!canEdit || saving) return;
+    const normalizedPercent = Math.min(Math.max(percent, 0), 100);
+    if (normalizedPercent <= 0) return;
+    setItems((current) =>
+      current.map((item) => (isOfferItemSelected(item) ? applyPercentDiscountToItem(item, normalizedPercent) : item)),
+    );
+    setDiscountTextIfEmpty(`${formatPercentDiscountLabel(normalizedPercent)} auf die ausgewählten Positionen.`);
+  }
+
+  function applyAbsoluteDiscountToSelected(amountNet: number) {
+    if (!canEdit || saving) return;
+    const requestedDiscount = roundMoney(amountNet);
+    if (requestedDiscount <= 0) return;
+
+    setItems((current) => {
+      const candidates = current.filter((item) => isOfferItemSelected(item) && getOfferItemAnchorLineNet(item) > 0);
+      const subtotal = roundMoney(candidates.reduce((sum, item) => sum + getOfferItemAnchorLineNet(item), 0));
+      const targetDiscount = Math.min(requestedDiscount, subtotal);
+      if (!candidates.length || subtotal <= 0 || targetDiscount <= 0) return current;
+
+      const candidateIds = new Set(candidates.map((item) => item.id));
+      const lastCandidateId = candidates[candidates.length - 1]?.id;
+      let remainingDiscount = targetDiscount;
+
+      return current.map((item) => {
+        if (!candidateIds.has(item.id)) return item;
+        const quantity = getOfferItemQuantity(item);
+        const anchorUnitPrice = getOfferItemAnchorUnitPrice(item);
+        const lineBase = roundMoney(anchorUnitPrice * quantity);
+        const proportionalDiscount =
+          item.id === lastCandidateId
+            ? remainingDiscount
+            : roundMoney(targetDiscount * (lineBase / subtotal));
+        const lineDiscount = Math.min(lineBase, proportionalDiscount);
+        remainingDiscount = roundMoney(remainingDiscount - lineDiscount);
+        const nextLineTotal = Math.max(0, roundMoney(lineBase - lineDiscount));
+        const nextUnitPrice = roundMoney(nextLineTotal / quantity);
+
+        return {
+          ...item,
+          unitPriceNet: nextUnitPrice,
+          listPriceNet: anchorUnitPrice > nextUnitPrice ? anchorUnitPrice : item.listPriceNet,
+          discountLabel: "Sonderrabatt anteilig",
+        };
+      });
+    });
+
+    setDiscountTextIfEmpty(`${formatMoney(requestedDiscount, currency)} Rabatt auf die ausgewählten Positionen.`);
+  }
+
+  function applyBulkDiscount() {
+    if (!canApplyBulkDiscount) return;
+    if (bulkDiscountMode === "percent") {
+      applyPercentDiscountToSelected(parsedBulkDiscountValue);
+    } else {
+      applyAbsoluteDiscountToSelected(parsedBulkDiscountValue);
+    }
+    setBulkDiscountValue("");
+  }
+
+  function applyItemDiscount(itemId: string, percent: number) {
+    if (!canEdit || saving) return;
+    setItems((current) =>
+      current.map((item) => (item.id === itemId ? applyPercentDiscountToItem(item, percent) : item)),
+    );
+    setDiscountTextIfEmpty("Sonderpreis auf einzelne Positionen.");
+  }
+
+  function makeItemFree(itemId: string) {
+    if (!canEdit || saving) return;
+    setItems((current) =>
+      current.map((item) => {
+        if (item.id !== itemId) return item;
+        const anchorUnitPrice = getOfferItemAnchorUnitPrice(item);
+        return {
+          ...item,
+          unitPriceNet: 0,
+          listPriceNet: anchorUnitPrice > 0 ? anchorUnitPrice : item.listPriceNet,
+          discountLabel: "Gratisposition",
+        };
+      }),
+    );
+    setDiscountTextIfEmpty("Einzelne Positionen wurden als Sonderleistung rabattiert.");
+  }
+
+  function clearItemDiscount(itemId: string) {
+    if (!canEdit || saving) return;
+    setItems((current) =>
+      current.map((item) => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          unitPriceNet: getOfferItemAnchorUnitPrice(item),
+          listPriceNet: null,
+          discountLabel: null,
+        };
+      }),
+    );
+  }
+
   function addItem() {
     setItems((current) => [...current, createDraftOfferItem(current)]);
   }
@@ -15998,6 +16182,18 @@ function OfferEditorPanel({
             <MiniSystem title="Bilder" value={images.filter((image) => image.enabled).length} detail={`${images.length} insgesamt`} tone="blue" />
           </div>
 
+          {offer.publicUrl ? (
+            <div className="rounded-2xl border border-black/10 bg-white px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-black">Angebotslink für Mitarbeiter</div>
+                  <div className="mt-1 break-all text-sm leading-6 text-black/55">{offer.publicUrl}</div>
+                </div>
+                <QuickLink href={offer.publicUrl} label="Angebotslink öffnen" />
+              </div>
+            </div>
+          ) : null}
+
           <OfferTrackingActivityBlock record={record} />
 
 	          {offer.lock.lockLevel === "hard" ? (
@@ -16099,6 +16295,76 @@ function OfferEditorPanel({
                   </button>
                 </div>
               </div>
+              <div className="mt-4 border-t border-black/10 pt-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-black">Rabatt anwenden</div>
+                    <div className="mt-1 text-xs leading-5 text-black/50">
+                      Wirkt auf ausgewählte Positionen. Der ursprüngliche Preis bleibt als Vergleichspreis sichtbar.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-black/55">
+                      Auswahl: {discountPreview.selectedItemCount}
+                    </span>
+                    <span className="rounded-full border border-black/10 bg-black/[0.02] px-3 py-1 text-black/55">
+                      Rabatt: {discountPreview.discountNetTotal > 0 ? `${formatMoney(discountPreview.discountNetTotal, currency)} netto` : "noch keiner"}
+                    </span>
+                    {discountPreview.discountPercent > 0 ? (
+                      <span className="rounded-full border border-[#fa31a2]/20 bg-[#fa31a2]/8 px-3 py-1 text-[#c21876]">
+                        {formatPercentDiscountLabel(discountPreview.discountPercent)}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-[220px_minmax(0,1fr)_auto]">
+                  <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-black/10 bg-white p-1">
+                    <button
+                      type="button"
+                      onClick={() => setBulkDiscountMode("percent")}
+                      className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${
+                        bulkDiscountMode === "percent"
+                          ? "bg-black text-white"
+                          : "text-black/55 hover:bg-black/[0.04] hover:text-black"
+                      }`}
+                    >
+                      <Percent className="h-3.5 w-3.5" />
+                      Prozent
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkDiscountMode("amount")}
+                      className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${
+                        bulkDiscountMode === "amount"
+                          ? "bg-black text-white"
+                          : "text-black/55 hover:bg-black/[0.04] hover:text-black"
+                      }`}
+                    >
+                      <Database className="h-3.5 w-3.5" />
+                      Euro
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    max={bulkDiscountMode === "percent" ? "100" : undefined}
+                    step="0.01"
+                    value={bulkDiscountValue}
+                    onChange={(event) => setBulkDiscountValue(event.target.value)}
+                    placeholder={bulkDiscountMode === "percent" ? "z. B. 10" : "z. B. 150"}
+                    className="min-w-0 rounded-xl border-2 border-black/10 bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-[#fa31a2] focus:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]"
+                  />
+                  <button
+                    type="button"
+                    disabled={!canApplyBulkDiscount}
+                    onClick={applyBulkDiscount}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A0A0A] px-4 py-3 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+                  >
+                    Anwenden
+                    <CheckSquare2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
               <div className="mt-4 space-y-3">
                 {items.map((item, index) => (
                   <div key={item.id} className="rounded-xl border border-black/10 bg-black/[0.015] p-4">
@@ -16120,6 +16386,52 @@ function OfferEditorPanel({
                           </button>
                         ) : null}
                       </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
+                      <span className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs text-black/55">
+                        Preis {formatMoney(getOfferItemUnitPrice(item), currency)} netto
+                      </span>
+                      {getOfferItemAnchorUnitPrice(item) > getOfferItemUnitPrice(item) ? (
+                        <span className="rounded-full border border-[#fa31a2]/20 bg-[#fa31a2]/8 px-3 py-1 text-xs text-[#c21876]">
+                          Basis {formatMoney(getOfferItemAnchorUnitPrice(item), currency)}
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={!canEdit || saving}
+                        onClick={() => applyItemDiscount(item.id, 10)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Percent className="h-3.5 w-3.5" />
+                        -10%
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canEdit || saving}
+                        onClick={() => applyItemDiscount(item.id, 20)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Percent className="h-3.5 w-3.5" />
+                        -20%
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canEdit || saving}
+                        onClick={() => makeItemFree(item.id)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Gift className="h-3.5 w-3.5" />
+                        Gratis
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canEdit || saving}
+                        onClick={() => clearItemDiscount(item.id)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-medium text-black/55 transition hover:border-black/25 hover:text-black disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Rabatt zurücksetzen
+                      </button>
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <Field label="Titel" hint="Produkt- oder Variantenname." value={item.title || ""} onChange={(value) => updateItem(item.id, { title: value })} icon={<BadgeCheck className="h-4 w-4" />} />
@@ -20177,7 +20489,7 @@ function RecordCard({
                         <Field label="Rechnungs-E-Mail" hint="Falls Rechnungen separat laufen, sonst identisch zur Hauptadresse." value={billingEmail} onChange={setBillingEmail} type="email" icon={<Mail className="h-4 w-4" />} />
                       ) : null}
                       {!simpleView ? <Field label="CC-E-Mail 1" hint="Kollege oder Begleitperson, die bei vorbereiteten Antworten in CC gesetzt wird." value={ccEmailOne} onChange={setCcEmailOne} type="email" icon={<Mail className="h-4 w-4" />} /> : null}
-                      {!simpleView ? <Field label="CC-E-Mail 2" hint="Zweite Begleitperson fuer denselben Kontakt." value={ccEmailTwo} onChange={setCcEmailTwo} type="email" icon={<Mail className="h-4 w-4" />} /> : null}
+                      {!simpleView ? <Field label="CC-E-Mail 2" hint="Zweite Begleitperson für denselben Kontakt." value={ccEmailTwo} onChange={setCcEmailTwo} type="email" icon={<Mail className="h-4 w-4" />} /> : null}
                       {!simpleView ? <Field label="Telefon" hint="Optional, aber relevant für Rückrufe oder manuelle Eskalation." value={phone} onChange={setPhone} icon={<PhoneFallback />} /> : null}
                       {!simpleView ? <Field label="Firma" hint="Wird in Spuren, Plänen und Angebotslage gespiegelt." value={company} onChange={setCompany} icon={<Building2 className="h-4 w-4" />} /> : null}
                     </div>
@@ -20208,8 +20520,8 @@ function RecordCard({
                         {showOptionalContactFields ? (
                           <div className={`mt-4 grid gap-4 ${simpleView ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                             <Field label="Rechnungs-E-Mail" hint="Nur wenn Rechnungen an eine andere Adresse gehen." value={billingEmail} onChange={setBillingEmail} type="email" icon={<Mail className="h-4 w-4" />} />
-                            <Field label="CC-E-Mail 1" hint="Optional fuer begleitende Kollegen oder Ansprechpartner." value={ccEmailOne} onChange={setCcEmailOne} type="email" icon={<Mail className="h-4 w-4" />} />
-                            <Field label="CC-E-Mail 2" hint="Optional fuer eine zweite Begleitperson." value={ccEmailTwo} onChange={setCcEmailTwo} type="email" icon={<Mail className="h-4 w-4" />} />
+                            <Field label="CC-E-Mail 1" hint="Optional für begleitende Kollegen oder Ansprechpartner." value={ccEmailOne} onChange={setCcEmailOne} type="email" icon={<Mail className="h-4 w-4" />} />
+                            <Field label="CC-E-Mail 2" hint="Optional für eine zweite Begleitperson." value={ccEmailTwo} onChange={setCcEmailTwo} type="email" icon={<Mail className="h-4 w-4" />} />
                             <Field label="Telefon" hint="Hilfreich, wenn du den Kontakt anrufen willst." value={phone} onChange={setPhone} icon={<PhoneFallback />} />
                             <Field label="Firma" hint="Nur wenn der Kontakt über eine Firma läuft." value={company} onChange={setCompany} icon={<Building2 className="h-4 w-4" />} />
                           </div>
@@ -22701,7 +23013,7 @@ export function CustomerRecordsClient({
         onSaveTrelloCard={saveTrelloCard}
       />
 
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.09),transparent_22%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_18%),linear-gradient(180deg,#fffdf9_0%,#fffaf4_38%,#ffffff_100%)]" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.08),transparent_21%),radial-gradient(circle_at_top_right,rgba(30,86,109,0.07),transparent_18%),linear-gradient(180deg,#f7f4ee_0%,#fffdf9_44%,#ffffff_100%)]" />
 
       <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-4 py-4 md:px-6 lg:px-8 lg:py-6">
         <OpsPageHeader
@@ -22712,8 +23024,8 @@ export function CustomerRecordsClient({
 
         <Surface className={`overflow-hidden border-white/10 text-white shadow-[0_24px_90px_rgba(0,0,0,0.18)] ${
           quietLayout
-            ? "bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.18),transparent_22%),linear-gradient(135deg,#050505_0%,#0d0d10_58%,#16161a_100%)]"
-            : "bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.24),transparent_24%),radial-gradient(circle_at_78%_14%,rgba(56,189,248,0.16),transparent_18%),linear-gradient(135deg,#050505_0%,#0d0d0f_58%,#16161a_100%)]"
+            ? "bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.15),transparent_22%),linear-gradient(135deg,#100f0e_0%,#181513_58%,#22171a_100%)]"
+            : "bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.2),transparent_24%),radial-gradient(circle_at_78%_14%,rgba(30,86,109,0.15),transparent_18%),linear-gradient(135deg,#100f0e_0%,#181513_58%,#22171a_100%)]"
         }`}>
           {!simpleRecordMode ? (
             <div className={`grid gap-8 px-6 md:px-8 lg:px-10 ${
@@ -22734,34 +23046,34 @@ export function CustomerRecordsClient({
                 <div className={quietLayout ? "space-y-2" : "space-y-3"}>
                   <div className={`font-medium uppercase text-[#ff77c3] ${quietLayout ? "text-[10px] tracking-[0.18em]" : "text-[11px] tracking-[0.22em]"}`}>
                     {quietLayout
-                      ? "Steuern, prüfen, sicher abschließen"
+                      ? "Fallarbeit, geprüft und nachvollziehbar"
                       : "Kommandozentrale für Angebots-, Erinnerungs- und Kontaktlage"}
                   </div>
                   <h1 className={`max-w-4xl font-semibold tracking-tight text-white ${
                     quietLayout ? "text-[2rem] leading-[1.02] md:text-[2.35rem]" : "text-4xl md:text-[3.45rem] md:leading-[1.02]"
                   }`}>
                     {quietLayout ? (
-                      <>Offene Fälle steuern, bevor etwas liegen bleibt.</>
+                      <>Fall finden. Lage prüfen. Nächsten Schritt ausführen.</>
                     ) : (
                       <>
-                        Kontaktdaten und Folgeprozesse
+                        Kundenlage und Folgeprozesse
                         <br />
                         sicher steuern,
                         <br />
-                        bevor etwas falsch rausgeht.
+                        bevor Arbeit liegen bleibt.
                       </>
                     )}
                   </h1>
                   <p className={`max-w-3xl text-white/74 ${quietLayout ? "text-sm leading-6 md:max-w-2xl" : "text-base leading-7 md:text-[1.03rem]"}`}>
                     {quietLayout
-                      ? "Suche den Fall, öffne den nächsten sinnvollen Schritt und arbeite weiter. Details und weitere Bereiche liegen nur bei Bedarf in der erweiterten Ansicht."
-                      : "Diese Oberfläche ist für konkrete Fallarbeit gedacht: Fall finden, Kommunikation prüfen, Karten und Erinnerungen steuern, Anrufe dokumentieren und Korrekturen klar protokollieren."}
+                      ? "Suche per Fall-ID, Mail oder Telefon und arbeite aus einer geprüften Lage weiter. Details bleiben erreichbar, ohne die Fallarbeit zu überladen."
+                      : "Diese Oberfläche ist für konkrete Fallarbeit gedacht: Fall finden, Kommunikation prüfen, Karten und Erinnerungen steuern, Anrufe dokumentieren und Korrekturen nachvollziehbar protokollieren."}
                   </p>
                 </div>
 
                 {quietLayout ? (
                   <div className="text-sm leading-6 text-white/56">
-                    Suche per Fall-ID, Mail oder Telefon. Erst Lage prüfen, dann den nächsten Schritt ausführen.
+                    Erst Lage prüfen, dann sauber ausführen.
                   </div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-3">
@@ -22837,8 +23149,8 @@ export function CustomerRecordsClient({
                     {quietLayout ? "Fall suchen" : "Fallsuche"}
                   </h2>
                   <p className="mt-3 max-w-2xl text-sm leading-7 text-black/60">
-                    Nutze im Zweifel immer die Fall-ID. Alternativ kannst du jetzt auch nach exakter E-Mail,
-                    Name/Firma, Telefonnummer, `deal:12345` für einen Verkaufsfall oder per Kartenlink `trello:FYXcIQ9K` suchen.
+                    Nutze bevorzugt die Fall-ID. Alternativ funktionieren exakte E-Mail, Name/Firma,
+                    Telefonnummer, `deal:12345` für Verkaufsfälle oder Kartenlinks wie `trello:FYXcIQ9K`.
                   </p>
                 </div>
                 {!localMode && hasSession ? (
