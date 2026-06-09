@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, BarChart3, ClipboardList, FileText, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BadgeCheck, BarChart3, ClipboardList, Factory, FileText, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -8,6 +8,7 @@ export type OpsAppKey =
   | "calls"
   | "tasks"
   | "offers"
+  | "supplierSales"
   | "shipping"
   | "inboundShipping"
   | "management";
@@ -65,6 +66,13 @@ const OPS_APPS: Array<{
     helper: "Editor & Admin",
     href: "https://angebote.neontrip.de/admin/offers",
     Icon: FileText,
+  },
+  {
+    key: "supplierSales",
+    label: "Sales-Vergabe",
+    helper: "Supplier & Deadlines",
+    href: "/ops/sales-vergabe",
+    Icon: Factory,
   },
   {
     key: "shipping",

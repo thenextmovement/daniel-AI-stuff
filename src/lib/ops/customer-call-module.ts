@@ -2655,12 +2655,6 @@ export function buildSalesCallResultFromPreset(input: SalesCallResultInput): Omi
   const requestId = normalizeWhitespace(input.requestId);
   if (!requestId) throw new QuoteValidationError("Request-ID fehlt.");
   const notes = normalizeWhitespace(input.notes);
-  if (!notes) throw new QuoteValidationError("Bitte eine echte Gesprächs- oder Prüfnotiz eintragen.");
-  if (!isActionableSalesCallNote(notes)) {
-    throw new QuoteValidationError(
-      "Notiz ist zu generisch. Bitte echten Gesprächs- oder Prüfkontext statt Platzhalter oder Kurzform eintragen.",
-    );
-  }
 
   const preset = SALES_CALL_PRESETS[input.preset];
   if (!preset) throw new QuoteValidationError("Ungültiger Call-Preset.", ["Waehle einen bekannten Call-Preset."], 400);
@@ -2707,9 +2701,6 @@ export function evaluateSalesCallGate(
     if (!["yes", "no"].includes(result.validationUseful)) {
       validationErrors.push(`Rank ${item.rank}: ungültiges validation_useful`);
     }
-    if (!result.notes || !isActionableSalesCallNote(result.notes)) {
-      validationErrors.push(`Rank ${item.rank}: Notiz ist zu generisch oder fehlt`);
-    }
     if (result.callDone === "yes" && !result.callOutcome) {
       validationErrors.push(`Rank ${item.rank}: call_outcome fehlt`);
     }
@@ -2734,7 +2725,7 @@ export function evaluateSalesCallGate(
   const clearLearningSignal =
     informativeUseful.length >= 7 &&
     distinctInformativeNotes.size >= LEARNING_SIGNAL_MIN_DISTINCT_NOTES &&
-    topItems.every((item) => Boolean(item.latestResult?.notes?.trim()));
+    informativeUseful.every((item) => Boolean(item.latestResult?.notes?.trim()));
 
   let gate: SalesCallGateSummary["gate"];
   if (validationErrors.length) {

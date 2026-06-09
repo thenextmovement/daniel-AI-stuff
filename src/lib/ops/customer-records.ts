@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { buildCustomerName, isValidEmail, normalizeEmail } from "@/lib/quotes/customer";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
@@ -448,6 +449,16 @@ const CUSTOMER_RECORDS_SALES_RECOVERY_ACTION = "customer_sales_recovery_started"
 const CUSTOMER_RECORDS_SPECIAL_CASE_ACTION = "customer_special_case_reported";
 const CUSTOMER_RECORDS_SPECIAL_CASE_RESOLVED_ACTION = "customer_special_case_resolved";
 const CUSTOMER_RECORDS_SEGMENT_OVERRIDE_ACTION = "customer_request_segment_override";
+const CUSTOMER_RECORDS_TASK_CREATED_ACTION = "customer_internal_task_created";
+const CUSTOMER_RECORDS_TASK_UPDATED_ACTION = "customer_internal_task_updated";
+const CUSTOMER_RECORDS_TASK_COMPLETED_ACTION = "customer_internal_task_completed";
+const CUSTOMER_RECORDS_TASK_REOPENED_ACTION = "customer_internal_task_reopened";
+const CUSTOMER_RECORDS_TASK_ACTIONS = new Set([
+  CUSTOMER_RECORDS_TASK_CREATED_ACTION,
+  CUSTOMER_RECORDS_TASK_UPDATED_ACTION,
+  CUSTOMER_RECORDS_TASK_COMPLETED_ACTION,
+  CUSTOMER_RECORDS_TASK_REOPENED_ACTION,
+]);
 const MASTER_CUSTOMER_SELECT =
   "id,request_id,email,billing_email,cc_emails,first_name,last_name,phone,company,company_name,name,original_email,original_phone,updated_at";
 const MASTER_CUSTOMER_SELECT_LEGACY =
@@ -1028,7 +1039,73 @@ export type CustomerSearchResult = {
   communications: CustomerCommunicationEntry[];
   timeline: CustomerTimelineEntry[];
   notes: CustomerOpsNote[];
+  internalTasks: CustomerInternalTask[];
   auditTrail: CustomerAuditEntry[];
+};
+
+export type CustomerInternalTaskCategory =
+  | "customer_followup"
+  | "problem_case"
+  | "procurement"
+  | "production"
+  | "call"
+  | "admin"
+  | "other";
+
+export type CustomerInternalTaskPriority = "low" | "normal" | "high" | "urgent";
+
+export type CustomerInternalTaskStatus = "open" | "done";
+
+export type CustomerInternalTaskInput = {
+  title: string;
+  description?: string | null;
+  assigneeName?: string | null;
+  dueAt?: string | null;
+  category?: CustomerInternalTaskCategory | null;
+  priority?: CustomerInternalTaskPriority | null;
+  requestId?: string | null;
+  clientActionId?: string | null;
+  idempotencyKey?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+};
+
+export type CustomerInternalTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: CustomerInternalTaskStatus;
+  category: CustomerInternalTaskCategory;
+  priority: CustomerInternalTaskPriority;
+  assigneeName: string | null;
+  dueAt: string | null;
+  requestId: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  createdAt: string | null;
+  createdBy: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  completedAt: string | null;
+  completedBy: string | null;
+  latestNote: string | null;
+  clientActionId: string | null;
+  idempotencyKey: string | null;
+  sourceType: string | null;
+  sourceId: string | null;
+  originLabel: string;
+  overdue: boolean;
+};
+
+export type CustomerInternalTaskBoard = {
+  tasks: CustomerInternalTask[];
+  counts: {
+    open: number;
+    dueToday: number;
+    overdue: number;
+    urgent: number;
+    done: number;
+  };
 };
 
 export type CustomerWorkboardSection = {
@@ -1856,10 +1933,12 @@ function actorLabel(actor?: UpdateActor) {
   if (operatorName) {
     if (actor.mode === "local_bypass") return actor.host ? `${operatorName} • lokal via ${actor.host}` : operatorName;
     if (actor.mode === "ops_session") return actor.host ? `${operatorName} • ops-session via ${actor.host}` : operatorName;
+    if (actor.mode === "automation") return actor.host ? `${operatorName} • automation via ${actor.host}` : operatorName;
     return operatorName;
   }
   if (actor.mode === "local_bypass") return actor.host ? `lokal via ${actor.host}` : "lokal";
   if (actor.mode === "ops_session") return actor.host ? `ops-session via ${actor.host}` : "ops-session";
+  if (actor.mode === "automation") return actor.host ? `automation via ${actor.host}` : "automation";
   return null;
 }
 
@@ -2581,13 +2660,29 @@ function buildCallOpsSummary(context: Pick<CustomerContext, "plans" | "audits" |
       return rightTime - leftTime;
     })
     .slice(0, 8);
+  const latestCallAtMs = Math.max(
+    ...[
+      latestLiveCall?.called_at,
+      latestLiveCall?.created_at,
+      latestCallAudit?.created_at,
+      latestVoiceCall?.created_at,
+    ].map((value) => {
+      const ms = value ? new Date(value).getTime() : 0;
+      return Number.isFinite(ms) ? ms : 0;
+    }),
+  );
+  const rawNextCallbackAt =
+    trimNullable(latestPlan?.call_after) ||
+    auditText(latestCallbackAudit?.metadata || {}, "resume_at") ||
+    trimNullable(latestLiveCall?.next_action_date);
+  const nextCallbackAtMs = rawNextCallbackAt ? new Date(rawNextCallbackAt).getTime() : 0;
+  const pendingCallbackAfterCall =
+    Boolean(rawNextCallbackAt) &&
+    (!Number.isFinite(nextCallbackAtMs) || !latestCallAtMs || nextCallbackAtMs > latestCallAtMs);
 
   return {
     contactabilityStatus: trimNullable(latestPlan?.contactability_status),
-    nextCallbackAt:
-      trimNullable(latestPlan?.call_after) ||
-      auditText(latestCallbackAudit?.metadata || {}, "resume_at") ||
-      trimNullable(latestLiveCall?.next_action_date),
+    nextCallbackAt: pendingCallbackAfterCall ? rawNextCallbackAt : null,
     planningReason:
       trimNullable(latestPlan?.planning_reason) ||
       auditText(latestCallbackAudit?.metadata || {}, "reason"),
@@ -2779,6 +2874,220 @@ export function buildSpecialCaseSummary(context: Pick<CustomerContext, "audits">
     reportedBy: reportedBy || null,
     resolvedAt: isResolved ? latestResolution?.created_at || null : null,
     resolvedBy: isResolved ? resolvedBy || null : null,
+  };
+}
+
+function normalizeTaskCategory(value: string | null | undefined): CustomerInternalTaskCategory {
+  switch (value) {
+    case "customer_followup":
+    case "problem_case":
+    case "procurement":
+    case "production":
+    case "call":
+    case "admin":
+    case "other":
+      return value;
+    default:
+      return "other";
+  }
+}
+
+function normalizeTaskPriority(value: string | null | undefined): CustomerInternalTaskPriority {
+  switch (value) {
+    case "low":
+    case "normal":
+    case "high":
+    case "urgent":
+      return value;
+    default:
+      return "normal";
+  }
+}
+
+function taskActorLabel(metadata: Record<string, unknown>) {
+  return (
+    auditText(metadata, "operator_name") ||
+    auditText(metadata, "actor_label") ||
+    (typeof metadata.actor === "object" && metadata.actor && "label" in metadata.actor
+      ? String((metadata.actor as { label?: string }).label || "")
+      : null)
+  );
+}
+
+function taskOriginLabel(task: Pick<CustomerInternalTask, "category" | "requestId" | "customerName">) {
+  const prefix = task.requestId
+    ? task.customerName
+      ? `Kunde: ${task.customerName}`
+      : `Request: ${task.requestId}`
+    : "Intern";
+  switch (task.category) {
+    case "customer_followup":
+      return `${prefix} / Follow-up`;
+    case "problem_case":
+      return `${prefix} / Problemfall`;
+    case "procurement":
+      return `${prefix} / Nachbestellung`;
+    case "production":
+      return `${prefix} / Produktion`;
+    case "call":
+      return `${prefix} / Call`;
+    case "admin":
+      return "Intern / Admin";
+    default:
+      return prefix;
+  }
+}
+
+function isTaskOverdue(task: Pick<CustomerInternalTask, "status" | "dueAt">) {
+  if (task.status !== "open" || !task.dueAt) return false;
+  const due = new Date(task.dueAt).getTime();
+  return Number.isFinite(due) && due < Date.now();
+}
+
+export function buildCustomerInternalTaskBoardFromAudits(
+  audits: WorkflowAuditRow[],
+  options?: {
+    requestId?: string | null;
+    assigneeName?: string | null;
+    includeDone?: boolean;
+  },
+): CustomerInternalTaskBoard {
+  const byId = new Map<string, CustomerInternalTask>();
+  const ordered = [...audits]
+    .filter((row) => CUSTOMER_RECORDS_TASK_ACTIONS.has(String(row.action || "")))
+    .sort((left, right) => new Date(left.created_at || 0).getTime() - new Date(right.created_at || 0).getTime());
+
+  for (const row of ordered) {
+    const metadata = row.metadata || {};
+    const taskId = auditText(metadata, "task_id");
+    if (!taskId) continue;
+    const existing = byId.get(taskId) || null;
+    const action = String(row.action || "");
+    const patch = {
+      title: auditText(metadata, "task_title"),
+      description: auditText(metadata, "task_description"),
+      category: normalizeTaskCategory(auditText(metadata, "task_category")),
+      priority: normalizeTaskPriority(auditText(metadata, "task_priority")),
+      assigneeName: auditText(metadata, "task_assignee_name"),
+      dueAt: auditText(metadata, "task_due_at"),
+      requestId: auditText(metadata, "task_request_id") || auditText(metadata, "request_id") || null,
+      customerName: auditText(metadata, "task_customer_name"),
+      customerEmail: auditText(metadata, "task_customer_email"),
+      latestNote: auditText(metadata, "task_note") || auditText(metadata, "task_completion_note"),
+      clientActionId: auditText(metadata, "task_client_action_id"),
+      idempotencyKey: auditText(metadata, "task_idempotency_key"),
+      sourceType: auditText(metadata, "task_source_type"),
+      sourceId: auditText(metadata, "task_source_id"),
+      actor: taskActorLabel(metadata),
+    };
+
+    if (!existing) {
+      byId.set(taskId, {
+        id: taskId,
+        title: patch.title || "Interne Aufgabe",
+        description: patch.description,
+        status: action === CUSTOMER_RECORDS_TASK_COMPLETED_ACTION ? "done" : "open",
+        category: patch.category,
+        priority: patch.priority,
+        assigneeName: patch.assigneeName,
+        dueAt: patch.dueAt,
+        requestId: patch.requestId,
+        customerName: patch.customerName,
+        customerEmail: patch.customerEmail,
+        createdAt: row.created_at || null,
+        createdBy: patch.actor,
+        updatedAt: row.created_at || null,
+        updatedBy: patch.actor,
+        completedAt: action === CUSTOMER_RECORDS_TASK_COMPLETED_ACTION ? row.created_at || null : null,
+        completedBy: action === CUSTOMER_RECORDS_TASK_COMPLETED_ACTION ? patch.actor : null,
+        latestNote: patch.latestNote,
+        clientActionId: patch.clientActionId,
+        idempotencyKey: patch.idempotencyKey,
+        sourceType: patch.sourceType,
+        sourceId: patch.sourceId,
+        originLabel: "Intern",
+        overdue: false,
+      });
+    } else {
+      byId.set(taskId, {
+        ...existing,
+        title: patch.title || existing.title,
+        description: patch.description ?? existing.description,
+        category: patch.category || existing.category,
+        priority: patch.priority || existing.priority,
+        assigneeName: patch.assigneeName ?? existing.assigneeName,
+        dueAt: patch.dueAt ?? existing.dueAt,
+        requestId: patch.requestId ?? existing.requestId,
+        customerName: patch.customerName ?? existing.customerName,
+        customerEmail: patch.customerEmail ?? existing.customerEmail,
+        status:
+          action === CUSTOMER_RECORDS_TASK_COMPLETED_ACTION
+            ? "done"
+            : action === CUSTOMER_RECORDS_TASK_REOPENED_ACTION
+              ? "open"
+              : existing.status,
+        updatedAt: row.created_at || existing.updatedAt,
+        updatedBy: patch.actor || existing.updatedBy,
+        completedAt:
+          action === CUSTOMER_RECORDS_TASK_COMPLETED_ACTION
+            ? row.created_at || existing.completedAt
+            : action === CUSTOMER_RECORDS_TASK_REOPENED_ACTION
+              ? null
+              : existing.completedAt,
+        completedBy:
+          action === CUSTOMER_RECORDS_TASK_COMPLETED_ACTION
+            ? patch.actor || existing.completedBy
+            : action === CUSTOMER_RECORDS_TASK_REOPENED_ACTION
+              ? null
+              : existing.completedBy,
+        latestNote: patch.latestNote ?? existing.latestNote,
+        clientActionId: patch.clientActionId ?? existing.clientActionId,
+        idempotencyKey: patch.idempotencyKey ?? existing.idempotencyKey,
+        sourceType: patch.sourceType ?? existing.sourceType,
+        sourceId: patch.sourceId ?? existing.sourceId,
+      });
+    }
+  }
+
+  let tasks = [...byId.values()].map((task) => ({
+    ...task,
+    originLabel: taskOriginLabel(task),
+    overdue: isTaskOverdue(task),
+  }));
+
+  const requestId = trimNullable(options?.requestId);
+  const assigneeName = trimNullable(options?.assigneeName)?.toLowerCase();
+  if (requestId) {
+    tasks = tasks.filter((task) => task.requestId === requestId);
+  }
+  if (assigneeName) {
+    tasks = tasks.filter((task) => (task.assigneeName || "").trim().toLowerCase() === assigneeName);
+  }
+  if (!options?.includeDone) {
+    tasks = tasks.filter((task) => task.status === "open");
+  }
+
+  tasks.sort((left, right) => {
+    if (left.status !== right.status) return left.status === "open" ? -1 : 1;
+    if (left.overdue !== right.overdue) return left.overdue ? -1 : 1;
+    const priorityRank: Record<CustomerInternalTaskPriority, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+    if (priorityRank[left.priority] !== priorityRank[right.priority]) return priorityRank[left.priority] - priorityRank[right.priority];
+    const leftDue = left.dueAt ? new Date(left.dueAt).getTime() : Number.POSITIVE_INFINITY;
+    const rightDue = right.dueAt ? new Date(right.dueAt).getTime() : Number.POSITIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+    return new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime();
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    tasks,
+    counts: {
+      open: tasks.filter((task) => task.status === "open").length,
+      dueToday: tasks.filter((task) => task.status === "open" && task.dueAt?.slice(0, 10) === today).length,
+      overdue: tasks.filter((task) => task.overdue).length,
+      urgent: tasks.filter((task) => task.status === "open" && task.priority === "urgent").length,
+      done: tasks.filter((task) => task.status === "done").length,
+    },
   };
 }
 
@@ -4101,6 +4410,10 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
     caseFlow,
     opsState: buildOpsStateSummary(context, callOps),
     activeViewers: mapActiveViewers(context),
+    internalTasks: buildCustomerInternalTaskBoardFromAudits(context.audits, {
+      requestId: context.master.request_id,
+      includeDone: true,
+    }).tasks,
     relatedRequests: context.relatedCustomers.map((row) => {
       const relatedRequest = context.relatedRequestRows.find((entry) => entry.request_id === row.request_id) || null;
       const relatedQuote = context.relatedQuoteRows.find((entry) => entry.request_id === row.request_id) || null;
@@ -5641,6 +5954,313 @@ export async function rollbackLastCustomerRecordUpdate(requestId: string, actor?
     record: mapSearchResult(await fetchCustomerContextByRequestId(normalizedRequestId)),
     count: 1,
   };
+}
+
+function normalizeTaskTitle(value: string | null | undefined) {
+  const title = trimNullable(value);
+  if (!title) {
+    throw new QuoteValidationError("Bitte einen Aufgabentitel angeben.");
+  }
+  if (title.length > 180) {
+    throw new QuoteValidationError("Aufgabentitel darf maximal 180 Zeichen lang sein.");
+  }
+  return title;
+}
+
+function normalizeTaskDueAt(value: string | null | undefined) {
+  const dueAt = trimNullable(value);
+  if (!dueAt) return null;
+  const parsed = new Date(dueAt).getTime();
+  if (!Number.isFinite(parsed)) {
+    throw new QuoteValidationError("Bitte ein gueltiges Faelligkeitsdatum angeben.");
+  }
+  return dueAt.length === 10 ? `${dueAt}T09:00:00.000Z` : new Date(dueAt).toISOString();
+}
+
+function taskAuditDocumentId(taskId: string, requestId: string | null) {
+  return requestId || `internal-task:${taskId}`;
+}
+
+function normalizeTaskIdentityPart(value: string | null | undefined, maxLength = 180) {
+  const normalized = trimNullable(value);
+  return normalized ? normalized.slice(0, maxLength) : null;
+}
+
+function normalizeTaskSourceType(value: string | null | undefined) {
+  const normalized = normalizeTaskIdentityPart(value, 80)?.toLowerCase().replace(/[^a-z0-9:_-]+/g, "_");
+  return normalized || null;
+}
+
+export function buildCustomerInternalTaskIdentity(input: Pick<
+  CustomerInternalTaskInput,
+  "clientActionId" | "idempotencyKey" | "sourceType" | "sourceId"
+>) {
+  const clientActionId = normalizeTaskIdentityPart(input.clientActionId);
+  const explicitKey = normalizeTaskIdentityPart(input.idempotencyKey) || clientActionId;
+  const sourceType = normalizeTaskSourceType(input.sourceType);
+  const sourceId = normalizeTaskIdentityPart(input.sourceId, 240);
+  const idempotencyKey = explicitKey
+    ? `client:${explicitKey}`
+    : sourceType && sourceId
+      ? `source:${sourceType}:${sourceId}`
+      : null;
+
+  return {
+    clientActionId,
+    idempotencyKey,
+    sourceType,
+    sourceId,
+    taskId: idempotencyKey
+      ? `task_${createHash("sha256").update(`neontrip:internal-task:${idempotencyKey}`).digest("hex").slice(0, 32)}`
+      : null,
+  };
+}
+
+function buildTaskAuditMetadata(input: {
+  taskId: string;
+  title: string;
+  description?: string | null;
+  category: CustomerInternalTaskCategory;
+  priority: CustomerInternalTaskPriority;
+  assigneeName?: string | null;
+  dueAt?: string | null;
+  requestId?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  note?: string | null;
+  clientActionId?: string | null;
+  idempotencyKey?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  actor?: UpdateActor;
+}) {
+  return {
+    task_id: input.taskId,
+    task_title: input.title,
+    task_description: trimNullable(input.description),
+    task_category: input.category,
+    task_priority: input.priority,
+    task_assignee_name: trimNullable(input.assigneeName),
+    task_due_at: input.dueAt || null,
+    task_request_id: trimNullable(input.requestId),
+    task_customer_name: trimNullable(input.customerName),
+    task_customer_email: trimNullable(input.customerEmail),
+    task_note: trimNullable(input.note),
+    task_client_action_id: trimNullable(input.clientActionId),
+    task_idempotency_key: trimNullable(input.idempotencyKey),
+    task_source_type: trimNullable(input.sourceType),
+    task_source_id: trimNullable(input.sourceId),
+    operator_name: trimNullable(input.actor?.operatorName),
+    actor_label: actorLabel(input.actor),
+  };
+}
+
+async function insertTaskAuditLog(input: {
+  documentId: string;
+  action: string;
+  status?: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+  actor?: UpdateActor;
+}) {
+  await supabaseRequest("workflow_audit_log", {
+    method: "POST",
+    body: JSON.stringify({
+      document_id: input.documentId,
+      workflow_name: CUSTOMER_RECORDS_WORKFLOW_NAME,
+      action: input.action,
+      status: input.status || "success",
+      metadata: {
+        request_id: input.documentId.startsWith("internal-task:") ? null : input.documentId,
+        summary: input.summary,
+        actor_label: actorLabel(input.actor),
+        actor: input.actor || null,
+        ...input.metadata,
+      },
+    }),
+    headers: { Prefer: "return=minimal" },
+  });
+}
+
+async function fetchInternalTaskAuditRows(options: {
+  limit?: number;
+  requestId?: string | null;
+  taskId?: string | null;
+} = {}) {
+  const requestId = trimNullable(options.requestId);
+  const taskId = trimNullable(options.taskId);
+  const query: Record<string, string | number> = {
+    select: "id,document_id,workflow_name,action,status,error_message,metadata,created_at",
+    workflow_name: `eq.${CUSTOMER_RECORDS_WORKFLOW_NAME}`,
+    action: `in.(${[
+      CUSTOMER_RECORDS_TASK_CREATED_ACTION,
+      CUSTOMER_RECORDS_TASK_UPDATED_ACTION,
+      CUSTOMER_RECORDS_TASK_COMPLETED_ACTION,
+      CUSTOMER_RECORDS_TASK_REOPENED_ACTION,
+    ].join(",")})`,
+    order: "created_at.desc",
+    limit: options.limit || (requestId || taskId ? 5000 : 1000),
+  };
+
+  if (requestId) {
+    const encodedRequestId = encodeURIComponent(requestId);
+    query.or = `(${[
+      `document_id.eq.${encodedRequestId}`,
+      `metadata->>task_request_id.eq.${encodedRequestId}`,
+      `metadata->>request_id.eq.${encodedRequestId}`,
+    ].join(",")})`;
+  }
+  if (taskId) {
+    query["metadata->>task_id"] = `eq.${encodeURIComponent(taskId)}`;
+  }
+
+  return supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, query);
+}
+
+export async function listCustomerInternalTasks(options?: {
+  requestId?: string | null;
+  assigneeName?: string | null;
+  includeDone?: boolean;
+  limit?: number;
+}): Promise<CustomerInternalTaskBoard> {
+  let rows: WorkflowAuditRow[];
+  try {
+    rows = await fetchInternalTaskAuditRows({
+      requestId: options?.requestId,
+      limit: options?.limit,
+    });
+  } catch (error) {
+    if (!options?.requestId || !(error instanceof SupabaseRestError)) throw error;
+    rows = await fetchInternalTaskAuditRows({ limit: options?.limit || 5000 });
+  }
+  return buildCustomerInternalTaskBoardFromAudits(rows, options);
+}
+
+async function getCustomerTaskContext(requestId: string | null) {
+  if (!requestId) return null;
+  const context = await fetchCustomerContextByRequestId(normalizeRequestSearch(requestId));
+  return {
+    requestId: context.master.request_id,
+    customerName: toEditableSnapshot(context.master).displayName,
+    customerEmail: normalizeEmail(context.master.email),
+  };
+}
+
+function findInternalTask(board: CustomerInternalTaskBoard, taskId: string) {
+  const task = board.tasks.find((entry) => entry.id === taskId);
+  if (!task) {
+    throw new QuoteValidationError("Aufgabe wurde nicht gefunden.", [], 404);
+  }
+  return task;
+}
+
+async function getCustomerInternalTaskById(taskId: string) {
+  try {
+    return findInternalTask(
+      buildCustomerInternalTaskBoardFromAudits(await fetchInternalTaskAuditRows({ taskId, limit: 500 }), { includeDone: true }),
+      taskId,
+    );
+  } catch (error) {
+    if (!(error instanceof SupabaseRestError)) throw error;
+    return findInternalTask(
+      buildCustomerInternalTaskBoardFromAudits(await fetchInternalTaskAuditRows({ limit: 5000 }), { includeDone: true }),
+      taskId,
+    );
+  }
+}
+
+async function findExistingCustomerInternalTaskById(taskId: string) {
+  try {
+    return await getCustomerInternalTaskById(taskId);
+  } catch (error) {
+    if (error instanceof QuoteValidationError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function createCustomerInternalTask(
+  input: CustomerInternalTaskInput,
+  actor?: UpdateActor,
+): Promise<CustomerInternalTask> {
+  const identity = buildCustomerInternalTaskIdentity(input);
+  const taskId = identity.taskId || crypto.randomUUID();
+  const title = normalizeTaskTitle(input.title);
+  const existing = identity.taskId ? await findExistingCustomerInternalTaskById(identity.taskId) : null;
+  if (existing) return existing;
+
+  const requestId = trimNullable(input.requestId);
+  const context = await getCustomerTaskContext(requestId);
+  const category = normalizeTaskCategory(input.category || (requestId ? "customer_followup" : "other"));
+  const priority = normalizeTaskPriority(input.priority || "normal");
+  const dueAt = normalizeTaskDueAt(input.dueAt);
+
+  await insertTaskAuditLog({
+    documentId: taskAuditDocumentId(taskId, context?.requestId || requestId),
+    action: CUSTOMER_RECORDS_TASK_CREATED_ACTION,
+    summary: `Interne Aufgabe erstellt: ${title}`,
+    metadata: buildTaskAuditMetadata({
+      taskId,
+      title,
+      description: input.description,
+      category,
+      priority,
+      assigneeName: input.assigneeName,
+      dueAt,
+      requestId: context?.requestId || requestId,
+      customerName: context?.customerName || null,
+      customerEmail: context?.customerEmail || null,
+      clientActionId: identity.clientActionId,
+      idempotencyKey: identity.idempotencyKey,
+      sourceType: identity.sourceType,
+      sourceId: identity.sourceId,
+      actor,
+    }),
+    actor,
+  });
+
+  return getCustomerInternalTaskById(taskId);
+}
+
+export async function completeCustomerInternalTask(
+  taskId: string,
+  note?: string | null,
+  actor?: UpdateActor,
+): Promise<CustomerInternalTask> {
+  const normalizedTaskId = trimNullable(taskId);
+  if (!normalizedTaskId) {
+    throw new QuoteValidationError("Bitte eine Aufgaben-ID angeben.");
+  }
+  const existing = await getCustomerInternalTaskById(normalizedTaskId);
+  if (existing.status === "done") return existing;
+
+  await insertTaskAuditLog({
+    documentId: taskAuditDocumentId(normalizedTaskId, existing.requestId),
+    action: CUSTOMER_RECORDS_TASK_COMPLETED_ACTION,
+    summary: `Interne Aufgabe erledigt: ${existing.title}`,
+    metadata: {
+      ...buildTaskAuditMetadata({
+        taskId: normalizedTaskId,
+        title: existing.title,
+        description: existing.description,
+        category: existing.category,
+        priority: existing.priority,
+        assigneeName: existing.assigneeName,
+        dueAt: existing.dueAt,
+        requestId: existing.requestId,
+        customerName: existing.customerName,
+        customerEmail: existing.customerEmail,
+        clientActionId: existing.clientActionId,
+        idempotencyKey: existing.idempotencyKey,
+        sourceType: existing.sourceType,
+        sourceId: existing.sourceId,
+        actor,
+      }),
+      task_completion_note: trimNullable(note),
+    },
+    actor,
+  });
+
+  return getCustomerInternalTaskById(normalizedTaskId);
 }
 
 export async function pausePendingCustomerFollowups(

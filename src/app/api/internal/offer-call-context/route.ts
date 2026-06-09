@@ -124,6 +124,36 @@ function customerRecordUrl(record: CustomerSearchResult) {
   return `/ops/customer-records?query=${encodeURIComponent(record.requestId)}`;
 }
 
+function pendingOfferCallTask(record: CustomerSearchResult) {
+  const candidates = record.internalTasks
+    .filter((task) => (
+      task.status === "open" &&
+      task.category === "call" &&
+      (
+        task.sourceType === "neontrip_offer_call" ||
+        task.sourceType === "neontrip_inquiry_call" ||
+        /angebot|anfrage|anruf/i.test(task.title)
+      )
+    ))
+    .sort((left, right) => {
+      const leftDue = left.dueAt ? new Date(left.dueAt).getTime() : Number.POSITIVE_INFINITY;
+      const rightDue = right.dueAt ? new Date(right.dueAt).getTime() : Number.POSITIVE_INFINITY;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+      return new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime();
+    });
+
+  const task = candidates[0] || null;
+  if (!task) return null;
+  return {
+    id: task.id,
+    title: task.title,
+    dueAt: task.dueAt,
+    assigneeName: task.assigneeName,
+    sourceType: task.sourceType,
+    sourceId: task.sourceId,
+  };
+}
+
 function summarizeRecord(record: CustomerSearchResult, matchType: MatchType) {
   return {
     matched: true,
@@ -147,6 +177,7 @@ function summarizeRecord(record: CustomerSearchResult, matchType: MatchType) {
     nextFollowupAt: record.affectedRows.nextPendingFollowupAt,
     lastTouchAt: record.relatedRequests[0]?.lastTouchAt || record.updatedAt,
     lastTouchLabel: record.relatedRequests[0]?.lastTouchLabel || null,
+    pendingOfferCallTask: pendingOfferCallTask(record),
   };
 }
 
