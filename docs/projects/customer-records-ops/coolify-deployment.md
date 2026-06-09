@@ -75,6 +75,7 @@ SUPABASE_URL=https://klibiejfisijpagzkxls.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<secret>
 TRELLO_API_KEY=<secret>
 TRELLO_TOKEN=<secret>
+SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN=<secret>
 ```
 
 Final mit Cloudflare Access:
@@ -166,8 +167,10 @@ Browser-QA:
 
 - `https://ops.neontrip.de/ops/customer-records`
 - `https://ops.neontrip.de/ops/customer-records/calls`
+- `https://ops.neontrip.de/ops/customer-records/price-review`
 - Kontakt suchen.
 - Calls-Liste laden.
+- Preispruefung laden und offene Anker/Schattenpreise sehen.
 - Bild sichtbar.
 - Segment bestaetigen/aendern.
 - Rueckruf speichern.

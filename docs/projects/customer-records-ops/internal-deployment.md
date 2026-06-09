@@ -7,7 +7,7 @@ Ziel: Customer Records Ops und Sales Calls intern veroeffentlichen, ohne lokalen
 ## Zielarchitektur
 
 - Eigene interne Subdomain: `ops.neontrip.de`
-- Hosting als Next.js App mit Server/API-Unterstuetzung, z. B. Vercel, Render, Fly.io, Railway, eigener Node-Server mit named Cloudflare Tunnel oder ein validierter Cloudflare-Workers/Pages-Adapter
+- Hosting als Next.js App mit Server/API-Unterstuetzung auf dem bestehenden Hetzner/Coolify-Server
 - Cloudflare DNS zeigt auf den App-Origin
 - Cloudflare Access schuetzt `ops.neontrip.de/*`
 - Die App validiert zusaetzlich das `Cf-Access-Jwt-Assertion` JWT gegen Cloudflare Access
@@ -34,6 +34,7 @@ Diese Werte muessen nur in der Deployment-Umgebung gesetzt werden:
 - `TRELLO_TOKEN`
 - `OPS_CLOUDFLARE_ACCESS_ISSUER`
 - `OPS_CLOUDFLARE_ACCESS_AUD`
+- `SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN`
 
 Empfohlen:
 
@@ -97,7 +98,7 @@ Der Preflight gibt keine Secret-Werte aus.
 
 ## Container-Deploy
 
-Fuer Render/Fly/Railway/eigenen Server liegt ein portabler Node-Container bereit:
+Fuer Coolify/eigenen Server liegt ein portabler Node-Container bereit:
 
 ```bash
 docker build -f Dockerfile.ops -t neontrip-ops .
@@ -107,22 +108,26 @@ docker run --env-file .env.ops -p 3000:3000 neontrip-ops
 `.env.ops` darf nicht committed werden. Sie muss mindestens die Pflicht-Env aus diesem Dokument enthalten.
 Der Container-Build muss `npm ci` ohne Vulnerabilities und `npm run build` erfolgreich abschliessen.
 
-## Render-Blueprint
+## Coolify Application
 
-Fuer den schnellsten externen Host liegt `render.yaml` bereit. Der Blueprint nutzt `Dockerfile.ops` und speichert Secret-Werte nicht im Repo.
+Der produktive Zielhost ist Coolify auf dem bestehenden Hetzner-Server. Die App nutzt `Dockerfile.ops`; Secret-Werte liegen nur in Coolify Environment Variables, nicht im Repo.
 
-In Render:
+In Coolify:
 
-1. Neues Blueprint/Web-Service-Deploy aus dem Repository erstellen.
-2. Service `neontrip-ops` aus `render.yaml` auswaehlen.
-3. Secrets aus `.env.ops.example` in Render setzen:
+1. Application aus dem Repository erstellen.
+2. Build Pack `Dockerfile` verwenden.
+3. Dockerfile Path `Dockerfile.ops` setzen.
+4. Internal/Exposed Port `3000` setzen.
+5. Domain `https://ops.neontrip.de` setzen.
+6. Secrets aus `.env.ops.example` in Coolify setzen:
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `TRELLO_API_KEY`
    - `TRELLO_TOKEN`
+   - `SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN`
    - `OPS_CLOUDFLARE_ACCESS_ISSUER`
    - `OPS_CLOUDFLARE_ACCESS_AUD`
    - optional `OPS_PLACETEL_CONTACT_URL_TEMPLATE`
-4. Custom Domain `ops.neontrip.de` erst nach Cloudflare-Access-Konfiguration live schalten.
+7. Custom Domain `ops.neontrip.de` erst nach Cloudflare-Access-Konfiguration live schalten.
 
 Nach dem Start:
 
@@ -152,8 +157,10 @@ Vor Production-Switch muessen diese Pfade getestet werden:
 
 - `https://ops.neontrip.de/ops/customer-records`
 - `https://ops.neontrip.de/ops/customer-records/calls`
+- `https://ops.neontrip.de/ops/customer-records/price-review`
 - `https://ops.neontrip.de/api/ops/customer-records`
 - `https://ops.neontrip.de/api/ops/customer-records/calls`
+- `https://ops.neontrip.de/api/ops/customer-records/price-predictions?status=pending&limit=10`
 - `https://ops.neontrip.de/api/ops/customer-records/actions`
 - `https://ops.neontrip.de/api/ops/customer-records/notes`
 - `https://ops.neontrip.de/api/ops/customer-records/trello-card`
@@ -197,7 +204,7 @@ Ohne diese Migrationen:
 
 ## Offene Entscheidungen
 
-- Hosting-Ziel festlegen: Vercel/Render/Fly/Railway oder Cloudflare mit validiertem Next-Adapter.
+- Coolify-Application fuer den aktuellen Ops-Code deployen.
 - Mitarbeiter-Emails oder Domain-Allowlist final festlegen.
 - Cloudflare Access Identity Provider festlegen.
 - Direct-Origin-Schutz des gewaehlten Hosters pruefen.
