@@ -6,6 +6,7 @@ import {
   AtSign,
   BadgeCheck,
   Building2,
+  CheckCircle2,
   CheckSquare2,
   Clock3,
   Database,
@@ -4454,6 +4455,58 @@ function buildQuickCallDraft(
               ? `Direkt aus ${surface} als Lösch-/Kontaktstopp protokolliert.`
               : `Direkt aus ${surface} als kein Interesse protokolliert.`,
   };
+}
+
+function buildPendingCallbackDoneDraft(record: CustomerSearchResult, surface: string): CallLogDraft {
+  return {
+    reached: true,
+    leftVoicemail: false,
+    customerOnVacation: false,
+    askedForCallback: false,
+    noInterest: false,
+    emailConfirmed: false,
+    offerDiscussed: Boolean(record.quote || record.crmQuote),
+    whatsappPreferred: false,
+    deleteRequested: false,
+    note: `Anstehender Rückruf aus ${surface} als erledigt markiert. Termin: ${formatDate(record.callOps.nextCallbackAt)}.`,
+  };
+}
+
+function PendingCallbackDonePanel({
+  record,
+  running,
+  surface,
+  onComplete,
+}: {
+  record: CustomerSearchResult;
+  running: boolean;
+  surface: string;
+  onComplete: (requestId: string, call: CallLogDraft) => Promise<void>;
+}) {
+  if (!record.callOps.nextCallbackAt) return null;
+
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-800/70">Anstehender Anruf</div>
+          <div className="mt-1 font-semibold">Rückruf {formatDate(record.callOps.nextCallbackAt)}</div>
+          <div className="mt-1 leading-6 text-emerald-900/70">
+            Direkt als erledigt protokollieren, wenn der Anruf gerade abgeschlossen wurde.
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={running}
+          onClick={() => onComplete(record.requestId, buildPendingCallbackDoneDraft(record, surface))}
+          className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-emerald-300"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          Anruf erledigt
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function opsStatePillClass(record: CustomerSearchResult) {
@@ -16601,6 +16654,7 @@ function DealSourceWorkspace({
   onNotify,
   currentOperator,
   actionRunning,
+  onCompletePendingCallback,
   onApplyTeamState,
   simpleView = false,
 }: {
@@ -16609,6 +16663,7 @@ function DealSourceWorkspace({
   onNotify: (message: string) => void;
   currentOperator: string;
   actionRunning: boolean;
+  onCompletePendingCallback: (requestId: string, call: CallLogDraft) => Promise<void>;
   onApplyTeamState: (requestId: string, input: CustomerTeamStateInput) => Promise<void>;
   simpleView?: boolean;
 }) {
@@ -16664,6 +16719,16 @@ function DealSourceWorkspace({
 
     return (
       <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
+        {record.callOps.nextCallbackAt ? (
+          <div className="mb-4">
+            <PendingCallbackDonePanel
+              record={record}
+              running={actionRunning}
+              surface="Angebotsbereich"
+              onComplete={onCompletePendingCallback}
+            />
+          </div>
+        ) : null}
         <div className="mb-4">
           <OfferEditorPanel record={record} operatorName={currentOperator} onNotify={onNotify} simpleView />
         </div>
@@ -16734,6 +16799,12 @@ function DealSourceWorkspace({
 
   return (
     <div className="space-y-5">
+      <PendingCallbackDonePanel
+        record={record}
+        running={actionRunning}
+        surface="Angebotsbereich"
+        onComplete={onCompletePendingCallback}
+      />
       <OfferEditorPanel record={record} operatorName={currentOperator} onNotify={onNotify} />
       <DealAttributionPanel record={record} />
 
@@ -19887,6 +19958,7 @@ function RecordCard({
   onRescheduleFollowups,
   onBlockContact,
   onLogCall,
+  onCompletePendingCallback,
   onScheduleCallback,
   onApplySegment,
   onStartSalesRecovery,
@@ -19924,6 +19996,7 @@ function RecordCard({
   onRescheduleFollowups: (requestId: string, resumeAt: string, reason: string) => Promise<void>;
   onBlockContact: (requestId: string, reason: string) => Promise<void>;
   onLogCall: (requestId: string, call: CallLogDraft) => Promise<void>;
+  onCompletePendingCallback: (requestId: string, call: CallLogDraft) => Promise<void>;
   onScheduleCallback: (requestId: string, resumeAt: string, reason: string) => Promise<void>;
   onApplySegment: (requestId: string, segment: string) => Promise<void>;
   onStartSalesRecovery: (requestId: string, reason: string) => Promise<void>;
@@ -20677,6 +20750,7 @@ function RecordCard({
               onNotify={onNotify}
               currentOperator={operatorName}
               actionRunning={actionRunning}
+              onCompletePendingCallback={onCompletePendingCallback}
               onApplyTeamState={onApplyTeamState}
               simpleView={simpleView}
             />
@@ -22006,6 +22080,10 @@ export function CustomerRecordsClient({
 
   async function runQuickCallPreset(requestId: string, call: CallLogDraft) {
     await logCall(requestId, call);
+  }
+
+  async function completePendingCallback(requestId: string, call: CallLogDraft) {
+    await runRecordAction(requestId, "log_customer_call", { call });
   }
 
   async function syncCaseFlowStateAction(requestId: string, flowState: CaseFlowStateDraft) {
@@ -24561,6 +24639,7 @@ export function CustomerRecordsClient({
                   runRecordAction(requestId, "block_customer_contact", { reason })
                 }
                 onLogCall={logCall}
+                onCompletePendingCallback={completePendingCallback}
                 onScheduleCallback={scheduleCallback}
                 onApplySegment={applySegment}
                 onStartSalesRecovery={startSalesRecovery}
@@ -24944,6 +25023,7 @@ export function CustomerRecordsClient({
                   runRecordAction(requestId, "block_customer_contact", { reason })
                 }
                 onLogCall={logCall}
+                onCompletePendingCallback={completePendingCallback}
                 onScheduleCallback={scheduleCallback}
                 onApplySegment={applySegment}
                 onStartSalesRecovery={startSalesRecovery}

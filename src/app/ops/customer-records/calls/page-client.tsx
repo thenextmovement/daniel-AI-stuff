@@ -1486,10 +1486,6 @@ export function CustomerSalesCallsClient({
       setError("Bitte zuerst einen Fall öffnen.");
       return;
     }
-    if (!notes.trim()) {
-      setError("Bitte eine Pflichtnotiz eintragen.");
-      return;
-    }
     if (needsPostReminderDecision(selectedItem, preset) && !postReminderDecision) {
       setError("Bitte nach dem Reminder-Call festlegen, wie der Fall weiterlaufen soll.");
       return;
@@ -2224,7 +2220,7 @@ export function CustomerSalesCallsClient({
 
         {selectedItem && detailOpen ? (
           <div className="fixed inset-0 z-50 flex items-start justify-center bg-stone-950/55 px-4 py-6 backdrop-blur-sm">
-            <div className="max-h-[calc(100vh-3rem)] w-full max-w-6xl overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20">
+            <div className="max-h-[calc(100vh-1.5rem)] w-full max-w-6xl overflow-hidden rounded-[1.35rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20 sm:max-h-[calc(100vh-3rem)] sm:rounded-[2rem]">
               <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Detail & Ergebnis</p>
@@ -2242,7 +2238,18 @@ export function CustomerSalesCallsClient({
                 </button>
               </div>
 
-              <div className="grid max-h-[calc(100vh-7rem)] overflow-y-auto lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              {message ? (
+                <div role="status" className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-900">
+                  <span className="font-semibold">Gespeichert.</span> {message}
+                </div>
+              ) : null}
+              {error ? (
+                <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-800">
+                  {error}
+                </div>
+              ) : null}
+
+              <div className="grid max-h-[calc(100vh-7.5rem)] overflow-y-auto sm:max-h-[calc(100vh-7rem)] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                 <div className="border-b border-stone-200 bg-stone-50 p-5 lg:border-b-0 lg:border-r">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${stageTone(selectedItem.cadence.currentStage)}`}>
@@ -2508,12 +2515,12 @@ export function CustomerSalesCallsClient({
                   ) : null}
 
                   <div className="mt-5 space-y-2">
-                    <label className="text-sm font-medium text-stone-900">Pflichtnotiz</label>
+                    <label className="text-sm font-medium text-stone-900">Notiz optional</label>
                     <textarea
                       value={notes}
                       onChange={(event) => setNotes(event.target.value)}
                       className="min-h-36 w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-stone-900"
-                      placeholder="Echten Gesprächs- oder Prüfkontext eintragen. Keine Kurzform wie Mailbox, interessiert oder Rückruf vereinbart."
+                      placeholder="Optionaler Gesprächskontext, z. B. warum ein Rückruf sinnvoll ist oder was der Kunde gesagt hat."
                     />
                   </div>
 
@@ -2533,7 +2540,7 @@ export function CustomerSalesCallsClient({
                     </div>
                   ) : null}
 
-                  <div className="mt-5 flex flex-wrap gap-3">
+                  <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-stone-200 bg-white/95 px-5 py-4 backdrop-blur">
                     <button
                       onClick={() => void saveResult()}
                       disabled={saving}
@@ -2549,23 +2556,6 @@ export function CustomerSalesCallsClient({
                       Schließen
                     </button>
                   </div>
-
-                  {message ? (
-                    <div role="status" className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm">
-                      <div className="flex items-start gap-3">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                        <div>
-                          <div className="font-semibold">Gespeichert.</div>
-                          <div className="mt-1 text-emerald-900/75">{message}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                  {error ? (
-                    <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      {error}
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </div>

@@ -2581,13 +2581,29 @@ function buildCallOpsSummary(context: Pick<CustomerContext, "plans" | "audits" |
       return rightTime - leftTime;
     })
     .slice(0, 8);
+  const latestCallAtMs = Math.max(
+    ...[
+      latestLiveCall?.called_at,
+      latestLiveCall?.created_at,
+      latestCallAudit?.created_at,
+      latestVoiceCall?.created_at,
+    ].map((value) => {
+      const ms = value ? new Date(value).getTime() : 0;
+      return Number.isFinite(ms) ? ms : 0;
+    }),
+  );
+  const rawNextCallbackAt =
+    trimNullable(latestPlan?.call_after) ||
+    auditText(latestCallbackAudit?.metadata || {}, "resume_at") ||
+    trimNullable(latestLiveCall?.next_action_date);
+  const nextCallbackAtMs = rawNextCallbackAt ? new Date(rawNextCallbackAt).getTime() : 0;
+  const pendingCallbackAfterCall =
+    Boolean(rawNextCallbackAt) &&
+    (!Number.isFinite(nextCallbackAtMs) || !latestCallAtMs || nextCallbackAtMs > latestCallAtMs);
 
   return {
     contactabilityStatus: trimNullable(latestPlan?.contactability_status),
-    nextCallbackAt:
-      trimNullable(latestPlan?.call_after) ||
-      auditText(latestCallbackAudit?.metadata || {}, "resume_at") ||
-      trimNullable(latestLiveCall?.next_action_date),
+    nextCallbackAt: pendingCallbackAfterCall ? rawNextCallbackAt : null,
     planningReason:
       trimNullable(latestPlan?.planning_reason) ||
       auditText(latestCallbackAudit?.metadata || {}, "reason"),
