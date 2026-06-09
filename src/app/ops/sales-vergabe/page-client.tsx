@@ -1,0 +1,626 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  BadgeCheck,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  CreditCard,
+  ExternalLink,
+  Factory,
+  Mail,
+  RefreshCcw,
+  Search,
+  ShoppingCart,
+} from "lucide-react";
+import type {
+  SupplierSale,
+  SupplierSaleBoard,
+  SupplierSalePaymentDecision,
+  SupplierSaleSupplier,
+} from "@/lib/ops/supplier-sales";
+import { OpsLoginCard } from "../ops-login-card";
+import { OpsPageHeader } from "../ops-page-header";
+import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
+
+type SupplierSalesApiResponse = {
+  ok: boolean;
+  board?: SupplierSaleBoard;
+  sale?: SupplierSale;
+  warnings?: string[];
+  error?: string;
+  issues?: string[];
+};
+
+type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "all";
+type SupplierFilter = "all" | "quentin" | "said" | "special" | "manual_review";
+type PaymentFilter = "all" | "paid" | "unpaid" | "pending" | "authorized" | "partially_paid" | "unknown";
+
+function formatApiError(payload: { error?: string; issues?: string[] } | null) {
+  if (!payload) return "Unbekannter Fehler.";
+  if (payload.issues?.length) return payload.issues.join(" ");
+  return payload.error || "Unbekannter Fehler.";
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "Keine Deadline";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "Keine Deadline";
+  return new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(date);
+}
+
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatMoney(value: number | null, currency: string) {
+  if (value === null) return "-";
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
+}
+
+function paymentLabel(status: string) {
+  const labels: Record<string, string> = {
+    paid: "bezahlt",
+    pending: "offen",
+    authorized: "autorisiert",
+    partially_paid: "teilbezahlt",
+    refunded: "erstattet",
+    partially_refunded: "teilerstattet",
+    voided: "storniert",
+    expired: "abgelaufen",
+    unknown: "unklar",
+  };
+  return labels[status] || status;
+}
+
+function decisionLabel(status: string) {
+  const labels: Record<string, string> = {
+    paid_confirmed: "Zahlung bestaetigt",
+    manual_approved_unpaid: "unbezahlt freigegeben",
+    wait_for_payment: "wartet auf Zahlung",
+    pending: "Entscheidung offen",
+    refunded: "erstattet",
+    canceled: "storniert",
+  };
+  return labels[status] || status;
+}
+
+function supplierLabel(value: string | null | undefined, special?: string | null) {
+  if (value === "quentin") return "Quentin";
+  if (value === "said") return "Saeid";
+  if (value === "special") return special || "Sonder-Supplier";
+  if (value === "manual_review") return "Pruefen";
+  return "Unklar";
+}
+
+function paymentTone(sale: SupplierSale) {
+  if (sale.paymentDecisionStatus === "manual_approved_unpaid") return "border-amber-200 bg-amber-50 text-amber-900";
+  if (sale.shopifyPaymentStatus === "paid") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (sale.assignmentStatus === "payment_open") return "border-rose-200 bg-rose-50 text-rose-900";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
+function supplierTone(sale: SupplierSale) {
+  if (sale.recommendedSupplier === "quentin") return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900";
+  if (sale.recommendedSupplier === "said") return "border-sky-200 bg-sky-50 text-sky-900";
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function statusTone(sale: SupplierSale) {
+  if (sale.assignmentStatus === "assigned" || sale.assignmentStatus === "in_production") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (sale.assignmentStatus === "ready_to_assign") return "border-sky-200 bg-sky-50 text-sky-900";
+  if (sale.assignmentStatus === "payment_open") return "border-amber-200 bg-amber-50 text-amber-900";
+  if (sale.assignmentStatus === "canceled" || sale.assignmentStatus === "blocked") return "border-rose-200 bg-rose-50 text-rose-900";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
+function syncSummary(sale: SupplierSale) {
+  const parts = [
+    `Shopify ${sale.shopifyTagSyncStatus}`,
+    `Trello ${sale.trelloProjectionStatus}`,
+    `Aufgabe ${sale.taskSyncStatus}`,
+  ];
+  return parts.join(" · ");
+}
+
+function diagnosticTone(status: string) {
+  if (status === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "missing") return "border-rose-200 bg-rose-50 text-rose-900";
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function defaultSupplier(sale: SupplierSale): SupplierSaleSupplier {
+  if (sale.assignedSupplier) return sale.assignedSupplier;
+  if (sale.recommendedSupplier === "quentin") return "quentin";
+  if (sale.recommendedSupplier === "said") return "said";
+  return "said";
+}
+
+function defaultPaymentDecision(sale: SupplierSale): SupplierSalePaymentDecision {
+  if (sale.shopifyPaymentStatus === "paid") return "paid_confirmed";
+  if (sale.paymentDecisionStatus === "manual_approved_unpaid") return "manual_approved_unpaid";
+  return "manual_approved_unpaid";
+}
+
+function QuickLink({ href, label }: { href: string | null; label: string }) {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-[0.5rem] border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+    >
+      {label}
+      <ExternalLink className="h-3.5 w-3.5" />
+    </a>
+  );
+}
+
+function SaleCard({
+  sale,
+  operatorName,
+  onAction,
+  saving,
+}: {
+  sale: SupplierSale;
+  operatorName: string;
+  saving: boolean;
+  onAction: (body: Record<string, unknown>) => Promise<void>;
+}) {
+  const [supplier, setSupplier] = useState<SupplierSaleSupplier>(defaultSupplier(sale));
+  const [specialSupplierName, setSpecialSupplierName] = useState(sale.specialSupplierName || "");
+  const [deliveryDate, setDeliveryDate] = useState(sale.supplierDueDate || sale.customerDueDate || "");
+  const [paymentDecision, setPaymentDecision] = useState<SupplierSalePaymentDecision>(defaultPaymentDecision(sale));
+  const [assignmentNote, setAssignmentNote] = useState("");
+  const [assigneeLabel, setAssigneeLabel] = useState(operatorName || "Fabienne");
+  const [reminderLink, setReminderLink] = useState(sale.shopifyOrderUrl || "");
+
+  useEffect(() => {
+    setSupplier(defaultSupplier(sale));
+    setSpecialSupplierName(sale.specialSupplierName || "");
+    setDeliveryDate(sale.supplierDueDate || sale.customerDueDate || "");
+    setPaymentDecision(defaultPaymentDecision(sale));
+  }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus]);
+
+  const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
+  const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
+
+  return (
+    <article className="rounded-[0.5rem] border border-stone-200 bg-white p-4 shadow-sm">
+      <div className="grid gap-4 lg:grid-cols-[7rem_minmax(0,1fr)_minmax(20rem,0.78fr)]">
+        <div className="h-28 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100">
+          {sale.primaryImageUrl ? (
+            <img src={sale.primaryImageUrl} alt={sale.productSummary || "Produktbild"} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-stone-400">
+              <ShoppingCart className="h-7 w-7" />
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${paymentTone(sale)}`}>
+              {paymentLabel(sale.shopifyPaymentStatus)}
+            </span>
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${supplierTone(sale)}`}>
+              Empfehlung: {supplierLabel(sale.recommendedSupplier)}
+            </span>
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusTone(sale)}`}>
+              {sale.assignmentStatus}
+            </span>
+            {isOverdue ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-800">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                ueberfaellig
+              </span>
+            ) : null}
+          </div>
+
+          <h2 className="mt-3 truncate text-xl font-semibold text-stone-950">
+            {sale.shopifyOrderName || sale.offerNumber || sale.documentReference || sale.customerName || sale.saleKey}
+          </h2>
+          <p className="mt-1 text-sm text-stone-500">
+            {sale.customerName || "Kunde ohne Namen"} · {sale.customerEmail || "keine E-Mail"} · {formatMoney(sale.totalPrice, sale.currency)}
+          </p>
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-stone-600">
+            {sale.productSummary || sale.items.map((item) => item.title).join(", ") || "Keine Produktzusammenfassung"}
+          </p>
+
+          <div className="mt-4 grid gap-2 text-xs text-stone-500 sm:grid-cols-2">
+            <div className="inline-flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-stone-400" />
+              Kunde braucht es bis {formatDate(sale.customerDueDate)}
+            </div>
+            <div className="inline-flex items-center gap-2">
+              <Factory className="h-4 w-4 text-stone-400" />
+              {sale.assignedSupplier ? `vergeben an ${supplierLabel(sale.assignedSupplier, sale.specialSupplierName)}` : "noch nicht vergeben"}
+            </div>
+            <div className="inline-flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-stone-400" />
+              {decisionLabel(sale.paymentDecisionStatus)}
+            </div>
+            <div className="inline-flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-stone-400" />
+              {syncSummary(sale)}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <QuickLink href={sale.offerPublicUrl} label="Angebot" />
+            <QuickLink href={sale.finalPdfUrl} label="Snapshot" />
+            <QuickLink href={sale.shopifyOrderUrl} label="Shopify" />
+            <QuickLink href={sale.supplierTrelloCardUrl} label="Supplier-Karte" />
+            {sale.requestId ? <QuickLink href={`/ops/customer-records?query=${encodeURIComponent(sale.requestId)}`} label="Kundenakte" /> : null}
+          </div>
+        </div>
+
+        <div className="rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
+          <div className="grid gap-3">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-stone-600">Wann soll geliefert werden?</span>
+              <input
+                type="date"
+                value={deliveryDate}
+                onChange={(event) => setDeliveryDate(event.target.value)}
+                className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
+              />
+            </label>
+
+            <div className="grid grid-cols-2 gap-2">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium text-stone-600">Supplier</span>
+                <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSaleSupplier)} className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+                  <option value="quentin">Quentin</option>
+                  <option value="said">Saeid</option>
+                  <option value="special">Sonder</option>
+                </select>
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium text-stone-600">Aufgabe an</span>
+                <input value={assigneeLabel} onChange={(event) => setAssigneeLabel(event.target.value)} className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm" />
+              </label>
+            </div>
+
+            {supplier === "special" ? (
+              <input
+                value={specialSupplierName}
+                onChange={(event) => setSpecialSupplierName(event.target.value)}
+                className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
+                placeholder="Name Sonder-Supplier"
+              />
+            ) : null}
+
+            {needsManualPaymentRelease ? (
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium text-stone-600">Zahlungsentscheidung</span>
+                <select value={paymentDecision} onChange={(event) => setPaymentDecision(event.target.value as SupplierSalePaymentDecision)} className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+                  <option value="manual_approved_unpaid">Trotz offener Zahlung vergeben</option>
+                  <option value="wait_for_payment">Auf Zahlung warten</option>
+                </select>
+              </label>
+            ) : null}
+
+            <textarea
+              value={assignmentNote}
+              onChange={(event) => setAssignmentNote(event.target.value)}
+              className="min-h-16 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm"
+              placeholder="Notiz fuer Vergabe"
+            />
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                disabled={saving || !deliveryDate || (needsManualPaymentRelease && paymentDecision === "wait_for_payment")}
+                onClick={() => onAction({
+                  action: "assign_supplier",
+                  saleId: sale.id,
+                  supplier,
+                  requestedDeliveryDate: deliveryDate,
+                  specialSupplierName,
+                  assignmentNote,
+                  paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed",
+                  assigneeLabel,
+                  operatorName,
+                })}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+              >
+                <BadgeCheck className="h-4 w-4" />
+                Vergeben
+              </button>
+              {needsManualPaymentRelease ? (
+                <button
+                  disabled={saving}
+                  onClick={() => onAction({
+                    action: "update_payment_decision",
+                    saleId: sale.id,
+                    paymentDecisionStatus: "wait_for_payment",
+                    operatorName,
+                  })}
+                  className="rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
+                >
+                  Warten
+                </button>
+              ) : null}
+            </div>
+
+            {needsManualPaymentRelease ? (
+              <div className="grid gap-2 border-t border-stone-200 pt-3">
+                <input
+                  value={reminderLink}
+                  onChange={(event) => setReminderLink(event.target.value)}
+                  className="h-9 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-xs"
+                  placeholder="Bezahl-Link"
+                />
+                <button
+                  disabled={saving}
+                  onClick={() => onAction({
+                    action: "request_payment_reminder",
+                    saleId: sale.id,
+                    recipientEmail: sale.customerEmail,
+                    paymentLink: reminderLink,
+                    operatorName,
+                  })}
+                  className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"
+                >
+                  <Mail className="h-4 w-4" />
+                  Erinnerung
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function SupplierSalesClient({
+  initialHasSession,
+  opsEnabled,
+  localMode,
+}: {
+  initialHasSession: boolean;
+  opsEnabled: boolean;
+  localMode: boolean;
+}) {
+  const operatorNameKey = "neontrip-supplier-sales-operator";
+  const [hasSession, setHasSession] = useState(initialHasSession);
+  const [token, setToken] = useState("");
+  const [operatorName, setOperatorName] = useState("");
+  const [board, setBoard] = useState<SupplierSaleBoard | null>(null);
+  const [scope, setScope] = useState<ScopeFilter>("active");
+  const [supplier, setSupplier] = useState<SupplierFilter>("all");
+  const [payment, setPayment] = useState<PaymentFilter>("all");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [savingSaleId, setSavingSaleId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(operatorNameKey);
+      if (raw) setOperatorName(raw);
+    } catch {
+      // localStorage can be unavailable in hardened browser contexts.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (operatorName) window.localStorage.setItem(operatorNameKey, operatorName);
+  }, [operatorName]);
+
+  useEffect(() => {
+    if (hasSession || localMode) void loadBoard();
+  }, [hasSession, localMode, scope, supplier, payment]);
+
+  const items = useMemo(() => board?.items || [], [board]);
+
+  async function login() {
+    setError(null);
+    const response = await fetch("/api/ops/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!response.ok) {
+      setError("Ops-Login fehlgeschlagen.");
+      return;
+    }
+    setHasSession(true);
+    setToken("");
+  }
+
+  async function loadBoard() {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("scope", scope);
+      params.set("supplier", supplier);
+      params.set("payment", payment);
+      if (query.trim()) params.set("q", query.trim());
+      const response = await fetch(`/api/ops/supplier-sales?${params.toString()}`);
+      const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
+      if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
+      setBoard(payload.board);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Sales-Vergabe konnte nicht geladen werden.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runSaleAction(saleId: string, body: Record<string, unknown>) {
+    setSavingSaleId(saleId);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/ops/supplier-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, operatorName }),
+      });
+      const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
+      if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
+      if (payload.board) setBoard(payload.board);
+      setMessage("Sale wurde aktualisiert.");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+    } finally {
+      setSavingSaleId(null);
+    }
+  }
+
+  if (!opsEnabled) {
+    return <div className="min-h-screen bg-stone-100 p-8 text-stone-700">Ops Portal ist nicht konfiguriert.</div>;
+  }
+
+  if (!hasSession && !localMode) {
+    return (
+      <OpsLoginCard
+        eyebrow="Sales-Vergabe"
+        title="Sales-Vergabe anmelden"
+        description="Melde dich fuer die interne Vergabeuebersicht an. Supplier-Entscheidungen, Zahlungsausnahmen und Sync-Fehler bleiben protokolliert."
+        activeApp="supplierSales"
+        operatorName={operatorName}
+        password={token}
+        error={error}
+        buttonLabel="Einloggen"
+        onOperatorNameChange={setOperatorName}
+        onPasswordChange={setToken}
+        onSubmit={login}
+      />
+    );
+  }
+
+  return (
+    <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
+      <div className={`${opsPageContainerClass} flex flex-col gap-6`}>
+        <OpsPageHeader active="supplierSales" label="Sales-Vergabe" />
+
+        <OpsPageIntro
+          eyebrow="Shopify Sales"
+          title="Bezahlstatus, Deadline und Supplier an einem Ort."
+          description="Sales werden aus Shopify oder dem abgeschlossenen Angebot erfasst, mit Quentin/Saeid-Regeln bewertet und erst nach bestaetigtem Lieferdatum vergeben."
+        />
+
+        <section className="grid gap-3 md:grid-cols-5">
+          <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
+          <OpsStatCard label="Zahlung" value={board?.counts.paymentOpen || 0} tone="warning" icon={<CreditCard className="h-5 w-5" />} detail="Offen oder Entscheidung fehlt." />
+          <OpsStatCard label="Vergeben" value={board?.counts.assigned || 0} tone="success" icon={<Factory className="h-5 w-5" />} detail="Supplier gesetzt." />
+          <OpsStatCard label="Deadline" value={board?.counts.dueSoon || 0} tone="info" icon={<CalendarClock className="h-5 w-5" />} detail="In 7 Tagen faellig." />
+          <OpsStatCard label="Sync" value={board?.counts.syncIssues || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Shopify/Trello/Aufgabe fehlerhaft." />
+        </section>
+
+        {board?.diagnostics?.items?.length ? (
+          <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-stone-950">Integrationen</p>
+                <p className="mt-1 text-sm text-stone-500">
+                  {board.diagnostics.ready ? "Automatischer Import und Pflicht-Syncs sind konfiguriert." : "Es fehlen noch Pflichtwerte fuer den Go-live."}
+                </p>
+              </div>
+              {!board.diagnostics.ready ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-800">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {board.diagnostics.missing.length} Pflichtpunkt{board.diagnostics.missing.length === 1 ? "" : "e"} offen
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {board.diagnostics.items.map((item) => (
+                <div key={item.key} className={`rounded-[0.5rem] border p-3 ${diagnosticTone(item.status)}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{item.label}</p>
+                    <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-semibold uppercase">
+                      {item.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 opacity-90">{item.detail}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_160px_140px]">
+            <label className="relative">
+              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-stone-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void loadBoard();
+                }}
+                className="w-full rounded-[0.5rem] border border-stone-300 py-2 pl-9 pr-3 text-sm"
+                placeholder="Kunde, Shopify, Angebot..."
+              />
+            </label>
+            <select value={scope} onChange={(event) => setScope(event.target.value as ScopeFilter)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+              <option value="active">Aktive Sales</option>
+              <option value="ready">Bereit</option>
+              <option value="payment">Zahlung offen</option>
+              <option value="assigned">Vergeben</option>
+              <option value="all">Alle</option>
+            </select>
+            <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierFilter)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+              <option value="all">Alle Supplier</option>
+              <option value="quentin">Quentin</option>
+              <option value="said">Saeid</option>
+              <option value="special">Sonder</option>
+              <option value="manual_review">Pruefen</option>
+            </select>
+            <select value={payment} onChange={(event) => setPayment(event.target.value as PaymentFilter)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+              <option value="all">Alle Zahlungen</option>
+              <option value="paid">Bezahlt</option>
+              <option value="unpaid">Nicht bezahlt</option>
+              <option value="pending">Pending</option>
+              <option value="authorized">Autorisiert</option>
+              <option value="unknown">Unklar</option>
+            </select>
+            <button onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white">
+              <RefreshCcw className="h-4 w-4" />
+              Laden
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <input
+              value={operatorName}
+              onChange={(event) => setOperatorName(event.target.value)}
+              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              placeholder="Operator"
+            />
+            {loading ? <span className="text-sm text-stone-500">Sales werden geladen...</span> : null}
+            {message ? <span className="text-sm text-emerald-700">{message}</span> : null}
+            {error ? <span className="text-sm text-rose-700">{error}</span> : null}
+          </div>
+        </section>
+
+        <section className="grid gap-4">
+          {items.length ? (
+            items.map((sale) => (
+              <SaleCard
+                key={sale.id}
+                sale={sale}
+                operatorName={operatorName}
+                saving={savingSaleId === sale.id}
+                onAction={(body) => runSaleAction(sale.id, body)}
+              />
+            ))
+          ) : (
+            <div className="rounded-[0.5rem] border border-stone-200 bg-white p-8 text-center text-stone-500">
+              <CheckCircle2 className="mx-auto h-7 w-7 text-emerald-600" />
+              <p className="mt-3">Keine Sales in dieser Ansicht.</p>
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}

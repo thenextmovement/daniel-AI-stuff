@@ -1,0 +1,1842 @@
+import { createHash } from "node:crypto";
+import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
+import { createTrelloCard } from "@/lib/quotes/trello";
+import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { QuoteValidationError } from "@/lib/quotes/validation";
+
+export const SUPPLIER_SALE_SUPPLIERS = ["quentin", "said", "special"] as const;
+export const SUPPLIER_RECOMMENDATIONS = ["quentin", "said", "special", "manual_review", "unknown"] as const;
+export const SUPPLIER_PAYMENT_STATUSES = [
+  "unknown",
+  "pending",
+  "authorized",
+  "paid",
+  "partially_paid",
+  "partially_refunded",
+  "refunded",
+  "voided",
+  "expired",
+] as const;
+export const SUPPLIER_PAYMENT_DECISIONS = [
+  "pending",
+  "wait_for_payment",
+  "manual_approved_unpaid",
+  "paid_confirmed",
+  "canceled",
+  "refunded",
+] as const;
+export const SUPPLIER_ASSIGNMENT_STATUSES = [
+  "needs_review",
+  "payment_open",
+  "ready_to_assign",
+  "assigned",
+  "in_production",
+  "blocked",
+  "completed",
+  "canceled",
+] as const;
+export const SUPPLIER_SYNC_STATUSES = ["not_started", "pending", "synced", "failed", "skipped"] as const;
+
+export type SupplierSaleSupplier = (typeof SUPPLIER_SALE_SUPPLIERS)[number];
+export type SupplierSaleRecommendation = (typeof SUPPLIER_RECOMMENDATIONS)[number];
+export type SupplierSalePaymentStatus = (typeof SUPPLIER_PAYMENT_STATUSES)[number];
+export type SupplierSalePaymentDecision = (typeof SUPPLIER_PAYMENT_DECISIONS)[number];
+export type SupplierSaleAssignmentStatus = (typeof SUPPLIER_ASSIGNMENT_STATUSES)[number];
+export type SupplierSaleSyncStatus = (typeof SUPPLIER_SYNC_STATUSES)[number];
+
+export const SUPPLIER_RULE_VERSION = "supplier_rules_v1_20260609";
+
+type JsonRecord = Record<string, unknown>;
+
+export type SupplierSaleRow = {
+  id: string;
+  sale_key: string;
+  source: string;
+  shopify_order_id: string | null;
+  shopify_order_name: string | null;
+  shopify_order_url: string | null;
+  shopify_payment_status: SupplierSalePaymentStatus;
+  payment_decision_status: SupplierSalePaymentDecision;
+  payment_due_at: string | null;
+  last_payment_reminder_at: string | null;
+  payment_reminder_count: number;
+  offer_id: string | null;
+  offer_number: string | null;
+  document_reference: string | null;
+  offer_public_url: string | null;
+  final_pdf_url: string | null;
+  trello_card_id: string | null;
+  request_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+  customer_company: string | null;
+  currency: string;
+  subtotal_price: number | string | null;
+  total_price: number | string | null;
+  customer_due_date: string | null;
+  supplier_due_date: string | null;
+  due_date_source: string | null;
+  due_date_note: string | null;
+  recommended_supplier: SupplierSaleRecommendation;
+  recommendation_reasons: string[];
+  assigned_supplier: SupplierSaleSupplier | null;
+  special_supplier_name: string | null;
+  assignment_status: SupplierSaleAssignmentStatus;
+  assignment_note: string | null;
+  assigned_at: string | null;
+  assigned_by: string | null;
+  shopify_tag_sync_status: SupplierSaleSyncStatus;
+  shopify_tag_value: string | null;
+  shopify_tag_synced_at: string | null;
+  shopify_tag_error: string | null;
+  trello_projection_status: SupplierSaleSyncStatus;
+  supplier_trello_card_id: string | null;
+  supplier_trello_card_url: string | null;
+  trello_projection_error: string | null;
+  task_sync_status: SupplierSaleSyncStatus;
+  active_task_id: string | null;
+  task_sync_error: string | null;
+  product_summary: string | null;
+  primary_image_url: string | null;
+  raw_shopify: JsonRecord;
+  offer_snapshot: JsonRecord;
+  metadata: JsonRecord;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierSaleItemRow = {
+  id: string;
+  sale_id: string;
+  line_item_key: string;
+  title: string;
+  sku: string | null;
+  variant_title: string | null;
+  quantity: number;
+  product_type: string | null;
+  image_url: string | null;
+  requires_quentin: boolean;
+  rule_reasons: string[];
+  raw_line_item: JsonRecord;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierSaleEventRow = {
+  id: string;
+  sale_id: string | null;
+  event_type: string;
+  actor: string | null;
+  idempotency_key: string;
+  payload: JsonRecord;
+  created_at: string;
+};
+
+export type SupplierSale = {
+  id: string;
+  saleKey: string;
+  source: string;
+  shopifyOrderId: string | null;
+  shopifyOrderName: string | null;
+  shopifyOrderUrl: string | null;
+  shopifyPaymentStatus: SupplierSalePaymentStatus;
+  paymentDecisionStatus: SupplierSalePaymentDecision;
+  paymentDueAt: string | null;
+  lastPaymentReminderAt: string | null;
+  paymentReminderCount: number;
+  offerId: string | null;
+  offerNumber: string | null;
+  documentReference: string | null;
+  offerPublicUrl: string | null;
+  finalPdfUrl: string | null;
+  trelloCardId: string | null;
+  requestId: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  customerCompany: string | null;
+  currency: string;
+  subtotalPrice: number | null;
+  totalPrice: number | null;
+  customerDueDate: string | null;
+  supplierDueDate: string | null;
+  dueDateSource: string | null;
+  dueDateNote: string | null;
+  recommendedSupplier: SupplierSaleRecommendation;
+  recommendationReasons: string[];
+  assignedSupplier: SupplierSaleSupplier | null;
+  specialSupplierName: string | null;
+  assignmentStatus: SupplierSaleAssignmentStatus;
+  assignmentNote: string | null;
+  assignedAt: string | null;
+  assignedBy: string | null;
+  shopifyTagSyncStatus: SupplierSaleSyncStatus;
+  shopifyTagValue: string | null;
+  shopifyTagSyncedAt: string | null;
+  shopifyTagError: string | null;
+  trelloProjectionStatus: SupplierSaleSyncStatus;
+  supplierTrelloCardId: string | null;
+  supplierTrelloCardUrl: string | null;
+  trelloProjectionError: string | null;
+  taskSyncStatus: SupplierSaleSyncStatus;
+  activeTaskId: string | null;
+  taskSyncError: string | null;
+  productSummary: string | null;
+  primaryImageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: SupplierSaleItem[];
+  latestEvent: SupplierSaleEvent | null;
+};
+
+export type SupplierSaleItem = {
+  id: string;
+  saleId: string;
+  lineItemKey: string;
+  title: string;
+  sku: string | null;
+  variantTitle: string | null;
+  quantity: number;
+  productType: string | null;
+  imageUrl: string | null;
+  requiresQuentin: boolean;
+  ruleReasons: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupplierSaleEvent = {
+  id: string;
+  saleId: string | null;
+  eventType: string;
+  actor: string | null;
+  idempotencyKey: string;
+  payload: JsonRecord;
+  createdAt: string;
+};
+
+export type SupplierSaleBoard = {
+  items: SupplierSale[];
+  counts: {
+    total: number;
+    readyToAssign: number;
+    paymentOpen: number;
+    assigned: number;
+    dueSoon: number;
+    overdue: number;
+    quentinRecommended: number;
+    saidRecommended: number;
+    syncIssues: number;
+  };
+  diagnostics: SupplierSalesDiagnostics;
+};
+
+export type SupplierSalesDiagnosticStatus = "ok" | "warning" | "missing";
+
+export type SupplierSalesDiagnostic = {
+  key: string;
+  status: SupplierSalesDiagnosticStatus;
+  label: string;
+  detail: string;
+};
+
+export type SupplierSalesDiagnostics = {
+  ready: boolean;
+  items: SupplierSalesDiagnostic[];
+  missing: string[];
+};
+
+export type SupplierLineItemInput = {
+  lineItemKey?: string | null;
+  title?: string | null;
+  sku?: string | null;
+  variantTitle?: string | null;
+  quantity?: number | string | null;
+  productType?: string | null;
+  imageUrl?: string | null;
+  section?: string | null;
+  description?: string | null;
+  rawLineItem?: JsonRecord;
+};
+
+export type SupplierSaleInput = {
+  saleKey: string;
+  source?: string | null;
+  shopifyOrderId?: string | number | null;
+  shopifyOrderName?: string | number | null;
+  shopifyOrderUrl?: string | null;
+  shopifyPaymentStatus?: string | null;
+  paymentDueAt?: string | null;
+  offerId?: string | null;
+  offerNumber?: string | null;
+  documentReference?: string | null;
+  offerPublicUrl?: string | null;
+  finalPdfUrl?: string | null;
+  trelloCardId?: string | null;
+  requestId?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  customerCompany?: string | null;
+  currency?: string | null;
+  subtotalPrice?: number | string | null;
+  totalPrice?: number | string | null;
+  customerDueDate?: string | null;
+  supplierDueDate?: string | null;
+  dueDateSource?: string | null;
+  dueDateNote?: string | null;
+  productSummary?: string | null;
+  primaryImageUrl?: string | null;
+  rawShopify?: JsonRecord;
+  offerSnapshot?: JsonRecord;
+  metadata?: JsonRecord;
+  idempotencyKey?: string | null;
+  lineItems: SupplierLineItemInput[];
+};
+
+export type SupplierSaleActor = OpsInternalTaskActor & {
+  host?: string | null;
+  mode?: "local_bypass" | "ops_session";
+  userAgent?: string | null;
+};
+
+export type SupplierSalePayloadParseResult = {
+  sale: SupplierSaleInput;
+  warnings: string[];
+};
+
+export type SupplierSaleAssignInput = {
+  saleId: string;
+  supplier: SupplierSaleSupplier;
+  requestedDeliveryDate: string;
+  specialSupplierName?: string | null;
+  assignmentNote?: string | null;
+  paymentDecisionStatus?: SupplierSalePaymentDecision | null;
+  operatorName?: string | null;
+  assigneeLabel?: string | null;
+};
+
+export type SupplierPaymentReminderInput = {
+  saleId: string;
+  requestedBy?: string | null;
+  recipientEmail?: string | null;
+  paymentLink?: string | null;
+  message?: string | null;
+  operatorName?: string | null;
+};
+
+type SupplierRecommendationResult = {
+  recommendedSupplier: SupplierSaleRecommendation;
+  recommendationReasons: string[];
+  lineItems: Array<SupplierLineItemInput & { requiresQuentin: boolean; ruleReasons: string[] }>;
+};
+
+function jsonRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
+}
+
+function arrayRecords(value: unknown): JsonRecord[] {
+  return Array.isArray(value) ? value.map(jsonRecord).filter((entry) => Object.keys(entry).length > 0) : [];
+}
+
+function cleanText(value: unknown, maxLength = 500) {
+  const text = String(value ?? "").trim();
+  return text ? text.slice(0, maxLength) : "";
+}
+
+function nullableText(value: unknown, maxLength = 500) {
+  const text = cleanText(value, maxLength);
+  return text || null;
+}
+
+function lowerNullable(value: unknown, maxLength = 500) {
+  return nullableText(value, maxLength)?.toLowerCase() || null;
+}
+
+function numericValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  return Number.isFinite(number) ? number : null;
+}
+
+function intValue(value: unknown, fallback = 1) {
+  const number = numericValue(value);
+  return number && number > 0 ? Math.round(number) : fallback;
+}
+
+function encodeFilterValue(value: string) {
+  return encodeURIComponent(value);
+}
+
+function hashPayload(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 16);
+}
+
+function upsertPath(path: string, conflictColumn: string) {
+  return `${path}?on_conflict=${encodeURIComponent(conflictColumn)}`;
+}
+
+function inList(values: string[]) {
+  return `in.(${values.map(encodeFilterValue).join(",")})`;
+}
+
+function recordString(record: JsonRecord, keys: string[], maxLength = 500) {
+  for (const key of keys) {
+    const text = nullableText(record[key], maxLength);
+    if (text) return text;
+  }
+  return null;
+}
+
+function nestedString(record: JsonRecord, path: string[], maxLength = 500): string | null {
+  let cursor: unknown = record;
+  for (const key of path) {
+    cursor = jsonRecord(cursor)[key];
+  }
+  return nullableText(cursor, maxLength);
+}
+
+function dateOnlyFromParts(year: number, month: number, day: number) {
+  if (year < 2020 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+export function normalizeDateOnly(value: unknown) {
+  const text = cleanText(value, 80);
+  if (!text) return null;
+
+  const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return dateOnlyFromParts(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
+
+  const germanDate = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (germanDate) return dateOnlyFromParts(Number(germanDate[3]), Number(germanDate[2]), Number(germanDate[1]));
+
+  const parsed = new Date(text);
+  if (Number.isFinite(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return null;
+}
+
+function normalizeIsoTimestamp(value: unknown, label: string) {
+  const text = cleanText(value, 80);
+  if (!text) return null;
+  const date = new Date(text);
+  if (!Number.isFinite(date.getTime())) {
+    throw new QuoteValidationError(`${label} ist ungueltig.`, [`${label} ist ungueltig.`], 422);
+  }
+  return date.toISOString();
+}
+
+export function normalizeShopifyPaymentStatus(value: unknown): SupplierSalePaymentStatus {
+  const text = cleanText(value, 80).toLowerCase().replace(/[\s-]+/g, "_");
+  if (SUPPLIER_PAYMENT_STATUSES.includes(text as SupplierSalePaymentStatus)) return text as SupplierSalePaymentStatus;
+  if (text === "pending_payment" || text === "payment_pending" || text === "unpaid") return "pending";
+  if (text === "partiallypaid") return "partially_paid";
+  if (text === "partiallyrefunded") return "partially_refunded";
+  if (text === "cancelled" || text === "canceled") return "voided";
+  return "unknown";
+}
+
+export function derivePaymentDecisionStatus(
+  paymentStatus: SupplierSalePaymentStatus,
+  current?: SupplierSalePaymentDecision | null,
+): SupplierSalePaymentDecision {
+  if (paymentStatus === "paid") return "paid_confirmed";
+  if (paymentStatus === "refunded" || paymentStatus === "partially_refunded") return "refunded";
+  if (paymentStatus === "voided" || paymentStatus === "expired") return "canceled";
+  if (current === "manual_approved_unpaid" || current === "wait_for_payment") return current;
+  return "pending";
+}
+
+export function deriveAssignmentStatus(input: {
+  paymentDecisionStatus: SupplierSalePaymentDecision;
+  assignedSupplier?: SupplierSaleSupplier | null;
+  currentStatus?: SupplierSaleAssignmentStatus | null;
+}): SupplierSaleAssignmentStatus {
+  if (input.paymentDecisionStatus === "canceled" || input.paymentDecisionStatus === "refunded") return "canceled";
+  if (input.assignedSupplier) {
+    if (input.currentStatus === "in_production" || input.currentStatus === "completed" || input.currentStatus === "blocked") {
+      return input.currentStatus;
+    }
+    return "assigned";
+  }
+  if (input.paymentDecisionStatus === "paid_confirmed" || input.paymentDecisionStatus === "manual_approved_unpaid") {
+    return "ready_to_assign";
+  }
+  if (input.paymentDecisionStatus === "wait_for_payment" || input.paymentDecisionStatus === "pending") return "payment_open";
+  return "needs_review";
+}
+
+function lineItemText(item: SupplierLineItemInput) {
+  return [
+    item.title,
+    item.variantTitle,
+    item.sku,
+    item.productType,
+    item.section,
+    item.description,
+    item.rawLineItem ? JSON.stringify(item.rawLineItem) : null,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isNonProductionLine(item: SupplierLineItemInput) {
+  const text = lineItemText(item);
+  return /versand|shipping|lieferung|rabatt|discount|anzahlung|restzahlung|zahlung|payment|montage|installation/.test(text);
+}
+
+function isStandardNeonFlex(text: string) {
+  if (/ohne\s+neon|kein\s+neon|nicht\s+neon|non[\s-]*neon/.test(text)) return false;
+  return /led[\s-]*neon|neon[\s-]*flex|neonflex|neonschild|neon\s+sign|standard.*neon|\bneon\b/.test(text);
+}
+
+function quentinReasonsForItem(item: SupplierLineItemInput) {
+  const text = lineItemText(item);
+  const reasons: string[] = [];
+  if (/uv[\s-]*print|uvdruck|uv[\s-]*druck/.test(text)) reasons.push("uv_print");
+  if (/vollflaechig|vollflachig|vollflachig beleuchtet|vollflaechig beleuchtet/.test(text)) reasons.push("full_surface_lit_letters");
+  if (/\b3d\b|3[\s-]*d|3d[\s-]*buchstaben|profilbuchstaben|buchstaben/.test(text)) reasons.push("three_d_letters");
+  if (/rueckbeleuchtet|rueckleucht|backlit|halo[\s-]*lit|hinterleuchtet/.test(text)) reasons.push("backlit_letters");
+  if (/acryl[\s-]*light[\s-]*box|acrylbox|light[\s-]*box|leuchtkasten|acryl[\s-]*kasten/.test(text)) reasons.push("acryl_light_box");
+  if (/aussen|outdoor|wasserdicht|wetterfest|ip65|ip67|fuer aussen|fur aussen/.test(text)) reasons.push("outdoor");
+  if (!reasons.length && !isNonProductionLine(item) && !isStandardNeonFlex(text)) reasons.push("non_standard_neon");
+  return Array.from(new Set(reasons));
+}
+
+export function deriveSupplierRecommendation(items: SupplierLineItemInput[]): SupplierRecommendationResult {
+  const productionItems = items.filter((item) => !isNonProductionLine(item));
+  const decorated = items.map((item) => {
+    const ruleReasons = quentinReasonsForItem(item);
+    return {
+      ...item,
+      requiresQuentin: ruleReasons.length > 0,
+      ruleReasons,
+    };
+  });
+
+  const reasons = Array.from(new Set(decorated.flatMap((item) => item.ruleReasons)));
+  if (reasons.length) {
+    return {
+      recommendedSupplier: "quentin",
+      recommendationReasons: [`${SUPPLIER_RULE_VERSION}:quentin`, ...reasons],
+      lineItems: decorated,
+    };
+  }
+
+  if (productionItems.length && productionItems.every((item) => isStandardNeonFlex(lineItemText(item)))) {
+    return {
+      recommendedSupplier: "said",
+      recommendationReasons: [`${SUPPLIER_RULE_VERSION}:standard_neon_flex`],
+      lineItems: decorated,
+    };
+  }
+
+  return {
+    recommendedSupplier: productionItems.length ? "manual_review" : "unknown",
+    recommendationReasons: [`${SUPPLIER_RULE_VERSION}:manual_review`],
+    lineItems: decorated,
+  };
+}
+
+function paymentLinkFromPayload(payload: JsonRecord) {
+  return (
+    recordString(payload, ["payment_url", "paymentUrl", "invoice_url", "invoiceUrl", "checkout_url", "checkoutUrl"], 1000) ||
+    nestedString(payload, ["order", "payment_url"], 1000) ||
+    nestedString(payload, ["order", "checkout_url"], 1000) ||
+    null
+  );
+}
+
+function envConfigured(...keys: string[]) {
+  return keys.some((key) => Boolean(nullableText(process.env[key], 1000)));
+}
+
+function diagnostic(
+  key: string,
+  status: SupplierSalesDiagnosticStatus,
+  label: string,
+  detail: string,
+): SupplierSalesDiagnostic {
+  return { key, status, label, detail };
+}
+
+export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
+  const items: SupplierSalesDiagnostic[] = [];
+
+  const incomingTokenReady = envConfigured("SUPPLIER_SALES_AGENT_API_TOKEN", "QUOTE_INTERNAL_API_TOKEN");
+  const incomingSignatureReady = envConfigured("SUPPLIER_SALES_WEBHOOK_SECRET", "SHOPIFY_SALE_WEBHOOK_SECRET", "N8N_SHOPIFY_SALE_WEBHOOK_SECRET");
+  items.push(diagnostic(
+    "incoming_sales_auth",
+    incomingTokenReady || incomingSignatureReady ? "ok" : "missing",
+    "Offer-/Shopify-Import",
+    incomingTokenReady || incomingSignatureReady
+      ? "Automatische Sales koennen serverseitig authentifiziert in die Sales-Vergabe schreiben."
+      : "SUPPLIER_SALES_AGENT_API_TOKEN oder SUPPLIER_SALES_WEBHOOK_SECRET fehlt. Neue Sales koennen nicht automatisiert importiert werden.",
+  ));
+
+  const shopifyAdminReady = envConfigured("SHOPIFY_ADMIN_API_ACCESS_TOKEN", "SHOPIFY_ADMIN_TOKEN") &&
+    envConfigured("SHOPIFY_SHOP_DOMAIN", "SHOPIFY_STORE_DOMAIN", "SHOPIFY_SHOP");
+  const quentinTagReady = Boolean(supplierTagValue("quentin"));
+  const saidTagReady = Boolean(supplierTagValue("said"));
+  const specialTagReady = Boolean(supplierTagValue("special"));
+  items.push(diagnostic(
+    "shopify_supplier_tags",
+    shopifyAdminReady && quentinTagReady && saidTagReady ? "ok" : "missing",
+    "Shopify-Tags",
+    shopifyAdminReady && quentinTagReady && saidTagReady
+      ? `Quentin/Saeid Tags sind konfiguriert${specialTagReady ? ", Sonder-Supplier ebenfalls." : "."}`
+      : "Shopify Admin API plus SUPPLIER_TAG_QUENTIN und SUPPLIER_TAG_SAID muessen gesetzt sein, damit Vergaben in Shopify getaggt werden.",
+  ));
+
+  const trelloAuthReady = envConfigured("TRELLO_API_KEY") && envConfigured("TRELLO_TOKEN");
+  const quentinListReady = Boolean(supplierTrelloListId("quentin"));
+  const saidListReady = Boolean(supplierTrelloListId("said"));
+  const specialListReady = Boolean(supplierTrelloListId("special"));
+  items.push(diagnostic(
+    "supplier_trello_projection",
+    trelloAuthReady && quentinListReady && saidListReady ? "ok" : "warning",
+    "Supplier-Trello",
+    trelloAuthReady && quentinListReady && saidListReady
+      ? `Quentin/Saeid Listen sind konfiguriert${specialListReady ? ", Sonder-Supplier ebenfalls." : "."}`
+      : "Trello-Projektion wird uebersprungen, bis TRELLO_API_KEY/TRELLO_TOKEN und die Supplier-Listen-IDs gesetzt sind.",
+  ));
+
+  const reminderWebhookReady = Boolean(paymentReminderWebhookUrl());
+  items.push(diagnostic(
+    "payment_reminders",
+    reminderWebhookReady ? "ok" : "warning",
+    "Zahlungserinnerungen",
+    reminderWebhookReady
+      ? "Zahlungserinnerungen koennen an den konfigurierten Workflow uebergeben werden."
+      : "Kein Reminder-Webhook gesetzt. Die Software erstellt stattdessen interne Aufgaben, damit nichts verloren geht.",
+  ));
+
+  const missing = items.filter((item) => item.status === "missing").map((item) => item.key);
+  return {
+    ready: missing.length === 0,
+    items,
+    missing,
+  };
+}
+
+function noteAttributeValue(payload: JsonRecord, keys: string[]) {
+  const normalizedKeys = new Set(keys.map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, "")));
+  const candidates = [
+    ...arrayRecords(payload.note_attributes),
+    ...arrayRecords(payload.noteAttributes),
+    ...arrayRecords(jsonRecord(payload.order).note_attributes),
+    ...arrayRecords(jsonRecord(payload.order).noteAttributes),
+  ];
+  for (const candidate of candidates) {
+    const name = cleanText(candidate.name || candidate.key || candidate.label, 120).toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normalizedKeys.has(name)) return candidate.value;
+  }
+  return null;
+}
+
+function extractDueDate(payload: JsonRecord) {
+  const keys = [
+    "deadline",
+    "due_date",
+    "duedate",
+    "customer_due_date",
+    "customerDueDate",
+    "supplier_due_date",
+    "supplierDueDate",
+    "requested_delivery_date",
+    "requestedDeliveryDate",
+    "deliveryDateIso",
+    "delivery_date",
+    "deliveryDate",
+    "lieferdatum",
+    "liefertermin",
+    "wunschdatum",
+    "benoetigt_bis",
+    "needed_by",
+    "estimated_delivery_date",
+    "estimatedDeliveryDate",
+  ];
+  const direct =
+    recordString(payload, keys, 120) ||
+    recordString(jsonRecord(payload.order), keys, 120) ||
+    nestedString(payload, ["delivery", "requestedDate"], 120) ||
+    nestedString(payload, ["delivery", "date"], 120) ||
+    nestedString(payload, ["shipping", "requestedDate"], 120);
+  const noteValue = noteAttributeValue(payload, keys);
+  const due = normalizeDateOnly(direct || noteValue);
+  return {
+    date: due,
+    source: due ? (direct ? "payload" : "shopify_note_attribute") : null,
+    note: due ? cleanText(direct || noteValue, 200) : null,
+  };
+}
+
+function customerNameFromParts(parts: Array<unknown>) {
+  const text = parts.map((part) => cleanText(part, 120)).filter(Boolean).join(" ").trim();
+  return text || null;
+}
+
+function selectedImageFromOfferPayload(payload: JsonRecord) {
+  const media = jsonRecord(payload.media);
+  const mockups = arrayRecords(media.mockups);
+  return (
+    recordString(mockups[0] || {}, ["url", "sourceUrl", "localUrl"], 1000) ||
+    recordString(media, ["posterUrl", "previewVideoPosterUrl"], 1000)
+  );
+}
+
+function parseOfferCompletedPayload(payload: JsonRecord): SupplierSalePayloadParseResult | null {
+  if (recordString(payload, ["source"]) !== "neontrip-offers" || recordString(payload, ["event"]) !== "offer.completed") return null;
+
+  const offer = jsonRecord(payload.offer);
+  const customer = jsonRecord(payload.customer);
+  const totals = jsonRecord(payload.totals);
+  const lineItems = arrayRecords(payload.lineItems).map((item, index): SupplierLineItemInput => ({
+    lineItemKey: recordString(item, ["id"], 120) || `offer-line:${index + 1}`,
+    title: recordString(item, ["title"], 500) || "Angebotsposition",
+    sku: recordString(item, ["sku"], 120),
+    variantTitle: recordString(item, ["variantTitle"], 500),
+    quantity: numericValue(item.quantity) || numericValue(item.normalizedQuantity) || 1,
+    productType: recordString(item, ["section"], 120),
+    imageUrl: selectedImageFromOfferPayload(payload),
+    section: recordString(item, ["section"], 120),
+    description: recordString(item, ["description"], 4000),
+    rawLineItem: item,
+  }));
+
+  const due = extractDueDate(payload);
+  const offerId = recordString(offer, ["id"], 160);
+  const idempotencyKey = recordString(payload, ["idempotencyKey"], 260);
+  const saleKey = offerId ? `offer:${offerId}` : idempotencyKey || `offer-payload:${hashPayload(payload)}`;
+  const totalGross = numericValue(totals.totalGross);
+  const subtotalNet = numericValue(totals.subtotalNet);
+
+  return {
+    warnings: due.date ? [] : ["Kein Lieferdatum im Angebots-Payload gefunden."],
+    sale: {
+      saleKey,
+      source: "neontrip-offers",
+      shopifyOrderId: recordString(payload, ["shopifyOrderId", "orderId"], 120),
+      shopifyOrderName: recordString(payload, ["shopifyOrderName", "orderName"], 120),
+      shopifyOrderUrl: recordString(payload, ["shopifyOrderUrl", "orderUrl"], 1000),
+      shopifyPaymentStatus: recordString(payload, ["financial_status", "financialStatus", "paymentStatus"], 80) || "unknown",
+      offerId,
+      offerNumber: recordString(offer, ["offerNumber"], 120),
+      documentReference: recordString(offer, ["documentReference"], 160),
+      offerPublicUrl: recordString(offer, ["publicUrl"], 1000),
+      finalPdfUrl: recordString(offer, ["finalPdfUrl"], 1000),
+      trelloCardId: recordString(offer, ["trelloCardId"], 160),
+      requestId: recordString(offer, ["requestId"], 160),
+      customerName: customerNameFromParts([
+        customer.firstName,
+        customer.lastName,
+        customer.signerName,
+        jsonRecord(payload.billingAddress).name,
+        jsonRecord(payload.deliveryAddress).name,
+      ]),
+      customerEmail: recordString(customer, ["email", "signerEmail"], 260),
+      customerPhone: recordString(customer, ["phone"], 120),
+      customerCompany: recordString(customer, ["company"], 260),
+      currency: recordString(offer, ["currency"], 12) || "EUR",
+      subtotalPrice: subtotalNet,
+      totalPrice: totalGross,
+      customerDueDate: due.date,
+      supplierDueDate: due.date,
+      dueDateSource: due.source,
+      dueDateNote: due.note,
+      productSummary: lineItems.map((item) => cleanText(item.title, 120)).filter(Boolean).slice(0, 3).join(", ") || null,
+      primaryImageUrl: selectedImageFromOfferPayload(payload),
+      rawShopify: {},
+      offerSnapshot: payload,
+      metadata: {
+        source_event: "offer.completed",
+        tax_exempt: Boolean(totals.taxExempt),
+        payment_link: paymentLinkFromPayload(payload),
+      },
+      idempotencyKey,
+      lineItems,
+    },
+  };
+}
+
+function lineItemImage(item: JsonRecord) {
+  return (
+    nestedString(item, ["image", "src"], 1000) ||
+    nestedString(item, ["image", "url"], 1000) ||
+    recordString(item, ["image_url", "imageUrl"], 1000)
+  );
+}
+
+function parseShopifyOrderPayload(payload: JsonRecord): SupplierSalePayloadParseResult {
+  const order = jsonRecord(payload.order);
+  const source = Object.keys(order).length ? order : payload;
+  const lineItems = [
+    ...arrayRecords(source.line_items),
+    ...arrayRecords(source.lineItems),
+  ].map((item, index): SupplierLineItemInput => ({
+    lineItemKey: recordString(item, ["id", "admin_graphql_api_id", "lineItemKey"], 180) || `shopify-line:${index + 1}`,
+    title: recordString(item, ["title", "name"], 500) || "Shopify-Position",
+    sku: recordString(item, ["sku"], 120),
+    variantTitle: recordString(item, ["variant_title", "variantTitle"], 500),
+    quantity: numericValue(item.quantity) || 1,
+    productType: recordString(item, ["product_type", "productType"], 160),
+    imageUrl: lineItemImage(item),
+    description: [
+      recordString(item, ["name"], 500),
+      recordString(item, ["vendor"], 160),
+      JSON.stringify(item.properties || item.customAttributes || []),
+    ].filter(Boolean).join(" "),
+    rawLineItem: item,
+  }));
+
+  const due = extractDueDate(source);
+  const shopifyOrderId = recordString(source, ["id", "order_id", "shopify_order_id"], 160);
+  const shopifyGraphqlId = recordString(source, ["admin_graphql_api_id", "adminGraphqlApiId"], 260);
+  const shopifyOrderName = recordString(source, ["name", "order_number", "shopify_order_number", "shopify_order_name"], 160);
+  const customer = jsonRecord(source.customer);
+  const billing = jsonRecord(source.billing_address || source.billingAddress);
+  const shipping = jsonRecord(source.shipping_address || source.shippingAddress);
+  const saleKey = shopifyOrderId || shopifyGraphqlId || shopifyOrderName
+    ? `shopify:order:${shopifyOrderId || shopifyGraphqlId || shopifyOrderName}`
+    : `shopify-payload:${hashPayload(payload)}`;
+
+  return {
+    warnings: due.date ? [] : ["Kein Lieferdatum im Shopify-Payload gefunden."],
+    sale: {
+      saleKey,
+      source: "shopify",
+      shopifyOrderId: shopifyOrderId || shopifyGraphqlId,
+      shopifyOrderName,
+      shopifyOrderUrl: recordString(source, ["admin_url", "adminUrl", "order_status_url", "orderStatusUrl"], 1000),
+      shopifyPaymentStatus: recordString(source, ["financial_status", "financialStatus", "payment_status", "paymentStatus"], 80) || "unknown",
+      offerId: recordString(source, ["offer_id", "offerId", "quote_id", "quoteId"], 160),
+      offerNumber: recordString(source, ["offer_number", "offerNumber", "quote_number", "quoteNumber"], 120),
+      documentReference: recordString(source, ["document_reference", "documentReference"], 160),
+      offerPublicUrl: recordString(source, ["offer_public_url", "offerPublicUrl"], 1000),
+      finalPdfUrl: recordString(source, ["final_pdf_url", "finalPdfUrl"], 1000),
+      trelloCardId: recordString(source, ["trello_card_id", "trelloCardId"], 160),
+      requestId: recordString(source, ["request_id", "requestId"], 160),
+      customerName:
+        recordString(source, ["customer_name", "customerName"], 260) ||
+        customerNameFromParts([customer.first_name, customer.firstName, customer.last_name, customer.lastName]) ||
+        recordString(billing, ["name"], 260) ||
+        recordString(shipping, ["name"], 260),
+      customerEmail:
+        recordString(source, ["email", "contact_email", "customer_email", "customerEmail"], 260) ||
+        recordString(customer, ["email"], 260) ||
+        recordString(billing, ["email"], 260) ||
+        recordString(shipping, ["email"], 260),
+      customerPhone:
+        recordString(source, ["phone", "customer_phone", "customerPhone"], 120) ||
+        recordString(customer, ["phone"], 120) ||
+        recordString(billing, ["phone"], 120) ||
+        recordString(shipping, ["phone"], 120),
+      customerCompany: recordString(source, ["customer_company", "customerCompany"], 260) || recordString(billing, ["company"], 260) || recordString(shipping, ["company"], 260),
+      currency: recordString(source, ["currency", "currency_code", "currencyCode"], 12) || "EUR",
+      subtotalPrice: numericValue(source.subtotal_price || source.current_subtotal_price || source.subtotalPrice),
+      totalPrice: numericValue(source.total_price || source.current_total_price || source.totalPrice),
+      customerDueDate: due.date,
+      supplierDueDate: due.date,
+      dueDateSource: due.source,
+      dueDateNote: due.note,
+      productSummary: lineItems.map((item) => cleanText(item.title, 120)).filter(Boolean).slice(0, 3).join(", ") || null,
+      primaryImageUrl: lineItems.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || null,
+      rawShopify: source,
+      offerSnapshot: {},
+      metadata: {
+        source_event: recordString(payload, ["event"], 120) || "shopify_order",
+        payment_link: paymentLinkFromPayload(source),
+        admin_graphql_api_id: shopifyGraphqlId,
+      },
+      idempotencyKey: recordString(payload, ["idempotencyKey", "idempotency_key"], 260) || recordString(source, ["idempotencyKey", "idempotency_key"], 260),
+      lineItems,
+    },
+  };
+}
+
+export function buildSupplierSaleInputFromPayload(payload: unknown): SupplierSalePayloadParseResult {
+  const record = jsonRecord(payload);
+  if (!Object.keys(record).length) {
+    throw new QuoteValidationError("Sale-Payload fehlt.", ["Sale-Payload fehlt."], 422);
+  }
+  const offerCompleted = parseOfferCompletedPayload(record);
+  if (offerCompleted) return offerCompleted;
+  if (recordString(record, ["source"]) === "neontrip-offers") {
+    throw new QuoteValidationError(
+      "Nur offer.completed Events koennen als Sales-Vergabe importiert werden.",
+      ["Unsupported neontrip-offers event."],
+      422,
+    );
+  }
+  return parseShopifyOrderPayload(record);
+}
+
+function mapItem(row: SupplierSaleItemRow): SupplierSaleItem {
+  return {
+    id: row.id,
+    saleId: row.sale_id,
+    lineItemKey: row.line_item_key,
+    title: row.title,
+    sku: row.sku,
+    variantTitle: row.variant_title,
+    quantity: Number(row.quantity || 1),
+    productType: row.product_type,
+    imageUrl: row.image_url,
+    requiresQuentin: Boolean(row.requires_quentin),
+    ruleReasons: row.rule_reasons || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapEvent(row: SupplierSaleEventRow): SupplierSaleEvent {
+  return {
+    id: row.id,
+    saleId: row.sale_id,
+    eventType: row.event_type,
+    actor: row.actor,
+    idempotencyKey: row.idempotency_key,
+    payload: row.payload || {},
+    createdAt: row.created_at,
+  };
+}
+
+function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEvent: SupplierSaleEvent | null = null): SupplierSale {
+  return {
+    id: row.id,
+    saleKey: row.sale_key,
+    source: row.source,
+    shopifyOrderId: row.shopify_order_id,
+    shopifyOrderName: row.shopify_order_name,
+    shopifyOrderUrl: row.shopify_order_url,
+    shopifyPaymentStatus: row.shopify_payment_status,
+    paymentDecisionStatus: row.payment_decision_status,
+    paymentDueAt: row.payment_due_at,
+    lastPaymentReminderAt: row.last_payment_reminder_at,
+    paymentReminderCount: Number(row.payment_reminder_count || 0),
+    offerId: row.offer_id,
+    offerNumber: row.offer_number,
+    documentReference: row.document_reference,
+    offerPublicUrl: row.offer_public_url,
+    finalPdfUrl: row.final_pdf_url,
+    trelloCardId: row.trello_card_id,
+    requestId: row.request_id,
+    customerName: row.customer_name,
+    customerEmail: row.customer_email,
+    customerPhone: row.customer_phone,
+    customerCompany: row.customer_company,
+    currency: row.currency || "EUR",
+    subtotalPrice: numericValue(row.subtotal_price),
+    totalPrice: numericValue(row.total_price),
+    customerDueDate: row.customer_due_date,
+    supplierDueDate: row.supplier_due_date,
+    dueDateSource: row.due_date_source,
+    dueDateNote: row.due_date_note,
+    recommendedSupplier: row.recommended_supplier,
+    recommendationReasons: row.recommendation_reasons || [],
+    assignedSupplier: row.assigned_supplier,
+    specialSupplierName: row.special_supplier_name,
+    assignmentStatus: row.assignment_status,
+    assignmentNote: row.assignment_note,
+    assignedAt: row.assigned_at,
+    assignedBy: row.assigned_by,
+    shopifyTagSyncStatus: row.shopify_tag_sync_status,
+    shopifyTagValue: row.shopify_tag_value,
+    shopifyTagSyncedAt: row.shopify_tag_synced_at,
+    shopifyTagError: row.shopify_tag_error,
+    trelloProjectionStatus: row.trello_projection_status,
+    supplierTrelloCardId: row.supplier_trello_card_id,
+    supplierTrelloCardUrl: row.supplier_trello_card_url,
+    trelloProjectionError: row.trello_projection_error,
+    taskSyncStatus: row.task_sync_status,
+    activeTaskId: row.active_task_id,
+    taskSyncError: row.task_sync_error,
+    productSummary: row.product_summary,
+    primaryImageUrl: row.primary_image_url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    items,
+    latestEvent,
+  };
+}
+
+function assignmentPriority(row: SupplierSaleRow) {
+  if (row.assignment_status === "ready_to_assign") return 0;
+  if (row.assignment_status === "payment_open") return 1;
+  if (row.assignment_status === "needs_review") return 2;
+  if (row.assignment_status === "assigned") return 3;
+  return 4;
+}
+
+export function buildSupplierSaleBoardFromRows(
+  saleRows: SupplierSaleRow[],
+  itemRows: SupplierSaleItemRow[],
+  eventRows: SupplierSaleEventRow[] = [],
+  now = new Date(),
+): SupplierSaleBoard {
+  const itemsBySale = new Map<string, SupplierSaleItem[]>();
+  for (const row of itemRows) {
+    const list = itemsBySale.get(row.sale_id) || [];
+    list.push(mapItem(row));
+    itemsBySale.set(row.sale_id, list);
+  }
+
+  const latestEventBySale = new Map<string, SupplierSaleEvent>();
+  for (const row of eventRows) {
+    if (!row.sale_id) continue;
+    const event = mapEvent(row);
+    const existing = latestEventBySale.get(row.sale_id);
+    if (!existing || new Date(event.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+      latestEventBySale.set(row.sale_id, event);
+    }
+  }
+
+  const items = saleRows.map((row) => mapSale(row, itemsBySale.get(row.id) || [], latestEventBySale.get(row.id) || null));
+  items.sort((left, right) => {
+    const rank = assignmentPriority(rowFromSale(left)) - assignmentPriority(rowFromSale(right));
+    if (rank !== 0) return rank;
+    const leftDue = left.supplierDueDate ? new Date(left.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
+    const rightDue = right.supplierDueDate ? new Date(right.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+  });
+
+  const today = now.toISOString().slice(0, 10);
+  const dueSoonLimit = new Date(now);
+  dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + 7);
+  const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
+  return {
+    items,
+    counts: {
+      total: items.length,
+      readyToAssign: items.filter((item) => item.assignmentStatus === "ready_to_assign").length,
+      paymentOpen: items.filter((item) => item.assignmentStatus === "payment_open").length,
+      assigned: items.filter((item) => ["assigned", "in_production"].includes(item.assignmentStatus)).length,
+      dueSoon: items.filter((item) => item.supplierDueDate && item.supplierDueDate >= today && item.supplierDueDate <= dueSoon).length,
+      overdue: items.filter((item) => item.supplierDueDate && item.supplierDueDate < today && !["completed", "canceled"].includes(item.assignmentStatus)).length,
+      quentinRecommended: items.filter((item) => item.recommendedSupplier === "quentin").length,
+      saidRecommended: items.filter((item) => item.recommendedSupplier === "said").length,
+      syncIssues: items.filter((item) => [item.shopifyTagSyncStatus, item.trelloProjectionStatus, item.taskSyncStatus].includes("failed")).length,
+    },
+    diagnostics: buildSupplierSalesDiagnostics(),
+  };
+}
+
+function rowFromSale(sale: SupplierSale): SupplierSaleRow {
+  return {
+    id: sale.id,
+    sale_key: sale.saleKey,
+    source: sale.source,
+    shopify_order_id: sale.shopifyOrderId,
+    shopify_order_name: sale.shopifyOrderName,
+    shopify_order_url: sale.shopifyOrderUrl,
+    shopify_payment_status: sale.shopifyPaymentStatus,
+    payment_decision_status: sale.paymentDecisionStatus,
+    payment_due_at: sale.paymentDueAt,
+    last_payment_reminder_at: sale.lastPaymentReminderAt,
+    payment_reminder_count: sale.paymentReminderCount,
+    offer_id: sale.offerId,
+    offer_number: sale.offerNumber,
+    document_reference: sale.documentReference,
+    offer_public_url: sale.offerPublicUrl,
+    final_pdf_url: sale.finalPdfUrl,
+    trello_card_id: sale.trelloCardId,
+    request_id: sale.requestId,
+    customer_name: sale.customerName,
+    customer_email: sale.customerEmail,
+    customer_phone: sale.customerPhone,
+    customer_company: sale.customerCompany,
+    currency: sale.currency,
+    subtotal_price: sale.subtotalPrice,
+    total_price: sale.totalPrice,
+    customer_due_date: sale.customerDueDate,
+    supplier_due_date: sale.supplierDueDate,
+    due_date_source: sale.dueDateSource,
+    due_date_note: sale.dueDateNote,
+    recommended_supplier: sale.recommendedSupplier,
+    recommendation_reasons: sale.recommendationReasons,
+    assigned_supplier: sale.assignedSupplier,
+    special_supplier_name: sale.specialSupplierName,
+    assignment_status: sale.assignmentStatus,
+    assignment_note: sale.assignmentNote,
+    assigned_at: sale.assignedAt,
+    assigned_by: sale.assignedBy,
+    shopify_tag_sync_status: sale.shopifyTagSyncStatus,
+    shopify_tag_value: sale.shopifyTagValue,
+    shopify_tag_synced_at: sale.shopifyTagSyncedAt,
+    shopify_tag_error: sale.shopifyTagError,
+    trello_projection_status: sale.trelloProjectionStatus,
+    supplier_trello_card_id: sale.supplierTrelloCardId,
+    supplier_trello_card_url: sale.supplierTrelloCardUrl,
+    trello_projection_error: sale.trelloProjectionError,
+    task_sync_status: sale.taskSyncStatus,
+    active_task_id: sale.activeTaskId,
+    task_sync_error: sale.taskSyncError,
+    product_summary: sale.productSummary,
+    primary_image_url: sale.primaryImageUrl,
+    raw_shopify: {},
+    offer_snapshot: {},
+    metadata: {},
+    created_at: sale.createdAt,
+    updated_at: sale.updatedAt,
+  };
+}
+
+async function fetchSaleRowById(saleId: string) {
+  const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: "*",
+    id: `eq.${saleId}`,
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+async function fetchExistingSaleRow(input: SupplierSaleInput) {
+  const shopifyOrderId = nullableText(input.shopifyOrderId, 180);
+  if (shopifyOrderId) {
+    const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select: "*",
+      shopify_order_id: `eq.${shopifyOrderId}`,
+      limit: 1,
+    });
+    if (rows[0]) return rows[0];
+  }
+
+  const offerId = nullableText(input.offerId, 180);
+  if (offerId) {
+    const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select: "*",
+      offer_id: `eq.${offerId}`,
+      limit: 1,
+    });
+    if (rows[0]) return rows[0];
+  }
+
+  const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: "*",
+    sale_key: `eq.${input.saleKey}`,
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+async function fetchItemsForSale(saleId: string) {
+  return supabaseRequest<SupplierSaleItemRow[]>("supplier_sale_items", undefined, {
+    select: "*",
+    sale_id: `eq.${saleId}`,
+    order: "created_at.asc",
+    limit: 500,
+  });
+}
+
+async function fetchLatestEventForSale(saleId: string) {
+  const rows = await supabaseRequest<SupplierSaleEventRow[]>("supplier_sale_events", undefined, {
+    select: "*",
+    sale_id: `eq.${saleId}`,
+    order: "created_at.desc",
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+export async function getSupplierSale(saleId: string) {
+  const id = nullableText(saleId, 120);
+  if (!id) throw new QuoteValidationError("Sale-ID fehlt.", ["Sale-ID fehlt."], 422);
+  const row = await fetchSaleRowById(id);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  const [items, latestEvent] = await Promise.all([fetchItemsForSale(row.id), fetchLatestEventForSale(row.id)]);
+  return mapSale(row, items.map(mapItem), latestEvent ? mapEvent(latestEvent) : null);
+}
+
+async function patchSaleRow(saleId: string, patch: Partial<SupplierSaleRow>) {
+  const rows = await supabaseRequest<SupplierSaleRow[]>(
+    "supplier_sales",
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+      headers: { Prefer: "return=representation" },
+    },
+    {
+      id: `eq.${saleId}`,
+      select: "*",
+      limit: 1,
+    },
+  );
+  if (!rows[0]) throw new QuoteValidationError("Sale wurde nicht aktualisiert.", ["Sale wurde nicht aktualisiert."], 404);
+  return rows[0];
+}
+
+async function insertEvent(input: {
+  saleId?: string | null;
+  eventType: SupplierSaleEventRow["event_type"];
+  actor?: SupplierSaleActor | null;
+  idempotencyKey: string;
+  payload?: JsonRecord;
+}) {
+  try {
+    await supabaseRequest("supplier_sale_events", {
+      method: "POST",
+      body: JSON.stringify({
+        sale_id: input.saleId || null,
+        event_type: input.eventType,
+        actor: input.actor?.operatorName || input.actor?.mode || null,
+        idempotency_key: input.idempotencyKey,
+        payload: input.payload || {},
+      }),
+      headers: { Prefer: "return=minimal" },
+    });
+  } catch {
+    // Event idempotency collisions are expected during webhook retries.
+  }
+}
+
+function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow | null) {
+  const lineItems = input.lineItems || [];
+  if (!input.saleKey) throw new QuoteValidationError("Sale-Key fehlt.", ["Sale-Key fehlt."], 422);
+  if (!lineItems.length) throw new QuoteValidationError("Sale braucht mindestens eine Position.", ["Sale braucht mindestens eine Position."], 422);
+
+  const recommendation = deriveSupplierRecommendation(lineItems);
+  const paymentStatus = normalizeShopifyPaymentStatus(input.shopifyPaymentStatus);
+  const paymentDecision = derivePaymentDecisionStatus(paymentStatus, existing?.payment_decision_status);
+  const assignedSupplier = existing?.assigned_supplier || null;
+  const assignmentStatus = deriveAssignmentStatus({
+    paymentDecisionStatus: paymentDecision,
+    assignedSupplier,
+    currentStatus: existing?.assignment_status,
+  });
+
+  return {
+    sale_key: cleanText(input.saleKey, 260),
+    source: nullableText(input.source, 80) || "shopify",
+    shopify_order_id: nullableText(input.shopifyOrderId, 180) || existing?.shopify_order_id || null,
+    shopify_order_name: nullableText(input.shopifyOrderName, 120) || existing?.shopify_order_name || null,
+    shopify_order_url: nullableText(input.shopifyOrderUrl, 1000) || existing?.shopify_order_url || null,
+    shopify_payment_status: paymentStatus,
+    payment_decision_status: paymentDecision,
+    payment_due_at: normalizeIsoTimestamp(input.paymentDueAt, "Zahlungsfrist") || existing?.payment_due_at || null,
+    offer_id: nullableText(input.offerId, 180) || existing?.offer_id || null,
+    offer_number: nullableText(input.offerNumber, 120) || existing?.offer_number || null,
+    document_reference: nullableText(input.documentReference, 160) || existing?.document_reference || null,
+    offer_public_url: nullableText(input.offerPublicUrl, 1000) || existing?.offer_public_url || null,
+    final_pdf_url: nullableText(input.finalPdfUrl, 1000) || existing?.final_pdf_url || null,
+    trello_card_id: nullableText(input.trelloCardId, 160) || existing?.trello_card_id || null,
+    request_id: nullableText(input.requestId, 160) || existing?.request_id || null,
+    customer_name: nullableText(input.customerName, 260) || existing?.customer_name || null,
+    customer_email: lowerNullable(input.customerEmail, 260) || existing?.customer_email || null,
+    customer_phone: nullableText(input.customerPhone, 120) || existing?.customer_phone || null,
+    customer_company: nullableText(input.customerCompany, 260) || existing?.customer_company || null,
+    currency: (nullableText(input.currency, 12) || existing?.currency || "EUR").toUpperCase(),
+    subtotal_price: numericValue(input.subtotalPrice) ?? numericValue(existing?.subtotal_price),
+    total_price: numericValue(input.totalPrice) ?? numericValue(existing?.total_price),
+    customer_due_date: normalizeDateOnly(input.customerDueDate) || existing?.customer_due_date || null,
+    supplier_due_date: normalizeDateOnly(input.supplierDueDate) || normalizeDateOnly(input.customerDueDate) || existing?.supplier_due_date || null,
+    due_date_source: nullableText(input.dueDateSource, 80) || existing?.due_date_source || null,
+    due_date_note: nullableText(input.dueDateNote, 500) || existing?.due_date_note || null,
+    recommended_supplier: recommendation.recommendedSupplier,
+    recommendation_reasons: recommendation.recommendationReasons,
+    assigned_supplier: assignedSupplier,
+    special_supplier_name: existing?.special_supplier_name || null,
+    assignment_status: assignmentStatus,
+    product_summary: nullableText(input.productSummary, 600) || lineItems.map((item) => cleanText(item.title, 120)).filter(Boolean).slice(0, 3).join(", ") || existing?.product_summary || null,
+    primary_image_url: nullableText(input.primaryImageUrl, 1000) || lineItems.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || existing?.primary_image_url || null,
+    raw_shopify: Object.keys(input.rawShopify || {}).length ? input.rawShopify : existing?.raw_shopify || {},
+    offer_snapshot: Object.keys(input.offerSnapshot || {}).length ? input.offerSnapshot : existing?.offer_snapshot || {},
+    metadata: {
+      ...(existing?.metadata || {}),
+      ...(input.metadata || {}),
+      supplier_rule_version: SUPPLIER_RULE_VERSION,
+    },
+  };
+}
+
+async function replaceSaleItems(
+  saleId: string,
+  lineItems: Array<SupplierLineItemInput & { requiresQuentin: boolean; ruleReasons: string[] }>,
+) {
+  await supabaseRequest("supplier_sale_items", {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" },
+  }, {
+    sale_id: `eq.${saleId}`,
+  });
+
+  if (!lineItems.length) return [];
+  const rows = await supabaseRequest<SupplierSaleItemRow[]>("supplier_sale_items", {
+    method: "POST",
+    body: JSON.stringify(lineItems.map((item, index) => ({
+      sale_id: saleId,
+      line_item_key: nullableText(item.lineItemKey, 180) || `line:${index + 1}`,
+      title: nullableText(item.title, 500) || "Position",
+      sku: nullableText(item.sku, 120),
+      variant_title: nullableText(item.variantTitle, 500),
+      quantity: intValue(item.quantity),
+      product_type: nullableText(item.productType || item.section, 160),
+      image_url: nullableText(item.imageUrl, 1000),
+      requires_quentin: item.requiresQuentin,
+      rule_reasons: item.ruleReasons,
+      raw_line_item: item.rawLineItem || {},
+    }))),
+    headers: { Prefer: "return=representation" },
+  });
+  return rows;
+}
+
+export async function upsertSupplierSale(input: SupplierSaleInput, actor?: SupplierSaleActor | null) {
+  const existing = await fetchExistingSaleRow(input);
+  const payload = buildSalePayload(input, existing);
+  const recommendation = deriveSupplierRecommendation(input.lineItems);
+  const rows = existing
+    ? await supabaseRequest<SupplierSaleRow[]>(
+        "supplier_sales",
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+          headers: { Prefer: "return=representation" },
+        },
+        { id: `eq.${existing.id}`, select: "*", limit: 1 },
+      )
+    : await supabaseRequest<SupplierSaleRow[]>(
+        upsertPath("supplier_sales", "sale_key"),
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+        },
+      );
+
+  const saleRow = rows[0];
+  const items = await replaceSaleItems(saleRow.id, recommendation.lineItems);
+  await insertEvent({
+    saleId: saleRow.id,
+    eventType: existing ? "sale_updated" : "sale_upserted",
+    actor,
+    idempotencyKey: nullableText(input.idempotencyKey, 260) || `supplier-sale:${saleRow.sale_key}:upsert:${hashPayload({
+      payment: saleRow.shopify_payment_status,
+      total: saleRow.total_price,
+      items: items.length,
+    })}`,
+    payload: {
+      sale_key: saleRow.sale_key,
+      shopify_order_id: saleRow.shopify_order_id,
+      recommended_supplier: saleRow.recommended_supplier,
+      payment_status: saleRow.shopify_payment_status,
+    },
+  });
+
+  if (saleRow.assignment_status === "ready_to_assign" && !saleRow.active_task_id) {
+    await ensureSupplierAssignmentTask(saleRow.id, actor || undefined).catch(async (error) => {
+      await patchSaleRow(saleRow.id, {
+        task_sync_status: "failed",
+        task_sync_error: error instanceof Error ? error.message : "Aufgabe konnte nicht erstellt werden.",
+      });
+    });
+  }
+
+  return getSupplierSale(saleRow.id);
+}
+
+export async function upsertSupplierSaleFromPayload(payload: unknown, actor?: SupplierSaleActor | null) {
+  const parsed = buildSupplierSaleInputFromPayload(payload);
+  const sale = await upsertSupplierSale(parsed.sale, actor);
+  return { sale, warnings: parsed.warnings };
+}
+
+export async function listSupplierSalesBoard(options?: {
+  scope?: "active" | "ready" | "payment" | "assigned" | "all";
+  supplier?: SupplierSaleSupplier | SupplierSaleRecommendation | "all" | null;
+  payment?: SupplierSalePaymentStatus | "unpaid" | "all" | null;
+  query?: string | null;
+  limit?: number;
+}): Promise<SupplierSaleBoard> {
+  const scope = options?.scope || "active";
+  const query: Record<string, string | number | boolean | null> = {
+    select: "*",
+    order: "supplier_due_date.asc.nullslast,updated_at.desc",
+    limit: Math.min(Math.max(Number(options?.limit || 250), 1), 500),
+  };
+  if (scope === "ready") query.assignment_status = "eq.ready_to_assign";
+  else if (scope === "payment") query.assignment_status = "eq.payment_open";
+  else if (scope === "assigned") query.assignment_status = "in.(assigned,in_production)";
+  else if (scope !== "all") query.assignment_status = "not.in.(completed,canceled)";
+
+  const payment = options?.payment;
+  if (payment && payment !== "all") {
+    query.shopify_payment_status = payment === "unpaid" ? "not.eq.paid" : `eq.${payment}`;
+  }
+
+  let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
+  const supplier = options?.supplier;
+  if (supplier && supplier !== "all") {
+    saleRows = saleRows.filter((row) => row.assigned_supplier === supplier || row.recommended_supplier === supplier);
+  }
+  const search = nullableText(options?.query, 160)?.toLowerCase();
+  if (search) {
+    saleRows = saleRows.filter((row) => [
+      row.customer_name,
+      row.customer_email,
+      row.shopify_order_name,
+      row.offer_number,
+      row.document_reference,
+      row.product_summary,
+    ].some((value) => String(value || "").toLowerCase().includes(search)));
+  }
+  if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], []);
+  const saleIds = saleRows.map((row) => row.id);
+  const [itemRows, eventRows] = await Promise.all([
+    supabaseRequest<SupplierSaleItemRow[]>("supplier_sale_items", undefined, {
+      select: "*",
+      sale_id: inList(saleIds),
+      order: "created_at.asc",
+      limit: 1000,
+    }),
+    supabaseRequest<SupplierSaleEventRow[]>("supplier_sale_events", undefined, {
+      select: "*",
+      sale_id: inList(saleIds),
+      order: "created_at.desc",
+      limit: 1000,
+    }),
+  ]);
+  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows);
+}
+
+function supplierLabel(supplier: SupplierSaleSupplier, specialSupplierName?: string | null) {
+  if (supplier === "quentin") return "Quentin";
+  if (supplier === "said") return "Saeid";
+  return nullableText(specialSupplierName, 120) || "Sonder-Supplier";
+}
+
+function supplierTagValue(supplier: SupplierSaleSupplier) {
+  const values: Record<SupplierSaleSupplier, string | undefined> = {
+    quentin: process.env.SUPPLIER_TAG_QUENTIN || process.env.SHOPIFY_SUPPLIER_TAG_QUENTIN || "Quentin (schon bezahlt)",
+    said: process.env.SUPPLIER_TAG_SAID || process.env.SHOPIFY_SUPPLIER_TAG_SAID || "Saeid (schon bezahlt)",
+    special: process.env.SUPPLIER_TAG_SPECIAL || process.env.SHOPIFY_SUPPLIER_TAG_SPECIAL,
+  };
+  return nullableText(values[supplier], 80);
+}
+
+function supplierTrelloListId(supplier: SupplierSaleSupplier) {
+  const values: Record<SupplierSaleSupplier, string | undefined> = {
+    quentin: process.env.SUPPLIER_TRELLO_QUENTIN_LIST_ID || process.env.OPS_SUPPLIER_TRELLO_QUENTIN_LIST_ID,
+    said: process.env.SUPPLIER_TRELLO_SAID_LIST_ID || process.env.OPS_SUPPLIER_TRELLO_SAID_LIST_ID,
+    special: process.env.SUPPLIER_TRELLO_SPECIAL_LIST_ID || process.env.OPS_SUPPLIER_TRELLO_SPECIAL_LIST_ID,
+  };
+  return nullableText(values[supplier], 180);
+}
+
+function shopifyConfig() {
+  const token = nullableText(process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || process.env.SHOPIFY_ADMIN_TOKEN, 500);
+  const domain = nullableText(process.env.SHOPIFY_SHOP_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN || process.env.SHOPIFY_SHOP, 260)?.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const version = nullableText(process.env.SHOPIFY_ADMIN_API_VERSION, 40) || "2026-01";
+  if (!token || !domain) return null;
+  return { token, domain, version };
+}
+
+function shopifyOrderGid(row: SupplierSaleRow) {
+  const rawGid = nullableText(row.metadata?.admin_graphql_api_id, 260) || nullableText(row.raw_shopify?.admin_graphql_api_id, 260) || nullableText(row.shopify_order_id, 260);
+  if (!rawGid) return null;
+  if (rawGid.startsWith("gid://shopify/Order/")) return rawGid;
+  if (/^\d+$/.test(rawGid)) return `gid://shopify/Order/${rawGid}`;
+  return null;
+}
+
+async function syncShopifySupplierTag(row: SupplierSaleRow, tagValue: string | null) {
+  if (!tagValue) return { status: "skipped" as const, error: "Supplier-Tag ist nicht konfiguriert." };
+  const config = shopifyConfig();
+  if (!config) return { status: "skipped" as const, error: "Shopify Admin API ist nicht konfiguriert." };
+  const orderGid = shopifyOrderGid(row);
+  if (!orderGid) return { status: "skipped" as const, error: "Shopify Order-ID fehlt." };
+
+  const response = await fetch(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": config.token,
+    },
+    body: JSON.stringify({
+      query: `
+        mutation SupplierTagsAdd($id: ID!, $tags: [String!]!) {
+          tagsAdd(id: $id, tags: $tags) {
+            node { id }
+            userErrors { field message }
+          }
+        }
+      `,
+      variables: { id: orderGid, tags: [tagValue] },
+    }),
+    signal: AbortSignal.timeout(12_000),
+  });
+
+  const body = await response.json().catch(() => null) as JsonRecord | null;
+  if (!response.ok) return { status: "failed" as const, error: `Shopify TagsAdd HTTP ${response.status}` };
+  const errors = arrayRecords(jsonRecord(body?.data).tagsAdd ? jsonRecord(jsonRecord(body?.data).tagsAdd).userErrors : body?.errors);
+  if (errors.length) {
+    return {
+      status: "failed" as const,
+      error: errors.map((error) => cleanText(error.message || JSON.stringify(error), 200)).filter(Boolean).join("; ") || "Shopify Tag konnte nicht gesetzt werden.",
+    };
+  }
+  return { status: "synced" as const, error: null };
+}
+
+function trelloCardName(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, specialSupplierName?: string | null) {
+  const label = supplierLabel(supplier, specialSupplierName);
+  const order = row.shopify_order_name || row.offer_number || row.document_reference || row.sale_key;
+  return `${label} | ${order} | ${row.customer_name || row.customer_company || "Kunde"} | ${deliveryDate}`.slice(0, 180);
+}
+
+function assignmentDescription(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, note?: string | null) {
+  return [
+    `Supplier: ${supplierLabel(supplier, row.special_supplier_name)}`,
+    `Lieferdatum Kunde: ${deliveryDate}`,
+    `Kunde: ${row.customer_name || "-"}${row.customer_company ? ` / ${row.customer_company}` : ""}`,
+    `E-Mail: ${row.customer_email || "-"}`,
+    `Shopify: ${row.shopify_order_name || row.shopify_order_id || "-"}`,
+    row.shopify_order_url ? `Shopify-Link: ${row.shopify_order_url}` : null,
+    row.offer_public_url ? `Angebot: ${row.offer_public_url}` : null,
+    row.final_pdf_url ? `Finaler Snapshot: ${row.final_pdf_url}` : null,
+    row.supplier_trello_card_url ? `Supplier-Trello-Karte: ${row.supplier_trello_card_url}` : null,
+    row.trello_card_id ? `Ursprungs-Trello-ID: ${row.trello_card_id}` : null,
+    row.product_summary ? `Produkt: ${row.product_summary}` : null,
+    row.recommendation_reasons?.length ? `Regeln: ${row.recommendation_reasons.join(", ")}` : null,
+    note ? `Notiz: ${note}` : null,
+    `Supplier Sale: ${row.id}`,
+  ].filter(Boolean).join("\n");
+}
+
+async function projectSupplierTrelloCard(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, note?: string | null) {
+  const listId = supplierTrelloListId(supplier);
+  if (!listId) return { status: "skipped" as const, cardId: null, cardUrl: null, error: "Supplier-Trello-Liste ist nicht konfiguriert." };
+  const card = await createTrelloCard({
+    listId,
+    name: trelloCardName(row, supplier, deliveryDate, row.special_supplier_name),
+    desc: assignmentDescription(row, supplier, deliveryDate, note),
+  });
+  return { status: "synced" as const, cardId: card.id, cardUrl: card.url || card.shortUrl || null, error: null };
+}
+
+async function ensureSupplierAssignmentTask(saleId: string, actor?: SupplierSaleActor | null, assigneeLabel?: string | null) {
+  const row = await fetchSaleRowById(saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  if (row.active_task_id) return { taskId: row.active_task_id, created: false };
+  const taskSupplier: SupplierSaleSupplier = row.assigned_supplier || (row.recommended_supplier === "quentin" ? "quentin" : "said");
+
+  const sourceRef = `supplier_sale:${row.id}`;
+  const existingTasks = await listOpsInternalTasks({ includeDone: false, requestId: row.request_id, limit: 150 });
+  const existing = existingTasks.find((task) => task.sourceRef === sourceRef || task.description?.includes(`Supplier Sale: ${row.id}`));
+  if (existing) {
+    await patchSaleRow(row.id, { active_task_id: existing.id, task_sync_status: "synced", task_sync_error: null });
+    return { taskId: existing.id, created: false };
+  }
+
+  const dueAt = row.supplier_due_date
+    ? new Date(`${row.supplier_due_date}T09:00:00.000Z`).toISOString()
+    : new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const task = await createOpsInternalTask(
+    {
+      title: `Sale ${row.shopify_order_name || row.offer_number || row.document_reference || row.sale_key} vergeben`,
+      description: assignmentDescription(row, taskSupplier, row.supplier_due_date || row.customer_due_date || "offen", row.assignment_note),
+      category: "admin",
+      priority: row.supplier_due_date && row.supplier_due_date <= new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) ? "high" : "normal",
+      assigneeLabel: nullableText(assigneeLabel, 120) || nullableText(process.env.SUPPLIER_ASSIGNMENT_TASK_ASSIGNEE, 120) || "Fabienne",
+      dueAt,
+      requestId: row.request_id,
+      customerName: row.customer_name,
+      customerEmail: row.customer_email,
+      trelloCardId: row.supplier_trello_card_id || row.trello_card_id,
+      sourceApp: "supplier_sales",
+      sourceRef,
+      metadata: {
+        supplier_sale_id: row.id,
+        shopify_order_id: row.shopify_order_id,
+        offer_id: row.offer_id,
+        supplier: row.assigned_supplier || row.recommended_supplier,
+      },
+    },
+    actor || undefined,
+  );
+  await patchSaleRow(row.id, { active_task_id: task.id, task_sync_status: "synced", task_sync_error: null });
+  return { taskId: task.id, created: true };
+}
+
+function assertSupplier(value: unknown): SupplierSaleSupplier {
+  const supplier = cleanText(value, 40) as SupplierSaleSupplier;
+  if (!SUPPLIER_SALE_SUPPLIERS.includes(supplier)) {
+    throw new QuoteValidationError("Supplier ist ungueltig.", ["Bitte Quentin, Saeid oder Sonder-Supplier waehlen."], 422);
+  }
+  return supplier;
+}
+
+function assertPaymentDecision(value: unknown): SupplierSalePaymentDecision {
+  const decision = cleanText(value, 80) as SupplierSalePaymentDecision;
+  if (!SUPPLIER_PAYMENT_DECISIONS.includes(decision)) {
+    throw new QuoteValidationError("Zahlungsentscheidung ist ungueltig.", ["Bitte Zahlungsentscheidung pruefen."], 422);
+  }
+  return decision;
+}
+
+export async function updateSupplierSalePaymentDecision(input: {
+  saleId: string;
+  paymentDecisionStatus: SupplierSalePaymentDecision;
+  paymentDueAt?: string | null;
+  operatorName?: string | null;
+}, actor?: SupplierSaleActor | null) {
+  const sale = await getSupplierSale(input.saleId);
+  const decision = assertPaymentDecision(input.paymentDecisionStatus);
+  const updated = await patchSaleRow(sale.id, {
+    payment_decision_status: decision,
+    payment_due_at: normalizeIsoTimestamp(input.paymentDueAt, "Zahlungsfrist"),
+    assignment_status: deriveAssignmentStatus({
+      paymentDecisionStatus: decision,
+      assignedSupplier: sale.assignedSupplier,
+      currentStatus: sale.assignmentStatus,
+    }),
+  });
+  await insertEvent({
+    saleId: sale.id,
+    eventType: "payment_status_changed",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: `supplier-sale:${sale.id}:payment-decision:${decision}:${Date.now()}`,
+    payload: { decision },
+  });
+  return mapSale(updated, sale.items, sale.latestEvent);
+}
+
+export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?: SupplierSaleActor | null) {
+  const supplier = assertSupplier(input.supplier);
+  const requestedDeliveryDate = normalizeDateOnly(input.requestedDeliveryDate);
+  if (!requestedDeliveryDate) {
+    throw new QuoteValidationError("Lieferdatum fehlt.", ["Bitte bestaetigen, wann geliefert werden soll."], 422);
+  }
+  const sale = await getSupplierSale(input.saleId);
+  const decision = input.paymentDecisionStatus
+    ? assertPaymentDecision(input.paymentDecisionStatus)
+    : sale.paymentDecisionStatus;
+  if (decision !== "paid_confirmed" && decision !== "manual_approved_unpaid") {
+    throw new QuoteValidationError("Unbezahlte Vergabe braucht Freigabe.", [
+      "Bei unbezahlten Sales bitte 'trotz offener Zahlung vergeben' bestaetigen oder auf Zahlung warten.",
+    ], 422);
+  }
+  if (supplier === "special" && !nullableText(input.specialSupplierName, 120)) {
+    throw new QuoteValidationError("Sonder-Supplier fehlt.", ["Bitte Namen des Sonder-Suppliers eintragen."], 422);
+  }
+
+  const now = new Date().toISOString();
+  const tagValue = supplierTagValue(supplier);
+  const basePatch: Partial<SupplierSaleRow> = {
+    assigned_supplier: supplier,
+    special_supplier_name: supplier === "special" ? nullableText(input.specialSupplierName, 120) : null,
+    assignment_status: "assigned",
+    assignment_note: nullableText(input.assignmentNote, 1000),
+    assigned_at: now,
+    assigned_by: nullableText(input.operatorName || actor?.operatorName, 120),
+    supplier_due_date: requestedDeliveryDate,
+    customer_due_date: sale.customerDueDate || requestedDeliveryDate,
+    due_date_source: sale.dueDateSource || "operator_confirmed",
+    payment_decision_status: decision,
+    shopify_tag_value: tagValue,
+    shopify_tag_sync_status: tagValue ? "pending" : "skipped",
+    shopify_tag_error: tagValue ? null : "Supplier-Tag ist nicht konfiguriert.",
+    trello_projection_status: supplierTrelloListId(supplier) ? "pending" : "skipped",
+    trello_projection_error: supplierTrelloListId(supplier) ? null : "Supplier-Trello-Liste ist nicht konfiguriert.",
+    task_sync_status: "pending",
+    task_sync_error: null,
+  };
+
+  let row = await patchSaleRow(sale.id, basePatch);
+  const attemptKey = `supplier-sale:${sale.id}:assign:${supplier}:${requestedDeliveryDate}`;
+  await supabaseRequest("supplier_assignment_attempts", {
+    method: "POST",
+    body: JSON.stringify({
+      sale_id: sale.id,
+      attempt_key: attemptKey,
+      supplier,
+      operator_name: nullableText(input.operatorName || actor?.operatorName, 120),
+      requested_delivery_date: requestedDeliveryDate,
+      assignment_note: nullableText(input.assignmentNote, 1000),
+      payment_decision_status: decision,
+      status: "pending",
+      shopify_tag_value: tagValue,
+      metadata: {
+        assignee_label: nullableText(input.assigneeLabel, 120),
+        special_supplier_name: nullableText(input.specialSupplierName, 120),
+      },
+    }),
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+  }, {
+    on_conflict: "attempt_key",
+  }).catch(() => null);
+
+  await insertEvent({
+    saleId: sale.id,
+    eventType: "assignment_confirmed",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: attemptKey,
+    payload: { supplier, requested_delivery_date: requestedDeliveryDate, payment_decision_status: decision },
+  });
+
+  try {
+    const tagSync = await syncShopifySupplierTag(row, tagValue);
+    row = await patchSaleRow(sale.id, {
+      shopify_tag_sync_status: tagSync.status,
+      shopify_tag_synced_at: tagSync.status === "synced" ? new Date().toISOString() : null,
+      shopify_tag_error: tagSync.error,
+    });
+  } catch (error) {
+    row = await patchSaleRow(sale.id, {
+      shopify_tag_sync_status: "failed",
+      shopify_tag_error: error instanceof Error ? error.message : "Shopify Tag-Sync fehlgeschlagen.",
+    });
+  }
+
+  try {
+    const trello = await projectSupplierTrelloCard(row, supplier, requestedDeliveryDate, input.assignmentNote);
+    row = await patchSaleRow(sale.id, {
+      trello_projection_status: trello.status,
+      supplier_trello_card_id: trello.cardId,
+      supplier_trello_card_url: trello.cardUrl,
+      trello_projection_error: trello.error,
+    });
+  } catch (error) {
+    row = await patchSaleRow(sale.id, {
+      trello_projection_status: "failed",
+      trello_projection_error: error instanceof Error ? error.message : "Trello-Projektion fehlgeschlagen.",
+    });
+  }
+
+  try {
+    await ensureSupplierAssignmentTask(sale.id, actor, input.assigneeLabel);
+  } catch (error) {
+    row = await patchSaleRow(sale.id, {
+      task_sync_status: "failed",
+      task_sync_error: error instanceof Error ? error.message : "Aufgabe konnte nicht erstellt werden.",
+    });
+  }
+
+  const fresh = await getSupplierSale(sale.id);
+  await supabaseRequest("supplier_assignment_attempts", {
+    method: "PATCH",
+    body: JSON.stringify({
+      status: [fresh.shopifyTagSyncStatus, fresh.trelloProjectionStatus, fresh.taskSyncStatus].includes("failed") ? "partial" : "synced",
+      trello_card_id: fresh.supplierTrelloCardId,
+      trello_card_url: fresh.supplierTrelloCardUrl,
+      task_id: fresh.activeTaskId,
+      completed_at: new Date().toISOString(),
+    }),
+    headers: { Prefer: "return=minimal" },
+  }, {
+    attempt_key: `eq.${attemptKey}`,
+  }).catch(() => null);
+  return fresh;
+}
+
+function paymentReminderWebhookUrl() {
+  return nullableText(process.env.SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL || process.env.N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL, 1000);
+}
+
+async function sendPaymentReminderWebhook(input: {
+  sale: SupplierSale;
+  recipientEmail: string;
+  paymentLink: string | null;
+  message: string | null;
+  reminderKey: string;
+}) {
+  const url = paymentReminderWebhookUrl();
+  if (!url) return { status: "skipped" as const, providerMessageId: null, error: "Payment-Reminder-Webhook ist nicht konfiguriert." };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(12_000),
+  });
+  const body = await response.json().catch(() => null) as JsonRecord | null;
+  if (!response.ok) return { status: "failed" as const, providerMessageId: null, error: `Reminder-Webhook HTTP ${response.status}` };
+  return {
+    status: "sent" as const,
+    providerMessageId: recordString(body || {}, ["providerMessageId", "messageId", "id"], 260),
+    error: null,
+  };
+}
+
+export async function requestSupplierPaymentReminder(input: SupplierPaymentReminderInput, actor?: SupplierSaleActor | null) {
+  const sale = await getSupplierSale(input.saleId);
+  const saleRow = await fetchSaleRowById(sale.id);
+  const recipientEmail = lowerNullable(input.recipientEmail || sale.customerEmail, 260);
+  if (!recipientEmail) throw new QuoteValidationError("Empfaenger-E-Mail fehlt.", ["Empfaenger-E-Mail fehlt."], 422);
+  const paymentLink = nullableText(input.paymentLink, 1000)
+    || nullableText(sale.latestEvent?.payload?.payment_link, 1000)
+    || nullableText(saleRow?.metadata?.payment_link, 1000)
+    || sale.shopifyOrderUrl;
+  const reminderKey = `supplier-sale:${sale.id}:payment-reminder:${Date.now()}`;
+
+  const webhook = await sendPaymentReminderWebhook({
+    sale,
+    recipientEmail,
+    paymentLink,
+    message: nullableText(input.message, 2000),
+    reminderKey,
+  });
+
+  await supabaseRequest("supplier_payment_reminders", {
+    method: "POST",
+    body: JSON.stringify({
+      sale_id: sale.id,
+      reminder_key: reminderKey,
+      status: webhook.status,
+      requested_by: nullableText(input.requestedBy || input.operatorName || actor?.operatorName, 120),
+      recipient_email: recipientEmail,
+      payment_link: paymentLink,
+      provider_message_id: webhook.providerMessageId,
+      error: webhook.error,
+      metadata: {
+        message: nullableText(input.message, 2000),
+        webhook_configured: Boolean(paymentReminderWebhookUrl()),
+      },
+      sent_at: webhook.status === "sent" ? new Date().toISOString() : null,
+    }),
+    headers: { Prefer: "return=minimal" },
+  });
+
+  const updated = await patchSaleRow(sale.id, {
+    last_payment_reminder_at: new Date().toISOString(),
+    payment_reminder_count: sale.paymentReminderCount + 1,
+    payment_decision_status: sale.paymentDecisionStatus === "paid_confirmed" ? "paid_confirmed" : "wait_for_payment",
+    assignment_status: sale.assignmentStatus === "assigned" ? "assigned" : "payment_open",
+  });
+
+  if (webhook.status === "skipped") {
+    await createOpsInternalTask({
+      title: `Zahlungserinnerung vorbereiten: ${sale.shopifyOrderName || sale.offerNumber || sale.saleKey}`,
+      description: [
+        `Kunde: ${sale.customerName || "-"}`,
+        `E-Mail: ${recipientEmail}`,
+        paymentLink ? `Bezahl-Link: ${paymentLink}` : "Bezahl-Link fehlt.",
+        `Sale: ${sale.id}`,
+      ].join("\n"),
+      category: "admin",
+      priority: "normal",
+      assigneeLabel: nullableText(process.env.SUPPLIER_PAYMENT_TASK_ASSIGNEE, 120) || "Fabienne",
+      requestId: sale.requestId,
+      customerName: sale.customerName,
+      customerEmail: recipientEmail,
+      sourceApp: "supplier_sales",
+      sourceRef: `supplier_payment_reminder:${sale.id}`,
+      metadata: { supplier_sale_id: sale.id, reminder_key: reminderKey },
+    }, actor || undefined).catch(() => null);
+  }
+
+  await insertEvent({
+    saleId: sale.id,
+    eventType: "payment_reminder_requested",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: reminderKey,
+    payload: { recipient_email: recipientEmail, payment_link: paymentLink, status: webhook.status },
+  });
+
+  return mapSale(updated, sale.items, sale.latestEvent);
+}
