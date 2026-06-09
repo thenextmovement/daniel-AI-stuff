@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
-import { validateCloudflareAccess, validateOpsPortalToken } from "../../src/lib/ops/auth";
+import {
+  hasOpsSession,
+  isOpsPortalBypassed,
+  isOpsPortalConfigured,
+  validateCloudflareAccess,
+  validateOpsPortalToken,
+} from "../../src/lib/ops/auth";
 
 function base64Url(input: BufferSource | string) {
   const buffer =
@@ -46,8 +52,11 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
     domains: process.env.OPS_ALLOWED_EMAIL_DOMAINS,
     emails: process.env.OPS_ALLOWED_EMAILS,
     issuer: process.env.OPS_CLOUDFLARE_ACCESS_ISSUER,
+    nodeEnv: process.env.NODE_ENV,
     portalToken: process.env.OPS_PORTAL_TOKEN,
+    quoteInternalApiToken: process.env.QUOTE_INTERNAL_API_TOKEN,
     requireAccess: process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS,
+    teamDomain: process.env.OPS_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
   };
 
   try {
@@ -59,8 +68,11 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
       OPS_ALLOWED_EMAIL_DOMAINS: original.domains,
       OPS_ALLOWED_EMAILS: original.emails,
       OPS_CLOUDFLARE_ACCESS_ISSUER: original.issuer,
+      NODE_ENV: original.nodeEnv,
       OPS_PORTAL_TOKEN: original.portalToken,
+      QUOTE_INTERNAL_API_TOKEN: original.quoteInternalApiToken,
       OPS_REQUIRE_CLOUDFLARE_ACCESS: original.requireAccess,
+      OPS_CLOUDFLARE_ACCESS_TEAM_DOMAIN: original.teamDomain,
     })) {
       if (value === undefined) {
         delete process.env[key];
@@ -70,6 +82,35 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
     }
   }
 }
+
+function setNodeEnv(value: string) {
+  (process.env as Record<string, string | undefined>).NODE_ENV = value;
+}
+
+test("local Ops bypass is disabled in production even for forged forwarded hosts", async () => {
+  await withCloudflareAccessEnv(async () => {
+    setNodeEnv("production");
+    delete process.env.OPS_CLOUDFLARE_ACCESS_AUD;
+    delete process.env.OPS_CLOUDFLARE_ACCESS_ISSUER;
+    delete process.env.OPS_CLOUDFLARE_ACCESS_TEAM_DOMAIN;
+    delete process.env.OPS_PORTAL_TOKEN;
+    delete process.env.QUOTE_INTERNAL_API_TOKEN;
+
+    assert.equal(isOpsPortalBypassed("localhost"), false);
+    assert.equal(isOpsPortalBypassed("127.0.0.1:3000"), false);
+    assert.equal(isOpsPortalConfigured("localhost"), false);
+    assert.equal(await hasOpsSession("localhost", { get: () => null }), false);
+  });
+});
+
+test("local Ops bypass remains available outside production", async () => {
+  await withCloudflareAccessEnv(async () => {
+    setNodeEnv("test");
+    assert.equal(isOpsPortalBypassed("localhost:3000"), true);
+    assert.equal(isOpsPortalConfigured("127.0.0.1:3000"), true);
+    assert.equal(await hasOpsSession("127.0.0.1:3000", { get: () => null }), true);
+  });
+});
 
 test("validateCloudflareAccess accepts a signed Access JWT for an allowed employee domain", async () => {
   await withCloudflareAccessEnv(async () => {

@@ -3,11 +3,14 @@ import assert from "node:assert/strict";
 import {
   buildCaseFlowSummary,
   buildCustomerDownstreamRepairPlan,
+  buildCustomerInternalTaskBoardFromAudits,
+  buildCustomerInternalTaskIdentity,
   buildSpecialCaseSummary,
   buildSalesRecoverySummary,
   buildCustomerUpdatePlan,
   buildCustomerUpdatePreview,
   deriveCustomerOpsState,
+  listCustomerInternalTasks,
   listMockupTrelloAttachments,
   parseTrelloCardIdentifier,
   resolveCustomerSearchMode,
@@ -48,6 +51,45 @@ async function captureSupabaseSearch(
 
   try {
     await searchCustomerRecords(query);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) {
+      delete process.env.SUPABASE_URL;
+    } else {
+      process.env.SUPABASE_URL = originalUrl;
+    }
+    if (originalKey === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+    }
+  }
+
+  assert.equal(calls.length, 1);
+  return calls[0];
+}
+
+async function captureSupabaseCall(
+  run: () => Promise<unknown>,
+  expectedPath: string,
+) {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const calls: URL[] = [];
+
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    if (url.pathname.endsWith(expectedPath)) {
+      calls.push(url);
+    }
+    return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await run();
   } finally {
     globalThis.fetch = originalFetch;
     if (originalUrl === undefined) {
@@ -258,6 +300,159 @@ test("resolveCustomerSearchMode keeps ids and emails exact, names fuzzy", () => 
   assert.equal(resolveCustomerSearchMode("+49 177 7390126"), "phone");
   assert.equal(resolveCustomerSearchMode("deal:11245"), "deal");
   assert.equal(resolveCustomerSearchMode("trello:FYXcIQ9K"), "trello");
+});
+
+test("buildCustomerInternalTaskBoardFromAudits derives open task state and request filters", () => {
+  const board = buildCustomerInternalTaskBoardFromAudits(
+    [
+      {
+        id: "audit_1",
+        document_id: "req_1",
+        workflow_name: "customer_records_console",
+        action: "customer_internal_task_created",
+        status: "success",
+        metadata: {
+          task_id: "task_1",
+          task_title: "Netzteile nachbestellen",
+          task_description: "Für Reklamationsfälle Bestand prüfen.",
+          task_category: "procurement",
+          task_priority: "high",
+          task_assignee_name: "Daniel",
+          task_due_at: "2026-01-01T09:00:00.000Z",
+          task_request_id: "req_1",
+          task_customer_name: "Samuele Micacchioni",
+          actor_label: "Ops",
+        },
+        created_at: "2026-01-01T08:00:00.000Z",
+      },
+      {
+        id: "audit_2",
+        document_id: "req_1",
+        workflow_name: "customer_records_console",
+        action: "customer_internal_task_updated",
+        status: "success",
+        metadata: {
+          task_id: "task_1",
+          task_title: "Netzteile und Dimmer nachbestellen",
+          task_category: "procurement",
+          task_priority: "urgent",
+          task_assignee_name: "Daniel",
+          task_due_at: "2026-01-01T09:00:00.000Z",
+          task_request_id: "req_1",
+          task_customer_name: "Samuele Micacchioni",
+          task_source_type: "shipping_incident",
+          task_source_id: "incident_1",
+          actor_label: "Daniel",
+        },
+        created_at: "2026-01-01T09:00:00.000Z",
+      },
+    ] as any,
+    { requestId: "req_1" },
+  );
+
+  assert.equal(board.tasks.length, 1);
+  assert.equal(board.tasks[0].title, "Netzteile und Dimmer nachbestellen");
+  assert.equal(board.tasks[0].priority, "urgent");
+  assert.equal(board.tasks[0].status, "open");
+  assert.equal(board.tasks[0].sourceType, "shipping_incident");
+  assert.equal(board.tasks[0].sourceId, "incident_1");
+  assert.equal(board.tasks[0].originLabel, "Kunde: Samuele Micacchioni / Nachbestellung");
+  assert.equal(board.counts.open, 1);
+  assert.equal(board.counts.urgent, 1);
+});
+
+test("buildCustomerInternalTaskIdentity creates stable ids for retries and source-backed tasks", () => {
+  const first = buildCustomerInternalTaskIdentity({
+    sourceType: "Shipping Incident",
+    sourceId: "incident_1",
+  });
+  const retry = buildCustomerInternalTaskIdentity({
+    sourceType: "shipping_incident",
+    sourceId: "incident_1",
+  });
+  const clientRetry = buildCustomerInternalTaskIdentity({
+    clientActionId: "create-button-1",
+  });
+
+  assert.equal(first.idempotencyKey, "source:shipping_incident:incident_1");
+  assert.equal(first.taskId, retry.taskId);
+  assert.match(first.taskId || "", /^task_[a-f0-9]{32}$/);
+  assert.equal(clientRetry.idempotencyKey, "client:create-button-1");
+});
+
+test("listCustomerInternalTasks filters request task audits before applying the limit", async () => {
+  const url = await captureSupabaseCall(
+    () => listCustomerInternalTasks({ requestId: "req_1" }),
+    "/rest/v1/workflow_audit_log",
+  );
+
+  assert.equal(url.searchParams.get("limit"), "5000");
+  assert.match(url.searchParams.get("or") || "", /document_id\.eq\.req_1/);
+  assert.match(url.searchParams.get("or") || "", /metadata->>task_request_id\.eq\.req_1/);
+});
+
+test("buildCustomerInternalTaskBoardFromAudits handles complete and reopen events", () => {
+  const audits = [
+    {
+      id: "audit_1",
+      document_id: "internal-task:task_2",
+      workflow_name: "customer_records_console",
+      action: "customer_internal_task_created",
+      status: "success",
+      metadata: {
+        task_id: "task_2",
+        task_title: "Musterbox prüfen",
+        task_category: "admin",
+        task_priority: "normal",
+        task_assignee_name: "Abdul",
+      },
+      created_at: "2026-01-01T08:00:00.000Z",
+    },
+    {
+      id: "audit_2",
+      document_id: "internal-task:task_2",
+      workflow_name: "customer_records_console",
+      action: "customer_internal_task_completed",
+      status: "success",
+      metadata: {
+        task_id: "task_2",
+        task_title: "Musterbox prüfen",
+        task_category: "admin",
+        task_priority: "normal",
+        task_assignee_name: "Abdul",
+        task_completion_note: "Erledigt.",
+        actor_label: "Abdul",
+      },
+      created_at: "2026-01-01T10:00:00.000Z",
+    },
+    {
+      id: "audit_3",
+      document_id: "internal-task:task_2",
+      workflow_name: "customer_records_console",
+      action: "customer_internal_task_reopened",
+      status: "success",
+      metadata: {
+        task_id: "task_2",
+        task_title: "Musterbox prüfen",
+        task_category: "admin",
+        task_priority: "normal",
+        task_assignee_name: "Abdul",
+        task_note: "Bitte nochmal zählen.",
+        actor_label: "Daniel",
+      },
+      created_at: "2026-01-01T11:00:00.000Z",
+    },
+  ] as any;
+
+  const openBoard = buildCustomerInternalTaskBoardFromAudits(audits);
+  assert.equal(openBoard.tasks.length, 1);
+  assert.equal(openBoard.tasks[0].status, "open");
+  assert.equal(openBoard.tasks[0].completedAt, null);
+  assert.equal(openBoard.tasks[0].latestNote, "Bitte nochmal zählen.");
+
+  const doneBoard = buildCustomerInternalTaskBoardFromAudits(audits.slice(0, 2), { includeDone: true });
+  assert.equal(doneBoard.tasks[0].status, "done");
+  assert.equal(doneBoard.tasks[0].completedBy, "Abdul");
 });
 
 test("searchCustomerRecords builds fuzzy name filters without double encoding", async () => {

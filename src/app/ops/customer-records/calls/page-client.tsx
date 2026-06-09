@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   ExternalLink,
+  ListChecks,
   Mail,
   Phone,
   RefreshCcw,
@@ -23,8 +24,9 @@ import type {
   SalesCallPreset,
   SalesCallVisualCandidate,
 } from "@/lib/ops/customer-call-module";
-import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
+import type { CustomerInternalTaskBoard, CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
 import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import { OpsModuleNav } from "@/components/ops/OpsModuleNav";
 
 type SalesCallApiResponse = {
   ok: boolean;
@@ -41,6 +43,13 @@ type SalesCallApiResponse = {
 type CustomerRecordsSearchResponse = {
   ok: boolean;
   results?: CustomerSearchResult[];
+  error?: string;
+  issues?: string[];
+};
+
+type CustomerTasksResponse = {
+  ok: boolean;
+  board?: CustomerInternalTaskBoard;
   error?: string;
   issues?: string[];
 };
@@ -835,6 +844,11 @@ function SegmentConfirmControl({
   );
 }
 
+function newClientActionId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function CustomerSalesCallsClient({
   initialHasSession,
   opsEnabled,
@@ -853,12 +867,14 @@ export function CustomerSalesCallsClient({
   const [detailOpen, setDetailOpen] = useState(false);
   const [preset, setPreset] = useState<SalesCallPreset>("interested");
   const [notes, setNotes] = useState("");
+  const [resultClientActionId, setResultClientActionId] = useState(newClientActionId);
   const [callbackDate, setCallbackDate] = useState(tomorrowDate());
   const [priorityTier, setPriorityTier] = useState<SalesCallPriorityTier>("standard");
   const [priorityReason, setPriorityReason] = useState("");
   const [purchaseSignal, setPurchaseSignal] = useState(false);
   const [postReminderDecision, setPostReminderDecision] = useState<SalesCallPostReminderDecision | "">("");
   const [loading, setLoading] = useState(false);
+  const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [segmentSaving, setSegmentSaving] = useState(false);
@@ -871,6 +887,8 @@ export function CustomerSalesCallsClient({
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchHasRun, setSearchHasRun] = useState(false);
   const [adHocItem, setAdHocItem] = useState<SalesCallListItem | null>(null);
+  const [taskBoard, setTaskBoard] = useState<CustomerInternalTaskBoard | null>(null);
+  const [taskLoading, setTaskLoading] = useState(false);
 
   useEffect(() => {
     try {
@@ -888,10 +906,11 @@ export function CustomerSalesCallsClient({
   }, [operatorName]);
 
   useEffect(() => {
-    if ((!opsEnabled || hasSession || localMode) && !state && !loading) {
+    if ((!opsEnabled || hasSession || localMode) && !state && !loading && !initialLoadAttempted) {
+      setInitialLoadAttempted(true);
       void loadState();
     }
-  }, [hasSession, localMode, opsEnabled, state, loading]);
+  }, [hasSession, initialLoadAttempted, localMode, opsEnabled, state, loading]);
 
   useEffect(() => {
     if (!selectedItemId || !state?.items.length) return;
@@ -971,9 +990,18 @@ export function CustomerSalesCallsClient({
     setPostReminderDecision(selectedItem.cadence.currentStage === "no_response_call" ? "" : "finished");
   }, [selectedItem]);
 
+  useEffect(() => {
+    if (!selectedItem?.requestId || (opsEnabled && !hasSession && !localMode)) {
+      setTaskBoard(null);
+      return;
+    }
+    void loadTasksForRequest(selectedItem.requestId);
+  }, [hasSession, localMode, opsEnabled, selectedItem?.requestId]);
+
   function openItem(itemId: string) {
     setAdHocItem(null);
     setSelectedItemId(itemId);
+    setResultClientActionId(newClientActionId());
     setDetailOpen(true);
     setError(null);
     setMessage(null);
@@ -983,6 +1011,7 @@ export function CustomerSalesCallsClient({
     const item = buildAdHocCallItem(record);
     setAdHocItem(item);
     setSelectedItemId(`ad-hoc:${record.requestId}`);
+    setResultClientActionId(newClientActionId());
     setDetailOpen(true);
     setError(null);
     setMessage(null);
@@ -1010,6 +1039,23 @@ export function CustomerSalesCallsClient({
       setError(formatFetchError(error));
     } finally {
       setSearchLoading(false);
+    }
+  }
+
+  async function loadTasksForRequest(requestId: string) {
+    setTaskLoading(true);
+    try {
+      const response = await fetchWithTimeout(`/api/ops/customer-records/tasks?requestId=${encodeURIComponent(requestId)}`);
+      const payload = (await response.json().catch(() => null)) as CustomerTasksResponse | null;
+      if (response.ok && payload?.ok && payload.board) {
+        setTaskBoard(payload.board);
+      } else {
+        setTaskBoard(null);
+      }
+    } catch {
+      setTaskBoard(null);
+    } finally {
+      setTaskLoading(false);
     }
   }
 
@@ -1090,10 +1136,6 @@ export function CustomerSalesCallsClient({
       setError("Bitte zuerst einen Fall öffnen.");
       return;
     }
-    if (!notes.trim()) {
-      setError("Bitte eine Pflichtnotiz eintragen.");
-      return;
-    }
     if (needsPostReminderDecision(selectedItem, preset) && !postReminderDecision) {
       setError("Bitte nach dem Reminder-Call festlegen, wie der Fall weiterlaufen soll.");
       return;
@@ -1109,6 +1151,7 @@ export function CustomerSalesCallsClient({
         body: JSON.stringify({
           action: "record_result",
           operatorName: operatorName || null,
+          clientActionId: resultClientActionId,
           callListItemId: selectedItem.id || null,
           requestId: selectedItem.requestId,
           preset,
@@ -1127,6 +1170,7 @@ export function CustomerSalesCallsClient({
       }
 
       setNotes("");
+      setResultClientActionId(newClientActionId());
       if (adHocItem && payload.result) {
         setAdHocItem({
           ...adHocItem,
@@ -1201,7 +1245,7 @@ export function CustomerSalesCallsClient({
 
   if (opsEnabled && !hasSession && !localMode) {
     return (
-      <div className="min-h-screen bg-stone-50 px-6 py-12">
+      <div className="min-h-screen overflow-x-hidden bg-stone-50 px-4 py-12 sm:px-6">
         <div className="mx-auto max-w-xl rounded-3xl border border-stone-200 bg-white p-8 shadow-sm">
           <p className="text-sm uppercase tracking-[0.3em] text-stone-400">Sales-Calls</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">Interner Zugang</h1>
@@ -1212,8 +1256,9 @@ export function CustomerSalesCallsClient({
             <input
               value={token}
               onChange={(event) => setToken(event.target.value)}
-              className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-base outline-none transition focus:border-stone-900"
-              placeholder="Ops-Token"
+	              className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-base outline-none transition focus:border-stone-900"
+	              aria-label="Ops-Token"
+	              placeholder="Ops-Token"
               type="password"
             />
             <button
@@ -1230,8 +1275,8 @@ export function CustomerSalesCallsClient({
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 px-6 py-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div className="min-h-screen overflow-x-hidden bg-stone-50 px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-7xl space-y-6">
         <div className="rounded-[2rem] bg-stone-950 px-8 py-8 text-white shadow-xl shadow-stone-950/10">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
@@ -1242,12 +1287,14 @@ export function CustomerSalesCallsClient({
                 Die laufenden Mail-Workflows werden hier nicht verändert.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-3 lg:w-auto lg:justify-end">
+              <OpsModuleNav active="calls" variant="dark" />
               <input
                 value={operatorName}
                 onChange={(event) => setOperatorName(event.target.value)}
-                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white outline-none placeholder:text-stone-400"
-                placeholder="Operator"
+	                className="w-full min-w-0 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white outline-none placeholder:text-stone-400 sm:w-auto"
+	                aria-label="Operator"
+	                placeholder="Operator"
               />
               <button
                 onClick={() => void refreshList()}
@@ -1320,8 +1367,9 @@ export function CustomerSalesCallsClient({
                     setSearchHasRun(false);
                     setSearchResults([]);
                   }}
-                  className="h-12 w-full rounded-2xl border border-stone-300 bg-white pl-11 pr-4 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-stone-900"
-                  placeholder="Name, Firma, E-Mail, Telefon, Request-ID, AC-Deal oder Trello-Link"
+	                  className="h-12 w-full rounded-2xl border border-stone-300 bg-white pl-11 pr-4 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-stone-900"
+	                  aria-label="Kontakt suchen"
+	                  placeholder="Name, Firma, E-Mail, Telefon, Request-ID, AC-Deal oder Trello-Link"
                 />
               </div>
               <button
@@ -1636,8 +1684,8 @@ export function CustomerSalesCallsClient({
         </div>
 
         {selectedItem && detailOpen ? (
-          <div className="fixed inset-0 z-50 flex items-start justify-center bg-stone-950/55 px-4 py-6 backdrop-blur-sm">
-            <div className="max-h-[calc(100vh-3rem)] w-full max-w-6xl overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20">
+          <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-stone-950/55 px-3 py-3 backdrop-blur-sm sm:items-start sm:px-4 sm:py-6">
+            <div className="max-h-[calc(100vh-1.5rem)] w-full max-w-6xl overflow-hidden rounded-[1.35rem] border border-stone-200 bg-white shadow-2xl shadow-stone-950/20 sm:max-h-[calc(100vh-3rem)] sm:rounded-[2rem]">
               <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Detail & Ergebnis</p>
@@ -1655,7 +1703,18 @@ export function CustomerSalesCallsClient({
                 </button>
               </div>
 
-              <div className="grid max-h-[calc(100vh-7rem)] overflow-y-auto lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              {message ? (
+                <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">
+                  {message}
+                </div>
+              ) : null}
+              {error ? (
+                <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-800">
+                  {error}
+                </div>
+              ) : null}
+
+              <div className="grid max-h-[calc(100vh-7.5rem)] overflow-y-auto sm:max-h-[calc(100vh-7rem)] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                 <div className="border-b border-stone-200 bg-stone-50 p-5 lg:border-b-0 lg:border-r">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${stageTone(selectedItem.cadence.currentStage)}`}>
@@ -1796,6 +1855,42 @@ export function CustomerSalesCallsClient({
                       <p className="mt-2">{selectedItem.latestResult.notes}</p>
                     </div>
                   ) : null}
+
+                  <div className="mt-5 rounded-[1.6rem] border border-amber-200 bg-amber-50 p-4 text-sm text-stone-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-stone-950">Interne Aufgaben</p>
+                        <p className="mt-1 text-xs leading-5 text-stone-600">
+                          {taskLoading
+                            ? "Aufgaben werden geladen..."
+                            : taskBoard?.tasks.length
+                              ? `${taskBoard.tasks.length} offene Aufgabe${taskBoard.tasks.length === 1 ? "" : "n"} zu diesem Fall.`
+                              : "Keine offene Aufgabe zu diesem Fall."}
+                        </p>
+                      </div>
+                      <a
+                        href={`/ops/customer-records/tasks?requestId=${encodeURIComponent(selectedItem.requestId)}`}
+                        className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-stone-800 transition hover:border-stone-400"
+                      >
+                        <ListChecks className="h-4 w-4" />
+                        Öffnen
+                      </a>
+                    </div>
+                    {taskBoard?.tasks.length ? (
+                      <div className="mt-3 space-y-2">
+                        {taskBoard.tasks.slice(0, 3).map((task) => (
+                          <div key={task.id} className="rounded-2xl border border-amber-200 bg-white px-3 py-3">
+                            <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.14em] text-stone-400">
+                              <span>{task.priority === "urgent" ? "dringend" : task.priority === "high" ? "hoch" : "normal"}</span>
+                              <span>{task.assigneeName || "nicht zugewiesen"}</span>
+                              {task.dueAt ? <span>{task.dueAt.slice(0, 10)}</span> : null}
+                            </div>
+                            <p className="mt-1 font-medium text-stone-950">{task.title}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="p-5">
@@ -1896,12 +1991,12 @@ export function CustomerSalesCallsClient({
                   ) : null}
 
                   <div className="mt-5 space-y-2">
-                    <label className="text-sm font-medium text-stone-900">Pflichtnotiz</label>
+                    <label className="text-sm font-medium text-stone-900">Notiz optional</label>
                     <textarea
                       value={notes}
                       onChange={(event) => setNotes(event.target.value)}
                       className="min-h-36 w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-stone-900"
-                      placeholder="Echten Gesprächs- oder Prüfkontext eintragen. Keine Kurzform wie Mailbox, interessiert oder Rückruf vereinbart."
+                      placeholder="Optionaler Gesprächskontext, z. B. warum ein Rückruf sinnvoll ist oder was der Kunde gesagt hat."
                     />
                   </div>
 
@@ -1921,7 +2016,7 @@ export function CustomerSalesCallsClient({
                     </div>
                   ) : null}
 
-                  <div className="mt-5 flex flex-wrap gap-3">
+                  <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-stone-200 bg-white/95 px-5 py-4 backdrop-blur">
                     <button
                       onClick={() => void saveResult()}
                       disabled={saving}
@@ -1937,17 +2032,6 @@ export function CustomerSalesCallsClient({
                       Schließen
                     </button>
                   </div>
-
-                  {message ? (
-                    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                      {message}
-                    </div>
-                  ) : null}
-                  {error ? (
-                    <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      {error}
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </div>

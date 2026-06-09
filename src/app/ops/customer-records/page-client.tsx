@@ -9,11 +9,13 @@ import {
   Database,
   ExternalLink,
   History,
+  ListChecks,
   Mail,
   Search,
   Send,
   Star,
   ShieldCheck,
+  Truck,
   UserRound,
   X,
 } from "lucide-react";
@@ -57,6 +59,7 @@ import {
   type SessionBadgeLabel,
 } from "@/lib/ops/customer-records-session-meta";
 import { buildRequestIdSessionMaps, type RequestIdSessionMaps } from "@/lib/ops/customer-records-session-maps";
+import { OpsModuleNav } from "@/components/ops/OpsModuleNav";
 
 type CustomerUpdateResponse = {
   ok: boolean;
@@ -3939,13 +3942,62 @@ function formatDate(value: string | null | undefined) {
   }).format(date);
 }
 
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 const FLOW_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+function parseDateMs(value: string | null | undefined) {
+  if (!value) return null;
+  const dateMs = new Date(value).getTime();
+  return Number.isNaN(dateMs) ? null : dateMs;
+}
+
+function formatDurationParts(ms: number) {
+  const absMs = Math.max(0, Math.abs(ms));
+  if (absMs < MINUTE_MS) return "unter 1 Min.";
+  if (absMs < HOUR_MS) return `${Math.max(1, Math.floor(absMs / MINUTE_MS))} Min.`;
+
+  if (absMs < DAY_MS) {
+    const hours = Math.floor(absMs / HOUR_MS);
+    const minutes = Math.floor((absMs % HOUR_MS) / MINUTE_MS);
+    return minutes >= 5 ? `${hours} Std. ${minutes} Min.` : `${hours} Std.`;
+  }
+
+  const days = Math.floor(absMs / DAY_MS);
+  const hours = Math.floor((absMs % DAY_MS) / HOUR_MS);
+  return hours > 0 ? `${days} Tg. ${hours} Std.` : `${days} Tg.`;
+}
+
+function formatRelativeDateTime(value: string | null | undefined) {
+  const dateMs = parseDateMs(value);
+  if (dateMs === null) return "Zeitpunkt unbekannt";
+  const diffMs = dateMs - Date.now();
+  if (Math.abs(diffMs) < MINUTE_MS) return diffMs >= 0 ? "in unter 1 Min." : "gerade eben";
+  return diffMs > 0 ? `in ${formatDurationParts(diffMs)}` : `vor ${formatDurationParts(diffMs)}`;
+}
+
 function getRelativeDurationLabel(ms: number) {
-  if (ms < 2 * 60 * 60 * 1000) return "seit über 1 Stunde";
-  if (ms < 24 * 60 * 60 * 1000) return `seit ${Math.max(2, Math.floor(ms / (60 * 60 * 1000)))} Stunden`;
-  const days = Math.max(1, Math.floor(ms / (24 * 60 * 60 * 1000)));
-  return days === 1 ? "seit 1 Tag" : `seit ${days} Tagen`;
+  return `seit ${formatDurationParts(ms)}`;
+}
+
+function formatCrmQuoteAcceptanceState(crmQuote: CustomerSearchResult["crmQuote"]) {
+  if (!crmQuote) return "Kein Angebot";
+  if (crmQuote.acceptedAt) {
+    return `Angenommen ${formatRelativeDateTime(crmQuote.acceptedAt)} • ${formatDate(crmQuote.acceptedAt)}`;
+  }
+  if (crmQuote.rejectedAt) {
+    return `Abgelehnt ${formatRelativeDateTime(crmQuote.rejectedAt)} • ${formatDate(crmQuote.rejectedAt)}`;
+  }
+  if (crmQuote.validUntil) {
+    const validUntilMs = parseDateMs(crmQuote.validUntil);
+    const prefix = validUntilMs !== null && validUntilMs < Date.now() ? "Annahmefrist abgelaufen" : "Annahmefrist endet";
+    return `${prefix} ${formatRelativeDateTime(crmQuote.validUntil)} • gültig bis ${formatDate(crmQuote.validUntil)}`;
+  }
+  if (crmQuote.sentAt) {
+    return `Versendet ${formatRelativeDateTime(crmQuote.sentAt)} • ${formatDate(crmQuote.sentAt)}`;
+  }
+  return "Keine Annahmefrist hinterlegt";
 }
 
 function getActiveFlowAgeMs(record: CustomerSearchResult) {
@@ -4182,6 +4234,21 @@ function buildQuickCallDraft(
             : kind === "delete_requested"
               ? `Direkt aus ${surface} als Lösch-/Kontaktstopp protokolliert.`
               : `Direkt aus ${surface} als kein Interesse protokolliert.`,
+  };
+}
+
+function buildPendingCallbackDoneDraft(record: CustomerSearchResult, surface: string): CallLogDraft {
+  return {
+    reached: false,
+    leftVoicemail: false,
+    customerOnVacation: false,
+    askedForCallback: false,
+    noInterest: false,
+    emailConfirmed: false,
+    offerDiscussed: Boolean(record.quote || record.crmQuote),
+    whatsappPreferred: false,
+    deleteRequested: false,
+    note: `Anstehender Rückruf aus ${surface} als erledigt markiert.${record.callOps.nextCallbackAt ? ` Termin: ${formatDate(record.callOps.nextCallbackAt)}.` : ""}`,
   };
 }
 
@@ -4562,8 +4629,6 @@ function CommandPalette({
     const frame = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [open]);
-
-  if (!open) return null;
 
   const runPaletteAction = (callback: () => Promise<void> | void) => {
     onClose();
@@ -6009,6 +6074,8 @@ function CommandPalette({
   useEffect(() => {
     setCommandCursor(0);
   }, [open, query, filteredPaletteCommands.length]);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 px-4 py-10 backdrop-blur-sm">
@@ -12915,6 +12982,7 @@ function OperationsOverview({
   const inboundTouchpoints = record.communications.filter((entry) => entry.direction === "inbound");
   const latestInbound = inboundTouchpoints[0] || null;
   const latestOutbound = outboundTouchpoints[0] || null;
+  const latestTouchpoint = latestInbound || latestOutbound;
   const nextOperationalTrigger =
     [
       {
@@ -13167,7 +13235,9 @@ function OperationsOverview({
                   : "Keine Mailspuren im Fall."}
             </div>
             <div className="mt-3 text-xs text-black/45">
-              {formatDate(latestInbound?.occurredAt || latestOutbound?.occurredAt || null)}
+              {latestTouchpoint
+                ? `${formatRelativeDateTime(latestTouchpoint.occurredAt)} • ${formatDate(latestTouchpoint.occurredAt)} • ${latestTouchpoint.source.replaceAll("_", " ")}`
+                : "Kein Touchpoint-Zeitpunkt"}
             </div>
           </div>
 
@@ -14246,6 +14316,7 @@ function CasePulseStrip({
   const outboundTouchpoints = record.communications.filter((entry) => entry.direction === "outbound");
   const inboundTouchpoints = record.communications.filter((entry) => entry.direction === "inbound");
   const latestInbound = inboundTouchpoints[0] || null;
+  const latestOutbound = outboundTouchpoints[0] || null;
   const nextFollowupAt = record.affectedRows.nextPendingFollowupAt;
   const nextCallbackAt = record.callOps.nextCallbackAt;
   const nextTouchpoint = [nextFollowupAt, nextCallbackAt]
@@ -14328,7 +14399,11 @@ function CasePulseStrip({
           ? "Warten auf Antwort"
           : "Keine Mail"
       : `${outboundTouchpoints.length} gesendet / ${inboundTouchpoints.length} eingegangen`,
-    detail: latestInbound ? latestInbound.title : "Keine Antwort erkannt",
+    detail: latestInbound
+      ? `${latestInbound.title} • ${formatRelativeDateTime(latestInbound.occurredAt)} • ${formatDate(latestInbound.occurredAt)}`
+      : latestOutbound
+        ? `Letzte Mail ${formatRelativeDateTime(latestOutbound.occurredAt)} • ${formatDate(latestOutbound.occurredAt)}`
+        : "Keine Antwort erkannt",
     tone: latestInbound ? "border-[#fa31a2]/20 bg-[#fff3fa] text-[#571333]" : "border-zinc-200 bg-white text-zinc-950",
     icon: <Mail className={`h-4 w-4 ${latestInbound ? "text-[#c21876]" : "text-zinc-700"}`} />,
   };
@@ -14517,6 +14592,7 @@ function CommunicationFeed({
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="text-xs text-black/45">{formatDate(entry.occurredAt)}</div>
+                  <div className="mt-1 text-[11px] text-black/35">{formatRelativeDateTime(entry.occurredAt)}</div>
                   <div className={`flex justify-end gap-2 ${simpleView ? "mt-1" : "mt-2"}`}>
                     {!simpleView ? (
                       <button
@@ -15028,6 +15104,51 @@ function DealAttributionPanel({
   );
 }
 
+function PendingCallbackDonePanel({
+  record,
+  actionRunning,
+  onLogCall,
+  surface,
+  compact = false,
+}: {
+  record: CustomerSearchResult;
+  actionRunning: boolean;
+  onLogCall: (requestId: string, call: CallLogDraft) => Promise<void>;
+  surface: string;
+  compact?: boolean;
+}) {
+  if (!record.callOps.nextCallbackAt) return null;
+  const callbackMs = parseDateMs(record.callOps.nextCallbackAt);
+  const isDue = callbackMs !== null && callbackMs <= Date.now();
+
+  return (
+    <div className={`rounded-2xl border p-4 ${isDue ? "border-amber-200 bg-amber-50" : "border-violet-200 bg-violet-50"}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-black/45">
+            {isDue ? "Anstehender Anruf" : "Geplanter Anruf"}
+          </div>
+          <div className={`${compact ? "mt-1 text-sm" : "mt-2 text-base"} font-semibold text-black`}>
+            Rückruf {formatRelativeDateTime(record.callOps.nextCallbackAt)}
+          </div>
+          <div className="mt-1 text-sm leading-6 text-black/60">
+            {formatDate(record.callOps.nextCallbackAt)}
+            {record.callOps.planningReason ? ` • ${record.callOps.planningReason}` : ""}
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={actionRunning}
+          onClick={() => onLogCall(record.requestId, buildPendingCallbackDoneDraft(record, surface))}
+          className="inline-flex shrink-0 items-center justify-center rounded-full bg-[#0A0A0A] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+        >
+          Anruf erledigt
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DealSourceWorkspace({
   record,
   onOpenRequestId,
@@ -15035,6 +15156,7 @@ function DealSourceWorkspace({
   currentOperator,
   actionRunning,
   onApplyTeamState,
+  onLogCall,
   simpleView = false,
 }: {
   record: CustomerSearchResult;
@@ -15043,6 +15165,7 @@ function DealSourceWorkspace({
   currentOperator: string;
   actionRunning: boolean;
   onApplyTeamState: (requestId: string, input: CustomerTeamStateInput) => Promise<void>;
+  onLogCall: (requestId: string, call: CallLogDraft) => Promise<void>;
   simpleView?: boolean;
 }) {
   const request = record.request;
@@ -15137,6 +15260,16 @@ function DealSourceWorkspace({
             {requestProfile ? ` • ${requestProfile}` : ""}
           </div>
         </div>
+
+        {record.callOps.nextCallbackAt ? <div className="mt-4">
+          <PendingCallbackDonePanel
+            record={record}
+            actionRunning={actionRunning}
+            onLogCall={onLogCall}
+            surface="Angebotsbereich"
+            compact
+          />
+        </div> : null}
 
         {nextRelatedFocus ? (
           <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
@@ -15310,6 +15443,15 @@ function DealSourceWorkspace({
               {request?.landingPageUrl ? <QuickLink href={request.landingPageUrl} label="Einstiegsseite" /> : null}
               {request?.referrer ? <QuickLink href={request.referrer} label="Herkunftslink" /> : null}
             </div>
+            {record.callOps.nextCallbackAt ? <div className="mt-4">
+              <PendingCallbackDonePanel
+                record={record}
+                actionRunning={actionRunning}
+                onLogCall={onLogCall}
+                surface="Angebotsbereich"
+                compact
+              />
+            </div> : null}
             <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-4 text-sm leading-6 text-black/65">
               <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Herkunftsdaten</div>
               <div className="mt-2">{sourceLine || "Keine Herkunftsangaben."}</div>
@@ -15649,8 +15791,12 @@ function RelatedRequestsPanel({
 
 function SalesCallsPanel({
   record,
+  actionRunning,
+  onLogCall,
 }: {
   record: CustomerSearchResult;
+  actionRunning: boolean;
+  onLogCall: (requestId: string, call: CallLogDraft) => Promise<void>;
 }) {
   const currentOrderLabel = record.order?.orderNumber || "Noch kein Auftrag";
   const salesRecoveryTone =
@@ -15693,6 +15839,17 @@ function SalesCallsPanel({
             {record.crmSales.length} Verkaufseinträge
           </div>
         </div>
+
+        {record.callOps.nextCallbackAt ? (
+          <div className="mt-4">
+            <PendingCallbackDonePanel
+              record={record}
+              actionRunning={actionRunning}
+              onLogCall={onLogCall}
+              surface="Vertrieb & Anrufe"
+            />
+          </div>
+        ) : null}
 
         <div className="mt-4 grid gap-4 xl:grid-cols-3">
           <div className="rounded-2xl border border-black/10 bg-white p-4">
@@ -15910,8 +16067,8 @@ function SalesCallsPanel({
                       <div className="text-black/45">{record.crmQuote.lastCustomerEventAt ? formatDate(record.crmQuote.lastCustomerEventAt) : ""}</div>
                     </div>
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Fristen</div>
-                      <div>{record.crmQuote.validUntil ? `Gültig bis ${formatDate(record.crmQuote.validUntil)}` : "Keine Gültigkeitsfrist"}</div>
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-black/40">Frist & Annahme</div>
+                      <div>{formatCrmQuoteAcceptanceState(record.crmQuote)}</div>
                       <div className="text-black/45">{record.crmQuote.sentAt ? `Versendet ${formatDate(record.crmQuote.sentAt)}` : "Nicht versendet"}</div>
                     </div>
                     <div>
@@ -17860,6 +18017,99 @@ function NotesPanel({
   );
 }
 
+function InternalTasksPanel({ record, simpleView = false }: { record: CustomerSearchResult; simpleView?: boolean }) {
+  const openTasks = record.internalTasks.filter((task) => task.status === "open");
+  const leadTask = openTasks[0] || null;
+
+  return (
+    <div className={`rounded-2xl border p-5 ${leadTask?.overdue ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">Interne Aufgaben</div>
+          <div className="mt-2 text-lg font-semibold text-black">
+            {openTasks.length ? `${openTasks.length} offene Aufgabe${openTasks.length === 1 ? "" : "n"}` : "Keine offene Aufgabe"}
+          </div>
+        </div>
+        <a
+          href={`/ops/customer-records/tasks?requestId=${encodeURIComponent(record.requestId)}`}
+          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
+        >
+          <ListChecks className="h-4 w-4" />
+          Aufgaben
+        </a>
+      </div>
+
+      {leadTask ? (
+        <div className="mt-4 space-y-3">
+          {openTasks.slice(0, simpleView ? 2 : 4).map((task) => (
+            <div key={task.id} className="rounded-xl border border-black/10 bg-white px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-black/40">
+                <span>{task.priority === "urgent" ? "dringend" : task.priority === "high" ? "hoch" : "normal"}</span>
+                <span>{task.assigneeName || "nicht zugewiesen"}</span>
+                <span>{task.dueAt ? formatDate(task.dueAt) : "ohne Deadline"}</span>
+              </div>
+              <div className="mt-2 text-sm font-semibold leading-5 text-black">{task.title}</div>
+              {task.description ? <div className="mt-1 line-clamp-2 text-sm leading-5 text-black/60">{task.description}</div> : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-dashed border-black/10 bg-white/60 px-4 py-4 text-sm leading-6 text-black/55">
+          Für diesen Fall ist aktuell keine interne Aufgabe offen.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShippingSnapshotPanel({ record }: { record: CustomerSearchResult }) {
+  const trackingNumber = record.order?.trackingNumber || record.crmSales.find((sale) => sale.trackingNumber)?.trackingNumber || null;
+  const trackingUrl = record.crmSales.find((sale) => sale.trackingUrl)?.trackingUrl || null;
+  const carrier = record.order?.carrier || record.crmSales.find((sale) => sale.trackingCompany)?.trackingCompany || null;
+  const hasShipmentContext = Boolean(trackingNumber || record.order?.orderNumber);
+
+  return (
+    <div className={`rounded-2xl border p-5 ${hasShipmentContext ? "border-sky-200 bg-sky-50" : "border-black/10 bg-white"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-black/50">Versand</div>
+          <div className="mt-2 text-lg font-semibold text-black">
+            {trackingNumber ? `Tracking ${trackingNumber}` : hasShipmentContext ? "Bestellung ohne Tracking-Kontext" : "Keine aktive Sendung sichtbar"}
+          </div>
+          <div className="mt-1 text-sm leading-6 text-black/60">
+            {carrier ? `${carrier} · ` : ""}
+            {record.order?.fulfillmentStatus || record.order?.status || record.orderDiagnostic.summary}
+          </div>
+        </div>
+        <a
+          href={`/ops/customer-records/shipping?requestId=${encodeURIComponent(record.requestId)}`}
+          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
+        >
+          <Truck className="h-4 w-4" />
+          Shipping
+        </a>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {trackingUrl ? (
+          <a
+            href={trackingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/65 transition hover:border-black/20 hover:text-black"
+          >
+            Carrier-Tracking öffnen
+          </a>
+        ) : null}
+        {record.order?.orderNumber ? (
+          <span className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/55">
+            Shopify {record.order.orderNumber}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function SimpleCaseWorkspacePanel({
   record,
   operatorName,
@@ -18005,7 +18255,10 @@ function SimpleCaseWorkspacePanel({
           />
         ) : null}
         {showNotes ? (
-          <NotesPanel notes={record.notes} saving={noteSaving} onAddNote={(note) => onAddNote(record.requestId, note)} simpleView />
+          <>
+            <InternalTasksPanel record={record} simpleView />
+            <NotesPanel notes={record.notes} saving={noteSaving} onAddNote={(note) => onAddNote(record.requestId, note)} simpleView />
+          </>
         ) : null}
       </div>
     </div>
@@ -18760,6 +19013,7 @@ function RecordCard({
               currentOperator={operatorName}
               actionRunning={actionRunning}
               onApplyTeamState={onApplyTeamState}
+              onLogCall={onLogCall}
               simpleView={simpleView}
             />
           ) : null}
@@ -18784,7 +19038,7 @@ function RecordCard({
 
           {activeTab === "sales" ? (
             <>
-              <SalesCallsPanel record={record} />
+              <SalesCallsPanel record={record} actionRunning={actionRunning} onLogCall={onLogCall} />
               <OrderHistoryPanel record={record} />
             </>
           ) : null}
@@ -18940,7 +19194,11 @@ function RecordCard({
           ) : null}
 
           {showAdvancedSidebar ? (
-            <NotesPanel notes={record.notes} saving={noteSaving} onAddNote={(note) => onAddNote(record.requestId, note)} />
+            <>
+              <InternalTasksPanel record={record} />
+              <ShippingSnapshotPanel record={record} />
+              <NotesPanel notes={record.notes} saving={noteSaving} onAddNote={(note) => onAddNote(record.requestId, note)} />
+            </>
           ) : null}
 
           {showAdvancedSidebar ? (
@@ -20886,7 +21144,7 @@ export function CustomerRecordsClient({
 
   return (
     <CaseFlowProgressContext.Provider value={caseFlowProgressApi}>
-    <main className="min-h-screen bg-[#fffdf9] text-black">
+    <main className="relative min-h-screen overflow-x-hidden bg-[#fffdf9] text-black">
       <CommandPalette
         open={paletteOpen}
         loading={loading || Boolean(recordLoadingId)}
@@ -20966,14 +21224,14 @@ export function CustomerRecordsClient({
 
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.09),transparent_22%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_18%),linear-gradient(180deg,#fffdf9_0%,#fffaf4_38%,#ffffff_100%)]" />
 
-      <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-4 py-4 md:px-6 lg:px-8 lg:py-6">
-        <header className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.22),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_24%),linear-gradient(135deg,#060606_0%,#111111_58%,#171717_100%)] text-white shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-          <div className="flex items-center justify-between gap-4 px-5 py-4 md:px-6">
-            <div className="flex items-center gap-4">
+      <div className="mx-auto flex w-full min-w-0 max-w-[1240px] flex-col gap-6 px-4 py-4 md:px-6 lg:px-8 lg:py-6">
+        <header className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.22),transparent_26%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_24%),linear-gradient(135deg,#060606_0%,#111111_58%,#171717_100%)] text-white shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+          <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between md:px-6">
+            <div className="flex min-w-0 items-center gap-4">
               <img src="/assets/logo_weiss_neontrip.png" alt="NEONTRIP" className="h-7 w-auto md:h-8" />
               <div className="hidden text-sm text-white/55 md:block">{quietLayout ? "Fallzentrale" : "Kommandozentrale"}</div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
@@ -20985,6 +21243,7 @@ export function CustomerRecordsClient({
                   Cmd/Ctrl+K
                 </span>
               </button>
+              <OpsModuleNav active="records" variant="dark" />
               <a
                 href="tel:+4921154257240"
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"

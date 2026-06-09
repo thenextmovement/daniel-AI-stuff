@@ -18,6 +18,8 @@ const SALES_CALL_RUNS_TABLE = "sales_call_runs";
 const SALES_CALL_LIST_ITEMS_TABLE = "sales_call_list_items";
 const SALES_CALL_RESULTS_TABLE = "sales_call_results";
 const SALES_CALL_CADENCE_STATE_TABLE = "sales_call_cadence_state";
+const SALES_CALL_RESULT_SELECT =
+  "id,call_list_item_id,rank_at_time,request_id,ac_deal_id,preset,call_done,call_outcome,next_step,validation_useful,notes,operator_id,source,created_at,updated_at,superseded_at";
 const MANUAL_GATE_TOP_N = 10;
 const LEARNING_SIGNAL_MIN_DISTINCT_NOTES = 5;
 const CALLBACK_NEXT_STEP_RE = /^callback_(\d{4}-\d{2}-\d{2})$/;
@@ -220,6 +222,7 @@ export type SalesCallModuleState = {
 export type SalesCallResultInput = {
   callListItemId?: string | null;
   requestId: string;
+  clientActionId?: string | null;
   preset: SalesCallPreset;
   notes: string;
   callbackDate?: string | null;
@@ -309,6 +312,7 @@ type SalesCallResultRow = {
   created_at?: string | null;
   updated_at?: string | null;
   superseded_at?: string | null;
+  idempotency_key?: string | null;
 };
 
 type WorkflowAuditRow = {
@@ -884,6 +888,20 @@ function isMissingColumnError(error: unknown, table: string, column: string) {
   return message.includes(column) && (message.includes(table) || message.includes("schema cache"));
 }
 
+function isUniqueConstraintError(error: unknown, constraint: string) {
+  if (!(error instanceof SupabaseRestError)) return false;
+  const message = [error.message, error.details].filter(Boolean).join(" ");
+  return message.includes("23505") || message.includes("duplicate key")
+    ? message.includes(constraint)
+    : false;
+}
+
+function buildSalesCallResultIdempotencyKey(requestId: string, clientActionId?: string | null) {
+  const normalizedActionId = normalizeWhitespace(clientActionId).slice(0, 160);
+  if (!normalizedActionId) return null;
+  return `sales-call-result:${requestId}:${normalizedActionId}`;
+}
+
 async function insertRows<T>(table: string, rows: Record<string, unknown>[]): Promise<T[]> {
   if (!rows.length) return [];
   return supabaseRequest<T[]>(
@@ -906,6 +924,15 @@ async function patchById<T>(table: string, id: string, patch: Record<string, unk
     },
     { id: `eq.${id}` },
   );
+  return rows[0] || null;
+}
+
+async function loadSalesCallResultByIdempotencyKey(idempotencyKey: string) {
+  const rows = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
+    select: `${SALES_CALL_RESULT_SELECT},idempotency_key`,
+    idempotency_key: `eq.${idempotencyKey}`,
+    limit: 1,
+  });
   return rows[0] || null;
 }
 
@@ -1770,12 +1797,6 @@ export function buildSalesCallResultFromPreset(input: SalesCallResultInput): Omi
   const requestId = normalizeWhitespace(input.requestId);
   if (!requestId) throw new QuoteValidationError("Request-ID fehlt.");
   const notes = normalizeWhitespace(input.notes);
-  if (!notes) throw new QuoteValidationError("Bitte eine echte Gesprächs- oder Prüfnotiz eintragen.");
-  if (!isActionableSalesCallNote(notes)) {
-    throw new QuoteValidationError(
-      "Notiz ist zu generisch. Bitte echten Gesprächs- oder Prüfkontext statt Platzhalter oder Kurzform eintragen.",
-    );
-  }
 
   const preset = SALES_CALL_PRESETS[input.preset];
   if (!preset) throw new QuoteValidationError("Ungültiger Call-Preset.", ["Waehle einen bekannten Call-Preset."], 400);
@@ -1822,9 +1843,6 @@ export function evaluateSalesCallGate(
     if (!["yes", "no"].includes(result.validationUseful)) {
       validationErrors.push(`Rank ${item.rank}: ungültiges validation_useful`);
     }
-    if (!result.notes || !isActionableSalesCallNote(result.notes)) {
-      validationErrors.push(`Rank ${item.rank}: Notiz ist zu generisch oder fehlt`);
-    }
     if (result.callDone === "yes" && !result.callOutcome) {
       validationErrors.push(`Rank ${item.rank}: call_outcome fehlt`);
     }
@@ -1844,12 +1862,12 @@ export function evaluateSalesCallGate(
   const distinctInformativeNotes = new Set(
     informativeUseful
       .map((item) => normalizedNoteForLearning(item.latestResult?.notes || ""))
+      .filter((note) => note && isActionableSalesCallNote(note))
       .filter(Boolean),
   );
   const clearLearningSignal =
     informativeUseful.length >= 7 &&
-    distinctInformativeNotes.size >= LEARNING_SIGNAL_MIN_DISTINCT_NOTES &&
-    topItems.every((item) => Boolean(item.latestResult?.notes?.trim()));
+    distinctInformativeNotes.size >= LEARNING_SIGNAL_MIN_DISTINCT_NOTES;
 
   let gate: SalesCallGateSummary["gate"];
   if (validationErrors.length) {
@@ -1948,8 +1966,7 @@ export function decideSalesCallCompletion(technicalStatus: "ok" | "pending" | "f
 async function loadLatestActiveResultsByRequestId(requestIds: string[]) {
   if (!requestIds.length) return new Map<string, SalesCallResultEntry>();
   const rows = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
-    select:
-      "id,call_list_item_id,rank_at_time,request_id,ac_deal_id,preset,call_done,call_outcome,next_step,validation_useful,notes,operator_id,source,created_at,updated_at,superseded_at",
+    select: SALES_CALL_RESULT_SELECT,
     request_id: `in.(${requestIds.join(",")})`,
     superseded_at: "is.null",
     order: "created_at.desc",
@@ -2201,14 +2218,34 @@ export async function getSalesCallModuleState(): Promise<SalesCallModuleState> {
   }
 }
 
-export async function refreshSalesCallList(actor?: SalesCallActor): Promise<SalesCallModuleState> {
+export async function refreshSalesCallList(
+  actor?: SalesCallActor,
+  options: { forceNew?: boolean } = {},
+): Promise<SalesCallModuleState> {
   const preview = await previewSalesCallCandidates(20);
   const nowIso = new Date().toISOString();
-  const runKey = `sales-calls:${todayInBerlin()}:${nowIso}`;
+  const today = todayInBerlin();
+  const operatorKey = normalizeWhitespace(actor?.operatorName || "team")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "team";
+  const runKey = options.forceNew
+    ? `sales-calls:${today}:${operatorKey}:${nowIso}`
+    : `sales-calls:${today}:${operatorKey}`;
+
+  if (!options.forceNew) {
+    const existingRuns = await supabaseRequest<DailyCallRunRow[]>(SALES_CALL_RUNS_TABLE, undefined, {
+      select: "*",
+      run_key: `eq.${runKey}`,
+      limit: 1,
+    });
+    if (existingRuns[0]?.id) return buildModuleStateFromRun(existingRuns[0]);
+  }
+
   const [run] = await insertRows<DailyCallRunRow>(SALES_CALL_RUNS_TABLE, [
     {
       run_key: runKey,
-      date: todayInBerlin(),
+      date: today,
       timezone: "Europe/Berlin",
       status: "active",
       started_at: nowIso,
@@ -2297,6 +2334,24 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
   if (!liveGuard.allowed && input.preset !== "review-not-useful" && input.preset !== "review-useful") {
     throw new QuoteValidationError(`Call ist aktuell gesperrt: ${liveGuard.blockedReason || "nicht anrufbar"}.`);
   }
+  const idempotencyKey = buildSalesCallResultIdempotencyKey(requestId, input.clientActionId);
+  if (idempotencyKey) {
+    try {
+      const existing = await loadSalesCallResultByIdempotencyKey(idempotencyKey);
+      if (existing?.id) {
+        const state = await getSalesCallModuleState();
+        return {
+          itemId: existing.call_list_item_id || callListItemId || null,
+          result: mapResultRow(existing),
+          gate: state.gate,
+          completion: state.completion,
+          record,
+        };
+      }
+    } catch (error) {
+      if (!isMissingColumnError(error, SALES_CALL_RESULTS_TABLE, "idempotency_key")) throw error;
+    }
+  }
 
   const previousStateRows = await (async () => {
     try {
@@ -2324,8 +2379,7 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
   }
 
   const previousRows = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
-    select:
-      "id,request_id,call_list_item_id,rank_at_time,ac_deal_id,preset,call_done,call_outcome,next_step,validation_useful,notes,operator_id,source,created_at,updated_at,superseded_at",
+    select: SALES_CALL_RESULT_SELECT,
     request_id: `eq.${requestId}`,
     superseded_at: "is.null",
     order: "created_at.desc",
@@ -2333,12 +2387,13 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
   });
 
   const supersededAt = new Date().toISOString();
-  for (const previous of previousRows) {
-    await patchById(SALES_CALL_RESULTS_TABLE, previous.id, { superseded_at: supersededAt });
-  }
+  let created: SalesCallResultRow | null = null;
+  try {
+    for (const previous of previousRows) {
+      await patchById(SALES_CALL_RESULTS_TABLE, previous.id, { superseded_at: supersededAt });
+    }
 
-  const [created] = await insertRows<SalesCallResultRow>(SALES_CALL_RESULTS_TABLE, [
-    {
+    const insertPayload: Record<string, unknown> = {
       call_list_item_id: callListItemId,
       rank_at_time: item?.rank ?? null,
       request_id: requestId,
@@ -2351,12 +2406,61 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       notes: derived.notes,
       operator_id: derived.operatorId,
       source: derived.source,
-    },
-  ]);
+    };
+    if (idempotencyKey) insertPayload.idempotency_key = idempotencyKey;
 
-  if (!created?.id) {
-    throw new SupabaseRestError("Call-Ergebnis konnte nicht gespeichert werden.", 500);
+    try {
+      [created] = await insertRows<SalesCallResultRow>(SALES_CALL_RESULTS_TABLE, [insertPayload]);
+    } catch (error) {
+      if (!idempotencyKey || !isMissingColumnError(error, SALES_CALL_RESULTS_TABLE, "idempotency_key")) throw error;
+      delete insertPayload.idempotency_key;
+      [created] = await insertRows<SalesCallResultRow>(SALES_CALL_RESULTS_TABLE, [insertPayload]);
+    }
+
+    if (!created?.id) {
+      throw new SupabaseRestError("Call-Ergebnis konnte nicht gespeichert werden.", 500);
+    }
+
+    const nextCadenceState = advanceCadenceStateFromResult(
+      previousCadenceState,
+      mapResultRow(created),
+      {
+        priorityTier: input.priorityTier || null,
+        priorityReason: input.priorityReason || null,
+        purchaseSignal: input.purchaseSignal || null,
+        postReminderDecision: input.postReminderDecision || null,
+      },
+    );
+    await upsertCadenceState(nextCadenceState);
+  } catch (error) {
+    if (idempotencyKey && isUniqueConstraintError(error, "sales_call_results_idempotency_key_unique")) {
+      const existing = await loadSalesCallResultByIdempotencyKey(idempotencyKey);
+      if (existing?.id) {
+        const state = await getSalesCallModuleState();
+        return {
+          itemId: existing.call_list_item_id || callListItemId || null,
+          result: mapResultRow(existing),
+          gate: state.gate,
+          completion: state.completion,
+          record,
+        };
+      }
+    }
+
+    await Promise.allSettled(
+      previousRows.map((previous) => patchById(SALES_CALL_RESULTS_TABLE, previous.id, { superseded_at: null })),
+    );
+    if (created?.id) {
+      await patchById(SALES_CALL_RESULTS_TABLE, created.id, { superseded_at: new Date().toISOString() }).catch(() => null);
+    }
+    if (previousStateRows[0]) {
+      await upsertCadenceState(mapCadenceStateRow(previousStateRows[0])).catch(() => null);
+    }
+    throw error;
   }
+
+  const committed = created;
+  if (!committed) throw new SupabaseRestError("Call-Ergebnis konnte nicht gespeichert werden.", 500);
 
   await insertSalesCallAuditLog({
     requestId,
@@ -2372,25 +2476,16 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       next_step: derived.nextStep,
       validation_useful: derived.validationUseful,
       superseded_result_ids: previousRows.map((row) => row.id),
+      idempotency_key: idempotencyKey,
     },
+  }).catch((error) => {
+    console.error("sales call audit log failed after result commit", error);
   });
-
-  const nextCadenceState = advanceCadenceStateFromResult(
-    previousCadenceState,
-    mapResultRow(created),
-    {
-      priorityTier: input.priorityTier || null,
-      priorityReason: input.priorityReason || null,
-      purchaseSignal: input.purchaseSignal || null,
-      postReminderDecision: input.postReminderDecision || null,
-    },
-  );
-  await upsertCadenceState(nextCadenceState);
 
   const state = await getSalesCallModuleState();
   return {
     itemId: callListItemId || null,
-    result: mapResultRow(created),
+    result: mapResultRow(committed),
     gate: state.gate,
     completion: state.completion,
     record,

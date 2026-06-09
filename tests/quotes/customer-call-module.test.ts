@@ -162,17 +162,22 @@ test("buildSalesCallResultFromPreset allows ad-hoc calls without a list item", (
   assert.equal(result.callOutcome, "reached_interested");
 });
 
-test("buildSalesCallResultFromPreset rejects weak or placeholder notes", () => {
-  assert.throws(
-    () =>
-      buildSalesCallResultFromPreset({
-        callListItemId: "item_1",
-        requestId: "4423b374-e68c-4f55-8132-c6806cac687a",
-        preset: "interested",
-        notes: "Mailbox",
-      }),
-    QuoteValidationError,
-  );
+test("buildSalesCallResultFromPreset treats call notes as optional", () => {
+  const withoutNote = buildSalesCallResultFromPreset({
+    callListItemId: "item_1",
+    requestId: "4423b374-e68c-4f55-8132-c6806cac687a",
+    preset: "review-useful",
+    notes: "",
+  });
+  assert.equal(withoutNote.notes, "");
+
+  const shortNote = buildSalesCallResultFromPreset({
+    callListItemId: "item_1",
+    requestId: "4423b374-e68c-4f55-8132-c6806cac687a",
+    preset: "interested",
+    notes: "Mailbox",
+  });
+  assert.equal(shortNote.notes, "Mailbox");
 
   assert.throws(
     () =>

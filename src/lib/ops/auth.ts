@@ -61,6 +61,7 @@ export function isLocalOpsHost(host: string | null | undefined) {
 }
 
 export function isOpsPortalBypassed(host?: string | null) {
+  if (process.env.NODE_ENV === "production") return false;
   return isLocalOpsHost(host);
 }
 

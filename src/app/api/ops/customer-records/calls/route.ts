@@ -79,7 +79,9 @@ export async function POST(request: NextRequest) {
       {
         action?: "refresh_list" | "record_result";
         operatorName?: string;
+        clientActionId?: string;
         callListItemId?: string;
+        forceNew?: boolean;
         requestId?: string;
         preset?: SalesCallPreset;
         notes?: string;
@@ -98,7 +100,7 @@ export async function POST(request: NextRequest) {
     };
 
     if (body.action === "refresh_list") {
-      const state = await refreshSalesCallList(actor);
+      const state = await refreshSalesCallList(actor, { forceNew: Boolean(body.forceNew) });
       return NextResponse.json({ ok: true, action: body.action, state });
     }
 
@@ -107,6 +109,7 @@ export async function POST(request: NextRequest) {
         {
           callListItemId: String(body.callListItemId || ""),
           requestId: String(body.requestId || ""),
+          clientActionId: body.clientActionId || null,
           preset: String(body.preset || "") as SalesCallPreset,
           notes: String(body.notes || ""),
           callbackDate: body.callbackDate || null,
