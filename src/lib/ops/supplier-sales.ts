@@ -557,6 +557,36 @@ function envConfigured(...keys: string[]) {
   return keys.some((key) => Boolean(nullableText(process.env[key], 1000)));
 }
 
+function supplierSalesAutomationToken() {
+  return nullableText(
+    process.env.SUPPLIER_SALES_AGENT_API_TOKEN ||
+      process.env.QUOTE_INTERNAL_API_TOKEN ||
+      process.env.OPS_INTERNAL_API_KEY ||
+      process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY,
+    1000,
+  );
+}
+
+function shopifyAdminToken() {
+  return nullableText(
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN ||
+      process.env.SHOPIFY_ADMIN_TOKEN ||
+      process.env.SHOPIFY_ADMIN_API_TOKEN ||
+      process.env.SHOPIFY_ACCESS_TOKEN,
+    500,
+  );
+}
+
+function shopifyShopDomain() {
+  return nullableText(
+    process.env.SHOPIFY_SHOP_DOMAIN ||
+      process.env.SHOPIFY_STORE_DOMAIN ||
+      process.env.SHOPIFY_SHOP ||
+      "neontrip.myshopify.com",
+    260,
+  )?.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+}
+
 function diagnostic(
   key: string,
   status: SupplierSalesDiagnosticStatus,
@@ -569,7 +599,7 @@ function diagnostic(
 export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
   const items: SupplierSalesDiagnostic[] = [];
 
-  const incomingTokenReady = envConfigured("SUPPLIER_SALES_AGENT_API_TOKEN", "QUOTE_INTERNAL_API_TOKEN");
+  const incomingTokenReady = Boolean(supplierSalesAutomationToken());
   const incomingSignatureReady = envConfigured("SUPPLIER_SALES_WEBHOOK_SECRET", "SHOPIFY_SALE_WEBHOOK_SECRET", "N8N_SHOPIFY_SALE_WEBHOOK_SECRET");
   items.push(diagnostic(
     "incoming_sales_auth",
@@ -577,11 +607,10 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
     "Offer-/Shopify-Import",
     incomingTokenReady || incomingSignatureReady
       ? "Automatische Sales koennen serverseitig authentifiziert in die Sales-Vergabe schreiben."
-      : "SUPPLIER_SALES_AGENT_API_TOKEN oder SUPPLIER_SALES_WEBHOOK_SECRET fehlt. Neue Sales koennen nicht automatisiert importiert werden.",
+      : "SUPPLIER_SALES_AGENT_API_TOKEN, ein interner Ops/Offers-Key oder SUPPLIER_SALES_WEBHOOK_SECRET fehlt. Neue Sales koennen nicht automatisiert importiert werden.",
   ));
 
-  const shopifyAdminReady = envConfigured("SHOPIFY_ADMIN_API_ACCESS_TOKEN", "SHOPIFY_ADMIN_TOKEN") &&
-    envConfigured("SHOPIFY_SHOP_DOMAIN", "SHOPIFY_STORE_DOMAIN", "SHOPIFY_SHOP");
+  const shopifyAdminReady = Boolean(shopifyAdminToken() && shopifyShopDomain());
   const quentinTagReady = Boolean(supplierTagValue("quentin"));
   const saidTagReady = Boolean(supplierTagValue("said"));
   const specialTagReady = Boolean(supplierTagValue("special"));
@@ -1430,8 +1459,8 @@ function supplierTrelloListId(supplier: SupplierSaleSupplier) {
 }
 
 function shopifyConfig() {
-  const token = nullableText(process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || process.env.SHOPIFY_ADMIN_TOKEN, 500);
-  const domain = nullableText(process.env.SHOPIFY_SHOP_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN || process.env.SHOPIFY_SHOP, 260)?.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const token = shopifyAdminToken();
+  const domain = shopifyShopDomain();
   const version = nullableText(process.env.SHOPIFY_ADMIN_API_VERSION, 40) || "2026-01";
   if (!token || !domain) return null;
   return { token, domain, version };

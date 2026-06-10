@@ -269,10 +269,14 @@ test("supplier sales diagnostics expose missing and configured production links"
   const keys = [
     "SUPPLIER_SALES_AGENT_API_TOKEN",
     "QUOTE_INTERNAL_API_TOKEN",
+    "OPS_INTERNAL_API_KEY",
+    "NEONTRIP_OFFERS_INTERNAL_API_KEY",
     "SUPPLIER_SALES_WEBHOOK_SECRET",
     "SHOPIFY_SALE_WEBHOOK_SECRET",
     "SHOPIFY_ADMIN_API_ACCESS_TOKEN",
     "SHOPIFY_ADMIN_TOKEN",
+    "SHOPIFY_ADMIN_API_TOKEN",
+    "SHOPIFY_ACCESS_TOKEN",
     "SHOPIFY_SHOP_DOMAIN",
     "SHOPIFY_STORE_DOMAIN",
     "SHOPIFY_SHOP",
@@ -297,7 +301,6 @@ test("supplier sales diagnostics expose missing and configured production links"
 
     process.env.SUPPLIER_SALES_AGENT_API_TOKEN = "agent";
     process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify";
-    process.env.SHOPIFY_SHOP_DOMAIN = "neontrip.myshopify.com";
     process.env.SUPPLIER_TAG_QUENTIN = "Quentin (schon bezahlt)";
     process.env.SUPPLIER_TAG_SAID = "Saeid (schon bezahlt)";
 
@@ -306,6 +309,33 @@ test("supplier sales diagnostics expose missing and configured production links"
     assert.equal(ready.items.find((item) => item.key === "incoming_sales_auth")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "shopify_supplier_tags")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "supplier_trello_projection")?.status, "warning");
+  } finally {
+    for (const key of keys) {
+      const value = previous.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test("supplier sales diagnostics accept internal key alias for incoming sales auth", () => {
+  const keys = [
+    "SUPPLIER_SALES_AGENT_API_TOKEN",
+    "QUOTE_INTERNAL_API_TOKEN",
+    "OPS_INTERNAL_API_KEY",
+    "NEONTRIP_OFFERS_INTERNAL_API_KEY",
+    "SUPPLIER_SALES_WEBHOOK_SECRET",
+    "SHOPIFY_SALE_WEBHOOK_SECRET",
+  ];
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+
+  try {
+    for (const key of keys) delete process.env[key];
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key".repeat(2);
+
+    const diagnostics = buildSupplierSalesDiagnostics();
+    assert.equal(diagnostics.items.find((item) => item.key === "incoming_sales_auth")?.status, "ok");
+    assert.equal(diagnostics.missing.includes("incoming_sales_auth"), false);
   } finally {
     for (const key of keys) {
       const value = previous.get(key);

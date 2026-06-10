@@ -89,7 +89,13 @@ function getAutomationToken(request: NextRequest, bodyToken?: string | null) {
 }
 
 function hasSupplierSalesAutomationAccess(request: NextRequest, bodyToken?: string | null) {
-  const expected = String(process.env.SUPPLIER_SALES_AGENT_API_TOKEN || process.env.QUOTE_INTERNAL_API_TOKEN || "").trim();
+  const expected = String(
+    process.env.SUPPLIER_SALES_AGENT_API_TOKEN ||
+      process.env.QUOTE_INTERNAL_API_TOKEN ||
+      process.env.OPS_INTERNAL_API_KEY ||
+      process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY ||
+      "",
+  ).trim();
   return tokenMatches(getAutomationToken(request, bodyToken), expected);
 }
 
