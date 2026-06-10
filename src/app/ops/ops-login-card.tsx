@@ -33,7 +33,7 @@ export function OpsLoginCard({
   return (
     <div className="min-h-screen bg-[#f7f4ef] px-6 py-10 text-stone-950">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
-        <div className="grid w-full overflow-hidden rounded-[2rem] border border-black/10 bg-white shadow-2xl shadow-stone-900/10 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid min-w-0 w-full overflow-hidden rounded-[2rem] border border-black/10 bg-white shadow-2xl shadow-stone-900/10 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="hidden bg-stone-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-stone-200">
@@ -51,7 +51,7 @@ export function OpsLoginCard({
           </div>
 
           <form
-            className="p-7 sm:p-10"
+            className="min-w-0 p-7 sm:p-10"
             onSubmit={(event) => {
               event.preventDefault();
               void onSubmit();
@@ -60,7 +60,7 @@ export function OpsLoginCard({
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">{eyebrow}</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-stone-600">{description}</p>
-            <div className="mt-5">
+            <div className="mt-5 min-w-0">
               <OpsAppSwitcher active={activeApp} tone="light" />
             </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { BadgeCheck, BarChart3, ClipboardList, Factory, FileText, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { useId, useState } from "react";
+import { BadgeCheck, BarChart3, ClipboardList, Factory, FileText, Menu, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -92,45 +93,100 @@ const OPS_APPS: Array<{
 
 export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
   const dark = tone === "dark";
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const menuId = useId();
+  const activeApp = OPS_APPS.find((app) => app.key === active) || OPS_APPS[0];
+
+  function appLinkClass(isActive: boolean, mode: "desktop" | "mobile") {
+    const base =
+      mode === "desktop"
+        ? "grid min-h-[3.25rem] min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2 rounded-[0.75rem] px-2.5 py-2 text-left text-sm font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2"
+        : "grid min-h-[3rem] grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2 rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2";
+
+    const toneClass = dark
+      ? isActive
+        ? "bg-[#f7f2ea] text-[#171412] shadow-[0_10px_28px_rgba(0,0,0,0.18)] focus-visible:ring-white/60"
+        : "text-white/[0.68] hover:bg-white/[0.09] hover:text-white focus-visible:ring-white/45"
+      : isActive
+        ? "bg-stone-950 text-white focus-visible:ring-stone-950/30"
+        : "text-stone-600 hover:bg-white hover:text-stone-950 focus-visible:ring-stone-950/25";
+
+    return `${base} ${toneClass}`;
+  }
+
+  function helperClass(isActive: boolean) {
+    return `col-start-2 min-w-0 truncate text-[11px] font-normal ${
+      dark
+        ? isActive ? "text-[#635b52]" : "text-white/[0.38]"
+        : isActive ? "text-white/60" : "text-stone-400"
+    }`;
+  }
 
   return (
-    <nav
-      aria-label="Ops-Bereiche"
-      className={`flex w-full max-w-full gap-1.5 overflow-x-auto rounded-[1rem] border p-1 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] sm:overflow-visible ${
-        dark ? "border-white/12 bg-white/[0.045]" : "border-black/10 bg-black/[0.03]"
-      }`}
-    >
-      {OPS_APPS.map(({ key, label, helper, href, Icon }) => {
-        const isActive = key === active;
-        return (
-          <a
-            key={key}
-            href={href}
-            aria-current={isActive ? "page" : undefined}
-            className={`grid min-h-[3.25rem] min-w-[9.25rem] grid-cols-[0.9rem_minmax(0,1fr)] items-center gap-x-1.5 rounded-[0.75rem] px-2 py-2 text-left text-[13px] font-medium leading-tight transition focus-visible:outline-none focus-visible:ring-2 sm:order-none sm:min-w-0 sm:grid-cols-[1rem_minmax(0,1fr)] sm:gap-x-2 sm:px-2.5 sm:text-sm ${
-              isActive ? "order-1" : "order-2"
-            } ${
-              dark
-                ? isActive
-                  ? "bg-[#f7f2ea] text-[#171412] shadow-[0_10px_28px_rgba(0,0,0,0.18)] focus-visible:ring-white/60"
-                  : "text-white/[0.68] hover:bg-white/[0.09] hover:text-white focus-visible:ring-white/45"
-                : isActive
-                  ? "bg-stone-950 text-white focus-visible:ring-stone-950/30"
-                  : "text-stone-600 hover:bg-white hover:text-stone-950 focus-visible:ring-stone-950/25"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            <span className="min-w-0 whitespace-nowrap">{label}</span>
-            <span className={`col-start-2 hidden min-w-0 truncate text-[11px] font-normal lg:block ${
-              dark
-                ? isActive ? "text-[#635b52]" : "text-white/[0.38]"
-                : isActive ? "text-white/60" : "text-stone-400"
-            }`}>
-              {helper}
-            </span>
-          </a>
-        );
-      })}
-    </nav>
+    <div className="min-w-0">
+      <div
+        className={`flex min-w-0 items-center gap-1.5 rounded-[1rem] border p-1 sm:hidden ${
+          dark ? "border-white/12 bg-white/[0.045]" : "border-black/10 bg-black/[0.03]"
+        }`}
+      >
+        <a href={activeApp.href} aria-current="page" className={`${appLinkClass(true, "mobile")} min-w-0 flex-1`}>
+          <activeApp.Icon className="h-4 w-4" />
+          <span className="min-w-0 truncate">{activeApp.label}</span>
+        </a>
+        <button
+          type="button"
+          aria-expanded={mobileOpen}
+          aria-controls={menuId}
+          onClick={() => setMobileOpen((current) => !current)}
+          className={`inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[0.85rem] border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 ${
+            dark
+              ? "border-white/10 bg-white/[0.07] text-white/78 hover:bg-white/[0.1] focus-visible:ring-white/45"
+              : "border-black/10 bg-white text-stone-700 hover:border-stone-300 hover:text-stone-950 focus-visible:ring-stone-950/25"
+          }`}
+        >
+          {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          <span>Bereiche</span>
+        </button>
+      </div>
+
+      {mobileOpen ? (
+        <nav
+          id={menuId}
+          aria-label="Ops-Bereiche"
+          className={`mt-2 grid gap-1.5 rounded-[1rem] border p-1 sm:hidden ${
+            dark ? "border-white/12 bg-[#171412]" : "border-black/10 bg-white"
+          }`}
+        >
+          {OPS_APPS.map(({ key, label, helper, href, Icon }) => {
+            const isActive = key === active;
+            return (
+              <a key={key} href={href} aria-current={isActive ? "page" : undefined} className={appLinkClass(isActive, "mobile")}>
+                <Icon className="h-4 w-4" />
+                <span className="min-w-0 truncate">{label}</span>
+                <span className={helperClass(isActive)}>{helper}</span>
+              </a>
+            );
+          })}
+        </nav>
+      ) : null}
+
+      <nav
+        aria-label="Ops-Bereiche"
+        className={`hidden min-w-0 w-full max-w-full gap-1.5 rounded-[1rem] border p-1 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] ${
+          dark ? "border-white/12 bg-white/[0.045]" : "border-black/10 bg-black/[0.03]"
+        }`}
+      >
+        {OPS_APPS.map(({ key, label, helper, href, Icon }) => {
+          const isActive = key === active;
+          return (
+            <a key={key} href={href} aria-current={isActive ? "page" : undefined} className={appLinkClass(isActive, "desktop")}>
+              <Icon className="h-4 w-4" />
+              <span className="min-w-0 truncate">{label}</span>
+              <span className={`${helperClass(isActive)} hidden lg:block`}>{helper}</span>
+            </a>
+          );
+        })}
+      </nav>
+    </div>
   );
 }
