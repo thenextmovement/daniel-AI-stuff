@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const carrier = (request.nextUrl.searchParams.get("carrier") || "all") as InboundCarrier | "all";
-    const scope = (request.nextUrl.searchParams.get("scope") || "problems") as "active" | "problems" | "all";
+    const scope = (request.nextUrl.searchParams.get("scope") || "moving") as "moving" | "active" | "problems" | "label_created" | "all";
     const board = await listInboundBoard({ carrier, scope });
     return NextResponse.json({ ok: true, board });
   } catch (error) {

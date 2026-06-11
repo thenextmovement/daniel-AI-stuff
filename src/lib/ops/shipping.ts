@@ -178,6 +178,7 @@ export type ShippingBoard = {
   counts: {
     actionRequired: number;
     watch: number;
+    labelCreated: number;
     inTransit: number;
     delivered: number;
     returning: number;
@@ -293,12 +294,13 @@ export function normalizeCarrierStatus(input: {
   statusText?: string | null;
 }): ShippingStatus {
   const text = `${input.carrier || ""} ${input.statusCode || ""} ${input.statusText || ""}`.toLowerCase();
+  if (!text.trim()) return "carrier_not_found";
 
   if (/attempted[_\s-]*delivery/.test(text)) return "delivery_failed";
   if (/ready[_\s-]*for[_\s-]*pickup/.test(text)) return "pickup_available";
   if (/out[_\s-]*for[_\s-]*delivery/.test(text)) return "out_for_delivery";
-  if (/carrier[_\s-]*picked[_\s-]*up|in[_\s-]*transit/.test(text)) return "in_transit";
-  if (/label[_\s-]*(printed|purchased)|confirmed/.test(text)) return "label_created";
+  if (/carrier[_\s-]*picked[_\s-]*up|picked\s*up|accepted|received\s+by\s+carrier|in[_\s-]*transit/.test(text)) return "in_transit";
+  if (/label[_\s-]*(printed|purchased|created|generated)|confirmed|pre[-\s]*advice|shipment information received/.test(text)) return "label_created";
   if (/\bfailure\b/.test(text)) return "delivery_failed";
   if (/not\s*found|unknown shipment|keine sendung|nicht gefunden|no tracking/.test(text)) return "carrier_not_found";
   if (/failed|nicht zugestellt|zustellung fehlgeschlagen|empfaenger nicht|empfänger nicht|annahme verweigert|address problem|adressproblem/.test(text)) return "delivery_failed";
@@ -307,9 +309,9 @@ export function normalizeCarrierStatus(input: {
   if (/delivered|zugestellt|erfolgreich zugestellt/.test(text)) return "delivered";
   if (/pickup|paketshop|parcelshop|filiale|packstation|abhol/.test(text)) return "pickup_available";
   if (/out for delivery|in zustellung|zustellung heute|wird heute zugestellt/.test(text)) return "out_for_delivery";
-  if (/label|announced|angekuendigt|angekündigt|daten.*uebermittelt|daten.*übermittelt|sendungsdaten/.test(text)) return "label_created";
+  if (/label|announced|angekuendigt|angekündigt|daten.*uebermittelt|daten.*übermittelt|sendungsdaten|pre[-\s]*advice|shipment information received/.test(text)) return "label_created";
   if (/delay|delayed|verspaetet|verspätet|transit|unterwegs|sort|depot|hub|transport|scan|processed|verarbeitet/.test(text)) return "in_transit";
-  return "in_transit";
+  return "carrier_not_found";
 }
 
 export function buildCarrierEventKey(input: CarrierEventInput) {
@@ -490,6 +492,7 @@ export function buildShippingBoardFromRows(
     counts: {
       actionRequired: items.filter((item) => item.incidents.some(isInternalShippingProblemIncident)).length,
       watch: items.filter((item) => item.shipment.riskLevel === "watch" || item.incidents.some((incident) => incident.severity === "watch")).length,
+      labelCreated: items.filter((item) => item.shipment.status === "label_created").length,
       inTransit: items.filter((item) => ["in_transit", "out_for_delivery", "pickup_available"].includes(item.shipment.status)).length,
       delivered: items.filter((item) => item.shipment.status === "delivered").length,
       returning: items.filter((item) => ["returning", "returned"].includes(item.shipment.status)).length,
@@ -823,7 +826,7 @@ export async function evaluateShippingShipment(shipmentId: string) {
 export async function listShippingBoard(options?: {
   requestId?: string | null;
   carrier?: ShippingCarrier | "all" | null;
-  scope?: "active" | "problems" | "all";
+  scope?: "moving" | "active" | "problems" | "label_created" | "all";
   limit?: number;
 }): Promise<ShippingBoard> {
   const query: Record<string, string | number | boolean | null> = {
@@ -834,7 +837,9 @@ export async function listShippingBoard(options?: {
   const requestId = trimNullable(options?.requestId);
   if (requestId) query.request_id = `eq.${requestId}`;
   if (options?.carrier && options.carrier !== "all") query.carrier = `eq.${options.carrier}`;
-  if (options?.scope !== "all") query.status = "not.in.(delivered,returned,closed)";
+  if (options?.scope === "moving") query.status = "in.(in_transit,out_for_delivery,pickup_available)";
+  else if (options?.scope === "label_created") query.status = "eq.label_created";
+  else if (options?.scope !== "all") query.status = "not.in.(delivered,returned,closed)";
 
   const shipmentRows = await supabaseRequest<ShippingShipmentRow[]>("shipping_shipments", undefined, query);
   if (!shipmentRows.length) {

@@ -63,7 +63,7 @@ export function InboundShippingClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [board, setBoard] = useState<InboundBoard | null>(null);
-  const [scope, setScope] = useState<"active" | "problems" | "all">("active");
+  const [scope, setScope] = useState<"moving" | "active" | "problems" | "label_created" | "all">("moving");
   const [carrier, setCarrier] = useState<"all" | "dhl" | "fedex">("all");
   const [loading, setLoading] = useState(false);
   const [savingIncidentId, setSavingIncidentId] = useState<string | null>(null);
@@ -176,18 +176,21 @@ export function InboundShippingClient({
           description="China-Sendungen, Carrier-Status und Clearance-Hinweise in einer kompakten Arbeitsansicht."
         />
 
-        <section className="grid gap-3 md:grid-cols-6">
-          <OpsStatCard label="Aktiv" value={items.length} icon={<Truck className="h-5 w-5" />} detail="Offene Inbound-Läufe." />
+        <section className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
+          <OpsStatCard label="Label" value={board?.counts.labelCreated || 0} tone="warning" icon={<Clock3 className="h-5 w-5" />} detail="Nur angekündigt." />
+          <OpsStatCard label="Übergeben" value={board?.counts.acceptedByCarrier || 0} icon={<Truck className="h-5 w-5" />} detail="Carrier hat übernommen." />
           <OpsStatCard label="Aktion" value={board?.counts.actionRequired || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Handlungsbedarf." />
           <OpsStatCard label="Clearance" value={board?.counts.clearance || 0} tone="warning" icon={<ShieldAlert className="h-5 w-5" />} detail="Zoll im Blick." />
           <OpsStatCard label="Zustellung" value={board?.counts.outForDelivery || 0} tone="success" icon={<PlaneLanding className="h-5 w-5" />} detail="Heute relevant." />
-          <OpsStatCard label="Stale" value={board?.counts.stale || 0} tone="info" icon={<Clock3 className="h-5 w-5" />} detail="72h ohne Fortschritt." />
+          <OpsStatCard label="Problem" value={board?.counts.exception || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Exception/Unbekannt." />
           <OpsStatCard label="Erledigt" value={board?.counts.delivered || 0} tone="success" icon={<CheckCircle2 className="h-5 w-5" />} detail="Zugestellt." />
         </section>
 
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
           <div className="grid gap-3 md:grid-cols-[180px_180px_160px_1fr]">
             <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+              <option value="moving">Wirklich unterwegs</option>
+              <option value="label_created">Nur Label erstellt</option>
               <option value="active">Aktive Sendungen</option>
               <option value="problems">Problemfälle</option>
               <option value="all">Alle Sendungen</option>

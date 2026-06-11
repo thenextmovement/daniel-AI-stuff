@@ -74,7 +74,7 @@ export function CustomerShippingClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [board, setBoard] = useState<ShippingBoard | null>(null);
-  const [scope, setScope] = useState<"active" | "problems" | "all">("problems");
+  const [scope, setScope] = useState<"moving" | "active" | "problems" | "label_created" | "all">("moving");
   const [carrier, setCarrier] = useState<"all" | "dpd" | "dhl">("all");
   const [requestId, setRequestId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -195,9 +195,9 @@ export function CustomerShippingClient({
         <section className="grid gap-3 md:grid-cols-6">
           <OpsStatCard label="Fehler" value={board?.counts.actionRequired || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Echte Zustellprobleme." />
           <OpsStatCard label="Watch" value={board?.counts.watch || 0} tone="info" icon={<Clock3 className="h-5 w-5" />} detail="Aktiv beobachten." />
-          <OpsStatCard label="Unterwegs" value={board?.counts.inTransit || 0} icon={<Truck className="h-5 w-5" />} detail="Carrier-Transit." />
+          <OpsStatCard label="Label" value={board?.counts.labelCreated || 0} tone="warning" icon={<Clock3 className="h-5 w-5" />} detail="Noch kein Carrier-Scan." />
+          <OpsStatCard label="Unterwegs" value={board?.counts.inTransit || 0} icon={<Truck className="h-5 w-5" />} detail="Echte Carrier-Bewegung." />
           <OpsStatCard label="Zugestellt" value={board?.counts.delivered || 0} tone="success" icon={<PackageCheck className="h-5 w-5" />} detail="Sauber abgeschlossen." />
-          <OpsStatCard label="Retoure" value={board?.counts.returning || 0} tone="warning" icon={<RefreshCcw className="h-5 w-5" />} detail="Rücklauf prüfen." />
           <OpsStatCard label="Aufgabe" value={board?.counts.withOpenTask || 0} tone="info" icon={<ListChecks className="h-5 w-5" />} detail="Mit Teamaufgabe." />
         </section>
 
@@ -216,7 +216,9 @@ export function CustomerShippingClient({
               />
             </label>
             <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+              <option value="moving">Wirklich unterwegs</option>
               <option value="problems">Echte Fehler</option>
+              <option value="label_created">Nur Label erstellt</option>
               <option value="active">Aktive Sendungen</option>
               <option value="all">Alle Sendungen</option>
             </select>

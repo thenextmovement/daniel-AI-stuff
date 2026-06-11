@@ -211,8 +211,12 @@ export type InboundBoard = {
   items: InboundBoardItem[];
   counts: {
     actionRequired: number;
+    labelCreated: number;
+    acceptedByCarrier: number;
+    inTransit: number;
     clearance: number;
     outForDelivery: number;
+    exception: number;
     stale: number;
     delivered: number;
     withOpenTask: number;
@@ -301,6 +305,7 @@ export function normalizeInboundCarrierStatus(input: {
 }): InboundStatus {
   const code = String(input.statusCode || "").trim().toUpperCase();
   const text = `${input.carrier || ""} ${input.statusCode || ""} ${input.statusText || ""}`.toLowerCase();
+  if (!code && !text.trim()) return "carrier_not_found";
   if (code === "DL" || /delivered|zugestellt|delivery complete/.test(text)) return "delivered";
   if (code === "OD" || /out for delivery|outfordelivery|with courier|in zustellung|wird zugestellt/.test(text)) return "out_for_delivery";
   if (code === "CD" || /clearance delay|additional information required|customs.*required|clearance.*required|zoll.*information|zoll.*erforder/.test(text)) {
@@ -310,7 +315,7 @@ export function normalizeInboundCarrierStatus(input: {
     return "clearance_in_progress";
   }
   if (["DE", "DD", "SE"].includes(code) || /exception|expired|delay|delayed|on hold|shipment is on hold|problem|failed/.test(text)) return "exception";
-  if (code === "OC" || /shipment information sent|inforeceived|info received|label created|label generated|sendungsdaten|daten.*uebermittelt|daten.*übermittelt/.test(text)) return "label_created";
+  if (code === "OC" || /shipment information sent|shipment information received|pre[-\s]*advice|inforeceived|info received|label created|label generated|sendungsdaten|daten.*uebermittelt|daten.*übermittelt/.test(text)) return "label_created";
   if (["PU", "IP"].includes(code) || /picked up|in fedex possession|accepted|received by carrier|shipment picked up|abgeholt|uebernommen|übernommen/.test(text)) {
     return "tendered";
   }
@@ -318,7 +323,7 @@ export function normalizeInboundCarrierStatus(input: {
     return "in_transit";
   }
   if (/not found|no tracking|unknown shipment|keine sendung|nicht gefunden/.test(text)) return "carrier_not_found";
-  return "in_transit";
+  return "carrier_not_found";
 }
 
 function riskRank(value: InboundIncidentSeverity) {
@@ -440,8 +445,12 @@ export function buildInboundBoardFromRows(
     items,
     counts: {
       actionRequired: items.filter((item) => item.incidents.some((incident) => incident.status === "open" && incident.severity !== "watch")).length,
+      labelCreated: items.filter((item) => item.shipment.status === "tracking_created" || item.shipment.status === "label_created").length,
+      acceptedByCarrier: items.filter((item) => item.shipment.status === "tendered").length,
+      inTransit: items.filter((item) => ["in_transit", "clearance_in_progress", "clearance_action_required", "out_for_delivery"].includes(item.shipment.status)).length,
       clearance: items.filter((item) => item.shipment.status.startsWith("clearance") || item.incidents.some((incident) => incident.incidentType.startsWith("clearance"))).length,
       outForDelivery: items.filter((item) => item.shipment.status === "out_for_delivery").length,
+      exception: items.filter((item) => item.shipment.status === "exception" || item.shipment.status === "carrier_not_found").length,
       stale: items.filter((item) => item.incidents.some((incident) => incident.incidentType === "not_tendered" || incident.incidentType === "stale_no_movement")).length,
       delivered: items.filter((item) => item.shipment.status === "delivered").length,
       withOpenTask: items.filter((item) => item.incidents.some((incident) => Boolean(incident.activeTaskId))).length,
@@ -604,7 +613,7 @@ async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<Inbou
 
 export async function listInboundBoard(options?: {
   carrier?: InboundCarrier | "all" | null;
-  scope?: "active" | "problems" | "all";
+  scope?: "moving" | "active" | "problems" | "label_created" | "all";
   limit?: number;
 }): Promise<InboundBoard> {
   const query: Record<string, string | number | boolean | null> = {
@@ -613,7 +622,9 @@ export async function listInboundBoard(options?: {
     limit: Math.min(Math.max(options?.limit || 250, 1), 500),
   };
   if (options?.carrier && options.carrier !== "all") query.carrier = `eq.${options.carrier}`;
-  if (options?.scope !== "all") query.status = "not.in.(delivered,closed)";
+  if (options?.scope === "moving") query.status = "in.(tendered,in_transit,clearance_in_progress,clearance_action_required,out_for_delivery)";
+  else if (options?.scope === "label_created") query.status = "in.(tracking_created,label_created)";
+  else if (options?.scope !== "all") query.status = "not.in.(delivered,closed)";
 
   const shipmentRows = await supabaseRequest<InboundShipmentRow[]>("inbound_shipments", undefined, query);
   if (!shipmentRows.length) return buildInboundBoardFromRows([], [], []);

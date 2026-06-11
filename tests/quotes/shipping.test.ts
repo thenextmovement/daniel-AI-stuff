@@ -71,6 +71,13 @@ test("normalizeCarrierStatus maps Shopify fulfillment event statuses into shippi
   assert.equal(normalizeCarrierStatus({ carrier: "shopify", statusCode: "FAILURE" }), "delivery_failed");
 });
 
+test("normalizeCarrierStatus never treats label-only or unknown carrier text as in transit", () => {
+  assert.equal(normalizeCarrierStatus({ carrier: "dhl", statusText: "Shipment information received" }), "label_created");
+  assert.equal(normalizeCarrierStatus({ carrier: "dpd", statusText: "Pre-advice received" }), "label_created");
+  assert.equal(normalizeCarrierStatus({ carrier: "dhl", statusText: "Label created" }), "label_created");
+  assert.equal(normalizeCarrierStatus({ carrier: "dhl", statusText: "Pending carrier update" }), "carrier_not_found");
+});
+
 test("buildCarrierEventKey is stable for duplicate carrier events and includes normalized carrier", () => {
   const event = {
     carrier: "DPD",
@@ -194,6 +201,7 @@ test("buildShippingBoardFromRows prioritizes urgent incidents and keeps tasks as
   assert.equal(board.items[0].shipment.id, "shipment-2");
   assert.equal(board.counts.actionRequired, 1);
   assert.equal(board.counts.withOpenTask, 1);
+  assert.equal(board.counts.labelCreated, 0);
 });
 
 test("buildShippingNotificationEmail sends pickup notices only as deterministic customer mail", () => {
@@ -316,6 +324,9 @@ test("normalizeInboundCarrierStatus maps clearance, out-for-delivery and label-o
   assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusCode: "CP", statusText: "Clearance event in progress" }), "clearance_in_progress");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "fedex", statusCode: "OD", statusText: "On vehicle for delivery" }), "out_for_delivery");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusText: "Shipment information sent to DHL" }), "label_created");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusCode: "InfoReceived" }), "label_created");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusText: "Pre-advice received" }), "label_created");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusText: "Pending update" }), "carrier_not_found");
 });
 
 test("selectInboundTrelloVisualAttachment prefers image.png before mockups and other images", () => {
@@ -425,6 +436,9 @@ test("buildInboundBoardFromRows prioritizes urgent inbound incidents and counts 
   assert.equal(board.items[0].shipment.id, "inbound-2");
   assert.equal(board.items.find((item) => item.shipment.id === "inbound-1")?.incidents.length, 0);
   assert.equal(board.counts.actionRequired, 1);
+  assert.equal(board.counts.labelCreated, 0);
+  assert.equal(board.counts.acceptedByCarrier, 0);
+  assert.equal(board.counts.inTransit, 3);
   assert.equal(board.counts.clearance, 1);
   assert.equal(board.counts.outForDelivery, 1);
   assert.equal(board.counts.withOpenTask, 1);

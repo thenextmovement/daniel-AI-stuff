@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
   try {
     const requestId = request.nextUrl.searchParams.get("requestId");
     const carrier = (request.nextUrl.searchParams.get("carrier") || "all") as ShippingCarrier | "all";
-    const scope = (request.nextUrl.searchParams.get("scope") || "active") as "active" | "problems" | "all";
+    const scope = (request.nextUrl.searchParams.get("scope") || "moving") as "moving" | "active" | "problems" | "label_created" | "all";
     const board = await listShippingBoard({ requestId, carrier, scope });
     return NextResponse.json({ ok: true, board });
   } catch (error) {
