@@ -1,4 +1,5 @@
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { formatCustomerSegmentLabel } from "@/lib/ops/customer-segments";
 
 type DateLike = string | null | undefined;
 
@@ -412,7 +413,12 @@ function money(value: number, currency = "EUR") {
   }).format(value);
 }
 
-function countBy<T>(rows: T[], keyOf: (row: T) => string | null | undefined, valueOf?: (row: T) => number) {
+function countBy<T>(
+  rows: T[],
+  keyOf: (row: T) => string | null | undefined,
+  valueOf?: (row: T) => number,
+  labelOf: (key: string) => string = (key) => key,
+) {
   const map = new Map<string, { count: number; value: number }>();
   for (const row of rows) {
     const key = cleanText(keyOf(row)) || "Unbekannt";
@@ -422,9 +428,24 @@ function countBy<T>(rows: T[], keyOf: (row: T) => string | null | undefined, val
     map.set(key, current);
   }
   return [...map.entries()]
-    .map(([key, entry]) => ({ key, label: key, count: entry.count, value: entry.value || null }))
+    .map(([key, entry]) => ({ key, label: labelOf(key), count: entry.count, value: entry.value || null }))
     .sort((left, right) => right.count - left.count || (right.value || 0) - (left.value || 0))
     .slice(0, 8);
+}
+
+function segmentNameForManagement(rawSegment: string) {
+  if (rawSegment === "Ohne Segment" || rawSegment === "Unbekannt") return rawSegment;
+  const ntLabel = formatCustomerSegmentLabel(rawSegment);
+  if (ntLabel) return ntLabel;
+  if (/^s\d+$/i.test(rawSegment)) return `S-Kategorie ${rawSegment.toUpperCase()}`;
+  return rawSegment;
+}
+
+function segmentKeyForManagement(row: MasterRequestRow) {
+  const raw = cleanText(row.segment) || cleanText(row.s_kategorie) || "Ohne Segment";
+  if (/^nt-\d+$/i.test(raw)) return raw.toUpperCase();
+  if (/^s\d+$/i.test(raw)) return raw.toUpperCase();
+  return raw;
 }
 
 function latestDate<T>(rows: T[], pick: (row: T) => DateLike) {
@@ -496,6 +517,8 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
   const legacyAdsLatest = latestDate(rows.googleAdsDailySpend, (row: GoogleAdsDailySpendRow) => row.date);
   const seaAdsLatest = latestDate(rows.seaCampaignDaily, (row: SeaCampaignDailyRow) => row.date);
   const costBookLatest = latestDate(rows.costEntries, (row) => row.occurred_on);
+  const shopifyLatest = latestDate(rows.orders, (row: MasterOrderRow) => row.shopify_created_at || row.created_at);
+  const clarityProjectId = cleanText(process.env.MICROSOFT_CLARITY_PROJECT_ID || process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID);
 
   const riskFeed: ManagementRiskItem[] = [
     ...shippingIncidentsInRange
@@ -531,10 +554,12 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
     statusQuality("good", "Umsatzdaten", `${activeOrders.length} aktive Shopify-Bestellungen im Zeitraum, ${cancelledOrders.length} stornierte/erstattete Fälle separat gezählt.`, "orders"),
     statusQuality(filteredRequests.filter((row) => row.utm_source || row.utm_campaign || row.landing_page_url).length ? "partial" : "missing", "Attribution", `${filteredRequests.filter((row) => row.utm_source || row.utm_campaign || row.landing_page_url).length} von ${filteredRequests.length} Anfragen haben UTM/Landingpage-Daten.`, "attribution"),
     statusQuality(costBookLatest && staleDays(costBookLatest, now)! <= 2 ? "good" : "partial", "Kostenbuch", `${costEntriesInRange.length} Kostenbuch-Zeilen im Zeitraum. Letzter Kostenbuch-Tag: ${costBookLatest || "unbekannt"}.`, "cost_book"),
+    statusQuality(shopifyLatest && staleDays(shopifyLatest, now)! <= 2 ? "good" : activeOrders.length ? "partial" : "missing", "Shopify Orders", `${activeOrders.length} aktive Bestellungen im Zeitraum. Letzter Shopify-Auftrag: ${shopifyLatest || "unbekannt"}.`, "shopify_orders"),
     statusQuality(seaAdsLatest && staleDays(seaAdsLatest, now)! <= 2 ? "good" : "partial", "SEA-Kosten", `Aktuelle Quelle sea_campaign_daily bis ${seaAdsLatest || "unbekannt"}. Legacy google_ads_daily_spend bis ${legacyAdsLatest || "unbekannt"} ist als Legacy-Kostenquelle im Kostenbuch enthalten.`, "ads_costs"),
+    statusQuality(clarityProjectId ? "partial" : "missing", "Microsoft Clarity", clarityProjectId ? "Clarity-Projekt ist konfiguriert; Insights/API-Kennzahlen sind noch nicht ins KPI-Modell integriert." : "Nicht konfiguriert. MICROSOFT_CLARITY_PROJECT_ID fehlt; es werden keine Clarity-Zahlen erfunden.", "microsoft_clarity"),
     statusQuality("partial", "Kosten/Marge", "Google Ads, AI-Token, Voice-Schaetzungen sowie Sign-SHIPPED Produktions- und China-Inbound-Versandkosten sind im Kostenbuch. Marge bleibt ohne Outbound-Versand, Zoll/Import und Refunds nur teilweise belastbar.", "margin"),
     statusQuality(openShippingIncidents ? "risk" : "good", "Versand-Risiken", `${openShippingIncidents} offene ausgehende Shipping-Incidents im Zeitraum.`, "shipping"),
-    statusQuality("risk", "RLS-Hinweis", "Supabase meldet deaktivierte RLS u.a. für sales_tasks und ops_offer_events. Nicht automatisch behoben, weil Policies definiert werden müssen.", "rls"),
+    statusQuality("partial", "RLS-Hinweis", "sales_tasks und ops_offer_events muessen per RLS-Migration auf Service-Role/API-Zugriff begrenzt sein. Wenn Supabase weiter warnt, Post-checks ausfuehren.", "rls"),
   ];
 
   const summary: ManagementKpiCard[] = [
@@ -611,7 +636,12 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
       pipelineValue,
       conversionRate: pct(quoteSigned, quoteSent),
       topSources: countBy(filteredRequests, (row) => row.utm_source || row.referrer || row.landing_page_url, (row) => asNumber(row.final_value || row.estimated_value)),
-      topSegments: countBy(filteredRequests, (row) => row.segment || row.s_kategorie || "Ohne Segment", (row) => asNumber(row.final_value || row.estimated_value)),
+      topSegments: countBy(
+        filteredRequests,
+        segmentKeyForManagement,
+        (row) => asNumber(row.final_value || row.estimated_value),
+        segmentNameForManagement,
+      ),
     },
     operations: {
       openSalesTasks,

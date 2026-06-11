@@ -196,3 +196,77 @@ test("buildManagementKpiDashboardFromRows separates revenue, pipeline, costs and
   assert.equal(dashboard.operations.riskFeed[0]?.key, "shipping:shipping-incident-1");
   assert.equal(dashboard.dataQuality.find((item) => item.key === "margin")?.status, "partial");
 });
+
+test("buildManagementKpiDashboardFromRows displays top segment names instead of internal codes", () => {
+  const dashboard = buildManagementKpiDashboardFromRows(
+    {
+      ...emptyRows,
+      requests: [
+        {
+          id: "request-row-restaurant-1",
+          request_id: "REQ-SEG-1",
+          status: "new",
+          deal_status: "open",
+          segment: "NT-2",
+          s_kategorie: "S3",
+          customer_type: "business",
+          country: "DE",
+          estimated_value: 1000,
+          final_value: null,
+          utm_source: "google",
+          utm_medium: "cpc",
+          utm_campaign: "segment-test",
+          landing_page_url: null,
+          referrer: null,
+          created_at: "2026-06-05T10:00:00.000Z",
+          updated_at: "2026-06-05T10:00:00.000Z",
+        },
+        {
+          id: "request-row-restaurant-2",
+          request_id: "REQ-SEG-2",
+          status: "new",
+          deal_status: "open",
+          segment: "nt-2",
+          s_kategorie: "S3",
+          customer_type: "business",
+          country: "DE",
+          estimated_value: 2000,
+          final_value: null,
+          utm_source: "google",
+          utm_medium: "cpc",
+          utm_campaign: "segment-test",
+          landing_page_url: null,
+          referrer: null,
+          created_at: "2026-06-05T11:00:00.000Z",
+          updated_at: "2026-06-05T11:00:00.000Z",
+        },
+        {
+          id: "request-row-s-category",
+          request_id: "REQ-SEG-3",
+          status: "new",
+          deal_status: "open",
+          segment: null,
+          s_kategorie: "S1",
+          customer_type: "business",
+          country: "DE",
+          estimated_value: 500,
+          final_value: null,
+          utm_source: "organic",
+          utm_medium: null,
+          utm_campaign: null,
+          landing_page_url: null,
+          referrer: null,
+          created_at: "2026-06-05T12:00:00.000Z",
+          updated_at: "2026-06-05T12:00:00.000Z",
+        },
+      ],
+    },
+    { range: "7d" },
+    new Date("2026-06-07T10:00:00.000Z"),
+  );
+
+  assert.equal(dashboard.sales.topSegments[0]?.key, "NT-2");
+  assert.equal(dashboard.sales.topSegments[0]?.label, "Gastronomie");
+  assert.equal(dashboard.sales.topSegments[0]?.count, 2);
+  assert.equal(dashboard.sales.topSegments[1]?.label, "S-Kategorie S1");
+});
