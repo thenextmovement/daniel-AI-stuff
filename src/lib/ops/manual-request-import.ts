@@ -8,6 +8,11 @@ import { isValidEmail, normalizeEmail } from "@/lib/quotes/customer";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import { taskTitle, upsertSalesTask } from "@/lib/ops/sales-task-engine";
+import {
+  buildMockupTrelloDescription,
+  inferRequestSegmentForStorage,
+  type MockupContextInput,
+} from "@/lib/ops/mockup-context";
 
 type ManualImportCustomerRow = {
   id: string;
@@ -170,27 +175,26 @@ function requestTitle(input: ManualRequestImportInput) {
 }
 
 function trelloDescription(input: ManualRequestImportInput, requestId: string) {
-  const lines = [
-    "Manuell in Customer Records eingespielt.",
-    "",
-    `Request-ID: ${requestId}`,
-    `Quelle: ${MANUAL_IMPORT_SOURCE}`,
-    "",
-    `Kunde: ${displayName(input)}`,
-    `Firma: ${trimNullable(input.customer?.company) || "-"}`,
-    `E-Mail: ${trimNullable(input.customer?.email) || "-"}`,
-    `Telefon: ${trimNullable(input.customer?.phone) || "-"}`,
-    "",
-    `Produkt: ${trimNullable(input.request?.product) || "-"}`,
-    `Groesse: ${trimNullable(input.request?.size) || "-"}`,
-    `Farbe: ${trimNullable(input.request?.color) || "-"}`,
-    `Einsatz: ${trimNullable(input.request?.application) || "-"}`,
-    `Lieferzeit: ${trimNullable(input.request?.deliveryTime) || "-"}`,
-    "",
-    "Beschreibung:",
-    trimNullable(input.request?.description) || "-",
-  ];
-  return lines.join("\n");
+  return buildMockupTrelloDescription({
+    ...mockupContextInput(input),
+    requestId,
+  });
+}
+
+function mockupContextInput(input: ManualRequestImportInput): MockupContextInput {
+  return {
+    customerCompany: input.customer?.company,
+    customerEmail: input.customer?.email,
+    requestTitle: input.request?.title,
+    requestDescription: input.request?.description,
+    product: input.request?.product,
+    size: input.request?.size,
+    color: input.request?.color,
+    usage: input.request?.application,
+    backboard: "Rueckplatte laut Angebot",
+    customerType: input.request?.customerType,
+    manualSegment: input.request?.segment,
+  };
 }
 
 async function findExistingImportByIdempotencyKey(idempotencyKey: string) {
@@ -326,6 +330,7 @@ async function insertContactHistory(customerId: string, type: "email" | "phone",
 
 async function insertManualRequest(input: ManualRequestImportInput, customerId: string, requestId: string) {
   const now = new Date().toISOString();
+  const segment = inferRequestSegmentForStorage(mockupContextInput(input));
   const rows = await supabaseRequest<ManualImportRequestRow[]>("master_requests", {
     method: "POST",
     body: JSON.stringify({
@@ -333,11 +338,13 @@ async function insertManualRequest(input: ManualRequestImportInput, customerId: 
       request_id: requestId,
       title: requestTitle(input),
       description: trimNullable(input.request?.description),
-      segment: trimNullable(input.request?.segment),
-      segment_status: manualSegmentStatus(input.request?.segment),
-      segment_confidence: trimNullable(input.request?.segment) ? 1 : null,
-      segment_source: MANUAL_IMPORT_SOURCE,
-      segment_classified_at: trimNullable(input.request?.segment) ? now : null,
+      segment: segment?.segment || null,
+      s_kategorie: segment?.sKategorie || null,
+      segment_status: segment.segment ? "accepted" : "needs_review",
+      segment_confidence: segment.confidence,
+      segment_source: segment.source,
+      segment_classified_at: now,
+      segment_policy_version: "mockup_context_v1_20260611",
       status: "new",
       deal_status: "open",
       size: trimNullable(input.request?.size),
