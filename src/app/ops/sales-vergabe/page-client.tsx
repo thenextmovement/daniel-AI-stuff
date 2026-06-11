@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -29,12 +30,20 @@ type SupplierSalesApiResponse = {
   ok: boolean;
   board?: SupplierSaleBoard;
   sale?: SupplierSale;
+  deadlineTasks?: {
+    checked: number;
+    created: number;
+    skipped: number;
+    failed: number;
+    taskIds: string[];
+    errors: Array<{ saleId: string; error: string }>;
+  };
   warnings?: string[];
   error?: string;
   issues?: string[];
 };
 
-type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "all";
+type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all";
 type SupplierFilter = "all" | "quentin" | "said" | "special" | "manual_review";
 type PaymentFilter = "all" | "paid" | "unpaid" | "pending" | "authorized" | "partially_paid" | "unknown";
 
@@ -131,6 +140,38 @@ function diagnosticTone(status: string) {
   return "border-amber-200 bg-amber-50 text-amber-900";
 }
 
+function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null) {
+  if (action === "assign_supplier") return "Vergabe gespeichert. Shopify/Trello/Aufgabe wurden verarbeitet.";
+  if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
+  if (action === "request_payment_reminder") return "Zahlungserinnerung wurde verarbeitet.";
+  if (action === "create_deadline_tasks") {
+    const tasks = payload?.deadlineTasks;
+    if (!tasks) return "Deadline-Aufgaben wurden geprueft.";
+    return `Deadline-Aufgaben geprueft: ${tasks.created} neu, ${tasks.skipped} bereits erledigt/uebersprungen, ${tasks.failed} Fehler.`;
+  }
+  return "Sale wurde aktualisiert.";
+}
+
+function StatFilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`block rounded-[18px] text-left transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-stone-950/30 ${active ? "ring-2 ring-stone-950/25" : ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function defaultSupplier(sale: SupplierSale): SupplierSaleSupplier {
   if (sale.assignedSupplier) return sale.assignedSupplier;
   if (sale.recommendedSupplier === "quentin") return "quentin";
@@ -176,14 +217,15 @@ function SaleCard({
   const [paymentDecision, setPaymentDecision] = useState<SupplierSalePaymentDecision>(defaultPaymentDecision(sale));
   const [assignmentNote, setAssignmentNote] = useState("");
   const [assigneeLabel, setAssigneeLabel] = useState(operatorName || "Fabienne");
-  const [reminderLink, setReminderLink] = useState(sale.shopifyOrderUrl || "");
+  const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
 
   useEffect(() => {
     setSupplier(defaultSupplier(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
     setDeliveryDate(sale.supplierDueDate || sale.customerDueDate || "");
     setPaymentDecision(defaultPaymentDecision(sale));
-  }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus]);
+    setReminderLink(sale.paymentLink || sale.shopifyOrderUrl || "");
+  }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
 
   const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
@@ -253,6 +295,7 @@ function SaleCard({
             <QuickLink href={sale.offerPublicUrl} label="Angebot" />
             <QuickLink href={sale.finalPdfUrl} label="Snapshot" />
             <QuickLink href={sale.shopifyOrderUrl} label="Shopify" />
+            <QuickLink href={sale.paymentLink} label="Bezahlen" />
             <QuickLink href={sale.supplierTrelloCardUrl} label="Supplier-Karte" />
             {sale.requestId ? <QuickLink href={`/ops/customer-records?query=${encodeURIComponent(sale.requestId)}`} label="Kundenakte" /> : null}
           </div>
@@ -467,7 +510,8 @@ export function SupplierSalesClient({
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       if (payload.board) setBoard(payload.board);
-      setMessage("Sale wurde aktualisiert.");
+      setMessage(actionMessage(body.action, payload));
+      if (body.action === "create_deadline_tasks") setScope("deadline");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     } finally {
@@ -509,11 +553,21 @@ export function SupplierSalesClient({
         />
 
         <section className="grid gap-3 md:grid-cols-5">
-          <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
-          <OpsStatCard label="Zahlung" value={board?.counts.paymentOpen || 0} tone="warning" icon={<CreditCard className="h-5 w-5" />} detail="Offen oder Entscheidung fehlt." />
-          <OpsStatCard label="Vergeben" value={board?.counts.assigned || 0} tone="success" icon={<Factory className="h-5 w-5" />} detail="Supplier gesetzt." />
-          <OpsStatCard label="Deadline" value={board?.counts.dueSoon || 0} tone="info" icon={<CalendarClock className="h-5 w-5" />} detail="In 7 Tagen faellig." />
-          <OpsStatCard label="Sync" value={board?.counts.syncIssues || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Shopify/Trello/Aufgabe fehlerhaft." />
+          <StatFilterButton active={scope === "ready"} onClick={() => setScope("ready")}>
+            <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
+          </StatFilterButton>
+          <StatFilterButton active={scope === "payment"} onClick={() => setScope("payment")}>
+            <OpsStatCard label="Zahlung" value={board?.counts.paymentOpen || 0} tone="warning" icon={<CreditCard className="h-5 w-5" />} detail="Offen oder Entscheidung fehlt." />
+          </StatFilterButton>
+          <StatFilterButton active={scope === "assigned"} onClick={() => setScope("assigned")}>
+            <OpsStatCard label="Vergeben" value={board?.counts.assigned || 0} tone="success" icon={<Factory className="h-5 w-5" />} detail="Supplier gesetzt." />
+          </StatFilterButton>
+          <StatFilterButton active={scope === "deadline"} onClick={() => setScope("deadline")}>
+            <OpsStatCard label="Deadline" value={(board?.counts.dueSoon || 0) + (board?.counts.overdue || 0)} tone="info" icon={<CalendarClock className="h-5 w-5" />} detail="In 7 Tagen faellig oder ueberfaellig." />
+          </StatFilterButton>
+          <StatFilterButton active={scope === "sync"} onClick={() => setScope("sync")}>
+            <OpsStatCard label="Sync" value={board?.counts.syncIssues || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Shopify/Trello/Aufgabe fehlerhaft." />
+          </StatFilterButton>
         </section>
 
         {board?.diagnostics?.items?.length ? (
@@ -567,6 +621,8 @@ export function SupplierSalesClient({
               <option value="ready">Bereit</option>
               <option value="payment">Zahlung offen</option>
               <option value="assigned">Vergeben</option>
+              <option value="deadline">Deadline</option>
+              <option value="sync">Sync-Fehler</option>
               <option value="all">Alle</option>
             </select>
             <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierFilter)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
@@ -596,9 +652,17 @@ export function SupplierSalesClient({
               className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               placeholder="Operator"
             />
+            <button
+              disabled={savingSaleId === "deadline-tasks"}
+              onClick={() => void runSaleAction("deadline-tasks", { action: "create_deadline_tasks", operatorName })}
+              className="inline-flex items-center gap-2 rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 disabled:opacity-60"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              Deadline-Aufgaben pruefen
+            </button>
             {loading ? <span className="text-sm text-stone-500">Sales werden geladen...</span> : null}
-            {message ? <span className="text-sm text-emerald-700">{message}</span> : null}
-            {error ? <span className="text-sm text-rose-700">{error}</span> : null}
+            {message ? <span className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">{message}</span> : null}
+            {error ? <span className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</span> : null}
           </div>
         </section>
 

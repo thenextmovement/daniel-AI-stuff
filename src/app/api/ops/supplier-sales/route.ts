@@ -3,6 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
   assignSupplierSale,
+  createSupplierDeadlineTasks,
   listSupplierSalesBoard,
   requestSupplierPaymentReminder,
   updateSupplierSalePaymentDecision,
@@ -26,7 +27,8 @@ type SupplierSalesPostBody = {
     | "upsert_sale"
     | "assign_supplier"
     | "update_payment_decision"
-    | "request_payment_reminder";
+    | "request_payment_reminder"
+    | "create_deadline_tasks";
   payload?: unknown;
   sale?: unknown;
   order?: unknown;
@@ -179,7 +181,7 @@ export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
     const board = await listSupplierSalesBoard({
-      scope: (params.get("scope") || "active") as "active" | "ready" | "payment" | "assigned" | "all",
+      scope: (params.get("scope") || "active") as "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all",
       supplier: (params.get("supplier") || "all") as SupplierSaleSupplier | SupplierSaleRecommendation | "all",
       payment: (params.get("payment") || "all") as SupplierSalePaymentStatus | "unpaid" | "all",
       query: params.get("q"),
@@ -200,7 +202,7 @@ export async function POST(request: NextRequest) {
   const body = parseJsonBody(rawBody || "{}");
   const action = body.action || "upsert_sale";
   let actor: SupplierSaleActor | null = null;
-  if (action === "upsert_sale") {
+  if (action === "upsert_sale" || action === "create_deadline_tasks") {
     actor = await getActorOrAutomation(request, rawBody, body, body.operatorName || null);
   } else {
     const access = await assertOpsAccess(request, body.operatorName || null);
@@ -238,6 +240,12 @@ export async function POST(request: NextRequest) {
       }, actor);
       const board = await listSupplierSalesBoard({ scope: "active" });
       return NextResponse.json({ ok: true, action, sale, board });
+    }
+
+    if (action === "create_deadline_tasks") {
+      const deadlineTasks = await createSupplierDeadlineTasks(actor);
+      const board = await listSupplierSalesBoard({ scope: "deadline" });
+      return NextResponse.json({ ok: true, action, deadlineTasks, board });
     }
 
     if (action === "assign_supplier") {

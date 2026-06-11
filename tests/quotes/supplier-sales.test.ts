@@ -9,6 +9,7 @@ import {
   deriveSupplierRecommendation,
   normalizeDateOnly,
   normalizeShopifyPaymentStatus,
+  supplierSaleNeedsDeadlineTask,
   type SupplierSaleItemRow,
   type SupplierSaleRow,
 } from "@/lib/ops/supplier-sales";
@@ -237,6 +238,29 @@ test("shopify order payload preserves payment, images, customer and Quentin reco
   assert.equal(deriveSupplierRecommendation(parsed.sale.lineItems).recommendedSupplier, "quentin");
 });
 
+test("shopify order payload extracts customer payment links from common Shopify fields", () => {
+  const parsed = buildSupplierSaleInputFromPayload({
+    id: 123456,
+    name: "#1234",
+    financial_status: "pending",
+    order_status_url: "https://neontrip.test/orders/123456/status",
+    checkout: { web_url: "https://neontrip.test/checkouts/abc" },
+    total_price: "1480.00",
+    currency: "EUR",
+    email: "kunde@example.com",
+    note_attributes: [{ name: "deadline", value: "2026-06-22" }],
+    line_items: [
+      {
+        id: 1,
+        title: "LED Neon Flex Logo",
+        quantity: 1,
+      },
+    ],
+  });
+
+  assert.equal(parsed.sale.metadata?.payment_link, "https://neontrip.test/orders/123456/status");
+});
+
 test("supplier sales board counts deadlines, payment, assignment and sync issues", () => {
   const board = buildSupplierSaleBoardFromRows(
     [
@@ -263,6 +287,15 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   assert.equal(board.counts.syncIssues, 1);
   assert.equal(board.items[0].id, "sale-ready");
   assert.ok(board.diagnostics.items.length);
+});
+
+test("supplier sale deadline task eligibility is due-date based and idempotent", () => {
+  const now = new Date("2026-06-11T10:00:00.000Z");
+
+  assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-11" }), now), true);
+  assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-12" }), now), false);
+  assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-10", assignment_status: "completed" }), now), false);
+  assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-10", metadata: { deadline_task_id: "task-1" } }), now), false);
 });
 
 test("supplier sales diagnostics expose missing and configured production links", () => {
@@ -297,17 +330,23 @@ test("supplier sales diagnostics expose missing and configured production links"
     const missing = buildSupplierSalesDiagnostics();
     assert.equal(missing.ready, false);
     assert.ok(missing.missing.includes("incoming_sales_auth"));
+    assert.ok(missing.missing.includes("shopify_admin_api"));
     assert.ok(missing.missing.includes("shopify_supplier_tags"));
+    assert.ok(missing.missing.includes("trello_api_key"));
 
     process.env.SUPPLIER_SALES_AGENT_API_TOKEN = "agent";
     process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify";
     process.env.SUPPLIER_TAG_QUENTIN = "Quentin (schon bezahlt)";
     process.env.SUPPLIER_TAG_SAID = "Saeid (schon bezahlt)";
+    process.env.TRELLO_API_KEY = "trello-key";
+    process.env.TRELLO_TOKEN = "trello-token";
 
     const ready = buildSupplierSalesDiagnostics();
     assert.equal(ready.ready, true);
     assert.equal(ready.items.find((item) => item.key === "incoming_sales_auth")?.status, "ok");
+    assert.equal(ready.items.find((item) => item.key === "shopify_admin_api")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "shopify_supplier_tags")?.status, "ok");
+    assert.equal(ready.items.find((item) => item.key === "trello_api_key")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "supplier_trello_projection")?.status, "warning");
   } finally {
     for (const key of keys) {

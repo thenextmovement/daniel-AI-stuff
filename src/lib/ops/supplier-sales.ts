@@ -140,6 +140,7 @@ export type SupplierSale = {
   shopifyOrderId: string | null;
   shopifyOrderName: string | null;
   shopifyOrderUrl: string | null;
+  paymentLink: string | null;
   shopifyPaymentStatus: SupplierSalePaymentStatus;
   paymentDecisionStatus: SupplierSalePaymentDecision;
   paymentDueAt: string | null;
@@ -324,6 +325,15 @@ export type SupplierPaymentReminderInput = {
   paymentLink?: string | null;
   message?: string | null;
   operatorName?: string | null;
+};
+
+export type SupplierDeadlineTaskResult = {
+  checked: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  taskIds: string[];
+  errors: Array<{ saleId: string; error: string }>;
 };
 
 type SupplierRecommendationResult = {
@@ -546,9 +556,32 @@ export function deriveSupplierRecommendation(items: SupplierLineItemInput[]): Su
 
 function paymentLinkFromPayload(payload: JsonRecord) {
   return (
-    recordString(payload, ["payment_url", "paymentUrl", "invoice_url", "invoiceUrl", "checkout_url", "checkoutUrl"], 1000) ||
+    recordString(payload, [
+      "payment_url",
+      "paymentUrl",
+      "payment_link",
+      "paymentLink",
+      "invoice_url",
+      "invoiceUrl",
+      "invoiceUrlForCustomer",
+      "checkout_url",
+      "checkoutUrl",
+      "checkout_web_url",
+      "checkoutWebUrl",
+      "order_status_url",
+      "orderStatusUrl",
+      "status_url",
+      "statusUrl",
+    ], 1000) ||
     nestedString(payload, ["order", "payment_url"], 1000) ||
+    nestedString(payload, ["order", "payment_link"], 1000) ||
+    nestedString(payload, ["order", "invoice_url"], 1000) ||
     nestedString(payload, ["order", "checkout_url"], 1000) ||
+    nestedString(payload, ["order", "order_status_url"], 1000) ||
+    nestedString(payload, ["order", "status_url"], 1000) ||
+    nestedString(payload, ["checkout", "web_url"], 1000) ||
+    nestedString(payload, ["checkout", "webUrl"], 1000) ||
+    nestedString(payload, ["invoice", "url"], 1000) ||
     null
   );
 }
@@ -611,6 +644,15 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
   ));
 
   const shopifyAdminReady = Boolean(shopifyAdminToken() && shopifyShopDomain());
+  items.push(diagnostic(
+    "shopify_admin_api",
+    shopifyAdminReady ? "ok" : "missing",
+    "Shopify Admin API",
+    shopifyAdminReady
+      ? "Shopify Admin API ist konfiguriert; Shopify-Sales und Supplier-Tags koennen abgeglichen werden."
+      : "SHOPIFY_ADMIN_API_ACCESS_TOKEN/SHOPIFY_ADMIN_TOKEN plus SHOPIFY_SHOP_DOMAIN muessen in Coolify gesetzt sein. Keine Secrets committen.",
+  ));
+
   const quentinTagReady = Boolean(supplierTagValue("quentin"));
   const saidTagReady = Boolean(supplierTagValue("said"));
   const specialTagReady = Boolean(supplierTagValue("special"));
@@ -624,6 +666,15 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
   ));
 
   const trelloAuthReady = envConfigured("TRELLO_API_KEY") && envConfigured("TRELLO_TOKEN");
+  items.push(diagnostic(
+    "trello_api_key",
+    trelloAuthReady ? "ok" : "missing",
+    "Trello API Key",
+    trelloAuthReady
+      ? "TRELLO_API_KEY und TRELLO_TOKEN sind konfiguriert."
+      : "TRELLO_API_KEY und TRELLO_TOKEN fehlen oder sind unvollstaendig. Trello bleibt Projektion, nicht Source of Truth.",
+  ));
+
   const quentinListReady = Boolean(supplierTrelloListId("quentin"));
   const saidListReady = Boolean(supplierTrelloListId("said"));
   const specialListReady = Boolean(supplierTrelloListId("special"));
@@ -944,6 +995,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     shopifyOrderId: row.shopify_order_id,
     shopifyOrderName: row.shopify_order_name,
     shopifyOrderUrl: row.shopify_order_url,
+    paymentLink: nullableText(row.metadata?.payment_link, 1000) || nullableText(latestEvent?.payload?.payment_link, 1000) || null,
     shopifyPaymentStatus: row.shopify_payment_status,
     paymentDecisionStatus: row.payment_decision_status,
     paymentDueAt: row.payment_due_at,
@@ -1057,6 +1109,17 @@ export function buildSupplierSaleBoardFromRows(
   };
 }
 
+export function supplierSaleNeedsDeadlineTask(row: SupplierSaleRow, now = new Date()) {
+  const dueDate = row.supplier_due_date || row.customer_due_date;
+  if (!dueDate) return false;
+  if (["completed", "canceled"].includes(row.assignment_status)) return false;
+  const today = now.toISOString().slice(0, 10);
+  if (dueDate > today) return false;
+  const metadata = jsonRecord(row.metadata);
+  if (nullableText(metadata.deadline_task_id, 120)) return false;
+  return true;
+}
+
 function rowFromSale(sale: SupplierSale): SupplierSaleRow {
   return {
     id: sale.id,
@@ -1111,7 +1174,7 @@ function rowFromSale(sale: SupplierSale): SupplierSaleRow {
     primary_image_url: sale.primaryImageUrl,
     raw_shopify: {},
     offer_snapshot: {},
-    metadata: {},
+    metadata: sale.paymentLink ? { payment_link: sale.paymentLink } : {},
     created_at: sale.createdAt,
     updated_at: sale.updatedAt,
   };
@@ -1220,8 +1283,10 @@ async function insertEvent(input: {
       }),
       headers: { Prefer: "return=minimal" },
     });
+    return true;
   } catch {
     // Event idempotency collisions are expected during webhook retries.
+    return false;
   }
 }
 
@@ -1377,13 +1442,17 @@ export async function upsertSupplierSaleFromPayload(payload: unknown, actor?: Su
 }
 
 export async function listSupplierSalesBoard(options?: {
-  scope?: "active" | "ready" | "payment" | "assigned" | "all";
+  scope?: "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all";
   supplier?: SupplierSaleSupplier | SupplierSaleRecommendation | "all" | null;
   payment?: SupplierSalePaymentStatus | "unpaid" | "all" | null;
   query?: string | null;
   limit?: number;
 }): Promise<SupplierSaleBoard> {
   const scope = options?.scope || "active";
+  const now = new Date();
+  const dueSoonLimit = new Date(now);
+  dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + 7);
+  const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
   const query: Record<string, string | number | boolean | null> = {
     select: "*",
     order: "supplier_due_date.asc.nullslast,updated_at.desc",
@@ -1392,6 +1461,10 @@ export async function listSupplierSalesBoard(options?: {
   if (scope === "ready") query.assignment_status = "eq.ready_to_assign";
   else if (scope === "payment") query.assignment_status = "eq.payment_open";
   else if (scope === "assigned") query.assignment_status = "in.(assigned,in_production)";
+  else if (scope === "deadline") {
+    query.assignment_status = "not.in.(completed,canceled)";
+    query.or = `(supplier_due_date.lte.${dueSoon},and(supplier_due_date.is.null,customer_due_date.lte.${dueSoon}))`;
+  }
   else if (scope !== "all") query.assignment_status = "not.in.(completed,canceled)";
 
   const payment = options?.payment;
@@ -1400,6 +1473,17 @@ export async function listSupplierSalesBoard(options?: {
   }
 
   let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
+  if (scope === "sync") {
+    saleRows = saleRows.filter((row) => {
+      if (["completed", "canceled"].includes(row.assignment_status)) return false;
+      return [row.shopify_tag_sync_status, row.trello_projection_status, row.task_sync_status].includes("failed");
+    });
+  } else if (scope === "deadline") {
+    saleRows = saleRows.filter((row) => {
+      const dueDate = row.supplier_due_date || row.customer_due_date;
+      return Boolean(dueDate && dueDate <= dueSoon && !["completed", "canceled"].includes(row.assignment_status));
+    });
+  }
   const supplier = options?.supplier;
   if (supplier && supplier !== "all") {
     saleRows = saleRows.filter((row) => row.assigned_supplier === supplier || row.recommended_supplier === supplier);
@@ -1431,7 +1515,7 @@ export async function listSupplierSalesBoard(options?: {
       limit: 1000,
     }),
   ]);
-  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows);
+  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows, now);
 }
 
 function supplierLabel(supplier: SupplierSaleSupplier, specialSupplierName?: string | null) {
@@ -1591,6 +1675,140 @@ async function ensureSupplierAssignmentTask(saleId: string, actor?: SupplierSale
   );
   await patchSaleRow(row.id, { active_task_id: task.id, task_sync_status: "synced", task_sync_error: null });
   return { taskId: task.id, created: true };
+}
+
+async function ensureSupplierDeadlineTask(row: SupplierSaleRow, actor?: SupplierSaleActor | null, now = new Date()) {
+  if (!supplierSaleNeedsDeadlineTask(row, now)) return { taskId: nullableText(row.metadata?.deadline_task_id, 120), created: false };
+
+  const dueDate = row.supplier_due_date || row.customer_due_date;
+  const sourceRef = `supplier_deadline:${row.id}`;
+  const existingTasks = await listOpsInternalTasks({ includeDone: false, requestId: row.request_id, limit: 150 });
+  const existing = existingTasks.find((task) => task.sourceRef === sourceRef || task.description?.includes(`Supplier Deadline Sale: ${row.id}`));
+  if (existing) {
+    await patchSaleRow(row.id, {
+      metadata: {
+        ...(row.metadata || {}),
+        deadline_task_id: existing.id,
+        deadline_task_created_at: row.metadata?.deadline_task_created_at || existing.createdAt,
+      },
+      task_sync_error: null,
+    });
+    return { taskId: existing.id, created: false };
+  }
+
+  const eventKey = `supplier-sale:${row.id}:deadline-task:${dueDate}`;
+  const reserved = await insertEvent({
+    saleId: row.id,
+    eventType: "manual_note",
+    actor,
+    idempotencyKey: eventKey,
+    payload: {
+      kind: "deadline_task_reserved",
+      due_date: dueDate,
+      assignment_status: row.assignment_status,
+    },
+  });
+  if (!reserved) return { taskId: null, created: false };
+
+  let task;
+  try {
+    task = await createOpsInternalTask(
+      {
+        title: `Deadline erreicht: ${row.shopify_order_name || row.offer_number || row.document_reference || row.sale_key}`,
+        description: [
+          `Supplier Deadline Sale: ${row.id}`,
+          `Deadline: ${dueDate || "-"}`,
+          `Status: ${row.assignment_status}`,
+          `Kunde: ${row.customer_name || "-"}`,
+          `E-Mail: ${row.customer_email || "-"}`,
+          row.customer_phone ? `Telefon: ${row.customer_phone}` : null,
+          row.total_price !== null ? `Wert: ${row.total_price} ${row.currency || "EUR"}` : null,
+          row.assigned_supplier ? `Supplier: ${supplierLabel(row.assigned_supplier, row.special_supplier_name)}` : null,
+          row.shopify_order_url ? `Shopify: ${row.shopify_order_url}` : null,
+          row.offer_public_url ? `Angebot: ${row.offer_public_url}` : null,
+          row.supplier_trello_card_url ? `Supplier-Karte: ${row.supplier_trello_card_url}` : null,
+        ].filter(Boolean).join("\n"),
+        category: "problem",
+        priority: "urgent",
+        assigneeLabel: nullableText(process.env.SUPPLIER_DEADLINE_TASK_ASSIGNEE, 120) || "Fabienne",
+        dueAt: now.toISOString(),
+        requestId: row.request_id,
+        customerName: row.customer_name,
+        customerEmail: row.customer_email,
+        trelloCardId: row.supplier_trello_card_id || row.trello_card_id,
+        sourceApp: "supplier_sales",
+        sourceRef,
+        metadata: {
+          supplier_sale_id: row.id,
+          shopify_order_id: row.shopify_order_id,
+          offer_id: row.offer_id,
+          deadline: dueDate,
+          assignment_status: row.assignment_status,
+          kind: "supplier_deadline_reached",
+        },
+      },
+      actor || undefined,
+    );
+  } catch (error) {
+    await supabaseRequest("supplier_sale_events", {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    }, {
+      idempotency_key: `eq.${eventKey}`,
+    }).catch(() => null);
+    throw error;
+  }
+
+  await patchSaleRow(row.id, {
+    metadata: {
+      ...(row.metadata || {}),
+      deadline_task_id: task.id,
+      deadline_task_created_at: now.toISOString(),
+      deadline_task_due_date: dueDate,
+    },
+    task_sync_error: null,
+  });
+  return { taskId: task.id, created: true };
+}
+
+export async function createSupplierDeadlineTasks(actor?: SupplierSaleActor | null, now = new Date()): Promise<SupplierDeadlineTaskResult> {
+  const today = now.toISOString().slice(0, 10);
+  const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: "*",
+    assignment_status: "not.in.(completed,canceled)",
+    or: `(supplier_due_date.lte.${today},and(supplier_due_date.is.null,customer_due_date.lte.${today}))`,
+    order: "supplier_due_date.asc.nullslast,updated_at.desc",
+    limit: 100,
+  });
+
+  const candidates = rows.filter((row) => supplierSaleNeedsDeadlineTask(row, now));
+  const result: SupplierDeadlineTaskResult = {
+    checked: rows.length,
+    created: 0,
+    skipped: rows.length - candidates.length,
+    failed: 0,
+    taskIds: [],
+    errors: [],
+  };
+
+  for (const row of candidates) {
+    try {
+      const task = await ensureSupplierDeadlineTask(row, actor, now);
+      if (task.created) result.created += 1;
+      else result.skipped += 1;
+      if (task.taskId) result.taskIds.push(task.taskId);
+    } catch (error) {
+      result.failed += 1;
+      const message = error instanceof Error ? error.message : "Deadline-Aufgabe konnte nicht erstellt werden.";
+      result.errors.push({ saleId: row.id, error: message });
+      await patchSaleRow(row.id, {
+        task_sync_status: "failed",
+        task_sync_error: message,
+      }).catch(() => null);
+    }
+  }
+
+  return result;
 }
 
 function assertSupplier(value: unknown): SupplierSaleSupplier {
