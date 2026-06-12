@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import { config, middleware } from "../../src/middleware";
 
-function buildRequest(url: string, headers?: HeadersInit) {
-  return new NextRequest(url, { headers });
+function buildRequest(url: string, init?: ConstructorParameters<typeof NextRequest>[1]) {
+  return new NextRequest(url, init);
 }
 
 async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
@@ -49,6 +49,17 @@ async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
 
 test("ops middleware protects internal page routes before rendering the app shell", async () => {
   await withOpsMiddlewareEnv(async () => {
+    const response = await middleware(
+      buildRequest("https://ops.neontrip.de/ops/customer-records", { headers: { accept: "text/html" } }),
+    );
+
+    assert.equal(response.status, 307);
+    assert.equal(response.headers.get("location"), "https://ops.neontrip.de/ops-login?next=%2Fops%2Fcustomer-records");
+  });
+});
+
+test("ops middleware still returns plain 401 for non-browser page probes", async () => {
+  await withOpsMiddlewareEnv(async () => {
     const response = await middleware(buildRequest("https://ops.neontrip.de/ops/customer-records"));
 
     assert.equal(response.status, 401);
@@ -66,10 +77,24 @@ test("ops middleware returns JSON 401 for internal API routes without session", 
   });
 });
 
+test("ops middleware lets session login POST reach the route handler", async () => {
+  await withOpsMiddlewareEnv(async () => {
+    const response = await middleware(
+      buildRequest("https://ops.neontrip.de/api/ops/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-middleware-next"), "1");
+  });
+});
+
 test("ops middleware keeps localhost routes testable", async () => {
   await withOpsMiddlewareEnv(async () => {
     const response = await middleware(
-      buildRequest("http://127.0.0.1:3100/ops/customer-records", { host: "127.0.0.1:3100" }),
+      buildRequest("http://127.0.0.1:3100/ops/customer-records", { headers: { host: "127.0.0.1:3100" } }),
     );
 
     assert.equal(response.status, 200);

@@ -278,13 +278,20 @@ function jsonUnauthorized() {
 }
 
 function pageUnauthorized() {
-  return new NextResponse("Unauthorized", {
+  const response = new NextResponse("Unauthorized", {
     status: 401,
     headers: {
       "content-type": "text/plain; charset=utf-8",
       "x-robots-tag": "noindex, nofollow",
     },
   });
+  return response;
+}
+
+function pageLoginRedirect(request: NextRequest) {
+  const loginUrl = new URL("/ops-login", request.url);
+  loginUrl.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+  return NextResponse.redirect(loginUrl);
 }
 
 function notConfigured(request: NextRequest) {
@@ -307,6 +314,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname === "/api/ops/session" && request.method === "POST") {
+    return NextResponse.next();
+  }
+
   const host = getOpsHost(request);
   if (!isOpsPortalConfigured(host)) {
     return notConfigured(request);
@@ -317,6 +328,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isOpsApiPath(pathname)) return jsonUnauthorized();
+  if (request.headers.get("accept")?.includes("text/html")) {
+    return pageLoginRedirect(request);
+  }
   return pageUnauthorized();
 }
 
