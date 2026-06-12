@@ -39,7 +39,17 @@ New Ops manual-import Trello cards now receive an auto-generated Description con
 - `#startprompt`/`#endprompt` image prompt block
 - `#startvideoprompt`/`#endvideoprompt` video prompt block
 
-Manual Description protection is implemented by `canAutoUpdateTrelloDescription()`: empty descriptions and descriptions with the marker may be auto-updated; unmarked non-empty descriptions are considered manual and protected. The current code path only creates new card descriptions and does not overwrite existing Trello cards.
+Manual Description protection is implemented by `canAutoUpdateTrelloDescription()`: empty descriptions and descriptions with the marker may be auto-updated; unmarked non-empty descriptions are considered manual and protected.
+
+`POST /api/internal/trello-description-sync` is the internal projection endpoint for syncing the generated mockup Description back to Trello after a request has a stored AI/manual segment. It accepts either `requestId` or `trelloCardId`, uses the existing internal auth key contract from the other `/api/internal/*` automation routes, and returns `202` with `status: "missing_segment"` when segmentation has not been recorded yet.
+
+Expected n8n integration:
+
+- In `LP Anfrage Webhook v1.0`, call the endpoint after `Update Trello Card Description` or after the `Supabase: Insert Request` plus Trello card ID update has completed.
+- In `RH | Unstruktuierte Anfragen Aktiv`, call the endpoint after `Update Request with Trello ID`.
+- If `NEONTRIP Request Segmenter v1.0` finishes after the card was created, call the endpoint after successful `Record Classification` as the reliable post-segmentation trigger.
+
+n8n should treat `status: "missing_segment"` as retryable/deferred, not as a fatal Trello failure. Backfill is available through the same endpoint with `backfill: true` and `dryRun: true`; mass write backfill is intentionally not enabled through this route.
 
 ## Prompt Construction
 

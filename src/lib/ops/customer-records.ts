@@ -5456,7 +5456,7 @@ function defaultTrelloCardForMockupDescription(context: CustomerContext, cardId?
 export async function syncCustomerTrelloMockupDescription(
   requestId: string,
   actor?: UpdateActor,
-  options: { cardId?: string | null; dryRun?: boolean } = {},
+  options: { cardId?: string | null; dryRun?: boolean; auditSkipped?: boolean } = {},
 ): Promise<CustomerTrelloMockupDescriptionSyncResult> {
   const normalizedRequestId = normalizeRequestSearch(requestId);
   const context = await fetchCustomerContextByRequestId(normalizedRequestId);
@@ -5527,7 +5527,7 @@ export async function syncCustomerTrelloMockupDescription(
     });
   }
 
-  if (!options.dryRun) {
+  if (!options.dryRun && (result.updated.length || options.auditSkipped !== false)) {
     await insertWorkflowAuditLog({
       requestId: normalizedRequestId,
       action: CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION,
