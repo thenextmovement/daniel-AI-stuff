@@ -22,6 +22,9 @@ export type MockupContextInput = {
   backboard?: string | null;
   customerType?: string | null;
   manualSegment?: string | null;
+  storedSegment?: string | null;
+  storedSegmentSource?: string | null;
+  storedSegmentConfidence?: number | string | null;
 };
 
 export type MockupContext = MockupSegmentResult & {
@@ -286,6 +289,19 @@ function findRule(input: MockupContextInput) {
   return segmentRules.find((rule) => rule.keywords.some((keyword) => keyword.test(haystack))) || null;
 }
 
+function segmentSourceFromStored(value: unknown): MockupSegmentSource {
+  const source = normalizeKey(value);
+  if (source.includes("manual")) return "manual";
+  if (source.includes("fallback")) return "fallback";
+  return "ai";
+}
+
+function confidenceFromStored(value: unknown, fallback: number) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(1, numeric));
+}
+
 export function resolveMockupSegment(input: MockupContextInput): MockupSegmentResult {
   const manual = textValue(input.manualSegment);
   if (manual && !isGenericSegment(manual)) {
@@ -298,6 +314,22 @@ export function resolveMockupSegment(input: MockupContextInput): MockupSegmentRe
       reasonCodes: ["manual_segment"],
       ntSegment: manualRule?.ntSegment || manualNt?.segment || null,
     };
+  }
+
+  const stored = textValue(input.storedSegment);
+  if (stored && !isGenericSegment(stored)) {
+    const storedRule = segmentRuleByName(stored);
+    const storedNt = getCustomerSegmentOption(stored);
+    const source = segmentSourceFromStored(input.storedSegmentSource);
+    if (source !== "fallback") {
+      return {
+        segment: storedRule?.segment || displaySegment(stored),
+        source,
+        confidence: confidenceFromStored(input.storedSegmentConfidence, source === "manual" ? 1 : 0.82),
+        reasonCodes: ["stored_request_segment"],
+        ntSegment: storedRule?.ntSegment || storedNt?.segment || null,
+      };
+    }
   }
 
   const rule = findRule(input);

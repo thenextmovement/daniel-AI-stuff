@@ -120,3 +120,19 @@ test("segment storage uses manual or ai source and maps to existing NT taxonomy"
     confidence: 0.82,
   });
 });
+
+test("trello description uses stored ai segment from master request when available", () => {
+  const description = buildMockupTrelloDescription({
+    requestId: "REQ-AI-SEGMENT",
+    customerCompany: "Nachtigallenhof",
+    requestDescription: "Logo fuer hochwertige Hofanlage",
+    storedSegment: "NT-14",
+    storedSegmentSource: "request_segmenter",
+    storedSegmentConfidence: 0.91,
+  });
+
+  assert.match(description, /Segment: Immobilienbuero/);
+  assert.match(description, /Segmentquelle: ai/);
+  assert.match(description, /Konfidenz: 0\.91/);
+  assert.match(description, /#startprompt[\s\S]+Immobilienbuero[\s\S]+#endprompt/);
+});

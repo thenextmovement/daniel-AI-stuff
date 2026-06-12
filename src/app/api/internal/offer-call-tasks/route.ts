@@ -6,6 +6,7 @@ import {
   listCustomerInternalTasks,
   logCustomerCall,
   searchCustomerRecords,
+  syncCustomerTrelloMockupDescription,
   type CustomerCallLogInput,
   type CustomerSearchResult,
   type UpdateActor,
@@ -187,10 +188,27 @@ async function completeOpenInquiryTasks(requestId: string, actor: UpdateActor) {
   return inquiryTasks.length;
 }
 
+async function syncTrelloDescriptionForRecord(record: CustomerSearchResult, actor: UpdateActor) {
+  try {
+    return await syncCustomerTrelloMockupDescription(record.requestId, actor);
+  } catch (error) {
+    console.warn("trello mockup description sync skipped", {
+      requestId: record.requestId,
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
+    return {
+      requestId: record.requestId,
+      ok: false,
+      error: error instanceof Error ? error.message : "unknown_error",
+    };
+  }
+}
+
 async function createCallTask(body: OfferCallTaskRequest, request: NextRequest) {
   const action = body.action;
   const actor = automationActor(request, body.operatorName);
   const record = await resolveCustomerRecord(body);
+  const trelloDescriptionSync = await syncTrelloDescriptionForRecord(record, actor);
   const offerId = trimNullable(body.offer?.offerId) || trimNullable(body.offer?.documentReference) || record.requestId;
   const now = new Date().toISOString();
 
@@ -207,7 +225,7 @@ async function createCallTask(body: OfferCallTaskRequest, request: NextRequest) 
       sourceType: INQUIRY_CALL_SOURCE_TYPE,
       sourceId: record.requestId,
     }, actor);
-    return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks: 0 });
+    return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks: 0, trelloDescriptionSync });
   }
 
   const closedInquiryTasks = action === "create_offer_sent_call_task"
@@ -233,7 +251,7 @@ async function createCallTask(body: OfferCallTaskRequest, request: NextRequest) 
     sourceId: `${offerId}:${unopened ? "unopened-24h" : "first-offer-sent"}`,
   }, actor);
 
-  return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks });
+  return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks, trelloDescriptionSync });
 }
 
 export async function POST(request: NextRequest) {

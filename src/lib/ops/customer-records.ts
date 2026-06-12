@@ -13,6 +13,11 @@ import {
 import type { TrelloAction, TrelloAttachment, TrelloEditableCustomField } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import { getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import {
+  buildMockupTrelloDescription,
+  canAutoUpdateTrelloDescription,
+  type MockupContextInput,
+} from "@/lib/ops/mockup-context";
 
 type MasterCustomerRow = {
   id: string;
@@ -437,6 +442,7 @@ const CUSTOMER_RECORDS_FOLLOWUP_RESCHEDULE_ACTION = "customer_followups_reschedu
 const CUSTOMER_RECORDS_CONTACT_BLOCK_ACTION = "customer_contact_blocked";
 const CUSTOMER_RECORDS_TRELLO_FIELDS_ACTION = "customer_trello_fields_updated";
 const CUSTOMER_RECORDS_TRELLO_CARD_ACTION = "customer_trello_card_updated";
+const CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION = "customer_trello_mockup_description_synced";
 const CUSTOMER_RECORDS_CALL_LOG_ACTION = "customer_call_logged";
 const CUSTOMER_RECORDS_CALLBACK_SCHEDULED_ACTION = "customer_callback_scheduled";
 const CUSTOMER_RECORDS_WORKBOARD_HANDLED_ACTION = "customer_workboard_handled";
@@ -1182,6 +1188,25 @@ export type CustomerTrelloCardUpdateInput = {
   usageFieldId?: string;
   usage?: string | null;
   listId?: string | null;
+};
+
+export type CustomerTrelloMockupDescriptionSyncResult = {
+  requestId: string;
+  dryRun: boolean;
+  descriptionLength: number;
+  updated: Array<{
+    boardKey: string;
+    boardName: string;
+    cardId: string;
+    cardUrl: string | null;
+    previousDescriptionLength: number;
+  }>;
+  skipped: Array<{
+    boardKey: string;
+    boardName: string;
+    cardId: string | null;
+    reason: "missing_card_id" | "manual_description" | "already_current" | "card_filter";
+  }>;
 };
 
 export type CustomerUpdateFields = {
@@ -3840,6 +3865,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
       entry.action === CUSTOMER_RECORDS_CONTACT_BLOCK_ACTION ||
       entry.action === CUSTOMER_RECORDS_TRELLO_FIELDS_ACTION ||
       entry.action === CUSTOMER_RECORDS_TRELLO_CARD_ACTION ||
+      entry.action === CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION ||
       entry.action === CUSTOMER_RECORDS_CALL_LOG_ACTION ||
       entry.action === CUSTOMER_RECORDS_CALLBACK_SCHEDULED_ACTION ||
       entry.action === CUSTOMER_RECORDS_WORKBOARD_HANDLED_ACTION ||
@@ -3917,6 +3943,8 @@ function entryTitleFromAuditAction(action: string | null | undefined) {
       return "Trello-Felder aktualisiert";
     case CUSTOMER_RECORDS_TRELLO_CARD_ACTION:
       return "Trello-Karte aktualisiert";
+    case CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION:
+      return "Trello-Description automatisch aktualisiert";
     case CUSTOMER_RECORDS_CALL_LOG_ACTION:
       return "Anruf protokolliert";
     case CUSTOMER_RECORDS_CALLBACK_SCHEDULED_ACTION:
@@ -5381,6 +5409,144 @@ export async function setCustomerRequestSegment(
     record: mapSearchResult(await fetchCustomerContextByRequestId(normalizedRequestId)),
     count: 1,
   };
+}
+
+function firstTextValue(...values: Array<unknown>): string | null {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const nested: string | null = firstTextValue(...value);
+      if (nested) return nested;
+      continue;
+    }
+    const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function mockupDescriptionInputFromContext(context: CustomerContext): MockupContextInput & { requestId: string } {
+  const request = context.request;
+  return {
+    requestId: context.master.request_id,
+    customerCompany: firstTextValue(context.master.company, context.master.company_name, context.master.name),
+    customerEmail: context.master.email,
+    requestTitle: request?.title,
+    requestDescription: request?.description,
+    product: firstTextValue(request?.customer_type, request?.form_id),
+    size: request?.size,
+    color: firstTextValue(request?.color),
+    usage: request?.application,
+    backboard: "Rueckplatte laut Angebot",
+    customerType: request?.customer_type,
+    storedSegment: request?.segment || request?.s_kategorie,
+    storedSegmentSource: request?.segment_source,
+    storedSegmentConfidence: request?.segment_confidence,
+  };
+}
+
+function defaultTrelloCardForMockupDescription(context: CustomerContext, cardId?: string | null) {
+  const cards = context.trello?.cards || [];
+  const normalizedCardId = trimNullable(cardId || null);
+  if (normalizedCardId) {
+    return cards.filter((card) => card.cardId === normalizedCardId);
+  }
+  return cards.filter((card) => card.found && card.cardId);
+}
+
+export async function syncCustomerTrelloMockupDescription(
+  requestId: string,
+  actor?: UpdateActor,
+  options: { cardId?: string | null; dryRun?: boolean } = {},
+): Promise<CustomerTrelloMockupDescriptionSyncResult> {
+  const normalizedRequestId = normalizeRequestSearch(requestId);
+  const context = await fetchCustomerContextByRequestId(normalizedRequestId);
+  if (!context.request) {
+    throw new QuoteValidationError("Zu dieser Anfrage wurde kein master_requests-Datensatz gefunden.");
+  }
+
+  const nextDescription = buildMockupTrelloDescription(mockupDescriptionInputFromContext(context));
+  const cards = defaultTrelloCardForMockupDescription(context, options.cardId);
+  const requestedCardId = trimNullable(options.cardId || null);
+  const result: CustomerTrelloMockupDescriptionSyncResult = {
+    requestId: normalizedRequestId,
+    dryRun: Boolean(options.dryRun),
+    descriptionLength: nextDescription.length,
+    updated: [],
+    skipped: [],
+  };
+
+  if (requestedCardId && !cards.length) {
+    result.skipped.push({
+      boardKey: "unknown",
+      boardName: "unknown",
+      cardId: requestedCardId,
+      reason: "card_filter",
+    });
+  }
+
+  for (const card of cards) {
+    if (!card.cardId) {
+      result.skipped.push({
+        boardKey: card.boardKey,
+        boardName: card.boardName,
+        cardId: null,
+        reason: "missing_card_id",
+      });
+      continue;
+    }
+
+    if (!canAutoUpdateTrelloDescription(card.cardDescription)) {
+      result.skipped.push({
+        boardKey: card.boardKey,
+        boardName: card.boardName,
+        cardId: card.cardId,
+        reason: "manual_description",
+      });
+      continue;
+    }
+
+    if ((card.cardDescription || "").trim() === nextDescription.trim()) {
+      result.skipped.push({
+        boardKey: card.boardKey,
+        boardName: card.boardName,
+        cardId: card.cardId,
+        reason: "already_current",
+      });
+      continue;
+    }
+
+    if (!options.dryRun) {
+      await updateTrelloCard(card.cardId, { desc: nextDescription });
+    }
+    result.updated.push({
+      boardKey: card.boardKey,
+      boardName: card.boardName,
+      cardId: card.cardId,
+      cardUrl: card.cardUrl,
+      previousDescriptionLength: String(card.cardDescription || "").length,
+    });
+  }
+
+  if (!options.dryRun) {
+    await insertWorkflowAuditLog({
+      requestId: normalizedRequestId,
+      action: CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION,
+      status: result.updated.length ? "success" : "warning",
+      summary: result.updated.length
+        ? `${result.updated.length} Trello-Description${result.updated.length > 1 ? "s" : ""} automatisch aktualisiert`
+        : "Keine Trello-Description automatisch aktualisiert",
+      changedFields: result.updated.length ? ["trello.card.desc"] : [],
+      actor,
+      extraMetadata: {
+        dry_run: false,
+        description_length: result.descriptionLength,
+        updated: result.updated,
+        skipped: result.skipped,
+      },
+    });
+  }
+
+  return result;
 }
 
 export async function updateCustomerTrelloFields(
