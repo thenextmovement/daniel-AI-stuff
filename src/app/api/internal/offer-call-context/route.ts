@@ -1,17 +1,19 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { listCustomerRecordsByOfferBridge, searchCustomerRecords, type CustomerSearchResult } from "@/lib/ops/customer-records";
+import {
+  listCustomerInternalTasks,
+  listCustomerRecordsByOfferBridge,
+  searchCustomerRecords,
+  type CustomerInternalTask,
+  type CustomerSearchResult,
+} from "@/lib/ops/customer-records";
+import {
+  selectPendingOfferCallTaskForOffer,
+  type OfferCallContextRequestEntry,
+  type OfferCallTaskSummary,
+} from "@/lib/ops/offer-call-context";
 
 export const dynamic = "force-dynamic";
-
-type OfferCallContextRequestEntry = {
-  offerId?: string;
-  offerNumber?: string | null;
-  documentReference?: string | null;
-  trelloCardId?: string | null;
-  customerEmail?: string | null;
-  customerPhone?: string | null;
-};
 
 type MatchType = "offer" | "trello" | "email" | "phone" | "none";
 
@@ -67,6 +69,9 @@ function normalizePhone(value: unknown) {
 
 function searchQueries(entry: OfferCallContextRequestEntry): Array<{ query: string; matchType: MatchType }> {
   const queries: Array<{ query: string; matchType: MatchType }> = [];
+
+  const requestId = cleanText(entry.requestId);
+  if (requestId) queries.push({ query: requestId, matchType: "offer" });
 
   const trelloCardId = cleanText(entry.trelloCardId);
   if (trelloCardId) queries.push({ query: `trello:${trelloCardId}`, matchType: "trello" });
@@ -154,7 +159,11 @@ function pendingOfferCallTask(record: CustomerSearchResult) {
   };
 }
 
-function summarizeRecord(record: CustomerSearchResult, matchType: MatchType) {
+function summarizeRecord(
+  record: CustomerSearchResult,
+  matchType: MatchType,
+  pendingTaskOverride?: OfferCallTaskSummary | null,
+) {
   return {
     matched: true,
     matchedBy: matchType,
@@ -177,13 +186,53 @@ function summarizeRecord(record: CustomerSearchResult, matchType: MatchType) {
     nextFollowupAt: record.affectedRows.nextPendingFollowupAt,
     lastTouchAt: record.relatedRequests[0]?.lastTouchAt || record.updatedAt,
     lastTouchLabel: record.relatedRequests[0]?.lastTouchLabel || null,
-    pendingOfferCallTask: pendingOfferCallTask(record),
+    pendingOfferCallTask: pendingTaskOverride || pendingOfferCallTask(record),
   };
 }
 
-async function resolveEntry(entry: OfferCallContextRequestEntry) {
+function summarizeOfferTaskOnly(
+  task: OfferCallTaskSummary,
+  sourceTask?: CustomerInternalTask | null,
+) {
+  return {
+    matched: true,
+    matchedBy: "offer" as const,
+    requestId: sourceTask?.requestId || null,
+    customerRecordUrl: sourceTask?.requestId ? `/ops/customer-records?query=${encodeURIComponent(sourceTask.requestId)}` : null,
+    customerName: sourceTask?.customerName || null,
+    customerEmail: sourceTask?.customerEmail || null,
+    customerPhone: null,
+    company: null,
+    opsStatus: null,
+    opsLabel: null,
+    nextCallbackAt: null,
+    planningReason: null,
+    contactabilityStatus: null,
+    latestCallAt: null,
+    latestCallSummary: null,
+    totalCallCount: null,
+    recentCalls: [],
+    pendingFollowups: null,
+    nextFollowupAt: null,
+    lastTouchAt: sourceTask?.updatedAt || null,
+    lastTouchLabel: "Offene Angebots-Call-Aufgabe",
+    pendingOfferCallTask: task,
+  };
+}
+
+async function resolveEntry(
+  entry: OfferCallContextRequestEntry,
+  loadOpenTasks: () => Promise<CustomerInternalTask[]>,
+) {
   const offerId = cleanText(entry.offerId);
   if (!offerId) return { offerId: null, matched: false, matchedBy: "none" as const, error: "missing_offer_id" };
+
+  async function pendingOfferTaskFallback() {
+    const openTasks = await loadOpenTasks();
+    const pendingTask = selectPendingOfferCallTaskForOffer(openTasks, entry);
+    const sourceTask = pendingTask ? openTasks.find((task) => task.id === pendingTask.id) || null : null;
+    return { pendingTask, sourceTask };
+  }
 
   try {
     const bridgeRecords = await withTimeout(
@@ -195,25 +244,43 @@ async function resolveEntry(entry: OfferCallContextRequestEntry) {
       "ops_context_offer_bridge_timeout",
     );
     const bridgeRecord = bridgeRecords[0] || null;
-    if (bridgeRecord) return { offerId, ...summarizeRecord(bridgeRecord, "offer") };
+    if (bridgeRecord) {
+      const recordPendingTask = pendingOfferCallTask(bridgeRecord);
+      if (recordPendingTask) return { offerId, ...summarizeRecord(bridgeRecord, "offer", recordPendingTask) };
+      const { pendingTask } = await pendingOfferTaskFallback();
+      return { offerId, ...summarizeRecord(bridgeRecord, "offer", pendingTask) };
+    }
   } catch (error) {
     console.warn("offer call context bridge lookup failed", { offerId, error });
   }
 
   const queries = searchQueries(entry);
-  if (!queries.length) return { offerId, matched: false, matchedBy: "none" as const, error: "missing_contact_keys" };
+  if (!queries.length) {
+    const { pendingTask, sourceTask } = await pendingOfferTaskFallback();
+    return pendingTask
+      ? { offerId, ...summarizeOfferTaskOnly(pendingTask, sourceTask) }
+      : { offerId, matched: false, matchedBy: "none" as const, error: "missing_contact_keys" };
+  }
 
   let lastError: string | null = null;
   for (const query of queries) {
     try {
       const records = await withTimeout(searchCustomerRecords(query.query), SEARCH_TIMEOUT_MS, "ops_context_search_timeout");
       const record = records[0] || null;
-      if (record) return { offerId, ...summarizeRecord(record, query.matchType) };
+      if (record) {
+        const recordPendingTask = pendingOfferCallTask(record);
+        if (recordPendingTask) return { offerId, ...summarizeRecord(record, query.matchType, recordPendingTask) };
+        const { pendingTask } = await pendingOfferTaskFallback();
+        return { offerId, ...summarizeRecord(record, query.matchType, pendingTask) };
+      }
     } catch (error) {
       console.warn("offer call context lookup failed", { offerId, matchType: query.matchType, error });
       lastError = error instanceof Error ? error.message : "lookup_failed";
     }
   }
+
+  const { pendingTask, sourceTask } = await pendingOfferTaskFallback();
+  if (pendingTask) return { offerId, ...summarizeOfferTaskOnly(pendingTask, sourceTask) };
 
   return {
     offerId,
@@ -238,6 +305,12 @@ export async function POST(request: NextRequest) {
   const offers = Array.isArray(body.offers) ? body.offers.slice(0, MAX_ENTRIES) : [];
   if (!offers.length) return NextResponse.json({ ok: true, contexts: [] });
 
-  const contexts = await mapWithConcurrency(offers, 3, resolveEntry);
+  let openTasksPromise: Promise<CustomerInternalTask[]> | null = null;
+  const loadOpenTasks = () => {
+    openTasksPromise ||= listCustomerInternalTasks({ includeDone: false, limit: 5000 }).then((board) => board.tasks);
+    return openTasksPromise;
+  };
+
+  const contexts = await mapWithConcurrency(offers, 3, (entry) => resolveEntry(entry, loadOpenTasks));
   return NextResponse.json({ ok: true, contexts });
 }
