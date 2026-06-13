@@ -1,18 +1,20 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { searchCustomerRecords, type CustomerSearchResult } from "@/lib/ops/customer-records";
+import {
+  listCustomerInternalTasks,
+  searchCustomerRecords,
+  type CustomerInternalTask,
+  type CustomerSearchResult,
+} from "@/lib/ops/customer-records";
+import {
+  selectPendingOfferCallTaskForOffer,
+  type OfferCallContextRequestEntry,
+  type OfferCallTaskSummary,
+} from "@/lib/ops/offer-call-context";
 
 export const dynamic = "force-dynamic";
 
-type OfferCallContextRequestEntry = {
-  offerId?: string;
-  offerNumber?: string | null;
-  trelloCardId?: string | null;
-  customerEmail?: string | null;
-  customerPhone?: string | null;
-};
-
-type MatchType = "trello" | "email" | "phone" | "none";
+type MatchType = "offer" | "trello" | "email" | "phone" | "none";
 
 const MAX_ENTRIES = 40;
 const SEARCH_TIMEOUT_MS = 12_000;
@@ -65,6 +67,9 @@ function normalizePhone(value: unknown) {
 }
 
 function firstSearchQuery(entry: OfferCallContextRequestEntry): { query: string; matchType: MatchType } | null {
+  const requestId = cleanText(entry.requestId);
+  if (requestId) return { query: requestId, matchType: "offer" };
+
   const trelloCardId = cleanText(entry.trelloCardId);
   if (trelloCardId) return { query: `trello:${trelloCardId}`, matchType: "trello" };
 
@@ -145,7 +150,11 @@ function pendingOfferCallTask(record: CustomerSearchResult) {
   };
 }
 
-function summarizeRecord(record: CustomerSearchResult, matchType: MatchType) {
+function summarizeRecord(
+  record: CustomerSearchResult,
+  matchType: MatchType,
+  pendingTaskOverride?: OfferCallTaskSummary | null,
+) {
   return {
     matched: true,
     matchedBy: matchType,
@@ -168,22 +177,71 @@ function summarizeRecord(record: CustomerSearchResult, matchType: MatchType) {
     nextFollowupAt: record.affectedRows.nextPendingFollowupAt,
     lastTouchAt: record.relatedRequests[0]?.lastTouchAt || record.updatedAt,
     lastTouchLabel: record.relatedRequests[0]?.lastTouchLabel || null,
-    pendingOfferCallTask: pendingOfferCallTask(record),
+    pendingOfferCallTask: pendingTaskOverride || pendingOfferCallTask(record),
   };
 }
 
-async function resolveEntry(entry: OfferCallContextRequestEntry) {
+function summarizeOfferTaskOnly(
+  offerId: string,
+  task: OfferCallTaskSummary,
+  sourceTask?: CustomerInternalTask | null,
+) {
+  return {
+    matched: true,
+    matchedBy: "offer" as const,
+    requestId: sourceTask?.requestId || null,
+    customerRecordUrl: sourceTask?.requestId ? customerRecordUrl({ requestId: sourceTask.requestId } as CustomerSearchResult) : null,
+    customerName: sourceTask?.customerName || null,
+    customerEmail: sourceTask?.customerEmail || null,
+    customerPhone: null,
+    company: null,
+    opsStatus: null,
+    opsLabel: null,
+    nextCallbackAt: null,
+    planningReason: null,
+    contactabilityStatus: null,
+    latestCallAt: null,
+    latestCallSummary: null,
+    totalCallCount: null,
+    recentCalls: [],
+    pendingFollowups: null,
+    nextFollowupAt: null,
+    lastTouchAt: sourceTask?.updatedAt || null,
+    lastTouchLabel: "Offene Angebots-Call-Aufgabe",
+    pendingOfferCallTask: task,
+  };
+}
+
+async function resolveEntry(
+  entry: OfferCallContextRequestEntry,
+  loadOpenTasks: () => Promise<CustomerInternalTask[]>,
+) {
   const offerId = cleanText(entry.offerId);
   if (!offerId) return { offerId: null, matched: false, matchedBy: "none" as const, error: "missing_offer_id" };
 
   const query = firstSearchQuery(entry);
-  if (!query) return { offerId, matched: false, matchedBy: "none" as const, error: "missing_contact_keys" };
+  if (!query) {
+    const openTasks = await loadOpenTasks();
+    const pendingTask = selectPendingOfferCallTaskForOffer(openTasks, entry);
+    const sourceTask = pendingTask ? openTasks.find((task) => task.id === pendingTask.id) || null : null;
+    return pendingTask
+      ? { offerId, ...summarizeOfferTaskOnly(offerId, pendingTask, sourceTask) }
+      : { offerId, matched: false, matchedBy: "none" as const, error: "missing_contact_keys" };
+  }
 
   try {
     const records = await withTimeout(searchCustomerRecords(query.query), SEARCH_TIMEOUT_MS, "ops_context_search_timeout");
     const record = records[0] || null;
-    if (!record) return { offerId, matched: false, matchedBy: "none" as const };
-    return { offerId, ...summarizeRecord(record, query.matchType) };
+    const recordPendingTask = record ? pendingOfferCallTask(record) : null;
+    if (record && recordPendingTask) return { offerId, ...summarizeRecord(record, query.matchType, recordPendingTask) };
+
+    const openTasks = await loadOpenTasks();
+    const pendingTask = selectPendingOfferCallTaskForOffer(openTasks, entry);
+    if (record) return { offerId, ...summarizeRecord(record, query.matchType, pendingTask) };
+
+    const sourceTask = pendingTask ? openTasks.find((task) => task.id === pendingTask.id) || null : null;
+    if (pendingTask) return { offerId, ...summarizeOfferTaskOnly(offerId, pendingTask, sourceTask) };
+    return { offerId, matched: false, matchedBy: "none" as const };
   } catch (error) {
     console.warn("offer call context lookup failed", { offerId, matchType: query.matchType, error });
     return {
@@ -210,6 +268,12 @@ export async function POST(request: NextRequest) {
   const offers = Array.isArray(body.offers) ? body.offers.slice(0, MAX_ENTRIES) : [];
   if (!offers.length) return NextResponse.json({ ok: true, contexts: [] });
 
-  const contexts = await mapWithConcurrency(offers, 3, resolveEntry);
+  let openTasksPromise: Promise<CustomerInternalTask[]> | null = null;
+  const loadOpenTasks = () => {
+    openTasksPromise ||= listCustomerInternalTasks({ includeDone: false, limit: 5000 }).then((board) => board.tasks);
+    return openTasksPromise;
+  };
+
+  const contexts = await mapWithConcurrency(offers, 3, (entry) => resolveEntry(entry, loadOpenTasks));
   return NextResponse.json({ ok: true, contexts });
 }
