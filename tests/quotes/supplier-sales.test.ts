@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { NextRequest } from "next/server";
+import { GET as supplierSalesGET } from "@/app/api/ops/supplier-sales/route";
 import {
+  assignSupplierSale,
   buildSupplierSaleBoardFromRows,
   buildSupplierSalesDiagnostics,
   buildSupplierSaleInputFromPayload,
@@ -9,6 +12,7 @@ import {
   deriveSupplierRecommendation,
   normalizeDateOnly,
   normalizeShopifyPaymentStatus,
+  requestSupplierPaymentReminder,
   supplierSaleNeedsDeadlineTask,
   type SupplierSaleItemRow,
   type SupplierSaleRow,
@@ -93,6 +97,59 @@ function itemRow(overrides: Partial<SupplierSaleItemRow>): SupplierSaleItemRow {
     updated_at: "2026-06-09T10:00:00.000Z",
     ...overrides,
   };
+}
+
+async function withMockedAssignmentFetch<T>(
+  handler: (url: URL, init?: RequestInit) => Response | Promise<Response>,
+  callback: () => Promise<T>,
+) {
+  const originalFetch = globalThis.fetch;
+  const envKeys = [
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "TRELLO_API_KEY",
+    "TRELLO_TOKEN",
+    "SUPPLIER_TRELLO_SAID_LIST_ID",
+    "SHOPIFY_ADMIN_API_ACCESS_TOKEN",
+    "SHOPIFY_ADMIN_TOKEN",
+    "SHOPIFY_ADMIN_API_TOKEN",
+    "SHOPIFY_ACCESS_TOKEN",
+    "SHOPIFY_SHOP_DOMAIN",
+    "SHOPIFY_STORE_DOMAIN",
+    "SHOPIFY_SHOP",
+    "SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+    "N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+  ];
+  const previousEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
+
+  process.env.SUPABASE_URL = "https://supabase.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+  process.env.SUPPLIER_TRELLO_SAID_LIST_ID = "said-list";
+  delete process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN;
+  delete process.env.SHOPIFY_ADMIN_TOKEN;
+  delete process.env.SHOPIFY_ADMIN_API_TOKEN;
+  delete process.env.SHOPIFY_ACCESS_TOKEN;
+  delete process.env.SHOPIFY_SHOP_DOMAIN;
+  delete process.env.SHOPIFY_STORE_DOMAIN;
+  delete process.env.SHOPIFY_SHOP;
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+    return handler(url, init);
+  }) as typeof fetch;
+
+  try {
+    return await callback();
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of envKeys) {
+      const value = previousEnv.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 test("supplier recommendation sends UV print, outdoor, 3D and acrylic light boxes to Quentin", () => {
@@ -296,6 +353,160 @@ test("supplier sale deadline task eligibility is due-date based and idempotent",
   assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-12" }), now), false);
   assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-10", assignment_status: "completed" }), now), false);
   assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-10", metadata: { deadline_task_id: "task-1" } }), now), false);
+});
+
+test("supplier assignment duplicate attempt does not rerun projections", async () => {
+  let supplierSalePatchCount = 0;
+  let attemptPostCount = 0;
+  let trelloPostCount = 0;
+  const assignedRow = saleRow({
+    assigned_supplier: "said",
+    assignment_status: "assigned",
+    supplier_due_date: "2026-06-20",
+    trello_projection_status: "synced",
+    supplier_trello_card_id: "trello-existing",
+    supplier_trello_card_url: "https://trello.test/c/existing",
+    task_sync_status: "synced",
+    active_task_id: "task-existing",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      trelloPostCount += 1;
+      return Response.json({ id: "trello-new", url: "https://trello.test/c/new" });
+    }
+    assert.equal(url.origin, "https://supabase.test");
+
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      return Response.json([assignedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") {
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "POST") {
+      attemptPostCount += 1;
+      return Response.json({ message: "duplicate attempt" }, { status: 409 });
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      supplierSalePatchCount += 1;
+      return Response.json([assignedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      return Response.json({ message: "duplicate event" }, { status: 409 });
+    }
+    return Response.json([]);
+  }, async () => {
+    const sale = await assignSupplierSale({
+      saleId: "sale-1",
+      supplier: "said",
+      requestedDeliveryDate: "2026-06-20",
+      paymentDecisionStatus: "paid_confirmed",
+      operatorName: "Fabienne",
+    });
+
+    assert.equal(sale.supplierTrelloCardId, "trello-existing");
+  });
+
+  assert.equal(attemptPostCount, 1);
+  assert.equal(supplierSalePatchCount, 0);
+  assert.equal(trelloPostCount, 0);
+});
+
+test("supplier payment reminder duplicate reservation does not resend webhook", async () => {
+  let reminderReservationCount = 0;
+  let reminderWebhookCount = 0;
+  let supplierSalePatchCount = 0;
+  const pendingRow = saleRow({
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    customer_email: "kunde@example.com",
+    metadata: { payment_link: "https://pay.test/order-1" },
+    payment_reminder_count: 1,
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://reminder.test") {
+      reminderWebhookCount += 1;
+      return Response.json({ messageId: "msg-new" });
+    }
+    assert.equal(url.origin, "https://supabase.test");
+
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      return Response.json([pendingRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") {
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_payment_reminders") && method === "POST") {
+      reminderReservationCount += 1;
+      return Response.json({ message: "duplicate reminder" }, { status: 409 });
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      supplierSalePatchCount += 1;
+      return Response.json([pendingRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL = "https://reminder.test/send";
+    const sale = await requestSupplierPaymentReminder({
+      saleId: "sale-1",
+      recipientEmail: "kunde@example.com",
+      paymentLink: "https://pay.test/order-1",
+      operatorName: "Fabienne",
+      idempotencyKey: "reminder:sale-1:today",
+    });
+
+    assert.equal(sale.paymentReminderCount, 1);
+  });
+
+  assert.equal(reminderReservationCount, 1);
+  assert.equal(reminderWebhookCount, 0);
+  assert.equal(supplierSalePatchCount, 0);
+});
+
+test("supplier sales route does not expose raw Supabase details to clients", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  const originalConsoleError = console.error;
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  console.error = (() => undefined) as typeof console.error;
+  globalThis.fetch = (async () =>
+    new Response("raw supplier sales database detail", {
+      status: 500,
+      headers: { "Content-Type": "text/plain" },
+    })) as typeof fetch;
+
+  try {
+    const response = await supplierSalesGET(new NextRequest("http://127.0.0.1:3100/api/ops/supplier-sales", {
+      headers: { host: "127.0.0.1:3100" },
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 500);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error, "Supabase Anfrage fehlgeschlagen.");
+    assert.equal("details" in payload, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("supplier sales diagnostics expose missing and configured production links", () => {

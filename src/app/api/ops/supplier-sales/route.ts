@@ -46,6 +46,7 @@ type SupplierSalesPostBody = {
   operatorName?: string | null;
   assigneeLabel?: string | null;
   agentToken?: string | null;
+  idempotencyKey?: string | null;
 };
 
 function unauthorized() {
@@ -61,7 +62,8 @@ function failureResponse(error: unknown) {
     return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
   }
   if (error instanceof SupabaseRestError) {
-    return NextResponse.json({ ok: false, error: error.message, details: error.details }, { status: error.status });
+    console.error("ops supplier-sales supabase request failed", { status: error.status, details: error.details });
+    return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
   }
   console.error("ops supplier-sales route failed", error);
   return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
@@ -237,6 +239,7 @@ export async function POST(request: NextRequest) {
         paymentLink: body.paymentLink || null,
         message: body.message || null,
         operatorName: body.operatorName || null,
+        idempotencyKey: body.idempotencyKey || null,
       }, actor);
       const board = await listSupplierSalesBoard({ scope: "active" });
       return NextResponse.json({ ok: true, action, sale, board });

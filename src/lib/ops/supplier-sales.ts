@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
 import { createTrelloCard } from "@/lib/quotes/trello";
-import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const SUPPLIER_SALE_SUPPLIERS = ["quentin", "said", "special"] as const;
@@ -325,6 +325,7 @@ export type SupplierPaymentReminderInput = {
   paymentLink?: string | null;
   message?: string | null;
   operatorName?: string | null;
+  idempotencyKey?: string | null;
 };
 
 export type SupplierDeadlineTaskResult = {
@@ -1857,6 +1858,45 @@ export async function updateSupplierSalePaymentDecision(input: {
   return mapSale(updated, sale.items, sale.latestEvent);
 }
 
+async function reserveSupplierAssignmentAttempt(input: {
+  saleId: string;
+  attemptKey: string;
+  supplier: SupplierSaleSupplier;
+  operatorName: string | null;
+  requestedDeliveryDate: string;
+  assignmentNote: string | null;
+  paymentDecisionStatus: SupplierSalePaymentDecision;
+  tagValue: string | null;
+  assigneeLabel: string | null;
+  specialSupplierName: string | null;
+}) {
+  try {
+    await supabaseRequest("supplier_assignment_attempts", {
+      method: "POST",
+      body: JSON.stringify({
+        sale_id: input.saleId,
+        attempt_key: input.attemptKey,
+        supplier: input.supplier,
+        operator_name: input.operatorName,
+        requested_delivery_date: input.requestedDeliveryDate,
+        assignment_note: input.assignmentNote,
+        payment_decision_status: input.paymentDecisionStatus,
+        status: "pending",
+        shopify_tag_value: input.tagValue,
+        metadata: {
+          assignee_label: input.assigneeLabel,
+          special_supplier_name: input.specialSupplierName,
+        },
+      }),
+      headers: { Prefer: "return=minimal" },
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof SupabaseRestError && error.status === 409) return false;
+    throw error;
+  }
+}
+
 export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?: SupplierSaleActor | null) {
   const supplier = assertSupplier(input.supplier);
   const requestedDeliveryDate = normalizeDateOnly(input.requestedDeliveryDate);
@@ -1878,13 +1918,31 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
 
   const now = new Date().toISOString();
   const tagValue = supplierTagValue(supplier);
+  const attemptKey = `supplier-sale:${sale.id}:assign:${supplier}:${requestedDeliveryDate}`;
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  const assignmentNote = nullableText(input.assignmentNote, 1000);
+  const specialSupplierName = supplier === "special" ? nullableText(input.specialSupplierName, 120) : null;
+  const reserved = await reserveSupplierAssignmentAttempt({
+    saleId: sale.id,
+    attemptKey,
+    supplier,
+    operatorName,
+    requestedDeliveryDate,
+    assignmentNote,
+    paymentDecisionStatus: decision,
+    tagValue,
+    assigneeLabel: nullableText(input.assigneeLabel, 120),
+    specialSupplierName: nullableText(input.specialSupplierName, 120),
+  });
+  if (!reserved) return getSupplierSale(sale.id);
+
   const basePatch: Partial<SupplierSaleRow> = {
     assigned_supplier: supplier,
-    special_supplier_name: supplier === "special" ? nullableText(input.specialSupplierName, 120) : null,
+    special_supplier_name: specialSupplierName,
     assignment_status: "assigned",
-    assignment_note: nullableText(input.assignmentNote, 1000),
+    assignment_note: assignmentNote,
     assigned_at: now,
-    assigned_by: nullableText(input.operatorName || actor?.operatorName, 120),
+    assigned_by: operatorName,
     supplier_due_date: requestedDeliveryDate,
     customer_due_date: sale.customerDueDate || requestedDeliveryDate,
     due_date_source: sale.dueDateSource || "operator_confirmed",
@@ -1898,29 +1956,18 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     task_sync_error: null,
   };
 
-  let row = await patchSaleRow(sale.id, basePatch);
-  const attemptKey = `supplier-sale:${sale.id}:assign:${supplier}:${requestedDeliveryDate}`;
-  await supabaseRequest("supplier_assignment_attempts", {
-    method: "POST",
-    body: JSON.stringify({
-      sale_id: sale.id,
-      attempt_key: attemptKey,
-      supplier,
-      operator_name: nullableText(input.operatorName || actor?.operatorName, 120),
-      requested_delivery_date: requestedDeliveryDate,
-      assignment_note: nullableText(input.assignmentNote, 1000),
-      payment_decision_status: decision,
-      status: "pending",
-      shopify_tag_value: tagValue,
-      metadata: {
-        assignee_label: nullableText(input.assigneeLabel, 120),
-        special_supplier_name: nullableText(input.specialSupplierName, 120),
-      },
-    }),
-    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-  }, {
-    on_conflict: "attempt_key",
-  }).catch(() => null);
+  let row: SupplierSaleRow;
+  try {
+    row = await patchSaleRow(sale.id, basePatch);
+  } catch (error) {
+    await supabaseRequest("supplier_assignment_attempts", {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    }, {
+      attempt_key: `eq.${attemptKey}`,
+    }).catch(() => null);
+    throw error;
+  }
 
   await insertEvent({
     saleId: sale.id,
@@ -1989,6 +2036,57 @@ function paymentReminderWebhookUrl() {
   return nullableText(process.env.SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL || process.env.N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL, 1000);
 }
 
+function buildPaymentReminderKey(input: {
+  saleId: string;
+  recipientEmail: string;
+  paymentLink: string | null;
+  message: string | null;
+  idempotencyKey?: string | null;
+  now?: Date;
+}) {
+  const explicit = nullableText(input.idempotencyKey, 260);
+  if (explicit) return explicit;
+  const date = (input.now || new Date()).toISOString().slice(0, 10);
+  return `supplier-sale:${input.saleId}:payment-reminder:${hashPayload({
+    date,
+    recipient_email: input.recipientEmail,
+    payment_link: input.paymentLink || "",
+    message: input.message || "",
+  })}`;
+}
+
+async function reserveSupplierPaymentReminder(input: {
+  saleId: string;
+  reminderKey: string;
+  requestedBy: string | null;
+  recipientEmail: string;
+  paymentLink: string | null;
+  message: string | null;
+}) {
+  try {
+    await supabaseRequest("supplier_payment_reminders", {
+      method: "POST",
+      body: JSON.stringify({
+        sale_id: input.saleId,
+        reminder_key: input.reminderKey,
+        status: "pending",
+        requested_by: input.requestedBy,
+        recipient_email: input.recipientEmail,
+        payment_link: input.paymentLink,
+        metadata: {
+          message: input.message,
+          webhook_configured: Boolean(paymentReminderWebhookUrl()),
+        },
+      }),
+      headers: { Prefer: "return=minimal" },
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof SupabaseRestError && error.status === 409) return false;
+    throw error;
+  }
+}
+
 async function sendPaymentReminderWebhook(input: {
   sale: SupplierSale;
   recipientEmail: string;
@@ -2022,34 +2120,48 @@ export async function requestSupplierPaymentReminder(input: SupplierPaymentRemin
     || nullableText(sale.latestEvent?.payload?.payment_link, 1000)
     || nullableText(saleRow?.metadata?.payment_link, 1000)
     || sale.shopifyOrderUrl;
-  const reminderKey = `supplier-sale:${sale.id}:payment-reminder:${Date.now()}`;
+  const message = nullableText(input.message, 2000);
+  const requestedBy = nullableText(input.requestedBy || input.operatorName || actor?.operatorName, 120);
+  const reminderKey = buildPaymentReminderKey({
+    saleId: sale.id,
+    recipientEmail,
+    paymentLink,
+    message,
+    idempotencyKey: input.idempotencyKey,
+  });
+  const reserved = await reserveSupplierPaymentReminder({
+    saleId: sale.id,
+    reminderKey,
+    requestedBy,
+    recipientEmail,
+    paymentLink,
+    message,
+  });
+  if (!reserved) return getSupplierSale(sale.id);
 
   const webhook = await sendPaymentReminderWebhook({
     sale,
     recipientEmail,
     paymentLink,
-    message: nullableText(input.message, 2000),
+    message,
     reminderKey,
   });
 
   await supabaseRequest("supplier_payment_reminders", {
-    method: "POST",
+    method: "PATCH",
     body: JSON.stringify({
-      sale_id: sale.id,
-      reminder_key: reminderKey,
       status: webhook.status,
-      requested_by: nullableText(input.requestedBy || input.operatorName || actor?.operatorName, 120),
-      recipient_email: recipientEmail,
-      payment_link: paymentLink,
       provider_message_id: webhook.providerMessageId,
       error: webhook.error,
       metadata: {
-        message: nullableText(input.message, 2000),
+        message,
         webhook_configured: Boolean(paymentReminderWebhookUrl()),
       },
       sent_at: webhook.status === "sent" ? new Date().toISOString() : null,
     }),
     headers: { Prefer: "return=minimal" },
+  }, {
+    reminder_key: `eq.${reminderKey}`,
   });
 
   const updated = await patchSaleRow(sale.id, {
