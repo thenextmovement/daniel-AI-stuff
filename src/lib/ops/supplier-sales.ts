@@ -656,12 +656,15 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
   const quentinTagReady = Boolean(supplierTagValue("quentin"));
   const saidTagReady = Boolean(supplierTagValue("said"));
   const specialTagReady = Boolean(supplierTagValue("special"));
+  const requiredSupplierTagsReady = quentinTagReady && saidTagReady;
   items.push(diagnostic(
     "shopify_supplier_tags",
-    shopifyAdminReady && quentinTagReady && saidTagReady ? "ok" : "missing",
+    shopifyAdminReady && requiredSupplierTagsReady ? "ok" : requiredSupplierTagsReady ? "warning" : "missing",
     "Shopify-Tags",
-    shopifyAdminReady && quentinTagReady && saidTagReady
+    shopifyAdminReady && requiredSupplierTagsReady
       ? `Quentin/Saeid Tags sind konfiguriert${specialTagReady ? ", Sonder-Supplier ebenfalls." : "."}`
+      : requiredSupplierTagsReady
+        ? "Quentin/Saeid Tags sind vorbereitet; fuer den Shopify-Abgleich fehlt noch die Shopify Admin API."
       : "Shopify Admin API plus SUPPLIER_TAG_QUENTIN und SUPPLIER_TAG_SAID muessen gesetzt sein, damit Vergaben in Shopify getaggt werden.",
   ));
 

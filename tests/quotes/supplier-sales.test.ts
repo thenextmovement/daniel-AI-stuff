@@ -331,7 +331,8 @@ test("supplier sales diagnostics expose missing and configured production links"
     assert.equal(missing.ready, false);
     assert.ok(missing.missing.includes("incoming_sales_auth"));
     assert.ok(missing.missing.includes("shopify_admin_api"));
-    assert.ok(missing.missing.includes("shopify_supplier_tags"));
+    assert.equal(missing.items.find((item) => item.key === "shopify_supplier_tags")?.status, "warning");
+    assert.equal(missing.missing.includes("shopify_supplier_tags"), false);
     assert.ok(missing.missing.includes("trello_api_key"));
 
     process.env.SUPPLIER_SALES_AGENT_API_TOKEN = "agent";
