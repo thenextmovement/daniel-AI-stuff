@@ -26,6 +26,7 @@ import type {
   SalesCallResultEntry,
   SalesCallVisualCandidate,
 } from "@/lib/ops/customer-call-module";
+import { salesCallPresetRequiresCallbackDate } from "@/lib/ops/sales-call-preset-contract";
 import type { SalesTask } from "@/lib/ops/sales-task-engine";
 import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
 import type { OpsInternalTask } from "@/lib/ops/internal-tasks";
@@ -814,7 +815,7 @@ function getCallStageSummary(item: SalesCallListItem) {
 }
 
 function getCallStageDetail(item: SalesCallListItem) {
-  const due = item.cadence.nextCallDueAt ? `fällig ab ${item.cadence.nextCallDueAt.slice(0, 16).replace("T", " ")}` : null;
+  const due = item.cadence.nextCallDueAt ? `fällig ab ${formatDateTimeLabel(item.cadence.nextCallDueAt)}` : null;
   const bucket = bucketLabels[item.cadence.queueBucket];
   return [bucket, due, item.cadence.priorityReason].filter(Boolean).join(" • ");
 }
@@ -1181,8 +1182,12 @@ export function CustomerSalesCallsClient({
 
   useEffect(() => {
     if (operatorName) {
-      window.localStorage.setItem(sharedOperatorNameKey, operatorName);
-      window.localStorage.setItem(operatorNameKey, operatorName);
+      try {
+        window.localStorage.setItem(sharedOperatorNameKey, operatorName);
+        window.localStorage.setItem(operatorNameKey, operatorName);
+      } catch {
+        // ignore local storage issues
+      }
     }
   }, [operatorName]);
 
@@ -1207,7 +1212,7 @@ export function CustomerSalesCallsClient({
   }, [adHocItem, state, selectedItemId]);
 
   useEffect(() => {
-    if ((preset === "callback" || preset === "not-reached" || preset === "needs-time") && !callbackDate) {
+    if (salesCallPresetRequiresCallbackDate(preset) && !callbackDate) {
       setCallbackDate(tomorrowDate());
     }
   }, [preset, callbackDate]);
@@ -1505,7 +1510,7 @@ export function CustomerSalesCallsClient({
           requestId: selectedItem.requestId,
           preset,
           notes,
-          callbackDate: preset === "callback" || preset === "not-reached" ? callbackDate : null,
+          callbackDate: salesCallPresetRequiresCallbackDate(preset) ? callbackDate : null,
           postReminderDecision: needsPostReminderDecision(selectedItem, preset) ? postReminderDecision : null,
           priorityTier,
           priorityReason,
@@ -1595,47 +1600,51 @@ export function CustomerSalesCallsClient({
     setError(null);
     setMessage(null);
 
-    const response = await fetchWithTimeout("/api/ops/customer-records/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "set_request_segment",
-        requestId: selectedItem.requestId,
-        segment,
-        operatorName: operatorName || null,
-      }),
-    });
-    const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
-    if (!response.ok || !payload?.ok || !payload.record) {
-      setError(formatApiError(payload));
-      setSegmentSaving(false);
-      return;
-    }
+    try {
+      const response = await fetchWithTimeout("/api/ops/customer-records/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_request_segment",
+          requestId: selectedItem.requestId,
+          segment,
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as SalesCallApiResponse | null;
+      if (!response.ok || !payload?.ok || !payload.record) {
+        setError(formatApiError(payload));
+        return;
+      }
 
-    setState((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        items: current.items.map((item) =>
-          item.requestId === payload.record?.requestId
-            ? {
-                ...item,
-                record: payload.record,
-              }
-            : item,
-        ),
-      };
-    });
-    setAdHocItem((current) =>
-      current && payload.record && current.requestId === payload.record.requestId
-        ? {
-            ...current,
-            record: payload.record,
-          }
-        : current,
-    );
-    setMessage("Segment wurde bestätigt.");
-    setSegmentSaving(false);
+      setState((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.map((item) =>
+            item.requestId === payload.record?.requestId
+              ? {
+                  ...item,
+                  record: payload.record,
+                }
+              : item,
+          ),
+        };
+      });
+      setAdHocItem((current) =>
+        current && payload.record && current.requestId === payload.record.requestId
+          ? {
+              ...current,
+              record: payload.record,
+            }
+          : current,
+      );
+      setMessage("Segment wurde bestätigt.");
+    } catch (error) {
+      setError(formatFetchError(error));
+    } finally {
+      setSegmentSaving(false);
+    }
   }
 
   if (opsEnabled && !hasSession && !localMode) {
@@ -2348,7 +2357,7 @@ export function CustomerSalesCallsClient({
                     <p className="font-medium text-stone-900">Call-Cadence</p>
                     <p className="mt-2">
                       {selectedItem.cadence.nextCallDueAt
-                        ? `Nächster Anruf ab ${selectedItem.cadence.nextCallDueAt.slice(0, 16).replace("T", " ")}`
+                        ? `Nächster Anruf ab ${formatDateTimeLabel(selectedItem.cadence.nextCallDueAt)}`
                         : "Keine automatische nächste Fälligkeit."}
                     </p>
                     <p className="mt-1">
@@ -2472,7 +2481,7 @@ export function CustomerSalesCallsClient({
                     />
                   </div>
 
-                  {(preset === "callback" || preset === "not-reached" || preset === "needs-time") ? (
+                  {salesCallPresetRequiresCallbackDate(preset) ? (
                     <div className="mt-5 space-y-2">
                       <label className="text-sm font-medium text-stone-900">Rückrufdatum</label>
                       <input

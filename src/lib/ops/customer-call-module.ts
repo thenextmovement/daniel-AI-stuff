@@ -10,6 +10,7 @@ import { SupabaseRestError, supabaseRequest, supabaseRpc } from "@/lib/quotes/su
 import { getTrelloCardVisuals } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import { salesCallPresetRequiresCallbackDate } from "@/lib/ops/sales-call-preset-contract";
 import {
   buildTaskFromInboundEmailSignal,
   classifyInboundEmailSignal,
@@ -2659,7 +2660,7 @@ export function buildSalesCallResultFromPreset(input: SalesCallResultInput): Omi
   const preset = SALES_CALL_PRESETS[input.preset];
   if (!preset) throw new QuoteValidationError("Ungültiger Call-Preset.", ["Waehle einen bekannten Call-Preset."], 400);
   let nextStep: string = preset.nextStep;
-  if (preset.nextStep === "callback") {
+  if (salesCallPresetRequiresCallbackDate(input.preset)) {
     if (!isValidCallbackDate(input.callbackDate)) {
       throw new QuoteValidationError("Für diesen Preset ist ein gültiges zukünftiges Rückrufdatum im Format YYYY-MM-DD nötig.");
     }

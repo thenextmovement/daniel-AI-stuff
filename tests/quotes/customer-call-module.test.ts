@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { CustomerSearchResult } from "../../src/lib/ops/customer-records";
 import {
   advanceCadenceStateFromResult,
@@ -12,6 +13,7 @@ import {
   recordTrelloCardIdentifier,
   resolveRuntimeSalesCallState,
 } from "../../src/lib/ops/customer-call-module";
+import { salesCallPresetRequiresCallbackDate } from "../../src/lib/ops/sales-call-preset-contract";
 import {
   addBusinessDaysIso,
   buildTaskFromInboundEmailSignal,
@@ -157,6 +159,64 @@ test("buildSalesCallResultFromPreset maps callback and not-reached to dated call
 
   assert.equal(notReached.callOutcome, "not_reached");
   assert.equal(notReached.nextStep, `callback_${retryDate}`);
+});
+
+test("callback-date preset contract covers UI-sensitive callback presets", () => {
+  const callbackDate = isoDateFromNow(2);
+  const callbackPresets = ["callback", "not-reached", "needs-time"] as const;
+
+  for (const preset of callbackPresets) {
+    assert.equal(salesCallPresetRequiresCallbackDate(preset), true, `${preset} must require a callback date`);
+
+    assert.throws(
+      () =>
+        buildSalesCallResultFromPreset({
+          callListItemId: "item_1",
+          requestId: "4423b374-e68c-4f55-8132-c6806cac687a",
+          preset,
+          callbackDate: null,
+          notes: "Kunde braucht einen spaeteren Wiedervorlagetermin.",
+        }),
+      QuoteValidationError,
+      `${preset} must reject a missing callback date`,
+    );
+
+    const result = buildSalesCallResultFromPreset({
+      callListItemId: "item_1",
+      requestId: "4423b374-e68c-4f55-8132-c6806cac687a",
+      preset,
+      callbackDate,
+      notes: "Kunde braucht einen spaeteren Wiedervorlagetermin.",
+    });
+
+    assert.equal(result.nextStep, `callback_${callbackDate}`);
+  }
+
+  assert.equal(salesCallPresetRequiresCallbackDate("interested"), false);
+});
+
+test("calls UI payload uses the shared callback-date preset contract", () => {
+  const source = readFileSync("src/app/ops/customer-records/calls/page-client.tsx", "utf8");
+
+  assert.match(
+    source,
+    /callbackDate:\s*salesCallPresetRequiresCallbackDate\(preset\)\s*\?\s*callbackDate\s*:\s*null/,
+  );
+  assert.doesNotMatch(source, /callbackDate:\s*preset === "callback" \|\| preset === "not-reached"/);
+});
+
+test("calls UI keeps browser-only failure paths recoverable", () => {
+  const source = readFileSync("src/app/ops/customer-records/calls/page-client.tsx", "utf8");
+
+  assert.match(
+    source,
+    /try\s*{\s*window\.localStorage\.setItem\(sharedOperatorNameKey, operatorName\);[\s\S]*?window\.localStorage\.setItem\(operatorNameKey, operatorName\);[\s\S]*?}\s*catch/,
+  );
+  assert.match(
+    source,
+    /async function applySegment\(segment: string\)[\s\S]*?finally\s*{\s*setSegmentSaving\(false\);[\s\S]*?}/,
+  );
+  assert.doesNotMatch(source, /nextCallDueAt\.slice\(0,\s*16\)/);
 });
 
 test("buildSalesCallResultFromPreset allows ad-hoc calls without a list item", () => {
