@@ -105,6 +105,7 @@ const priorityLabels: Record<SalesCallPriorityTier, string> = {
 
 type WorkTabKey = "new_inquiries" | "first_quotes" | "my_calls";
 type WorkFilterKey = "all" | "priority" | "overdue" | "with_visuals" | "needs_segment";
+type QuickActionPreset = Extract<SalesCallPreset, "called-done" | "not-reached">;
 
 const workTabs: Array<{
   key: WorkTabKey;
@@ -135,6 +136,10 @@ const workFilters: Array<{ key: WorkFilterKey; label: string }> = [
   { key: "with_visuals", label: "Mit Bild" },
   { key: "needs_segment", label: "Segment offen" },
 ];
+
+function quickActionKey(item: SalesCallListItem, preset: QuickActionPreset) {
+  return `${item.id || item.requestId}:${preset}`;
+}
 
 const followupBuckets: SalesCallQueueBucket[] = [
   "callbacks",
@@ -855,9 +860,9 @@ function getDesignStatus(item: SalesCallListItem) {
     if (referenceCount) return "Referenzbild";
   }
   if (item.record.followupMockups?.length) return `${item.record.followupMockups.length} Follow-up-Mockup${item.record.followupMockups.length === 1 ? "" : "s"}`;
-  if (item.record.trello?.mockups.length) return `${item.record.trello.mockups.length} Mockup${item.record.trello.mockups.length === 1 ? "" : "s"}`;
+  if (item.record.trello?.mockups?.length) return `${item.record.trello.mockups.length} Mockup${item.record.trello.mockups.length === 1 ? "" : "s"}`;
   if (item.record.trello?.referenceImage) return "Referenzbild";
-  if (item.record.crmQuote?.latestVersionImages.length) return `${item.record.crmQuote.latestVersionImages.length} Angebotsbild${item.record.crmQuote.latestVersionImages.length === 1 ? "" : "er"}`;
+  if (item.record.crmQuote?.latestVersionImages?.length) return `${item.record.crmQuote.latestVersionImages.length} Angebotsbild${item.record.crmQuote.latestVersionImages.length === 1 ? "" : "er"}`;
   return "Kein Designbild";
 }
 
@@ -1145,6 +1150,7 @@ export function CustomerSalesCallsClient({
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [quickSavingId, setQuickSavingId] = useState<string | null>(null);
+  const [quickConfirmAction, setQuickConfirmAction] = useState<string | null>(null);
   const [segmentSaving, setSegmentSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -1288,6 +1294,8 @@ export function CustomerSalesCallsClient({
     () => tabItems[activeTab].filter((item) => matchesWorkFilter(item, activeFilter)),
     [activeFilter, activeTab, tabItems],
   );
+  const callbackDateRequired = salesCallPresetRequiresCallbackDate(preset);
+  const callbackDateMissing = callbackDateRequired && !callbackDate;
 
   useEffect(() => {
     if (!selectedItem) return;
@@ -1303,6 +1311,7 @@ export function CustomerSalesCallsClient({
     setDetailOpen(true);
     setError(null);
     setMessage(null);
+    setQuickConfirmAction(null);
   }
 
   function openSearchResult(record: CustomerSearchResult) {
@@ -1312,6 +1321,7 @@ export function CustomerSalesCallsClient({
     setDetailOpen(true);
     setError(null);
     setMessage(null);
+    setQuickConfirmAction(null);
   }
 
   function openProcessedToday(entry: SalesCallProcessedTodayItem) {
@@ -1330,6 +1340,7 @@ export function CustomerSalesCallsClient({
     setDetailOpen(true);
     setError(null);
     setMessage(null);
+    setQuickConfirmAction(null);
   }
 
   function removeItemFromVisibleState(item: SalesCallListItem) {
@@ -1495,6 +1506,10 @@ export function CustomerSalesCallsClient({
       setError("Bitte nach dem Reminder-Call festlegen, wie der Fall weiterlaufen soll.");
       return;
     }
+    if (salesCallPresetRequiresCallbackDate(preset) && !callbackDate) {
+      setError("Bitte ein Rückrufdatum wählen, bevor das Ergebnis gespeichert wird.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -1548,7 +1563,20 @@ export function CustomerSalesCallsClient({
     }
   }
 
-  async function quickRecordResult(item: SalesCallListItem, quickPreset: Extract<SalesCallPreset, "called-done" | "not-reached">) {
+  function requestQuickRecordResult(item: SalesCallListItem, quickPreset: QuickActionPreset) {
+    const key = quickActionKey(item, quickPreset);
+    setError(null);
+    setMessage(null);
+
+    if (quickConfirmAction === key) {
+      void quickRecordResult(item, quickPreset);
+      return;
+    }
+
+    setQuickConfirmAction(key);
+  }
+
+  async function quickRecordResult(item: SalesCallListItem, quickPreset: QuickActionPreset) {
     const key = item.id || item.requestId;
     setQuickSavingId(key);
     setError(null);
@@ -1586,6 +1614,7 @@ export function CustomerSalesCallsClient({
 
       removeItemFromVisibleState(item);
       setMessage(quickPreset === "not-reached" ? "Nicht erreicht gespeichert. Aufgabe ist verschoben." : "Anruf erledigt. Aufgabe ist abgeschlossen.");
+      setQuickConfirmAction(null);
       void loadState();
     } catch (error) {
       setError(formatFetchError(error));
@@ -2012,14 +2041,20 @@ export function CustomerSalesCallsClient({
                 </div>
               ) : state ? (
                 visibleWorkItems.length ? (
-                  visibleWorkItems.map((item) => (
+                  visibleWorkItems.map((item) => {
+                    const itemKey = item.id || item.requestId;
+                    const confirmingDone = quickConfirmAction === quickActionKey(item, "called-done");
+                    const confirmingNotReached = quickConfirmAction === quickActionKey(item, "not-reached");
+                    const quickActionPending = confirmingDone || confirmingNotReached;
+                    const quickActionDisabled = Boolean(quickSavingId);
+                    return (
                     <div
-                      key={`work-${activeTab}-${item.id || item.requestId}`}
+                      key={`work-${activeTab}-${itemKey}`}
                       className={`grid w-full gap-3 rounded-3xl border px-4 py-4 text-left transition hover:border-stone-500 hover:bg-white lg:grid-cols-[minmax(0,1.5fr)_145px_145px_185px_145px_145px] ${workCardTone(item)}`}
                     >
                       <button
                         type="button"
-                        onClick={() => openItem(item.id || item.requestId)}
+                        onClick={() => openItem(itemKey)}
                         className="min-w-0 text-left"
                       >
                         <div className="flex gap-3">
@@ -2051,7 +2086,7 @@ export function CustomerSalesCallsClient({
                       </button>
                       <button
                         type="button"
-                        onClick={() => openItem(item.id || item.requestId)}
+                        onClick={() => openItem(itemKey)}
                         className="rounded-2xl bg-white/80 px-3 py-3 text-left transition hover:bg-white"
                       >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Warenwert</p>
@@ -2061,7 +2096,7 @@ export function CustomerSalesCallsClient({
                       </button>
                       <button
                         type="button"
-                        onClick={() => openItem(item.id || item.requestId)}
+                        onClick={() => openItem(itemKey)}
                         className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3 text-left transition hover:bg-white"
                       >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Anfrage</p>
@@ -2071,7 +2106,7 @@ export function CustomerSalesCallsClient({
                       </button>
                       <button
                         type="button"
-                        onClick={() => openItem(item.id || item.requestId)}
+                        onClick={() => openItem(itemKey)}
                         className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3 text-left transition hover:bg-white"
                       >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Anrufstatus</p>
@@ -2079,7 +2114,7 @@ export function CustomerSalesCallsClient({
                       </button>
                       <button
                         type="button"
-                        onClick={() => openItem(item.id || item.requestId)}
+                        onClick={() => openItem(itemKey)}
                         className="rounded-2xl border border-black/10 bg-white/80 px-3 py-3 text-left transition hover:bg-white"
                       >
                         <p className="text-[11px] uppercase tracking-[0.18em] text-stone-500">Segment</p>
@@ -2089,32 +2124,53 @@ export function CustomerSalesCallsClient({
                       <div className="flex flex-col gap-2 rounded-2xl border border-black/10 bg-white/90 px-3 py-3">
                         <button
                           type="button"
-                          onClick={() => quickRecordResult(item, "called-done")}
-                          disabled={Boolean(quickSavingId)}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:cursor-wait disabled:opacity-50"
+                          onClick={() => requestQuickRecordResult(item, "called-done")}
+                          disabled={quickActionDisabled}
+                          className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-50 ${
+                            confirmingDone
+                              ? "border border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800"
+                              : "bg-stone-950 text-white hover:bg-stone-800"
+                          }`}
                         >
                           <CheckCircle2 className="h-4 w-4" />
-                          {quickSavingId === (item.id || item.requestId) ? "Speichert" : "Erledigt"}
+                          {quickSavingId === itemKey ? "Speichert" : confirmingDone ? "Erledigt bestätigen" : "Erledigt"}
                         </button>
                         <button
                           type="button"
-                          onClick={() => quickRecordResult(item, "not-reached")}
-                          disabled={Boolean(quickSavingId)}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:border-stone-400 hover:text-stone-950 disabled:cursor-wait disabled:opacity-50"
+                          onClick={() => requestQuickRecordResult(item, "not-reached")}
+                          disabled={quickActionDisabled}
+                          className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-50 ${
+                            confirmingNotReached
+                              ? "border-amber-500 bg-amber-50 text-amber-900 hover:border-amber-700"
+                              : "border-stone-200 bg-white text-stone-700 hover:border-stone-400 hover:text-stone-950"
+                          }`}
                         >
                           <Phone className="h-4 w-4" />
-                          Nicht erreicht
+                          {confirmingNotReached ? "Nicht erreicht bestätigen" : "Nicht erreicht"}
                         </button>
+                        {quickActionPending ? (
+                          <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-900">
+                            Zweiter Klick speichert.
+                            <button
+                              type="button"
+                              onClick={() => setQuickConfirmAction(null)}
+                              className="ml-2 font-semibold underline underline-offset-2"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        ) : null}
                         <button
                           type="button"
-                          onClick={() => openItem(item.id || item.requestId)}
+                          onClick={() => openItem(itemKey)}
                           className="rounded-xl px-3 py-2 text-xs font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-950"
                         >
                           Details
                         </button>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="rounded-3xl border border-dashed border-stone-300 px-5 py-8 text-sm text-stone-500">
                     Keine Fälle für diesen Tab und Filter.
@@ -2488,8 +2544,16 @@ export function CustomerSalesCallsClient({
                         type="date"
                         value={callbackDate}
                         onChange={(event) => setCallbackDate(event.target.value)}
+                        required
+                        aria-invalid={callbackDateMissing}
+                        aria-describedby={callbackDateMissing ? "sales-call-callback-date-error" : undefined}
                         className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-stone-900"
                       />
+                      {callbackDateMissing ? (
+                        <p id="sales-call-callback-date-error" className="text-xs font-medium text-rose-700">
+                          Bitte ein Rückrufdatum wählen.
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -2552,7 +2616,7 @@ export function CustomerSalesCallsClient({
                   <div className="sticky bottom-0 -mx-5 mt-5 flex flex-wrap gap-3 border-t border-stone-200 bg-white/95 px-5 py-4 backdrop-blur">
                     <button
                       onClick={() => void saveResult()}
-                      disabled={saving}
+                      disabled={saving || callbackDateMissing}
                       className="inline-flex items-center gap-2 rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                     >
                       <CheckCircle2 className="h-4 w-4" />
