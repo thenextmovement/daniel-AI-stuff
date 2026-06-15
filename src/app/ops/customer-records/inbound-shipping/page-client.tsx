@@ -51,10 +51,12 @@ function severityTone(severity: InboundIncidentSeverity) {
 
 export function InboundShippingClient({
   initialHasSession,
+  initialRequestId,
   opsEnabled,
   localMode,
 }: {
   initialHasSession: boolean;
+  initialRequestId?: string;
   opsEnabled: boolean;
   localMode: boolean;
 }) {
@@ -65,6 +67,7 @@ export function InboundShippingClient({
   const [board, setBoard] = useState<InboundBoard | null>(null);
   const [scope, setScope] = useState<"moving" | "active" | "problems" | "label_created" | "all">("moving");
   const [carrier, setCarrier] = useState<"all" | "dhl" | "fedex">("all");
+  const [requestId, setRequestId] = useState(initialRequestId || "");
   const [loading, setLoading] = useState(false);
   const [savingIncidentId, setSavingIncidentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,12 +83,16 @@ export function InboundShippingClient({
   }, []);
 
   useEffect(() => {
-    if (operatorName) window.localStorage.setItem(operatorNameKey, operatorName);
+    try {
+      if (operatorName) window.localStorage.setItem(operatorNameKey, operatorName);
+    } catch {
+      // localStorage can be unavailable in hardened browser contexts.
+    }
   }, [operatorName]);
 
   useEffect(() => {
     if (hasSession || localMode) void loadBoard();
-  }, [hasSession, localMode, scope, carrier]);
+  }, [hasSession, localMode, scope, carrier, requestId]);
 
   const items = useMemo(() => board?.items || [], [board]);
 
@@ -111,6 +118,7 @@ export function InboundShippingClient({
       const params = new URLSearchParams();
       params.set("scope", scope);
       params.set("carrier", carrier);
+      if (requestId.trim()) params.set("requestId", requestId.trim());
       const response = await fetch(`/api/ops/customer-records/inbound-shipping?${params.toString()}`);
       const payload = (await response.json().catch(() => null)) as InboundApiResponse | null;
       if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
@@ -187,15 +195,25 @@ export function InboundShippingClient({
         </section>
 
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-          <div className="grid gap-3 md:grid-cols-[180px_180px_160px_1fr]">
-            <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+          <div className="grid gap-3 md:grid-cols-[180px_180px_160px_1fr_1fr]">
+            <select
+              value={scope}
+              onChange={(event) => setScope(event.target.value as typeof scope)}
+              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              aria-label="Wareneingang-Statusfilter"
+            >
               <option value="moving">Wirklich unterwegs</option>
               <option value="label_created">Nur Label erstellt</option>
               <option value="active">Aktive Sendungen</option>
               <option value="problems">Problemfälle</option>
               <option value="all">Alle Sendungen</option>
             </select>
-            <select value={carrier} onChange={(event) => setCarrier(event.target.value as typeof carrier)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select
+              value={carrier}
+              onChange={(event) => setCarrier(event.target.value as typeof carrier)}
+              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              aria-label="Carrier-Filter"
+            >
               <option value="all">Alle Carrier</option>
               <option value="dhl">DHL Express</option>
               <option value="fedex">FedEx</option>
@@ -205,10 +223,18 @@ export function InboundShippingClient({
               Laden
             </button>
             <input
+              value={requestId}
+              onChange={(event) => setRequestId(event.target.value)}
+              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              placeholder="Request-ID Filter"
+              aria-label="Request-ID Filter"
+            />
+            <input
               value={operatorName}
               onChange={(event) => setOperatorName(event.target.value)}
               className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               placeholder="Operator"
+              aria-label="Operator"
             />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">

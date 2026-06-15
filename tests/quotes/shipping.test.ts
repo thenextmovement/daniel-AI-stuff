@@ -10,6 +10,7 @@ import {
 } from "../../src/lib/ops/shipping";
 import {
   buildInboundBoardFromRows,
+  listInboundBoard,
   normalizeInboundCarrierStatus,
   parseInboundTrackingValue,
   selectInboundTrelloVisualAttachment,
@@ -442,6 +443,98 @@ test("buildInboundBoardFromRows prioritizes urgent inbound incidents and counts 
   assert.equal(board.counts.clearance, 1);
   assert.equal(board.counts.outForDelivery, 1);
   assert.equal(board.counts.withOpenTask, 1);
+});
+
+test("listInboundBoard filters inbound shipments by linked requestId", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  let inboundShipmentQuery: URLSearchParams | null = null;
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+
+  globalThis.fetch = (async (input) => {
+    const url = new URL(String(input));
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/master_requests")) {
+      if (url.searchParams.get("request_id") === "eq.REQ-1") {
+        return json([{ id: "internal-1", request_id: "REQ-1", trello_card_id: "card-filtered", updated_at: "2026-06-05T08:00:00.000Z" }]);
+      }
+      if (url.searchParams.get("trello_card_id") === "in.(card-filtered)") {
+        return json([{ id: "internal-1", request_id: "REQ-1", trello_card_id: "card-filtered", updated_at: "2026-06-05T08:00:00.000Z" }]);
+      }
+      return json([]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      inboundShipmentQuery = url.searchParams;
+      return json([
+        {
+          id: "inbound-filtered",
+          shipment_key: "trello:card-filtered:dhl:1234567890",
+          source: "trello",
+          trello_card_id: "card-filtered",
+          trello_card_name: "Filtered request",
+          trello_card_url: "https://trello.example/card-filtered",
+          trello_list_id: "list-1",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "1234567890",
+          tracking_raw: "DHL 1234567890",
+          status: "in_transit",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-01T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-01T08:00:00.000Z",
+          tendered_at: "2026-06-01T09:00:00.000Z",
+          last_event_at: "2026-06-02T08:00:00.000Z",
+          last_movement_at: "2026-06-02T08:00:00.000Z",
+          last_checked_at: "2026-06-02T09:00:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-01T08:00:00.000Z",
+          updated_at: "2026-06-02T09:00:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_incidents") || path.endsWith("/rest/v1/inbound_tracking_events")) return json([]);
+    if (path.endsWith("/rest/v1/crm_quotes")) {
+      return json([{ id: "quote-1", request_id: "internal-1", quote_number: "Q-1", status: "sent", created_at: "2026-06-05T08:00:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quote_versions")) {
+      return json([{ id: "version-1", quote_id: "quote-1", label: "v1", created_at: "2026-06-05T08:00:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quote_version_images")) {
+      return json([{ id: "image-1", version_id: "version-1", item_index: 0, image_index: 0, original_url: "https://cdn.example.test/image.png", copied_url: null, versioned_url: null, created_at: "2026-06-05T08:00:00.000Z" }]);
+    }
+
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const board = await listInboundBoard({ requestId: "REQ-1", scope: "all" });
+
+    assert.equal(board.items.length, 1);
+    assert.equal(board.items[0]?.shipment.trelloCardId, "card-filtered");
+    const shipmentQuery = inboundShipmentQuery as URLSearchParams | null;
+    assert.ok(shipmentQuery);
+    assert.equal(shipmentQuery.get("trello_card_id"), "in.(card-filtered)");
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
 });
 
 test("buildShippingNotificationEmail routes return and failed delivery as internal warnings", () => {

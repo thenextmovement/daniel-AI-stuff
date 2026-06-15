@@ -51,6 +51,7 @@ function normalizeHost(host: string | null | undefined) {
 }
 
 export function isLocalOpsHost(host: string | null | undefined) {
+  if (process.env.NODE_ENV === "production") return false;
   const normalized = normalizeHost(host);
   return (
     normalized === "localhost" ||

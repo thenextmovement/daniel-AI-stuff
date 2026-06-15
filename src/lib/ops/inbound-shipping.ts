@@ -1,4 +1,4 @@
-import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
+import { createOpsInternalTask, findOpsInternalTaskBySourceRef, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
 import { attachmentName, selectMockupAttachments } from "@/lib/quotes/mockups";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { getTrelloCardVisuals } from "@/lib/quotes/trello";
@@ -614,13 +614,22 @@ async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<Inbou
 export async function listInboundBoard(options?: {
   carrier?: InboundCarrier | "all" | null;
   scope?: "moving" | "active" | "problems" | "label_created" | "all";
+  requestId?: string | null;
   limit?: number;
 }): Promise<InboundBoard> {
+  const requestId = trimNullable(options?.requestId);
+  let requestCardIds: string[] = [];
+  if (requestId) {
+    requestCardIds = await resolveInboundTrelloCardIdsForRequestId(requestId);
+    if (!requestCardIds.length) return buildInboundBoardFromRows([], [], []);
+  }
+
   const query: Record<string, string | number | boolean | null> = {
     select: "*",
     order: "updated_at.desc",
     limit: Math.min(Math.max(options?.limit || 250, 1), 500),
   };
+  if (requestCardIds.length) query.trello_card_id = `in.(${requestCardIds.map(encodeFilterValue).join(",")})`;
   if (options?.carrier && options.carrier !== "all") query.carrier = `eq.${options.carrier}`;
   if (options?.scope === "moving") query.status = "in.(tendered,in_transit,clearance_in_progress,clearance_action_required,out_for_delivery)";
   else if (options?.scope === "label_created") query.status = "in.(tracking_created,label_created)";
@@ -655,6 +664,32 @@ export async function listInboundBoard(options?: {
     };
   }
   return board;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function resolveInboundTrelloCardIdsForRequestId(requestId: string) {
+  const queries: Array<Record<string, string | number | boolean | null>> = [
+    {
+      select: "id,request_id,trello_card_id,updated_at",
+      request_id: `eq.${requestId}`,
+      order: "updated_at.desc",
+      limit: 10,
+    },
+  ];
+  if (isUuid(requestId)) {
+    queries.push({
+      select: "id,request_id,trello_card_id,updated_at",
+      id: `eq.${requestId}`,
+      order: "updated_at.desc",
+      limit: 10,
+    });
+  }
+
+  const rows = (await Promise.all(queries.map((query) => supabaseRequest<InboundRequestRow[]>("master_requests", undefined, query)))).flat();
+  return uniqueValues(rows.map((row) => row.trello_card_id));
 }
 
 async function getIncidentWithShipment(incidentId: string) {
@@ -709,8 +744,11 @@ export async function createInboundIncidentTask(incidentId: string, actor?: Inbo
   }
 
   const sourceRef = `inbound_shipping_incident:${incident.id}`;
-  const existingTasks = await listOpsInternalTasks({ includeDone: false });
-  const existing = existingTasks.find((task) => task.sourceRef === sourceRef || task.description?.includes(`Inbound Shipping Incident: ${incident.id}`));
+  let existing = await findOpsInternalTaskBySourceRef(sourceRef, { includeDone: true });
+  if (!existing) {
+    const existingTasks = await listOpsInternalTasks({ includeDone: true, limit: 150 });
+    existing = existingTasks.find((task) => task.description?.includes(`Inbound Shipping Incident: ${incident.id}`)) || null;
+  }
   if (existing) {
     await patchIncident(incident.id, { active_task_id: existing.id });
     return { incident: mapIncident({ ...incident, active_task_id: existing.id }), taskId: existing.id, created: false };

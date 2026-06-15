@@ -80,6 +80,7 @@ export type OpsInternalTaskListOptions = {
   includeDone?: boolean;
   assigneeLabel?: string | null;
   requestId?: string | null;
+  sourceRef?: string | null;
   limit?: number;
 };
 
@@ -293,6 +294,7 @@ function buildFallbackCreatePayload(input: OpsInternalTaskInput, actor?: OpsInte
   const by = actorName(actor);
   const requestId = nullableText(input.requestId, 120) || `internal:${randomUUID()}`;
   const completed = status === "done" || status === "archived";
+  const sourceRef = nullableText(input.sourceRef, 240);
   return {
     request_id: requestId,
     task_type: `ops_internal_${category}`,
@@ -303,8 +305,8 @@ function buildFallbackCreatePayload(input: OpsInternalTaskInput, actor?: OpsInte
     priority_tier: toSalesTaskPriority(priority),
     assignee_label: nullableText(input.assigneeLabel, 120),
     source: "ops_internal",
-    source_ref: nullableText(input.sourceRef, 240),
-    idempotency_key: `ops-internal:${randomUUID()}`,
+    source_ref: sourceRef,
+    idempotency_key: sourceRef ? `ops-internal-source:${sourceRef}` : `ops-internal:${randomUUID()}`,
     completed_at: completed ? new Date().toISOString() : null,
     payload: {
       ops_status: status,
@@ -428,22 +430,36 @@ async function listFallbackTasks(options: OpsInternalTaskListOptions = {}) {
   }
   if (options.assigneeLabel) query.assignee_label = `eq.${options.assigneeLabel}`;
   if (options.requestId) query.request_id = `eq.${options.requestId}`;
+  if (options.sourceRef) query.source_ref = `eq.${options.sourceRef}`;
 
   const rows = await supabaseRequest<SalesTaskFallbackRow[]>(SALES_TASKS_TABLE, undefined, query);
   return rows.map(mapFallbackTask);
 }
 
+function isInsertConflict(error: unknown) {
+  return error instanceof SupabaseRestError && error.status === 409;
+}
+
 async function createFallbackTask(input: OpsInternalTaskInput, actor?: OpsInternalTaskActor) {
-  const [row] = await supabaseRequest<SalesTaskFallbackRow[]>(
-    SALES_TASKS_TABLE,
-    {
-      method: "POST",
-      body: JSON.stringify(buildFallbackCreatePayload(input, actor)),
-      headers: { Prefer: "return=representation" },
-    },
-    { select: SALES_TASKS_SELECT },
-  );
-  return mapFallbackTask(row);
+  try {
+    const [row] = await supabaseRequest<SalesTaskFallbackRow[]>(
+      SALES_TASKS_TABLE,
+      {
+        method: "POST",
+        body: JSON.stringify(buildFallbackCreatePayload(input, actor)),
+        headers: { Prefer: "return=representation" },
+      },
+      { select: SALES_TASKS_SELECT },
+    );
+    return mapFallbackTask(row);
+  } catch (error) {
+    const sourceRef = nullableText(input.sourceRef, 240);
+    if (sourceRef && isInsertConflict(error)) {
+      const existing = await findOpsInternalTaskBySourceRef(sourceRef, { includeDone: true });
+      if (existing) return existing;
+    }
+    throw error;
+  }
 }
 
 async function updateFallbackTask(taskId: string, input: OpsInternalTaskInput, actor?: OpsInternalTaskActor) {
@@ -490,6 +506,7 @@ export async function listOpsInternalTasks(options: OpsInternalTaskListOptions =
   }
   if (options.assigneeLabel) query.assignee_label = `eq.${options.assigneeLabel}`;
   if (options.requestId) query.request_id = `eq.${options.requestId}`;
+  if (options.sourceRef) query.source_ref = `eq.${options.sourceRef}`;
 
   try {
     const rows = await supabaseRequest<OpsInternalTaskRow[]>(TASK_TABLE, undefined, query);
@@ -515,9 +532,25 @@ export async function createOpsInternalTask(input: OpsInternalTaskInput, actor?:
     );
     return mapTask(row);
   } catch (error) {
+    const sourceRef = nullableText(input.sourceRef, 240);
+    if (sourceRef && isInsertConflict(error)) {
+      const existing = await findOpsInternalTaskBySourceRef(sourceRef, { includeDone: true });
+      if (existing) return existing;
+    }
     if (isMissingOpsInternalTasksTable(error)) return createFallbackTask(input, actor);
     throw error;
   }
+}
+
+export async function findOpsInternalTaskBySourceRef(sourceRef: string, options: { includeDone?: boolean } = {}) {
+  const normalized = nullableText(sourceRef, 240);
+  if (!normalized) return null;
+  const tasks = await listOpsInternalTasks({
+    includeDone: options.includeDone,
+    sourceRef: normalized,
+    limit: 1,
+  });
+  return tasks[0] || null;
 }
 
 export async function updateOpsInternalTask(taskId: string, input: OpsInternalTaskInput, actor?: OpsInternalTaskActor) {

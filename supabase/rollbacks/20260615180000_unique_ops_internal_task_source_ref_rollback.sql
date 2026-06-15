@@ -1,0 +1,2 @@
+drop index if exists public.sales_tasks_ops_internal_source_ref_unique_idx;
+drop index if exists public.ops_internal_tasks_source_ref_unique_idx;

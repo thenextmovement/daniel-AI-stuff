@@ -11,27 +11,55 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
 
+const INBOUND_SCOPE_VALUES = ["moving", "active", "problems", "label_created", "all"] as const;
+const INBOUND_CARRIER_FILTER_VALUES = ["all", "dhl", "fedex", "other", "unknown"] as const;
+const OPS_JSON_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+  "Vary": "Cookie, Cf-Access-Jwt-Assertion",
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: OPS_JSON_HEADERS });
+}
+
 function unauthorized() {
-  return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  return jsonResponse({ ok: false, error: "unauthorized" }, 401);
 }
 
 function notConfigured() {
-  return NextResponse.json({ ok: false, error: "ops_not_configured" }, { status: 503 });
+  return jsonResponse({ ok: false, error: "ops_not_configured" }, 503);
 }
 
 function failureResponse(error: unknown) {
   if (error instanceof QuoteValidationError) {
-    return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, issues: error.issues }, error.status);
   }
   if (error instanceof SupabaseRestError) {
-    return NextResponse.json({ ok: false, error: error.message, details: error.details }, { status: error.status });
+    console.error("ops customer-records inbound-shipping supabase request failed", { status: error.status, details: error.details });
+    return jsonResponse({ ok: false, error: error.message }, error.status);
   }
   console.error("ops customer-records inbound-shipping route failed", error);
-  return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
+  return jsonResponse({ ok: false, error: "internal_error" }, 500);
 }
 
 function getOpsHost(request: NextRequest) {
   return request.headers.get("x-forwarded-host") || request.headers.get("host");
+}
+
+function parseScopeFilter(value: string | null) {
+  const scope = value || "moving";
+  if (!INBOUND_SCOPE_VALUES.includes(scope as (typeof INBOUND_SCOPE_VALUES)[number])) {
+    throw new QuoteValidationError("Ungueltiger Wareneingang-Filter.", [`scope=${scope} ist nicht unterstuetzt.`], 400);
+  }
+  return scope as (typeof INBOUND_SCOPE_VALUES)[number];
+}
+
+function parseCarrierFilter(value: string | null) {
+  const carrier = value || "all";
+  if (!INBOUND_CARRIER_FILTER_VALUES.includes(carrier as (typeof INBOUND_CARRIER_FILTER_VALUES)[number])) {
+    throw new QuoteValidationError("Ungueltiger Carrier-Filter.", [`carrier=${carrier} ist nicht unterstuetzt.`], 400);
+  }
+  return carrier as InboundCarrier | "all";
 }
 
 async function getActor(request: NextRequest, operatorName?: string | null) {
@@ -52,10 +80,11 @@ export async function GET(request: NextRequest) {
   if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) return unauthorized();
 
   try {
-    const carrier = (request.nextUrl.searchParams.get("carrier") || "all") as InboundCarrier | "all";
-    const scope = (request.nextUrl.searchParams.get("scope") || "moving") as "moving" | "active" | "problems" | "label_created" | "all";
-    const board = await listInboundBoard({ carrier, scope });
-    return NextResponse.json({ ok: true, board });
+    const carrier = parseCarrierFilter(request.nextUrl.searchParams.get("carrier"));
+    const scope = parseScopeFilter(request.nextUrl.searchParams.get("scope"));
+    const requestId = request.nextUrl.searchParams.get("requestId");
+    const board = await listInboundBoard({ carrier, scope, requestId });
+    return jsonResponse({ ok: true, board });
   } catch (error) {
     return failureResponse(error);
   }
@@ -77,24 +106,28 @@ export async function POST(request: NextRequest) {
     if (body?.action === "create_task") {
       const result = await createInboundIncidentTask(String(body.incidentId || ""), actor);
       const board = await listInboundBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, result, board });
+      console.info("inbound shipping incident action completed", { action: body.action, incidentId: body.incidentId || null, taskId: result.taskId, created: result.created, mode: actor.mode });
+      return jsonResponse({ ok: true, action: body.action, result, board });
     }
     if (body?.action === "acknowledge") {
       const incident = await updateInboundIncidentStatus(String(body.incidentId || ""), "acknowledged");
       const board = await listInboundBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, incident, board });
+      console.info("inbound shipping incident action completed", { action: body.action, incidentId: incident.id, mode: actor.mode });
+      return jsonResponse({ ok: true, action: body.action, incident, board });
     }
     if (body?.action === "resolve") {
       const incident = await updateInboundIncidentStatus(String(body.incidentId || ""), "resolved");
       const board = await listInboundBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, incident, board });
+      console.info("inbound shipping incident action completed", { action: body.action, incidentId: incident.id, mode: actor.mode });
+      return jsonResponse({ ok: true, action: body.action, incident, board });
     }
     if (body?.action === "ignore") {
       const incident = await updateInboundIncidentStatus(String(body.incidentId || ""), "ignored");
       const board = await listInboundBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, incident, board });
+      console.info("inbound shipping incident action completed", { action: body.action, incidentId: incident.id, mode: actor.mode });
+      return jsonResponse({ ok: true, action: body.action, incident, board });
     }
-    return NextResponse.json({ ok: false, error: "unsupported_action" }, { status: 400 });
+    return jsonResponse({ ok: false, error: "unsupported_action" }, 400);
   } catch (error) {
     return failureResponse(error);
   }

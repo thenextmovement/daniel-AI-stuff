@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
-import { validateCloudflareAccess, validateOpsPortalToken } from "../../src/lib/ops/auth";
+import { isOpsPortalBypassed, validateCloudflareAccess, validateOpsPortalToken } from "../../src/lib/ops/auth";
 
 function base64Url(input: BufferSource | string) {
   const buffer =
@@ -70,6 +70,27 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
     }
   }
 }
+
+test("isOpsPortalBypassed only trusts localhost outside production", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const env = process.env as Record<string, string | undefined>;
+
+  try {
+    env.NODE_ENV = "development";
+    assert.equal(isOpsPortalBypassed("localhost:3000"), true);
+    assert.equal(isOpsPortalBypassed("127.0.0.1:3000"), true);
+
+    env.NODE_ENV = "production";
+    assert.equal(isOpsPortalBypassed("localhost:3000"), false);
+    assert.equal(isOpsPortalBypassed("127.0.0.1:3000"), false);
+  } finally {
+    if (originalNodeEnv === undefined) {
+      delete env.NODE_ENV;
+    } else {
+      env.NODE_ENV = originalNodeEnv;
+    }
+  }
+});
 
 test("validateCloudflareAccess accepts a signed Access JWT for an allowed employee domain", async () => {
   await withCloudflareAccessEnv(async () => {
