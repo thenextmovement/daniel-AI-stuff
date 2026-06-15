@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, FileText, PlaneLanding, RefreshCcw, ShieldAlert, Truck } from "lucide-react";
 import type { InboundBoard, InboundBoardItem, InboundIncident, InboundIncidentSeverity, InboundStatus } from "@/lib/ops/inbound-shipping";
 import { OpsLoginCard } from "../../ops-login-card";
@@ -13,6 +13,10 @@ type InboundApiResponse = {
   error?: string;
   issues?: string[];
 };
+
+type InboundBoardScope = "moving" | "active" | "problems" | "label_created" | "all";
+type InboundBoardCarrier = "all" | "dhl" | "fedex" | "other" | "unknown";
+type InboundIncidentAction = "create_task" | "acknowledge" | "resolve" | "ignore";
 
 function formatApiError(payload: { error?: string; issues?: string[] } | null) {
   if (!payload) return "Unbekannter Fehler.";
@@ -65,13 +69,16 @@ export function InboundShippingClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [board, setBoard] = useState<InboundBoard | null>(null);
-  const [scope, setScope] = useState<"moving" | "active" | "problems" | "label_created" | "all">("moving");
-  const [carrier, setCarrier] = useState<"all" | "dhl" | "fedex">("all");
-  const [requestId, setRequestId] = useState(initialRequestId || "");
+  const [scope, setScope] = useState<InboundBoardScope>("moving");
+  const [carrier, setCarrier] = useState<InboundBoardCarrier>("all");
+  const [requestIdDraft, setRequestIdDraft] = useState(initialRequestId || "");
+  const [appliedRequestId, setAppliedRequestId] = useState((initialRequestId || "").trim());
   const [loading, setLoading] = useState(false);
   const [savingIncidentId, setSavingIncidentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const loadRequestSeq = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     try {
@@ -92,7 +99,11 @@ export function InboundShippingClient({
 
   useEffect(() => {
     if (hasSession || localMode) void loadBoard();
-  }, [hasSession, localMode, scope, carrier, requestId]);
+  }, [hasSession, localMode, scope, carrier, appliedRequestId]);
+
+  useEffect(() => {
+    return () => loadAbortRef.current?.abort();
+  }, []);
 
   const items = useMemo(() => board?.items || [], [board]);
 
@@ -111,26 +122,64 @@ export function InboundShippingClient({
     setToken("");
   }
 
-  async function loadBoard() {
+  async function loadBoard(requestIdOverride = appliedRequestId) {
+    const sequence = loadRequestSeq.current + 1;
+    loadRequestSeq.current = sequence;
+    loadAbortRef.current?.abort();
+    const abortController = new AbortController();
+    loadAbortRef.current = abortController;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       params.set("scope", scope);
       params.set("carrier", carrier);
-      if (requestId.trim()) params.set("requestId", requestId.trim());
-      const response = await fetch(`/api/ops/customer-records/inbound-shipping?${params.toString()}`);
+      if (requestIdOverride.trim()) params.set("requestId", requestIdOverride.trim());
+      const response = await fetch(`/api/ops/customer-records/inbound-shipping?${params.toString()}`, { signal: abortController.signal });
       const payload = (await response.json().catch(() => null)) as InboundApiResponse | null;
       if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
+      if (sequence !== loadRequestSeq.current) return;
       setBoard(payload.board);
     } catch (loadError) {
+      if (abortController.signal.aborted) return;
+      if (sequence !== loadRequestSeq.current) return;
       setError(loadError instanceof Error ? loadError.message : "Wareneingang konnte nicht geladen werden.");
     } finally {
-      setLoading(false);
+      if (sequence === loadRequestSeq.current) {
+        setLoading(false);
+        if (loadAbortRef.current === abortController) loadAbortRef.current = null;
+      }
     }
   }
 
-  async function runIncidentAction(incident: InboundIncident, action: "create_task" | "acknowledge" | "resolve" | "ignore") {
+  function applyRequestFilter() {
+    const nextRequestId = requestIdDraft.trim();
+    if (nextRequestId === appliedRequestId) {
+      void loadBoard(nextRequestId);
+      return;
+    }
+    setAppliedRequestId(nextRequestId);
+  }
+
+  function confirmIncidentAction(incident: InboundIncident, action: InboundIncidentAction) {
+    if (action === "resolve") {
+      return window.confirm(`Incident "${incident.title}" wirklich als erledigt markieren?`);
+    }
+    if (action === "ignore") {
+      return window.confirm(`Incident "${incident.title}" wirklich ignorieren?`);
+    }
+    return true;
+  }
+
+  function incidentActionLabel(incident: InboundIncident, action: InboundIncidentAction) {
+    if (action === "create_task") return `Aufgabe für ${incident.title} anlegen`;
+    if (action === "acknowledge") return `Incident ${incident.title} als gesehen markieren`;
+    if (action === "resolve") return `Incident ${incident.title} als erledigt markieren`;
+    return `Incident ${incident.title} ignorieren`;
+  }
+
+  async function runIncidentAction(incident: InboundIncident, action: InboundIncidentAction) {
+    if (!confirmIncidentAction(incident, action)) return;
     setSavingIncidentId(incident.id);
     setError(null);
     setMessage(null);
@@ -143,7 +192,10 @@ export function InboundShippingClient({
       const payload = (await response.json().catch(() => null)) as InboundApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       if (payload.board) setBoard(payload.board);
-      setMessage(action === "create_task" ? "Aufgabe wurde angelegt oder war bereits verknüpft." : "Incident wurde aktualisiert.");
+      if (action === "create_task") setMessage("Aufgabe wurde angelegt oder war bereits verknüpft.");
+      else if (action === "ignore") setMessage("Incident wurde ignoriert.");
+      else if (action === "resolve") setMessage("Incident wurde erledigt.");
+      else setMessage("Incident wurde aktualisiert.");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     } finally {
@@ -195,11 +247,11 @@ export function InboundShippingClient({
         </section>
 
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-          <div className="grid gap-3 md:grid-cols-[180px_180px_160px_1fr_1fr]">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_180px_160px_minmax(0,1fr)_minmax(0,1fr)]">
             <select
               value={scope}
-              onChange={(event) => setScope(event.target.value as typeof scope)}
-              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              onChange={(event) => setScope(event.target.value as InboundBoardScope)}
+              className="w-full min-w-0 rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               aria-label="Wareneingang-Statusfilter"
             >
               <option value="moving">Wirklich unterwegs</option>
@@ -210,37 +262,42 @@ export function InboundShippingClient({
             </select>
             <select
               value={carrier}
-              onChange={(event) => setCarrier(event.target.value as typeof carrier)}
-              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              onChange={(event) => setCarrier(event.target.value as InboundBoardCarrier)}
+              className="w-full min-w-0 rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               aria-label="Carrier-Filter"
             >
               <option value="all">Alle Carrier</option>
               <option value="dhl">DHL Express</option>
               <option value="fedex">FedEx</option>
+              <option value="other">Sonstige Carrier</option>
+              <option value="unknown">Unbekannt</option>
             </select>
-            <button onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white">
+            <button onClick={applyRequestFilter} className="inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white">
               <RefreshCcw className="h-4 w-4" />
               Laden
             </button>
             <input
-              value={requestId}
-              onChange={(event) => setRequestId(event.target.value)}
-              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              value={requestIdDraft}
+              onChange={(event) => setRequestIdDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") applyRequestFilter();
+              }}
+              className="w-full min-w-0 rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               placeholder="Request-ID Filter"
               aria-label="Request-ID Filter"
             />
             <input
               value={operatorName}
               onChange={(event) => setOperatorName(event.target.value)}
-              className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
+              className="w-full min-w-0 rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               placeholder="Operator"
               aria-label="Operator"
             />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            {loading ? <span className="text-sm text-stone-500">Wareneingang wird geladen...</span> : null}
-            {message ? <span className="text-sm text-emerald-700">{message}</span> : null}
-            {error ? <span className="text-sm text-rose-700">{error}</span> : null}
+            {loading ? <span className="text-sm text-stone-500" role="status" aria-live="polite">Wareneingang wird geladen...</span> : null}
+            {message ? <span className="text-sm text-emerald-700" role="status" aria-live="polite">{message}</span> : null}
+            {error ? <span className="text-sm text-rose-700" role="alert">{error}</span> : null}
           </div>
         </section>
 
@@ -310,14 +367,17 @@ export function InboundShippingClient({
                                 {entry.description ? <p className="mt-1 text-sm leading-6 opacity-80">{entry.description}</p> : null}
                               </div>
                               <div className="flex flex-wrap gap-2">
-                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "create_task")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
-                                  Aufgabe
+                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "create_task")} aria-label={incidentActionLabel(entry, "create_task")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                  {savingIncidentId === entry.id ? "Speichert..." : "Aufgabe"}
                                 </button>
-                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "acknowledge")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "acknowledge")} aria-label={incidentActionLabel(entry, "acknowledge")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
                                   Gesehen
                                 </button>
-                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "resolve")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "resolve")} aria-label={incidentActionLabel(entry, "resolve")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
                                   Erledigt
+                                </button>
+                                <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "ignore")} aria-label={incidentActionLabel(entry, "ignore")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                  Ignorieren
                                 </button>
                               </div>
                             </div>
