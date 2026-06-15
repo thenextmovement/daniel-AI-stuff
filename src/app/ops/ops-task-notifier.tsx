@@ -107,6 +107,11 @@ function saveDismissedKey(key: string) {
   }
 }
 
+function confirmTaskDone(task: OpsInternalTask) {
+  if (typeof window === "undefined") return true;
+  return window.confirm(`Aufgabe "${task.title}" als erledigt markieren?`);
+}
+
 function readOperatorName() {
   try {
     return window.localStorage.getItem(OPERATOR_STORAGE_KEY) || "";
@@ -313,7 +318,10 @@ export function OpsTaskNotifier() {
                     ) : null}
                     <button
                       type="button"
-                      onClick={() => void markDone(task)}
+                      onClick={() => {
+                        if (!confirmTaskDone(task)) return;
+                        void markDone(task);
+                      }}
                       className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />

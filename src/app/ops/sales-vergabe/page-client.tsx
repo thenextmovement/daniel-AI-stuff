@@ -140,10 +140,23 @@ function diagnosticTone(status: string) {
   return "border-amber-200 bg-amber-50 text-amber-900";
 }
 
+function confirmAction(message: string) {
+  if (typeof window === "undefined") return true;
+  return window.confirm(message);
+}
+
+function assignmentMessage(sale: SupplierSale | undefined) {
+  if (!sale) return "Vergabe gespeichert. Sync-Status wurde aktualisiert.";
+  const syncStatuses = [sale.shopifyTagSyncStatus, sale.trelloProjectionStatus, sale.taskSyncStatus];
+  if (syncStatuses.includes("failed")) return "Vergabe gespeichert, aber mindestens ein Sync ist fehlgeschlagen. Bitte Sync-Status pruefen.";
+  if (syncStatuses.includes("pending")) return "Vergabe gespeichert. Mindestens ein Sync ist noch offen.";
+  return "Vergabe gespeichert. Sync-Status wurde aktualisiert.";
+}
+
 function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null) {
-  if (action === "assign_supplier") return "Vergabe gespeichert. Shopify/Trello/Aufgabe wurden verarbeitet.";
+  if (action === "assign_supplier") return assignmentMessage(payload?.sale);
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
-  if (action === "request_payment_reminder") return "Zahlungserinnerung wurde verarbeitet.";
+  if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
   if (action === "create_deadline_tasks") {
     const tasks = payload?.deadlineTasks;
     if (!tasks) return "Deadline-Aufgaben wurden geprueft.";
@@ -301,7 +314,7 @@ function SaleCard({
           </div>
         </div>
 
-        <div className="rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
+        <div className="min-w-0 rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
           <div className="grid gap-3">
             <label className="grid gap-1.5">
               <span className="text-xs font-medium text-stone-600">Wann soll geliefert werden?</span>
@@ -309,22 +322,23 @@ function SaleCard({
                 type="date"
                 value={deliveryDate}
                 onChange={(event) => setDeliveryDate(event.target.value)}
-                className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
+                aria-label="Lieferdatum"
+                className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-2">
-              <label className="grid gap-1.5">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="grid min-w-0 gap-1.5">
                 <span className="text-xs font-medium text-stone-600">Supplier</span>
-                <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSaleSupplier)} className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+                <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSaleSupplier)} aria-label="Supplier auswaehlen" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
                   <option value="quentin">Quentin</option>
                   <option value="said">Saeid</option>
                   <option value="special">Sonder</option>
                 </select>
               </label>
-              <label className="grid gap-1.5">
+              <label className="grid min-w-0 gap-1.5">
                 <span className="text-xs font-medium text-stone-600">Aufgabe an</span>
-                <input value={assigneeLabel} onChange={(event) => setAssigneeLabel(event.target.value)} className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm" />
+                <input value={assigneeLabel} onChange={(event) => setAssigneeLabel(event.target.value)} aria-label="Aufgabe an" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm" />
               </label>
             </div>
 
@@ -332,7 +346,8 @@ function SaleCard({
               <input
                 value={specialSupplierName}
                 onChange={(event) => setSpecialSupplierName(event.target.value)}
-                className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
+                aria-label="Name Sonder-Supplier"
+                className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
                 placeholder="Name Sonder-Supplier"
               />
             ) : null}
@@ -340,7 +355,7 @@ function SaleCard({
             {needsManualPaymentRelease ? (
               <label className="grid gap-1.5">
                 <span className="text-xs font-medium text-stone-600">Zahlungsentscheidung</span>
-                <select value={paymentDecision} onChange={(event) => setPaymentDecision(event.target.value as SupplierSalePaymentDecision)} className="h-10 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+                <select value={paymentDecision} onChange={(event) => setPaymentDecision(event.target.value as SupplierSalePaymentDecision)} aria-label="Zahlungsentscheidung" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
                   <option value="manual_approved_unpaid">Trotz offener Zahlung vergeben</option>
                   <option value="wait_for_payment">Auf Zahlung warten</option>
                 </select>
@@ -350,24 +365,34 @@ function SaleCard({
             <textarea
               value={assignmentNote}
               onChange={(event) => setAssignmentNote(event.target.value)}
-              className="min-h-16 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm"
+              aria-label="Notiz fuer Vergabe"
+              className="min-h-16 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm"
               placeholder="Notiz fuer Vergabe"
             />
 
             <div className="flex flex-wrap gap-2">
               <button
+                type="button"
                 disabled={saving || !deliveryDate || (needsManualPaymentRelease && paymentDecision === "wait_for_payment")}
-                onClick={() => onAction({
-                  action: "assign_supplier",
-                  saleId: sale.id,
-                  supplier,
-                  requestedDeliveryDate: deliveryDate,
-                  specialSupplierName,
-                  assignmentNote,
-                  paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed",
-                  assigneeLabel,
-                  operatorName,
-                })}
+                onClick={() => {
+                  const selectedSupplier = supplierLabel(supplier, specialSupplierName);
+                  const confirmationMessage =
+                    needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid"
+                      ? `Diese Sale ist noch nicht bezahlt. Trotzdem an ${selectedSupplier} vergeben und interne Syncs ausloesen?`
+                      : `Sale an ${selectedSupplier} vergeben und Shopify/Trello/Aufgabe synchronisieren?`;
+                  if (!confirmAction(confirmationMessage)) return;
+                  void onAction({
+                    action: "assign_supplier",
+                    saleId: sale.id,
+                    supplier,
+                    requestedDeliveryDate: deliveryDate,
+                    specialSupplierName,
+                    assignmentNote,
+                    paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed",
+                    assigneeLabel,
+                    operatorName,
+                  });
+                }}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
               >
                 <BadgeCheck className="h-4 w-4" />
@@ -375,13 +400,17 @@ function SaleCard({
               </button>
               {needsManualPaymentRelease ? (
                 <button
+                  type="button"
                   disabled={saving}
-                  onClick={() => onAction({
-                    action: "update_payment_decision",
-                    saleId: sale.id,
-                    paymentDecisionStatus: "wait_for_payment",
-                    operatorName,
-                  })}
+                  onClick={() => {
+                    if (!confirmAction("Sale auf Zahlung warten setzen und Vergabe vorerst stoppen?")) return;
+                    void onAction({
+                      action: "update_payment_decision",
+                      saleId: sale.id,
+                      paymentDecisionStatus: "wait_for_payment",
+                      operatorName,
+                    });
+                  }}
                   className="rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
                 >
                   Warten
@@ -394,18 +423,24 @@ function SaleCard({
                 <input
                   value={reminderLink}
                   onChange={(event) => setReminderLink(event.target.value)}
-                  className="h-9 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-xs"
+                  aria-label="Bezahl-Link fuer Erinnerung"
+                  className="h-9 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-xs"
                   placeholder="Bezahl-Link"
                 />
                 <button
+                  type="button"
                   disabled={saving}
-                  onClick={() => onAction({
-                    action: "request_payment_reminder",
-                    saleId: sale.id,
-                    recipientEmail: sale.customerEmail,
-                    paymentLink: reminderLink,
-                    operatorName,
-                  })}
+                  onClick={() => {
+                    const recipient = sale.customerEmail ? `an ${sale.customerEmail}` : "ohne Kunden-E-Mail";
+                    if (!confirmAction(`Zahlungserinnerung ${recipient} verarbeiten?`)) return;
+                    void onAction({
+                      action: "request_payment_reminder",
+                      saleId: sale.id,
+                      recipientEmail: sale.customerEmail,
+                      paymentLink: reminderLink,
+                      operatorName,
+                    });
+                  }}
                   className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"
                 >
                   <Mail className="h-4 w-4" />
@@ -442,6 +477,7 @@ export function SupplierSalesClient({
   const [savingSaleId, setSavingSaleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const canRunDeadlineTasks = Boolean(board) && !loading && savingSaleId !== "deadline-tasks";
 
   useEffect(() => {
     try {
@@ -612,11 +648,12 @@ export function SupplierSalesClient({
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void loadBoard();
                 }}
+                aria-label="Sales suchen"
                 className="w-full rounded-[0.5rem] border border-stone-300 py-2 pl-9 pr-3 text-sm"
                 placeholder="Kunde, Shopify, Angebot..."
               />
             </label>
-            <select value={scope} onChange={(event) => setScope(event.target.value as ScopeFilter)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={scope} onChange={(event) => setScope(event.target.value as ScopeFilter)} aria-label="Bereich filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="active">Aktive Sales</option>
               <option value="ready">Bereit</option>
               <option value="payment">Zahlung offen</option>
@@ -625,14 +662,14 @@ export function SupplierSalesClient({
               <option value="sync">Sync-Fehler</option>
               <option value="all">Alle</option>
             </select>
-            <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierFilter)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierFilter)} aria-label="Supplier filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="all">Alle Supplier</option>
               <option value="quentin">Quentin</option>
               <option value="said">Saeid</option>
               <option value="special">Sonder</option>
               <option value="manual_review">Pruefen</option>
             </select>
-            <select value={payment} onChange={(event) => setPayment(event.target.value as PaymentFilter)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={payment} onChange={(event) => setPayment(event.target.value as PaymentFilter)} aria-label="Zahlungsstatus filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="all">Alle Zahlungen</option>
               <option value="paid">Bezahlt</option>
               <option value="unpaid">Nicht bezahlt</option>
@@ -640,7 +677,7 @@ export function SupplierSalesClient({
               <option value="authorized">Autorisiert</option>
               <option value="unknown">Unklar</option>
             </select>
-            <button onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white">
+            <button type="button" disabled={loading} onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-stone-300">
               <RefreshCcw className="h-4 w-4" />
               Laden
             </button>
@@ -649,13 +686,18 @@ export function SupplierSalesClient({
             <input
               value={operatorName}
               onChange={(event) => setOperatorName(event.target.value)}
+              aria-label="Operator"
               className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               placeholder="Operator"
             />
             <button
-              disabled={savingSaleId === "deadline-tasks"}
-              onClick={() => void runSaleAction("deadline-tasks", { action: "create_deadline_tasks", operatorName })}
-              className="inline-flex items-center gap-2 rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 disabled:opacity-60"
+              type="button"
+              disabled={!canRunDeadlineTasks}
+              onClick={() => {
+                if (!confirmAction("Deadline-Aufgaben jetzt pruefen und fehlende interne Aufgaben erstellen?")) return;
+                void runSaleAction("deadline-tasks", { action: "create_deadline_tasks", operatorName });
+              }}
+              className="inline-flex items-center gap-2 rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <AlertTriangle className="h-4 w-4" />
               Deadline-Aufgaben pruefen
