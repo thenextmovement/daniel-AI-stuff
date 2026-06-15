@@ -108,6 +108,12 @@ const segmentRules: SegmentRule[] = [
     setting: "Hotel - moderner Lobby- oder Empfangsbereich, hochwertige Materialien, ruhiges Premium-Ambiente fuer realistisches Neon-Mockup.",
   },
   {
+    segment: "Physiotherapiepraxis",
+    ntSegment: "NT-13",
+    keywords: [/physio/i, /physiotherapie/i, /therapiezentrum/i, /rehabilitation/i, /\breha\b/i],
+    setting: "Physiotherapiepraxis - moderner Empfangs- oder Therapiebereich, helles cleanes Praxisumfeld, hochwertig und vertrauenswuerdig fuer realistisches Neon-Mockup.",
+  },
+  {
     segment: "Arztpraxis",
     ntSegment: "NT-13",
     keywords: [/arzt/i, /medical/i, /clinic/i, /klinik/i, /praxis/i],
@@ -118,6 +124,12 @@ const segmentRules: SegmentRule[] = [
     ntSegment: "NT-13",
     keywords: [/zahnarzt/i, /dental/i, /kiefer/i],
     setting: "Zahnarztpraxis - moderner Praxisempfang, cleanes helles Interior, hochwertiges medizinisches Umfeld fuer realistisches Neon-Mockup.",
+  },
+  {
+    segment: "Spa / Wellness",
+    ntSegment: "NT-18",
+    keywords: [/\bspa\b/i, /wellness/i, /massage/i, /sauna/i, /beauty spa/i],
+    setting: "Spa / Wellness - ruhiger hochwertiger Empfangs- oder Behandlungsbereich, warme Premium-Atmosphaere, cleanes entspannendes Interior fuer realistisches Neon-Mockup.",
   },
   {
     segment: "Universitaet",
@@ -246,7 +258,7 @@ function settingForSegment(segment: string) {
   const rule = segmentRuleByName(segment);
   if (rule) return rule.setting;
   const nt = getCustomerSegmentOption(segment);
-  if (nt?.segment === "NT-2") return segmentRules.find((rule) => rule.segment === "Restaurant")?.setting;
+  if (nt?.segment === "NT-2") return "Gastronomie - passender hochwertiger Restaurant-, Cafe-, Bar- oder Hotelbereich je nach Kundenkontext, warmes Ambiente, realistisches Setting fuer Neon-Mockup.";
   if (nt?.segment === "NT-3") return segmentRules.find((rule) => rule.segment === "Eventagentur")?.setting;
   if (nt?.segment === "NT-13") return segmentRules.find((rule) => rule.segment === "Arztpraxis")?.setting;
   if (nt?.segment === "NT-15") return segmentRules.find((rule) => rule.segment === "Fitnessstudio")?.setting;
@@ -261,7 +273,7 @@ function settingForSegment(segment: string) {
 function displaySegment(value: string) {
   const nt = getCustomerSegmentOption(value);
   if (!nt) return value;
-  if (nt.segment === "NT-2") return "Restaurant";
+  if (nt.segment === "NT-2") return "Gastronomie";
   if (nt.segment === "NT-3") return "Eventagentur";
   if (nt.segment === "NT-13") return "Arztpraxis";
   if (nt.segment === "NT-15") return "Fitnessstudio";
@@ -322,6 +334,16 @@ export function resolveMockupSegment(input: MockupContextInput): MockupSegmentRe
     const storedNt = getCustomerSegmentOption(stored);
     const source = segmentSourceFromStored(input.storedSegmentSource);
     if (source !== "fallback") {
+      const contextualRule = source !== "manual" ? findRule(input) : null;
+      if (contextualRule && storedNt?.segment === "NT-2") {
+        return {
+          segment: contextualRule.segment,
+          source: "ai",
+          confidence: confidenceFromStored(input.storedSegmentConfidence, 0.82),
+          reasonCodes: ["keyword_context_override_stored_segment"],
+          ntSegment: contextualRule.ntSegment,
+        };
+      }
       return {
         segment: storedRule?.segment || displaySegment(stored),
         source,

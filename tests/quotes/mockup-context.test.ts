@@ -136,3 +136,56 @@ test("trello description uses stored ai segment from master request when availab
   assert.match(description, /Konfidenz: 0\.91/);
   assert.match(description, /#startprompt[\s\S]+Immobilienbuero[\s\S]+#endprompt/);
 });
+
+test("stored gastronomy segment is not rendered as restaurant without matching context", () => {
+  const description = buildMockupTrelloDescription({
+    requestId: "REQ-GASTRO",
+    customerCompany: "Unklarer Betrieb GmbH",
+    requestDescription: "Logo fuer den Empfangsbereich",
+    storedSegment: "NT-2",
+    storedSegmentSource: "request_segmenter",
+    storedSegmentConfidence: 0.8,
+  });
+
+  assert.match(description, /Segment: Gastronomie/);
+  assert.doesNotMatch(description, /Segment: Restaurant/);
+});
+
+test("clear spa and physiotherapy context override coarse ai gastronomy segment for trello description", () => {
+  const spa = buildMockupTrelloDescription({
+    requestId: "REQ-SPA",
+    customerCompany: "Aurum Spa",
+    requestDescription: "Leuchtschrift fuer hochwertigen Wellness- und Massage-Empfang",
+    storedSegment: "NT-2",
+    storedSegmentSource: "request_segmenter",
+    storedSegmentConfidence: 0.81,
+  });
+  assert.match(spa, /Segment: Spa \/ Wellness/);
+  assert.match(spa, /Spa \/ Wellness - ruhiger hochwertiger Empfangs- oder Behandlungsbereich/);
+  assert.doesNotMatch(spa, /Segment: Restaurant/);
+
+  const physio = buildMockupTrelloDescription({
+    requestId: "REQ-PHYSIO",
+    customerCompany: "Therapiezentrum Am Park",
+    requestDescription: "Logo fuer eine Physiotherapiepraxis",
+    storedSegment: "NT-2",
+    storedSegmentSource: "request_segmenter",
+    storedSegmentConfidence: 0.79,
+  });
+  assert.match(physio, /Segment: Physiotherapiepraxis/);
+  assert.match(physio, /Physiotherapiepraxis - moderner Empfangs- oder Therapiebereich/);
+  assert.doesNotMatch(physio, /Segment: Restaurant/);
+});
+
+test("manual stored segment still wins over spa keyword context", () => {
+  const segment = resolveMockupSegment({
+    requestDescription: "Spa und Wellness Empfang",
+    storedSegment: "NT-2",
+    storedSegmentSource: "manual_ops_portal",
+    storedSegmentConfidence: 1,
+  });
+
+  assert.equal(segment.segment, "Gastronomie");
+  assert.equal(segment.source, "manual");
+  assert.equal(segment.ntSegment, "NT-2");
+});
