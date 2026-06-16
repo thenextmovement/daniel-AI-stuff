@@ -474,6 +474,7 @@ export function deriveAssignmentStatus(input: {
   paymentDecisionStatus: SupplierSalePaymentDecision;
   assignedSupplier?: SupplierSaleSupplier | null;
   currentStatus?: SupplierSaleAssignmentStatus | null;
+  completedOfferSource?: boolean;
 }): SupplierSaleAssignmentStatus {
   if (input.paymentDecisionStatus === "canceled" || input.paymentDecisionStatus === "refunded") return "canceled";
   if (input.assignedSupplier) {
@@ -485,6 +486,7 @@ export function deriveAssignmentStatus(input: {
   if (input.paymentDecisionStatus === "paid_confirmed" || input.paymentDecisionStatus === "manual_approved_unpaid") {
     return "ready_to_assign";
   }
+  if (input.completedOfferSource && input.paymentDecisionStatus === "pending") return "ready_to_assign";
   if (input.paymentDecisionStatus === "wait_for_payment" || input.paymentDecisionStatus === "pending") return "payment_open";
   return "needs_review";
 }
@@ -1342,6 +1344,8 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
   if (!lineItems.length) throw new QuoteValidationError("Sale braucht mindestens eine Position.", ["Sale braucht mindestens eine Position."], 422);
 
   const recommendation = deriveSupplierRecommendation(lineItems);
+  const source = nullableText(input.source, 80) || "shopify";
+  const completedOfferSource = source === "neontrip-offers" && recordString(input.metadata || {}, ["source_event"], 80) === "offer.completed";
   const paymentStatus = normalizeShopifyPaymentStatus(input.shopifyPaymentStatus);
   const paymentDecision = derivePaymentDecisionStatus(paymentStatus, existing?.payment_decision_status);
   const assignedSupplier = existing?.assigned_supplier || null;
@@ -1349,11 +1353,12 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
     paymentDecisionStatus: paymentDecision,
     assignedSupplier,
     currentStatus: existing?.assignment_status,
+    completedOfferSource,
   });
 
   return {
     sale_key: cleanText(input.saleKey, 260),
-    source: nullableText(input.source, 80) || "shopify",
+    source,
     shopify_order_id: nullableText(input.shopifyOrderId, 180) || existing?.shopify_order_id || null,
     shopify_order_name: nullableText(input.shopifyOrderName, 120) || existing?.shopify_order_name || null,
     shopify_order_url: nullableText(input.shopifyOrderUrl, 1000) || existing?.shopify_order_url || null,

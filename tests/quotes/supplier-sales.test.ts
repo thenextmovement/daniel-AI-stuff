@@ -204,7 +204,9 @@ test("payment and assignment states separate paid, unpaid approval and waiting",
   assert.equal(derivePaymentDecisionStatus("pending", "manual_approved_unpaid"), "manual_approved_unpaid");
   assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "paid_confirmed" }), "ready_to_assign");
   assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "manual_approved_unpaid" }), "ready_to_assign");
+  assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "pending", completedOfferSource: true }), "ready_to_assign");
   assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "wait_for_payment" }), "payment_open");
+  assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "wait_for_payment", completedOfferSource: true }), "payment_open");
   assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "paid_confirmed", assignedSupplier: "quentin" }), "assigned");
 });
 
