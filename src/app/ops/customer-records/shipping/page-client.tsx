@@ -13,6 +13,7 @@ type ShippingApiResponse = {
   error?: string;
   issues?: string[];
 };
+type ShippingIncidentAction = "create_task" | "acknowledge" | "resolve" | "ignore";
 
 function formatApiError(payload: { error?: string; issues?: string[] } | null) {
   if (!payload) return "Unbekannter Fehler.";
@@ -58,6 +59,30 @@ function incidentKindLabel(incident: ShippingIncident) {
 
 function leadIncident(item: ShippingBoardItem) {
   return item.incidents.find((incident) => incident.status === "open") || item.incidents[0] || null;
+}
+
+function confirmIncidentAction(incident: ShippingIncident, action: ShippingIncidentAction) {
+  if (action === "resolve") {
+    return window.confirm(`Incident "${incident.title}" wirklich als erledigt markieren?`);
+  }
+  if (action === "ignore") {
+    return window.confirm(`Incident "${incident.title}" wirklich ignorieren?`);
+  }
+  return true;
+}
+
+function incidentActionLabel(incident: ShippingIncident, action: ShippingIncidentAction) {
+  if (action === "create_task") return `Aufgabe für ${incident.title} anlegen`;
+  if (action === "acknowledge") return `Incident ${incident.title} als gesehen markieren`;
+  if (action === "resolve") return `Incident ${incident.title} als erledigt markieren`;
+  return `Incident ${incident.title} ignorieren`;
+}
+
+function incidentActionMessage(action: ShippingIncidentAction) {
+  if (action === "create_task") return "Aufgabe wurde angelegt oder war bereits verknüpft.";
+  if (action === "acknowledge") return "Incident wurde als gesehen markiert.";
+  if (action === "resolve") return "Incident wurde erledigt.";
+  return "Incident wurde ignoriert.";
 }
 
 export function CustomerShippingClient({
@@ -138,7 +163,8 @@ export function CustomerShippingClient({
     }
   }
 
-  async function runIncidentAction(incident: ShippingIncident, action: "create_task" | "acknowledge" | "resolve" | "ignore") {
+  async function runIncidentAction(incident: ShippingIncident, action: ShippingIncidentAction) {
+    if (!confirmIncidentAction(incident, action)) return;
     setSavingIncidentId(incident.id);
     setError(null);
     setMessage(null);
@@ -151,7 +177,7 @@ export function CustomerShippingClient({
       const payload = (await response.json().catch(() => null)) as ShippingApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       if (payload.board) setBoard(payload.board);
-      setMessage(action === "create_task" ? "Aufgabe wurde angelegt oder war bereits verknüpft." : "Incident wurde aktualisiert.");
+      setMessage(incidentActionMessage(action));
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     } finally {
@@ -213,21 +239,22 @@ export function CustomerShippingClient({
                 }}
                 className="w-full rounded-[0.5rem] border border-stone-300 py-2 pl-9 pr-3 text-sm"
                 placeholder="Request-ID filtern"
+                aria-label="Request-ID Filter"
               />
             </label>
-            <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} aria-label="Paketversand-Statusfilter" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="moving">Wirklich unterwegs</option>
               <option value="problems">Echte Fehler</option>
               <option value="label_created">Nur Label erstellt</option>
               <option value="active">Aktive Sendungen</option>
               <option value="all">Alle Sendungen</option>
             </select>
-            <select value={carrier} onChange={(event) => setCarrier(event.target.value as typeof carrier)} className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={carrier} onChange={(event) => setCarrier(event.target.value as typeof carrier)} aria-label="Carrier-Filter" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="all">Alle Carrier</option>
               <option value="dpd">DPD</option>
               <option value="dhl">DHL</option>
             </select>
-            <button onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white">
+            <button type="button" onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white">
               <RefreshCcw className="h-4 w-4" />
               Laden
             </button>
@@ -238,10 +265,11 @@ export function CustomerShippingClient({
               onChange={(event) => setOperatorName(event.target.value)}
               className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               placeholder="Operator"
+              aria-label="Operator"
             />
-            {loading ? <span className="text-sm text-stone-500">Paketversand wird geladen...</span> : null}
-            {message ? <span className="text-sm text-emerald-700">{message}</span> : null}
-            {error ? <span className="text-sm text-rose-700">{error}</span> : null}
+            {loading ? <span className="text-sm text-stone-500" role="status" aria-live="polite">Paketversand wird geladen...</span> : null}
+            {message ? <span className="text-sm text-emerald-700" role="status" aria-live="polite">{message}</span> : null}
+            {error ? <span className="text-sm text-rose-700" role="alert">{error}</span> : null}
           </div>
         </section>
 
@@ -294,14 +322,17 @@ export function CustomerShippingClient({
                               {entry.description ? <p className="mt-1 text-sm leading-6 opacity-80">{entry.description}</p> : null}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "create_task")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                              <button type="button" disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "create_task")} aria-label={incidentActionLabel(entry, "create_task")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
                                 Aufgabe
                               </button>
-                              <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "acknowledge")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                              <button type="button" disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "acknowledge")} aria-label={incidentActionLabel(entry, "acknowledge")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
                                 Gesehen
                               </button>
-                              <button disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "resolve")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                              <button type="button" disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "resolve")} aria-label={incidentActionLabel(entry, "resolve")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
                                 Erledigt
+                              </button>
+                              <button type="button" disabled={savingIncidentId === entry.id} onClick={() => void runIncidentAction(entry, "ignore")} aria-label={incidentActionLabel(entry, "ignore")} className="rounded-[0.5rem] border border-current/20 bg-white/60 px-3 py-2 text-xs font-medium">
+                                Ignorieren
                               </button>
                             </div>
                           </div>
