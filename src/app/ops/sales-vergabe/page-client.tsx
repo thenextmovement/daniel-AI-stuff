@@ -551,29 +551,39 @@ export function SupplierSalesClient({
     setToken("");
   }
 
-  async function loadBoard() {
+  async function syncCompletedOffers() {
+    const syncResponse = await fetch("/api/ops/supplier-sales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "sync_completed_offers", limit: 50, operatorName }),
+    });
+    const syncPayload = (await syncResponse.json().catch(() => null)) as SupplierSalesApiResponse | null;
+    if (!syncResponse.ok || !syncPayload?.ok) {
+      return { message: null, warning: `Completed-Offers-Sync fehlgeschlagen: ${formatApiError(syncPayload)}` };
+    }
+    const sync = syncPayload.completedOffersSync;
+    if (sync?.status === "failed") {
+      return { message: null, warning: `Completed-Offers-Sync fehlgeschlagen: ${sync.errors[0]?.error || "unbekannter Fehler"}` };
+    }
+    if (sync?.status === "skipped") {
+      return { message: null, warning: sync.warnings[0] || "Completed-Offers-Sync uebersprungen." };
+    }
+    if (sync && sync.upserted > 0) {
+      return { message: `Completed-Offers-Sync: ${sync.upserted} Angebote importiert/aktualisiert.`, warning: null };
+    }
+    return { message: "Completed-Offers-Sync: keine neuen Angebote.", warning: null };
+  }
+
+  async function loadBoard(options?: { syncCompletedOffers?: boolean }) {
     setLoading(true);
     setError(null);
-    let syncMessage: string | null = null;
-    let syncWarning: string | null = null;
+    let nextMessage: string | null = null;
+    let nextError: string | null = null;
     try {
-      const syncResponse = await fetch("/api/ops/supplier-sales", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync_completed_offers", limit: 50, operatorName }),
-      });
-      const syncPayload = (await syncResponse.json().catch(() => null)) as SupplierSalesApiResponse | null;
-      if (syncResponse.ok && syncPayload?.ok) {
-        const sync = syncPayload.completedOffersSync;
-        if (sync?.status === "failed") {
-          syncWarning = `Completed-Offers-Sync fehlgeschlagen: ${sync.errors[0]?.error || "unbekannter Fehler"}`;
-        } else if (sync?.status === "skipped") {
-          syncWarning = sync.warnings[0] || "Completed-Offers-Sync uebersprungen.";
-        } else if (sync && sync.upserted > 0) {
-          syncMessage = `Completed-Offers-Sync: ${sync.upserted} Angebote importiert/aktualisiert.`;
-        }
-      } else {
-        syncWarning = `Completed-Offers-Sync fehlgeschlagen: ${formatApiError(syncPayload)}`;
+      if (options?.syncCompletedOffers) {
+        const syncResult = await syncCompletedOffers();
+        nextMessage = syncResult.message;
+        nextError = syncResult.warning;
       }
 
       const params = new URLSearchParams();
@@ -585,8 +595,8 @@ export function SupplierSalesClient({
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
       setBoard(payload.board);
-      setMessage(syncMessage);
-      setError(syncWarning);
+      setMessage(nextMessage);
+      setError(nextError);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Sales-Vergabe konnte nicht geladen werden.");
     } finally {
@@ -740,7 +750,7 @@ export function SupplierSalesClient({
               <option value="authorized">Autorisiert</option>
               <option value="unknown">Unklar</option>
             </select>
-            <button type="button" disabled={loading} onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-stone-300">
+            <button type="button" disabled={loading} onClick={() => void loadBoard({ syncCompletedOffers: true })} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-stone-300">
               <RefreshCcw className="h-4 w-4" />
               Sync + Laden
             </button>

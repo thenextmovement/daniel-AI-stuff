@@ -268,7 +268,7 @@ async function main() {
 
   page.once("dialog", dialogHandler(dialogs, "dismiss-unpaid-assign", false));
   await unpaidCard.getByRole("button", { name: "Vergeben" }).click();
-  assert(posts.length === 0, "Abgebrochene unbezahlte Vergabe sendet trotzdem POST");
+  assert(posts.length === 0, `Abgebrochene unbezahlte Vergabe sendet trotzdem POST: ${JSON.stringify({ posts, dialogs })}`);
 
   page.once("dialog", dialogHandler(dialogs, "accept-unpaid-assign", true));
   await unpaidCard.getByRole("button", { name: "Vergeben" }).click();
