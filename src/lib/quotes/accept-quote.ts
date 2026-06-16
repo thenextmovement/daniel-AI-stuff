@@ -4,6 +4,7 @@ import {
   replaceQuoteSelections,
   saveQuoteAcceptance,
 } from "./supabase-rest";
+import { syncAcceptedQuoteToOps } from "./ops-sales-sync";
 import type { AcceptQuotePayload } from "./types";
 import { assertAcceptableStatus, validateAcceptQuotePayload, QuoteValidationError } from "./validation";
 
@@ -29,5 +30,15 @@ export async function acceptQuote(input: {
     userAgent: input.userAgent,
   });
 
-  return { quote_id: quote.id, status: "accepted", totals };
+  const opsSync = await syncAcceptedQuoteToOps({ quote, payload: input.payload, totals });
+  if (opsSync.status === "failed") {
+    console.error("accepted quote ops supplier-sales sync failed", {
+      quoteId: quote.id,
+      requestId: quote.request_id,
+      status: opsSync.httpStatus || null,
+      error: opsSync.error,
+    });
+  }
+
+  return { quote_id: quote.id, status: "accepted", totals, opsSync };
 }
