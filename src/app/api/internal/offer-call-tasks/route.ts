@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 type OfferCallTaskAction =
   | "create_inquiry_call_task"
+  | "create_idea_review_task"
   | "create_offer_sent_call_task"
   | "create_unopened_24h_call_task"
   | "complete_task"
@@ -43,8 +44,10 @@ type OfferCallTaskRequest = {
 };
 
 const SHARED_CALL_ASSIGNEE = "Daniel + Fabienne";
+const IDEA_REVIEW_ASSIGNEE = "Daniel";
 const INQUIRY_CALL_SOURCE_TYPE = "neontrip_inquiry_call";
 const OFFER_CALL_SOURCE_TYPE = "neontrip_offer_call";
+const IDEA_REVIEW_SOURCE_TYPE = "neontrip_request_idea";
 
 function configuredInternalKeys() {
   return [
@@ -168,6 +171,17 @@ function taskDescription(record: CustomerSearchResult, body: OfferCallTaskReques
   return lines.join("\n").slice(0, 1200);
 }
 
+function ideaTaskDescription(record: CustomerSearchResult, body: OfferCallTaskRequest) {
+  const note = trimNullable(body.note);
+  const lines = [
+    "Im Ideen-/Nachricht-Feld wurde eine Kundenidee eingereicht. Bitte pruefen, ob daraus ein Angebot, Rueckfrage oder interne Anpassung entstehen muss.",
+    `Kunde: ${customerLabel(record, body)}`,
+    `Request-ID: ${record.requestId}`,
+    note ? `Idee/Nachricht: ${note}` : null,
+  ].filter(Boolean);
+  return lines.join("\n").slice(0, 1200);
+}
+
 async function completeOpenInquiryTasks(requestId: string, actor: UpdateActor) {
   const board = await listCustomerInternalTasks({ requestId, includeDone: false, limit: 2000 });
   const inquiryTasks = board.tasks.filter((task) => (
@@ -205,6 +219,26 @@ async function createCallTask(body: OfferCallTaskRequest, request: NextRequest) 
       requestId: record.requestId,
       idempotencyKey: `ops-call:request:${record.requestId}:inquiry`,
       sourceType: INQUIRY_CALL_SOURCE_TYPE,
+      sourceId: record.requestId,
+    }, actor);
+    return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks: 0 });
+  }
+
+  if (action === "create_idea_review_task") {
+    if (!trimNullable(body.note)) {
+      return NextResponse.json({ ok: true, action, requestId: record.requestId, skipped: true, reason: "missing_idea_note" }, { status: 202 });
+    }
+
+    const task = await createCustomerInternalTask({
+      title: "Idee eingereicht - Daniel pruefen",
+      description: ideaTaskDescription(record, body),
+      assigneeName: IDEA_REVIEW_ASSIGNEE,
+      dueAt: now,
+      category: "customer_followup",
+      priority: "normal",
+      requestId: record.requestId,
+      idempotencyKey: `ops-task:request:${record.requestId}:idea-review`,
+      sourceType: IDEA_REVIEW_SOURCE_TYPE,
       sourceId: record.requestId,
     }, actor);
     return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks: 0 });
@@ -251,6 +285,7 @@ export async function POST(request: NextRequest) {
   try {
     if (
       body?.action === "create_inquiry_call_task" ||
+      body?.action === "create_idea_review_task" ||
       body?.action === "create_offer_sent_call_task" ||
       body?.action === "create_unopened_24h_call_task"
     ) {
