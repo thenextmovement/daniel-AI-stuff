@@ -908,6 +908,92 @@ test("completed offers sync imports recent Shopify orders as fallback", async ()
   assert.equal(salePostCount, 1);
 });
 
+test("shopify fallback treats existing supplier tags as already assigned", async () => {
+  let salePostCount = 0;
+  const importedRow = saleRow({
+    id: "sale-shopify-tagged",
+    sale_key: "shopify:order:987654333",
+    source: "shopify",
+    shopify_order_id: "987654333",
+    shopify_order_name: "#1236",
+    assigned_supplier: "said",
+    assignment_status: "assigned",
+    shopify_tag_value: "Saeid (schon bezahlt)",
+    shopify_tag_sync_status: "synced",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") return Response.json({ ok: true, sales: [], count: 0 });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      return Response.json({
+        data: {
+          orders: {
+            nodes: [{
+              id: "gid://shopify/Order/987654333",
+              name: "#1236",
+              email: "tagged@example.com",
+              tags: ["Saeid (schon bezahlt)"],
+              createdAt: "2026-06-16T12:40:00Z",
+              processedAt: "2026-06-16T12:41:00Z",
+              displayFinancialStatus: "PAID",
+              customAttributes: [{ key: "deadline", value: "2026-06-29" }],
+              totalPriceSet: { shopMoney: { amount: "180.00", currencyCode: "EUR" } },
+              subtotalPriceSet: { shopMoney: { amount: "151.26", currencyCode: "EUR" } },
+              customer: { firstName: "Tagged", lastName: "Sale", email: "tagged@example.com", phone: null },
+              billingAddress: null,
+              shippingAddress: null,
+              lineItems: {
+                nodes: [{
+                  id: "gid://shopify/LineItem/2",
+                  title: "LED Neon Schriftzug",
+                  sku: null,
+                  quantity: 1,
+                  variantTitle: null,
+                  customAttributes: [],
+                  image: null,
+                  product: { productType: "LED-Neon-Flex" },
+                }],
+              },
+            }],
+          },
+        },
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("id") === `eq.${importedRow.id}`) return Response.json([importedRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      salePostCount += 1;
+      const payload = JSON.parse(String(init?.body || "{}"));
+      assert.equal(payload.assigned_supplier, "said");
+      assert.equal(payload.assignment_status, "assigned");
+      assert.equal(payload.shopify_tag_value, "Saeid (schon bezahlt)");
+      assert.equal(payload.shopify_tag_sync_status, "synced");
+      assert.equal(typeof payload.shopify_tag_synced_at, "string");
+      return Response.json([importedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: importedRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.sources?.shopifyOrders.checked, 1);
+    assert.equal(result.upserted, 1);
+  });
+
+  assert.equal(salePostCount, 1);
+});
+
 test("supplier sales live check compares latest completed offers with vergabe rows without PII", async () => {
   const latestRow = saleRow({
     id: "sale-live-1",

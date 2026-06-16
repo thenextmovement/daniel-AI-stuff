@@ -471,6 +471,10 @@ function hashPayload(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 16);
 }
 
+function normalizedTag(value: unknown) {
+  return cleanText(value, 120).toLowerCase();
+}
+
 function upsertPath(path: string, conflictColumn: string) {
   return `${path}?on_conflict=${encodeURIComponent(conflictColumn)}`;
 }
@@ -1458,6 +1462,32 @@ async function insertEvent(input: {
   }
 }
 
+function shopifyTagsFromInput(input: SupplierSaleInput) {
+  const rawTags = [
+    input.rawShopify?.tags,
+    jsonRecord(input.rawShopify?.order).tags,
+    input.metadata?.shopify_tags,
+  ];
+  const tags: string[] = [];
+  for (const value of rawTags) {
+    if (Array.isArray(value)) tags.push(...value.map((entry) => cleanText(entry, 120)).filter(Boolean));
+    else if (typeof value === "string") tags.push(...value.split(",").map((entry) => cleanText(entry, 120)).filter(Boolean));
+  }
+  return [...new Set(tags)];
+}
+
+function assignedSupplierFromShopifyTags(input: SupplierSaleInput): SupplierSaleSupplier | null {
+  const tags = new Set(shopifyTagsFromInput(input).map(normalizedTag));
+  if (!tags.size) return null;
+  const quentin = normalizedTag(supplierTagValue("quentin"));
+  const said = normalizedTag(supplierTagValue("said"));
+  const special = normalizedTag(supplierTagValue("special"));
+  if (quentin && tags.has(quentin)) return "quentin";
+  if (said && tags.has(said)) return "said";
+  if (special && tags.has(special)) return "special";
+  return null;
+}
+
 function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow | null) {
   const lineItems = input.lineItems || [];
   if (!input.saleKey) throw new QuoteValidationError("Sale-Key fehlt.", ["Sale-Key fehlt."], 422);
@@ -1468,7 +1498,10 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
   const completedOfferSource = source === "neontrip-offers" && recordString(input.metadata || {}, ["source_event"], 80) === "offer.completed";
   const paymentStatus = normalizeShopifyPaymentStatus(input.shopifyPaymentStatus);
   const paymentDecision = derivePaymentDecisionStatus(paymentStatus, existing?.payment_decision_status);
-  const assignedSupplier = existing?.assigned_supplier || null;
+  const taggedSupplier = assignedSupplierFromShopifyTags(input);
+  const assignedSupplier = existing?.assigned_supplier || taggedSupplier || null;
+  const detectedTagValue = taggedSupplier ? supplierTagValue(taggedSupplier) : null;
+  const existingTagStatus = existing?.shopify_tag_sync_status;
   const assignmentStatus = deriveAssignmentStatus({
     paymentDecisionStatus: paymentDecision,
     assignedSupplier,
@@ -1508,6 +1541,12 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
     assigned_supplier: assignedSupplier,
     special_supplier_name: existing?.special_supplier_name || null,
     assignment_status: assignmentStatus,
+    shopify_tag_value: existing?.shopify_tag_value || detectedTagValue || null,
+    shopify_tag_sync_status: existingTagStatus && existingTagStatus !== "not_started"
+      ? existingTagStatus
+      : detectedTagValue ? "synced" : existingTagStatus || "not_started",
+    shopify_tag_synced_at: existing?.shopify_tag_synced_at || (detectedTagValue ? new Date().toISOString() : null),
+    shopify_tag_error: detectedTagValue ? null : existing?.shopify_tag_error || null,
     product_summary: nullableText(input.productSummary, 600) || lineItems.map((item) => cleanText(item.title, 120)).filter(Boolean).slice(0, 3).join(", ") || existing?.product_summary || null,
     primary_image_url: nullableText(input.primaryImageUrl, 1000) || lineItems.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || existing?.primary_image_url || null,
     raw_shopify: Object.keys(input.rawShopify || {}).length ? input.rawShopify : existing?.raw_shopify || {},
@@ -1654,6 +1693,7 @@ function shopifyOrderPayloadFromGraphql(order: JsonRecord, domain: string) {
     name: recordString(order, ["name"], 120),
     admin_url: numericId ? `https://${domain}/admin/orders/${numericId}` : null,
     financial_status: recordString(order, ["displayFinancialStatus"], 80)?.toLowerCase(),
+    tags: Array.isArray(order.tags) ? order.tags.map((tag) => cleanText(tag, 120)).filter(Boolean) : [],
     created_at: recordString(order, ["createdAt"], 80),
     processed_at: recordString(order, ["processedAt"], 80),
     currency,
@@ -1823,6 +1863,7 @@ async function syncRecentShopifyOrdersFromAdmin(
               name
               email
               phone
+              tags
               createdAt
               processedAt
               displayFinancialStatus
