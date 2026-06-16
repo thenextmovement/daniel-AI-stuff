@@ -134,6 +134,11 @@ function sortTasks(tasks: OpsInternalTask[]) {
   });
 }
 
+function confirmTaskDone(task: OpsInternalTask) {
+  if (typeof window === "undefined") return true;
+  return window.confirm(`Aufgabe "${task.title}" als erledigt markieren?`);
+}
+
 function TaskCard({
   task,
   operatorName,
@@ -192,7 +197,9 @@ function TaskCard({
       <div className="mt-4 flex flex-wrap gap-2">
         {task.status !== "in_progress" && task.status !== "done" ? (
           <button
+            type="button"
             onClick={() => onUpdate(task.id, { status: "in_progress" })}
+            aria-label={`Aufgabe ${task.title} starten`}
             className="rounded-xl bg-stone-950 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-800"
           >
             Starten
@@ -200,7 +207,9 @@ function TaskCard({
         ) : null}
         {task.status !== "waiting" && task.status !== "done" ? (
           <button
+            type="button"
             onClick={() => onUpdate(task.id, { status: "waiting" })}
+            aria-label={`Aufgabe ${task.title} auf Wartet setzen`}
             className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-950"
           >
             Wartet
@@ -208,7 +217,12 @@ function TaskCard({
         ) : null}
         {task.status !== "done" ? (
           <button
-            onClick={() => onUpdate(task.id, { status: "done", assigneeLabel: task.assigneeLabel || operatorName || null })}
+            type="button"
+            onClick={() => {
+              if (!confirmTaskDone(task)) return;
+              void onUpdate(task.id, { status: "done", assigneeLabel: task.assigneeLabel || operatorName || null });
+            }}
+            aria-label={`Aufgabe ${task.title} als erledigt markieren`}
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100"
           >
             Erledigt
@@ -428,8 +442,10 @@ export function OpsTasksClient({
             onChange={(event) => setOperatorName(event.target.value)}
             className="h-12 w-full rounded-2xl border border-white/12 bg-white/10 px-4 text-sm text-white outline-none transition placeholder:text-white/[0.42] focus:border-white/35 sm:w-52"
             placeholder="Operator"
+            aria-label="Operator"
           />
           <button
+            type="button"
             onClick={() => void loadTasks()}
             disabled={loading}
             className="inline-flex h-12 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-medium text-stone-950 transition hover:bg-[#f7f2ea] disabled:opacity-60"
