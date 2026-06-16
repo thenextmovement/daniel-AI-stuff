@@ -1373,19 +1373,23 @@ export function CustomerSalesCallsClient({
     setSearchHasRun(true);
     setError(null);
     setMessage(null);
-    const response = await fetchWithTimeout(`/api/ops/customer-records?query=${encodeURIComponent(query)}`);
-    const payload = (await response.json().catch(() => null)) as CustomerRecordsSearchResponse | null;
-    if (!response.ok || !payload?.ok) {
-      setError(formatApiError(payload));
+    try {
+      const response = await fetchWithTimeout(`/api/ops/customer-records?query=${encodeURIComponent(query)}`);
+      const payload = (await response.json().catch(() => null)) as CustomerRecordsSearchResponse | null;
+      if (!response.ok || !payload?.ok) {
+        setError(formatApiError(payload));
+        return;
+      }
+      const results = payload.results || [];
+      setSearchResults(results);
+      if (results.length === 1) {
+        openSearchResult(results[0]);
+      }
+    } catch (error) {
+      setError(formatFetchError(error));
+    } finally {
       setSearchLoading(false);
-      return;
     }
-    const results = payload.results || [];
-    setSearchResults(results);
-    if (results.length === 1) {
-      openSearchResult(results[0]);
-    }
-    setSearchLoading(false);
   }
 
   async function runSearch() {
@@ -1709,8 +1713,10 @@ export function CustomerSalesCallsClient({
             onChange={(event) => setOperatorName(event.target.value)}
             className="h-12 w-full rounded-2xl border border-white/12 bg-white/10 px-4 text-sm text-white outline-none transition placeholder:text-white/[0.42] focus:border-white/35 sm:w-52"
             placeholder="Operator"
+            aria-label="Operator"
           />
           <button
+            type="button"
             onClick={() => void refreshList()}
             disabled={refreshing}
             className="inline-flex h-12 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-medium text-stone-950 transition hover:bg-[#f7f2ea] disabled:opacity-60"
@@ -1848,6 +1854,7 @@ export function CustomerSalesCallsClient({
                   }}
                   className="h-12 w-full rounded-2xl border border-stone-300 bg-white pl-11 pr-4 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-stone-900"
                   placeholder="Name, Firma, E-Mail, Telefon, Request-ID, AC-Deal oder Trello-Link"
+                  aria-label="Kontakt suchen"
                 />
               </div>
               <button
