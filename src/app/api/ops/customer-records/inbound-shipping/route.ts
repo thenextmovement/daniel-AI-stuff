@@ -47,7 +47,7 @@ function getOpsHost(request: NextRequest) {
 }
 
 function parseScopeFilter(value: string | null) {
-  const scope = value || "moving";
+  const scope = value || "active";
   if (!INBOUND_SCOPE_VALUES.includes(scope as (typeof INBOUND_SCOPE_VALUES)[number])) {
     throw new QuoteValidationError("Ungueltiger Wareneingang-Filter.", [`scope=${scope} ist nicht unterstuetzt.`], 400);
   }
@@ -96,6 +96,9 @@ export async function POST(request: NextRequest) {
         action?: "create_task" | "acknowledge" | "resolve" | "ignore";
         incidentId?: string;
         operatorName?: string | null;
+        scope?: string | null;
+        carrier?: string | null;
+        requestId?: string | null;
       }
     | null;
 
@@ -103,27 +106,32 @@ export async function POST(request: NextRequest) {
   if (!actor) return unauthorized();
 
   try {
+    const boardFilter = {
+      scope: parseScopeFilter(body?.scope || null),
+      carrier: parseCarrierFilter(body?.carrier || null),
+      requestId: body?.requestId || null,
+    };
     if (body?.action === "create_task") {
       const result = await createInboundIncidentTask(String(body.incidentId || ""), actor);
-      const board = await listInboundBoard({ scope: "problems" });
+      const board = await listInboundBoard(boardFilter);
       console.info("inbound shipping incident action completed", { action: body.action, incidentId: body.incidentId || null, taskId: result.taskId, created: result.created, mode: actor.mode });
       return jsonResponse({ ok: true, action: body.action, result, board });
     }
     if (body?.action === "acknowledge") {
       const incident = await updateInboundIncidentStatus(String(body.incidentId || ""), "acknowledged");
-      const board = await listInboundBoard({ scope: "problems" });
+      const board = await listInboundBoard(boardFilter);
       console.info("inbound shipping incident action completed", { action: body.action, incidentId: incident.id, mode: actor.mode });
       return jsonResponse({ ok: true, action: body.action, incident, board });
     }
     if (body?.action === "resolve") {
       const incident = await updateInboundIncidentStatus(String(body.incidentId || ""), "resolved");
-      const board = await listInboundBoard({ scope: "problems" });
+      const board = await listInboundBoard(boardFilter);
       console.info("inbound shipping incident action completed", { action: body.action, incidentId: incident.id, mode: actor.mode });
       return jsonResponse({ ok: true, action: body.action, incident, board });
     }
     if (body?.action === "ignore") {
       const incident = await updateInboundIncidentStatus(String(body.incidentId || ""), "ignored");
-      const board = await listInboundBoard({ scope: "problems" });
+      const board = await listInboundBoard(boardFilter);
       console.info("inbound shipping incident action completed", { action: body.action, incidentId: incident.id, mode: actor.mode });
       return jsonResponse({ ok: true, action: body.action, incident, board });
     }

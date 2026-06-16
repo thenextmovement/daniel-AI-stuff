@@ -69,7 +69,7 @@ export function InboundShippingClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [board, setBoard] = useState<InboundBoard | null>(null);
-  const [scope, setScope] = useState<InboundBoardScope>("moving");
+  const [scope, setScope] = useState<InboundBoardScope>("active");
   const [carrier, setCarrier] = useState<InboundBoardCarrier>("all");
   const [requestIdDraft, setRequestIdDraft] = useState(initialRequestId || "");
   const [appliedRequestId, setAppliedRequestId] = useState((initialRequestId || "").trim());
@@ -187,7 +187,7 @@ export function InboundShippingClient({
       const response = await fetch("/api/ops/customer-records/inbound-shipping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, incidentId: incident.id, operatorName }),
+        body: JSON.stringify({ action, incidentId: incident.id, operatorName, scope, carrier, requestId: appliedRequestId }),
       });
       const payload = (await response.json().catch(() => null)) as InboundApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
@@ -254,10 +254,10 @@ export function InboundShippingClient({
               className="w-full min-w-0 rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm"
               aria-label="Wareneingang-Statusfilter"
             >
-              <option value="moving">Wirklich unterwegs</option>
-              <option value="label_created">Nur Label erstellt</option>
               <option value="active">Aktive Sendungen</option>
               <option value="problems">Problemfälle</option>
+              <option value="moving">Wirklich unterwegs</option>
+              <option value="label_created">Nur Label erstellt</option>
               <option value="all">Alle Sendungen</option>
             </select>
             <select
