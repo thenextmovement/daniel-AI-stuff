@@ -320,9 +320,13 @@ export function default17TrackCarrierId(carrier: RegistrationClaimRow["carrier"]
   return carrier === "dhl" || carrier === "fedex" ? DEFAULT_17TRACK_CARRIER_IDS[carrier] : null;
 }
 
+export function normalized17TrackProviderCarrierId(providerCarrierId?: number | null) {
+  if (providerCarrierId === LEGACY_DHL_PAKET_17TRACK_CARRIER_ID) return DEFAULT_17TRACK_CARRIER_IDS.dhl;
+  return providerCarrierId || null;
+}
+
 export function effective17TrackCarrierId(carrier: RegistrationClaimRow["carrier"], providerCarrierId?: number | null) {
-  if (carrier === "dhl" && providerCarrierId === LEGACY_DHL_PAKET_17TRACK_CARRIER_ID) return DEFAULT_17TRACK_CARRIER_IDS.dhl;
-  return providerCarrierId || default17TrackCarrierId(carrier);
+  return normalized17TrackProviderCarrierId(providerCarrierId) || default17TrackCarrierId(carrier);
 }
 
 export function build17TrackRegistrationItem(claim: RegistrationClaimRow) {

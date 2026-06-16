@@ -7,6 +7,7 @@ import {
   build17TrackRegistrationItem,
   default17TrackCarrierId,
   effective17TrackCarrierId,
+  normalized17TrackProviderCarrierId,
   parse17TrackRegistrationResult,
 } from "../../src/lib/ops/seventeen-track";
 
@@ -204,6 +205,9 @@ test("build17TrackRegistrationItem uses explicit carrier ids for known inbound c
 });
 
 test("effective17TrackCarrierId upgrades legacy DHL Paket registrations to DHL Express", () => {
+  assert.equal(normalized17TrackProviderCarrierId(7041), 100001);
+  assert.equal(normalized17TrackProviderCarrierId(100003), 100003);
+  assert.equal(normalized17TrackProviderCarrierId(null), null);
   assert.equal(effective17TrackCarrierId("dhl", 7041), 100001);
   assert.equal(effective17TrackCarrierId("dhl", 100001), 100001);
   assert.equal(effective17TrackCarrierId("fedex", 100003), 100003);

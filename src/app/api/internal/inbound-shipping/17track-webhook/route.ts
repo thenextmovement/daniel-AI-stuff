@@ -3,6 +3,7 @@ import {
   buildInboundCarrierPayloadFrom17Track,
   fetch17TrackInfo,
   is17TrackWebhookAuthorized,
+  normalized17TrackProviderCarrierId,
   readBoundedWebhookBody,
   record17TrackInboundPayload,
   record17TrackTrackingError,
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     if (!carrierPayload?.events.length) {
       const number = trackingNumberFromPayload(payload);
       if (!number) return NextResponse.json({ ok: false, error: "missing_tracking_number" }, { status: 400 });
-      const snapshot = await fetch17TrackInfo(number, carrierFromPayload(payload));
+      const snapshot = await fetch17TrackInfo(number, normalized17TrackProviderCarrierId(carrierFromPayload(payload)));
       carrierPayload = buildInboundCarrierPayloadFrom17Track(snapshot);
       if (carrierPayload && originalShipmentId && !carrierPayload.shipmentId) {
         carrierPayload = { ...carrierPayload, shipmentId: originalShipmentId };
