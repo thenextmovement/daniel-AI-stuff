@@ -6,6 +6,7 @@ import {
   createSupplierDeadlineTasks,
   listSupplierSalesBoard,
   requestSupplierPaymentReminder,
+  syncCompletedOffersFromOffersApp,
   updateSupplierSalePaymentDecision,
   upsertSupplierSaleFromPayload,
   type SupplierSaleActor,
@@ -28,7 +29,8 @@ type SupplierSalesPostBody = {
     | "assign_supplier"
     | "update_payment_decision"
     | "request_payment_reminder"
-    | "create_deadline_tasks";
+    | "create_deadline_tasks"
+    | "sync_completed_offers";
   payload?: unknown;
   sale?: unknown;
   order?: unknown;
@@ -47,6 +49,7 @@ type SupplierSalesPostBody = {
   assigneeLabel?: string | null;
   agentToken?: string | null;
   idempotencyKey?: string | null;
+  limit?: number | string | null;
 };
 
 function unauthorized() {
@@ -249,6 +252,12 @@ export async function POST(request: NextRequest) {
       const deadlineTasks = await createSupplierDeadlineTasks(actor);
       const board = await listSupplierSalesBoard({ scope: "deadline" });
       return NextResponse.json({ ok: true, action, deadlineTasks, board });
+    }
+
+    if (action === "sync_completed_offers") {
+      const completedOffersSync = await syncCompletedOffersFromOffersApp(actor, { limit: Number(body.limit || 50) });
+      const board = await listSupplierSalesBoard({ scope: "active" });
+      return NextResponse.json({ ok: true, action, completedOffersSync, board });
     }
 
     if (action === "assign_supplier") {

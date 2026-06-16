@@ -337,6 +337,15 @@ export type SupplierDeadlineTaskResult = {
   errors: Array<{ saleId: string; error: string }>;
 };
 
+export type SupplierCompletedOffersSyncResult = {
+  status: "synced" | "skipped" | "failed";
+  checked: number;
+  upserted: number;
+  failed: number;
+  errors: Array<{ offerId: string | null; error: string }>;
+  warnings: string[];
+};
+
 type SupplierRecommendationResult = {
   recommendedSupplier: SupplierSaleRecommendation;
   recommendationReasons: string[];
@@ -601,6 +610,26 @@ function supplierSalesAutomationToken() {
   );
 }
 
+function offersAppBaseUrl() {
+  return nullableText(
+    process.env.NEONTRIP_OFFERS_BASE_URL ||
+      process.env.OFFERS_BASE_URL ||
+      process.env.NEXT_PUBLIC_OFFERS_BASE_URL ||
+      "https://angebote.neontrip.de",
+    1000,
+  )?.replace(/\/+$/, "");
+}
+
+function offersInternalApiKey() {
+  return nullableText(
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY ||
+      process.env.OFFERS_INTERNAL_API_KEY ||
+      process.env.QUOTE_INTERNAL_API_TOKEN ||
+      process.env.OPS_INTERNAL_API_KEY,
+    1000,
+  );
+}
+
 function shopifyAdminToken() {
   return nullableText(
     process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN ||
@@ -642,6 +671,16 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
     incomingTokenReady || incomingSignatureReady
       ? "Automatische Sales koennen serverseitig authentifiziert in die Sales-Vergabe schreiben."
       : "SUPPLIER_SALES_AGENT_API_TOKEN, ein interner Ops/Offers-Key oder SUPPLIER_SALES_WEBHOOK_SECRET fehlt. Neue Sales koennen nicht automatisiert importiert werden.",
+  ));
+
+  const completedOffersPullReady = Boolean(offersAppBaseUrl() && offersInternalApiKey());
+  items.push(diagnostic(
+    "completed_offers_pull",
+    completedOffersPullReady ? "ok" : "missing",
+    "Completed-Offers Pull",
+    completedOffersPullReady
+      ? "Ops kann abgeschlossene Angebote aktiv aus der Angebote-App nachziehen."
+      : "NEONTRIP_OFFERS_INTERNAL_API_KEY muss in Ops und Angebote-App gleich gesetzt sein. Sonst kann Ops Completed Offers nicht aktiv nachziehen.",
   ));
 
   const shopifyAdminReady = Boolean(shopifyAdminToken() && shopifyShopDomain());
@@ -1443,6 +1482,74 @@ export async function upsertSupplierSaleFromPayload(payload: unknown, actor?: Su
   const parsed = buildSupplierSaleInputFromPayload(payload);
   const sale = await upsertSupplierSale(parsed.sale, actor);
   return { sale, warnings: parsed.warnings };
+}
+
+export async function syncCompletedOffersFromOffersApp(
+  actor?: SupplierSaleActor | null,
+  options?: { limit?: number },
+): Promise<SupplierCompletedOffersSyncResult> {
+  const baseUrl = offersAppBaseUrl();
+  const token = offersInternalApiKey();
+  if (!baseUrl || !token) {
+    return {
+      status: "skipped",
+      checked: 0,
+      upserted: 0,
+      failed: 0,
+      errors: [],
+      warnings: ["Completed-Offers Pull ist nicht konfiguriert."]
+    };
+  }
+
+  const url = new URL("/api/internal/offers/completed-sales", baseUrl);
+  url.searchParams.set("limit", String(Math.min(Math.max(Number(options?.limit || 50), 1), 100)));
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json"
+    },
+    signal: AbortSignal.timeout(15_000)
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !jsonRecord(body).ok) {
+    const message = recordString(jsonRecord(body), ["error", "message", "code"], 240) || `Completed-Offers Feed HTTP ${response.status}`;
+    return {
+      status: "failed",
+      checked: 0,
+      upserted: 0,
+      failed: 1,
+      errors: [{ offerId: null, error: message }],
+      warnings: []
+    };
+  }
+
+  const errors: Array<{ offerId: string | null; error: string }> = [];
+  const warnings: string[] = [];
+  let upserted = 0;
+  const sales = arrayRecords(jsonRecord(body).sales);
+  for (const entry of sales) {
+    const offerId = recordString(entry, ["offerId"], 180);
+    const payload = entry.payload;
+    try {
+      const result = await upsertSupplierSaleFromPayload(payload, actor);
+      upserted += 1;
+      warnings.push(...result.warnings.map((warning) => `${offerId || "offer"}: ${warning}`));
+    } catch (error) {
+      errors.push({
+        offerId,
+        error: error instanceof Error ? error.message : "Completed Offer konnte nicht synchronisiert werden."
+      });
+    }
+  }
+
+  return {
+    status: errors.length ? "failed" : "synced",
+    checked: sales.length,
+    upserted,
+    failed: errors.length,
+    errors,
+    warnings
+  };
 }
 
 export async function listSupplierSalesBoard(options?: {

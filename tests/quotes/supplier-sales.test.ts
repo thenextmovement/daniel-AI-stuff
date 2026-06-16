@@ -14,6 +14,7 @@ import {
   normalizeShopifyPaymentStatus,
   requestSupplierPaymentReminder,
   supplierSaleNeedsDeadlineTask,
+  syncCompletedOffersFromOffersApp,
   type SupplierSaleItemRow,
   type SupplierSaleRow,
 } from "@/lib/ops/supplier-sales";
@@ -119,6 +120,13 @@ async function withMockedAssignmentFetch<T>(
     "SHOPIFY_SHOP",
     "SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
     "N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+    "NEONTRIP_OFFERS_BASE_URL",
+    "OFFERS_BASE_URL",
+    "NEXT_PUBLIC_OFFERS_BASE_URL",
+    "NEONTRIP_OFFERS_INTERNAL_API_KEY",
+    "OFFERS_INTERNAL_API_KEY",
+    "QUOTE_INTERNAL_API_TOKEN",
+    "OPS_INTERNAL_API_KEY",
   ];
   const previousEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -473,6 +481,108 @@ test("supplier payment reminder duplicate reservation does not resend webhook", 
   assert.equal(supplierSalePatchCount, 0);
 });
 
+test("completed offers pull imports offer.completed payloads idempotently", async () => {
+  let offersFeedCount = 0;
+  let salePostCount = 0;
+  let itemPostCount = 0;
+  let eventPostCount = 0;
+  const importedRow = saleRow({
+    id: "sale-completed-offer",
+    sale_key: "offer:offer-completed-1",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    offer_id: "offer-completed-1",
+    offer_number: "A/N 15099",
+    document_reference: "A-N-15099",
+    customer_name: "Mia Muster",
+    customer_email: "mia@example.com",
+    total_price: 595,
+    supplier_due_date: "2026-06-30",
+    assignment_status: "payment_open",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") {
+      offersFeedCount += 1;
+      assert.equal(url.pathname, "/api/internal/offers/completed-sales");
+      assert.equal(init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string>).Authorization, "Bearer internal-offers-key");
+      return Response.json({
+        ok: true,
+        sales: [{
+          offerId: "offer-completed-1",
+          payload: {
+            source: "neontrip-offers",
+            event: "offer.completed",
+            idempotencyKey: "offer:offer-completed-1:supplier-sales:v1",
+            deliveryDateIso: "2026-06-30",
+            offer: {
+              id: "offer-completed-1",
+              offerNumber: "A/N 15099",
+              documentReference: "A-N-15099",
+              publicUrl: "https://angebote.test/offer/public-token",
+              finalPdfUrl: "https://angebote.test/offer/public-token/pdf",
+              currency: "EUR",
+              acceptedAt: "2026-06-16T08:00:00.000Z",
+              signedAt: "2026-06-16T08:00:00.000Z"
+            },
+            customer: {
+              firstName: "Mia",
+              lastName: "Muster",
+              email: "mia@example.com"
+            },
+            billingAddress: { name: "Mia Muster" },
+            deliveryAddress: { name: "Mia Muster" },
+            totals: { subtotalNet: 500, vatAmount: 95, totalGross: 595, vatRate: 19 },
+            lineItems: [{
+              id: "line-1",
+              section: "LED-Neon-Flex",
+              title: "LED Neon Logo",
+              quantity: 1,
+              lineNet: 500,
+              lineGross: 595
+            }]
+          }
+        }]
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("id") === `eq.${importedRow.id}`) return Response.json([importedRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      salePostCount += 1;
+      return Response.json([importedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") {
+      itemPostCount += 1;
+      return Response.json([itemRow({ sale_id: importedRow.id, title: "LED Neon Logo" })]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      eventPostCount += 1;
+      return Response.json({});
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.checked, 1);
+    assert.equal(result.upserted, 1);
+    assert.equal(result.failed, 0);
+  });
+
+  assert.equal(offersFeedCount, 1);
+  assert.equal(salePostCount, 1);
+  assert.equal(itemPostCount, 1);
+  assert.equal(eventPostCount, 1);
+});
+
 test("supplier sales route does not expose raw Supabase details to clients", async () => {
   const originalFetch = globalThis.fetch;
   const originalEnv = {
@@ -541,12 +651,14 @@ test("supplier sales diagnostics expose missing and configured production links"
     const missing = buildSupplierSalesDiagnostics();
     assert.equal(missing.ready, false);
     assert.ok(missing.missing.includes("incoming_sales_auth"));
+    assert.ok(missing.missing.includes("completed_offers_pull"));
     assert.ok(missing.missing.includes("shopify_admin_api"));
     assert.equal(missing.items.find((item) => item.key === "shopify_supplier_tags")?.status, "warning");
     assert.equal(missing.missing.includes("shopify_supplier_tags"), false);
     assert.ok(missing.missing.includes("trello_api_key"));
 
     process.env.SUPPLIER_SALES_AGENT_API_TOKEN = "agent";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key".repeat(2);
     process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify";
     process.env.SUPPLIER_TAG_QUENTIN = "Quentin (schon bezahlt)";
     process.env.SUPPLIER_TAG_SAID = "Saeid (schon bezahlt)";
@@ -556,6 +668,7 @@ test("supplier sales diagnostics expose missing and configured production links"
     const ready = buildSupplierSalesDiagnostics();
     assert.equal(ready.ready, true);
     assert.equal(ready.items.find((item) => item.key === "incoming_sales_auth")?.status, "ok");
+    assert.equal(ready.items.find((item) => item.key === "completed_offers_pull")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "shopify_admin_api")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "shopify_supplier_tags")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "trello_api_key")?.status, "ok");
@@ -587,6 +700,8 @@ test("supplier sales diagnostics accept internal key alias for incoming sales au
     const diagnostics = buildSupplierSalesDiagnostics();
     assert.equal(diagnostics.items.find((item) => item.key === "incoming_sales_auth")?.status, "ok");
     assert.equal(diagnostics.missing.includes("incoming_sales_auth"), false);
+    assert.equal(diagnostics.items.find((item) => item.key === "completed_offers_pull")?.status, "ok");
+    assert.equal(diagnostics.missing.includes("completed_offers_pull"), false);
   } finally {
     for (const key of keys) {
       const value = previous.get(key);

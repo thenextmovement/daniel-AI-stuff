@@ -38,6 +38,14 @@ type SupplierSalesApiResponse = {
     taskIds: string[];
     errors: Array<{ saleId: string; error: string }>;
   };
+  completedOffersSync?: {
+    status: "synced" | "skipped" | "failed";
+    checked: number;
+    upserted: number;
+    failed: number;
+    errors: Array<{ offerId: string | null; error: string }>;
+    warnings: string[];
+  };
   warnings?: string[];
   error?: string;
   issues?: string[];
@@ -157,6 +165,13 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
   if (action === "assign_supplier") return assignmentMessage(payload?.sale);
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
   if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
+  if (action === "sync_completed_offers") {
+    const sync = payload?.completedOffersSync;
+    if (!sync) return "Completed Offers wurden geprueft.";
+    if (sync.status === "skipped") return "Completed-Offers-Sync uebersprungen: Konfiguration fehlt.";
+    if (sync.failed) return `Completed-Offers-Sync mit Fehlern: ${sync.upserted} importiert, ${sync.failed} Fehler.`;
+    return `Completed-Offers-Sync: ${sync.upserted} von ${sync.checked} Angeboten importiert/aktualisiert.`;
+  }
   if (action === "create_deadline_tasks") {
     const tasks = payload?.deadlineTasks;
     if (!tasks) return "Deadline-Aufgaben wurden geprueft.";
@@ -516,7 +531,28 @@ export function SupplierSalesClient({
   async function loadBoard() {
     setLoading(true);
     setError(null);
+    let syncMessage: string | null = null;
+    let syncWarning: string | null = null;
     try {
+      const syncResponse = await fetch("/api/ops/supplier-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync_completed_offers", limit: 50, operatorName }),
+      });
+      const syncPayload = (await syncResponse.json().catch(() => null)) as SupplierSalesApiResponse | null;
+      if (syncResponse.ok && syncPayload?.ok) {
+        const sync = syncPayload.completedOffersSync;
+        if (sync?.status === "failed") {
+          syncWarning = `Completed-Offers-Sync fehlgeschlagen: ${sync.errors[0]?.error || "unbekannter Fehler"}`;
+        } else if (sync?.status === "skipped") {
+          syncWarning = sync.warnings[0] || "Completed-Offers-Sync uebersprungen.";
+        } else if (sync && sync.upserted > 0) {
+          syncMessage = `Completed-Offers-Sync: ${sync.upserted} Angebote importiert/aktualisiert.`;
+        }
+      } else {
+        syncWarning = `Completed-Offers-Sync fehlgeschlagen: ${formatApiError(syncPayload)}`;
+      }
+
       const params = new URLSearchParams();
       params.set("scope", scope);
       params.set("supplier", supplier);
@@ -526,6 +562,8 @@ export function SupplierSalesClient({
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
       setBoard(payload.board);
+      setMessage(syncMessage);
+      setError(syncWarning);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Sales-Vergabe konnte nicht geladen werden.");
     } finally {
@@ -679,7 +717,7 @@ export function SupplierSalesClient({
             </select>
             <button type="button" disabled={loading} onClick={() => void loadBoard()} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-stone-300">
               <RefreshCcw className="h-4 w-4" />
-              Laden
+              Sync + Laden
             </button>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
