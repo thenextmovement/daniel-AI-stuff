@@ -893,6 +893,8 @@ function parseOfferCompletedPayload(payload: JsonRecord): SupplierSalePayloadPar
       offerSnapshot: payload,
       metadata: {
         source_event: "offer.completed",
+        accepted_at: recordString(offer, ["acceptedAt"], 80),
+        signed_at: recordString(offer, ["signedAt"], 80),
         tax_exempt: Boolean(totals.taxExempt),
         payment_link: paymentLinkFromPayload(payload),
       },
@@ -1112,11 +1114,40 @@ function assignmentPriority(row: SupplierSaleRow) {
   return 4;
 }
 
+function dateTimeMs(value: unknown) {
+  const text = nullableText(value, 80);
+  if (!text) return null;
+  const timestamp = new Date(text).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function saleRecencyMs(row: SupplierSaleRow) {
+  const metadata = jsonRecord(row.metadata);
+  const snapshot = jsonRecord(row.offer_snapshot);
+  const offer = jsonRecord(snapshot.offer);
+  return (
+    dateTimeMs(metadata.accepted_at) ||
+    dateTimeMs(metadata.acceptedAt) ||
+    dateTimeMs(metadata.signed_at) ||
+    dateTimeMs(metadata.signedAt) ||
+    dateTimeMs(offer.acceptedAt) ||
+    dateTimeMs(offer.signedAt) ||
+    dateTimeMs(snapshot.acceptedAt) ||
+    dateTimeMs(snapshot.signedAt) ||
+    dateTimeMs(row.raw_shopify?.created_at) ||
+    dateTimeMs(row.raw_shopify?.processed_at) ||
+    dateTimeMs(row.created_at) ||
+    dateTimeMs(row.updated_at) ||
+    0
+  );
+}
+
 export function buildSupplierSaleBoardFromRows(
   saleRows: SupplierSaleRow[],
   itemRows: SupplierSaleItemRow[],
   eventRows: SupplierSaleEventRow[] = [],
   now = new Date(),
+  sortMode: "newest" | "deadline" = "newest",
 ): SupplierSaleBoard {
   const itemsBySale = new Map<string, SupplierSaleItem[]>();
   for (const row of itemRows) {
@@ -1135,13 +1166,20 @@ export function buildSupplierSaleBoardFromRows(
     }
   }
 
+  const rowsById = new Map(saleRows.map((row) => [row.id, row]));
   const items = saleRows.map((row) => mapSale(row, itemsBySale.get(row.id) || [], latestEventBySale.get(row.id) || null));
   items.sort((left, right) => {
-    const rank = assignmentPriority(rowFromSale(left)) - assignmentPriority(rowFromSale(right));
-    if (rank !== 0) return rank;
-    const leftDue = left.supplierDueDate ? new Date(left.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
-    const rightDue = right.supplierDueDate ? new Date(right.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
-    if (leftDue !== rightDue) return leftDue - rightDue;
+    const leftRow = rowsById.get(left.id) || rowFromSale(left);
+    const rightRow = rowsById.get(right.id) || rowFromSale(right);
+    if (sortMode === "deadline") {
+      const rank = assignmentPriority(leftRow) - assignmentPriority(rightRow);
+      if (rank !== 0) return rank;
+      const leftDue = left.supplierDueDate ? new Date(left.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
+      const rightDue = right.supplierDueDate ? new Date(right.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+    }
+    const recency = saleRecencyMs(rightRow) - saleRecencyMs(leftRow);
+    if (recency !== 0) return recency;
     return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
   });
 
@@ -1606,7 +1644,7 @@ export async function listSupplierSalesBoard(options?: {
   const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
   const query: Record<string, string | number | boolean | null> = {
     select: "*",
-    order: "supplier_due_date.asc.nullslast,updated_at.desc",
+    order: scope === "deadline" ? "supplier_due_date.asc.nullslast,updated_at.desc" : "created_at.desc,updated_at.desc",
     limit: Math.min(Math.max(Number(options?.limit || 250), 1), 500),
   };
   if (scope === "ready") query.assignment_status = "eq.ready_to_assign";
@@ -1651,7 +1689,7 @@ export async function listSupplierSalesBoard(options?: {
       row.product_summary,
     ].some((value) => String(value || "").toLowerCase().includes(search)));
   }
-  if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], []);
+  if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest");
   const saleIds = saleRows.map((row) => row.id);
   const [itemRows, eventRows] = await Promise.all([
     supabaseRequest<SupplierSaleItemRow[]>("supplier_sale_items", undefined, {
@@ -1667,7 +1705,7 @@ export async function listSupplierSalesBoard(options?: {
       limit: 1000,
     }),
   ]);
-  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows, now);
+  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows, now, scope === "deadline" ? "deadline" : "newest");
 }
 
 function supplierLabel(supplier: SupplierSaleSupplier, specialSupplierName?: string | null) {

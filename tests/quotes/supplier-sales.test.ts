@@ -233,6 +233,8 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
       publicUrl: "https://angebote.test/o/share",
       finalPdfUrl: "https://angebote.test/o/share/pdf",
       currency: "EUR",
+      acceptedAt: "2026-06-16T13:45:00.000Z",
+      signedAt: "2026-06-16T13:44:30.000Z",
     },
     customer: {
       firstName: "Ada",
@@ -267,6 +269,8 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
   assert.equal(parsed.sale.customerDueDate, "2026-06-20");
   assert.equal(parsed.sale.dueDateSource, "payload");
   assert.equal(parsed.sale.primaryImageUrl, "https://cdn.test/mockup.jpg");
+  assert.equal(parsed.sale.metadata?.accepted_at, "2026-06-16T13:45:00.000Z");
+  assert.equal(parsed.sale.metadata?.signed_at, "2026-06-16T13:44:30.000Z");
   assert.equal(deriveSupplierRecommendation(parsed.sale.lineItems).recommendedSupplier, "said");
 });
 
@@ -356,6 +360,53 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   assert.equal(board.counts.syncIssues, 1);
   assert.equal(board.items[0].id, "sale-ready");
   assert.ok(board.diagnostics.items.length);
+});
+
+test("supplier sales board sorts newest sales first by accepted snapshot", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [
+      saleRow({
+        id: "sale-old",
+        offer_snapshot: { offer: { acceptedAt: "2026-06-14T10:00:00.000Z" } },
+        created_at: "2026-06-16T12:00:00.000Z",
+        supplier_due_date: "2026-06-18",
+      }),
+      saleRow({
+        id: "sale-new",
+        offer_snapshot: { offer: { acceptedAt: "2026-06-16T13:30:00.000Z" } },
+        created_at: "2026-06-16T11:00:00.000Z",
+        supplier_due_date: "2026-06-30",
+      }),
+    ],
+    [],
+    [],
+    new Date("2026-06-16T14:00:00.000Z"),
+  );
+
+  assert.equal(board.items[0].id, "sale-new");
+});
+
+test("supplier sales deadline board keeps due-date priority", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [
+      saleRow({
+        id: "sale-new-later",
+        offer_snapshot: { offer: { acceptedAt: "2026-06-16T13:30:00.000Z" } },
+        supplier_due_date: "2026-06-30",
+      }),
+      saleRow({
+        id: "sale-old-sooner",
+        offer_snapshot: { offer: { acceptedAt: "2026-06-14T10:00:00.000Z" } },
+        supplier_due_date: "2026-06-18",
+      }),
+    ],
+    [],
+    [],
+    new Date("2026-06-16T14:00:00.000Z"),
+    "deadline",
+  );
+
+  assert.equal(board.items[0].id, "sale-old-sooner");
 });
 
 test("supplier sale deadline task eligibility is due-date based and idempotent", () => {
