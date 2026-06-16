@@ -1576,6 +1576,7 @@ export async function listSupplierSalesBoard(options?: {
     query.assignment_status = "not.in.(completed,canceled)";
     query.or = `(supplier_due_date.lte.${dueSoon},and(supplier_due_date.is.null,customer_due_date.lte.${dueSoon}))`;
   }
+  else if (scope === "active") query.assignment_status = "not.in.(assigned,in_production,completed,canceled)";
   else if (scope !== "all") query.assignment_status = "not.in.(completed,canceled)";
 
   const payment = options?.payment;
