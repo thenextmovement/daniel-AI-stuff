@@ -15,6 +15,7 @@ import {
   normalizeShopifyPaymentStatus,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
+  runSupplierSalesLiveCheck,
   supplierSaleNeedsDeadlineTask,
   syncCompletedOffersFromOffersApp,
   type SupplierSaleItemRow,
@@ -129,6 +130,10 @@ async function withMockedAssignmentFetch<T>(
     "OFFERS_INTERNAL_API_KEY",
     "QUOTE_INTERNAL_API_TOKEN",
     "OPS_INTERNAL_API_KEY",
+    "OPS_PORTAL_TOKEN",
+    "OPS_CLOUDFLARE_ACCESS_ISSUER",
+    "OPS_CLOUDFLARE_ACCESS_AUD",
+    "OPS_REQUIRE_CLOUDFLARE_ACCESS",
     "SUPPLIER_SALES_WEBHOOK_SECRET",
   ];
   const previousEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -903,6 +908,71 @@ test("completed offers sync imports recent Shopify orders as fallback", async ()
   assert.equal(salePostCount, 1);
 });
 
+test("supplier sales live check compares latest completed offers with vergabe rows without PII", async () => {
+  const latestRow = saleRow({
+    id: "sale-live-1",
+    sale_key: "offer:offer-live-1:supplier-sales:v1",
+    source: "offers",
+    shopify_order_id: null,
+    shopify_order_name: "#2001",
+    offer_id: "offer-live-1",
+    offer_number: "A-2001",
+    document_reference: "AN-2001",
+    created_at: "2026-06-16T12:35:00.000Z",
+    updated_at: "2026-06-16T12:35:00.000Z",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") {
+      return Response.json({
+        ok: true,
+        sales: [
+          {
+            offerId: "offer-live-1",
+            offerNumber: "A-2001",
+            documentReference: "AN-2001",
+            status: "COMPLETED",
+            acceptedAt: "2026-06-16T12:30:00.000Z",
+            updatedAt: "2026-06-16T12:31:00.000Z",
+            payload: { customerEmail: "secret@example.com" },
+          },
+          {
+            offerId: "offer-live-2",
+            offerNumber: "A-2002",
+            documentReference: "AN-2002",
+            status: "COMPLETED",
+            acceptedAt: "2026-06-16T12:20:00.000Z",
+            updatedAt: "2026-06-16T12:21:00.000Z",
+            payload: { customerEmail: "missing@example.com" },
+          },
+        ],
+      });
+    }
+    assert.equal(url.origin, "https://supabase.test");
+    assert.equal(method, "GET");
+    if (url.pathname.endsWith("/supplier_sales") && url.searchParams.get("offer_id")?.includes("offer-live")) {
+      return Response.json([latestRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sales")) {
+      return Response.json([latestRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    const result = await runSupplierSalesLiveCheck({ limit: 10 });
+    assert.equal(result.status, "warning");
+    assert.equal(result.offersFeed.checked, 2);
+    assert.equal(result.latestCompletedOffers[0]?.inVergabe, true);
+    assert.equal(result.latestCompletedOffers[1]?.inVergabe, false);
+    assert.deepEqual(result.missingOfferIds, ["offer-live-2"]);
+    assert.equal(result.sortCheck.latestCompletedOfferInTopVergabe, true);
+    assert.equal(JSON.stringify(result).includes("secret@example.com"), false);
+    assert.equal(JSON.stringify(result).includes("missing@example.com"), false);
+  });
+});
+
 test("supplier sales sync_completed_offers accepts automation bearer access", async () => {
   let offersFeedCount = 0;
   let salePostCount = 0;
@@ -1021,6 +1091,25 @@ test("supplier sales route rejects stale signed automation requests", async () =
         "x-neontrip-signature": signature,
       },
       body,
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 401, JSON.stringify(payload));
+    assert.equal(payload.error, "unauthorized");
+  });
+});
+
+test("supplier sales live diagnosis requires an ops session", async () => {
+  await withMockedAssignmentFetch(async () => {
+    assert.fail("unauthorized live diagnosis must not reach downstream systems");
+  }, async () => {
+    process.env.OPS_CLOUDFLARE_ACCESS_ISSUER = "https://neontrip.cloudflareaccess.com";
+    process.env.OPS_CLOUDFLARE_ACCESS_AUD = "supplier-sales-aud";
+    process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS = "true";
+    const response = await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "diagnose_sales_flow", limit: 10, operatorName: "Automation" }),
     }));
     const payload = await response.json();
 

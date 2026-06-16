@@ -7,6 +7,7 @@ import {
   listSupplierSalesBoard,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
+  runSupplierSalesLiveCheck,
   syncCompletedOffersFromOffersApp,
   updateSupplierSalePaymentDecision,
   upsertSupplierSaleFromPayload,
@@ -33,7 +34,8 @@ type SupplierSalesPostBody = {
     | "request_payment_reminder"
     | "retry_shopify_tag"
     | "create_deadline_tasks"
-    | "sync_completed_offers";
+    | "sync_completed_offers"
+    | "diagnose_sales_flow";
   payload?: unknown;
   sale?: unknown;
   order?: unknown;
@@ -281,6 +283,12 @@ export async function POST(request: NextRequest) {
       const completedOffersSync = await syncCompletedOffersFromOffersApp(actor, { limit: Number(body.limit || 50) });
       const board = await listSupplierSalesBoard({ scope: "active" });
       return NextResponse.json({ ok: true, action, completedOffersSync, board });
+    }
+
+    if (action === "diagnose_sales_flow") {
+      const liveCheck = await runSupplierSalesLiveCheck({ limit: Number(body.limit || 10) });
+      const board = await listSupplierSalesBoard({ scope: "active" });
+      return NextResponse.json({ ok: true, action, liveCheck, board });
     }
 
     if (action === "assign_supplier") {

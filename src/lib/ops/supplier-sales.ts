@@ -355,6 +355,75 @@ export type SupplierCompletedOffersSyncResult = {
   };
 };
 
+export type SupplierSalesLiveCheckResult = {
+  status: "ok" | "warning" | "failed" | "skipped";
+  checkedAt: string;
+  offersFeed: {
+    configured: boolean;
+    checked: number;
+    failed: number;
+    warnings: string[];
+    errors: Array<{ offerId: string | null; error: string }>;
+  };
+  latestCompletedOffers: Array<{
+    offerId: string | null;
+    offerNumber: string | null;
+    documentReference: string | null;
+    status: string | null;
+    acceptedAt: string | null;
+    updatedAt: string | null;
+    inVergabe: boolean;
+    supplierSale: {
+      saleId: string;
+      source: string;
+      createdAt: string;
+      updatedAt: string;
+      assignmentStatus: SupplierSaleAssignmentStatus;
+      shopifyTagSyncStatus: SupplierSaleSyncStatus;
+      shopifyOrderName: string | null;
+    } | null;
+  }>;
+  latestVergabeSales: Array<{
+    saleId: string;
+    offerId: string | null;
+    offerNumber: string | null;
+    documentReference: string | null;
+    source: string;
+    createdAt: string;
+    updatedAt: string;
+    assignmentStatus: SupplierSaleAssignmentStatus;
+    shopifyTagSyncStatus: SupplierSaleSyncStatus;
+    shopifyOrderName: string | null;
+  }>;
+  missingOfferIds: string[];
+  sortCheck: {
+    order: "created_at.desc,updated_at.desc";
+    latestCompletedOfferId: string | null;
+    newestVergabeOfferId: string | null;
+    latestCompletedOfferInTopVergabe: boolean | null;
+  };
+};
+
+type CompletedOfferFeedEntry = {
+  offerId: string | null;
+  offerNumber: string | null;
+  documentReference: string | null;
+  status: string | null;
+  acceptedAt: string | null;
+  updatedAt: string | null;
+  payload: unknown;
+};
+
+type CompletedOfferFeedResult = {
+  status: "synced" | "skipped" | "failed";
+  configured: boolean;
+  sales: CompletedOfferFeedEntry[];
+  checked: number;
+  failed: number;
+  errors: Array<{ offerId: string | null; error: string }>;
+  warnings: string[];
+};
+
 type SupplierRecommendationResult = {
   recommendedSupplier: SupplierSaleRecommendation;
   recommendationReasons: string[];
@@ -1622,6 +1691,105 @@ function shopifyReconcileSince(daysBack?: number | string | null) {
   return since.toISOString().slice(0, 10);
 }
 
+function completedOfferFeedEntry(entry: JsonRecord): CompletedOfferFeedEntry {
+  return {
+    offerId: recordString(entry, ["offerId"], 180),
+    offerNumber: recordString(entry, ["offerNumber"], 180),
+    documentReference: recordString(entry, ["documentReference"], 180),
+    status: recordString(entry, ["status"], 80),
+    acceptedAt: recordString(entry, ["acceptedAt"], 80),
+    updatedAt: recordString(entry, ["updatedAt"], 80),
+    payload: entry.payload,
+  };
+}
+
+async function fetchCompletedOffersFeed(options?: { limit?: number }): Promise<CompletedOfferFeedResult> {
+  const baseUrl = offersAppBaseUrl();
+  const tokens = offersInternalApiKeys();
+  if (!baseUrl || !tokens.length) {
+    return {
+      status: "skipped",
+      configured: false,
+      sales: [],
+      checked: 0,
+      failed: 0,
+      errors: [],
+      warnings: ["Completed-Offers Pull ist nicht konfiguriert."],
+    };
+  }
+
+  const url = new URL("/api/internal/offers/completed-sales", baseUrl);
+  url.searchParams.set("limit", String(Math.min(Math.max(Number(options?.limit || 50), 1), 100)));
+  let response: Response | null = null;
+  let body: unknown = null;
+  let authFallbacks = 0;
+  try {
+    for (const [index, token] of tokens.entries()) {
+      response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json"
+        },
+        signal: AbortSignal.timeout(15_000)
+      });
+      body = await response.json().catch(() => null);
+      if (response.ok && jsonRecord(body).ok) break;
+      if ((response.status === 401 || response.status === 403) && index < tokens.length - 1) {
+        authFallbacks += 1;
+        continue;
+      }
+      break;
+    }
+  } catch (error) {
+    return {
+      status: "failed",
+      configured: true,
+      sales: [],
+      checked: 0,
+      failed: 1,
+      errors: [{ offerId: null, error: error instanceof Error ? error.message : "Completed-Offers Feed konnte nicht aufgerufen werden." }],
+      warnings: [],
+    };
+  }
+
+  if (!response) {
+    return {
+      status: "failed",
+      configured: true,
+      sales: [],
+      checked: 0,
+      failed: 1,
+      errors: [{ offerId: null, error: "Completed-Offers Feed konnte nicht aufgerufen werden." }],
+      warnings: [],
+    };
+  }
+  if (!response.ok || !jsonRecord(body).ok) {
+    const message = recordString(jsonRecord(body), ["error", "message", "code"], 240) || `Completed-Offers Feed HTTP ${response.status}`;
+    return {
+      status: "failed",
+      configured: true,
+      sales: [],
+      checked: 0,
+      failed: 1,
+      errors: [{ offerId: null, error: message }],
+      warnings: [],
+    };
+  }
+
+  const sales = arrayRecords(jsonRecord(body).sales).map(completedOfferFeedEntry);
+  return {
+    status: "synced",
+    configured: true,
+    sales,
+    checked: sales.length,
+    failed: 0,
+    errors: [],
+    warnings: authFallbacks > 0
+      ? ["Completed-Offers Pull nutzt einen alternativen internen Server-Key. NEONTRIP_OFFERS_INTERNAL_API_KEY sollte in Ops und Angebote-App angeglichen werden."]
+      : [],
+  };
+}
+
 async function syncRecentShopifyOrdersFromAdmin(
   actor?: SupplierSaleActor | null,
   options?: { limit?: number; daysBack?: number | string | null },
@@ -1739,73 +1907,31 @@ export async function syncCompletedOffersFromOffersApp(
   actor?: SupplierSaleActor | null,
   options?: { limit?: number },
 ): Promise<SupplierCompletedOffersSyncResult> {
-  const baseUrl = offersAppBaseUrl();
-  const tokens = offersInternalApiKeys();
   const errors: Array<{ offerId: string | null; error: string }> = [];
   const warnings: string[] = [];
   let completedChecked = 0;
   let completedUpserted = 0;
   let completedFailed = 0;
-  if (!baseUrl || !tokens.length) {
-    warnings.push("Completed-Offers Pull ist nicht konfiguriert.");
+  const feed = await fetchCompletedOffersFeed({ limit: options?.limit });
+  warnings.push(...feed.warnings);
+  if (feed.status === "failed") {
+    completedFailed += feed.failed;
+    errors.push(...feed.errors);
+  } else if (feed.status === "skipped") {
+    // Keep the Shopify fallback active even when the offers pull is not configured.
   } else {
-    const url = new URL("/api/internal/offers/completed-sales", baseUrl);
-    url.searchParams.set("limit", String(Math.min(Math.max(Number(options?.limit || 50), 1), 100)));
-    let response: Response | null = null;
-    let body: unknown = null;
-    let authFallbacks = 0;
-    let offerPullError: unknown = null;
-    try {
-      for (const [index, token] of tokens.entries()) {
-        response = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json"
-          },
-          signal: AbortSignal.timeout(15_000)
+    completedChecked = feed.sales.length;
+    for (const entry of feed.sales) {
+      try {
+        const result = await upsertSupplierSaleFromPayload(entry.payload, actor);
+        completedUpserted += 1;
+        warnings.push(...result.warnings.map((warning) => `${entry.offerId || "offer"}: ${warning}`));
+      } catch (error) {
+        completedFailed += 1;
+        errors.push({
+          offerId: entry.offerId,
+          error: error instanceof Error ? error.message : "Completed Offer konnte nicht synchronisiert werden."
         });
-        body = await response.json().catch(() => null);
-        if (response.ok && jsonRecord(body).ok) break;
-        if ((response.status === 401 || response.status === 403) && index < tokens.length - 1) {
-          authFallbacks += 1;
-          continue;
-        }
-        break;
-      }
-    } catch (error) {
-      offerPullError = error;
-    }
-
-    if (offerPullError) {
-      completedFailed += 1;
-      errors.push({ offerId: null, error: offerPullError instanceof Error ? offerPullError.message : "Completed-Offers Feed konnte nicht aufgerufen werden." });
-    } else if (!response) {
-      completedFailed += 1;
-      errors.push({ offerId: null, error: "Completed-Offers Feed konnte nicht aufgerufen werden." });
-    } else if (!response.ok || !jsonRecord(body).ok) {
-      completedFailed += 1;
-      const message = recordString(jsonRecord(body), ["error", "message", "code"], 240) || `Completed-Offers Feed HTTP ${response.status}`;
-      errors.push({ offerId: null, error: message });
-    } else {
-      if (authFallbacks > 0) {
-        warnings.push("Completed-Offers Pull nutzt einen alternativen internen Server-Key. NEONTRIP_OFFERS_INTERNAL_API_KEY sollte in Ops und Angebote-App angeglichen werden.");
-      }
-      const sales = arrayRecords(jsonRecord(body).sales);
-      completedChecked = sales.length;
-      for (const entry of sales) {
-        const offerId = recordString(entry, ["offerId"], 180);
-        const payload = entry.payload;
-        try {
-          const result = await upsertSupplierSaleFromPayload(payload, actor);
-          completedUpserted += 1;
-          warnings.push(...result.warnings.map((warning) => `${offerId || "offer"}: ${warning}`));
-        } catch (error) {
-          completedFailed += 1;
-          errors.push({
-            offerId,
-            error: error instanceof Error ? error.message : "Completed Offer konnte nicht synchronisiert werden."
-          });
-        }
       }
     }
   }
@@ -1823,7 +1949,7 @@ export async function syncCompletedOffersFromOffersApp(
   const checked = completedChecked + shopify.checked;
   const upserted = completedUpserted + shopify.upserted;
   const failed = completedFailed + shopify.failed;
-  const completedConfigured = Boolean(baseUrl && tokens.length);
+  const completedConfigured = feed.configured;
   const shopifySkipped = shopify.status === "skipped";
   const status = failed ? "failed" : (!completedConfigured && shopifySkipped ? "skipped" : "synced");
   return {
@@ -1836,6 +1962,99 @@ export async function syncCompletedOffersFromOffersApp(
     sources: {
       completedOffers: { checked: completedChecked, upserted: completedUpserted, failed: completedFailed },
       shopifyOrders: { checked: shopify.checked, upserted: shopify.upserted, failed: shopify.failed, skipped: shopifySkipped },
+    },
+  };
+}
+
+function supplierSaleLiveSummary(row: SupplierSaleRow) {
+  return {
+    saleId: row.id,
+    offerId: row.offer_id,
+    offerNumber: row.offer_number,
+    documentReference: row.document_reference,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    assignmentStatus: row.assignment_status,
+    shopifyTagSyncStatus: row.shopify_tag_sync_status,
+    shopifyOrderName: row.shopify_order_name,
+  };
+}
+
+export async function runSupplierSalesLiveCheck(options?: { limit?: number }): Promise<SupplierSalesLiveCheckResult> {
+  const limit = Math.min(Math.max(Number(options?.limit || 10), 1), 25);
+  const checkedAt = new Date().toISOString();
+  const feed = await fetchCompletedOffersFeed({ limit });
+  const latestVergabeRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: "*",
+    order: "created_at.desc,updated_at.desc",
+    limit,
+  });
+  const offerIds = feed.sales.map((entry) => entry.offerId).filter((value): value is string => Boolean(value));
+  const matchedRows = offerIds.length
+    ? await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select: "*",
+      offer_id: inList(offerIds),
+      order: "created_at.desc,updated_at.desc",
+      limit: Math.max(limit, offerIds.length),
+    })
+    : [];
+  const saleByOfferId = new Map(matchedRows.map((row) => [row.offer_id, row]));
+  const latestCompletedOffers = feed.sales.map((entry) => {
+    const sale = entry.offerId ? saleByOfferId.get(entry.offerId) || null : null;
+    return {
+      offerId: entry.offerId,
+      offerNumber: entry.offerNumber,
+      documentReference: entry.documentReference,
+      status: entry.status,
+      acceptedAt: entry.acceptedAt,
+      updatedAt: entry.updatedAt,
+      inVergabe: Boolean(sale),
+      supplierSale: sale ? {
+        saleId: sale.id,
+        source: sale.source,
+        createdAt: sale.created_at,
+        updatedAt: sale.updated_at,
+        assignmentStatus: sale.assignment_status,
+        shopifyTagSyncStatus: sale.shopify_tag_sync_status,
+        shopifyOrderName: sale.shopify_order_name,
+      } : null,
+    };
+  });
+  const missingOfferIds = latestCompletedOffers
+    .filter((entry) => entry.offerId && !entry.inVergabe)
+    .map((entry) => entry.offerId as string);
+  const latestVergabeSales = latestVergabeRows.map(supplierSaleLiveSummary);
+  const latestCompletedOfferId = latestCompletedOffers[0]?.offerId || null;
+  const newestVergabeOfferId = latestVergabeSales[0]?.offerId || null;
+  const latestCompletedOfferInTopVergabe = latestCompletedOfferId
+    ? latestVergabeSales.some((sale) => sale.offerId === latestCompletedOfferId)
+    : null;
+  const status = feed.status === "skipped"
+    ? "skipped"
+    : feed.status === "failed"
+      ? "failed"
+      : missingOfferIds.length || latestCompletedOfferInTopVergabe === false
+        ? "warning"
+        : "ok";
+  return {
+    status,
+    checkedAt,
+    offersFeed: {
+      configured: feed.configured,
+      checked: feed.checked,
+      failed: feed.failed,
+      warnings: feed.warnings,
+      errors: feed.errors,
+    },
+    latestCompletedOffers,
+    latestVergabeSales,
+    missingOfferIds,
+    sortCheck: {
+      order: "created_at.desc,updated_at.desc",
+      latestCompletedOfferId,
+      newestVergabeOfferId,
+      latestCompletedOfferInTopVergabe,
     },
   };
 }
