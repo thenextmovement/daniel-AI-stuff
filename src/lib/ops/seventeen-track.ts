@@ -5,10 +5,10 @@ const API_BASE_URL = "https://api.17track.net/track/v2.2";
 const MAX_WEBHOOK_BYTES = 1_000_000;
 const REGISTER_BATCH_SIZE = 40;
 const DEFAULT_17TRACK_CARRIER_IDS = {
-  dhl: 100001,
+  dhl: 7041,
   fedex: 100003,
 } as const;
-const LEGACY_DHL_PAKET_17TRACK_CARRIER_ID = 7041;
+const UNSUPPORTED_DHL_EXPRESS_17TRACK_CARRIER_ID = 100001;
 
 type RegistrationClaimRow = {
   shipment_id: string;
@@ -321,7 +321,7 @@ export function default17TrackCarrierId(carrier: RegistrationClaimRow["carrier"]
 }
 
 export function normalized17TrackProviderCarrierId(providerCarrierId?: number | null) {
-  if (providerCarrierId === LEGACY_DHL_PAKET_17TRACK_CARRIER_ID) return DEFAULT_17TRACK_CARRIER_IDS.dhl;
+  if (providerCarrierId === UNSUPPORTED_DHL_EXPRESS_17TRACK_CARRIER_ID) return DEFAULT_17TRACK_CARRIER_IDS.dhl;
   return providerCarrierId || null;
 }
 

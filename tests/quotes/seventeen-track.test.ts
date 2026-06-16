@@ -143,7 +143,7 @@ test("build17TrackSyncCarrierPayload keeps empty 17TRACK snapshots recordable", 
         accepted: [
           {
             number: "3328106036",
-            carrier: 100001,
+            carrier: 7041,
             track_info: {},
           },
         ],
@@ -199,7 +199,7 @@ test("parse17TrackRegistrationResult records accepted registrations with provide
     {
       code: 0,
       data: {
-        accepted: [{ number: "3328106036", carrier: 100001 }],
+        accepted: [{ number: "3328106036", carrier: 7041 }],
         rejected: [],
       },
     },
@@ -215,12 +215,12 @@ test("parse17TrackRegistrationResult records accepted registrations with provide
   );
 
   assert.equal(result.status, "accepted");
-  assert.equal(result.providerCarrierId, 100001);
+  assert.equal(result.providerCarrierId, 7041);
   assert.equal(result.shipmentId, "25d72523-b171-4267-98e0-2b9859c0feb2");
 });
 
 test("build17TrackRegistrationItem uses explicit carrier ids for known inbound carriers", () => {
-  assert.equal(default17TrackCarrierId("dhl"), 100001);
+  assert.equal(default17TrackCarrierId("dhl"), 7041);
   assert.equal(default17TrackCarrierId("fedex"), 100003);
 
   const item = build17TrackRegistrationItem({
@@ -234,17 +234,18 @@ test("build17TrackRegistrationItem uses explicit carrier ids for known inbound c
   });
 
   assert.equal(item.number, "3328106036");
-  assert.equal(item.carrier, 100001);
+  assert.equal(item.carrier, 7041);
   assert.equal(item.tag, "25d72523-b171-4267-98e0-2b9859c0feb2");
   assert.equal(item.note, "China Los");
 });
 
-test("effective17TrackCarrierId upgrades legacy DHL Paket registrations to DHL Express", () => {
-  assert.equal(normalized17TrackProviderCarrierId(7041), 100001);
+test("effective17TrackCarrierId keeps DHL on the 17TRACK-supported DHL Paket carrier", () => {
+  assert.equal(normalized17TrackProviderCarrierId(7041), 7041);
+  assert.equal(normalized17TrackProviderCarrierId(100001), 7041);
   assert.equal(normalized17TrackProviderCarrierId(100003), 100003);
   assert.equal(normalized17TrackProviderCarrierId(null), null);
-  assert.equal(effective17TrackCarrierId("dhl", 7041), 100001);
-  assert.equal(effective17TrackCarrierId("dhl", 100001), 100001);
+  assert.equal(effective17TrackCarrierId("dhl", 7041), 7041);
+  assert.equal(effective17TrackCarrierId("dhl", 100001), 7041);
   assert.equal(effective17TrackCarrierId("fedex", 100003), 100003);
 });
 
