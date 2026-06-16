@@ -205,6 +205,73 @@ function setupRoutes(page, posts) {
         });
         return;
       }
+      if (body.action === "diagnose_sales_flow") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            board,
+            liveCheck: {
+              status: "warning",
+              checkedAt: now,
+              offersFeed: { configured: true, checked: 2, failed: 0, warnings: [], errors: [] },
+              latestCompletedOffers: [
+                {
+                  offerId: "offer-live-1",
+                  offerNumber: "NT-LIVE-1",
+                  documentReference: "AN-LIVE-1",
+                  status: "COMPLETED",
+                  acceptedAt: now,
+                  updatedAt: now,
+                  inVergabe: true,
+                  supplierSale: {
+                    saleId: "sale-paid",
+                    source: "offers",
+                    createdAt: now,
+                    updatedAt: now,
+                    assignmentStatus: "assigned",
+                    shopifyTagSyncStatus: "synced",
+                    shopifyOrderName: "#QA-sale-paid",
+                  },
+                },
+                {
+                  offerId: "offer-live-2",
+                  offerNumber: "NT-LIVE-2",
+                  documentReference: "AN-LIVE-2",
+                  status: "COMPLETED",
+                  acceptedAt: now,
+                  updatedAt: now,
+                  inVergabe: false,
+                  supplierSale: null,
+                },
+              ],
+              latestVergabeSales: [
+                {
+                  saleId: "sale-paid",
+                  offerId: "offer-live-1",
+                  offerNumber: "NT-LIVE-1",
+                  documentReference: "AN-LIVE-1",
+                  source: "offers",
+                  createdAt: now,
+                  updatedAt: now,
+                  assignmentStatus: "assigned",
+                  shopifyTagSyncStatus: "synced",
+                  shopifyOrderName: "#QA-sale-paid",
+                },
+              ],
+              missingOfferIds: ["offer-live-2"],
+              sortCheck: {
+                order: "created_at.desc,updated_at.desc",
+                latestCompletedOfferId: "offer-live-1",
+                newestVergabeOfferId: "offer-live-1",
+                latestCompletedOfferInTopVergabe: true,
+              },
+            },
+          }),
+        });
+        return;
+      }
 
       const source = board.items.find((item) => item.id === body.saleId) || paidSale;
       const updatedSale = {
@@ -305,13 +372,18 @@ async function main() {
   await page.getByRole("button", { name: "Deadline-Aufgaben pruefen" }).click();
   assert(posts.length === 5 && posts[4].body.action === "create_deadline_tasks", "Deadline-Pruefung sendet falsche Action");
 
+  await page.getByRole("button", { name: "Live-Abgleich testen" }).click();
+  await page.getByText("Live-Abgleich Angebote -> Sales-Vergabe").waitFor();
+  await page.getByText("AN-LIVE-2").waitFor();
+  assert(posts.length === 6 && posts[5].body.action === "diagnose_sales_flow", "Live-Abgleich sendet falsche Action");
+
   page.once("dialog", dialogHandler(dialogs, "dismiss-task-done", false));
   await page.getByRole("button", { name: "Erledigt" }).click();
-  assert(posts.length === 5, "Abgebrochene Aufgabe-Erledigt-Aktion sendet trotzdem PATCH");
+  assert(posts.length === 6, "Abgebrochene Aufgabe-Erledigt-Aktion sendet trotzdem PATCH");
 
   page.once("dialog", dialogHandler(dialogs, "accept-task-done", true));
   await page.getByRole("button", { name: "Erledigt" }).click();
-  assert(posts.length === 6 && posts[5].method === "PATCH", "Akzeptierte Aufgabe-Erledigt-Aktion sendet keinen PATCH");
+  assert(posts.length === 7 && posts[6].method === "PATCH", "Akzeptierte Aufgabe-Erledigt-Aktion sendet keinen PATCH");
 
   const mobileLayout = await page.evaluate(() => ({
     noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
