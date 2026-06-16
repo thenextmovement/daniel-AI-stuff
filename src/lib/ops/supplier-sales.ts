@@ -806,7 +806,11 @@ function extractDueDate(payload: JsonRecord) {
 }
 
 function customerNameFromParts(parts: Array<unknown>) {
-  const text = parts.map((part) => cleanText(part, 120)).filter(Boolean).join(" ").trim();
+  const values = parts.map((part) => cleanText(part, 120)).filter(Boolean);
+  const fullName = values.find((value) => /\s/.test(value));
+  if (fullName) return fullName;
+  const uniqueParts = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  const text = uniqueParts.join(" ").trim();
   return text || null;
 }
 

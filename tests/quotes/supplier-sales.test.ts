@@ -261,6 +261,7 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
   assert.equal(parsed.sale.saleKey, "offer:offer_123");
   assert.equal(parsed.sale.offerPublicUrl, "https://angebote.test/o/share");
   assert.equal(parsed.sale.finalPdfUrl, "https://angebote.test/o/share/pdf");
+  assert.equal(parsed.sale.customerName, "Ada Lovelace");
   assert.equal(parsed.sale.customerEmail, "ADA@EXAMPLE.COM");
   assert.equal(parsed.sale.customerDueDate, "2026-06-20");
   assert.equal(parsed.sale.dueDateSource, "payload");
