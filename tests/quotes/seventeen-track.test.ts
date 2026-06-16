@@ -135,6 +135,41 @@ test("build17TrackSyncCarrierPayload keeps the original inbound carrier and ship
   assert.equal(payload?.events.length, 1);
 });
 
+test("build17TrackSyncCarrierPayload keeps empty 17TRACK snapshots recordable", () => {
+  const payload = build17TrackSyncCarrierPayload(
+    {
+      code: 0,
+      data: {
+        accepted: [
+          {
+            number: "3328106036",
+            carrier: 100001,
+            track_info: {},
+          },
+        ],
+        rejected: [],
+      },
+    },
+    {
+      shipment_id: "25d72523-b171-4267-98e0-2b9859c0feb2",
+      shipment_key: "trello:card:dhl:3328106036",
+      carrier: "dhl",
+      tracking_number: "3328106036",
+      provider_carrier_id: 7041,
+      provider_tag: "25d72523-b171-4267-98e0-2b9859c0feb2",
+      trello_card_id: "card-1",
+      trello_card_name: "China Los",
+      trello_card_url: null,
+      status: "carrier_not_found",
+    },
+  );
+
+  assert.equal(payload?.carrier, "dhl");
+  assert.equal(payload?.shipmentId, "25d72523-b171-4267-98e0-2b9859c0feb2");
+  assert.equal(payload?.trackingNumber, "3328106036");
+  assert.equal(payload?.events.length, 0);
+});
+
 test("buildInboundCarrierPayloadFrom17Track uses a stable event key for latest-status snapshots", () => {
   const snapshot = {
     code: 0,

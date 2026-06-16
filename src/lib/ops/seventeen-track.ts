@@ -507,15 +507,25 @@ async function sync17TrackShipment(claim: SeventeenTrackTrackingClaimRow) {
   try {
     const snapshot = await fetch17TrackInfo(claim.tracking_number, effective17TrackCarrierId(claim.carrier, claim.provider_carrier_id));
     const payload = build17TrackSyncCarrierPayload(snapshot, claim);
-    if (!payload?.events.length) {
+    if (!payload) {
       return {
         shipmentId: claim.shipment_id,
         trackingNumber: claim.tracking_number,
-        status: "no_events",
+        status: "unparseable",
         eventCount: 0,
       };
     }
     const result = await record17TrackInboundPayload(payload);
+    if (!payload.events.length) {
+      await resolveAccepted17TrackIncidents(claim.shipment_id);
+      return {
+        shipmentId: claim.shipment_id,
+        trackingNumber: claim.tracking_number,
+        status: "recorded_no_events",
+        eventCount: 0,
+        result,
+      };
+    }
     await resolveAccepted17TrackIncidents(claim.shipment_id);
     return {
       shipmentId: claim.shipment_id,
