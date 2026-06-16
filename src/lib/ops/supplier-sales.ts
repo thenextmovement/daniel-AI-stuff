@@ -620,14 +620,17 @@ function offersAppBaseUrl() {
   )?.replace(/\/+$/, "");
 }
 
-function offersInternalApiKey() {
-  return nullableText(
-    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY ||
-      process.env.OFFERS_INTERNAL_API_KEY ||
-      process.env.QUOTE_INTERNAL_API_TOKEN ||
-      process.env.OPS_INTERNAL_API_KEY,
-    1000,
-  );
+function offersInternalApiKeys() {
+  const candidates = [
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY,
+    process.env.OFFERS_INTERNAL_API_KEY,
+    process.env.QUOTE_INTERNAL_API_TOKEN,
+    process.env.OPS_INTERNAL_API_KEY,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  ]
+    .map((value) => nullableText(value, 1000))
+    .filter((value): value is string => Boolean(value));
+  return [...new Set(candidates)];
 }
 
 function shopifyAdminToken() {
@@ -673,7 +676,7 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
       : "SUPPLIER_SALES_AGENT_API_TOKEN, ein interner Ops/Offers-Key oder SUPPLIER_SALES_WEBHOOK_SECRET fehlt. Neue Sales koennen nicht automatisiert importiert werden.",
   ));
 
-  const completedOffersPullReady = Boolean(offersAppBaseUrl() && offersInternalApiKey());
+  const completedOffersPullReady = Boolean(offersAppBaseUrl() && offersInternalApiKeys().length);
   items.push(diagnostic(
     "completed_offers_pull",
     completedOffersPullReady ? "ok" : "missing",
@@ -1489,8 +1492,8 @@ export async function syncCompletedOffersFromOffersApp(
   options?: { limit?: number },
 ): Promise<SupplierCompletedOffersSyncResult> {
   const baseUrl = offersAppBaseUrl();
-  const token = offersInternalApiKey();
-  if (!baseUrl || !token) {
+  const tokens = offersInternalApiKeys();
+  if (!baseUrl || !tokens.length) {
     return {
       status: "skipped",
       checked: 0,
@@ -1503,14 +1506,35 @@ export async function syncCompletedOffersFromOffersApp(
 
   const url = new URL("/api/internal/offers/completed-sales", baseUrl);
   url.searchParams.set("limit", String(Math.min(Math.max(Number(options?.limit || 50), 1), 100)));
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json"
-    },
-    signal: AbortSignal.timeout(15_000)
-  });
-  const body = await response.json().catch(() => null);
+  let response: Response | null = null;
+  let body: unknown = null;
+  let authFallbacks = 0;
+  for (const [index, token] of tokens.entries()) {
+    response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json"
+      },
+      signal: AbortSignal.timeout(15_000)
+    });
+    body = await response.json().catch(() => null);
+    if (response.ok && jsonRecord(body).ok) break;
+    if ((response.status === 401 || response.status === 403) && index < tokens.length - 1) {
+      authFallbacks += 1;
+      continue;
+    }
+    break;
+  }
+  if (!response) {
+    return {
+      status: "failed",
+      checked: 0,
+      upserted: 0,
+      failed: 1,
+      errors: [{ offerId: null, error: "Completed-Offers Feed konnte nicht aufgerufen werden." }],
+      warnings: []
+    };
+  }
   if (!response.ok || !jsonRecord(body).ok) {
     const message = recordString(jsonRecord(body), ["error", "message", "code"], 240) || `Completed-Offers Feed HTTP ${response.status}`;
     return {
@@ -1524,7 +1548,9 @@ export async function syncCompletedOffersFromOffersApp(
   }
 
   const errors: Array<{ offerId: string | null; error: string }> = [];
-  const warnings: string[] = [];
+  const warnings: string[] = authFallbacks > 0
+    ? ["Completed-Offers Pull nutzt einen alternativen internen Server-Key. NEONTRIP_OFFERS_INTERNAL_API_KEY sollte in Ops und Angebote-App angeglichen werden."]
+    : [];
   let upserted = 0;
   const sales = arrayRecords(jsonRecord(body).sales);
   for (const entry of sales) {

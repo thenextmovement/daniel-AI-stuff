@@ -586,6 +586,32 @@ test("completed offers pull imports offer.completed payloads idempotently", asyn
   assert.equal(eventPostCount, 1);
 });
 
+test("completed offers pull falls back to service role when the dedicated offers key is rejected", async () => {
+  const attemptedAuth: string[] = [];
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    assert.equal(url.origin, "https://angebote.test");
+    const authorization = init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string>).Authorization;
+    attemptedAuth.push(String(authorization || ""));
+    if (authorization === "Bearer stale-offers-key") {
+      return Response.json({ ok: false, error: { message: "Unauthorized" } }, { status: 401 });
+    }
+    assert.equal(authorization, "Bearer service-role");
+    return Response.json({ ok: true, sales: [], count: 0 });
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "stale-offers-key";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.checked, 0);
+    assert.equal(result.upserted, 0);
+    assert.equal(result.warnings.some((warning) => warning.includes("alternativen internen Server-Key")), true);
+  });
+
+  assert.deepEqual(attemptedAuth, ["Bearer stale-offers-key", "Bearer service-role"]);
+});
+
 test("supplier sales sync_completed_offers accepts automation bearer access", async () => {
   let offersFeedCount = 0;
   let salePostCount = 0;
@@ -730,6 +756,7 @@ test("supplier sales diagnostics expose missing and configured production links"
     "QUOTE_INTERNAL_API_TOKEN",
     "OPS_INTERNAL_API_KEY",
     "NEONTRIP_OFFERS_INTERNAL_API_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
     "SUPPLIER_SALES_WEBHOOK_SECRET",
     "SHOPIFY_SALE_WEBHOOK_SECRET",
     "SHOPIFY_ADMIN_API_ACCESS_TOKEN",
