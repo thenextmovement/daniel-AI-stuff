@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import test from "node:test";
 import { NextRequest } from "next/server";
 import { GET as supplierSalesGET, POST as supplierSalesPOST } from "@/app/api/ops/supplier-sales/route";
@@ -128,6 +129,7 @@ async function withMockedAssignmentFetch<T>(
     "OFFERS_INTERNAL_API_KEY",
     "QUOTE_INTERNAL_API_TOKEN",
     "OPS_INTERNAL_API_KEY",
+    "SUPPLIER_SALES_WEBHOOK_SECRET",
   ];
   const previousEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -807,6 +809,100 @@ test("completed offers pull falls back to service role when the dedicated offers
   assert.deepEqual(attemptedAuth, ["Bearer stale-offers-key", "Bearer service-role"]);
 });
 
+test("completed offers sync imports recent Shopify orders as fallback", async () => {
+  let shopifyOrderLookupCount = 0;
+  let salePostCount = 0;
+  const importedRow = saleRow({
+    id: "sale-shopify-fallback",
+    sale_key: "shopify:order:987654321",
+    source: "shopify",
+    shopify_order_id: "987654321",
+    shopify_order_name: "#1235",
+    customer_name: "Mira Fallback",
+    customer_email: "mira@example.com",
+    total_price: 238,
+    assignment_status: "ready_to_assign",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") {
+      return Response.json({ ok: true, sales: [], count: 0 });
+    }
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      shopifyOrderLookupCount += 1;
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.match(body.variables.query, /^created_at:>=20\d{2}-\d{2}-\d{2}$/);
+      return Response.json({
+        data: {
+          orders: {
+            nodes: [{
+              id: "gid://shopify/Order/987654321",
+              name: "#1235",
+              email: "mira@example.com",
+              createdAt: "2026-06-16T12:30:00Z",
+              processedAt: "2026-06-16T12:31:00Z",
+              displayFinancialStatus: "PAID",
+              customAttributes: [{ key: "deadline", value: "2026-06-28" }],
+              totalPriceSet: { shopMoney: { amount: "238.00", currencyCode: "EUR" } },
+              subtotalPriceSet: { shopMoney: { amount: "200.00", currencyCode: "EUR" } },
+              customer: { firstName: "Mira", lastName: "Fallback", email: "mira@example.com", phone: null },
+              billingAddress: { name: "Mira Fallback", company: null, email: "mira@example.com", phone: null, address1: null, address2: null, city: null, zip: null, country: "Germany", countryCodeV2: "DE" },
+              shippingAddress: null,
+              lineItems: {
+                nodes: [{
+                  id: "gid://shopify/LineItem/1",
+                  title: "LED Neon Logo",
+                  sku: null,
+                  quantity: 1,
+                  variantTitle: null,
+                  customAttributes: [],
+                  image: { url: "https://cdn.test/shopify.jpg" },
+                  product: { productType: "LED-Neon-Flex" },
+                }],
+              },
+            }],
+          },
+        },
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("id") === `eq.${importedRow.id}`) return Response.json([importedRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      salePostCount += 1;
+      const payload = JSON.parse(String(init?.body || "{}"));
+      assert.equal(payload.source, "shopify");
+      assert.equal(payload.shopify_order_id, "987654321");
+      assert.equal(payload.shopify_payment_status, "paid");
+      assert.equal(payload.customer_due_date, "2026-06-28");
+      return Response.json([importedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") return Response.json([importedRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: importedRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.checked, 1);
+    assert.equal(result.upserted, 1);
+    assert.equal(result.sources?.completedOffers.checked, 0);
+    assert.equal(result.sources?.shopifyOrders.checked, 1);
+  });
+
+  assert.equal(shopifyOrderLookupCount, 1);
+  assert.equal(salePostCount, 1);
+});
+
 test("supplier sales sync_completed_offers accepts automation bearer access", async () => {
   let offersFeedCount = 0;
   let salePostCount = 0;
@@ -907,6 +1003,30 @@ test("supplier sales sync_completed_offers accepts automation bearer access", as
 
   assert.equal(offersFeedCount, 1);
   assert.equal(salePostCount, 1);
+});
+
+test("supplier sales route rejects stale signed automation requests", async () => {
+  await withMockedAssignmentFetch(async () => {
+    assert.fail("stale signed request must not reach downstream systems");
+  }, async () => {
+    process.env.SUPPLIER_SALES_WEBHOOK_SECRET = "supplier-secret";
+    const body = JSON.stringify({ action: "sync_completed_offers", limit: 20, operatorName: "Automation" });
+    const timestamp = String(Math.floor((Date.now() - 20 * 60 * 1000) / 1000));
+    const signature = "sha256=" + createHmac("sha256", "supplier-secret").update(`${timestamp}.${body}`).digest("hex");
+    const response = await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-neontrip-timestamp": timestamp,
+        "x-neontrip-signature": signature,
+      },
+      body,
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 401, JSON.stringify(payload));
+    assert.equal(payload.error, "unauthorized");
+  });
 });
 
 test("supplier sales route does not expose raw Supabase details to clients", async () => {

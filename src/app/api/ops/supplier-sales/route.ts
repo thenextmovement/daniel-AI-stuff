@@ -23,6 +23,7 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 export const dynamic = "force-dynamic";
 
 const MAX_POST_BYTES = 1_000_000;
+const SIGNATURE_REPLAY_WINDOW_MS = 10 * 60 * 1000;
 
 type SupplierSalesPostBody = {
   action?:
@@ -117,11 +118,22 @@ function signatureSecret() {
   ).trim();
 }
 
-function verifySignature(rawBody: string, signature: string | null) {
+function validSignatureTimestamp(timestamp: string | null) {
+  if (!timestamp) return true;
+  const parsed = Number(timestamp);
+  const millis = Number.isFinite(parsed) && parsed < 10_000_000_000 ? parsed * 1000 : parsed;
+  return Number.isFinite(millis) && Math.abs(Date.now() - millis) <= SIGNATURE_REPLAY_WINDOW_MS;
+}
+
+function verifySignature(rawBody: string, signature: string | null, timestamp: string | null) {
   const secret = signatureSecret();
   if (!secret || !signature) return false;
-  const expected = "sha256=" + createHmac("sha256", secret).update(rawBody).digest("hex");
-  return safeEqual(signature.trim(), expected);
+  if (!validSignatureTimestamp(timestamp)) return false;
+  const expectedPayloads = timestamp ? [`${timestamp}.${rawBody}`, rawBody] : [rawBody];
+  return expectedPayloads.some((payload) => {
+    const expected = "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
+    return safeEqual(signature.trim(), expected);
+  });
 }
 
 async function getOpsActor(request: NextRequest, operatorName?: string | null): Promise<SupplierSaleActor | null> {
@@ -154,7 +166,7 @@ async function getActorOrAutomation(
   if (actor) return actor;
   if (
     hasSupplierSalesAutomationAccess(request, body?.agentToken || null) ||
-    verifySignature(rawBody, request.headers.get("x-neontrip-signature"))
+    verifySignature(rawBody, request.headers.get("x-neontrip-signature"), request.headers.get("x-neontrip-timestamp"))
   ) {
     return {
       host: getOpsHost(request),

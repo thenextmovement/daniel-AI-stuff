@@ -349,6 +349,10 @@ export type SupplierCompletedOffersSyncResult = {
   failed: number;
   errors: Array<{ offerId: string | null; error: string }>;
   warnings: string[];
+  sources?: {
+    completedOffers: { checked: number; upserted: number; failed: number };
+    shopifyOrders: { checked: number; upserted: number; failed: number; skipped: boolean };
+  };
 };
 
 type SupplierRecommendationResult = {
@@ -1539,94 +1543,300 @@ export async function upsertSupplierSaleFromPayload(payload: unknown, actor?: Su
   return { sale, warnings: parsed.warnings };
 }
 
+function shopifyOrderNumericId(gid: unknown) {
+  const text = nullableText(gid, 260);
+  return text?.match(/\/Order\/(\d+)$/)?.[1] || null;
+}
+
+function shopifyMoneyAmount(value: unknown) {
+  return recordString(jsonRecord(jsonRecord(value).shopMoney), ["amount"], 80);
+}
+
+function shopifyAddressPayload(value: unknown) {
+  const address = jsonRecord(value);
+  return {
+    name: recordString(address, ["name"], 260),
+    company: recordString(address, ["company"], 260),
+    email: recordString(address, ["email"], 260),
+    phone: recordString(address, ["phone"], 120),
+    address1: recordString(address, ["address1"], 260),
+    address2: recordString(address, ["address2"], 260),
+    city: recordString(address, ["city"], 160),
+    zip: recordString(address, ["zip"], 80),
+    country: recordString(address, ["country", "countryCodeV2"], 120),
+  };
+}
+
+function shopifyCustomAttributes(value: unknown) {
+  return arrayRecords(value).map((attribute) => ({
+    name: recordString(attribute, ["key", "name"], 120),
+    value: recordString(attribute, ["value"], 500),
+  })).filter((attribute) => attribute.name || attribute.value);
+}
+
+function shopifyOrderPayloadFromGraphql(order: JsonRecord, domain: string) {
+  const orderGid = recordString(order, ["id"], 260);
+  const numericId = shopifyOrderNumericId(orderGid);
+  const customer = jsonRecord(order.customer);
+  const currency = nestedString(order, ["totalPriceSet", "shopMoney", "currencyCode"], 12) || "EUR";
+  return {
+    id: numericId || orderGid,
+    admin_graphql_api_id: orderGid,
+    name: recordString(order, ["name"], 120),
+    admin_url: numericId ? `https://${domain}/admin/orders/${numericId}` : null,
+    financial_status: recordString(order, ["displayFinancialStatus"], 80)?.toLowerCase(),
+    created_at: recordString(order, ["createdAt"], 80),
+    processed_at: recordString(order, ["processedAt"], 80),
+    currency,
+    email: recordString(order, ["email"], 260) || recordString(customer, ["email"], 260),
+    phone: recordString(order, ["phone"], 120) || recordString(customer, ["phone"], 120),
+    total_price: shopifyMoneyAmount(order.totalPriceSet),
+    subtotal_price: shopifyMoneyAmount(order.subtotalPriceSet),
+    customer: {
+      first_name: recordString(customer, ["firstName"], 120),
+      last_name: recordString(customer, ["lastName"], 120),
+      email: recordString(customer, ["email"], 260),
+      phone: recordString(customer, ["phone"], 120),
+    },
+    billing_address: shopifyAddressPayload(order.billingAddress),
+    shipping_address: shopifyAddressPayload(order.shippingAddress),
+    note_attributes: shopifyCustomAttributes(order.customAttributes),
+    line_items: arrayRecords(jsonRecord(order.lineItems).nodes).map((item) => ({
+      id: recordString(item, ["id"], 260),
+      title: recordString(item, ["title", "name"], 500),
+      sku: recordString(item, ["sku"], 120),
+      variant_title: recordString(item, ["variantTitle"], 500),
+      quantity: numericValue(item.quantity) || 1,
+      product_type: nestedString(item, ["product", "productType"], 160),
+      image: { src: nestedString(item, ["image", "url"], 1000) },
+      properties: shopifyCustomAttributes(item.customAttributes),
+    })),
+    idempotencyKey: orderGid ? `shopify-order:${orderGid}:supplier-sales:v1` : undefined,
+  };
+}
+
+function shopifyReconcileSince(daysBack?: number | string | null) {
+  const days = Math.min(Math.max(Number(daysBack || process.env.SHOPIFY_SUPPLIER_SALES_RECONCILE_DAYS || 14), 1), 60);
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - days);
+  return since.toISOString().slice(0, 10);
+}
+
+async function syncRecentShopifyOrdersFromAdmin(
+  actor?: SupplierSaleActor | null,
+  options?: { limit?: number; daysBack?: number | string | null },
+) {
+  const config = shopifyConfig();
+  if (!config) {
+    return {
+      status: "skipped" as const,
+      checked: 0,
+      upserted: 0,
+      failed: 0,
+      errors: [] as Array<{ offerId: string | null; error: string }>,
+      warnings: ["Shopify Admin API ist nicht konfiguriert; Shopify-Fallback wurde uebersprungen."],
+    };
+  }
+
+  const limit = Math.min(Math.max(Number(options?.limit || 50), 1), 100);
+  const since = shopifyReconcileSince(options?.daysBack);
+  const response = await fetch(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": config.token,
+    },
+    body: JSON.stringify({
+      query: `
+        query SupplierSalesRecentOrders($first: Int!, $query: String!) {
+          orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
+            nodes {
+              id
+              name
+              email
+              phone
+              createdAt
+              processedAt
+              displayFinancialStatus
+              customAttributes { key value }
+              totalPriceSet { shopMoney { amount currencyCode } }
+              subtotalPriceSet { shopMoney { amount currencyCode } }
+              customer { firstName lastName email phone }
+              billingAddress { name company email phone address1 address2 city zip country countryCodeV2 }
+              shippingAddress { name company email phone address1 address2 city zip country countryCodeV2 }
+              lineItems(first: 50) {
+                nodes {
+                  id
+                  title
+                  sku
+                  quantity
+                  variantTitle
+                  customAttributes { key value }
+                  image { url }
+                  product { productType }
+                }
+              }
+            }
+          }
+        }
+      `,
+      variables: { first: limit, query: `created_at:>=${since}` },
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const body = await response.json().catch(() => null) as JsonRecord | null;
+  if (!response.ok) {
+    return {
+      status: "failed" as const,
+      checked: 0,
+      upserted: 0,
+      failed: 1,
+      errors: [{ offerId: null, error: `Shopify Orders-Fallback HTTP ${response.status}` }],
+      warnings: [] as string[],
+    };
+  }
+  const graphErrors = arrayRecords(body?.errors);
+  if (graphErrors.length) {
+    return {
+      status: "failed" as const,
+      checked: 0,
+      upserted: 0,
+      failed: 1,
+      errors: [{
+        offerId: null,
+        error: graphErrors.map((error) => cleanText(error.message || JSON.stringify(error), 200)).filter(Boolean).join("; ") || "Shopify Orders-Fallback fehlgeschlagen.",
+      }],
+      warnings: [] as string[],
+    };
+  }
+
+  const errors: Array<{ offerId: string | null; error: string }> = [];
+  let upserted = 0;
+  const orders = arrayRecords(jsonRecord(jsonRecord(body?.data).orders).nodes);
+  for (const order of orders) {
+    try {
+      await upsertSupplierSaleFromPayload(shopifyOrderPayloadFromGraphql(order, config.domain), actor);
+      upserted += 1;
+    } catch (error) {
+      errors.push({
+        offerId: recordString(order, ["name", "id"], 160),
+        error: error instanceof Error ? error.message : "Shopify Order konnte nicht synchronisiert werden.",
+      });
+    }
+  }
+
+  return {
+    status: errors.length ? "failed" as const : "synced" as const,
+    checked: orders.length,
+    upserted,
+    failed: errors.length,
+    errors,
+    warnings: [] as string[],
+  };
+}
+
 export async function syncCompletedOffersFromOffersApp(
   actor?: SupplierSaleActor | null,
   options?: { limit?: number },
 ): Promise<SupplierCompletedOffersSyncResult> {
   const baseUrl = offersAppBaseUrl();
   const tokens = offersInternalApiKeys();
-  if (!baseUrl || !tokens.length) {
-    return {
-      status: "skipped",
-      checked: 0,
-      upserted: 0,
-      failed: 0,
-      errors: [],
-      warnings: ["Completed-Offers Pull ist nicht konfiguriert."]
-    };
-  }
-
-  const url = new URL("/api/internal/offers/completed-sales", baseUrl);
-  url.searchParams.set("limit", String(Math.min(Math.max(Number(options?.limit || 50), 1), 100)));
-  let response: Response | null = null;
-  let body: unknown = null;
-  let authFallbacks = 0;
-  for (const [index, token] of tokens.entries()) {
-    response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json"
-      },
-      signal: AbortSignal.timeout(15_000)
-    });
-    body = await response.json().catch(() => null);
-    if (response.ok && jsonRecord(body).ok) break;
-    if ((response.status === 401 || response.status === 403) && index < tokens.length - 1) {
-      authFallbacks += 1;
-      continue;
-    }
-    break;
-  }
-  if (!response) {
-    return {
-      status: "failed",
-      checked: 0,
-      upserted: 0,
-      failed: 1,
-      errors: [{ offerId: null, error: "Completed-Offers Feed konnte nicht aufgerufen werden." }],
-      warnings: []
-    };
-  }
-  if (!response.ok || !jsonRecord(body).ok) {
-    const message = recordString(jsonRecord(body), ["error", "message", "code"], 240) || `Completed-Offers Feed HTTP ${response.status}`;
-    return {
-      status: "failed",
-      checked: 0,
-      upserted: 0,
-      failed: 1,
-      errors: [{ offerId: null, error: message }],
-      warnings: []
-    };
-  }
-
   const errors: Array<{ offerId: string | null; error: string }> = [];
-  const warnings: string[] = authFallbacks > 0
-    ? ["Completed-Offers Pull nutzt einen alternativen internen Server-Key. NEONTRIP_OFFERS_INTERNAL_API_KEY sollte in Ops und Angebote-App angeglichen werden."]
-    : [];
-  let upserted = 0;
-  const sales = arrayRecords(jsonRecord(body).sales);
-  for (const entry of sales) {
-    const offerId = recordString(entry, ["offerId"], 180);
-    const payload = entry.payload;
+  const warnings: string[] = [];
+  let completedChecked = 0;
+  let completedUpserted = 0;
+  let completedFailed = 0;
+  if (!baseUrl || !tokens.length) {
+    warnings.push("Completed-Offers Pull ist nicht konfiguriert.");
+  } else {
+    const url = new URL("/api/internal/offers/completed-sales", baseUrl);
+    url.searchParams.set("limit", String(Math.min(Math.max(Number(options?.limit || 50), 1), 100)));
+    let response: Response | null = null;
+    let body: unknown = null;
+    let authFallbacks = 0;
+    let offerPullError: unknown = null;
     try {
-      const result = await upsertSupplierSaleFromPayload(payload, actor);
-      upserted += 1;
-      warnings.push(...result.warnings.map((warning) => `${offerId || "offer"}: ${warning}`));
+      for (const [index, token] of tokens.entries()) {
+        response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json"
+          },
+          signal: AbortSignal.timeout(15_000)
+        });
+        body = await response.json().catch(() => null);
+        if (response.ok && jsonRecord(body).ok) break;
+        if ((response.status === 401 || response.status === 403) && index < tokens.length - 1) {
+          authFallbacks += 1;
+          continue;
+        }
+        break;
+      }
     } catch (error) {
-      errors.push({
-        offerId,
-        error: error instanceof Error ? error.message : "Completed Offer konnte nicht synchronisiert werden."
-      });
+      offerPullError = error;
+    }
+
+    if (offerPullError) {
+      completedFailed += 1;
+      errors.push({ offerId: null, error: offerPullError instanceof Error ? offerPullError.message : "Completed-Offers Feed konnte nicht aufgerufen werden." });
+    } else if (!response) {
+      completedFailed += 1;
+      errors.push({ offerId: null, error: "Completed-Offers Feed konnte nicht aufgerufen werden." });
+    } else if (!response.ok || !jsonRecord(body).ok) {
+      completedFailed += 1;
+      const message = recordString(jsonRecord(body), ["error", "message", "code"], 240) || `Completed-Offers Feed HTTP ${response.status}`;
+      errors.push({ offerId: null, error: message });
+    } else {
+      if (authFallbacks > 0) {
+        warnings.push("Completed-Offers Pull nutzt einen alternativen internen Server-Key. NEONTRIP_OFFERS_INTERNAL_API_KEY sollte in Ops und Angebote-App angeglichen werden.");
+      }
+      const sales = arrayRecords(jsonRecord(body).sales);
+      completedChecked = sales.length;
+      for (const entry of sales) {
+        const offerId = recordString(entry, ["offerId"], 180);
+        const payload = entry.payload;
+        try {
+          const result = await upsertSupplierSaleFromPayload(payload, actor);
+          completedUpserted += 1;
+          warnings.push(...result.warnings.map((warning) => `${offerId || "offer"}: ${warning}`));
+        } catch (error) {
+          completedFailed += 1;
+          errors.push({
+            offerId,
+            error: error instanceof Error ? error.message : "Completed Offer konnte nicht synchronisiert werden."
+          });
+        }
+      }
     }
   }
 
+  const shopify = await syncRecentShopifyOrdersFromAdmin(actor, { limit: options?.limit }).catch((error) => ({
+    status: "failed" as const,
+    checked: 0,
+    upserted: 0,
+    failed: 1,
+    errors: [{ offerId: null, error: error instanceof Error ? error.message : "Shopify Orders-Fallback fehlgeschlagen." }],
+    warnings: [] as string[],
+  }));
+  errors.push(...shopify.errors);
+  warnings.push(...shopify.warnings);
+  const checked = completedChecked + shopify.checked;
+  const upserted = completedUpserted + shopify.upserted;
+  const failed = completedFailed + shopify.failed;
+  const completedConfigured = Boolean(baseUrl && tokens.length);
+  const shopifySkipped = shopify.status === "skipped";
+  const status = failed ? "failed" : (!completedConfigured && shopifySkipped ? "skipped" : "synced");
   return {
-    status: errors.length ? "failed" : "synced",
-    checked: sales.length,
+    status,
+    checked,
     upserted,
-    failed: errors.length,
+    failed,
     errors,
-    warnings
+    warnings,
+    sources: {
+      completedOffers: { checked: completedChecked, upserted: completedUpserted, failed: completedFailed },
+      shopifyOrders: { checked: shopify.checked, upserted: shopify.upserted, failed: shopify.failed, skipped: shopifySkipped },
+    },
   };
 }
 
