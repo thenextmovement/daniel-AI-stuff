@@ -203,8 +203,9 @@ function getSegmentDetail(item: SalesCallListItem) {
 }
 
 function needsSegmentConfirmation(item: SalesCallListItem) {
+  const segment = item.record.request?.segment;
   const status = item.record.request?.segmentStatus?.trim().toLowerCase();
-  return !item.record.request?.segment || status === "needs_review" || status === "classified" || status === "pending";
+  return !getCustomerSegmentOption(segment) || status === "needs_review" || status === "classified" || status === "pending";
 }
 
 function segmentTone(item: SalesCallListItem) {

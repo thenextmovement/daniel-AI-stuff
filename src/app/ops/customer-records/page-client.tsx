@@ -4314,7 +4314,7 @@ function getAiSegmentDetail(request: CustomerRequestSummary | null | undefined) 
 }
 
 function shouldConfirmAiSegment(request: CustomerRequestSummary | null | undefined) {
-  if (!request?.segment) return true;
+  if (!request || !getCustomerSegmentOption(request.segment)) return true;
   const status = request.segmentStatus?.trim().toLowerCase();
   const confidence = request.segmentConfidence ?? null;
   return status !== "accepted" || confidence === null || confidence < 0.75;

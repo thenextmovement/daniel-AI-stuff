@@ -210,3 +210,55 @@ test("acceptQuote posts offer.completed to ops supplier sales when the internal 
     else process.env.NEONTRIP_OPS_SUPPLIER_SALES_URL = originalUrl;
   }
 });
+
+test("acceptQuote persists a failed ops supplier-sales sync event without blocking acceptance", async () => {
+  const originalKey = process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  const originalUrl = process.env.NEONTRIP_OPS_SUPPLIER_SALES_URL;
+  const quoteEvents: Array<{ event_type?: string; payload?: Record<string, unknown> }> = [];
+
+  process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+  process.env.NEONTRIP_OPS_SUPPLIER_SALES_URL = "https://ops.example.test/api/ops/supplier-sales";
+
+  try {
+    await withSupabaseFetchMock(
+      (url, init) => {
+        if (url.hostname === "ops.example.test") {
+          return Response.json({ ok: false, error: "ops_down" }, { status: 503 });
+        }
+        if (url.pathname.endsWith("/quotes") && String(init?.method || "GET").toUpperCase() === "GET") {
+          return Response.json([{ ...quoteRecord(), customer_email: "kunde@example.com" }]);
+        }
+        if (url.pathname.endsWith("/quote_items")) {
+          return Response.json(items.map((item) => ({ ...item, quote_id: quoteRecord().id })));
+        }
+        if (url.pathname.endsWith("/quote_images")) {
+          return Response.json([]);
+        }
+        if (url.pathname.endsWith("/quote_events")) {
+          quoteEvents.push(JSON.parse(String(init?.body || "{}")));
+          return new Response(null, { status: 204 });
+        }
+        if (url.pathname.endsWith("/quote_selections")) return new Response(null, { status: 204 });
+        if (url.pathname.endsWith("/quote_acceptances")) return new Response(null, { status: 204 });
+        if (url.pathname.endsWith("/quotes")) return new Response(null, { status: 204 });
+        return Response.json({ error: "unexpected path" }, { status: 500 });
+      },
+      async () => {
+        const result = await acceptQuote({ shareToken: "share-token", payload: validPayload() });
+        assert.equal(result.status, "accepted");
+        assert.equal(result.opsSync.status, "failed");
+      },
+    );
+  } finally {
+    if (originalKey === undefined) delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+    else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = originalKey;
+    if (originalUrl === undefined) delete process.env.NEONTRIP_OPS_SUPPLIER_SALES_URL;
+    else process.env.NEONTRIP_OPS_SUPPLIER_SALES_URL = originalUrl;
+  }
+
+  const syncEvent = quoteEvents.find((event) => event.event_type === "accepted_ops_supplier_sales_failed");
+  assert.ok(syncEvent);
+  assert.equal(syncEvent.payload?.status, "failed");
+  assert.equal(syncEvent.payload?.http_status, 503);
+  assert.equal(syncEvent.payload?.idempotency_key, `offer:${quoteRecord().id}:accepted:v1`);
+});
