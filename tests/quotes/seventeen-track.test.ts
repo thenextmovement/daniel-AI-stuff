@@ -6,6 +6,7 @@ import {
   buildInboundCarrierPayloadFrom17Track,
   build17TrackRegistrationItem,
   default17TrackCarrierId,
+  effective17TrackCarrierId,
   parse17TrackRegistrationResult,
 } from "../../src/lib/ops/seventeen-track";
 
@@ -183,7 +184,7 @@ test("parse17TrackRegistrationResult records accepted registrations with provide
 });
 
 test("build17TrackRegistrationItem uses explicit carrier ids for known inbound carriers", () => {
-  assert.equal(default17TrackCarrierId("dhl"), 7041);
+  assert.equal(default17TrackCarrierId("dhl"), 100001);
   assert.equal(default17TrackCarrierId("fedex"), 100003);
 
   const item = build17TrackRegistrationItem({
@@ -197,9 +198,15 @@ test("build17TrackRegistrationItem uses explicit carrier ids for known inbound c
   });
 
   assert.equal(item.number, "3328106036");
-  assert.equal(item.carrier, 7041);
+  assert.equal(item.carrier, 100001);
   assert.equal(item.tag, "25d72523-b171-4267-98e0-2b9859c0feb2");
   assert.equal(item.note, "China Los");
+});
+
+test("effective17TrackCarrierId upgrades legacy DHL Paket registrations to DHL Express", () => {
+  assert.equal(effective17TrackCarrierId("dhl", 7041), 100001);
+  assert.equal(effective17TrackCarrierId("dhl", 100001), 100001);
+  assert.equal(effective17TrackCarrierId("fedex", 100003), 100003);
 });
 
 test("parse17TrackRegistrationResult matches batch results and extracts nested rejected errors", () => {

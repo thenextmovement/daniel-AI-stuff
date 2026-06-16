@@ -5,9 +5,10 @@ const API_BASE_URL = "https://api.17track.net/track/v2.2";
 const MAX_WEBHOOK_BYTES = 1_000_000;
 const REGISTER_BATCH_SIZE = 40;
 const DEFAULT_17TRACK_CARRIER_IDS = {
-  dhl: 7041,
+  dhl: 100001,
   fedex: 100003,
 } as const;
+const LEGACY_DHL_PAKET_17TRACK_CARRIER_ID = 7041;
 
 type RegistrationClaimRow = {
   shipment_id: string;
@@ -319,6 +320,11 @@ export function default17TrackCarrierId(carrier: RegistrationClaimRow["carrier"]
   return carrier === "dhl" || carrier === "fedex" ? DEFAULT_17TRACK_CARRIER_IDS[carrier] : null;
 }
 
+export function effective17TrackCarrierId(carrier: RegistrationClaimRow["carrier"], providerCarrierId?: number | null) {
+  if (carrier === "dhl" && providerCarrierId === LEGACY_DHL_PAKET_17TRACK_CARRIER_ID) return DEFAULT_17TRACK_CARRIER_IDS.dhl;
+  return providerCarrierId || default17TrackCarrierId(carrier);
+}
+
 export function build17TrackRegistrationItem(claim: RegistrationClaimRow) {
   return {
     number: claim.tracking_number,
@@ -495,7 +501,7 @@ export async function claimAndRegister17TrackShipments(limit = 20) {
 
 async function sync17TrackShipment(claim: SeventeenTrackTrackingClaimRow) {
   try {
-    const snapshot = await fetch17TrackInfo(claim.tracking_number, claim.provider_carrier_id || default17TrackCarrierId(claim.carrier));
+    const snapshot = await fetch17TrackInfo(claim.tracking_number, effective17TrackCarrierId(claim.carrier, claim.provider_carrier_id));
     const payload = build17TrackSyncCarrierPayload(snapshot, claim);
     if (!payload?.events.length) {
       return {
