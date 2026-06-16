@@ -5,10 +5,10 @@ const API_BASE_URL = "https://api.17track.net/track/v2.2";
 const MAX_WEBHOOK_BYTES = 1_000_000;
 const REGISTER_BATCH_SIZE = 40;
 const DEFAULT_17TRACK_CARRIER_IDS = {
-  dhl: 7041,
+  dhl: 100001,
   fedex: 100003,
 } as const;
-const UNSUPPORTED_DHL_EXPRESS_17TRACK_CARRIER_ID = 100001;
+const DHL_PAKET_17TRACK_CARRIER_ID = 7041;
 
 type RegistrationClaimRow = {
   shipment_id: string;
@@ -321,12 +321,17 @@ export function default17TrackCarrierId(carrier: RegistrationClaimRow["carrier"]
 }
 
 export function normalized17TrackProviderCarrierId(providerCarrierId?: number | null) {
-  if (providerCarrierId === UNSUPPORTED_DHL_EXPRESS_17TRACK_CARRIER_ID) return DEFAULT_17TRACK_CARRIER_IDS.dhl;
+  if (providerCarrierId === DHL_PAKET_17TRACK_CARRIER_ID) return DEFAULT_17TRACK_CARRIER_IDS.dhl;
   return providerCarrierId || null;
 }
 
 export function effective17TrackCarrierId(carrier: RegistrationClaimRow["carrier"], providerCarrierId?: number | null) {
   return normalized17TrackProviderCarrierId(providerCarrierId) || default17TrackCarrierId(carrier);
+}
+
+export function needs17TrackRegistrationRefresh(carrier: RegistrationClaimRow["carrier"], providerCarrierId?: number | null) {
+  const expectedCarrierId = default17TrackCarrierId(carrier);
+  return Boolean(expectedCarrierId && providerCarrierId !== expectedCarrierId);
 }
 
 export function build17TrackRegistrationItem(claim: RegistrationClaimRow) {
@@ -503,8 +508,32 @@ export async function claimAndRegister17TrackShipments(limit = 20) {
   return { claimed: claims?.length || 0, results };
 }
 
+async function refresh17TrackRegistrationIfNeeded(claim: SeventeenTrackTrackingClaimRow) {
+  const expectedCarrierId = default17TrackCarrierId(claim.carrier);
+  if (!expectedCarrierId || !needs17TrackRegistrationRefresh(claim.carrier, claim.provider_carrier_id)) return null;
+
+  const registrationClaim: RegistrationClaimRow = {
+    shipment_id: claim.shipment_id,
+    registration_id: "",
+    carrier: claim.carrier,
+    tracking_number: claim.tracking_number,
+    trello_card_name: claim.trello_card_name,
+    trello_card_url: claim.trello_card_url,
+    attempts: 0,
+  };
+  const response = await call17Track("/register", [build17TrackRegistrationItem(registrationClaim)]);
+  const payload = parse17TrackRegistrationResult(response, registrationClaim);
+  await record17TrackRegistrationPayload(payload);
+
+  if (payload.status !== "accepted" || payload.providerCarrierId !== expectedCarrierId) {
+    throw new Error(`17TRACK carrier refresh rejected: ${payload.error || "unexpected carrier registration response"}`);
+  }
+  return payload;
+}
+
 async function sync17TrackShipment(claim: SeventeenTrackTrackingClaimRow) {
   try {
+    await refresh17TrackRegistrationIfNeeded(claim);
     const snapshot = await fetch17TrackInfo(claim.tracking_number, effective17TrackCarrierId(claim.carrier, claim.provider_carrier_id));
     const payload = build17TrackSyncCarrierPayload(snapshot, claim);
     if (!payload) {
