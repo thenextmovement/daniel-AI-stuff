@@ -6,6 +6,7 @@ import {
   createSupplierDeadlineTasks,
   listSupplierSalesBoard,
   requestSupplierPaymentReminder,
+  retrySupplierSaleShopifyTag,
   syncCompletedOffersFromOffersApp,
   updateSupplierSalePaymentDecision,
   upsertSupplierSaleFromPayload,
@@ -29,6 +30,7 @@ type SupplierSalesPostBody = {
     | "assign_supplier"
     | "update_payment_decision"
     | "request_payment_reminder"
+    | "retry_shopify_tag"
     | "create_deadline_tasks"
     | "sync_completed_offers";
   payload?: unknown;
@@ -230,7 +232,7 @@ export async function POST(request: NextRequest) {
         paymentDueAt: body.paymentDueAt || null,
         operatorName: body.operatorName || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "active" });
+      const board = await listSupplierSalesBoard({ scope: "assigned" });
       return NextResponse.json({ ok: true, action, sale, board });
     }
 
@@ -245,6 +247,15 @@ export async function POST(request: NextRequest) {
         idempotencyKey: body.idempotencyKey || null,
       }, actor);
       const board = await listSupplierSalesBoard({ scope: "active" });
+      return NextResponse.json({ ok: true, action, sale, board });
+    }
+
+    if (action === "retry_shopify_tag") {
+      const sale = await retrySupplierSaleShopifyTag({
+        saleId: String(body.saleId || ""),
+        operatorName: body.operatorName || null,
+      }, actor);
+      const board = await listSupplierSalesBoard({ scope: "sync" });
       return NextResponse.json({ ok: true, action, sale, board });
     }
 
@@ -271,7 +282,7 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
         assigneeLabel: body.assigneeLabel || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "active" });
+      const board = await listSupplierSalesBoard({ scope: "assigned" });
       return NextResponse.json({ ok: true, action, sale, board });
     }
 

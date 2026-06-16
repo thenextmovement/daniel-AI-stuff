@@ -13,6 +13,7 @@ import {
   normalizeDateOnly,
   normalizeShopifyPaymentStatus,
   requestSupplierPaymentReminder,
+  retrySupplierSaleShopifyTag,
   supplierSaleNeedsDeadlineTask,
   syncCompletedOffersFromOffersApp,
   type SupplierSaleItemRow,
@@ -425,6 +426,146 @@ test("supplier assignment duplicate attempt does not rerun projections", async (
   assert.equal(attemptPostCount, 1);
   assert.equal(supplierSalePatchCount, 0);
   assert.equal(trelloPostCount, 0);
+});
+
+test("supplier assignment finds Shopify order by offer reference before tagging", async () => {
+  let shopifyLookupCount = 0;
+  let shopifyTagCount = 0;
+  let currentRow = saleRow({
+    id: "sale-offer-shopify-lookup",
+    sale_key: "offer:offer-shopify-lookup",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    offer_id: "offer-shopify-lookup",
+    offer_number: "A/N 15101",
+    document_reference: "A-N-15101-ABCDEF",
+    customer_name: "Mia Muster",
+    customer_email: "mia@example.com",
+    assignment_status: "ready_to_assign",
+    payment_decision_status: "manual_approved_unpaid",
+    active_task_id: "task-existing",
+    task_sync_status: "synced",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      const body = JSON.parse(String(init?.body || "{}"));
+      if (String(body.query || "").includes("orders(")) {
+        shopifyLookupCount += 1;
+        assert.equal(body.variables.query, "A-N-15101-ABCDEF");
+        return Response.json({
+          data: {
+            orders: {
+              nodes: [{ id: "gid://shopify/Order/987654321", name: "#1234", email: "mia@example.com", tags: [] }],
+            },
+          },
+        });
+      }
+      shopifyTagCount += 1;
+      assert.equal(body.variables.id, "gid://shopify/Order/987654321");
+      assert.deepEqual(body.variables.tags, ["Quentin (schon bezahlt)"]);
+      return Response.json({ data: { tagsAdd: { node: { id: "gid://shopify/Order/987654321" }, userErrors: [] } } });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "PATCH") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const sale = await assignSupplierSale({
+      saleId: currentRow.id,
+      supplier: "quentin",
+      requestedDeliveryDate: "2026-07-13",
+      paymentDecisionStatus: "manual_approved_unpaid",
+      operatorName: "Ops",
+    });
+
+    assert.equal(sale.assignmentStatus, "assigned");
+    assert.equal(sale.shopifyOrderId, "gid://shopify/Order/987654321");
+    assert.equal(sale.shopifyTagSyncStatus, "synced");
+    assert.equal(sale.shopifyTagError, null);
+  });
+
+  assert.equal(shopifyLookupCount, 1);
+  assert.equal(shopifyTagCount, 1);
+});
+
+test("supplier Shopify tag retry resolves existing assigned offer sale", async () => {
+  let shopifyLookupCount = 0;
+  let shopifyTagCount = 0;
+  let currentRow = saleRow({
+    id: "sale-offer-shopify-retry",
+    sale_key: "offer:offer-shopify-retry",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    offer_id: "offer-shopify-retry",
+    offer_number: "A/N 15102",
+    document_reference: "A-N-15102-ABCDEF",
+    customer_name: "Mia Muster",
+    customer_email: "mia@example.com",
+    assigned_supplier: "quentin",
+    assignment_status: "assigned",
+    shopify_tag_value: "Quentin (schon bezahlt)",
+    shopify_tag_sync_status: "skipped",
+    shopify_tag_error: "Shopify Order-ID fehlt.",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      const body = JSON.parse(String(init?.body || "{}"));
+      if (String(body.query || "").includes("orders(")) {
+        shopifyLookupCount += 1;
+        assert.equal(body.variables.query, "A-N-15102-ABCDEF");
+        return Response.json({
+          data: {
+            orders: {
+              nodes: [{ id: "gid://shopify/Order/987654322", name: "#1235", email: "mia@example.com", tags: [] }],
+            },
+          },
+        });
+      }
+      shopifyTagCount += 1;
+      assert.equal(body.variables.id, "gid://shopify/Order/987654322");
+      assert.deepEqual(body.variables.tags, ["Quentin (schon bezahlt)"]);
+      return Response.json({ data: { tagsAdd: { node: { id: "gid://shopify/Order/987654322" }, userErrors: [] } } });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const sale = await retrySupplierSaleShopifyTag({ saleId: currentRow.id, operatorName: "Ops" });
+
+    assert.equal(sale.shopifyOrderId, "gid://shopify/Order/987654322");
+    assert.equal(sale.shopifyTagSyncStatus, "synced");
+    assert.equal(sale.shopifyTagError, null);
+  });
+
+  assert.equal(shopifyLookupCount, 1);
+  assert.equal(shopifyTagCount, 1);
 });
 
 test("supplier payment reminder duplicate reservation does not resend webhook", async () => {

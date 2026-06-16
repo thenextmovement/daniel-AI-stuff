@@ -163,6 +163,10 @@ function assignmentMessage(sale: SupplierSale | undefined) {
 
 function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null) {
   if (action === "assign_supplier") return assignmentMessage(payload?.sale);
+  if (action === "retry_shopify_tag") {
+    if (payload?.sale?.shopifyTagSyncStatus === "synced") return "Shopify-Tag wurde gesetzt.";
+    return "Shopify-Tag erneut geprueft. Bitte Sync-Status pruefen.";
+  }
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
   if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
   if (action === "sync_completed_offers") {
@@ -257,6 +261,7 @@ function SaleCard({
 
   const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
+  const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.shopifyTagSyncStatus !== "synced";
 
   return (
     <article className="rounded-[0.5rem] border border-stone-200 bg-white p-4 shadow-sm">
@@ -413,6 +418,24 @@ function SaleCard({
                 <BadgeCheck className="h-4 w-4" />
                 Vergeben
               </button>
+              {canRetryShopifyTag ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    if (!confirmAction("Shopify-Tag fuer diese vergebene Sale erneut suchen und setzen?")) return;
+                    void onAction({
+                      action: "retry_shopify_tag",
+                      saleId: sale.id,
+                      operatorName,
+                    });
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  Shopify erneut
+                </button>
+              ) : null}
               {needsManualPaymentRelease ? (
                 <button
                   type="button"
@@ -585,6 +608,8 @@ export function SupplierSalesClient({
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       if (payload.board) setBoard(payload.board);
       setMessage(actionMessage(body.action, payload));
+      if (body.action === "assign_supplier") setScope("assigned");
+      if (body.action === "retry_shopify_tag") setScope("sync");
       if (body.action === "create_deadline_tasks") setScope("deadline");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");

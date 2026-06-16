@@ -328,6 +328,11 @@ export type SupplierPaymentReminderInput = {
   idempotencyKey?: string | null;
 };
 
+export type SupplierShopifyTagRetryInput = {
+  saleId: string;
+  operatorName?: string | null;
+};
+
 export type SupplierDeadlineTaskResult = {
   checked: number;
   created: number;
@@ -1705,12 +1710,61 @@ function shopifyOrderGid(row: SupplierSaleRow) {
   return null;
 }
 
+function shopifySearchTerm(value: unknown) {
+  return nullableText(value, 180)?.replace(/["\\]/g, " ").trim() || null;
+}
+
+async function findShopifyOrderGid(config: NonNullable<ReturnType<typeof shopifyConfig>>, row: SupplierSaleRow) {
+  const candidates = [
+    shopifySearchTerm(row.document_reference),
+    shopifySearchTerm(row.offer_number),
+  ].filter((value): value is string => Boolean(value));
+  for (const query of candidates) {
+    const response = await fetch(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": config.token,
+      },
+      body: JSON.stringify({
+        query: `
+          query SupplierSalesOrderLookup($query: String!) {
+            orders(first: 3, query: $query, sortKey: CREATED_AT, reverse: true) {
+              nodes { id name email tags }
+            }
+          }
+        `,
+        variables: { query },
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const body = await response.json().catch(() => null) as JsonRecord | null;
+    if (!response.ok) return { orderGid: null, error: `Shopify Order-Suche HTTP ${response.status}` };
+    const errors = arrayRecords(body?.errors);
+    if (errors.length) {
+      return {
+        orderGid: null,
+        error: errors.map((error) => cleanText(error.message || JSON.stringify(error), 200)).filter(Boolean).join("; ") || "Shopify Order-Suche fehlgeschlagen.",
+      };
+    }
+    const orders = arrayRecords(jsonRecord(jsonRecord(body?.data).orders).nodes);
+    if (orders.length === 1) {
+      const id = recordString(orders[0], ["id"], 260);
+      if (id?.startsWith("gid://shopify/Order/")) return { orderGid: id, error: null };
+    }
+    if (orders.length > 1) return { orderGid: null, error: `Shopify Order-Suche ist nicht eindeutig fuer ${query}.` };
+  }
+  return { orderGid: null, error: "Shopify Order-ID fehlt; keine eindeutige Shopify Order zur Angebotsreferenz gefunden." };
+}
+
 async function syncShopifySupplierTag(row: SupplierSaleRow, tagValue: string | null) {
-  if (!tagValue) return { status: "skipped" as const, error: "Supplier-Tag ist nicht konfiguriert." };
+  if (!tagValue) return { status: "skipped" as const, error: "Supplier-Tag ist nicht konfiguriert.", orderGid: null };
   const config = shopifyConfig();
-  if (!config) return { status: "skipped" as const, error: "Shopify Admin API ist nicht konfiguriert." };
-  const orderGid = shopifyOrderGid(row);
-  if (!orderGid) return { status: "skipped" as const, error: "Shopify Order-ID fehlt." };
+  if (!config) return { status: "skipped" as const, error: "Shopify Admin API ist nicht konfiguriert.", orderGid: null };
+  const localOrderGid = shopifyOrderGid(row);
+  const lookup = localOrderGid ? { orderGid: localOrderGid, error: null } : await findShopifyOrderGid(config, row);
+  const orderGid = lookup.orderGid;
+  if (!orderGid) return { status: "failed" as const, error: lookup.error || "Shopify Order-ID fehlt.", orderGid: null };
 
   const response = await fetch(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
     method: "POST",
@@ -1733,15 +1787,16 @@ async function syncShopifySupplierTag(row: SupplierSaleRow, tagValue: string | n
   });
 
   const body = await response.json().catch(() => null) as JsonRecord | null;
-  if (!response.ok) return { status: "failed" as const, error: `Shopify TagsAdd HTTP ${response.status}` };
+  if (!response.ok) return { status: "failed" as const, error: `Shopify TagsAdd HTTP ${response.status}`, orderGid };
   const errors = arrayRecords(jsonRecord(body?.data).tagsAdd ? jsonRecord(jsonRecord(body?.data).tagsAdd).userErrors : body?.errors);
   if (errors.length) {
     return {
       status: "failed" as const,
       error: errors.map((error) => cleanText(error.message || JSON.stringify(error), 200)).filter(Boolean).join("; ") || "Shopify Tag konnte nicht gesetzt werden.",
+      orderGid,
     };
   }
-  return { status: "synced" as const, error: null };
+  return { status: "synced" as const, error: null, orderGid };
 }
 
 function trelloCardName(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, specialSupplierName?: string | null) {
@@ -2123,6 +2178,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
   try {
     const tagSync = await syncShopifySupplierTag(row, tagValue);
     row = await patchSaleRow(sale.id, {
+      shopify_order_id: row.shopify_order_id || tagSync.orderGid || null,
       shopify_tag_sync_status: tagSync.status,
       shopify_tag_synced_at: tagSync.status === "synced" ? new Date().toISOString() : null,
       shopify_tag_error: tagSync.error,
@@ -2173,6 +2229,53 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     attempt_key: `eq.${attemptKey}`,
   }).catch(() => null);
   return fresh;
+}
+
+export async function retrySupplierSaleShopifyTag(input: SupplierShopifyTagRetryInput, actor?: SupplierSaleActor | null) {
+  const sale = await getSupplierSale(input.saleId);
+  if (!sale.assignedSupplier) {
+    throw new QuoteValidationError("Sale ist noch nicht vergeben.", ["Shopify-Tag kann erst nach Supplier-Vergabe gesetzt werden."], 422);
+  }
+
+  const row = await fetchSaleRowById(sale.id);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+
+  const tagValue = row.shopify_tag_value || supplierTagValue(sale.assignedSupplier);
+  let updated: SupplierSaleRow;
+  try {
+    await patchSaleRow(sale.id, {
+      shopify_tag_value: tagValue,
+      shopify_tag_sync_status: tagValue ? "pending" : "skipped",
+      shopify_tag_error: tagValue ? null : "Supplier-Tag ist nicht konfiguriert.",
+    });
+    const tagSync = await syncShopifySupplierTag({ ...row, shopify_tag_value: tagValue }, tagValue);
+    updated = await patchSaleRow(sale.id, {
+      shopify_order_id: row.shopify_order_id || tagSync.orderGid || null,
+      shopify_tag_value: tagValue,
+      shopify_tag_sync_status: tagSync.status,
+      shopify_tag_synced_at: tagSync.status === "synced" ? new Date().toISOString() : null,
+      shopify_tag_error: tagSync.error,
+    });
+  } catch (error) {
+    updated = await patchSaleRow(sale.id, {
+      shopify_tag_sync_status: "failed",
+      shopify_tag_error: error instanceof Error ? error.message : "Shopify Tag-Sync fehlgeschlagen.",
+    });
+  }
+
+  await insertEvent({
+    saleId: sale.id,
+    eventType: "shopify_tag_retry",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: `supplier-sale:${sale.id}:shopify-tag-retry:${Date.now()}`,
+    payload: {
+      assigned_supplier: sale.assignedSupplier,
+      shopify_tag_sync_status: updated.shopify_tag_sync_status,
+      shopify_tag_error: updated.shopify_tag_error,
+    },
+  });
+
+  return getSupplierSale(sale.id);
 }
 
 function paymentReminderWebhookUrl() {
