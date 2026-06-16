@@ -296,16 +296,26 @@ export function parse17TrackRegistrationResult(response: unknown, claim: Registr
     envelope.code && envelope.code !== 0 ? `17TRACK code ${envelope.code}` : null,
     acceptedItem ? null : "17TRACK Registrierung wurde nicht akzeptiert.",
   );
+  const alreadyRegistered = Boolean(rejectedItem && is17TrackAlreadyRegisteredMessage(error));
 
   return {
     shipmentId: claim.shipment_id,
     carrier: claim.carrier,
     trackingNumber: claim.tracking_number,
-    status: acceptedItem ? "accepted" : "rejected",
+    status: acceptedItem || alreadyRegistered ? "accepted" : "rejected",
     providerCarrierId: Number.isFinite(providerCarrierId) ? providerCarrierId : null,
-    error,
+    error: alreadyRegistered ? null : error,
     rawResponse: response,
   };
+}
+
+export function is17TrackAlreadyRegisteredMessage(message?: string | null) {
+  const normalized = (cleanText(message) || "").toLowerCase();
+  return Boolean(normalized && (
+    normalized.includes("has been registered")
+    || normalized.includes("already registered")
+    || normalized.includes("don't need to repeat registration")
+  ));
 }
 
 function match17TrackRegistrationItem(items: Array<Record<string, unknown>>, claim: RegistrationClaimRow) {

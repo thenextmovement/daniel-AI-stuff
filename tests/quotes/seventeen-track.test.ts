@@ -220,6 +220,40 @@ test("parse17TrackRegistrationResult records accepted registrations with provide
   assert.equal(result.shipmentId, "25d72523-b171-4267-98e0-2b9859c0feb2");
 });
 
+test("parse17TrackRegistrationResult treats already registered responses as accepted", () => {
+  const result = parse17TrackRegistrationResult(
+    {
+      code: 0,
+      data: {
+        accepted: [],
+        rejected: [
+          {
+            number: "7055403121",
+            carrier: 100001,
+            error: {
+              code: -18019904,
+              message: "The tracking number '7055403121' has been registered, don't need to repeat registration.",
+            },
+          },
+        ],
+      },
+    },
+    {
+      shipment_id: "02cbb7ee-1d07-4e62-8d47-68389cf8f050",
+      registration_id: "registration-duplicate",
+      carrier: "dhl",
+      tracking_number: "7055403121",
+      trello_card_name: "China Los",
+      trello_card_url: null,
+      attempts: 2,
+    },
+  );
+
+  assert.equal(result.status, "accepted");
+  assert.equal(result.providerCarrierId, 100001);
+  assert.equal(result.error, null);
+});
+
 test("build17TrackRegistrationItem uses explicit carrier ids for known inbound carriers", () => {
   assert.equal(default17TrackCarrierId("dhl"), 100001);
   assert.equal(default17TrackCarrierId("fedex"), 100003);
