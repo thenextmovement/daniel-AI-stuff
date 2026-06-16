@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
   const body = parseJsonBody(rawBody || "{}");
   const action = body.action || "upsert_sale";
   let actor: SupplierSaleActor | null = null;
-  if (action === "upsert_sale" || action === "create_deadline_tasks") {
+  if (action === "upsert_sale" || action === "create_deadline_tasks" || action === "sync_completed_offers") {
     actor = await getActorOrAutomation(request, rawBody, body, body.operatorName || null);
   } else {
     const access = await assertOpsAccess(request, body.operatorName || null);

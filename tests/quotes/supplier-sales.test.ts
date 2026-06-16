@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NextRequest } from "next/server";
-import { GET as supplierSalesGET } from "@/app/api/ops/supplier-sales/route";
+import { GET as supplierSalesGET, POST as supplierSalesPOST } from "@/app/api/ops/supplier-sales/route";
 import {
   assignSupplierSale,
   buildSupplierSaleBoardFromRows,
@@ -557,6 +557,9 @@ test("completed offers pull imports offer.completed payloads idempotently", asyn
       salePostCount += 1;
       return Response.json([importedRow]);
     }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      return Response.json([importedRow]);
+    }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") {
       itemPostCount += 1;
@@ -581,6 +584,108 @@ test("completed offers pull imports offer.completed payloads idempotently", asyn
   assert.equal(salePostCount, 1);
   assert.equal(itemPostCount, 1);
   assert.equal(eventPostCount, 1);
+});
+
+test("supplier sales sync_completed_offers accepts automation bearer access", async () => {
+  let offersFeedCount = 0;
+  let salePostCount = 0;
+  const importedRow = saleRow({
+    id: "sale-route-completed-offer",
+    sale_key: "offer:offer-route-completed-1",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    offer_id: "offer-route-completed-1",
+    offer_number: "A/N 15100",
+    document_reference: "A-N-15100",
+    customer_name: "Max Muster",
+    customer_email: "max@example.com",
+    total_price: 1190,
+    assignment_status: "ready_to_assign",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") {
+      offersFeedCount += 1;
+      return Response.json({
+        ok: true,
+        sales: [{
+          offerId: "offer-route-completed-1",
+          payload: {
+            source: "neontrip-offers",
+            event: "offer.completed",
+            idempotencyKey: "offer:offer-route-completed-1:supplier-sales:v1",
+            offer: {
+              id: "offer-route-completed-1",
+              offerNumber: "A/N 15100",
+              documentReference: "A-N-15100",
+              publicUrl: "https://angebote.test/offer/public-token",
+              finalPdfUrl: "https://angebote.test/offer/public-token/pdf",
+              currency: "EUR",
+              acceptedAt: "2026-06-16T09:00:00.000Z",
+              signedAt: "2026-06-16T09:00:00.000Z",
+            },
+            customer: {
+              firstName: "Max",
+              lastName: "Muster",
+              email: "max@example.com",
+            },
+            billingAddress: { name: "Max Muster" },
+            deliveryAddress: { name: "Max Muster" },
+            totals: { subtotalNet: 1000, vatAmount: 190, totalGross: 1190, vatRate: 19 },
+            lineItems: [{
+              id: "line-1",
+              section: "LED-Neon-Flex",
+              title: "LED Neon Logo",
+              quantity: 1,
+              lineNet: 1000,
+              lineGross: 1190,
+            }],
+          },
+        }],
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("id") === `eq.${importedRow.id}`) return Response.json([importedRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      salePostCount += 1;
+      return Response.json([importedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      return Response.json([importedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: importedRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/ops_tasks") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/ops_tasks") && method === "POST") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    const response = await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer internal-offers-key",
+      },
+      body: JSON.stringify({ action: "sync_completed_offers", limit: 20, operatorName: "Automation" }),
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200, JSON.stringify(payload));
+    assert.equal(payload.ok, true);
+    assert.equal(payload.completedOffersSync.status, "synced", JSON.stringify(payload.completedOffersSync));
+    assert.equal(payload.completedOffersSync.upserted, 1);
+  });
+
+  assert.equal(offersFeedCount, 1);
+  assert.equal(salePostCount, 1);
 });
 
 test("supplier sales route does not expose raw Supabase details to clients", async () => {
