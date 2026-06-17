@@ -44,6 +44,11 @@ type SupplierSalesApiResponse = {
     closedFallbackTasks: number;
     clearedSales: number;
   };
+  noPaymentReminderTag?: {
+    status: string;
+    tagValue: string | null;
+    error: string | null;
+  };
   completedOffersSync?: {
     status: "synced" | "skipped" | "failed";
     checked: number;
@@ -237,6 +242,11 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
   }
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
   if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
+  if (action === "apply_no_payment_reminder_tag") {
+    const tag = payload?.noPaymentReminderTag;
+    if (tag?.status === "synced") return "Shopify-Tag Keine Zahlungserinnerung n8n wurde gesetzt.";
+    return `Shopify-Tag Keine Zahlungserinnerung n8n nicht gesetzt: ${tag?.error || "Bitte Sync-Status pruefen."}`;
+  }
   if (action === "sync_completed_offers") {
     const sync = payload?.completedOffersSync;
     if (!sync) return "Completed Offers wurden geprueft.";
@@ -398,7 +408,6 @@ function SaleCard({
   const [deliveryDate, setDeliveryDate] = useState(sale.supplierDueDate || sale.customerDueDate || "");
   const [paymentDecision, setPaymentDecision] = useState<SupplierSalePaymentDecision>(defaultPaymentDecision(sale));
   const [assignmentNote, setAssignmentNote] = useState("");
-  const [assigneeLabel, setAssigneeLabel] = useState(operatorName || "Fabienne");
   const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
 
   useEffect(() => {
@@ -497,20 +506,14 @@ function SaleCard({
               />
             </label>
 
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="grid min-w-0 gap-1.5">
-                <span className="text-xs font-medium text-stone-600">Supplier</span>
-                <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSaleSupplier)} aria-label="Supplier auswaehlen" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
-                  <option value="quentin">Quentin</option>
-                  <option value="said">Saeid</option>
-                  <option value="special">Sonder</option>
-                </select>
-              </label>
-              <label className="grid min-w-0 gap-1.5">
-                <span className="text-xs font-medium text-stone-600">Aufgabe an</span>
-                <input value={assigneeLabel} onChange={(event) => setAssigneeLabel(event.target.value)} aria-label="Aufgabe an" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm" />
-              </label>
-            </div>
+            <label className="grid min-w-0 gap-1.5">
+              <span className="text-xs font-medium text-stone-600">Supplier</span>
+              <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSaleSupplier)} aria-label="Supplier auswaehlen" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+                <option value="quentin">Quentin</option>
+                <option value="said">Saeid</option>
+                <option value="special">Sonder</option>
+              </select>
+            </label>
 
             {supplier === "special" ? (
               <input
@@ -559,7 +562,6 @@ function SaleCard({
                     specialSupplierName,
                     assignmentNote,
                     paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed",
-                    assigneeLabel,
                     operatorName,
                   });
                 }}
@@ -586,6 +588,22 @@ function SaleCard({
                   Shopify erneut
                 </button>
               ) : null}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  if (!confirmAction("Shopify-Tag 'Keine Zahlungserinnerung n8n' setzen, damit n8n keine Zahlungserinnerung sendet?")) return;
+                  void onAction({
+                    action: "apply_no_payment_reminder_tag",
+                    saleId: sale.id,
+                    operatorName,
+                  });
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
+              >
+                <Mail className="h-4 w-4" />
+                N8N-Mail stoppen
+              </button>
               {needsManualPaymentRelease ? (
                 <button
                   type="button"
@@ -836,6 +854,22 @@ export function SupplierSalesClient({
           description="Sales werden aus Shopify oder dem abgeschlossenen Angebot erfasst, mit Quentin/Saeid-Regeln bewertet und erst nach bestaetigtem Lieferdatum vergeben."
         />
 
+        <section className="flex flex-wrap items-center gap-3 rounded-[0.5rem] border border-stone-200 bg-white p-4">
+          <button
+            type="button"
+            disabled={!canCleanupAssignmentTasks}
+            onClick={() => {
+              if (!confirmAction("Alle automatisch erzeugten Sales-Vergabe-Aufgaben archivieren und die Task-Verknuepfung an den Sales entfernen?")) return;
+              void runSaleAction("assignment-task-cleanup", { action: "cleanup_supplier_assignment_tasks", operatorName });
+            }}
+            className="inline-flex items-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-stone-300"
+          >
+            <ClipboardList className="h-4 w-4" />
+            Vergabe-Aufgaben bereinigen
+          </button>
+          {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
+        </section>
+
         <section className="grid gap-3 md:grid-cols-5">
           <StatFilterButton active={scope === "ready"} onClick={() => setScope("ready")}>
             <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
@@ -959,21 +993,8 @@ export function SupplierSalesClient({
               <CheckCircle2 className="h-4 w-4" />
               Live-Abgleich testen
             </button>
-            <button
-              type="button"
-              disabled={!canCleanupAssignmentTasks}
-              onClick={() => {
-                if (!confirmAction("Alle automatisch erzeugten Sales-Vergabe-Aufgaben archivieren und die Task-Verknuepfung an den Sales entfernen?")) return;
-                void runSaleAction("assignment-task-cleanup", { action: "cleanup_supplier_assignment_tasks", operatorName });
-              }}
-              className="inline-flex items-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <ClipboardList className="h-4 w-4" />
-              Vergabe-Aufgaben bereinigen
-            </button>
             {loading ? <span className="text-sm text-stone-500">Sales werden geladen...</span> : null}
             {savingSaleId === "live-check" ? <span className="text-sm text-stone-500">Live-Abgleich laeuft...</span> : null}
-            {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
             {message ? <span className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">{message}</span> : null}
             {error ? <span className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</span> : null}
           </div>

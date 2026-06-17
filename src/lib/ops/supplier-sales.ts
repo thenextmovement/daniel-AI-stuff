@@ -333,6 +333,11 @@ export type SupplierShopifyTagRetryInput = {
   operatorName?: string | null;
 };
 
+export type SupplierNoPaymentReminderTagInput = {
+  saleId: string;
+  operatorName?: string | null;
+};
+
 export type SupplierDeadlineTaskResult = {
   checked: number;
   created: number;
@@ -408,6 +413,12 @@ export type SupplierAssignmentTaskCleanupResult = {
   archivedDedicatedTasks: number;
   closedFallbackTasks: number;
   clearedSales: number;
+};
+
+export type SupplierShopifyTagActionResult = {
+  status: SupplierSaleSyncStatus;
+  tagValue: string | null;
+  error: string | null;
 };
 
 type CompletedOfferFeedEntry = {
@@ -1447,6 +1458,26 @@ async function fetchExistingSaleRow(input: SupplierSaleInput) {
     if (rows[0]) return rows[0];
   }
 
+  const documentReference = nullableText(input.documentReference, 180);
+  if (documentReference) {
+    const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select: "*",
+      document_reference: `eq.${documentReference}`,
+      limit: 2,
+    });
+    if (rows.length === 1) return rows[0];
+  }
+
+  const offerNumber = nullableText(input.offerNumber, 120);
+  if (offerNumber) {
+    const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select: "*",
+      offer_number: `eq.${offerNumber}`,
+      limit: 2,
+    });
+    if (rows.length === 1) return rows[0];
+  }
+
   const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
     select: "*",
     sale_key: `eq.${input.saleKey}`,
@@ -1541,15 +1572,19 @@ function shopifyTagsFromInput(input: SupplierSaleInput) {
   return [...new Set(tags)];
 }
 
+function hasNormalizedTag(tags: Set<string>, candidates: Array<string | null | undefined>) {
+  return candidates.some((candidate) => {
+    const tag = normalizedTag(candidate);
+    return Boolean(tag && tags.has(tag));
+  });
+}
+
 function assignedSupplierFromShopifyTags(input: SupplierSaleInput): SupplierSaleSupplier | null {
   const tags = new Set(shopifyTagsFromInput(input).map(normalizedTag));
   if (!tags.size) return null;
-  const quentin = normalizedTag(supplierTagValue("quentin"));
-  const said = normalizedTag(supplierTagValue("said"));
-  const special = normalizedTag(supplierTagValue("special"));
-  if (quentin && tags.has(quentin)) return "quentin";
-  if (said && tags.has(said)) return "said";
-  if (special && tags.has(special)) return "special";
+  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"])) return "quentin";
+  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"])) return "said";
+  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"])) return "special";
   return null;
 }
 
@@ -2266,6 +2301,15 @@ function supplierTagValue(supplier: SupplierSaleSupplier) {
   return nullableText(values[supplier], 80);
 }
 
+function noPaymentReminderTagValue() {
+  return nullableText(
+    process.env.SHOPIFY_NO_PAYMENT_REMINDER_TAG ||
+      process.env.SUPPLIER_NO_PAYMENT_REMINDER_TAG ||
+      "Keine Zahlungserinnerung n8n",
+    120,
+  );
+}
+
 function supplierTrelloListId(supplier: SupplierSaleSupplier) {
   const values: Record<SupplierSaleSupplier, string | undefined> = {
     quentin: process.env.SUPPLIER_TRELLO_QUENTIN_LIST_ID || process.env.OPS_SUPPLIER_TRELLO_QUENTIN_LIST_ID,
@@ -2344,8 +2388,8 @@ async function findShopifyOrderGid(config: NonNullable<ReturnType<typeof shopify
   return { orderGid: null, error: "Shopify Order-ID fehlt; keine eindeutige Shopify Order zur Angebotsreferenz gefunden." };
 }
 
-async function syncShopifySupplierTag(row: SupplierSaleRow, tagValue: string | null) {
-  if (!tagValue) return { status: "skipped" as const, error: "Supplier-Tag ist nicht konfiguriert.", orderGid: null };
+async function syncShopifyOrderTag(row: SupplierSaleRow, tagValue: string | null, missingMessage: string) {
+  if (!tagValue) return { status: "skipped" as const, error: missingMessage, orderGid: null };
   const config = shopifyConfig();
   if (!config) return { status: "skipped" as const, error: "Shopify Admin API ist nicht konfiguriert.", orderGid: null };
   const localOrderGid = shopifyOrderGid(row);
@@ -2384,6 +2428,10 @@ async function syncShopifySupplierTag(row: SupplierSaleRow, tagValue: string | n
     };
   }
   return { status: "synced" as const, error: null, orderGid };
+}
+
+async function syncShopifySupplierTag(row: SupplierSaleRow, tagValue: string | null) {
+  return syncShopifyOrderTag(row, tagValue, "Supplier-Tag ist nicht konfiguriert.");
 }
 
 function trelloCardName(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, specialSupplierName?: string | null) {
@@ -2962,6 +3010,49 @@ export async function retrySupplierSaleShopifyTag(input: SupplierShopifyTagRetry
   });
 
   return getSupplierSale(sale.id);
+}
+
+export async function applyNoPaymentReminderShopifyTag(
+  input: SupplierNoPaymentReminderTagInput,
+  actor?: SupplierSaleActor | null,
+): Promise<{ sale: SupplierSale; tag: SupplierShopifyTagActionResult }> {
+  const sale = await getSupplierSale(input.saleId);
+  const row = await fetchSaleRowById(sale.id);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+
+  const tagValue = noPaymentReminderTagValue();
+  const tagSync = await syncShopifyOrderTag(row, tagValue, "Keine-Zahlungserinnerung-Tag ist nicht konfiguriert.");
+  const metadata = {
+    ...(row.metadata || {}),
+    no_payment_reminder_tag_value: tagValue,
+    no_payment_reminder_tag_status: tagSync.status,
+    no_payment_reminder_tag_error: tagSync.error,
+    no_payment_reminder_tag_synced_at: tagSync.status === "synced" ? new Date().toISOString() : null,
+  };
+  await patchSaleRow(sale.id, {
+    shopify_order_id: row.shopify_order_id || tagSync.orderGid || null,
+    metadata,
+  });
+  await insertEvent({
+    saleId: sale.id,
+    eventType: "manual_note",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: `supplier-sale:${sale.id}:no-payment-reminder-tag:${Date.now()}`,
+    payload: {
+      tag_value: tagValue,
+      status: tagSync.status,
+      error: tagSync.error,
+    },
+  });
+
+  return {
+    sale: await getSupplierSale(sale.id),
+    tag: {
+      status: tagSync.status,
+      tagValue,
+      error: tagSync.error,
+    },
+  };
 }
 
 function paymentReminderWebhookUrl() {

@@ -4,6 +4,7 @@ import test from "node:test";
 import { NextRequest } from "next/server";
 import { GET as supplierSalesGET, POST as supplierSalesPOST } from "@/app/api/ops/supplier-sales/route";
 import {
+  applyNoPaymentReminderShopifyTag,
   assignSupplierSale,
   buildSupplierSaleBoardFromRows,
   buildSupplierSalesDiagnostics,
@@ -124,6 +125,8 @@ async function withMockedAssignmentFetch<T>(
     "SHOPIFY_SHOP",
     "SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
     "N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+    "SHOPIFY_NO_PAYMENT_REMINDER_TAG",
+    "SUPPLIER_NO_PAYMENT_REMINDER_TAG",
     "SUPPLIER_ASSIGNMENT_TASKS_ENABLED",
     "NEONTRIP_OFFERS_BASE_URL",
     "OFFERS_BASE_URL",
@@ -1105,6 +1108,145 @@ test("shopify fallback treats existing supplier tags as already assigned", async
   });
 
   assert.equal(salePostCount, 1);
+});
+
+test("shopify fallback matches existing offer sale by offer number and loose Quentin tag", async () => {
+  let salePatchCount = 0;
+  let salePostCount = 0;
+  const existingRow = saleRow({
+    id: "sale-existing-offer-tagged",
+    sale_key: "offer:offer-existing-tagged",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    offer_id: null,
+    offer_number: "A/N 15222",
+    document_reference: "A-N-15222-ABCDEF",
+    assigned_supplier: null,
+    assignment_status: "ready_to_assign",
+    shopify_tag_value: null,
+    shopify_tag_sync_status: "not_started",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") return Response.json({ ok: true, sales: [], count: 0 });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      return Response.json({
+        data: {
+          orders: {
+            nodes: [{
+              id: "gid://shopify/Order/987654444",
+              name: "#1244",
+              email: "tagged@example.com",
+              tags: ["Quentin"],
+              createdAt: "2026-06-16T12:40:00Z",
+              processedAt: "2026-06-16T12:41:00Z",
+              statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/status",
+              displayFinancialStatus: "PAID",
+              customAttributes: [{ key: "NEONTRIP Offer Number", value: "A/N 15222" }],
+              totalPriceSet: { shopMoney: { amount: "180.00", currencyCode: "EUR" } },
+              subtotalPriceSet: { shopMoney: { amount: "151.26", currencyCode: "EUR" } },
+              customer: { firstName: "Tagged", lastName: "Sale", email: "tagged@example.com", phone: null },
+              billingAddress: null,
+              shippingAddress: null,
+              lineItems: {
+                nodes: [{
+                  id: "gid://shopify/LineItem/2",
+                  title: "LED Neon Schriftzug",
+                  sku: null,
+                  quantity: 1,
+                  variantTitle: null,
+                  customAttributes: [],
+                  image: null,
+                  product: { productType: "LED-Neon-Flex" },
+                }],
+              },
+            }],
+          },
+        },
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("shopify_order_id") === "eq.987654444") return Response.json([]);
+      if (url.searchParams.get("offer_number") === "eq.A/N 15222") return Response.json([existingRow]);
+      if (url.searchParams.get("id") === `eq.${existingRow.id}`) return Response.json([existingRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      salePatchCount += 1;
+      const payload = JSON.parse(String(init?.body || "{}"));
+      assert.equal(payload.assigned_supplier, "quentin");
+      assert.equal(payload.assignment_status, "assigned");
+      assert.equal(payload.shopify_tag_value, "Quentin (schon bezahlt)");
+      assert.equal(payload.shopify_tag_sync_status, "synced");
+      return Response.json([{ ...existingRow, ...payload }]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      salePostCount += 1;
+      return Response.json([existingRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: existingRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: existingRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.upserted, 1);
+  });
+
+  assert.equal(salePatchCount, 1);
+  assert.equal(salePostCount, 0);
+});
+
+test("supplier sale action sets Shopify no payment reminder tag", async () => {
+  let shopifyTagCount = 0;
+  let currentRow = saleRow({
+    id: "sale-no-reminder",
+    shopify_order_id: "987654555",
+    shopify_order_name: "#1255",
+    metadata: {},
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      shopifyTagCount += 1;
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.equal(body.variables.id, "gid://shopify/Order/987654555");
+      assert.deepEqual(body.variables.tags, ["Keine Zahlungserinnerung n8n"]);
+      return Response.json({ data: { tagsAdd: { node: { id: "gid://shopify/Order/987654555" }, userErrors: [] } } });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await applyNoPaymentReminderShopifyTag({ saleId: currentRow.id, operatorName: "Ops" });
+    assert.equal(result.tag.status, "synced");
+    assert.equal(result.tag.tagValue, "Keine Zahlungserinnerung n8n");
+    assert.equal(result.sale.id, currentRow.id);
+  });
+
+  assert.equal(shopifyTagCount, 1);
 });
 
 test("supplier sales live check compares latest completed offers with vergabe rows without PII", async () => {
