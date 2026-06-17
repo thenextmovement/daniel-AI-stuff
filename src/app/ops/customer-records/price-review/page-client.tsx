@@ -8,6 +8,8 @@ import type {
   SupplierQuoteTrainingItemAnchorReviewDecision,
   SupplierQuoteTrainingItemAnchorReviewItem,
 } from "@/lib/ops/supplier-price-review";
+import { OpsPageHeader } from "../../ops-page-header";
+import { OpsPageIntro, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
 
 type ReviewResponse = {
   ok: boolean;
@@ -561,37 +563,32 @@ export function SupplierPriceReviewClient({
   }
 
   return (
-    <main className="min-h-screen bg-[#fffdf9] px-4 py-5 text-black md:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5">
-        <header className="rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,#050505_0%,#111111_58%,#18181b_100%)] px-5 py-4 text-white shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="text-xs uppercase tracking-[0.22em] text-white/45">Customer Ops</div>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight">Preisprüfung</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
-                Modellvorschläge bleiben hier im Review, bis ein Mensch sie freigibt oder zum Supplier Check schickt.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <a
-                href="/ops/customer-records"
-                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/76 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
-              >
-                Customer Ops
-                <ExternalLink className="h-4 w-4" />
-              </a>
-              <button
-                type="button"
-                onClick={() => void loadItems()}
-                disabled={!canLoad || loading}
-                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/76 transition hover:border-white/30 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                Aktualisieren
-              </button>
-            </div>
-          </div>
-        </header>
+    <main className={`${opsPageShellClass} px-4 py-6 text-black md:px-6`}>
+      <div className={`${opsPageContainerClass} flex flex-col gap-5`}>
+        <OpsPageHeader active="priceReview" label="Preisprüfung" />
+
+        <OpsPageIntro
+          eyebrow="Customer Ops"
+          title="Preisprüfung"
+          description="Modellvorschläge bleiben hier im Review, bis ein Mensch sie freigibt oder zum Supplier Check schickt."
+        >
+          <a
+            href="/ops/customer-records"
+            className="inline-flex h-12 items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 text-sm font-medium text-white/76 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+          >
+            Customer Ops
+            <ExternalLink className="h-4 w-4" />
+          </a>
+          <button
+            type="button"
+            onClick={() => void loadItems()}
+            disabled={!canLoad || loading}
+            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-medium text-stone-950 transition hover:bg-[#f7f2ea] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Aktualisieren
+          </button>
+        </OpsPageIntro>
 
         {opsEnabled && !hasSession && !localMode ? (
           <section className="rounded-lg border border-black/10 bg-white p-5">
