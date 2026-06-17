@@ -845,6 +845,7 @@ test("completed offers sync imports recent Shopify orders as fallback", async ()
               id: "gid://shopify/Order/987654321",
               name: "#1235",
               email: "mira@example.com",
+              statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/987654321/status",
               createdAt: "2026-06-16T12:30:00Z",
               processedAt: "2026-06-16T12:31:00Z",
               displayFinancialStatus: "PAID",
@@ -884,6 +885,7 @@ test("completed offers sync imports recent Shopify orders as fallback", async ()
       assert.equal(payload.shopify_order_id, "987654321");
       assert.equal(payload.shopify_payment_status, "paid");
       assert.equal(payload.customer_due_date, "2026-06-28");
+      assert.equal(payload.metadata?.payment_link, "https://galaxybuzzdk.myshopify.com/orders/987654321/status");
       return Response.json([importedRow]);
     }
     if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") return Response.json([importedRow]);

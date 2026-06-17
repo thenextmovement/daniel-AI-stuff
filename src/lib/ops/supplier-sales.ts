@@ -664,6 +664,8 @@ function paymentLinkFromPayload(payload: JsonRecord) {
       "checkoutWebUrl",
       "order_status_url",
       "orderStatusUrl",
+      "status_page_url",
+      "statusPageUrl",
       "status_url",
       "statusUrl",
     ], 1000) ||
@@ -672,6 +674,8 @@ function paymentLinkFromPayload(payload: JsonRecord) {
     nestedString(payload, ["order", "invoice_url"], 1000) ||
     nestedString(payload, ["order", "checkout_url"], 1000) ||
     nestedString(payload, ["order", "order_status_url"], 1000) ||
+    nestedString(payload, ["order", "status_page_url"], 1000) ||
+    nestedString(payload, ["order", "statusPageUrl"], 1000) ||
     nestedString(payload, ["order", "status_url"], 1000) ||
     nestedString(payload, ["checkout", "web_url"], 1000) ||
     nestedString(payload, ["checkout", "webUrl"], 1000) ||
@@ -1692,6 +1696,7 @@ function shopifyOrderPayloadFromGraphql(order: JsonRecord, domain: string) {
     admin_graphql_api_id: orderGid,
     name: recordString(order, ["name"], 120),
     admin_url: numericId ? `https://${domain}/admin/orders/${numericId}` : null,
+    order_status_url: recordString(order, ["statusPageUrl"], 1000),
     financial_status: recordString(order, ["displayFinancialStatus"], 80)?.toLowerCase(),
     tags: Array.isArray(order.tags) ? order.tags.map((tag) => cleanText(tag, 120)).filter(Boolean) : [],
     created_at: recordString(order, ["createdAt"], 80),
@@ -1864,6 +1869,7 @@ async function syncRecentShopifyOrdersFromAdmin(
               email
               phone
               tags
+              statusPageUrl
               createdAt
               processedAt
               displayFinancialStatus
