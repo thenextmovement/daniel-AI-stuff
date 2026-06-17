@@ -1,0 +1,206 @@
+{
+  "name": "NEONTRIP Supplier Order Confirmation Email v0.1 (INACTIVE DRAFT)",
+  "nodes": [
+    {
+      "id": "workflow-notes",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -220
+      ],
+      "parameters": {
+        "content": "Inactive draft for Sales-Vergabe AB-PDF emails. Triggered only by the Ops app button through SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL. The Ops app generates the PDF from offer_snapshot, reserves idempotency before side effect, and sends a bounded payload. This workflow validates the payload, sends via Outlook using Fabienne/NEONTRIP signature, and returns providerMessageId. Do not use Outlook Email Trigger here; that is for inbound mail and would not represent an explicit operator action.",
+        "height": 300,
+        "width": 480
+      }
+    },
+    {
+      "id": "order-confirmation-webhook",
+      "name": "Order Confirmation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        160
+      ],
+      "parameters": {
+        "path": "supplier-order-confirmation",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-and-build-email",
+      "name": "Validate + Build Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first();\nconst body = input?.json?.body || input?.json || {};\nconst errors = [];\n\nfunction clean(value, max = 1000) {\n  const text = String(value ?? '').trim();\n  return text ? text.slice(0, max) : '';\n}\n\nfunction isEmail(value) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(value || '').trim());\n}\n\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nfunction signatureHtml() {\n  return `\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-family:Arial,Helvetica,sans-serif;color:#111111;margin-top:24px;\">\n  <tbody>\n    <tr>\n      <td style=\"padding:0;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"max-width:600px;width:100%;\">\n          <tbody>\n            <tr>\n              <td style=\"padding:16px 0;\">\n                <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                  <tbody>\n                    <tr>\n                      <td valign=\"top\" style=\"width:140px;padding-right:16px;\">\n                        <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" alt=\"Fabienne Trapp\" width=\"120\" height=\"120\" style=\"display:block;width:120px;height:120px;border-radius:60px;border:2px solid #111111;object-fit:cover;\">\n                      </td>\n                      <td valign=\"top\" style=\"padding-top:2px;\">\n                        <div style=\"font-size:16px;font-weight:700;color:#111111;margin:0 0 4px 0;\">Fabienne Trapp</div>\n                        <div style=\"font-size:12px;color:#6b7280;margin:0 0 10px 0;\">Beratung &amp; Realisierung</div>\n                        <div style=\"font-size:13px;font-weight:700;color:#111111;margin:0 0 8px 0;\">NEONTRIP®</div>\n                        <div style=\"font-size:13px;line-height:1.6;color:#111111;\">Tel: <a href=\"tel:+4921154257240\" style=\"color:#111111;text-decoration:none;\">+49 211 54257240</a><br>E-Mail: <a href=\"mailto:support@neontrip.de\" style=\"color:#111111;text-decoration:none;\">support@neontrip.de</a><br>Web: <a href=\"https://www.neontrip.de\" style=\"color:#111111;text-decoration:none;\">www.neontrip.de</a><br>Adresse: Bilker Allee 29, 40219 Düsseldorf</div>\n                      </td>\n                    </tr>\n                  </tbody>\n                </table>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:0;\">\n                <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color:#121212;border-radius:10px;\">\n                  <tbody>\n                    <tr>\n                      <td align=\"center\" style=\"padding:18px 16px;\">\n                        <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450\" alt=\"NEONTRIP\" width=\"420\" style=\"display:block;width:100%;max-width:420px;height:auto;border:0;outline:none;text-decoration:none;\">\n                        <div style=\"margin-top:8px;font-size:11px;font-weight:700;letter-spacing:0.6px;color:#ffffff;\">UNIQUE LIGHTING AND BRANDING</div>\n                      </td>\n                    </tr>\n                  </tbody>\n                </table>\n              </td>\n            </tr>\n          </tbody>\n        </table>\n      </td>\n    </tr>\n  </tbody>\n</table>`;\n}\n\nconst recipientEmail = clean(body.recipientEmail, 260).toLowerCase();\nconst subject = clean(body.subject, 260);\nconst html = clean(body.html, 12000);\nconst text = clean(body.text, 12000);\nconst idempotencyKey = clean(body.idempotencyKey, 260);\nconst attachment = body.attachment || {};\nconst attachmentBase64 = clean(attachment.contentBase64, 15 * 1024 * 1024);\nconst attachmentFilename = clean(attachment.filename, 180) || 'auftragsbestaetigung.pdf';\nconst attachmentContentType = clean(attachment.contentType, 120) || 'application/pdf';\n\nif (body.kind !== 'supplier_order_confirmation') errors.push('kind must be supplier_order_confirmation');\nif (!clean(body.saleId, 120)) errors.push('saleId missing');\nif (!isEmail(recipientEmail)) errors.push('recipientEmail invalid');\nif (!subject) errors.push('subject missing');\nif (!html && !text) errors.push('html/text missing');\nif (!idempotencyKey) errors.push('idempotencyKey missing');\nif (!attachmentBase64) errors.push('attachment.contentBase64 missing');\nif (attachmentContentType !== 'application/pdf') errors.push('attachment must be PDF');\nif (!/\\.pdf$/i.test(attachmentFilename)) errors.push('attachment filename must end with .pdf');\nif (recipientEmail.endsWith('@neontrip.test')) errors.push('test recipient blocked');\n\nif (errors.length) {\n  return [{\n    json: {\n      valid: false,\n      statusCode: 400,\n      error: errors.join('; '),\n      idempotencyKey: idempotencyKey || null,\n      saleId: clean(body.saleId, 120) || null\n    }\n  }];\n}\n\nconst bodyHtml = html || `<p>${escapeHtml(text).replace(/\\n/g, '<br>')}</p>`;\nconst fullHtml = `${bodyHtml}${signatureHtml()}`;\n\nreturn [{\n  json: {\n    valid: true,\n    saleId: clean(body.saleId, 120),\n    idempotencyKey,\n    recipientEmail,\n    subject,\n    bodyHtml: fullHtml,\n    requestedBy: clean(body.requestedBy, 120) || null,\n    attachmentSha256: clean(attachment.sha256, 80) || null\n  },\n  binary: {\n    orderConfirmationPdf: {\n      data: attachmentBase64,\n      mimeType: attachmentContentType,\n      fileName: attachmentFilename\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "payload-valid",
+      "name": "Payload Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "valid-true",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-via-outlook",
+      "name": "Send via Outlook",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        280,
+        60
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.recipientEmail }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.bodyHtml }}",
+        "additionalFields": {
+          "bodyContentType": "html",
+          "attachments": {
+            "attachments": [
+              {
+                "binaryPropertyName": "orderConfirmationPdf"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        560,
+        60
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, status: 'sent', messageId: $json.id || $json.messageId || $execution.id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "respond-invalid",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, status: 'rejected', error: $json.error, saleId: $json.saleId || null, idempotencyKey: $json.idempotencyKey || null }) }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 400 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Order Confirmation Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate + Build Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Build Email": {
+      "main": [
+        [
+          {
+            "node": "Payload Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload Valid?": {
+      "main": [
+        [
+          {
+            "node": "Send via Outlook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via Outlook": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none"
+  },
+  "staticData": null,
+  "pinData": {},
+  "versionId": "supplier-order-confirmation-email-v0.1",
+  "triggerCount": 0,
+  "active": false
+}
