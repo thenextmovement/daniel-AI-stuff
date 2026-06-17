@@ -307,11 +307,11 @@ export function normalizeInboundCarrierStatus(input: {
   const text = `${input.carrier || ""} ${input.statusCode || ""} ${input.statusText || ""}`.toLowerCase();
   if (!code && !text.trim()) return "carrier_not_found";
   if (code === "DL" || /delivered|zugestellt|delivery complete/.test(text)) return "delivered";
-  if (code === "OD" || /out for delivery|outfordelivery|with courier|in zustellung|wird zugestellt/.test(text)) return "out_for_delivery";
+  if (code === "OD" || /out for delivery|outfordelivery|out with courier|with courier|on vehicle for delivery|in zustellung|wird zugestellt/.test(text)) return "out_for_delivery";
   if (code === "CD" || /clearance delay|additional information required|customs.*required|clearance.*required|zoll.*information|zoll.*erforder/.test(text)) {
     return "clearance_action_required";
   }
-  if (code === "CP" || /clearance event|clearance in progress|customs clearance|processed for clearance|zoll|verzoll/.test(text)) {
+  if (code === "CP" || /\bclearance event\b/.test(text)) {
     return "clearance_in_progress";
   }
   if (["DE", "DD", "SE"].includes(code) || /exception|expired|delay|delayed|on hold|shipment is on hold|problem|failed/.test(text)) return "exception";
@@ -448,7 +448,7 @@ export function buildInboundBoardFromRows(
       labelCreated: items.filter((item) => item.shipment.status === "tracking_created" || item.shipment.status === "label_created").length,
       acceptedByCarrier: items.filter((item) => item.shipment.status === "tendered").length,
       inTransit: items.filter((item) => ["in_transit", "clearance_in_progress", "clearance_action_required", "out_for_delivery"].includes(item.shipment.status)).length,
-      clearance: items.filter((item) => item.shipment.status.startsWith("clearance") || item.incidents.some((incident) => incident.incidentType.startsWith("clearance"))).length,
+      clearance: items.filter((item) => item.shipment.status.startsWith("clearance") || item.incidents.some((incident) => incident.incidentType === "clearance_action_required")).length,
       outForDelivery: items.filter((item) => item.shipment.status === "out_for_delivery").length,
       exception: items.filter((item) => item.shipment.status === "exception" || item.shipment.status === "carrier_not_found").length,
       stale: items.filter((item) => item.incidents.some((incident) => incident.incidentType === "not_tendered" || incident.incidentType === "stale_no_movement")).length,

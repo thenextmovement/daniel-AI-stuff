@@ -323,7 +323,11 @@ test("parseInboundTrackingValue extracts DHL Express and FedEx tracking numbers 
 test("normalizeInboundCarrierStatus maps clearance, out-for-delivery and label-only states", () => {
   assert.equal(normalizeInboundCarrierStatus({ carrier: "fedex", statusCode: "CD", statusText: "Clearance delay - additional information required" }), "clearance_action_required");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusCode: "CP", statusText: "Clearance event in progress" }), "clearance_in_progress");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusCode: "Exception", statusText: "Clearance Event" }), "clearance_in_progress");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusCode: "InTransit", statusText: "Customs clearance status updated. Note - The Customs clearance process may start while the shipment is in transit to the destination." }), "in_transit");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusCode: "InTransit", statusText: "Processed for clearance at LEIPZIG - GERMANY" }), "in_transit");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "fedex", statusCode: "OD", statusText: "On vehicle for delivery" }), "out_for_delivery");
+  assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusText: "Shipment is out with courier for delivery" }), "out_for_delivery");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "dhl", statusText: "Shipment information sent to DHL" }), "label_created");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusCode: "InfoReceived" }), "label_created");
   assert.equal(normalizeInboundCarrierStatus({ carrier: "17track", statusText: "Pre-advice received" }), "label_created");
@@ -414,6 +418,24 @@ test("buildInboundBoardFromRows prioritizes urgent inbound incidents and counts 
       } as never,
       {
         id: "incident-2",
+        shipment_id: "inbound-1",
+        incident_key: "inbound:inbound-1:clearance_watch",
+        incident_type: "clearance_watch",
+        severity: "watch",
+        status: "resolved",
+        title: "Zollvorgang beobachten",
+        description: "Old clearance watch should not inflate the clearance counter once shipment is in transit.",
+        first_detected_at: "2026-06-05T08:00:00.000Z",
+        last_detected_at: "2026-06-05T08:00:00.000Z",
+        resolved_at: "2026-06-05T09:00:00.000Z",
+        rule_version: "test",
+        source_event_id: null,
+        active_task_id: null,
+        created_at: "2026-06-05T08:00:00.000Z",
+        updated_at: "2026-06-05T08:00:00.000Z",
+      } as never,
+      {
+        id: "incident-3",
         shipment_id: "inbound-1",
         incident_key: "inbound:inbound-1:tracking_error",
         incident_type: "tracking_error",
