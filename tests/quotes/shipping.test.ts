@@ -541,6 +541,20 @@ test("listInboundBoard filters inbound shipments by linked requestId", async () 
       ]);
     }
     if (path.endsWith("/rest/v1/crm_sales")) return json([]);
+    if (path.endsWith("/rest/v1/supplier_sales")) {
+      return json([
+        {
+          id: "supplier-sale-1",
+          request_id: null,
+          trello_card_id: "card-filtered",
+          shopify_order_id: "8281257672972",
+          shopify_order_name: "#NEONT4427",
+          shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672972",
+          created_at: "2026-06-08T17:00:32.249981+00:00",
+          updated_at: "2026-06-08T17:05:32.249981+00:00",
+        },
+      ]);
+    }
     if (path.endsWith("/rest/v1/crm_quotes")) {
       return json([{ id: "quote-1", request_id: "internal-1", quote_number: "Q-1", status: "sent", created_at: "2026-06-05T08:00:00.000Z" }]);
     }
@@ -563,10 +577,10 @@ test("listInboundBoard filters inbound shipments by linked requestId", async () 
     assert.ok(shipmentQuery);
     assert.equal(shipmentQuery.get("trello_card_id"), "in.(card-filtered)");
     assert.deepEqual(board.items[0]?.shopifyOrder, {
-      orderId: "8281257672971",
-      orderNumber: "#NEONT4426",
-      url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672971",
-      source: "master_orders",
+      orderId: "8281257672972",
+      orderNumber: "#NEONT4427",
+      url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672972",
+      source: "supplier_sales",
     });
   } finally {
     globalThis.fetch = originalFetch;

@@ -123,6 +123,17 @@ type InboundCrmSaleOrderRow = {
   shopify_created_at: string | null;
 };
 
+type InboundSupplierSaleOrderRow = {
+  id: string;
+  request_id: string | null;
+  trello_card_id: string | null;
+  shopify_order_id: string | number | null;
+  shopify_order_name: string | null;
+  shopify_order_url: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 type InboundCrmQuoteRow = {
   id: string;
   request_id: string | null;
@@ -223,7 +234,7 @@ export type InboundShopifyOrderLink = {
   orderId: string;
   orderNumber: string | null;
   url: string;
-  source: "master_orders" | "crm_sales";
+  source: "master_orders" | "crm_sales" | "supplier_sales";
 };
 
 export type InboundBoardItem = {
@@ -543,6 +554,18 @@ function crmSaleOrderLink(row: InboundCrmSaleOrderRow): InboundShopifyOrderLink 
   };
 }
 
+function supplierSaleOrderLink(row: InboundSupplierSaleOrderRow): InboundShopifyOrderLink | null {
+  const orderId = trimNullable(row.shopify_order_id);
+  const url = trimNullable(row.shopify_order_url) || shopifyAdminOrderUrl(row.shopify_order_id);
+  if (!url || !orderId) return null;
+  return {
+    orderId,
+    orderNumber: trimNullable(row.shopify_order_name),
+    url,
+    source: "supplier_sales",
+  };
+}
+
 function sortByOrderCreatedAt<T extends { shopify_created_at: string | null; created_at: string | null }>(rows: T[]) {
   return [...rows].sort((left, right) =>
     new Date(right.shopify_created_at || right.created_at || 0).getTime() -
@@ -550,9 +573,16 @@ function sortByOrderCreatedAt<T extends { shopify_created_at: string | null; cre
   );
 }
 
+function sortByUpdatedAt<T extends { updated_at: string | null; created_at: string | null }>(rows: T[]) {
+  return [...rows].sort((left, right) =>
+    new Date(right.updated_at || right.created_at || 0).getTime() -
+    new Date(left.updated_at || left.created_at || 0).getTime(),
+  );
+}
+
 async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
   const ordersByCardId = new Map<string, InboundShopifyOrderLink>();
-  if (!cardIds.length || !shopifyShopDomain()) return ordersByCardId;
+  if (!cardIds.length) return ordersByCardId;
 
   const requests = await supabaseRequest<InboundRequestRow[]>("master_requests", undefined, {
     select: "id,request_id,trello_card_id,updated_at",
@@ -569,24 +599,50 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
     }
   }
   const requestIds = Array.from(cardIdByRequestId.keys());
-  if (!requestIds.length) return ordersByCardId;
-
-  const requestIdFilter = `in.(${requestIds.map(encodeFilterValue).join(",")})`;
-  const [masterOrders, crmSales] = await Promise.all([
-    supabaseRequest<InboundMasterOrderRow[]>("master_orders", undefined, {
-      select: "id,request_id,shopify_order_id,shopify_order_number,created_at,shopify_created_at",
-      request_id: requestIdFilter,
-      order: "shopify_created_at.desc",
-      limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
+  const requestIdFilter = requestIds.length ? `in.(${requestIds.map(encodeFilterValue).join(",")})` : null;
+  const cardIdFilter = `in.(${cardIds.map(encodeFilterValue).join(",")})`;
+  const [masterOrders, crmSales, supplierSalesByCard, supplierSalesByRequest] = await Promise.all([
+    requestIdFilter
+      ? supabaseRequest<InboundMasterOrderRow[]>("master_orders", undefined, {
+          select: "id,request_id,shopify_order_id,shopify_order_number,created_at,shopify_created_at",
+          request_id: requestIdFilter,
+          order: "shopify_created_at.desc",
+          limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
+        })
+      : Promise.resolve([]),
+    requestIdFilter
+      ? supabaseRequest<InboundCrmSaleOrderRow[]>("crm_sales", undefined, {
+          select: "id,request_id,shopify_order_id,shopify_order_number,shopify_order_name,created_at,shopify_created_at",
+          request_id: requestIdFilter,
+          order: "shopify_created_at.desc",
+          limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
+        })
+      : Promise.resolve([]),
+    supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
+      select: "id,request_id,trello_card_id,shopify_order_id,shopify_order_name,shopify_order_url,created_at,updated_at",
+      trello_card_id: cardIdFilter,
+      shopify_order_id: "not.is.null",
+      order: "updated_at.desc",
+      limit: Math.min(Math.max(cardIds.length * 3, 10), 200),
     }),
-    supabaseRequest<InboundCrmSaleOrderRow[]>("crm_sales", undefined, {
-      select: "id,request_id,shopify_order_id,shopify_order_number,shopify_order_name,created_at,shopify_created_at",
-      request_id: requestIdFilter,
-      order: "shopify_created_at.desc",
-      limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
-    }),
+    requestIdFilter
+      ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
+          select: "id,request_id,trello_card_id,shopify_order_id,shopify_order_name,shopify_order_url,created_at,updated_at",
+          request_id: requestIdFilter,
+          shopify_order_id: "not.is.null",
+          order: "updated_at.desc",
+          limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
+        })
+      : Promise.resolve([]),
   ]);
 
+  const supplierRowsById = new Map<string, InboundSupplierSaleOrderRow>();
+  for (const row of [...supplierSalesByCard, ...supplierSalesByRequest]) supplierRowsById.set(row.id, row);
+  for (const row of sortByUpdatedAt(Array.from(supplierRowsById.values()))) {
+    const cardId = trimNullable(row.trello_card_id) || (row.request_id ? cardIdByRequestId.get(row.request_id) : null);
+    const order = supplierSaleOrderLink(row);
+    if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
+  }
   for (const row of sortByOrderCreatedAt(masterOrders)) {
     const requestId = trimNullable(row.request_id);
     const cardId = requestId ? cardIdByRequestId.get(requestId) : null;

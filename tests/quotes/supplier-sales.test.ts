@@ -341,6 +341,40 @@ test("shopify order payload extracts customer payment links from common Shopify 
   assert.equal(parsed.sale.metadata?.payment_link, "https://neontrip.test/orders/123456/status");
 });
 
+test("shopify order payload extracts NEONTRIP offer references from note attributes", () => {
+  const parsed = buildSupplierSaleInputFromPayload({
+    id: 8281257672971,
+    admin_graphql_api_id: "gid://shopify/Order/8281257672971",
+    name: "#NEONT4426",
+    financial_status: "paid",
+    total_price: "913.92",
+    currency: "EUR",
+    note_attributes: [
+      { name: "NEONTRIP Offer ID", value: "cmq4yn9gu006fqm39t1si9xam" },
+      { name: "NEONTRIP Offer Number", value: "A/N 14061" },
+      { name: "NEONTRIP Offer URL", value: "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg" },
+      { name: "NEONTRIP PDF Snapshot", value: "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg/pdf" },
+      { name: "Trello Card ID", value: "6a267a745c0826d898eec8fd" },
+      { name: "Idempotency Key", value: "offer:cmq4yn9gu006fqm39t1si9xam:shopify-sale:v1" },
+    ],
+    line_items: [
+      {
+        id: 1,
+        title: "Acryl Light Box Outdoor",
+        quantity: 1,
+      },
+    ],
+  });
+
+  assert.equal(parsed.sale.offerId, "cmq4yn9gu006fqm39t1si9xam");
+  assert.equal(parsed.sale.offerNumber, "A/N 14061");
+  assert.equal(parsed.sale.offerPublicUrl, "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg");
+  assert.equal(parsed.sale.finalPdfUrl, "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg/pdf");
+  assert.equal(parsed.sale.trelloCardId, "6a267a745c0826d898eec8fd");
+  assert.equal(parsed.sale.idempotencyKey, "offer:cmq4yn9gu006fqm39t1si9xam:shopify-sale:v1");
+  assert.equal(parsed.sale.metadata?.idempotency_key, "offer:cmq4yn9gu006fqm39t1si9xam:shopify-sale:v1");
+});
+
 test("supplier sales board counts deadlines, payment, assignment and sync issues", () => {
   const board = buildSupplierSaleBoardFromRows(
     [

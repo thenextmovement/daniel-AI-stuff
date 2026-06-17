@@ -854,6 +854,59 @@ function noteAttributeValue(payload: JsonRecord, keys: string[]) {
   return null;
 }
 
+function noteAttributeString(payload: JsonRecord, keys: string[], maxLength = 500) {
+  return cleanText(noteAttributeValue(payload, keys), maxLength);
+}
+
+function shopifyNoteText(payload: JsonRecord) {
+  const order = jsonRecord(payload.order);
+  const attributes = [
+    ...arrayRecords(payload.note_attributes),
+    ...arrayRecords(payload.noteAttributes),
+    ...arrayRecords(order.note_attributes),
+    ...arrayRecords(order.noteAttributes),
+  ]
+    .map((attribute) => `${cleanText(attribute.name || attribute.key || attribute.label, 120)}: ${cleanText(attribute.value, 1000)}`.trim())
+    .filter(Boolean);
+  return [
+    recordString(payload, ["note", "notes", "note_text", "noteText"], 5000),
+    recordString(order, ["note", "notes", "note_text", "noteText"], 5000),
+    ...attributes,
+  ].filter(Boolean).join("\n");
+}
+
+function shopifyNoteMatch(payload: JsonRecord, pattern: RegExp, maxLength = 500) {
+  const match = shopifyNoteText(payload).match(pattern);
+  return match ? cleanText(match[1], maxLength) : null;
+}
+
+function shopifyOfferReferences(payload: JsonRecord) {
+  const noteText = shopifyNoteText(payload);
+  const offerNumberPattern = /(A\/N\s*\d+)/i;
+  return {
+    offerId:
+      noteAttributeString(payload, ["NEONTRIP Offer ID", "Offer ID", "offer_id", "offerId"], 180) ||
+      shopifyNoteMatch(payload, /NEONTRIP\s+Offer\s+ID\s*:?\s*([a-z0-9_-]+)/i, 180),
+    offerNumber:
+      noteAttributeString(payload, ["NEONTRIP Offer Number", "NEONTRIP Angebot", "Offer Number", "offer_number", "offerNumber"], 120) ||
+      shopifyNoteMatch(payload, /NEONTRIP\s+Offer\s+Number\s*:?\s*(A\/N\s*\d+)/i, 120) ||
+      shopifyNoteMatch(payload, /NEONTRIP\s+Angebot\s*:?\s*(A\/N\s*\d+)/i, 120) ||
+      cleanText(noteText.match(offerNumberPattern)?.[1], 120),
+    offerPublicUrl:
+      noteAttributeString(payload, ["NEONTRIP Offer URL", "Angebotslink", "Offer URL", "offer_public_url", "offerPublicUrl"], 1000) ||
+      shopifyNoteMatch(payload, /(?:NEONTRIP\s+Offer\s+URL|Angebotslink)\s*:?\s*(https?:\/\/\S+)/i, 1000),
+    finalPdfUrl:
+      noteAttributeString(payload, ["NEONTRIP PDF Snapshot", "PDF Snapshot", "final_pdf_url", "finalPdfUrl"], 1000) ||
+      shopifyNoteMatch(payload, /(?:NEONTRIP\s+PDF\s+Snapshot|PDF\s+Snapshot)\s*:?\s*(https?:\/\/\S+)/i, 1000),
+    trelloCardId:
+      noteAttributeString(payload, ["Trello Card ID", "trello_card_id", "trelloCardId"], 160) ||
+      shopifyNoteMatch(payload, /Trello\s+Card\s+ID\s*:?\s*([0-9a-f]{24})/i, 160),
+    idempotencyKey:
+      noteAttributeString(payload, ["Idempotency Key", "idempotency_key", "idempotencyKey"], 260) ||
+      shopifyNoteMatch(payload, /Idempotency\s+Key\s*:?\s*([^\s]+)/i, 260),
+  };
+}
+
 function extractDueDate(payload: JsonRecord) {
   const keys = [
     "deadline",
@@ -1022,6 +1075,7 @@ function parseShopifyOrderPayload(payload: JsonRecord): SupplierSalePayloadParse
   const customer = jsonRecord(source.customer);
   const billing = jsonRecord(source.billing_address || source.billingAddress);
   const shipping = jsonRecord(source.shipping_address || source.shippingAddress);
+  const references = shopifyOfferReferences(source);
   const saleKey = shopifyOrderId || shopifyGraphqlId || shopifyOrderName
     ? `shopify:order:${shopifyOrderId || shopifyGraphqlId || shopifyOrderName}`
     : `shopify-payload:${hashPayload(payload)}`;
@@ -1035,12 +1089,12 @@ function parseShopifyOrderPayload(payload: JsonRecord): SupplierSalePayloadParse
       shopifyOrderName,
       shopifyOrderUrl: recordString(source, ["admin_url", "adminUrl", "order_status_url", "orderStatusUrl"], 1000),
       shopifyPaymentStatus: recordString(source, ["financial_status", "financialStatus", "payment_status", "paymentStatus"], 80) || "unknown",
-      offerId: recordString(source, ["offer_id", "offerId", "quote_id", "quoteId"], 160),
-      offerNumber: recordString(source, ["offer_number", "offerNumber", "quote_number", "quoteNumber"], 120),
+      offerId: recordString(source, ["offer_id", "offerId", "quote_id", "quoteId"], 160) || references.offerId,
+      offerNumber: recordString(source, ["offer_number", "offerNumber", "quote_number", "quoteNumber"], 120) || references.offerNumber,
       documentReference: recordString(source, ["document_reference", "documentReference"], 160),
-      offerPublicUrl: recordString(source, ["offer_public_url", "offerPublicUrl"], 1000),
-      finalPdfUrl: recordString(source, ["final_pdf_url", "finalPdfUrl"], 1000),
-      trelloCardId: recordString(source, ["trello_card_id", "trelloCardId"], 160),
+      offerPublicUrl: recordString(source, ["offer_public_url", "offerPublicUrl"], 1000) || references.offerPublicUrl,
+      finalPdfUrl: recordString(source, ["final_pdf_url", "finalPdfUrl"], 1000) || references.finalPdfUrl,
+      trelloCardId: recordString(source, ["trello_card_id", "trelloCardId"], 160) || references.trelloCardId,
       requestId: recordString(source, ["request_id", "requestId"], 160),
       customerName:
         recordString(source, ["customer_name", "customerName"], 260) ||
@@ -1073,8 +1127,9 @@ function parseShopifyOrderPayload(payload: JsonRecord): SupplierSalePayloadParse
         source_event: recordString(payload, ["event"], 120) || "shopify_order",
         payment_link: paymentLinkFromPayload(source),
         admin_graphql_api_id: shopifyGraphqlId,
+        idempotency_key: references.idempotencyKey,
       },
-      idempotencyKey: recordString(payload, ["idempotencyKey", "idempotency_key"], 260) || recordString(source, ["idempotencyKey", "idempotency_key"], 260),
+      idempotencyKey: recordString(payload, ["idempotencyKey", "idempotency_key"], 260) || recordString(source, ["idempotencyKey", "idempotency_key"], 260) || references.idempotencyKey,
       lineItems,
     },
   };
