@@ -361,6 +361,7 @@ export function InboundShippingClient({
                           <span>{item.shipment.carrier.toUpperCase()}</span>
                           <span>{item.shipment.trackingNumber}</span>
                           <span>{statusLabel(item.shipment.status)}</span>
+                          {!item.shipment.trelloCardId ? <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-800">ohne Trello-ID</span> : null}
                           {item.visual ? <span>{item.visual.sourceLabel}</span> : null}
                         </div>
                         <h2 className="mt-2 text-xl font-semibold">{item.shipment.trelloCardName || "Wareneingang ohne Trello-Titel"}</h2>
