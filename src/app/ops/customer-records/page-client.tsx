@@ -21389,55 +21389,58 @@ export function CustomerRecordsClient({
     setFocusSession(null);
     setRecordPreferredTab(null);
 
-    const response = await fetch(`/api/ops/customer-records?query=${encodeURIComponent(query)}`);
-    const payload = (await response.json().catch(() => null)) as SearchResponse | null;
+    try {
+      const response = await fetch(`/api/ops/customer-records?query=${encodeURIComponent(query)}`);
+      const payload = (await response.json().catch(() => null)) as SearchResponse | null;
 
-    if (response.status === 401) {
-      setHasSession(false);
-      setError("Zugang abgelaufen. Bitte erneut entsperren.");
-      setLoading(false);
-      return;
-    }
-
-    if (!response.ok || !payload?.ok) {
-      setError(formatApiError(payload));
-      setResults([]);
-      setLoading(false);
-      return;
-    }
-
-    const foundResults = payload.results || [];
-    setMessage(foundResults.length ? null : "Kein Fall gefunden.");
-
-    if (foundResults.length > 1) {
-      const [lead] = foundResults;
-      const leadSessionMeta = lead ? resolveRecordSessionMeta(lead) : null;
-      const { preferredTabsByRequestId, badgeLabelsByRequestId } = buildRecordSessionMaps(foundResults);
-      setResults(lead ? [lead] : []);
-      setFocusSession({
-        source: "workboard",
-        badgeLabel: leadSessionMeta?.badgeLabel,
-        label: `Suche • ${query.trim()}`,
-        requestIds: foundResults.map((entry) => entry.requestId),
-        currentIndex: 0,
-        preferredTab: leadSessionMeta?.preferredTab ?? null,
-        preferredTabsByRequestId,
-        badgeLabelsByRequestId,
-      });
-      setRecordPreferredTab(leadSessionMeta?.preferredTab ?? null);
-      if (lead) {
-        rememberRecentCase(lead);
+      if (response.status === 401) {
+        setHasSession(false);
+        setError("Zugang abgelaufen. Bitte erneut entsperren.");
+        return;
       }
-      setMessage(`${foundResults.length} Treffer gefunden. Ersten Fall geöffnet.`);
-      setLoading(false);
-      return;
-    }
 
-    setResults(foundResults);
-    if (foundResults.length === 1) {
-      rememberRecentCase(foundResults[0]);
+      if (!response.ok || !payload?.ok) {
+        setError(formatApiError(payload));
+        setResults([]);
+        return;
+      }
+
+      const foundResults = payload.results || [];
+      setMessage(foundResults.length ? null : "Kein Fall gefunden.");
+
+      if (foundResults.length > 1) {
+        const [lead] = foundResults;
+        const leadSessionMeta = lead ? resolveRecordSessionMeta(lead) : null;
+        const { preferredTabsByRequestId, badgeLabelsByRequestId } = buildRecordSessionMaps(foundResults);
+        setResults(lead ? [lead] : []);
+        setFocusSession({
+          source: "workboard",
+          badgeLabel: leadSessionMeta?.badgeLabel,
+          label: `Suche • ${query.trim()}`,
+          requestIds: foundResults.map((entry) => entry.requestId),
+          currentIndex: 0,
+          preferredTab: leadSessionMeta?.preferredTab ?? null,
+          preferredTabsByRequestId,
+          badgeLabelsByRequestId,
+        });
+        setRecordPreferredTab(leadSessionMeta?.preferredTab ?? null);
+        if (lead) {
+          rememberRecentCase(lead);
+        }
+        setMessage(`${foundResults.length} Treffer gefunden. Ersten Fall geöffnet.`);
+        return;
+      }
+
+      setResults(foundResults);
+      if (foundResults.length === 1) {
+        rememberRecentCase(foundResults[0]);
+      }
+    } catch {
+      setError("Suche fehlgeschlagen. Bitte erneut versuchen.");
+      setResults([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   function updateManualImportDraft<K extends keyof ManualImportDraft>(key: K, value: ManualImportDraft[K]) {
