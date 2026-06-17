@@ -39,6 +39,11 @@ type SupplierSalesApiResponse = {
     taskIds: string[];
     errors: Array<{ saleId: string; error: string }>;
   };
+  assignmentTaskCleanup?: {
+    archivedDedicatedTasks: number;
+    closedFallbackTasks: number;
+    clearedSales: number;
+  };
   completedOffersSync?: {
     status: "synced" | "skipped" | "failed";
     checked: number;
@@ -243,6 +248,11 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
     const tasks = payload?.deadlineTasks;
     if (!tasks) return "Deadline-Aufgaben wurden geprueft.";
     return `Deadline-Aufgaben geprueft: ${tasks.created} neu, ${tasks.skipped} bereits erledigt/uebersprungen, ${tasks.failed} Fehler.`;
+  }
+  if (action === "cleanup_supplier_assignment_tasks") {
+    const cleanup = payload?.assignmentTaskCleanup;
+    if (!cleanup) return "Vergabe-Aufgaben wurden bereinigt.";
+    return `Vergabe-Aufgaben bereinigt: ${cleanup.archivedDedicatedTasks + cleanup.closedFallbackTasks} Aufgaben entfernt, ${cleanup.clearedSales} Sales geloest.`;
   }
   return "Sale wurde aktualisiert.";
 }
@@ -657,6 +667,7 @@ export function SupplierSalesClient({
   const [message, setMessage] = useState<string | null>(null);
   const [liveCheck, setLiveCheck] = useState<SupplierSalesLiveCheck | null>(null);
   const canRunDeadlineTasks = Boolean(board) && !loading && savingSaleId !== "deadline-tasks";
+  const canCleanupAssignmentTasks = Boolean(board) && !loading && savingSaleId !== "assignment-task-cleanup";
 
   useEffect(() => {
     try {
@@ -948,8 +959,21 @@ export function SupplierSalesClient({
               <CheckCircle2 className="h-4 w-4" />
               Live-Abgleich testen
             </button>
+            <button
+              type="button"
+              disabled={!canCleanupAssignmentTasks}
+              onClick={() => {
+                if (!confirmAction("Alle automatisch erzeugten Sales-Vergabe-Aufgaben archivieren und die Task-Verknuepfung an den Sales entfernen?")) return;
+                void runSaleAction("assignment-task-cleanup", { action: "cleanup_supplier_assignment_tasks", operatorName });
+              }}
+              className="inline-flex items-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ClipboardList className="h-4 w-4" />
+              Vergabe-Aufgaben bereinigen
+            </button>
             {loading ? <span className="text-sm text-stone-500">Sales werden geladen...</span> : null}
             {savingSaleId === "live-check" ? <span className="text-sm text-stone-500">Live-Abgleich laeuft...</span> : null}
+            {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
             {message ? <span className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">{message}</span> : null}
             {error ? <span className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</span> : null}
           </div>
