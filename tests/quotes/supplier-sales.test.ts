@@ -8,6 +8,7 @@ import {
   buildSupplierSaleBoardFromRows,
   buildSupplierSalesDiagnostics,
   buildSupplierSaleInputFromPayload,
+  cleanupSupplierAssignmentTasks,
   deriveAssignmentStatus,
   derivePaymentDecisionStatus,
   deriveSupplierRecommendation,
@@ -123,6 +124,7 @@ async function withMockedAssignmentFetch<T>(
     "SHOPIFY_SHOP",
     "SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
     "N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+    "SUPPLIER_ASSIGNMENT_TASKS_ENABLED",
     "NEONTRIP_OFFERS_BASE_URL",
     "OFFERS_BASE_URL",
     "NEXT_PUBLIC_OFFERS_BASE_URL",
@@ -523,6 +525,7 @@ test("supplier assignment duplicate attempt does not rerun projections", async (
 test("supplier assignment finds Shopify order by offer reference before tagging", async () => {
   let shopifyLookupCount = 0;
   let shopifyTagCount = 0;
+  let assignmentTaskWriteCount = 0;
   let currentRow = saleRow({
     id: "sale-offer-shopify-lookup",
     sale_key: "offer:offer-shopify-lookup",
@@ -562,6 +565,10 @@ test("supplier assignment finds Shopify order by offer reference before tagging"
     }
 
     assert.equal(url.origin, "https://supabase.test");
+    if ((url.pathname.endsWith("/ops_internal_tasks") || url.pathname.endsWith("/sales_tasks")) && method === "POST") {
+      assignmentTaskWriteCount += 1;
+      return Response.json({});
+    }
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
@@ -588,10 +595,78 @@ test("supplier assignment finds Shopify order by offer reference before tagging"
     assert.equal(sale.shopifyOrderId, "gid://shopify/Order/987654321");
     assert.equal(sale.shopifyTagSyncStatus, "synced");
     assert.equal(sale.shopifyTagError, null);
+    assert.equal(sale.taskSyncStatus, "skipped");
+    assert.equal(sale.activeTaskId, null);
   });
 
   assert.equal(shopifyLookupCount, 1);
   assert.equal(shopifyTagCount, 1);
+  assert.equal(assignmentTaskWriteCount, 0);
+});
+
+test("supplier assignment task cleanup archives only supplier sale projections", async () => {
+  let dedicatedPatchCount = 0;
+  let fallbackPatchCount = 0;
+  let supplierSalesPatchCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+
+    if (url.pathname.endsWith("/ops_internal_tasks") && method === "GET") {
+      assert.equal(url.searchParams.get("source_app"), "eq.supplier_sales");
+      assert.equal(url.searchParams.get("source_ref"), "like.supplier_sale:%");
+      assert.equal(url.searchParams.get("status"), "in.(open,in_progress,waiting)");
+      return Response.json([{ id: "task-dedicated-1" }, { id: "task-dedicated-2" }]);
+    }
+    if (url.pathname.endsWith("/ops_internal_tasks") && method === "PATCH") {
+      dedicatedPatchCount += 1;
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.equal(body.status, "archived");
+      assert.equal(url.searchParams.get("id"), "in.(task-dedicated-1,task-dedicated-2)");
+      return Response.json({});
+    }
+
+    if (url.pathname.endsWith("/sales_tasks") && method === "GET") {
+      assert.equal(url.searchParams.get("source"), "eq.ops_internal");
+      assert.equal(url.searchParams.get("source_ref"), "like.supplier_sale:%");
+      assert.equal(url.searchParams.get("status"), "in.(open,waiting,blocked)");
+      return Response.json([{ id: "task-fallback-1" }]);
+    }
+    if (url.pathname.endsWith("/sales_tasks") && method === "PATCH") {
+      fallbackPatchCount += 1;
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.equal(body.status, "closed");
+      assert.equal(url.searchParams.get("id"), "in.(task-fallback-1)");
+      return Response.json({});
+    }
+
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      assert.equal(url.searchParams.get("active_task_id"), "not.is.null");
+      return Response.json([{ id: "sale-task-1" }, { id: "sale-task-2" }]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      supplierSalesPatchCount += 1;
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.equal(body.active_task_id, null);
+      assert.equal(body.task_sync_status, "skipped");
+      assert.equal(url.searchParams.get("id"), "in.(sale-task-1,sale-task-2)");
+      return Response.json({});
+    }
+
+    return Response.json([]);
+  }, async () => {
+    const result = await cleanupSupplierAssignmentTasks();
+    assert.deepEqual(result, {
+      archivedDedicatedTasks: 2,
+      closedFallbackTasks: 1,
+      clearedSales: 2,
+    });
+  });
+
+  assert.equal(dedicatedPatchCount, 1);
+  assert.equal(fallbackPatchCount, 1);
+  assert.equal(supplierSalesPatchCount, 1);
 });
 
 test("supplier Shopify tag retry resolves existing assigned offer sale", async () => {

@@ -3,6 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
   assignSupplierSale,
+  cleanupSupplierAssignmentTasks,
   createSupplierDeadlineTasks,
   listSupplierSalesBoard,
   requestSupplierPaymentReminder,
@@ -34,6 +35,7 @@ type SupplierSalesPostBody = {
     | "request_payment_reminder"
     | "retry_shopify_tag"
     | "create_deadline_tasks"
+    | "cleanup_supplier_assignment_tasks"
     | "sync_completed_offers"
     | "diagnose_sales_flow";
   payload?: unknown;
@@ -277,6 +279,12 @@ export async function POST(request: NextRequest) {
       const deadlineTasks = await createSupplierDeadlineTasks(actor);
       const board = await listSupplierSalesBoard({ scope: "deadline" });
       return NextResponse.json({ ok: true, action, deadlineTasks, board });
+    }
+
+    if (action === "cleanup_supplier_assignment_tasks") {
+      const assignmentTaskCleanup = await cleanupSupplierAssignmentTasks();
+      const board = await listSupplierSalesBoard({ scope: "active" });
+      return NextResponse.json({ ok: true, action, assignmentTaskCleanup, board });
     }
 
     if (action === "sync_completed_offers") {

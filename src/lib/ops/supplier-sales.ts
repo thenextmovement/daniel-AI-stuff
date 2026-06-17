@@ -404,6 +404,12 @@ export type SupplierSalesLiveCheckResult = {
   };
 };
 
+export type SupplierAssignmentTaskCleanupResult = {
+  archivedDedicatedTasks: number;
+  closedFallbackTasks: number;
+  clearedSales: number;
+};
+
 type CompletedOfferFeedEntry = {
   offerId: string | null;
   offerNumber: string | null;
@@ -1692,13 +1698,19 @@ export async function upsertSupplierSale(input: SupplierSaleInput, actor?: Suppl
     },
   });
 
-  if (saleRow.assignment_status === "ready_to_assign" && !saleRow.active_task_id) {
+  if (saleRow.assignment_status === "ready_to_assign" && !saleRow.active_task_id && supplierAssignmentTasksEnabled()) {
     await ensureSupplierAssignmentTask(saleRow.id, actor || undefined).catch(async (error) => {
       await patchSaleRow(saleRow.id, {
         task_sync_status: "failed",
         task_sync_error: error instanceof Error ? error.message : "Aufgabe konnte nicht erstellt werden.",
       });
     });
+  } else if (saleRow.assignment_status === "ready_to_assign" && !supplierAssignmentTasksEnabled()) {
+    await patchSaleRow(saleRow.id, {
+      active_task_id: null,
+      task_sync_status: "skipped",
+      task_sync_error: null,
+    }).catch(() => null);
   }
 
   return getSupplierSale(saleRow.id);
@@ -2263,6 +2275,12 @@ function supplierTrelloListId(supplier: SupplierSaleSupplier) {
   return nullableText(values[supplier], 180);
 }
 
+function supplierAssignmentTasksEnabled() {
+  return String(process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED || "")
+    .trim()
+    .toLowerCase() === "true";
+}
+
 function shopifyConfig() {
   const token = shopifyAdminToken();
   const domain = shopifyShopDomain();
@@ -2405,6 +2423,7 @@ async function projectSupplierTrelloCard(row: SupplierSaleRow, supplier: Supplie
 }
 
 async function ensureSupplierAssignmentTask(saleId: string, actor?: SupplierSaleActor | null, assigneeLabel?: string | null) {
+  if (!supplierAssignmentTasksEnabled()) return { taskId: null, created: false };
   const row = await fetchSaleRowById(saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
   if (row.active_task_id) return { taskId: row.active_task_id, created: false };
@@ -2446,6 +2465,96 @@ async function ensureSupplierAssignmentTask(saleId: string, actor?: SupplierSale
   );
   await patchSaleRow(row.id, { active_task_id: task.id, task_sync_status: "synced", task_sync_error: null });
   return { taskId: task.id, created: true };
+}
+
+export async function cleanupSupplierAssignmentTasks(): Promise<SupplierAssignmentTaskCleanupResult> {
+  const dedicatedRows = await supabaseRequest<Array<{ id: string }>>("ops_internal_tasks", undefined, {
+    select: "id",
+    source_app: "eq.supplier_sales",
+    source_ref: "like.supplier_sale:%",
+    status: "in.(open,in_progress,waiting)",
+    limit: 1000,
+  }).catch((error) => {
+    if (
+      error instanceof SupabaseRestError &&
+      (String(error.details || "").includes("ops_internal_tasks") || String(error.message || "").includes("ops_internal_tasks"))
+    ) {
+      return [] as Array<{ id: string }>;
+    }
+    throw error;
+  });
+
+  let archivedDedicatedTasks = 0;
+  if (dedicatedRows.length) {
+    await supabaseRequest("ops_internal_tasks", {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "archived",
+        completed_at: new Date().toISOString(),
+        completed_by: "supplier-sales-cleanup",
+        updated_by: "supplier-sales-cleanup",
+      }),
+      headers: { Prefer: "return=minimal" },
+    }, {
+      id: inList(dedicatedRows.map((row) => row.id)),
+    });
+    archivedDedicatedTasks = dedicatedRows.length;
+  }
+
+  const fallbackRows = await supabaseRequest<Array<{ id: string }>>("sales_tasks", undefined, {
+    select: "id",
+    source: "eq.ops_internal",
+    source_ref: "like.supplier_sale:%",
+    status: "in.(open,waiting,blocked)",
+    limit: 1000,
+  }).catch((error) => {
+    if (
+      error instanceof SupabaseRestError &&
+      (String(error.details || "").includes("sales_tasks") || String(error.message || "").includes("sales_tasks"))
+    ) {
+      return [] as Array<{ id: string }>;
+    }
+    throw error;
+  });
+
+  let closedFallbackTasks = 0;
+  if (fallbackRows.length) {
+    await supabaseRequest("sales_tasks", {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "closed",
+        completed_at: new Date().toISOString(),
+      }),
+      headers: { Prefer: "return=minimal" },
+    }, {
+      id: inList(fallbackRows.map((row) => row.id)),
+    });
+    closedFallbackTasks = fallbackRows.length;
+  }
+
+  const saleRows = await supabaseRequest<Array<{ id: string }>>("supplier_sales", undefined, {
+    select: "id",
+    active_task_id: "not.is.null",
+    limit: 1000,
+  });
+
+  let clearedSales = 0;
+  if (saleRows.length) {
+    await supabaseRequest("supplier_sales", {
+      method: "PATCH",
+      body: JSON.stringify({
+        active_task_id: null,
+        task_sync_status: "skipped",
+        task_sync_error: null,
+      }),
+      headers: { Prefer: "return=minimal" },
+    }, {
+      id: inList(saleRows.map((row) => row.id)),
+    });
+    clearedSales = saleRows.length;
+  }
+
+  return { archivedDedicatedTasks, closedFallbackTasks, clearedSales };
 }
 
 async function ensureSupplierDeadlineTask(row: SupplierSaleRow, actor?: SupplierSaleActor | null, now = new Date()) {
@@ -2719,7 +2828,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     shopify_tag_error: tagValue ? null : "Supplier-Tag ist nicht konfiguriert.",
     trello_projection_status: supplierTrelloListId(supplier) ? "pending" : "skipped",
     trello_projection_error: supplierTrelloListId(supplier) ? null : "Supplier-Trello-Liste ist nicht konfiguriert.",
-    task_sync_status: "pending",
+    task_sync_status: supplierAssignmentTasksEnabled() ? "pending" : "skipped",
     task_sync_error: null,
   };
 
@@ -2774,12 +2883,20 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     });
   }
 
-  try {
-    await ensureSupplierAssignmentTask(sale.id, actor, input.assigneeLabel);
-  } catch (error) {
+  if (supplierAssignmentTasksEnabled()) {
+    try {
+      await ensureSupplierAssignmentTask(sale.id, actor, input.assigneeLabel);
+    } catch (error) {
+      row = await patchSaleRow(sale.id, {
+        task_sync_status: "failed",
+        task_sync_error: error instanceof Error ? error.message : "Aufgabe konnte nicht erstellt werden.",
+      });
+    }
+  } else {
     row = await patchSaleRow(sale.id, {
-      task_sync_status: "failed",
-      task_sync_error: error instanceof Error ? error.message : "Aufgabe konnte nicht erstellt werden.",
+      active_task_id: null,
+      task_sync_status: "skipped",
+      task_sync_error: null,
     });
   }
 
