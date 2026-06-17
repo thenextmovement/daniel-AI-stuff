@@ -742,7 +742,7 @@ export async function markInboundShipmentOutForDelivery(shipmentId: string, acto
   if (!id) throw new QuoteValidationError("Sendung fehlt.", ["shipmentId ist erforderlich."], 400);
 
   const rows = await supabaseRequest<InboundShipmentRow[]>("inbound_shipments", undefined, {
-    select: "id,carrier,tracking_number,tracking_raw,status",
+    select: "*",
     id: `eq.${encodeFilterValue(id)}`,
     limit: 1,
   });
@@ -750,6 +750,9 @@ export async function markInboundShipmentOutForDelivery(shipmentId: string, acto
   if (!shipment) throw new QuoteValidationError("Sendung nicht gefunden.", [`shipmentId=${id}`], 404);
   if (shipment.status === "delivered" || shipment.status === "closed") {
     throw new QuoteValidationError("Sendung ist bereits abgeschlossen.", [`status=${shipment.status}`], 400);
+  }
+  if (shipment.status === "out_for_delivery") {
+    return { shipment: mapShipment(shipment), updated: false };
   }
 
   const now = new Date();
@@ -760,7 +763,7 @@ export async function markInboundShipmentOutForDelivery(shipmentId: string, acto
       trackingNumber: shipment.tracking_number,
       events: [
         {
-          eventKey: `inbound:manual:${shipment.tracking_number.toLowerCase()}:out-for-delivery:${now.toISOString()}`,
+          eventKey: `inbound:manual:${shipment.tracking_number.toLowerCase()}:out-for-delivery`,
           carrierEventId: "manual_out_for_delivery",
           statusCode: "OD",
           statusText: "Manuell als in Zustellung markiert.",
