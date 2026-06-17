@@ -1877,8 +1877,8 @@ async function syncRecentShopifyOrdersFromAdmin(
               totalPriceSet { shopMoney { amount currencyCode } }
               subtotalPriceSet { shopMoney { amount currencyCode } }
               customer { firstName lastName email phone }
-              billingAddress { name company email phone address1 address2 city zip country countryCodeV2 }
-              shippingAddress { name company email phone address1 address2 city zip country countryCodeV2 }
+              billingAddress { name company phone address1 address2 city zip country countryCodeV2 }
+              shippingAddress { name company phone address1 address2 city zip country countryCodeV2 }
               lineItems(first: 50) {
                 nodes {
                   id

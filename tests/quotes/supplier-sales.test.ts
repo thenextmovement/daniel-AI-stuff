@@ -838,6 +838,8 @@ test("completed offers sync imports recent Shopify orders as fallback", async ()
       shopifyOrderLookupCount += 1;
       const body = JSON.parse(String(init?.body || "{}"));
       assert.match(body.variables.query, /^created_at:>=20\d{2}-\d{2}-\d{2}$/);
+      assert.doesNotMatch(body.query, /billingAddress\s*\{[^}]*\bemail\b/);
+      assert.doesNotMatch(body.query, /shippingAddress\s*\{[^}]*\bemail\b/);
       return Response.json({
         data: {
           orders: {
