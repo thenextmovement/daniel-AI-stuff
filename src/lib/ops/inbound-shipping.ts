@@ -1,6 +1,6 @@
 import { createOpsInternalTask, findOpsInternalTaskBySourceRef, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
 import { attachmentName, selectMockupAttachments } from "@/lib/quotes/mockups";
-import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { getTrelloCardVisuals } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -735,6 +735,67 @@ export async function updateInboundIncidentStatus(
     status,
     resolved_at: status === "resolved" || status === "ignored" ? now : incident.resolved_at,
   });
+}
+
+export async function markInboundShipmentOutForDelivery(shipmentId: string, actor?: InboundUpdateActor | null) {
+  const id = trimNullable(shipmentId);
+  if (!id) throw new QuoteValidationError("Sendung fehlt.", ["shipmentId ist erforderlich."], 400);
+
+  const rows = await supabaseRequest<InboundShipmentRow[]>("inbound_shipments", undefined, {
+    select: "id,carrier,tracking_number,tracking_raw,status",
+    id: `eq.${encodeFilterValue(id)}`,
+    limit: 1,
+  });
+  const shipment = rows[0];
+  if (!shipment) throw new QuoteValidationError("Sendung nicht gefunden.", [`shipmentId=${id}`], 404);
+  if (shipment.status === "delivered" || shipment.status === "closed") {
+    throw new QuoteValidationError("Sendung ist bereits abgeschlossen.", [`status=${shipment.status}`], 400);
+  }
+
+  const now = new Date();
+  const result = await supabaseRpc("inbound_record_carrier_response", {
+    p_payload: {
+      shipmentId: shipment.id,
+      carrier: shipment.carrier,
+      trackingNumber: shipment.tracking_number,
+      events: [
+        {
+          eventKey: `inbound:manual:${shipment.tracking_number.toLowerCase()}:out-for-delivery:${now.toISOString()}`,
+          carrierEventId: "manual_out_for_delivery",
+          statusCode: "OD",
+          statusText: "Manuell als in Zustellung markiert.",
+          eventTime: now.toISOString(),
+          eventLocation: null,
+          rawEvent: {
+            source: "ops_manual",
+            action: "mark_out_for_delivery",
+            operatorName: actor?.operatorName || null,
+            mode: actor?.mode || null,
+          },
+        },
+      ],
+      rawResponse: {
+        source: "ops_manual",
+        action: "mark_out_for_delivery",
+        operatorName: actor?.operatorName || null,
+        mode: actor?.mode || null,
+      },
+    },
+  });
+
+  await supabaseRequest("inbound_shipments", {
+    method: "PATCH",
+    body: JSON.stringify({
+      status_reason: "manual_out_for_delivery",
+      next_check_at: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
+      updated_at: now.toISOString(),
+    }),
+    headers: { Prefer: "return=minimal" },
+  }, {
+    id: `eq.${encodeFilterValue(shipment.id)}`,
+  });
+
+  return result;
 }
 
 export async function createInboundIncidentTask(incidentId: string, actor?: InboundUpdateActor | null) {

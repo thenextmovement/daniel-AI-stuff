@@ -17,6 +17,7 @@ type InboundApiResponse = {
 type InboundBoardScope = "moving" | "active" | "problems" | "label_created" | "all";
 type InboundBoardCarrier = "all" | "dhl" | "fedex" | "other" | "unknown";
 type InboundIncidentAction = "create_task" | "acknowledge" | "resolve" | "ignore";
+type InboundShipmentAction = "mark_out_for_delivery";
 
 function formatApiError(payload: { error?: string; issues?: string[] } | null) {
   if (!payload) return "Unbekannter Fehler.";
@@ -75,6 +76,7 @@ export function InboundShippingClient({
   const [appliedRequestId, setAppliedRequestId] = useState((initialRequestId || "").trim());
   const [loading, setLoading] = useState(false);
   const [savingIncidentId, setSavingIncidentId] = useState<string | null>(null);
+  const [savingShipmentId, setSavingShipmentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const loadRequestSeq = useRef(0);
@@ -200,6 +202,35 @@ export function InboundShippingClient({
       setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     } finally {
       setSavingIncidentId(null);
+    }
+  }
+
+  function confirmShipmentAction(item: InboundBoardItem, action: InboundShipmentAction) {
+    if (action === "mark_out_for_delivery") {
+      return window.confirm(`Sendung ${item.shipment.trackingNumber} wirklich manuell als in Zustellung markieren?`);
+    }
+    return true;
+  }
+
+  async function runShipmentAction(item: InboundBoardItem, action: InboundShipmentAction) {
+    if (!confirmShipmentAction(item, action)) return;
+    setSavingShipmentId(item.shipment.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/inbound-shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, shipmentId: item.shipment.id, operatorName, scope, carrier, requestId: appliedRequestId }),
+      });
+      const payload = (await response.json().catch(() => null)) as InboundApiResponse | null;
+      if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
+      if (payload.board) setBoard(payload.board);
+      setMessage("Sendung wurde als in Zustellung markiert.");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+    } finally {
+      setSavingShipmentId(null);
     }
   }
 
@@ -341,6 +372,15 @@ export function InboundShippingClient({
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        {item.shipment.status !== "out_for_delivery" && item.shipment.status !== "delivered" && item.shipment.status !== "closed" ? (
+                          <button
+                            disabled={savingShipmentId === item.shipment.id}
+                            onClick={() => void runShipmentAction(item, "mark_out_for_delivery")}
+                            className="rounded-[0.5rem] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+                          >
+                            {savingShipmentId === item.shipment.id ? "Speichert..." : "In Zustellung"}
+                          </button>
+                        ) : null}
                         {item.shipment.trelloCardUrl ? (
                           <a className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50" href={item.shipment.trelloCardUrl} target="_blank" rel="noreferrer">
                             Trello

@@ -3,6 +3,7 @@ import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib
 import {
   createInboundIncidentTask,
   listInboundBoard,
+  markInboundShipmentOutForDelivery,
   updateInboundIncidentStatus,
   type InboundCarrier,
 } from "@/lib/ops/inbound-shipping";
@@ -93,8 +94,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | {
-        action?: "create_task" | "acknowledge" | "resolve" | "ignore";
+        action?: "create_task" | "acknowledge" | "resolve" | "ignore" | "mark_out_for_delivery";
         incidentId?: string;
+        shipmentId?: string;
         operatorName?: string | null;
         scope?: string | null;
         carrier?: string | null;
@@ -134,6 +136,12 @@ export async function POST(request: NextRequest) {
       const board = await listInboundBoard(boardFilter);
       console.info("inbound shipping incident action completed", { action: body.action, incidentId: incident.id, mode: actor.mode });
       return jsonResponse({ ok: true, action: body.action, incident, board });
+    }
+    if (body?.action === "mark_out_for_delivery") {
+      const result = await markInboundShipmentOutForDelivery(String(body.shipmentId || ""), actor);
+      const board = await listInboundBoard(boardFilter);
+      console.info("inbound shipping shipment action completed", { action: body.action, shipmentId: body.shipmentId || null, mode: actor.mode });
+      return jsonResponse({ ok: true, action: body.action, result, board });
     }
     return jsonResponse({ ok: false, error: "unsupported_action" }, 400);
   } catch (error) {
