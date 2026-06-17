@@ -251,7 +251,7 @@ export type InboundShopifyOrderLink = {
   orderId: string;
   orderNumber: string | null;
   url: string;
-  source: "master_orders" | "crm_sales" | "supplier_sales";
+  source: "master_orders" | "crm_sales" | "supplier_sales" | "shopify_admin_search";
   matchedBy?:
     | "supplier_sales_offer_id"
     | "supplier_sales_idempotency_key"
@@ -259,7 +259,8 @@ export type InboundShopifyOrderLink = {
     | "supplier_sales_trello_card"
     | "supplier_sales_request"
     | "master_orders_request"
-    | "crm_sales_request";
+    | "crm_sales_request"
+    | "shopify_admin_search";
   matchLabel?: string | null;
 };
 
@@ -755,6 +756,13 @@ function shopifyAdminOrderUrl(orderId: unknown) {
   return `https://${domain}/admin/orders/${numericId}`;
 }
 
+function shopifyAdminOrderSearchUrl(query: unknown) {
+  const domain = shopifyShopDomain();
+  const search = trimNullable(query);
+  if (!domain || !search) return null;
+  return `https://${domain}/admin/orders?query=${encodeURIComponent(search)}`;
+}
+
 function masterOrderLink(row: InboundMasterOrderRow): InboundShopifyOrderLink | null {
   const url = shopifyAdminOrderUrl(row.shopify_order_id);
   const orderId = trimNullable(row.shopify_order_id);
@@ -870,6 +878,36 @@ function extractInboundOfferReferencesFromText(values: unknown[]) {
     for (const match of text.matchAll(pattern)) addReference(references.offerIds, match[1]);
   }
   return references;
+}
+
+function inboundShopifySearchTerm(shipment: InboundShipment) {
+  const references = extractInboundOfferReferencesFromText([
+    shipment.trelloCardName,
+    shipment.trackingRaw,
+    shipment.shipmentKey,
+    shipment.statusReason,
+  ]);
+  const offerNumber = Array.from(references.offerNumbers)[0];
+  if (offerNumber) return offerNumber;
+  const offerId = Array.from(references.offerIds)[0];
+  if (offerId) return offerId;
+  const idempotencyKey = Array.from(references.idempotencyKeys)[0];
+  if (idempotencyKey) return idempotencyKey;
+  return trimNullable(shipment.trelloCardName) || trimNullable(shipment.trackingRaw) || trimNullable(shipment.trackingNumber);
+}
+
+function shopifyAdminSearchLinkForInboundShipment(shipment: InboundShipment): InboundShopifyOrderLink | null {
+  const term = inboundShopifySearchTerm(shipment);
+  const url = shopifyAdminOrderSearchUrl(term);
+  if (!url || !term) return null;
+  return {
+    orderId: term,
+    orderNumber: "Suche",
+    url,
+    source: "shopify_admin_search",
+    matchedBy: "shopify_admin_search",
+    matchLabel: `kein sicherer Match -> Suche ${term}`,
+  };
 }
 
 function addOrderForCard(
@@ -1485,13 +1523,14 @@ async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<Inbou
     if (!cardId) {
       return {
         ...item,
-        shopifyOrder: shopifyOrdersByShipmentId.get(item.shipment.id) || item.shopifyOrder,
+        shopifyOrder: shopifyOrdersByShipmentId.get(item.shipment.id) || item.shopifyOrder || shopifyAdminSearchLinkForInboundShipment(item.shipment),
       };
     }
+    const exactShopifyOrder = shopifyOrdersByCardId.get(cardId) || item.shopifyOrder;
     return {
       ...item,
       visual: quoteVisualsByCardId.get(cardId) || item.visual,
-      shopifyOrder: shopifyOrdersByCardId.get(cardId) || item.shopifyOrder,
+      shopifyOrder: exactShopifyOrder || shopifyAdminSearchLinkForInboundShipment(item.shipment),
     };
   });
   const trelloCandidates = itemsWithQuoteVisuals.filter((item) => !item.visual && item.shipment.trelloCardId);

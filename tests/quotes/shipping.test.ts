@@ -810,6 +810,82 @@ test("listInboundBoard still links Shopify orders for inbound shipments without 
   }
 });
 
+test("listInboundBoard shows a Shopify search link when no exact Shopify match exists", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-search-only",
+          shipment_key: "carrier:dhl:7055403121",
+          source: "carrier",
+          trello_card_id: null,
+          trello_card_name: "DHL Express A/N 99999",
+          trello_card_url: null,
+          trello_list_id: null,
+          trello_list_name: null,
+          carrier: "dhl",
+          tracking_number: "7055403121",
+          tracking_raw: "DHL Express 7055403121 A/N 99999",
+          status: "in_transit",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-16T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-16T08:00:00.000Z",
+          tendered_at: "2026-06-16T09:00:00.000Z",
+          last_event_at: "2026-06-16T10:00:00.000Z",
+          last_movement_at: "2026-06-16T10:00:00.000Z",
+          last_checked_at: "2026-06-16T10:10:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-16T08:00:00.000Z",
+          updated_at: "2026-06-16T10:10:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_incidents") || path.endsWith("/rest/v1/inbound_tracking_events") || path.endsWith("/rest/v1/supplier_sales")) return json([]);
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const board = await listInboundBoard({ scope: "all" });
+
+    assert.equal(board.items.length, 1);
+    assert.deepEqual(board.items[0]?.shopifyOrder, {
+      orderId: "A/N 99999",
+      orderNumber: "Suche",
+      url: "https://galaxybuzzdk.myshopify.com/admin/orders?query=A%2FN%2099999",
+      source: "shopify_admin_search",
+      matchedBy: "shopify_admin_search",
+      matchLabel: "kein sicherer Match -> Suche A/N 99999",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
 test("generateInboundDeliveryNotePdf creates a NEONTRIP delivery note without price data", async () => {
   const originalFetch = globalThis.fetch;
   const originalEnv = {

@@ -385,14 +385,14 @@ export function InboundShippingClient({
                         {item.shopifyOrder?.url ? (
                           <span className="inline-flex items-center gap-2">
                             <a
-                              className="inline-flex items-center gap-2 rounded-[0.5rem] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
+                              className={`inline-flex items-center gap-2 rounded-[0.5rem] border px-3 py-2 text-sm font-medium ${item.shopifyOrder.source === "shopify_admin_search" ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100" : "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
                               href={item.shopifyOrder.url}
                               target="_blank"
                               rel="noreferrer"
-                              aria-label={`Shopify Bestellung ${item.shopifyOrder.orderNumber || item.shopifyOrder.orderId} öffnen`}
+                              aria-label={item.shopifyOrder.source === "shopify_admin_search" ? `Shopify Suche ${item.shopifyOrder.orderId} öffnen` : `Shopify Bestellung ${item.shopifyOrder.orderNumber || item.shopifyOrder.orderId} öffnen`}
                             >
                               <ShoppingBag className="h-4 w-4" />
-                              Shopify
+                              {item.shopifyOrder.source === "shopify_admin_search" ? "Shopify Suche" : "Shopify"}
                             </a>
                             {item.shopifyOrder.matchLabel ? <span className="max-w-[12rem] truncate text-xs text-stone-500" title={item.shopifyOrder.matchLabel}>via {item.shopifyOrder.matchLabel}</span> : null}
                           </span>
