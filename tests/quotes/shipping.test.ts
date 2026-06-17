@@ -472,11 +472,13 @@ test("listInboundBoard filters inbound shipments by linked requestId", async () 
   const originalEnv = {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
   };
   let inboundShipmentQuery: URLSearchParams | null = null;
 
   process.env.SUPABASE_URL = "https://supabase.example.test";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
 
   globalThis.fetch = (async (input) => {
     const url = new URL(String(input));
@@ -526,6 +528,19 @@ test("listInboundBoard filters inbound shipments by linked requestId", async () 
     }
 
     if (path.endsWith("/rest/v1/inbound_incidents") || path.endsWith("/rest/v1/inbound_tracking_events")) return json([]);
+    if (path.endsWith("/rest/v1/master_orders")) {
+      return json([
+        {
+          id: "order-1",
+          request_id: "internal-1",
+          shopify_order_id: "8281257672971",
+          shopify_order_number: "#NEONT4426",
+          created_at: "2026-06-08T16:00:32.249981+00:00",
+          shopify_created_at: "2026-06-08T15:30:57+00:00",
+        },
+      ]);
+    }
+    if (path.endsWith("/rest/v1/crm_sales")) return json([]);
     if (path.endsWith("/rest/v1/crm_quotes")) {
       return json([{ id: "quote-1", request_id: "internal-1", quote_number: "Q-1", status: "sent", created_at: "2026-06-05T08:00:00.000Z" }]);
     }
@@ -547,6 +562,12 @@ test("listInboundBoard filters inbound shipments by linked requestId", async () 
     const shipmentQuery = inboundShipmentQuery as URLSearchParams | null;
     assert.ok(shipmentQuery);
     assert.equal(shipmentQuery.get("trello_card_id"), "in.(card-filtered)");
+    assert.deepEqual(board.items[0]?.shopifyOrder, {
+      orderId: "8281257672971",
+      orderNumber: "#NEONT4426",
+      url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672971",
+      source: "master_orders",
+    });
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries(originalEnv)) {

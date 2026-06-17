@@ -104,6 +104,25 @@ type InboundRequestRow = {
   updated_at: string | null;
 };
 
+type InboundMasterOrderRow = {
+  id: string;
+  request_id: string | null;
+  shopify_order_id: string | number | null;
+  shopify_order_number: string | null;
+  created_at: string | null;
+  shopify_created_at: string | null;
+};
+
+type InboundCrmSaleOrderRow = {
+  id: string;
+  request_id: string | null;
+  shopify_order_id: string | number | null;
+  shopify_order_number: string | number | null;
+  shopify_order_name: string | null;
+  created_at: string | null;
+  shopify_created_at: string | null;
+};
+
 type InboundCrmQuoteRow = {
   id: string;
   request_id: string | null;
@@ -200,11 +219,19 @@ export type InboundShipmentVisual = {
   cardUrl: string | null;
 };
 
+export type InboundShopifyOrderLink = {
+  orderId: string;
+  orderNumber: string | null;
+  url: string;
+  source: "master_orders" | "crm_sales";
+};
+
 export type InboundBoardItem = {
   shipment: InboundShipment;
   incidents: InboundIncident[];
   latestEvent: InboundTrackingEvent | null;
   visual: InboundShipmentVisual | null;
+  shopifyOrder: InboundShopifyOrderLink | null;
 };
 
 export type InboundBoard = {
@@ -431,7 +458,7 @@ export function buildInboundBoardFromRows(
     const incidents = (incidentsByShipment.get(shipment.id) || [])
       .filter(isActiveInboundIncident)
       .sort((left, right) => riskRank(left.severity) - riskRank(right.severity));
-    return { shipment, incidents, latestEvent: latestEventByShipment.get(shipment.id) || null, visual: null };
+    return { shipment, incidents, latestEvent: latestEventByShipment.get(shipment.id) || null, visual: null, shopifyOrder: null };
   });
 
   items.sort((left, right) => {
@@ -460,6 +487,120 @@ export function buildInboundBoardFromRows(
 
 function crmQuoteImageUrl(image: InboundCrmQuoteVersionImageRow) {
   return trimNullable(image.versioned_url) || trimNullable(image.copied_url) || trimNullable(image.original_url);
+}
+
+function shopifyShopDomain() {
+  const configured =
+    trimNullable(process.env.SHOPIFY_SHOP_DOMAIN) ||
+    trimNullable(process.env.SHOPIFY_STORE_DOMAIN) ||
+    trimNullable(process.env.SHOPIFY_SHOP);
+  if (!configured) return null;
+  return configured
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .trim();
+}
+
+function shopifyOrderNumericId(value: unknown) {
+  const raw = trimNullable(value);
+  if (!raw) return null;
+  const gidMatch = raw.match(/^gid:\/\/shopify\/Order\/(\d+)$/);
+  if (gidMatch) return gidMatch[1];
+  if (/^\d+$/.test(raw)) return raw;
+  return null;
+}
+
+function shopifyAdminOrderUrl(orderId: unknown) {
+  const domain = shopifyShopDomain();
+  const numericId = shopifyOrderNumericId(orderId);
+  if (!domain || !numericId) return null;
+  return `https://${domain}/admin/orders/${numericId}`;
+}
+
+function masterOrderLink(row: InboundMasterOrderRow): InboundShopifyOrderLink | null {
+  const url = shopifyAdminOrderUrl(row.shopify_order_id);
+  const orderId = trimNullable(row.shopify_order_id);
+  if (!url || !orderId) return null;
+  return {
+    orderId,
+    orderNumber: trimNullable(row.shopify_order_number),
+    url,
+    source: "master_orders",
+  };
+}
+
+function crmSaleOrderLink(row: InboundCrmSaleOrderRow): InboundShopifyOrderLink | null {
+  const url = shopifyAdminOrderUrl(row.shopify_order_id);
+  const orderId = trimNullable(row.shopify_order_id);
+  if (!url || !orderId) return null;
+  return {
+    orderId,
+    orderNumber:
+      trimNullable(row.shopify_order_name) ||
+      (row.shopify_order_number === null || row.shopify_order_number === undefined ? null : String(row.shopify_order_number)),
+    url,
+    source: "crm_sales",
+  };
+}
+
+function sortByOrderCreatedAt<T extends { shopify_created_at: string | null; created_at: string | null }>(rows: T[]) {
+  return [...rows].sort((left, right) =>
+    new Date(right.shopify_created_at || right.created_at || 0).getTime() -
+    new Date(left.shopify_created_at || left.created_at || 0).getTime(),
+  );
+}
+
+async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
+  const ordersByCardId = new Map<string, InboundShopifyOrderLink>();
+  if (!cardIds.length || !shopifyShopDomain()) return ordersByCardId;
+
+  const requests = await supabaseRequest<InboundRequestRow[]>("master_requests", undefined, {
+    select: "id,request_id,trello_card_id,updated_at",
+    trello_card_id: `in.(${cardIds.map(encodeFilterValue).join(",")})`,
+    order: "updated_at.desc",
+    limit: Math.min(Math.max(cardIds.length * 2, 10), 120),
+  });
+  const cardIdByRequestId = new Map<string, string>();
+  for (const request of requests) {
+    const cardId = trimNullable(request.trello_card_id);
+    if (!cardId) continue;
+    for (const requestId of uniqueValues([request.id, request.request_id])) {
+      if (!cardIdByRequestId.has(requestId)) cardIdByRequestId.set(requestId, cardId);
+    }
+  }
+  const requestIds = Array.from(cardIdByRequestId.keys());
+  if (!requestIds.length) return ordersByCardId;
+
+  const requestIdFilter = `in.(${requestIds.map(encodeFilterValue).join(",")})`;
+  const [masterOrders, crmSales] = await Promise.all([
+    supabaseRequest<InboundMasterOrderRow[]>("master_orders", undefined, {
+      select: "id,request_id,shopify_order_id,shopify_order_number,created_at,shopify_created_at",
+      request_id: requestIdFilter,
+      order: "shopify_created_at.desc",
+      limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
+    }),
+    supabaseRequest<InboundCrmSaleOrderRow[]>("crm_sales", undefined, {
+      select: "id,request_id,shopify_order_id,shopify_order_number,shopify_order_name,created_at,shopify_created_at",
+      request_id: requestIdFilter,
+      order: "shopify_created_at.desc",
+      limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
+    }),
+  ]);
+
+  for (const row of sortByOrderCreatedAt(masterOrders)) {
+    const requestId = trimNullable(row.request_id);
+    const cardId = requestId ? cardIdByRequestId.get(requestId) : null;
+    const order = masterOrderLink(row);
+    if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
+  }
+  for (const row of sortByOrderCreatedAt(crmSales)) {
+    const requestId = trimNullable(row.request_id);
+    const cardId = requestId ? cardIdByRequestId.get(requestId) : null;
+    const order = crmSaleOrderLink(row);
+    if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
+  }
+
+  return ordersByCardId;
 }
 
 async function fetchQuoteVisualsByTrelloCardId(cardIds: string[]) {
@@ -584,15 +725,26 @@ async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<Inbou
   if (!cardIds.length) return board;
 
   let quoteVisualsByCardId = new Map<string, InboundShipmentVisual>();
+  let shopifyOrdersByCardId = new Map<string, InboundShopifyOrderLink>();
   try {
     quoteVisualsByCardId = await fetchQuoteVisualsByTrelloCardId(cardIds);
   } catch (error) {
     console.warn("inbound shipping quote visuals unavailable", { error });
   }
+  try {
+    shopifyOrdersByCardId = await fetchShopifyOrdersByTrelloCardId(cardIds);
+  } catch (error) {
+    console.warn("inbound shipping shopify orders unavailable", { error });
+  }
 
   const itemsWithQuoteVisuals = board.items.map((item) => {
     const cardId = trimNullable(item.shipment.trelloCardId);
-    return cardId && quoteVisualsByCardId.has(cardId) ? { ...item, visual: quoteVisualsByCardId.get(cardId) || null } : item;
+    if (!cardId) return item;
+    return {
+      ...item,
+      visual: quoteVisualsByCardId.get(cardId) || item.visual,
+      shopifyOrder: shopifyOrdersByCardId.get(cardId) || item.shopifyOrder,
+    };
   });
   const trelloCandidates = itemsWithQuoteVisuals.filter((item) => !item.visual && item.shipment.trelloCardId);
   const trelloVisualPairs = await mapWithConcurrency(trelloCandidates, 5, async (item) => ({

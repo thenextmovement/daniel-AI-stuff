@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, FileText, PlaneLanding, RefreshCcw, ShieldAlert, Truck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, FileText, PlaneLanding, RefreshCcw, ShieldAlert, ShoppingBag, Truck } from "lucide-react";
 import type { InboundBoard, InboundBoardItem, InboundIncident, InboundIncidentSeverity, InboundStatus } from "@/lib/ops/inbound-shipping";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
@@ -380,6 +380,18 @@ export function InboundShippingClient({
                           >
                             {savingShipmentId === item.shipment.id ? "Speichert..." : "In Zustellung"}
                           </button>
+                        ) : null}
+                        {item.shipment.status === "out_for_delivery" && item.shopifyOrder?.url ? (
+                          <a
+                            className="inline-flex items-center gap-2 rounded-[0.5rem] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
+                            href={item.shopifyOrder.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Shopify Bestellung ${item.shopifyOrder.orderNumber || item.shopifyOrder.orderId} öffnen`}
+                          >
+                            <ShoppingBag className="h-4 w-4" />
+                            Shopify
+                          </a>
                         ) : null}
                         {item.shipment.trelloCardUrl ? (
                           <a className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50" href={item.shipment.trelloCardUrl} target="_blank" rel="noreferrer">
