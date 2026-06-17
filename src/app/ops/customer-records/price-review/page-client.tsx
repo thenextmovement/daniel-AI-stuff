@@ -84,6 +84,17 @@ function groupItems(items: SupplierPricePredictionReviewItem[]) {
   }));
 }
 
+function reviewDecisionLabel(decision: SupplierPricePredictionReviewDecision | SupplierQuoteTrainingItemAnchorReviewDecision) {
+  if (decision === "approve") return "freigeben";
+  if (decision === "supplier_check") return "zum Supplier Check schicken";
+  return "ablehnen";
+}
+
+function confirmReviewDecision(label: string, decision: SupplierPricePredictionReviewDecision | SupplierQuoteTrainingItemAnchorReviewDecision) {
+  if (typeof window === "undefined") return true;
+  return window.confirm(`"${label}" wirklich ${reviewDecisionLabel(decision)}?`);
+}
+
 function anchorStatusLabel(item: SupplierQuoteTrainingItemAnchorReviewItem) {
   switch (item.reviewStatus) {
     case "approved":
@@ -467,6 +478,7 @@ export function SupplierPriceReviewClient({
   }
 
   async function reviewItem(item: SupplierPricePredictionReviewItem, decision: SupplierPricePredictionReviewDecision) {
+    if (!confirmReviewDecision(`${sourceTitle(item)} ${formatCm(item.widthCm)} x ${formatCm(item.heightCm)}`, decision)) return;
     setRunningId(item.id);
     setError(null);
     setMessage(null);
@@ -503,6 +515,7 @@ export function SupplierPriceReviewClient({
     item: SupplierQuoteTrainingItemAnchorReviewItem,
     decision: SupplierQuoteTrainingItemAnchorReviewDecision,
   ) {
+    if (!confirmReviewDecision(anchorTitle(item), decision)) return;
     setRunningId(`anchor:${item.id}`);
     setError(null);
     setMessage(null);
