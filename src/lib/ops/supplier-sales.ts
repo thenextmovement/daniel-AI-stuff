@@ -2681,13 +2681,14 @@ function orderConfirmationLineItems(row: SupplierSaleRow, itemRows: SupplierSale
   if (snapshotItems.length) {
     return snapshotItems.map((item, index) => {
       const quantity = numericValue(item.quantity) || numericValue(item.normalizedQuantity) || 1;
-      const unitPrice = numericValue(item.unitPrice || item.unit_price);
+      const unitPrice = numericValue(item.unitPriceNet) ?? numericValue(item.unitPrice) ?? numericValue(item.unit_price);
+      const lineNet = numericValue(item.lineNet);
       return {
         title: recordString(item, ["title", "name"], 240) || `Position ${index + 1}`,
         description: recordString(item, ["description"], 600),
         quantity,
         unitPrice,
-        total: unitPrice === null ? null : unitPrice * quantity,
+        total: lineNet ?? (unitPrice === null ? null : unitPrice * quantity),
       };
     });
   }
@@ -2733,6 +2734,10 @@ class SimplePdfDocument {
     this.y = value;
   }
 
+  get pageCount() {
+    return this.pages.length;
+  }
+
   text(value: unknown, x: number, y: number, options?: { size?: number; bold?: boolean; color?: string }) {
     const size = options?.size || 10;
     const font = options?.bold ? "F2" : "F1";
@@ -2755,6 +2760,10 @@ class SimplePdfDocument {
 
   rect(x: number, y: number, w: number, h: number, color = "0.96 0.95 0.92") {
     this.current().push(`${color} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`);
+  }
+
+  strokeRect(x: number, y: number, w: number, h: number, color = "0.90 0.88 0.91", width = 0.7) {
+    this.current().push(`${color} RG ${width} w ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`);
   }
 
   render() {
@@ -2800,6 +2809,43 @@ function safePdfFileName(value: unknown) {
   return text || "auftrag";
 }
 
+function renderSupplierPdfCard(pdf: SimplePdfDocument, x: number, y: number, w: number, h: number, title: string, lines: unknown[], options?: { dark?: boolean }) {
+  const dark = options?.dark === true;
+  pdf.rect(x, y, w, h, dark ? "0.12 0.10 0.12" : "1 1 1");
+  pdf.strokeRect(x, y, w, h, dark ? "0.24 0.20 0.24" : "0.90 0.88 0.91", 0.6);
+  pdf.text(title.toUpperCase(), x + 14, y + h - 19, { size: 7.5, bold: true, color: dark ? "0.70 0.64 0.70" : "0.48 0.43 0.51" });
+  let currentY = y + h - 35;
+  for (const line of lines.filter(Boolean).slice(0, 7)) {
+    pdf.text(line, x + 14, currentY, { size: 10, color: dark ? "1 1 1" : "0.07 0.06 0.08", bold: currentY === y + h - 35 });
+    currentY -= 13;
+  }
+}
+
+function renderSupplierPdfFooter(pdf: SimplePdfDocument, reference: string, page: number) {
+  pdf.text(reference, 48, 34, { size: 7.5, color: "0.50 0.47 0.53" });
+  pdf.text(`NEONTRIP Auftragsbestätigung - ${page}`, 410, 34, { size: 7.5, color: "0.50 0.47 0.53" });
+}
+
+function renderSupplierPdfHeader(pdf: SimplePdfDocument, reference: string, page: number) {
+  pdf.text("NEONTRIP", 430, 806, { size: 14, bold: true });
+  pdf.text(reference, 48, 806, { size: 8.5, color: "0.50 0.47 0.53" });
+  renderSupplierPdfFooter(pdf, reference, page);
+}
+
+function supplierPdfLineCount(value: unknown, maxChars: number) {
+  return wrapPdfText(value, maxChars).length;
+}
+
+function renderSupplierPdfItemsHeader(pdf: SimplePdfDocument, y: number, continuation = false) {
+  pdf.text(continuation ? "Bestellte Positionen (Fortsetzung)" : "Bestellte Positionen", 48, y, { size: 18, bold: true });
+  pdf.rect(48, y - 30, 500, 24, "0.96 0.94 0.97");
+  pdf.text("Position", 62, y - 22, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+  pdf.text("Menge", 344, y - 22, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+  pdf.text("Einzel netto", 392, y - 22, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+  pdf.text("Gesamt netto", 478, y - 22, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+  pdf.cursorY = y - 46;
+}
+
 export async function generateSupplierOrderConfirmationPdf(saleId: string): Promise<SupplierOrderConfirmationPdf> {
   const row = await fetchSaleRowById(saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
@@ -2815,74 +2861,107 @@ export async function generateSupplierOrderConfirmationPdf(saleId: string): Prom
   const deliveryAddressLines = addressLines(snapshot.deliveryAddress);
   const billingAddressLines = addressLines(snapshot.billingAddress);
   const acceptedAt = recordString(snapshot, ["acceptedAt", "signedAt"], 80) || recordString(offer, ["acceptedAt", "signedAt"], 80) || row.created_at;
+  const subtotal = numericValue(totals.subtotalNet) ?? numericValue(row.subtotal_price);
+  const tax = numericValue(totals.vatAmount) ?? numericValue(totals.taxAmount);
+  const total = numericValue(totals.totalGross) ?? numericValue(row.total_price);
+  const delivery = deliveryAddressLines.length ? deliveryAddressLines : billingAddressLines;
+  const supplierLines = ["Dara Nova GmbH", "Bilka Allee 29", "40219 Düsseldorf", "Amtsgericht Düsseldorf", "HRB101352", "USt-IdNr.: DE362152329"];
+  const customerLines = [customerLabel, row.customer_name && row.customer_name !== customerLabel ? row.customer_name : null, row.customer_email].filter(Boolean);
 
   const pdf = new SimplePdfDocument();
-  pdf.text("NEONTRIP", 48, 792, { size: 18, bold: true });
-  pdf.text("Auftragsbestätigung", 48, 758, { size: 24, bold: true });
-  pdf.text(`Referenz: ${documentReference}`, 48, 736, { size: 11, color: "0.25 0.25 0.25" });
-  pdf.text(`Datum: ${dateLabel(new Date().toISOString())}`, 410, 792, { size: 10 });
-  pdf.text(`Angenommen: ${dateLabel(acceptedAt)}`, 410, 776, { size: 10 });
-  pdf.text(`Liefertermin: ${dateLabel(row.customer_due_date || row.supplier_due_date)}`, 410, 760, { size: 10 });
-  pdf.line(48, 716, 548, 716);
-  pdf.cursorY = 690;
+  pdf.rect(0, 0, 595.28, 841.89, "0.04 0.04 0.04");
+  pdf.rect(0, 0, 595.28, 96, "0.10 0.03 0.07");
+  pdf.rect(46, 746, 106, 22, "0.98 0.19 0.64");
+  pdf.text("AUFTRAG BESTÄTIGT", 58, 753, { size: 7.5, bold: true, color: "1 1 1" });
+  pdf.text("NEONTRIP", 48, 792, { size: 20, bold: true, color: "1 1 1" });
+  pdf.text("Auftragsbestätigung", 48, 672, { size: 38, bold: true, color: "1 1 1" });
+  pdf.text("Dokumentiert die angenommene Auswahl aus dem freigegebenen Angebots-Snapshot.", 50, 640, { size: 12, color: "0.78 0.74 0.80" });
+  pdf.rect(48, 514, 226, 96, "1 1 1");
+  pdf.text("GESAMT BRUTTO", 64, 580, { size: 7.5, bold: true, color: "0.48 0.43 0.51" });
+  pdf.text(money(total, currency), 64, 544, { size: 24, bold: true, color: "0.07 0.06 0.08" });
+  pdf.text("keine Rechnung - Auftragsbestätigung", 64, 528, { size: 8.5, color: "0.42 0.38 0.45" });
+  renderSupplierPdfCard(pdf, 310, 514, 220, 96, "Dokument", [
+    `Angebot: ${row.offer_number || documentReference}`,
+    `Referenz: ${documentReference}`,
+    `Angenommen: ${dateLabel(acceptedAt)}`,
+    `Liefertermin: ${dateLabel(row.customer_due_date || row.supplier_due_date)}`,
+  ], { dark: true });
+  renderSupplierPdfCard(pdf, 48, 390, 226, 92, "Empfänger", customerLines, { dark: true });
+  renderSupplierPdfCard(pdf, 310, 390, 220, 92, "Freigabe", [
+    "Auftragsdaten übernommen",
+    "aus offer_snapshot",
+    "Preisstand final dokumentiert",
+    "für B2B-Prüfung und Ablage",
+  ], { dark: true });
+  const trust = [
+    ["PDF Snapshot", "Angebotsstand"],
+    ["B2B Auftrag", "Netto & brutto"],
+    ["Düsseldorf", "Showroom & Beratung"],
+    ["NEONTRIP", "Dara Nova GmbH"],
+  ];
+  trust.forEach(([title, sub], index) => {
+    const x = 48 + index * 122;
+    pdf.rect(x, 134, 106, 54, "0.12 0.10 0.12");
+    pdf.strokeRect(x, 134, 106, 54, "0.24 0.20 0.24", 0.5);
+    pdf.text(title, x + 10, 164, { size: 10, bold: true, color: "1 1 1" });
+    pdf.text(sub, x + 10, 149, { size: 7.5, color: "0.66 0.61 0.68" });
+  });
+  pdf.text("Auftragsbestätigung automatisch aus dem angenommenen Angebot erzeugt", 48, 76, { size: 8.5, color: "0.62 0.58 0.64" });
 
-  pdf.text("Kunde", 48, pdf.cursorY, { size: 12, bold: true });
-  pdf.text("Lieferadresse", 318, pdf.cursorY, { size: 12, bold: true });
-  pdf.move(18);
-  pdf.multiline(customerLabel, 48, 38, { size: 10, bold: true });
-  if (row.customer_email) pdf.multiline(row.customer_email, 48, 38, { size: 9, color: "0.25 0.25 0.25" });
-  const leftAfter = pdf.cursorY;
-  pdf.cursorY = 672;
-  const delivery = deliveryAddressLines.length ? deliveryAddressLines : billingAddressLines;
-  for (const line of delivery) pdf.multiline(line, 318, 38, { size: 10 });
-  pdf.cursorY = Math.min(leftAfter, pdf.cursorY) - 16;
+  pdf.addPage();
+  renderSupplierPdfHeader(pdf, documentReference, 2);
+  pdf.rect(48, 728, 84, 22, "0.98 0.89 0.95");
+  pdf.text("AUFTRAGSDATEN", 60, 735, { size: 7.5, bold: true, color: "0.88 0.08 0.48" });
+  pdf.text("Auftragsbestätigung", 48, 690, { size: 25, bold: true });
+  pdf.text("Diese Unterlage fasst die angenommene Angebotsauswahl zusammen. Sie ersetzt keine Rechnung.", 48, 668, { size: 10, color: "0.42 0.38 0.45" });
 
-  pdf.rect(48, pdf.cursorY - 38, 500, 40, "0.95 0.97 0.96");
-  pdf.text("Hinweis", 62, pdf.cursorY - 14, { size: 10, bold: true, color: "0.05 0.25 0.18" });
-  pdf.text("Diese Auftragsbestätigung fasst die angenommenen Angebotspositionen zusammen. Sie ist keine Rechnung.", 62, pdf.cursorY - 29, { size: 9, color: "0.05 0.25 0.18" });
-  pdf.move(62);
+  renderSupplierPdfCard(pdf, 48, 526, 236, 116, "Anbieter", supplierLines);
+  renderSupplierPdfCard(pdf, 312, 526, 236, 116, "Kunde", customerLines);
+  renderSupplierPdfCard(pdf, 48, 396, 236, 98, "Lieferanschrift", delivery.length ? delivery : ["Keine Lieferanschrift im Snapshot"]);
+  renderSupplierPdfCard(pdf, 312, 396, 236, 98, "Rechnungsanschrift", billingAddressLines.length ? billingAddressLines : ["entspricht Lieferanschrift"]);
 
-  pdf.ensure(70);
-  pdf.text("Bestellte Positionen", 48, pdf.cursorY, { size: 14, bold: true });
-  pdf.move(22);
-  pdf.rect(48, pdf.cursorY - 7, 500, 22, "0.93 0.91 0.87");
-  pdf.text("Position", 58, pdf.cursorY, { size: 9, bold: true });
-  pdf.text("Menge", 348, pdf.cursorY, { size: 9, bold: true });
-  pdf.text("Einzel", 400, pdf.cursorY, { size: 9, bold: true });
-  pdf.text("Gesamt", 480, pdf.cursorY, { size: 9, bold: true });
-  pdf.move(24);
+  const summary = [
+    [money(subtotal, currency), "Gesamt netto"],
+    [tax === null ? "-" : money(tax, currency), "MwSt."],
+    [money(total, currency), "Gesamt brutto"],
+  ];
+  summary.forEach(([value, label], index) => {
+    const x = 48 + index * 168;
+    pdf.rect(x, 322, 150, 52, index === 2 ? "0.04 0.04 0.04" : "1 1 1");
+    pdf.strokeRect(x, 322, 150, 52, "0.90 0.88 0.91", 0.6);
+    pdf.text(value, x + 14, 348, { size: 13, bold: true, color: index === 2 ? "1 1 1" : "0.07 0.06 0.08" });
+    pdf.text(label.toUpperCase(), x + 14, 332, { size: 7.5, bold: true, color: index === 2 ? "0.70 0.64 0.70" : "0.48 0.43 0.51" });
+  });
+
+  renderSupplierPdfItemsHeader(pdf, 280);
 
   for (const [index, item] of lines.entries()) {
-    pdf.ensure(66);
-    const rowTop = pdf.cursorY + 8;
-    if (index % 2 === 0) pdf.rect(48, rowTop - 46, 500, 52, "0.985 0.98 0.96");
-    pdf.multiline(item.title, 58, 46, { size: 10, bold: true, leading: 12 });
-    if (item.description) pdf.multiline(item.description, 58, 62, { size: 8, color: "0.32 0.32 0.32", leading: 10 });
-    const rowBottom = pdf.cursorY;
-    pdf.text(String(item.quantity || 1), 356, rowTop - 10, { size: 9 });
-    pdf.text(item.unitPrice === null ? "-" : money(item.unitPrice, currency), 400, rowTop - 10, { size: 9 });
-    pdf.text(item.total === null ? "-" : money(item.total, currency), 480, rowTop - 10, { size: 9 });
-    pdf.cursorY = Math.min(rowBottom, rowTop - 48);
-    pdf.line(48, pdf.cursorY + 6, 548, pdf.cursorY + 6, "0.85 0.83 0.79", 0.4);
+    const descriptionLines = item.description ? supplierPdfLineCount(item.description, 58) : 0;
+    const rowHeight = Math.max(46, 32 + descriptionLines * 10);
+    if (pdf.cursorY - rowHeight < 72) {
+      pdf.addPage();
+      renderSupplierPdfHeader(pdf, documentReference, pdf.pageCount);
+      renderSupplierPdfItemsHeader(pdf, 744, true);
+    }
+    const rowY = pdf.cursorY - rowHeight;
+    pdf.rect(48, rowY, 500, rowHeight - 4, index % 2 === 0 ? "1 1 1" : "0.985 0.975 0.99");
+    pdf.strokeRect(48, rowY, 500, rowHeight - 4, "0.90 0.88 0.91", 0.45);
+    pdf.text(item.title, 62, pdf.cursorY - 18, { size: 10, bold: true });
+    if (item.description) {
+      const oldY = pdf.cursorY;
+      pdf.cursorY = pdf.cursorY - 34;
+      pdf.multiline(item.description, 62, 58, { size: 8, color: "0.42 0.38 0.45", leading: 10 });
+      pdf.cursorY = oldY;
+    }
+    pdf.text(String(item.quantity || 1), 356, pdf.cursorY - 18, { size: 9 });
+    pdf.text(item.unitPrice === null ? "-" : money(item.unitPrice, currency), 392, pdf.cursorY - 18, { size: 9 });
+    pdf.text(item.total === null ? "-" : money(item.total, currency), 478, pdf.cursorY - 18, { size: 9, bold: true });
+    pdf.cursorY = rowY - 10;
   }
 
-  pdf.ensure(92);
-  const subtotal = numericValue(totals.subtotalNet) ?? numericValue(row.subtotal_price);
-  const tax = numericValue(totals.taxAmount);
-  const total = numericValue(totals.totalGross) ?? numericValue(row.total_price);
-  pdf.move(6);
-  pdf.line(330, pdf.cursorY, 548, pdf.cursorY, "0.45 0.42 0.37", 0.8);
-  pdf.move(18);
-  pdf.text("Zwischensumme netto", 350, pdf.cursorY, { size: 10 });
-  pdf.text(money(subtotal, currency), 470, pdf.cursorY, { size: 10 });
-  pdf.move(16);
-  pdf.text("USt.", 350, pdf.cursorY, { size: 10 });
-  pdf.text(tax === null ? "-" : money(tax, currency), 470, pdf.cursorY, { size: 10 });
-  pdf.move(18);
-  pdf.text("Gesamt brutto", 350, pdf.cursorY, { size: 12, bold: true });
-  pdf.text(money(total, currency), 470, pdf.cursorY, { size: 12, bold: true });
-
-  pdf.text("DARA NOVA GmbH - NEONTRIP - Auftragsbestätigung automatisch aus dem angenommenen Angebot erzeugt", 48, 36, { size: 8, color: "0.45 0.45 0.45" });
+  pdf.rect(48, Math.max(52, pdf.cursorY - 52), 500, 42, "0.98 0.89 0.95");
+  pdf.text("Hinweis", 62, Math.max(77, pdf.cursorY - 28), { size: 9, bold: true, color: "0.88 0.08 0.48" });
+  pdf.text("Diese Auftragsbestätigung ist für Prüfung und Ablage gedacht. Die Rechnung kommt separat über den Zahlungs-/Rechnungsprozess.", 62, Math.max(63, pdf.cursorY - 43), { size: 8.5, color: "0.18 0.12 0.18" });
 
   return {
     fileName: `auftragsbestaetigung-${safePdfFileName(documentReference)}.pdf`,

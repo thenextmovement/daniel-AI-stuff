@@ -1288,7 +1288,7 @@ test("supplier order confirmation PDF is generated from offer snapshot", async (
       },
       totals: {
         subtotalNet: 1000,
-        taxAmount: 190,
+        vatAmount: 190,
         totalGross: 1190,
       },
       lineItems: [
@@ -1297,7 +1297,8 @@ test("supplier order confirmation PDF is generated from offer snapshot", async (
           title: "LED Neon Logo",
           description: "Individuelle Fertigung laut freigegebenem Angebot.",
           quantity: 2,
-          unitPrice: 500,
+          unitPriceNet: 500,
+          lineNet: 1000,
         },
       ],
     },
