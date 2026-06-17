@@ -749,6 +749,12 @@ function shopifyOrderNumericId(value: unknown) {
   return null;
 }
 
+function shopifyOrderNumericIdFromUrl(value: unknown) {
+  const raw = trimNullable(value);
+  const match = raw?.match(/\/admin\/orders\/(\d+)/i);
+  return match ? match[1] : null;
+}
+
 function shopifyAdminOrderUrl(orderId: unknown) {
   const domain = shopifyShopDomain();
   const numericId = shopifyOrderNumericId(orderId);
@@ -797,12 +803,19 @@ function supplierSaleOrderLink(
   row: InboundSupplierSaleOrderRow,
   match?: Pick<InboundShopifyOrderLink, "matchedBy" | "matchLabel">,
 ): InboundShopifyOrderLink | null {
-  const orderId = trimNullable(row.shopify_order_id);
-  const url = trimNullable(row.shopify_order_url) || shopifyAdminOrderUrl(row.shopify_order_id);
+  const rawShopify = jsonRecord(row.raw_shopify);
+  const storedUrl = trimNullable(row.shopify_order_url) || recordString(rawShopify, ["admin_url", "adminUrl"], 1000);
+  const orderId =
+    trimNullable(row.shopify_order_id) ||
+    recordString(rawShopify, ["admin_graphql_api_id", "adminGraphqlApiId", "id", "order_id", "orderId"], 180) ||
+    shopifyOrderNumericIdFromUrl(storedUrl);
+  const url = storedUrl || shopifyAdminOrderUrl(orderId);
   if (!url || !orderId) return null;
   return {
     orderId,
-    orderNumber: trimNullable(row.shopify_order_name),
+    orderNumber:
+      trimNullable(row.shopify_order_name) ||
+      recordString(rawShopify, ["name", "order_name", "orderName", "order_number", "orderNumber"], 120),
     url,
     source: "supplier_sales",
     matchedBy: match?.matchedBy || "supplier_sales_trello_card",
@@ -930,10 +943,15 @@ function supplierSalesSelect(extra = "") {
     "offer_number",
     "document_reference",
     "idempotency_key",
+    "raw_shopify",
     "created_at",
     "updated_at",
   ];
   return [...fields, ...extra.split(",").map((field) => field.trim()).filter(Boolean)].join(",");
+}
+
+function supplierSalesHasShopifyOrderFilter() {
+  return "(shopify_order_id.not.is.null,shopify_order_url.not.is.null,shopify_order_name.not.is.null,raw_shopify.not.is.null)";
 }
 
 async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
@@ -1020,7 +1038,7 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           offer_id: `in.(${allOfferIds.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allOfferIds.length * 2, 10), 200),
         }).catch(() => [])
@@ -1029,7 +1047,7 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           offer_number: `in.(${allOfferNumbers.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allOfferNumbers.length * 2, 10), 200),
         }).catch(() => [])
@@ -1038,7 +1056,7 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           document_reference: `in.(${allOfferNumbers.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allOfferNumbers.length * 2, 10), 200),
         }).catch(() => [])
@@ -1047,7 +1065,7 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           idempotency_key: `in.(${allIdempotencyKeys.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allIdempotencyKeys.length * 2, 10), 200),
         }).catch(() => [])
@@ -1129,7 +1147,7 @@ async function fetchShopifyOrdersByLooseInboundReferences(shipments: InboundShip
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           offer_id: `in.(${allOfferIds.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allOfferIds.length * 2, 10), 200),
         }).catch(() => [])
@@ -1138,7 +1156,7 @@ async function fetchShopifyOrdersByLooseInboundReferences(shipments: InboundShip
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           offer_number: `in.(${allOfferNumbers.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allOfferNumbers.length * 2, 10), 200),
         }).catch(() => [])
@@ -1147,7 +1165,7 @@ async function fetchShopifyOrdersByLooseInboundReferences(shipments: InboundShip
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           document_reference: `in.(${allOfferNumbers.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allOfferNumbers.length * 2, 10), 200),
         }).catch(() => [])
@@ -1156,7 +1174,7 @@ async function fetchShopifyOrdersByLooseInboundReferences(shipments: InboundShip
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
           select: supplierSalesSelect(),
           idempotency_key: `in.(${allIdempotencyKeys.map(encodeFilterValue).join(",")})`,
-          shopify_order_id: "not.is.null",
+          or: supplierSalesHasShopifyOrderFilter(),
           order: "updated_at.desc",
           limit: Math.min(Math.max(allIdempotencyKeys.length * 2, 10), 200),
         }).catch(() => [])

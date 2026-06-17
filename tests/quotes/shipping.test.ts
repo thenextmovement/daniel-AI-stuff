@@ -704,6 +704,117 @@ test("listInboundBoard matches Shopify orders through NEONTRIP offer references 
   }
 });
 
+test("listInboundBoard keeps Shopify supplier-sale links when only Shopify URL or raw order data exists", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-raw-shopify",
+          shipment_key: "trello:card-raw-shopify:dhl:7055403121",
+          source: "trello",
+          trello_card_id: "card-raw-shopify",
+          trello_card_name: "A/N 14061 DHL Express",
+          trello_card_url: "https://trello.example/card-raw-shopify",
+          trello_list_id: "list-1",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "7055403121",
+          tracking_raw: "DHL Express 7055403121",
+          status: "in_transit",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-16T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-16T08:00:00.000Z",
+          tendered_at: "2026-06-16T09:00:00.000Z",
+          last_event_at: "2026-06-16T10:00:00.000Z",
+          last_movement_at: "2026-06-16T10:00:00.000Z",
+          last_checked_at: "2026-06-16T10:10:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-16T08:00:00.000Z",
+          updated_at: "2026-06-16T10:10:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_incidents") || path.endsWith("/rest/v1/inbound_tracking_events")) return json([]);
+    if (path.endsWith("/rest/v1/master_requests")) {
+      return json([{ id: "request-raw-shopify", request_id: "REQ-RAW", trello_card_id: "card-raw-shopify", updated_at: "2026-06-16T08:00:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quotes")) {
+      return json([{ id: "offer-raw-shopify", request_id: "request-raw-shopify", quote_number: "A/N 14061", status: "accepted", created_at: "2026-06-16T08:30:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quote_versions") || path.endsWith("/rest/v1/crm_quote_version_images")) return json([]);
+    if (path.endsWith("/rest/v1/master_orders") || path.endsWith("/rest/v1/crm_sales")) return json([]);
+    if (path.endsWith("/rest/v1/supplier_sales")) {
+      if (url.searchParams.get("offer_id") === "in.(offer-raw-shopify)") {
+        assert.match(url.searchParams.get("or") || "", /shopify_order_url\.not\.is\.null/);
+        return json([
+          {
+            id: "supplier-sale-raw-shopify",
+            request_id: null,
+            trello_card_id: null,
+            shopify_order_id: null,
+            shopify_order_name: "#NEONT4600",
+            shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257674600",
+            offer_id: "offer-raw-shopify",
+            offer_number: "A/N 14061",
+            document_reference: "A/N 14061",
+            idempotency_key: "offer:offer-raw-shopify:shopify-sale:v1",
+            raw_shopify: {
+              admin_graphql_api_id: "gid://shopify/Order/8281257674600",
+              name: "#NEONT4600",
+            },
+            created_at: "2026-06-16T09:00:00.000Z",
+            updated_at: "2026-06-16T09:10:00.000Z",
+          },
+        ]);
+      }
+      return json([]);
+    }
+
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const board = await listInboundBoard({ scope: "all" });
+
+    assert.equal(board.items.length, 1);
+    assert.deepEqual(board.items[0]?.shopifyOrder, {
+      orderId: "gid://shopify/Order/8281257674600",
+      orderNumber: "#NEONT4600",
+      url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257674600",
+      source: "supplier_sales",
+      matchedBy: "supplier_sales_offer_id",
+      matchLabel: "Offer ID offer-raw-shopify",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
 test("listInboundBoard still links Shopify orders for inbound shipments without Trello IDs when offer references exist", async () => {
   const originalFetch = globalThis.fetch;
   const originalEnv = {

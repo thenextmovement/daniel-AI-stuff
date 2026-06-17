@@ -3,9 +3,11 @@ const defaultPaths = [
   "/ops/customer-records/calls",
   "/ops/customer-records/price-review",
   "/ops/customer-records/shipping",
+  "/ops/customer-records/inbound-shipping",
   "/api/ops/customer-records/calls",
   "/api/ops/customer-records/price-predictions?status=pending&limit=10",
   "/api/ops/customer-records/shipping",
+  "/api/ops/customer-records/inbound-shipping",
   "/api/ops/customer-records?query=c5e0fb42-ef50-44a7-b64e-a91590118e6a",
 ];
 
