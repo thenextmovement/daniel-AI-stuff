@@ -2612,23 +2612,25 @@ export async function cleanupSupplierAssignmentTasks(): Promise<SupplierAssignme
 
 function pdfText(value: unknown) {
   const text = String(value ?? "")
-    .replace(/Ä/g, "Ae")
-    .replace(/Ö/g, "Oe")
-    .replace(/Ü/g, "Ue")
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
     .replace(/[–—]/g, "-")
     .replace(/[·•]/g, "-")
     .replace(/[„“”]/g, '"')
     .replace(/[‚‘’]/g, "'")
     .replace(/\s+/g, " ")
-    .trim()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\x20-\x7e]/g, "?");
-  return `(${text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)")})`;
+    .trim();
+  let escaped = "";
+  for (const char of text) {
+    if (char === "\\") escaped += "\\\\";
+    else if (char === "(") escaped += "\\(";
+    else if (char === ")") escaped += "\\)";
+    else {
+      const code = char.charCodeAt(0);
+      if (code >= 32 && code <= 126) escaped += char;
+      else if (code >= 160 && code <= 255) escaped += `\\${code.toString(8).padStart(3, "0")}`;
+      else escaped += "?";
+    }
+  }
+  return `(${escaped})`;
 }
 
 function money(value: unknown, currency = "EUR") {
@@ -2816,7 +2818,7 @@ export async function generateSupplierOrderConfirmationPdf(saleId: string): Prom
 
   const pdf = new SimplePdfDocument();
   pdf.text("NEONTRIP", 48, 792, { size: 18, bold: true });
-  pdf.text("Auftragsbestaetigung", 48, 758, { size: 24, bold: true });
+  pdf.text("Auftragsbestätigung", 48, 758, { size: 24, bold: true });
   pdf.text(`Referenz: ${documentReference}`, 48, 736, { size: 11, color: "0.25 0.25 0.25" });
   pdf.text(`Datum: ${dateLabel(new Date().toISOString())}`, 410, 792, { size: 10 });
   pdf.text(`Angenommen: ${dateLabel(acceptedAt)}`, 410, 776, { size: 10 });
@@ -2837,7 +2839,7 @@ export async function generateSupplierOrderConfirmationPdf(saleId: string): Prom
 
   pdf.rect(48, pdf.cursorY - 38, 500, 40, "0.95 0.97 0.96");
   pdf.text("Hinweis", 62, pdf.cursorY - 14, { size: 10, bold: true, color: "0.05 0.25 0.18" });
-  pdf.text("Diese Auftragsbestaetigung fasst die angenommenen Angebotspositionen zusammen. Sie ist keine Rechnung.", 62, pdf.cursorY - 29, { size: 9, color: "0.05 0.25 0.18" });
+  pdf.text("Diese Auftragsbestätigung fasst die angenommenen Angebotspositionen zusammen. Sie ist keine Rechnung.", 62, pdf.cursorY - 29, { size: 9, color: "0.05 0.25 0.18" });
   pdf.move(62);
 
   pdf.ensure(70);
@@ -2880,7 +2882,7 @@ export async function generateSupplierOrderConfirmationPdf(saleId: string): Prom
   pdf.text("Gesamt brutto", 350, pdf.cursorY, { size: 12, bold: true });
   pdf.text(money(total, currency), 470, pdf.cursorY, { size: 12, bold: true });
 
-  pdf.text("DARA NOVA GmbH - NEONTRIP - Auftragsbestaetigung automatisch aus dem angenommenen Angebot erzeugt", 48, 36, { size: 8, color: "0.45 0.45 0.45" });
+  pdf.text("DARA NOVA GmbH - NEONTRIP - Auftragsbestätigung automatisch aus dem angenommenen Angebot erzeugt", 48, 36, { size: 8, color: "0.45 0.45 0.45" });
 
   return {
     fileName: `auftragsbestaetigung-${safePdfFileName(documentReference)}.pdf`,
