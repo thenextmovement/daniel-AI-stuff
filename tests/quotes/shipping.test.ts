@@ -582,6 +582,115 @@ test("listInboundBoard filters inbound shipments by linked requestId", async () 
       orderNumber: "#NEONT4427",
       url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672972",
       source: "supplier_sales",
+      matchedBy: "supplier_sales_trello_card",
+      matchLabel: "Trello -> supplier_sales",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("listInboundBoard matches Shopify orders through NEONTRIP offer references when names do not match", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-offer-match",
+          shipment_key: "trello:card-offer-match:dhl:2992676864",
+          source: "trello",
+          trello_card_id: "card-offer-match",
+          trello_card_name: "Inbound China Paket",
+          trello_card_url: "https://trello.example/card-offer-match",
+          trello_list_id: "list-1",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "2992676864",
+          tracking_raw: "DHL Express 2992676864",
+          status: "out_for_delivery",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-15T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-15T08:00:00.000Z",
+          tendered_at: "2026-06-15T09:00:00.000Z",
+          last_event_at: "2026-06-17T07:00:00.000Z",
+          last_movement_at: "2026-06-17T07:00:00.000Z",
+          last_checked_at: "2026-06-17T07:10:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-15T08:00:00.000Z",
+          updated_at: "2026-06-17T07:10:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_incidents") || path.endsWith("/rest/v1/inbound_tracking_events")) return json([]);
+    if (path.endsWith("/rest/v1/master_requests")) {
+      return json([{ id: "request-offer-match", request_id: "REQ-OFFER", trello_card_id: "card-offer-match", updated_at: "2026-06-15T08:00:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quotes")) {
+      return json([{ id: "offer-match-1", request_id: "request-offer-match", quote_number: "A/N 14061", status: "accepted", created_at: "2026-06-15T08:30:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quote_versions") || path.endsWith("/rest/v1/crm_quote_version_images")) return json([]);
+    if (path.endsWith("/rest/v1/master_orders") || path.endsWith("/rest/v1/crm_sales")) return json([]);
+    if (path.endsWith("/rest/v1/supplier_sales")) {
+      if (url.searchParams.get("offer_id") === "in.(offer-match-1)") {
+        return json([
+          {
+            id: "supplier-sale-offer-match",
+            request_id: null,
+            trello_card_id: null,
+            shopify_order_id: "8281257672999",
+            shopify_order_name: "#NEONT4499",
+            shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672999",
+            offer_id: "offer-match-1",
+            offer_number: "A/N 14061",
+            document_reference: "A/N 14061",
+            idempotency_key: "offer:offer-match-1:shopify-sale:v1",
+            customer_name: "Completely Different Shopify Name",
+            created_at: "2026-06-15T09:00:00.000Z",
+            updated_at: "2026-06-15T09:10:00.000Z",
+          },
+        ]);
+      }
+      return json([]);
+    }
+
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const board = await listInboundBoard({ scope: "all" });
+
+    assert.equal(board.items.length, 1);
+    assert.deepEqual(board.items[0]?.shopifyOrder, {
+      orderId: "8281257672999",
+      orderNumber: "#NEONT4499",
+      url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672999",
+      source: "supplier_sales",
+      matchedBy: "supplier_sales_offer_id",
+      matchLabel: "Offer ID offer-match-1",
     });
   } finally {
     globalThis.fetch = originalFetch;

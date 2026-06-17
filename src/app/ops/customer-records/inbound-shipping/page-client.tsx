@@ -382,16 +382,19 @@ export function InboundShippingClient({
                           </button>
                         ) : null}
                         {item.shopifyOrder?.url ? (
-                          <a
-                            className="inline-flex items-center gap-2 rounded-[0.5rem] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
-                            href={item.shopifyOrder.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            aria-label={`Shopify Bestellung ${item.shopifyOrder.orderNumber || item.shopifyOrder.orderId} öffnen`}
-                          >
-                            <ShoppingBag className="h-4 w-4" />
-                            Shopify
-                          </a>
+                          <span className="inline-flex items-center gap-2">
+                            <a
+                              className="inline-flex items-center gap-2 rounded-[0.5rem] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
+                              href={item.shopifyOrder.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`Shopify Bestellung ${item.shopifyOrder.orderNumber || item.shopifyOrder.orderId} öffnen`}
+                            >
+                              <ShoppingBag className="h-4 w-4" />
+                              Shopify
+                            </a>
+                            {item.shopifyOrder.matchLabel ? <span className="max-w-[12rem] truncate text-xs text-stone-500" title={item.shopifyOrder.matchLabel}>via {item.shopifyOrder.matchLabel}</span> : null}
+                          </span>
                         ) : null}
                         <a
                           className="inline-flex items-center gap-2 rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50"

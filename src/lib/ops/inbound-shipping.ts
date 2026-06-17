@@ -130,7 +130,10 @@ type InboundSupplierSaleOrderRow = {
   shopify_order_id: string | number | null;
   shopify_order_name: string | null;
   shopify_order_url: string | null;
+  offer_id?: string | null;
   offer_number?: string | null;
+  document_reference?: string | null;
+  idempotency_key?: string | null;
   customer_name?: string | null;
   customer_company?: string | null;
   customer_email?: string | null;
@@ -249,6 +252,15 @@ export type InboundShopifyOrderLink = {
   orderNumber: string | null;
   url: string;
   source: "master_orders" | "crm_sales" | "supplier_sales";
+  matchedBy?:
+    | "supplier_sales_offer_id"
+    | "supplier_sales_idempotency_key"
+    | "supplier_sales_offer_number"
+    | "supplier_sales_trello_card"
+    | "supplier_sales_request"
+    | "master_orders_request"
+    | "crm_sales_request";
+  matchLabel?: string | null;
 };
 
 export type InboundDeliveryNotePdf = {
@@ -752,6 +764,8 @@ function masterOrderLink(row: InboundMasterOrderRow): InboundShopifyOrderLink | 
     orderNumber: trimNullable(row.shopify_order_number),
     url,
     source: "master_orders",
+    matchedBy: "master_orders_request",
+    matchLabel: "Request -> master_orders",
   };
 }
 
@@ -766,10 +780,15 @@ function crmSaleOrderLink(row: InboundCrmSaleOrderRow): InboundShopifyOrderLink 
       (row.shopify_order_number === null || row.shopify_order_number === undefined ? null : String(row.shopify_order_number)),
     url,
     source: "crm_sales",
+    matchedBy: "crm_sales_request",
+    matchLabel: "Request -> crm_sales",
   };
 }
 
-function supplierSaleOrderLink(row: InboundSupplierSaleOrderRow): InboundShopifyOrderLink | null {
+function supplierSaleOrderLink(
+  row: InboundSupplierSaleOrderRow,
+  match?: Pick<InboundShopifyOrderLink, "matchedBy" | "matchLabel">,
+): InboundShopifyOrderLink | null {
   const orderId = trimNullable(row.shopify_order_id);
   const url = trimNullable(row.shopify_order_url) || shopifyAdminOrderUrl(row.shopify_order_id);
   if (!url || !orderId) return null;
@@ -778,6 +797,8 @@ function supplierSaleOrderLink(row: InboundSupplierSaleOrderRow): InboundShopify
     orderNumber: trimNullable(row.shopify_order_name),
     url,
     source: "supplier_sales",
+    matchedBy: match?.matchedBy || "supplier_sales_trello_card",
+    matchLabel: match?.matchLabel || "Trello -> supplier_sales",
   };
 }
 
@@ -793,6 +814,62 @@ function sortByUpdatedAt<T extends { updated_at: string | null; created_at: stri
     new Date(right.updated_at || right.created_at || 0).getTime() -
     new Date(left.updated_at || left.created_at || 0).getTime(),
   );
+}
+
+type InboundOfferMatchReferences = {
+  offerIds: Set<string>;
+  offerNumbers: Set<string>;
+  idempotencyKeys: Set<string>;
+};
+
+function emptyInboundOfferMatchReferences(): InboundOfferMatchReferences {
+  return { offerIds: new Set(), offerNumbers: new Set(), idempotencyKeys: new Set() };
+}
+
+function addReference(set: Set<string>, value: unknown) {
+  const normalized = trimNullable(value);
+  if (normalized) set.add(normalized);
+}
+
+function addSupplierSaleReferences(references: InboundOfferMatchReferences, row: InboundSupplierSaleOrderRow) {
+  addReference(references.offerIds, row.offer_id);
+  addReference(references.offerNumbers, row.offer_number);
+  addReference(references.offerNumbers, row.document_reference);
+  addReference(references.idempotencyKeys, row.idempotency_key);
+}
+
+function addQuoteReferences(references: InboundOfferMatchReferences, quote: InboundCrmQuoteRow) {
+  const offerId = trimNullable(quote.id);
+  const offerNumber = trimNullable(quote.quote_number);
+  addReference(references.offerIds, offerId);
+  addReference(references.offerNumbers, offerNumber);
+  if (offerId) addReference(references.idempotencyKeys, `offer:${offerId}:shopify-sale:v1`);
+}
+
+function addOrderForCard(
+  ordersByCardId: Map<string, InboundShopifyOrderLink>,
+  cardId: string | null | undefined,
+  order: InboundShopifyOrderLink | null,
+) {
+  if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
+}
+
+function supplierSalesSelect(extra = "") {
+  const fields = [
+    "id",
+    "request_id",
+    "trello_card_id",
+    "shopify_order_id",
+    "shopify_order_name",
+    "shopify_order_url",
+    "offer_id",
+    "offer_number",
+    "document_reference",
+    "idempotency_key",
+    "created_at",
+    "updated_at",
+  ];
+  return [...fields, ...extra.split(",").map((field) => field.trim()).filter(Boolean)].join(",");
 }
 
 async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
@@ -816,7 +893,7 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
   const requestIds = Array.from(cardIdByRequestId.keys());
   const requestIdFilter = requestIds.length ? `in.(${requestIds.map(encodeFilterValue).join(",")})` : null;
   const cardIdFilter = `in.(${cardIds.map(encodeFilterValue).join(",")})`;
-  const [masterOrders, crmSales, supplierSalesByCard, supplierSalesByRequest] = await Promise.all([
+  const [masterOrders, crmSales, supplierSalesByCard, supplierSalesByRequest, quoteRows] = await Promise.all([
     requestIdFilter
       ? supabaseRequest<InboundMasterOrderRow[]>("master_orders", undefined, {
           select: "id,request_id,shopify_order_id,shopify_order_number,created_at,shopify_created_at",
@@ -834,41 +911,130 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
         })
       : Promise.resolve([]),
     supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
-      select: "id,request_id,trello_card_id,shopify_order_id,shopify_order_name,shopify_order_url,created_at,updated_at",
+      select: supplierSalesSelect(),
       trello_card_id: cardIdFilter,
-      shopify_order_id: "not.is.null",
       order: "updated_at.desc",
       limit: Math.min(Math.max(cardIds.length * 3, 10), 200),
     }),
     requestIdFilter
       ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
-          select: "id,request_id,trello_card_id,shopify_order_id,shopify_order_name,shopify_order_url,created_at,updated_at",
+          select: supplierSalesSelect(),
           request_id: requestIdFilter,
-          shopify_order_id: "not.is.null",
           order: "updated_at.desc",
           limit: Math.min(Math.max(requestIds.length * 3, 10), 200),
         })
       : Promise.resolve([]),
+    requestIdFilter
+      ? supabaseRequest<InboundCrmQuoteRow[]>("crm_quotes", undefined, {
+          select: "id,request_id,quote_number,status,created_at",
+          request_id: requestIdFilter,
+          order: "created_at.desc",
+          limit: Math.min(Math.max(requestIds.length * 4, 10), 200),
+        }).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+
+  const referencesByCardId = new Map<string, InboundOfferMatchReferences>();
+  for (const cardId of cardIds) referencesByCardId.set(cardId, emptyInboundOfferMatchReferences());
+  for (const quote of quoteRows) {
+    const requestId = trimNullable(quote.request_id);
+    const cardId = requestId ? cardIdByRequestId.get(requestId) : null;
+    if (cardId) addQuoteReferences(referencesByCardId.get(cardId) || emptyInboundOfferMatchReferences(), quote);
+  }
+  for (const row of [...supplierSalesByCard, ...supplierSalesByRequest]) {
+    const cardId = trimNullable(row.trello_card_id) || (row.request_id ? cardIdByRequestId.get(row.request_id) : null);
+    if (!cardId) continue;
+    const refs = referencesByCardId.get(cardId) || emptyInboundOfferMatchReferences();
+    addSupplierSaleReferences(refs, row);
+    referencesByCardId.set(cardId, refs);
+  }
+  const allOfferIds = uniqueValues(Array.from(referencesByCardId.values()).flatMap((refs) => Array.from(refs.offerIds)));
+  const allOfferNumbers = uniqueValues(Array.from(referencesByCardId.values()).flatMap((refs) => Array.from(refs.offerNumbers)));
+  const allIdempotencyKeys = uniqueValues(Array.from(referencesByCardId.values()).flatMap((refs) => Array.from(refs.idempotencyKeys)));
+  const [supplierSalesByOfferId, supplierSalesByOfferNumber, supplierSalesByDocumentReference, supplierSalesByIdempotencyKey] = await Promise.all([
+    allOfferIds.length
+      ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
+          select: supplierSalesSelect(),
+          offer_id: `in.(${allOfferIds.map(encodeFilterValue).join(",")})`,
+          shopify_order_id: "not.is.null",
+          order: "updated_at.desc",
+          limit: Math.min(Math.max(allOfferIds.length * 2, 10), 200),
+        }).catch(() => [])
+      : Promise.resolve([]),
+    allOfferNumbers.length
+      ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
+          select: supplierSalesSelect(),
+          offer_number: `in.(${allOfferNumbers.map(encodeFilterValue).join(",")})`,
+          shopify_order_id: "not.is.null",
+          order: "updated_at.desc",
+          limit: Math.min(Math.max(allOfferNumbers.length * 2, 10), 200),
+        }).catch(() => [])
+      : Promise.resolve([]),
+    allOfferNumbers.length
+      ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
+          select: supplierSalesSelect(),
+          document_reference: `in.(${allOfferNumbers.map(encodeFilterValue).join(",")})`,
+          shopify_order_id: "not.is.null",
+          order: "updated_at.desc",
+          limit: Math.min(Math.max(allOfferNumbers.length * 2, 10), 200),
+        }).catch(() => [])
+      : Promise.resolve([]),
+    allIdempotencyKeys.length
+      ? supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
+          select: supplierSalesSelect(),
+          idempotency_key: `in.(${allIdempotencyKeys.map(encodeFilterValue).join(",")})`,
+          shopify_order_id: "not.is.null",
+          order: "updated_at.desc",
+          limit: Math.min(Math.max(allIdempotencyKeys.length * 2, 10), 200),
+        }).catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const supplierRowsById = new Map<string, InboundSupplierSaleOrderRow>();
-  for (const row of [...supplierSalesByCard, ...supplierSalesByRequest]) supplierRowsById.set(row.id, row);
+  for (const row of [...supplierSalesByCard, ...supplierSalesByRequest, ...supplierSalesByOfferId, ...supplierSalesByOfferNumber, ...supplierSalesByDocumentReference, ...supplierSalesByIdempotencyKey]) {
+    supplierRowsById.set(row.id, row);
+  }
+
+  for (const cardId of cardIds) {
+    const refs = referencesByCardId.get(cardId);
+    if (!refs) continue;
+    const byOfferId = sortByUpdatedAt(supplierSalesByOfferId).find((row) => trimNullable(row.offer_id) && refs.offerIds.has(trimNullable(row.offer_id) as string));
+    if (byOfferId) {
+      addOrderForCard(ordersByCardId, cardId, supplierSaleOrderLink(byOfferId, { matchedBy: "supplier_sales_offer_id", matchLabel: `Offer ID ${byOfferId.offer_id}` }));
+    }
+    const byIdempotency = sortByUpdatedAt(supplierSalesByIdempotencyKey).find((row) => trimNullable(row.idempotency_key) && refs.idempotencyKeys.has(trimNullable(row.idempotency_key) as string));
+    if (byIdempotency) {
+      addOrderForCard(ordersByCardId, cardId, supplierSaleOrderLink(byIdempotency, { matchedBy: "supplier_sales_idempotency_key", matchLabel: "Idempotency Key" }));
+    }
+    const offerNumberMatches = [...supplierSalesByOfferNumber, ...supplierSalesByDocumentReference].filter((row) => {
+      const reference = trimNullable(row.offer_number) || trimNullable(row.document_reference);
+      return Boolean(reference && refs.offerNumbers.has(reference));
+    });
+    const uniqueOfferNumbers = new Set(offerNumberMatches.map((row) => trimNullable(row.offer_number) || trimNullable(row.document_reference)).filter(Boolean));
+    if (offerNumberMatches.length === 1 && uniqueOfferNumbers.size === 1) {
+      const row = offerNumberMatches[0];
+      addOrderForCard(ordersByCardId, cardId, supplierSaleOrderLink(row, { matchedBy: "supplier_sales_offer_number", matchLabel: `Offer Number ${trimNullable(row.offer_number) || trimNullable(row.document_reference)}` }));
+    }
+  }
+
   for (const row of sortByUpdatedAt(Array.from(supplierRowsById.values()))) {
     const cardId = trimNullable(row.trello_card_id) || (row.request_id ? cardIdByRequestId.get(row.request_id) : null);
-    const order = supplierSaleOrderLink(row);
-    if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
+    const matchedBy = trimNullable(row.trello_card_id) ? "supplier_sales_trello_card" : "supplier_sales_request";
+    const order = supplierSaleOrderLink(row, {
+      matchedBy,
+      matchLabel: matchedBy === "supplier_sales_trello_card" ? "Trello -> supplier_sales" : "Request -> supplier_sales",
+    });
+    addOrderForCard(ordersByCardId, cardId, order);
   }
   for (const row of sortByOrderCreatedAt(masterOrders)) {
     const requestId = trimNullable(row.request_id);
     const cardId = requestId ? cardIdByRequestId.get(requestId) : null;
-    const order = masterOrderLink(row);
-    if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
+    addOrderForCard(ordersByCardId, cardId, masterOrderLink(row));
   }
   for (const row of sortByOrderCreatedAt(crmSales)) {
     const requestId = trimNullable(row.request_id);
     const cardId = requestId ? cardIdByRequestId.get(requestId) : null;
-    const order = crmSaleOrderLink(row);
-    if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
+    addOrderForCard(ordersByCardId, cardId, crmSaleOrderLink(row));
   }
 
   return ordersByCardId;
