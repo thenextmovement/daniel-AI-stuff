@@ -11,6 +11,7 @@ import {
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
   runSupplierSalesLiveCheck,
+  sendSupplierOrderConfirmationEmail,
   syncCompletedOffersFromOffersApp,
   updateSupplierSalePaymentDecision,
   upsertSupplierSaleFromPayload,
@@ -35,6 +36,7 @@ type SupplierSalesPostBody = {
     | "assign_supplier"
     | "update_payment_decision"
     | "request_payment_reminder"
+    | "send_order_confirmation_email"
     | "retry_shopify_tag"
     | "apply_no_payment_reminder_tag"
     | "create_deadline_tasks"
@@ -278,6 +280,18 @@ export async function POST(request: NextRequest) {
       }, actor);
       const board = await listSupplierSalesBoard({ scope: "active" });
       return NextResponse.json({ ok: true, action, sale, board });
+    }
+
+    if (action === "send_order_confirmation_email") {
+      const result = await sendSupplierOrderConfirmationEmail({
+        saleId: String(body.saleId || ""),
+        requestedBy: body.requestedBy || body.operatorName || null,
+        recipientEmail: body.recipientEmail || null,
+        operatorName: body.operatorName || null,
+        idempotencyKey: body.idempotencyKey || null,
+      }, actor);
+      const board = await listSupplierSalesBoard({ scope: "active" });
+      return NextResponse.json({ ok: true, action, sale: result.sale, orderConfirmationEmail: result, board });
     }
 
     if (action === "retry_shopify_tag") {

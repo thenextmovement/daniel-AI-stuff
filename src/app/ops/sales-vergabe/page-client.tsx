@@ -49,6 +49,12 @@ type SupplierSalesApiResponse = {
     tagValue: string | null;
     error: string | null;
   };
+  orderConfirmationEmail?: {
+    status: "sent" | "failed" | "skipped";
+    recipientEmail: string | null;
+    providerMessageId: string | null;
+    error: string | null;
+  };
   completedOffersSync?: {
     status: "synced" | "skipped" | "failed";
     checked: number;
@@ -242,6 +248,12 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
   }
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
   if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
+  if (action === "send_order_confirmation_email") {
+    const email = payload?.orderConfirmationEmail;
+    if (email?.status === "sent") return `Auftragsbestaetigung wurde an ${email.recipientEmail || "den Kunden"} gesendet.`;
+    if (email?.status === "skipped") return email.error || "Auftragsbestaetigung wurde bereits fuer diesen Stand verarbeitet.";
+    return `Auftragsbestaetigung nicht gesendet: ${email?.error || "Bitte Webhook-Konfiguration pruefen."}`;
+  }
   if (action === "apply_no_payment_reminder_tag") {
     const tag = payload?.noPaymentReminderTag;
     if (tag?.status === "synced") return "Shopify-Tag Keine Zahlungserinnerung n8n wurde gesetzt.";
@@ -421,6 +433,7 @@ function SaleCard({
   const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
   const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.shopifyTagSyncStatus !== "synced";
+  const lastOrderConfirmationEmail = sale.orderConfirmationEmail;
 
   return (
     <article className="rounded-[0.5rem] border border-stone-200 bg-white p-4 shadow-sm">
@@ -591,6 +604,24 @@ function SaleCard({
               ) : null}
               <button
                 type="button"
+                disabled={saving || !sale.customerEmail}
+                onClick={() => {
+                  const recipient = sale.customerEmail || "";
+                  if (!confirmAction(`Auftragsbestaetigung als PDF per Outlook/n8n an ${recipient} senden? Der Versand wird protokolliert und bei gleichem PDF-Stand nicht doppelt ausgefuehrt.`)) return;
+                  void onAction({
+                    action: "send_order_confirmation_email",
+                    saleId: sale.id,
+                    recipientEmail: recipient,
+                    operatorName,
+                  });
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+              >
+                <Mail className="h-4 w-4" />
+                AB senden
+              </button>
+              <button
+                type="button"
                 disabled={saving}
                 onClick={() => {
                   if (!confirmAction("Shopify-Tag 'Keine Zahlungserinnerung n8n' setzen, damit n8n keine Zahlungserinnerung sendet?")) return;
@@ -624,6 +655,12 @@ function SaleCard({
                 </button>
               ) : null}
             </div>
+
+            {lastOrderConfirmationEmail ? (
+              <p className={`rounded-[0.5rem] border px-3 py-2 text-xs ${lastOrderConfirmationEmail.status === "sent" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                AB-Mail: {lastOrderConfirmationEmail.status === "sent" ? `gesendet an ${lastOrderConfirmationEmail.recipientEmail || "Kunde"}` : lastOrderConfirmationEmail.error || lastOrderConfirmationEmail.status}
+              </p>
+            ) : null}
 
             {needsManualPaymentRelease ? (
               <div className="grid gap-2 border-t border-stone-200 pt-3">

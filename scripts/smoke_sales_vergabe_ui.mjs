@@ -282,8 +282,30 @@ function setupRoutes(page, posts) {
         shopifyTagSyncStatus: body.action === "assign_supplier" ? "pending" : source.shopifyTagSyncStatus,
         trelloProjectionStatus: body.action === "assign_supplier" ? "synced" : source.trelloProjectionStatus,
         taskSyncStatus: body.action === "assign_supplier" ? "synced" : source.taskSyncStatus,
+        orderConfirmationEmail: body.action === "send_order_confirmation_email"
+          ? {
+              status: "sent",
+              recipientEmail: source.customerEmail,
+              requestedAt: now,
+              sentAt: now,
+              requestedBy: body.operatorName || "QA",
+              providerMessageId: "qa-outlook-message",
+              error: null,
+            }
+          : source.orderConfirmationEmail || null,
       };
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, board, sale: updatedSale }) });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          board,
+          sale: updatedSale,
+          orderConfirmationEmail: body.action === "send_order_confirmation_email"
+            ? { status: "sent", recipientEmail: source.customerEmail, providerMessageId: "qa-outlook-message", error: null }
+            : undefined,
+        }),
+      });
     }),
   ]);
 }
@@ -361,29 +383,37 @@ async function main() {
   await paidCard.getByRole("button", { name: "Vergeben" }).click();
   assert(posts.length === 4 && posts[3].body.action === "assign_supplier", "Bezahlte Vergabe sendet falsche Action");
 
+  page.once("dialog", dialogHandler(dialogs, "dismiss-order-confirmation", false));
+  await paidCard.getByRole("button", { name: "AB senden" }).click();
+  assert(posts.length === 4, "Abgebrochene Auftragsbestaetigung sendet trotzdem POST");
+
+  page.once("dialog", dialogHandler(dialogs, "accept-order-confirmation", true));
+  await paidCard.getByRole("button", { name: "AB senden" }).click();
+  assert(posts.length === 5 && posts[4].body.action === "send_order_confirmation_email", "Auftragsbestaetigung sendet falsche Action");
+
   await specialCard.getByLabel("Supplier auswaehlen").selectOption("special");
   assert(await specialCard.getByLabel("Name Sonder-Supplier").isVisible(), "Sonder-Supplier Eingabe ist nicht sichtbar");
 
   page.once("dialog", dialogHandler(dialogs, "dismiss-deadline", false));
   await page.getByRole("button", { name: "Deadline-Aufgaben pruefen" }).click();
-  assert(posts.length === 4, "Abgebrochene Deadline-Pruefung sendet trotzdem POST");
+  assert(posts.length === 5, "Abgebrochene Deadline-Pruefung sendet trotzdem POST");
 
   page.once("dialog", dialogHandler(dialogs, "accept-deadline", true));
   await page.getByRole("button", { name: "Deadline-Aufgaben pruefen" }).click();
-  assert(posts.length === 5 && posts[4].body.action === "create_deadline_tasks", "Deadline-Pruefung sendet falsche Action");
+  assert(posts.length === 6 && posts[5].body.action === "create_deadline_tasks", "Deadline-Pruefung sendet falsche Action");
 
   await page.getByRole("button", { name: "Live-Abgleich testen" }).click();
   await page.getByText("Live-Abgleich Angebote -> Sales-Vergabe").waitFor();
   await page.getByText("AN-LIVE-2").waitFor();
-  assert(posts.length === 6 && posts[5].body.action === "diagnose_sales_flow", "Live-Abgleich sendet falsche Action");
+  assert(posts.length === 7 && posts[6].body.action === "diagnose_sales_flow", "Live-Abgleich sendet falsche Action");
 
   page.once("dialog", dialogHandler(dialogs, "dismiss-task-done", false));
   await page.getByRole("button", { name: "Erledigt" }).click();
-  assert(posts.length === 6, "Abgebrochene Aufgabe-Erledigt-Aktion sendet trotzdem PATCH");
+  assert(posts.length === 7, "Abgebrochene Aufgabe-Erledigt-Aktion sendet trotzdem PATCH");
 
   page.once("dialog", dialogHandler(dialogs, "accept-task-done", true));
   await page.getByRole("button", { name: "Erledigt" }).click();
-  assert(posts.length === 7 && posts[6].method === "PATCH", "Akzeptierte Aufgabe-Erledigt-Aktion sendet keinen PATCH");
+  assert(posts.length === 8 && posts[7].method === "PATCH", "Akzeptierte Aufgabe-Erledigt-Aktion sendet keinen PATCH");
 
   const mobileLayout = await page.evaluate(() => ({
     noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,

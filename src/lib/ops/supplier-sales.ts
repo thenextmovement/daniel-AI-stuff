@@ -189,6 +189,7 @@ export type SupplierSale = {
   updatedAt: string;
   items: SupplierSaleItem[];
   latestEvent: SupplierSaleEvent | null;
+  orderConfirmationEmail: SupplierOrderConfirmationEmailState | null;
 };
 
 export type SupplierSaleItem = {
@@ -326,6 +327,34 @@ export type SupplierPaymentReminderInput = {
   message?: string | null;
   operatorName?: string | null;
   idempotencyKey?: string | null;
+};
+
+export type SupplierOrderConfirmationEmailStatus = "sent" | "failed" | "skipped";
+
+export type SupplierOrderConfirmationEmailState = {
+  status: SupplierOrderConfirmationEmailStatus;
+  recipientEmail: string | null;
+  requestedAt: string | null;
+  sentAt: string | null;
+  requestedBy: string | null;
+  providerMessageId: string | null;
+  error: string | null;
+};
+
+export type SupplierOrderConfirmationEmailInput = {
+  saleId: string;
+  requestedBy?: string | null;
+  recipientEmail?: string | null;
+  operatorName?: string | null;
+  idempotencyKey?: string | null;
+};
+
+export type SupplierOrderConfirmationEmailResult = {
+  sale: SupplierSale;
+  status: SupplierOrderConfirmationEmailStatus;
+  recipientEmail: string | null;
+  providerMessageId: string | null;
+  error: string | null;
 };
 
 export type SupplierShopifyTagRetryInput = {
@@ -1204,6 +1233,21 @@ function mapEvent(row: SupplierSaleEventRow): SupplierSaleEvent {
   };
 }
 
+function mapOrderConfirmationEmailState(metadata: JsonRecord): SupplierOrderConfirmationEmailState | null {
+  const raw = jsonRecord(metadata.order_confirmation_email);
+  const status = cleanText(raw.status, 40) as SupplierOrderConfirmationEmailStatus;
+  if (!["sent", "failed", "skipped"].includes(status)) return null;
+  return {
+    status,
+    recipientEmail: lowerNullable(raw.recipient_email ?? raw.recipientEmail, 260),
+    requestedAt: nullableText(raw.requested_at ?? raw.requestedAt, 80),
+    sentAt: nullableText(raw.sent_at ?? raw.sentAt, 80),
+    requestedBy: nullableText(raw.requested_by ?? raw.requestedBy, 120),
+    providerMessageId: nullableText(raw.provider_message_id ?? raw.providerMessageId, 260),
+    error: nullableText(raw.error, 1000),
+  };
+}
+
 function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEvent: SupplierSaleEvent | null = null): SupplierSale {
   return {
     id: row.id,
@@ -1261,6 +1305,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     updatedAt: row.updated_at,
     items,
     latestEvent,
+    orderConfirmationEmail: mapOrderConfirmationEmailState(row.metadata || {}),
   };
 }
 
@@ -2966,6 +3011,253 @@ export async function generateSupplierOrderConfirmationPdf(saleId: string): Prom
   return {
     fileName: `auftragsbestaetigung-${safePdfFileName(documentReference)}.pdf`,
     bytes: pdf.render(),
+  };
+}
+
+function orderConfirmationEmailWebhookUrl() {
+  return nullableText(
+    process.env.SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL ||
+      process.env.N8N_SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL ||
+      process.env.ORDER_CONFIRMATION_WEBHOOK_URL,
+    1000,
+  );
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function orderConfirmationReference(row: SupplierSaleRow) {
+  return row.document_reference || row.offer_number || row.shopify_order_name || row.sale_key;
+}
+
+function orderConfirmationSubject(row: SupplierSaleRow) {
+  return `Auftragsbestätigung ${orderConfirmationReference(row)}`;
+}
+
+function customerGreeting(row: SupplierSaleRow) {
+  const name = nullableText(row.customer_name, 120);
+  return name ? `Guten Tag ${name},` : "Guten Tag,";
+}
+
+function orderConfirmationEmailText(row: SupplierSaleRow) {
+  const reference = orderConfirmationReference(row);
+  return [
+    customerGreeting(row),
+    "",
+    `anbei erhalten Sie die Auftragsbestätigung zu ${reference}.`,
+    "Die Unterlage fasst den freigegebenen Angebots-Snapshot zusammen und ist für Ihre Prüfung und Ablage gedacht. Die Rechnung kommt separat über den Zahlungs- beziehungsweise Rechnungsprozess.",
+    "",
+    "Viele Grüße",
+    "Fabienne",
+    "NEONTRIP",
+  ].join("\n");
+}
+
+function orderConfirmationEmailHtml(row: SupplierSaleRow) {
+  const reference = escapeHtml(orderConfirmationReference(row));
+  return [
+    `<p>${escapeHtml(customerGreeting(row))}</p>`,
+    `<p>anbei erhalten Sie die Auftragsbestätigung zu <strong>${reference}</strong>.</p>`,
+    "<p>Die Unterlage fasst den freigegebenen Angebots-Snapshot zusammen und ist für Ihre Prüfung und Ablage gedacht. Die Rechnung kommt separat über den Zahlungs- beziehungsweise Rechnungsprozess.</p>",
+    "<p>Viele Grüße<br>Fabienne<br>NEONTRIP</p>",
+  ].join("");
+}
+
+async function sendOrderConfirmationEmailWebhook(input: {
+  row: SupplierSaleRow;
+  pdf: SupplierOrderConfirmationPdf;
+  recipientEmail: string;
+  idempotencyKey: string;
+  requestedBy: string | null;
+  pdfHash: string;
+}) {
+  const url = orderConfirmationEmailWebhookUrl();
+  if (!url) {
+    return {
+      status: "failed" as const,
+      providerMessageId: null,
+      error: "Auftragsbestaetigung-Webhook ist nicht konfiguriert.",
+    };
+  }
+
+  const payload = {
+    kind: "supplier_order_confirmation",
+    saleId: input.row.id,
+    saleKey: input.row.sale_key,
+    source: input.row.source,
+    documentReference: input.row.document_reference,
+    offerNumber: input.row.offer_number,
+    shopifyOrderName: input.row.shopify_order_name,
+    recipientEmail: input.recipientEmail,
+    customerName: input.row.customer_name,
+    customerCompany: input.row.customer_company,
+    subject: orderConfirmationSubject(input.row),
+    text: orderConfirmationEmailText(input.row),
+    html: orderConfirmationEmailHtml(input.row),
+    signature: "fabienne_neontrip",
+    requestedBy: input.requestedBy,
+    idempotencyKey: input.idempotencyKey,
+    attachment: {
+      filename: input.pdf.fileName,
+      contentType: "application/pdf",
+      contentBase64: Buffer.from(input.pdf.bytes).toString("base64"),
+      sha256: input.pdfHash,
+    },
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const body = await response.json().catch(() => null) as JsonRecord | null;
+  if (!response.ok) {
+    return {
+      status: "failed" as const,
+      providerMessageId: null,
+      error: `Auftragsbestaetigung-Webhook HTTP ${response.status}`,
+    };
+  }
+  return {
+    status: "sent" as const,
+    providerMessageId: recordString(body || {}, ["providerMessageId", "messageId", "id"], 260),
+    error: null,
+  };
+}
+
+export async function sendSupplierOrderConfirmationEmail(
+  input: SupplierOrderConfirmationEmailInput,
+  actor?: SupplierSaleActor | null,
+): Promise<SupplierOrderConfirmationEmailResult> {
+  const sale = await getSupplierSale(input.saleId);
+  const row = await fetchSaleRowById(sale.id);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+
+  const recipientEmail = lowerNullable(input.recipientEmail || row.customer_email, 260);
+  if (!recipientEmail) throw new QuoteValidationError("Empfaenger-E-Mail fehlt.", ["Empfaenger-E-Mail fehlt."], 422);
+
+  const requestedBy = nullableText(input.requestedBy || input.operatorName || actor?.operatorName, 120);
+  const now = new Date().toISOString();
+  const pdf = await generateSupplierOrderConfirmationPdf(row.id);
+  const pdfHash = createHash("sha256").update(Buffer.from(pdf.bytes)).digest("hex");
+  const idempotencyKey = nullableText(input.idempotencyKey, 260)
+    || `supplier-sale:${row.id}:order-confirmation-email:${hashPayload({
+      recipient_email: recipientEmail,
+      pdf_sha256: pdfHash,
+    })}`;
+
+  const webhookReady = Boolean(orderConfirmationEmailWebhookUrl());
+  if (!webhookReady) {
+    const updated = await patchSaleRow(row.id, {
+      metadata: {
+        ...(row.metadata || {}),
+        order_confirmation_email: {
+          status: "failed",
+          recipient_email: recipientEmail,
+          requested_at: now,
+          sent_at: null,
+          requested_by: requestedBy,
+          provider_message_id: null,
+          error: "Auftragsbestaetigung-Webhook ist nicht konfiguriert.",
+          idempotency_key: idempotencyKey,
+          pdf_file_name: pdf.fileName,
+          pdf_sha256: pdfHash,
+        },
+      },
+    });
+    await insertEvent({
+      saleId: row.id,
+      eventType: "manual_note",
+      actor: actor || { operatorName: input.operatorName || null },
+      idempotencyKey: `${idempotencyKey}:config-missing`,
+      payload: { kind: "order_confirmation_email", status: "failed", recipient_email: recipientEmail, error: "webhook_missing" },
+    });
+    return {
+      sale: mapSale(updated, sale.items, sale.latestEvent),
+      status: "failed",
+      recipientEmail,
+      providerMessageId: null,
+      error: "Auftragsbestaetigung-Webhook ist nicht konfiguriert.",
+    };
+  }
+
+  const reserved = await insertEvent({
+    saleId: row.id,
+    eventType: "manual_note",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey,
+    payload: {
+      kind: "order_confirmation_email_reserved",
+      recipient_email: recipientEmail,
+      requested_by: requestedBy,
+      pdf_file_name: pdf.fileName,
+      pdf_sha256: pdfHash,
+    },
+  });
+  if (!reserved) {
+    return {
+      sale,
+      status: sale.orderConfirmationEmail?.status || "skipped",
+      recipientEmail,
+      providerMessageId: sale.orderConfirmationEmail?.providerMessageId || null,
+      error: sale.orderConfirmationEmail?.error || "Auftragsbestaetigung wurde fuer diesen PDF-Stand bereits verarbeitet.",
+    };
+  }
+
+  const webhook = await sendOrderConfirmationEmailWebhook({
+    row,
+    pdf,
+    recipientEmail,
+    idempotencyKey,
+    requestedBy,
+    pdfHash,
+  });
+
+  const updated = await patchSaleRow(row.id, {
+    metadata: {
+      ...(row.metadata || {}),
+      order_confirmation_email: {
+        status: webhook.status,
+        recipient_email: recipientEmail,
+        requested_at: now,
+        sent_at: webhook.status === "sent" ? new Date().toISOString() : null,
+        requested_by: requestedBy,
+        provider_message_id: webhook.providerMessageId,
+        error: webhook.error,
+        idempotency_key: idempotencyKey,
+        pdf_file_name: pdf.fileName,
+        pdf_sha256: pdfHash,
+      },
+    },
+  });
+
+  await insertEvent({
+    saleId: row.id,
+    eventType: "manual_note",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: `${idempotencyKey}:result`,
+    payload: {
+      kind: "order_confirmation_email",
+      status: webhook.status,
+      recipient_email: recipientEmail,
+      provider_message_id: webhook.providerMessageId,
+      error: webhook.error,
+    },
+  });
+
+  return {
+    sale: mapSale(updated, sale.items, sale.latestEvent),
+    status: webhook.status,
+    recipientEmail,
+    providerMessageId: webhook.providerMessageId,
+    error: webhook.error,
   };
 }
 

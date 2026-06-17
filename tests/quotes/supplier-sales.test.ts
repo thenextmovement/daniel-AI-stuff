@@ -19,6 +19,7 @@ import {
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
   runSupplierSalesLiveCheck,
+  sendSupplierOrderConfirmationEmail,
   supplierSaleNeedsDeadlineTask,
   syncCompletedOffersFromOffersApp,
   type SupplierSaleItemRow,
@@ -126,6 +127,9 @@ async function withMockedAssignmentFetch<T>(
     "SHOPIFY_SHOP",
     "SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
     "N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+    "SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL",
+    "N8N_SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL",
+    "ORDER_CONFIRMATION_WEBHOOK_URL",
     "SHOPIFY_NO_PAYMENT_REMINDER_TAG",
     "SUPPLIER_NO_PAYMENT_REMINDER_TAG",
     "SUPPLIER_ASSIGNMENT_TASKS_ENABLED",
@@ -1351,6 +1355,122 @@ test("supplier sales route downloads order confirmation PDF", async () => {
     const bytes = new Uint8Array(await response.arrayBuffer());
     assert.equal(Buffer.from(bytes).toString("utf8", 0, 8), "%PDF-1.4");
   });
+});
+
+test("supplier order confirmation email sends generated PDF through configured webhook", async () => {
+  let currentRow = saleRow({
+    id: "sale-order-confirmation-email",
+    document_reference: "A-N-15335-ABCDEF",
+    customer_name: "Mia Muster",
+    customer_email: "mia@muster.de",
+    offer_snapshot: {
+      acceptedAt: "2026-06-16T12:00:00.000Z",
+      totals: { subtotalNet: 1000, vatAmount: 190, totalGross: 1190 },
+      lineItems: [{ title: "LED Neon Logo", quantity: 1, unitPriceNet: 1000, lineNet: 1000 }],
+    },
+  });
+  let webhookCount = 0;
+  let eventCount = 0;
+  let patchedMetadata: Record<string, unknown> | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://order-confirmation.test") {
+      webhookCount += 1;
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.equal(body.kind, "supplier_order_confirmation");
+      assert.equal(body.recipientEmail, "mia@muster.de");
+      assert.equal(body.subject, "Auftragsbestätigung A-N-15335-ABCDEF");
+      assert.equal(body.signature, "fabienne_neontrip");
+      assert.equal(body.attachment.filename, "auftragsbestaetigung-A-N-15335-ABCDEF.pdf");
+      assert.equal(Buffer.from(body.attachment.contentBase64, "base64").toString("utf8", 0, 8), "%PDF-1.4");
+      return Response.json({ messageId: "outlook-message-1" });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      eventCount += 1;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      const patch = JSON.parse(String(init?.body || "{}"));
+      patchedMetadata = patch.metadata;
+      currentRow = { ...currentRow, ...patch };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL = "https://order-confirmation.test/send";
+    const result = await sendSupplierOrderConfirmationEmail({ saleId: currentRow.id, operatorName: "Fabienne" });
+
+    assert.equal(result.status, "sent");
+    assert.equal(result.providerMessageId, "outlook-message-1");
+    assert.equal(result.recipientEmail, "mia@muster.de");
+    assert.equal(result.sale.orderConfirmationEmail?.status, "sent");
+  });
+
+  assert.equal(webhookCount, 1);
+  assert.equal(eventCount, 2);
+  assert.equal((patchedMetadata?.order_confirmation_email as Record<string, unknown>).provider_message_id, "outlook-message-1");
+});
+
+test("supplier order confirmation email duplicate reservation does not resend webhook", async () => {
+  const row = saleRow({
+    id: "sale-order-confirmation-duplicate",
+    document_reference: "A-N-15336-ABCDEF",
+    customer_email: "mia@muster.de",
+    metadata: {
+      order_confirmation_email: {
+        status: "sent",
+        recipient_email: "mia@muster.de",
+        requested_at: "2026-06-16T12:00:00.000Z",
+        sent_at: "2026-06-16T12:00:01.000Z",
+        provider_message_id: "existing-message",
+      },
+    },
+    offer_snapshot: {
+      totals: { subtotalNet: 1000, vatAmount: 190, totalGross: 1190 },
+      lineItems: [{ title: "LED Neon Logo", quantity: 1, unitPriceNet: 1000, lineNet: 1000 }],
+    },
+  });
+  let webhookCount = 0;
+  let reservationCount = 0;
+  let patchCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://order-confirmation.test") {
+      webhookCount += 1;
+      return Response.json({ messageId: "should-not-send" });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: row.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      reservationCount += 1;
+      return Response.json({ message: "duplicate" }, { status: 409 });
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      patchCount += 1;
+      return Response.json([row]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL = "https://order-confirmation.test/send";
+    const result = await sendSupplierOrderConfirmationEmail({ saleId: row.id, operatorName: "Fabienne" });
+
+    assert.equal(result.status, "sent");
+    assert.equal(result.providerMessageId, "existing-message");
+  });
+
+  assert.equal(reservationCount, 1);
+  assert.equal(webhookCount, 0);
+  assert.equal(patchCount, 0);
 });
 
 test("supplier sales live check compares latest completed offers with vergabe rows without PII", async () => {
