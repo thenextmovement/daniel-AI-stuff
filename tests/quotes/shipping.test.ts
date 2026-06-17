@@ -10,6 +10,7 @@ import {
 } from "../../src/lib/ops/shipping";
 import {
   buildInboundBoardFromRows,
+  generateInboundDeliveryNotePdf,
   listInboundBoard,
   normalizeInboundCarrierStatus,
   parseInboundTrackingValue,
@@ -582,6 +583,166 @@ test("listInboundBoard filters inbound shipments by linked requestId", async () 
       url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672972",
       source: "supplier_sales",
     });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("generateInboundDeliveryNotePdf creates a NEONTRIP delivery note without price data", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-lieferschein-1",
+          shipment_key: "trello:card-lieferschein:dhl:2992676864",
+          source: "trello",
+          trello_card_id: "card-lieferschein",
+          trello_card_name: "Clara Schwarz - Neon Logo",
+          trello_card_url: "https://trello.example/card-lieferschein",
+          trello_list_id: "list-sign-shipped",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "2992676864",
+          tracking_raw: "DHL Express 2992676864",
+          status: "out_for_delivery",
+          status_reason: null,
+          risk_level: "high",
+          first_seen_at: "2026-06-15T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-15T08:00:00.000Z",
+          tendered_at: "2026-06-15T09:00:00.000Z",
+          last_event_at: "2026-06-17T07:00:00.000Z",
+          last_movement_at: "2026-06-17T07:00:00.000Z",
+          last_checked_at: "2026-06-17T07:10:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-15T08:00:00.000Z",
+          updated_at: "2026-06-17T07:10:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_tracking_events")) {
+      return json([
+        {
+          id: "event-lieferschein-1",
+          shipment_id: "inbound-lieferschein-1",
+          event_key: "dhl:2992676864:out-for-delivery",
+          carrier: "dhl",
+          carrier_event_id: "out-for-delivery",
+          event_time: "2026-06-17T07:00:00.000Z",
+          location: "Düsseldorf",
+          carrier_status_code: "OD",
+          carrier_status_text: "Shipment is out with courier for delivery",
+          normalized_status: "out_for_delivery",
+          raw_event: {},
+          created_at: "2026-06-17T07:10:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/master_requests")) {
+      return json([{ id: "request-internal-1", request_id: "REQ-1", trello_card_id: "card-lieferschein", updated_at: "2026-06-15T08:00:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/master_orders") || path.endsWith("/rest/v1/crm_sales")) return json([]);
+    if (path.endsWith("/rest/v1/supplier_sales")) {
+      return json([
+        {
+          id: "supplier-sale-lieferschein-1",
+          request_id: "request-internal-1",
+          trello_card_id: "card-lieferschein",
+          shopify_order_id: "8281257672972",
+          shopify_order_name: "#NEONT4427",
+          shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257672972",
+          offer_number: "A/N 14061",
+          customer_name: "Clara Schwarz",
+          customer_company: "Schwarz Events GmbH",
+          customer_email: "clara@example.test",
+          offer_snapshot: {
+            customer: { company: "Schwarz Events GmbH", email: "clara@example.test" },
+            deliveryAddress: {
+              company: "Schwarz Events GmbH",
+              name: "Clara Schwarz",
+              address1: "Musterstraße 12",
+              zip: "40210",
+              city: "Düsseldorf",
+              country: "Deutschland",
+            },
+            lineItems: [
+              {
+                title: "LED Schriftzug Clara",
+                description: "Interne Notiz: Netto 1000.00 EUR, Brutto 1190.00 EUR",
+                quantity: 2,
+              },
+            ],
+            totalGross: 1190,
+            currency: "EUR",
+          },
+          raw_shopify: {
+            shipping_address: {
+              company: "Schwarz Events GmbH",
+              name: "Clara Schwarz",
+              address1: "Musterstraße 12",
+              zip: "40210",
+              city: "Düsseldorf",
+              country: "Deutschland",
+            },
+          },
+          created_at: "2026-06-15T08:00:00.000Z",
+          updated_at: "2026-06-15T09:00:00.000Z",
+        },
+      ]);
+    }
+    if (path.endsWith("/rest/v1/supplier_sale_items")) {
+      return json([
+        {
+          id: "item-lieferschein-1",
+          sale_id: "supplier-sale-lieferschein-1",
+          title: "Fallback Artikel mit Preisnotiz",
+          quantity: 1,
+          raw_line_item: { variant_title: "Variante fuer 1000.00 EUR" },
+        },
+      ]);
+    }
+
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const pdf = await generateInboundDeliveryNotePdf("inbound-lieferschein-1");
+    const content = Buffer.from(pdf.bytes).toString("latin1");
+
+    assert.match(pdf.fileName, /^lieferschein-/);
+    assert.match(content, /^%PDF-1\.4/);
+    assert.match(content, /NEONTRIP/);
+    assert.match(content, /Lieferschein/);
+    assert.match(content, /2992676864/);
+    assert.match(content, /LED Schriftzug Clara/);
+    assert.match(content, /#NEONT4427/);
+    assert.doesNotMatch(content, /1000\.00/);
+    assert.doesNotMatch(content, /1190\.00/);
+    assert.doesNotMatch(content, /\bEUR\b/);
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries(originalEnv)) {

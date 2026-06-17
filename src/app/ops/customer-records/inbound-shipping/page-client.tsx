@@ -393,6 +393,16 @@ export function InboundShippingClient({
                             Shopify
                           </a>
                         ) : null}
+                        <a
+                          className="inline-flex items-center gap-2 rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50"
+                          href={`/api/ops/customer-records/inbound-shipping?action=delivery_note_pdf&shipmentId=${encodeURIComponent(item.shipment.id)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Lieferschein für ${item.shipment.trackingNumber} generieren`}
+                        >
+                          <FileText className="h-4 w-4" />
+                          Lieferschein
+                        </a>
                         {item.shipment.trelloCardUrl ? (
                           <a className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50" href={item.shipment.trelloCardUrl} target="_blank" rel="noreferrer">
                             Trello

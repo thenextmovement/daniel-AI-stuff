@@ -130,8 +130,22 @@ type InboundSupplierSaleOrderRow = {
   shopify_order_id: string | number | null;
   shopify_order_name: string | null;
   shopify_order_url: string | null;
+  offer_number?: string | null;
+  customer_name?: string | null;
+  customer_company?: string | null;
+  customer_email?: string | null;
+  offer_snapshot?: Record<string, unknown> | null;
+  raw_shopify?: Record<string, unknown> | null;
   created_at: string | null;
   updated_at: string | null;
+};
+
+type InboundSupplierSaleItemRow = {
+  id: string;
+  sale_id: string;
+  title: string;
+  quantity: number | string | null;
+  raw_line_item: Record<string, unknown>;
 };
 
 type InboundCrmQuoteRow = {
@@ -237,6 +251,11 @@ export type InboundShopifyOrderLink = {
   source: "master_orders" | "crm_sales" | "supplier_sales";
 };
 
+export type InboundDeliveryNotePdf = {
+  fileName: string;
+  bytes: Uint8Array;
+};
+
 export type InboundBoardItem = {
   shipment: InboundShipment;
   incidents: InboundIncident[];
@@ -278,6 +297,202 @@ function encodeFilterValue(value: string) {
 
 function uniqueValues(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.map((value) => trimNullable(value)).filter(Boolean) as string[]));
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function arrayRecords(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry)) as Array<Record<string, unknown>> : [];
+}
+
+function recordString(record: Record<string, unknown>, keys: string[], maxLength = 500) {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).replace(/\s+/g, " ").trim();
+    if (text) return text.slice(0, maxLength);
+  }
+  return null;
+}
+
+function numericText(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? String(number) : trimNullable(value);
+}
+
+function pdfText(value: unknown) {
+  const text = String(value ?? "")
+    .replace(/[–—]/g, "-")
+    .replace(/[·•]/g, "-")
+    .replace(/[„“”]/g, '"')
+    .replace(/[‚‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  let escaped = "";
+  for (const char of text) {
+    if (char === "\\") escaped += "\\\\";
+    else if (char === "(") escaped += "\\(";
+    else if (char === ")") escaped += "\\)";
+    else {
+      const code = char.charCodeAt(0);
+      if (code >= 32 && code <= 126) escaped += char;
+      else if (code >= 160 && code <= 255) escaped += `\\${code.toString(8).padStart(3, "0")}`;
+      else escaped += "?";
+    }
+  }
+  return `(${escaped})`;
+}
+
+function wrapPdfText(value: unknown, maxChars: number) {
+  const words = String(value ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function dateLabel(value: unknown) {
+  const text = trimNullable(value);
+  if (!text) return "-";
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+
+function inboundStatusPdfLabel(status: InboundStatus) {
+  const labels: Record<InboundStatus, string> = {
+    tracking_created: "Tracking erfasst",
+    carrier_not_found: "nicht gefunden",
+    label_created: "Label erstellt",
+    tendered: "uebergeben",
+    in_transit: "unterwegs",
+    clearance_in_progress: "Zoll laeuft",
+    clearance_action_required: "Zoll braucht Aktion",
+    out_for_delivery: "in Zustellung",
+    delivered: "zugestellt",
+    exception: "Ausnahme",
+    stale: "stale",
+    closed: "geschlossen",
+  };
+  return labels[status] || status;
+}
+
+function safePdfFileName(value: unknown) {
+  const text = String(value || "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return text || "lieferschein";
+}
+
+function addressLines(value: unknown) {
+  const address = jsonRecord(value);
+  return [
+    recordString(address, ["company"], 180),
+    recordString(address, ["name"], 180),
+    [recordString(address, ["address1", "street"], 180), recordString(address, ["address2"], 180)].filter(Boolean).join(" "),
+    [recordString(address, ["zip", "postalCode"], 40), recordString(address, ["city"], 120)].filter(Boolean).join(" "),
+    recordString(address, ["country"], 120),
+  ].filter(Boolean);
+}
+
+class InboundPdfDocument {
+  private pages: string[][] = [[]];
+  private y = 0;
+
+  constructor(private readonly width = 595.28, private readonly height = 841.89) {
+    this.y = this.height - 52;
+  }
+
+  private current() {
+    return this.pages[this.pages.length - 1];
+  }
+
+  addPage() {
+    this.pages.push([]);
+    this.y = this.height - 52;
+  }
+
+  ensure(space: number) {
+    if (this.y - space < 64) this.addPage();
+  }
+
+  get cursorY() {
+    return this.y;
+  }
+
+  set cursorY(value: number) {
+    this.y = value;
+  }
+
+  get pageCount() {
+    return this.pages.length;
+  }
+
+  text(value: unknown, x: number, y: number, options?: { size?: number; bold?: boolean; color?: string }) {
+    const size = options?.size || 10;
+    const font = options?.bold ? "F2" : "F1";
+    const color = options?.color || "0 0 0";
+    this.current().push(`BT ${color} rg /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td ${pdfText(value)} Tj ET`);
+  }
+
+  multiline(value: unknown, x: number, maxChars: number, options?: { size?: number; leading?: number; bold?: boolean; color?: string }) {
+    const leading = options?.leading || 13;
+    for (const line of wrapPdfText(value, maxChars)) {
+      this.ensure(leading);
+      this.text(line, x, this.y, options);
+      this.y -= leading;
+    }
+  }
+
+  rect(x: number, y: number, w: number, h: number, color = "0.96 0.95 0.92") {
+    this.current().push(`${color} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`);
+  }
+
+  strokeRect(x: number, y: number, w: number, h: number, color = "0.90 0.88 0.91", width = 0.7) {
+    this.current().push(`${color} RG ${width} w ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`);
+  }
+
+  render() {
+    const objects: string[] = [];
+    const addObject = (body: string) => {
+      objects.push(body);
+      return objects.length;
+    };
+    const catalogId = addObject("<< /Type /Catalog /Pages 2 0 R >>");
+    const pagesId = addObject("");
+    const fontRegularId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+    const fontBoldId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+    const pageIds: number[] = [];
+    for (const commands of this.pages) {
+      const stream = commands.join("\n");
+      const contentId = addObject(`<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`);
+      const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${this.width} ${this.height}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+      pageIds.push(pageId);
+    }
+    objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
+    let pdf = "%PDF-1.4\n";
+    const offsets = [0];
+    objects.forEach((body, index) => {
+      offsets.push(Buffer.byteLength(pdf, "utf8"));
+      pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+    });
+    const xrefOffset = Buffer.byteLength(pdf, "utf8");
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    for (let index = 1; index < offsets.length; index += 1) {
+      pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+    }
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+    return new Uint8Array(Buffer.from(pdf, "utf8"));
+  }
 }
 
 function isLikelyImageAttachment(attachment: TrelloAttachment) {
@@ -657,6 +872,188 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
   }
 
   return ordersByCardId;
+}
+
+function renderInboundPdfCard(pdf: InboundPdfDocument, x: number, y: number, w: number, h: number, title: string, lines: unknown[], options?: { dark?: boolean }) {
+  const dark = options?.dark === true;
+  pdf.rect(x, y, w, h, dark ? "0.12 0.10 0.12" : "1 1 1");
+  pdf.strokeRect(x, y, w, h, dark ? "0.24 0.20 0.24" : "0.90 0.88 0.91", 0.6);
+  pdf.text(title.toUpperCase(), x + 14, y + h - 19, { size: 7.5, bold: true, color: dark ? "0.70 0.64 0.70" : "0.48 0.43 0.51" });
+  let currentY = y + h - 35;
+  for (const line of lines.filter(Boolean).slice(0, 7)) {
+    pdf.text(line, x + 14, currentY, { size: 10, color: dark ? "1 1 1" : "0.07 0.06 0.08", bold: currentY === y + h - 35 });
+    currentY -= 13;
+  }
+}
+
+function renderInboundPdfFooter(pdf: InboundPdfDocument, reference: string, page: number) {
+  pdf.text(reference, 48, 34, { size: 7.5, color: "0.50 0.47 0.53" });
+  pdf.text(`NEONTRIP Lieferschein - ${page}`, 410, 34, { size: 7.5, color: "0.50 0.47 0.53" });
+}
+
+function renderInboundPdfHeader(pdf: InboundPdfDocument, reference: string, page: number) {
+  pdf.text("NEONTRIP", 430, 806, { size: 14, bold: true });
+  pdf.text(reference, 48, 806, { size: 8.5, color: "0.50 0.47 0.53" });
+  renderInboundPdfFooter(pdf, reference, page);
+}
+
+function inboundDeliveryLineItems(sale: InboundSupplierSaleOrderRow | null, itemRows: InboundSupplierSaleItemRow[], fallbackTitle: string) {
+  const snapshot = jsonRecord(sale?.offer_snapshot);
+  const snapshotItems = arrayRecords(snapshot.lineItems);
+  if (snapshotItems.length) {
+    return snapshotItems.map((item, index) => ({
+      title: recordString(item, ["title", "name"], 240) || `Position ${index + 1}`,
+      description: null,
+      quantity: numericText(item.quantity) || numericText(item.normalizedQuantity) || "1",
+    }));
+  }
+  if (itemRows.length) {
+    return itemRows.map((item, index) => ({
+      title: item.title || `Position ${index + 1}`,
+      description: null,
+      quantity: numericText(item.quantity) || "1",
+    }));
+  }
+  return [{ title: fallbackTitle || "Inbound-Sendung", description: null, quantity: "1" }];
+}
+
+async function fetchInboundSupplierSaleForShipment(shipment: InboundShipmentRow) {
+  const cardId = trimNullable(shipment.trello_card_id);
+  if (!cardId) return null;
+  const rows = await supabaseRequest<InboundSupplierSaleOrderRow[]>("supplier_sales", undefined, {
+    select: "id,request_id,trello_card_id,shopify_order_id,shopify_order_name,shopify_order_url,offer_number,customer_name,customer_company,customer_email,offer_snapshot,raw_shopify,created_at,updated_at",
+    trello_card_id: `eq.${encodeFilterValue(cardId)}`,
+    order: "updated_at.desc",
+    limit: 1,
+  }).catch(() => []);
+  return rows[0] || null;
+}
+
+export async function generateInboundDeliveryNotePdf(shipmentId: string): Promise<InboundDeliveryNotePdf> {
+  const id = trimNullable(shipmentId);
+  if (!id) throw new QuoteValidationError("Sendung fehlt.", ["shipmentId ist erforderlich."], 400);
+
+  const shipments = await supabaseRequest<InboundShipmentRow[]>("inbound_shipments", undefined, {
+    select: "*",
+    id: `eq.${encodeFilterValue(id)}`,
+    limit: 1,
+  });
+  const shipment = shipments[0];
+  if (!shipment) throw new QuoteValidationError("Sendung nicht gefunden.", [`shipmentId=${id}`], 404);
+
+  const [events, sale, shopifyByCard] = await Promise.all([
+    supabaseRequest<InboundTrackingEventRow[]>("inbound_tracking_events", undefined, {
+      select: "*",
+      shipment_id: `eq.${encodeFilterValue(shipment.id)}`,
+      order: "event_time.desc",
+      limit: 1,
+    }),
+    fetchInboundSupplierSaleForShipment(shipment),
+    shipment.trello_card_id ? fetchShopifyOrdersByTrelloCardId([shipment.trello_card_id]) : Promise.resolve(new Map<string, InboundShopifyOrderLink>()),
+  ]);
+  const itemRows = sale
+    ? await supabaseRequest<InboundSupplierSaleItemRow[]>("supplier_sale_items", undefined, {
+        select: "id,sale_id,title,quantity,raw_line_item",
+        sale_id: `eq.${encodeFilterValue(sale.id)}`,
+        order: "created_at.asc",
+        limit: 200,
+      }).catch(() => [])
+    : [];
+  const latestEvent = events[0] || null;
+  const snapshot = jsonRecord(sale?.offer_snapshot);
+  const customer = jsonRecord(snapshot.customer);
+  const rawShopify = jsonRecord(sale?.raw_shopify);
+  const shopifyOrder = shipment.trello_card_id ? shopifyByCard.get(shipment.trello_card_id) || null : null;
+  const reference = sale?.offer_number || shopifyOrder?.orderNumber || shipment.tracking_number;
+  const customerLabel =
+    trimNullable(sale?.customer_company) ||
+    trimNullable(sale?.customer_name) ||
+    recordString(customer, ["company", "signerName", "name"], 180) ||
+    "Empfänger";
+  const customerLines = [
+    customerLabel,
+    sale?.customer_name && sale.customer_name !== customerLabel ? sale.customer_name : null,
+    sale?.customer_email || recordString(customer, ["email"], 180),
+  ].filter(Boolean);
+  const deliveryAddress =
+    addressLines(snapshot.deliveryAddress).length ? addressLines(snapshot.deliveryAddress) :
+    addressLines(rawShopify.shipping_address).length ? addressLines(rawShopify.shipping_address) :
+    addressLines(rawShopify.shippingAddress);
+  const lines = inboundDeliveryLineItems(sale, itemRows, shipment.trello_card_name || shipment.tracking_number);
+  const pdf = new InboundPdfDocument();
+
+  pdf.rect(0, 0, 595.28, 841.89, "0.04 0.04 0.04");
+  pdf.rect(0, 0, 595.28, 96, "0.10 0.03 0.07");
+  pdf.rect(46, 746, 96, 22, "0.98 0.19 0.64");
+  pdf.text("WARENAUSGANG", 58, 753, { size: 7.5, bold: true, color: "1 1 1" });
+  pdf.text("NEONTRIP", 48, 792, { size: 20, bold: true, color: "1 1 1" });
+  pdf.text("Lieferschein", 48, 672, { size: 40, bold: true, color: "1 1 1" });
+  pdf.text("Begleitdokument zur Lieferung. Keine Preise, keine Rechnung.", 50, 640, { size: 12, color: "0.78 0.74 0.80" });
+  renderInboundPdfCard(pdf, 48, 514, 226, 96, "Sendung", [
+    `Tracking: ${shipment.tracking_number}`,
+    `Carrier: ${shipment.carrier.toUpperCase()}`,
+    `Status: ${inboundStatusPdfLabel(shipment.status)}`,
+    `Letztes Event: ${dateLabel(latestEvent?.event_time || shipment.last_event_at)}`,
+  ], { dark: true });
+  renderInboundPdfCard(pdf, 310, 514, 220, 96, "Referenz", [
+    `Dokument: ${reference}`,
+    shopifyOrder?.orderNumber ? `Shopify: ${shopifyOrder.orderNumber}` : null,
+    sale?.offer_number ? `Angebot: ${sale.offer_number}` : null,
+    `Erstellt: ${dateLabel(new Date().toISOString())}`,
+  ], { dark: true });
+  renderInboundPdfCard(pdf, 48, 390, 226, 92, "Empfänger", customerLines.length ? customerLines : ["Empfänger laut Shopify/Angebot"], { dark: true });
+  renderInboundPdfCard(pdf, 310, 390, 220, 92, "Lieferanschrift", deliveryAddress.length ? deliveryAddress : ["Keine Lieferanschrift gespeichert"], { dark: true });
+  ["Keine Preise", "Keine Rechnung", "NEONTRIP Layout", "Wareneingang"].forEach((label, index) => {
+    const x = 48 + index * 122;
+    pdf.rect(x, 134, 106, 54, "0.12 0.10 0.12");
+    pdf.strokeRect(x, 134, 106, 54, "0.24 0.20 0.24", 0.5);
+    pdf.text(label, x + 10, 160, { size: 9.5, bold: true, color: "1 1 1" });
+  });
+  pdf.text("Automatisch aus Inbound Shipping erzeugt. Preis- und Zahlungsinformationen sind bewusst ausgeblendet.", 48, 76, { size: 8.5, color: "0.62 0.58 0.64" });
+
+  pdf.addPage();
+  renderInboundPdfHeader(pdf, reference, 2);
+  pdf.rect(48, 728, 86, 22, "0.98 0.89 0.95");
+  pdf.text("LIEFERDATEN", 60, 735, { size: 7.5, bold: true, color: "0.88 0.08 0.48" });
+  pdf.text("Positionen", 48, 690, { size: 25, bold: true });
+  pdf.text("Mengen und Artikelbeschreibung zur Lieferung. Keine Netto-, Brutto- oder Steuerwerte.", 48, 668, { size: 10, color: "0.42 0.38 0.45" });
+  pdf.rect(48, 628, 500, 24, "0.96 0.94 0.97");
+  pdf.text("Position", 62, 636, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+  pdf.text("Menge", 468, 636, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+  pdf.cursorY = 604;
+  for (const [index, item] of lines.entries()) {
+    const descriptionLines = item.description ? wrapPdfText(item.description, 70).length : 0;
+    const rowHeight = Math.max(46, 32 + descriptionLines * 10);
+    if (pdf.cursorY - rowHeight < 72) {
+      pdf.addPage();
+      renderInboundPdfHeader(pdf, reference, pdf.pageCount);
+      pdf.text("Positionen (Fortsetzung)", 48, 744, { size: 18, bold: true });
+      pdf.rect(48, 704, 500, 24, "0.96 0.94 0.97");
+      pdf.text("Position", 62, 712, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+      pdf.text("Menge", 468, 712, { size: 8, bold: true, color: "0.48 0.43 0.51" });
+      pdf.cursorY = 680;
+    }
+    const rowY = pdf.cursorY - rowHeight;
+    pdf.rect(48, rowY, 500, rowHeight - 4, index % 2 === 0 ? "1 1 1" : "0.985 0.975 0.99");
+    pdf.strokeRect(48, rowY, 500, rowHeight - 4, "0.90 0.88 0.91", 0.45);
+    pdf.text(item.title, 62, pdf.cursorY - 18, { size: 10, bold: true });
+    if (item.description) {
+      const oldY = pdf.cursorY;
+      pdf.cursorY = pdf.cursorY - 34;
+      pdf.multiline(item.description, 62, 70, { size: 8, color: "0.42 0.38 0.45", leading: 10 });
+      pdf.cursorY = oldY;
+    }
+    pdf.text(String(item.quantity || "1"), 474, pdf.cursorY - 18, { size: 9, bold: true });
+    pdf.cursorY = rowY - 10;
+  }
+  pdf.rect(48, Math.max(52, pdf.cursorY - 52), 500, 42, "0.98 0.89 0.95");
+  pdf.text("Hinweis", 62, Math.max(77, pdf.cursorY - 28), { size: 9, bold: true, color: "0.88 0.08 0.48" });
+  pdf.text("Dieser Lieferschein enthält keine Preise und ersetzt keine Rechnung.", 62, Math.max(63, pdf.cursorY - 43), { size: 8.5, color: "0.18 0.12 0.18" });
+
+  return {
+    fileName: `lieferschein-${safePdfFileName(reference)}-${safePdfFileName(shipment.tracking_number)}.pdf`,
+    bytes: pdf.render(),
+  };
 }
 
 async function fetchQuoteVisualsByTrelloCardId(cardIds: string[]) {

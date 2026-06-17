@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
   createInboundIncidentTask,
+  generateInboundDeliveryNotePdf,
   listInboundBoard,
   markInboundShipmentOutForDelivery,
   updateInboundIncidentStatus,
@@ -81,6 +82,17 @@ export async function GET(request: NextRequest) {
   if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) return unauthorized();
 
   try {
+    if (request.nextUrl.searchParams.get("action") === "delivery_note_pdf") {
+      const pdf = await generateInboundDeliveryNotePdf(String(request.nextUrl.searchParams.get("shipmentId") || ""));
+      return new NextResponse(Buffer.from(pdf.bytes), {
+        headers: {
+          "Cache-Control": "private, no-store, max-age=0",
+          "Content-Disposition": `attachment; filename="${pdf.fileName.replace(/"/g, "")}"`,
+          "Content-Type": "application/pdf",
+          Vary: "Cookie, Cf-Access-Jwt-Assertion",
+        },
+      });
+    }
     const carrier = parseCarrierFilter(request.nextUrl.searchParams.get("carrier"));
     const scope = parseScopeFilter(request.nextUrl.searchParams.get("scope"));
     const requestId = request.nextUrl.searchParams.get("requestId");

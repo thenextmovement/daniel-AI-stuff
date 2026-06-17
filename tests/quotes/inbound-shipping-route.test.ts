@@ -73,6 +73,77 @@ test("inbound shipping route defaults to active shipments", async () => {
   }
 });
 
+test("inbound shipping route serves delivery note PDFs with download headers", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (url.pathname.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-route-pdf-1",
+          shipment_key: "trello:card-route:dhl:7055403121",
+          source: "trello",
+          trello_card_id: null,
+          trello_card_name: "Route PDF Test",
+          trello_card_url: null,
+          trello_list_id: "list-1",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "7055403121",
+          tracking_raw: "DHL Express 7055403121",
+          status: "in_transit",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-16T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-16T08:00:00.000Z",
+          tendered_at: "2026-06-16T09:00:00.000Z",
+          last_event_at: "2026-06-16T09:30:00.000Z",
+          last_movement_at: "2026-06-16T09:30:00.000Z",
+          last_checked_at: "2026-06-16T10:00:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-16T08:00:00.000Z",
+          updated_at: "2026-06-16T10:00:00.000Z",
+        },
+      ]);
+    }
+    if (url.pathname.endsWith("/rest/v1/inbound_tracking_events")) return json([]);
+
+    return new Response(JSON.stringify({ error: `unexpected ${url.pathname}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const response = await GET(request("/api/ops/customer-records/inbound-shipping?action=delivery_note_pdf&shipmentId=inbound-route-pdf-1"));
+    const content = Buffer.from(await response.arrayBuffer()).toString("latin1");
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/pdf");
+    assert.match(response.headers.get("content-disposition") || "", /attachment; filename="lieferschein-/);
+    assert.match(response.headers.get("cache-control") || "", /no-store/);
+    assert.match(content, /^%PDF-1\.4/);
+    assert.match(content, /Lieferschein/);
+    assert.match(content, /7055403121/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
 test("inbound shipping route rejects unsupported actions with no-store headers", async () => {
   const response = await POST(request("/api/ops/customer-records/inbound-shipping", {
     method: "POST",
