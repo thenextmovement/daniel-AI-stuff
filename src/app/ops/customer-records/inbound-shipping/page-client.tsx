@@ -381,7 +381,7 @@ export function InboundShippingClient({
                             {savingShipmentId === item.shipment.id ? "Speichert..." : "In Zustellung"}
                           </button>
                         ) : null}
-                        {item.shipment.status === "out_for_delivery" && item.shopifyOrder?.url ? (
+                        {item.shopifyOrder?.url ? (
                           <a
                             className="inline-flex items-center gap-2 rounded-[0.5rem] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
                             href={item.shopifyOrder.url}
