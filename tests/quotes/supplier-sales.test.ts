@@ -1414,7 +1414,9 @@ test("supplier order confirmation email sends generated PDF through configured w
 
   assert.equal(webhookCount, 1);
   assert.equal(eventCount, 2);
-  assert.equal((patchedMetadata?.order_confirmation_email as Record<string, unknown>).provider_message_id, "outlook-message-1");
+  assert.ok(patchedMetadata);
+  const orderConfirmationEmailMeta = (patchedMetadata as { order_confirmation_email?: Record<string, unknown> }).order_confirmation_email;
+  assert.equal(orderConfirmationEmailMeta?.provider_message_id, "outlook-message-1");
 });
 
 test("supplier order confirmation email duplicate reservation does not resend webhook", async () => {
