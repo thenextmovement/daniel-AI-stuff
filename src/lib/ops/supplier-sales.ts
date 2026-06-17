@@ -421,6 +421,11 @@ export type SupplierShopifyTagActionResult = {
   error: string | null;
 };
 
+export type SupplierOrderConfirmationPdf = {
+  fileName: string;
+  bytes: Uint8Array;
+};
+
 type CompletedOfferFeedEntry = {
   offerId: string | null;
   offerNumber: string | null;
@@ -2603,6 +2608,284 @@ export async function cleanupSupplierAssignmentTasks(): Promise<SupplierAssignme
   }
 
   return { archivedDedicatedTasks, closedFallbackTasks, clearedSales };
+}
+
+function pdfText(value: unknown) {
+  const text = String(value ?? "")
+    .replace(/Ä/g, "Ae")
+    .replace(/Ö/g, "Oe")
+    .replace(/Ü/g, "Ue")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[–—]/g, "-")
+    .replace(/[·•]/g, "-")
+    .replace(/[„“”]/g, '"')
+    .replace(/[‚‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7e]/g, "?");
+  return `(${text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)")})`;
+}
+
+function money(value: unknown, currency = "EUR") {
+  const amount = numericValue(value);
+  if (amount === null) return "-";
+  return `${amount.toFixed(2)} ${currency}`;
+}
+
+function dateLabel(value: unknown) {
+  const text = cleanText(value, 80);
+  if (!text) return "-";
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+
+function wrapPdfText(value: unknown, maxChars: number) {
+  const words = String(value ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function addressLines(value: unknown) {
+  const address = jsonRecord(value);
+  return [
+    recordString(address, ["company"], 180),
+    recordString(address, ["name"], 180),
+    [recordString(address, ["address1", "street"], 180), recordString(address, ["address2"], 180)].filter(Boolean).join(" "),
+    [recordString(address, ["zip", "postalCode"], 40), recordString(address, ["city"], 120)].filter(Boolean).join(" "),
+    recordString(address, ["country"], 120),
+  ].filter(Boolean);
+}
+
+function orderConfirmationLineItems(row: SupplierSaleRow, itemRows: SupplierSaleItemRow[]) {
+  const snapshot = jsonRecord(row.offer_snapshot);
+  const snapshotItems = arrayRecords(snapshot.lineItems);
+  if (snapshotItems.length) {
+    return snapshotItems.map((item, index) => {
+      const quantity = numericValue(item.quantity) || numericValue(item.normalizedQuantity) || 1;
+      const unitPrice = numericValue(item.unitPrice || item.unit_price);
+      return {
+        title: recordString(item, ["title", "name"], 240) || `Position ${index + 1}`,
+        description: recordString(item, ["description"], 600),
+        quantity,
+        unitPrice,
+        total: unitPrice === null ? null : unitPrice * quantity,
+      };
+    });
+  }
+  return itemRows.map((item, index) => ({
+    title: item.title || `Position ${index + 1}`,
+    description: recordString(item.raw_line_item, ["description"], 600),
+    quantity: Number(item.quantity || 1),
+    unitPrice: null,
+    total: null,
+  }));
+}
+
+class SimplePdfDocument {
+  private pages: string[][] = [[]];
+  private y = 0;
+
+  constructor(private readonly width = 595.28, private readonly height = 841.89) {
+    this.y = this.height - 52;
+  }
+
+  private current() {
+    return this.pages[this.pages.length - 1];
+  }
+
+  addPage() {
+    this.pages.push([]);
+    this.y = this.height - 52;
+  }
+
+  ensure(space: number) {
+    if (this.y - space < 64) this.addPage();
+  }
+
+  move(amount: number) {
+    this.y -= amount;
+  }
+
+  get cursorY() {
+    return this.y;
+  }
+
+  set cursorY(value: number) {
+    this.y = value;
+  }
+
+  text(value: unknown, x: number, y: number, options?: { size?: number; bold?: boolean; color?: string }) {
+    const size = options?.size || 10;
+    const font = options?.bold ? "F2" : "F1";
+    const color = options?.color || "0 0 0";
+    this.current().push(`BT ${color} rg /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td ${pdfText(value)} Tj ET`);
+  }
+
+  multiline(value: unknown, x: number, maxChars: number, options?: { size?: number; leading?: number; bold?: boolean; color?: string }) {
+    const leading = options?.leading || 13;
+    for (const line of wrapPdfText(value, maxChars)) {
+      this.ensure(leading);
+      this.text(line, x, this.y, options);
+      this.y -= leading;
+    }
+  }
+
+  line(x1: number, y1: number, x2: number, y2: number, color = "0.75 0.72 0.67", width = 0.7) {
+    this.current().push(`${color} RG ${width} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+  }
+
+  rect(x: number, y: number, w: number, h: number, color = "0.96 0.95 0.92") {
+    this.current().push(`${color} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`);
+  }
+
+  render() {
+    const objects: string[] = [];
+    const addObject = (body: string) => {
+      objects.push(body);
+      return objects.length;
+    };
+
+    const catalogId = addObject("<< /Type /Catalog /Pages 2 0 R >>");
+    const pagesId = addObject("");
+    const fontRegularId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+    const fontBoldId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+    const pageIds: number[] = [];
+
+    for (const commands of this.pages) {
+      const stream = commands.join("\n");
+      const contentId = addObject(`<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`);
+      const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${this.width} ${this.height}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+      pageIds.push(pageId);
+    }
+
+    objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
+
+    let pdf = "%PDF-1.4\n";
+    const offsets = [0];
+    objects.forEach((body, index) => {
+      offsets.push(Buffer.byteLength(pdf, "utf8"));
+      pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+    });
+    const xrefOffset = Buffer.byteLength(pdf, "utf8");
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    for (let index = 1; index < offsets.length; index += 1) {
+      pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+    }
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+    return new Uint8Array(Buffer.from(pdf, "utf8"));
+  }
+}
+
+function safePdfFileName(value: unknown) {
+  const text = cleanText(value, 120).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return text || "auftrag";
+}
+
+export async function generateSupplierOrderConfirmationPdf(saleId: string): Promise<SupplierOrderConfirmationPdf> {
+  const row = await fetchSaleRowById(saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  const itemRows = await fetchItemsForSale(row.id);
+  const snapshot = jsonRecord(row.offer_snapshot);
+  const offer = jsonRecord(snapshot.offer);
+  const customer = jsonRecord(snapshot.customer);
+  const totals = jsonRecord(snapshot.totals);
+  const currency = row.currency || recordString(offer, ["currency"], 12) || "EUR";
+  const documentReference = row.document_reference || row.offer_number || row.shopify_order_name || row.sale_key;
+  const customerLabel = row.customer_company || row.customer_name || recordString(customer, ["company", "signerName"], 180) || "-";
+  const lines = orderConfirmationLineItems(row, itemRows);
+  const deliveryAddressLines = addressLines(snapshot.deliveryAddress);
+  const billingAddressLines = addressLines(snapshot.billingAddress);
+  const acceptedAt = recordString(snapshot, ["acceptedAt", "signedAt"], 80) || recordString(offer, ["acceptedAt", "signedAt"], 80) || row.created_at;
+
+  const pdf = new SimplePdfDocument();
+  pdf.text("NEONTRIP", 48, 792, { size: 18, bold: true });
+  pdf.text("Auftragsbestaetigung", 48, 758, { size: 24, bold: true });
+  pdf.text(`Referenz: ${documentReference}`, 48, 736, { size: 11, color: "0.25 0.25 0.25" });
+  pdf.text(`Datum: ${dateLabel(new Date().toISOString())}`, 410, 792, { size: 10 });
+  pdf.text(`Angenommen: ${dateLabel(acceptedAt)}`, 410, 776, { size: 10 });
+  pdf.text(`Liefertermin: ${dateLabel(row.customer_due_date || row.supplier_due_date)}`, 410, 760, { size: 10 });
+  pdf.line(48, 716, 548, 716);
+  pdf.cursorY = 690;
+
+  pdf.text("Kunde", 48, pdf.cursorY, { size: 12, bold: true });
+  pdf.text("Lieferadresse", 318, pdf.cursorY, { size: 12, bold: true });
+  pdf.move(18);
+  pdf.multiline(customerLabel, 48, 38, { size: 10, bold: true });
+  if (row.customer_email) pdf.multiline(row.customer_email, 48, 38, { size: 9, color: "0.25 0.25 0.25" });
+  const leftAfter = pdf.cursorY;
+  pdf.cursorY = 672;
+  const delivery = deliveryAddressLines.length ? deliveryAddressLines : billingAddressLines;
+  for (const line of delivery) pdf.multiline(line, 318, 38, { size: 10 });
+  pdf.cursorY = Math.min(leftAfter, pdf.cursorY) - 16;
+
+  pdf.rect(48, pdf.cursorY - 38, 500, 40, "0.95 0.97 0.96");
+  pdf.text("Hinweis", 62, pdf.cursorY - 14, { size: 10, bold: true, color: "0.05 0.25 0.18" });
+  pdf.text("Diese Auftragsbestaetigung fasst die angenommenen Angebotspositionen zusammen. Sie ist keine Rechnung.", 62, pdf.cursorY - 29, { size: 9, color: "0.05 0.25 0.18" });
+  pdf.move(62);
+
+  pdf.ensure(70);
+  pdf.text("Bestellte Positionen", 48, pdf.cursorY, { size: 14, bold: true });
+  pdf.move(22);
+  pdf.rect(48, pdf.cursorY - 7, 500, 22, "0.93 0.91 0.87");
+  pdf.text("Position", 58, pdf.cursorY, { size: 9, bold: true });
+  pdf.text("Menge", 348, pdf.cursorY, { size: 9, bold: true });
+  pdf.text("Einzel", 400, pdf.cursorY, { size: 9, bold: true });
+  pdf.text("Gesamt", 480, pdf.cursorY, { size: 9, bold: true });
+  pdf.move(24);
+
+  for (const [index, item] of lines.entries()) {
+    pdf.ensure(66);
+    const rowTop = pdf.cursorY + 8;
+    if (index % 2 === 0) pdf.rect(48, rowTop - 46, 500, 52, "0.985 0.98 0.96");
+    pdf.multiline(item.title, 58, 46, { size: 10, bold: true, leading: 12 });
+    if (item.description) pdf.multiline(item.description, 58, 62, { size: 8, color: "0.32 0.32 0.32", leading: 10 });
+    const rowBottom = pdf.cursorY;
+    pdf.text(String(item.quantity || 1), 356, rowTop - 10, { size: 9 });
+    pdf.text(item.unitPrice === null ? "-" : money(item.unitPrice, currency), 400, rowTop - 10, { size: 9 });
+    pdf.text(item.total === null ? "-" : money(item.total, currency), 480, rowTop - 10, { size: 9 });
+    pdf.cursorY = Math.min(rowBottom, rowTop - 48);
+    pdf.line(48, pdf.cursorY + 6, 548, pdf.cursorY + 6, "0.85 0.83 0.79", 0.4);
+  }
+
+  pdf.ensure(92);
+  const subtotal = numericValue(totals.subtotalNet) ?? numericValue(row.subtotal_price);
+  const tax = numericValue(totals.taxAmount);
+  const total = numericValue(totals.totalGross) ?? numericValue(row.total_price);
+  pdf.move(6);
+  pdf.line(330, pdf.cursorY, 548, pdf.cursorY, "0.45 0.42 0.37", 0.8);
+  pdf.move(18);
+  pdf.text("Zwischensumme netto", 350, pdf.cursorY, { size: 10 });
+  pdf.text(money(subtotal, currency), 470, pdf.cursorY, { size: 10 });
+  pdf.move(16);
+  pdf.text("USt.", 350, pdf.cursorY, { size: 10 });
+  pdf.text(tax === null ? "-" : money(tax, currency), 470, pdf.cursorY, { size: 10 });
+  pdf.move(18);
+  pdf.text("Gesamt brutto", 350, pdf.cursorY, { size: 12, bold: true });
+  pdf.text(money(total, currency), 470, pdf.cursorY, { size: 12, bold: true });
+
+  pdf.text("DARA NOVA GmbH - NEONTRIP - Auftragsbestaetigung automatisch aus dem angenommenen Angebot erzeugt", 48, 36, { size: 8, color: "0.45 0.45 0.45" });
+
+  return {
+    fileName: `auftragsbestaetigung-${safePdfFileName(documentReference)}.pdf`,
+    bytes: pdf.render(),
+  };
 }
 
 async function ensureSupplierDeadlineTask(row: SupplierSaleRow, actor?: SupplierSaleActor | null, now = new Date()) {

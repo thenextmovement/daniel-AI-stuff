@@ -486,6 +486,7 @@ function SaleCard({
           <div className="mt-4 flex flex-wrap gap-2">
             <QuickLink href={sale.offerPublicUrl} label="Angebot" />
             <QuickLink href={sale.finalPdfUrl} label="Snapshot" />
+            <QuickLink href={`/api/ops/supplier-sales?action=order_confirmation_pdf&saleId=${encodeURIComponent(sale.id)}`} label="AB-PDF" />
             <QuickLink href={sale.shopifyOrderUrl} label="Shopify" />
             <QuickLink href={sale.paymentLink} label="Bezahlen" />
             <QuickLink href={sale.supplierTrelloCardUrl} label="Supplier-Karte" />

@@ -6,6 +6,7 @@ import {
   applyNoPaymentReminderShopifyTag,
   cleanupSupplierAssignmentTasks,
   createSupplierDeadlineTasks,
+  generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
@@ -205,6 +206,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const params = request.nextUrl.searchParams;
+    if (params.get("action") === "order_confirmation_pdf") {
+      const pdf = await generateSupplierOrderConfirmationPdf(String(params.get("saleId") || ""));
+      return new NextResponse(Buffer.from(pdf.bytes), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${pdf.fileName.replace(/"/g, "")}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     const board = await listSupplierSalesBoard({
       scope: (params.get("scope") || "active") as "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all",
       supplier: (params.get("supplier") || "all") as SupplierSaleSupplier | SupplierSaleRecommendation | "all",

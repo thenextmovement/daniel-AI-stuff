@@ -13,6 +13,7 @@ import {
   deriveAssignmentStatus,
   derivePaymentDecisionStatus,
   deriveSupplierRecommendation,
+  generateSupplierOrderConfirmationPdf,
   normalizeDateOnly,
   normalizeShopifyPaymentStatus,
   requestSupplierPaymentReminder,
@@ -1247,6 +1248,108 @@ test("supplier sale action sets Shopify no payment reminder tag", async () => {
   });
 
   assert.equal(shopifyTagCount, 1);
+});
+
+test("supplier order confirmation PDF is generated from offer snapshot", async () => {
+  const row = saleRow({
+    id: "sale-order-confirmation",
+    offer_number: "A/N 15333",
+    document_reference: "A-N-15333-ABCDEF",
+    customer_name: "Mia Muster",
+    customer_company: "Muster GmbH",
+    customer_email: "mia@muster.de",
+    offer_snapshot: {
+      acceptedAt: "2026-06-16T12:00:00.000Z",
+      offer: {
+        offerNumber: "A/N 15333",
+        documentReference: "A-N-15333-ABCDEF",
+        currency: "EUR",
+      },
+      customer: {
+        signerName: "Mia Muster",
+        email: "mia@muster.de",
+        company: "Muster GmbH",
+      },
+      deliveryAddress: {
+        company: "Muster GmbH",
+        name: "Mia Muster",
+        address1: "Musterstrasse 1",
+        zip: "10115",
+        city: "Berlin",
+        country: "Deutschland",
+      },
+      billingAddress: {
+        company: "Muster GmbH",
+        name: "Mia Muster",
+        address1: "Musterstrasse 1",
+        zip: "10115",
+        city: "Berlin",
+        country: "Deutschland",
+      },
+      totals: {
+        subtotalNet: 1000,
+        taxAmount: 190,
+        totalGross: 1190,
+      },
+      lineItems: [
+        {
+          id: "line-1",
+          title: "LED Neon Logo",
+          description: "Individuelle Fertigung laut freigegebenem Angebot.",
+          quantity: 2,
+          unitPrice: 500,
+        },
+      ],
+    },
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: row.id })]);
+    return Response.json([]);
+  }, async () => {
+    const pdf = await generateSupplierOrderConfirmationPdf(row.id);
+    const text = Buffer.from(pdf.bytes).toString("utf8");
+    assert.equal(pdf.fileName, "auftragsbestaetigung-A-N-15333-ABCDEF.pdf");
+    assert.equal(text.startsWith("%PDF-1.4"), true);
+    assert.equal(text.includes("/Type /Catalog"), true);
+    assert.equal(text.includes("/BaseFont /Helvetica-Bold"), true);
+    assert.equal(text.includes("(NEONTRIP)"), true);
+    assert.equal(text.includes("þÿ"), false);
+    assert.ok(pdf.bytes.length > 1000);
+  });
+});
+
+test("supplier sales route downloads order confirmation PDF", async () => {
+  const row = saleRow({
+    id: "sale-order-confirmation-route",
+    document_reference: "A-N-15334-ABCDEF",
+    offer_snapshot: {
+      acceptedAt: "2026-06-16T12:00:00.000Z",
+      totals: { subtotalNet: 1000, taxAmount: 190, totalGross: 1190 },
+      lineItems: [{ title: "LED Neon Logo", quantity: 1, unitPrice: 1000 }],
+    },
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: row.id })]);
+    return Response.json([]);
+  }, async () => {
+    const request = new NextRequest(`http://127.0.0.1:3100/api/ops/supplier-sales?action=order_confirmation_pdf&saleId=${row.id}`, {
+      headers: { host: "127.0.0.1:3100" },
+    });
+    const response = await supplierSalesGET(request);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") || "", /^application\/pdf/);
+    assert.match(response.headers.get("content-disposition") || "", /auftragsbestaetigung-A-N-15334-ABCDEF\.pdf/);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assert.equal(Buffer.from(bytes).toString("utf8", 0, 8), "%PDF-1.4");
+  });
 });
 
 test("supplier sales live check compares latest completed offers with vergabe rows without PII", async () => {
