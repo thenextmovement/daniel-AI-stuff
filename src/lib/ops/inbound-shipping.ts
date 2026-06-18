@@ -931,6 +931,16 @@ function addOrderForCard(
   if (cardId && order && !ordersByCardId.has(cardId)) ordersByCardId.set(cardId, order);
 }
 
+function inboundShipmentHasOfferReferences(shipment: InboundShipment) {
+  const references = extractInboundOfferReferencesFromText([
+    shipment.trelloCardName,
+    shipment.trackingRaw,
+    shipment.shipmentKey,
+    shipment.statusReason,
+  ]);
+  return Boolean(references.offerIds.size || references.offerNumbers.size || references.idempotencyKeys.size);
+}
+
 function supplierSalesSelect(extra = "") {
   const fields = [
     "id",
@@ -1100,7 +1110,22 @@ async function fetchShopifyOrdersByTrelloCardId(cardIds: string[]) {
     }
   }
 
-  for (const row of sortByUpdatedAt(Array.from(supplierRowsById.values()))) {
+  const directSupplierRowsByCardId = new Map<string, InboundSupplierSaleOrderRow[]>();
+  for (const row of [...supplierSalesByCard, ...supplierSalesByRequest]) {
+    const cardId = trimNullable(row.trello_card_id) || (row.request_id ? cardIdByRequestId.get(row.request_id) : null);
+    if (!cardId || !supplierSaleOrderLink(row)) continue;
+    const rows = directSupplierRowsByCardId.get(cardId) || [];
+    rows.push(row);
+    directSupplierRowsByCardId.set(cardId, rows);
+  }
+  const directSupplierRowsById = new Map<string, InboundSupplierSaleOrderRow>();
+  for (const [cardId, rows] of directSupplierRowsByCardId.entries()) {
+    const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
+    if (uniqueRows.length === 1) directSupplierRowsById.set(uniqueRows[0].id, uniqueRows[0]);
+    else directSupplierRowsByCardId.set(cardId, uniqueRows);
+  }
+
+  for (const row of sortByUpdatedAt(Array.from(directSupplierRowsById.values()))) {
     const cardId = trimNullable(row.trello_card_id) || (row.request_id ? cardIdByRequestId.get(row.request_id) : null);
     const matchedBy = trimNullable(row.trello_card_id) ? "supplier_sales_trello_card" : "supplier_sales_request";
     const order = supplierSaleOrderLink(row, {
@@ -1184,15 +1209,16 @@ async function fetchShopifyOrdersByLooseInboundReferences(shipments: InboundShip
   for (const shipment of shipments) {
     const refs = referencesByShipmentId.get(shipment.id);
     if (!refs) continue;
+    const prefix = trimNullable(shipment.trelloCardId) ? "Shipment" : "Ohne Trello-ID";
     const byOfferId = sortByUpdatedAt(supplierSalesByOfferId).find((row) => trimNullable(row.offer_id) && refs.offerIds.has(trimNullable(row.offer_id) as string));
     if (byOfferId) {
-      const order = supplierSaleOrderLink(byOfferId, { matchedBy: "supplier_sales_offer_id", matchLabel: `Ohne Trello-ID -> Offer ID ${byOfferId.offer_id}` });
+      const order = supplierSaleOrderLink(byOfferId, { matchedBy: "supplier_sales_offer_id", matchLabel: `${prefix} -> Offer ID ${byOfferId.offer_id}` });
       if (order) ordersByShipmentId.set(shipment.id, order);
       continue;
     }
     const byIdempotency = sortByUpdatedAt(supplierSalesByIdempotencyKey).find((row) => trimNullable(row.idempotency_key) && refs.idempotencyKeys.has(trimNullable(row.idempotency_key) as string));
     if (byIdempotency) {
-      const order = supplierSaleOrderLink(byIdempotency, { matchedBy: "supplier_sales_idempotency_key", matchLabel: "Ohne Trello-ID -> Idempotency Key" });
+      const order = supplierSaleOrderLink(byIdempotency, { matchedBy: "supplier_sales_idempotency_key", matchLabel: `${prefix} -> Idempotency Key` });
       if (order) ordersByShipmentId.set(shipment.id, order);
       continue;
     }
@@ -1205,7 +1231,7 @@ async function fetchShopifyOrdersByLooseInboundReferences(shipments: InboundShip
     if (offerNumberMatches.length === 1 && uniqueOfferNumbers.size === 1) {
       const row = offerNumberMatches[0];
       const reference = trimNullable(row.offer_number) || trimNullable(row.document_reference);
-      const order = supplierSaleOrderLink(row, { matchedBy: "supplier_sales_offer_number", matchLabel: `Ohne Trello-ID -> Offer Number ${reference}` });
+      const order = supplierSaleOrderLink(row, { matchedBy: "supplier_sales_offer_number", matchLabel: `${prefix} -> Offer Number ${reference}` });
       if (order) ordersByShipmentId.set(shipment.id, order);
     }
   }
@@ -1513,7 +1539,7 @@ async function fetchTrelloVisual(item: InboundBoardItem): Promise<InboundShipmen
 
 async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<InboundBoard> {
   const cardIds = uniqueValues(board.items.map((item) => item.shipment.trelloCardId));
-  const unlinkedShipments = board.items.map((item) => item.shipment).filter((shipment) => !trimNullable(shipment.trelloCardId));
+  const shipmentsWithOfferReferences = board.items.map((item) => item.shipment).filter(inboundShipmentHasOfferReferences);
 
   let quoteVisualsByCardId = new Map<string, InboundShipmentVisual>();
   let shopifyOrdersByCardId = new Map<string, InboundShopifyOrderLink>();
@@ -1531,9 +1557,9 @@ async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<Inbou
     }
   }
   try {
-    shopifyOrdersByShipmentId = await fetchShopifyOrdersByLooseInboundReferences(unlinkedShipments);
+    shopifyOrdersByShipmentId = await fetchShopifyOrdersByLooseInboundReferences(shipmentsWithOfferReferences);
   } catch (error) {
-    console.warn("inbound shipping unlinked shopify orders unavailable", { error });
+    console.warn("inbound shipping shipment-reference shopify orders unavailable", { error });
   }
 
   const itemsWithQuoteVisuals = board.items.map((item) => {
@@ -1544,7 +1570,7 @@ async function enrichInboundBoardWithVisuals(board: InboundBoard): Promise<Inbou
         shopifyOrder: shopifyOrdersByShipmentId.get(item.shipment.id) || item.shopifyOrder || shopifyAdminSearchLinkForInboundShipment(item.shipment),
       };
     }
-    const exactShopifyOrder = shopifyOrdersByCardId.get(cardId) || item.shopifyOrder;
+    const exactShopifyOrder = shopifyOrdersByShipmentId.get(item.shipment.id) || shopifyOrdersByCardId.get(cardId) || item.shopifyOrder;
     return {
       ...item,
       visual: quoteVisualsByCardId.get(cardId) || item.visual,

@@ -815,6 +815,251 @@ test("listInboundBoard keeps Shopify supplier-sale links when only Shopify URL o
   }
 });
 
+test("listInboundBoard prefers shipment offer references over stale Trello-card Shopify links", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-specific-offer",
+          shipment_key: "trello:card-shared:dhl:2992676864",
+          source: "trello",
+          trello_card_id: "card-shared",
+          trello_card_name: "A/N 14061 DHL Express inbound",
+          trello_card_url: "https://trello.example/card-shared",
+          trello_list_id: "list-1",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "2992676864",
+          tracking_raw: "DHL Express 2992676864 A/N 14061",
+          status: "out_for_delivery",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-17T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-17T08:00:00.000Z",
+          tendered_at: "2026-06-17T09:00:00.000Z",
+          last_event_at: "2026-06-17T10:00:00.000Z",
+          last_movement_at: "2026-06-17T10:00:00.000Z",
+          last_checked_at: "2026-06-17T10:10:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-17T08:00:00.000Z",
+          updated_at: "2026-06-17T10:10:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_incidents") || path.endsWith("/rest/v1/inbound_tracking_events")) return json([]);
+    if (path.endsWith("/rest/v1/master_requests")) {
+      return json([{ id: "request-shared", request_id: "REQ-SHARED", trello_card_id: "card-shared", updated_at: "2026-06-17T08:00:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quotes") || path.endsWith("/rest/v1/crm_quote_versions") || path.endsWith("/rest/v1/crm_quote_version_images")) return json([]);
+    if (path.endsWith("/rest/v1/master_orders") || path.endsWith("/rest/v1/crm_sales")) return json([]);
+    if (path.endsWith("/rest/v1/supplier_sales")) {
+      if (url.searchParams.get("trello_card_id") === "in.(card-shared)") {
+        return json([
+          {
+            id: "supplier-sale-wrong-card",
+            request_id: null,
+            trello_card_id: "card-shared",
+            shopify_order_id: "8281257674999",
+            shopify_order_name: "#WRONG",
+            shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257674999",
+            offer_id: "offer-wrong-card",
+            offer_number: "A/N 99999",
+            document_reference: "A/N 99999",
+            idempotency_key: "offer:offer-wrong-card:shopify-sale:v1",
+            created_at: "2026-06-17T11:00:00.000Z",
+            updated_at: "2026-06-17T11:10:00.000Z",
+          },
+        ]);
+      }
+      const offerNumberFilter = url.searchParams.get("offer_number");
+      const documentReferenceFilter = url.searchParams.get("document_reference");
+      if (
+        offerNumberFilter === "in.(A/N 14061)" ||
+        offerNumberFilter === "in.(A%2FN%2014061)" ||
+        documentReferenceFilter === "in.(A/N 14061)" ||
+        documentReferenceFilter === "in.(A%2FN%2014061)"
+      ) {
+        return json([
+          {
+            id: "supplier-sale-correct-shipment",
+            request_id: null,
+            trello_card_id: null,
+            shopify_order_id: "8281257674000",
+            shopify_order_name: "#CORRECT",
+            shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257674000",
+            offer_id: "offer-correct-shipment",
+            offer_number: "A/N 14061",
+            document_reference: "A/N 14061",
+            idempotency_key: "offer:offer-correct-shipment:shopify-sale:v1",
+            created_at: "2026-06-17T09:00:00.000Z",
+            updated_at: "2026-06-17T09:10:00.000Z",
+          },
+        ]);
+      }
+      return json([]);
+    }
+
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const board = await listInboundBoard({ scope: "all" });
+
+    assert.equal(board.items.length, 1);
+    assert.deepEqual(board.items[0]?.shopifyOrder, {
+      orderId: "8281257674000",
+      orderNumber: "#CORRECT",
+      url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257674000",
+      source: "supplier_sales",
+      matchedBy: "supplier_sales_offer_number",
+      matchLabel: "Shipment -> Offer Number A/N 14061",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("listInboundBoard does not treat ambiguous Trello-card supplier sales as a safe Shopify link", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-ambiguous-card",
+          shipment_key: "trello:card-ambiguous:dhl:7055403121",
+          source: "trello",
+          trello_card_id: "card-ambiguous",
+          trello_card_name: "Shared Trello card DHL Express",
+          trello_card_url: "https://trello.example/card-ambiguous",
+          trello_list_id: "list-1",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "7055403121",
+          tracking_raw: "DHL Express 7055403121",
+          status: "in_transit",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-17T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-17T08:00:00.000Z",
+          tendered_at: "2026-06-17T09:00:00.000Z",
+          last_event_at: "2026-06-17T10:00:00.000Z",
+          last_movement_at: "2026-06-17T10:00:00.000Z",
+          last_checked_at: "2026-06-17T10:10:00.000Z",
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-17T08:00:00.000Z",
+          updated_at: "2026-06-17T10:10:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_incidents") || path.endsWith("/rest/v1/inbound_tracking_events")) return json([]);
+    if (path.endsWith("/rest/v1/master_requests")) {
+      return json([{ id: "request-ambiguous", request_id: "REQ-AMBIG", trello_card_id: "card-ambiguous", updated_at: "2026-06-17T08:00:00.000Z" }]);
+    }
+    if (path.endsWith("/rest/v1/crm_quotes") || path.endsWith("/rest/v1/crm_quote_versions") || path.endsWith("/rest/v1/crm_quote_version_images")) return json([]);
+    if (path.endsWith("/rest/v1/master_orders") || path.endsWith("/rest/v1/crm_sales")) return json([]);
+    if (path.endsWith("/rest/v1/supplier_sales")) {
+      if (url.searchParams.get("trello_card_id") === "in.(card-ambiguous)") {
+        return json([
+          {
+            id: "supplier-sale-ambiguous-a",
+            request_id: null,
+            trello_card_id: "card-ambiguous",
+            shopify_order_id: "8281257675001",
+            shopify_order_name: "#AMBIG-A",
+            shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257675001",
+            offer_id: "offer-ambig-a",
+            offer_number: "A/N 50001",
+            document_reference: "A/N 50001",
+            idempotency_key: "offer:offer-ambig-a:shopify-sale:v1",
+            created_at: "2026-06-17T09:00:00.000Z",
+            updated_at: "2026-06-17T09:10:00.000Z",
+          },
+          {
+            id: "supplier-sale-ambiguous-b",
+            request_id: null,
+            trello_card_id: "card-ambiguous",
+            shopify_order_id: "8281257675002",
+            shopify_order_name: "#AMBIG-B",
+            shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257675002",
+            offer_id: "offer-ambig-b",
+            offer_number: "A/N 50002",
+            document_reference: "A/N 50002",
+            idempotency_key: "offer:offer-ambig-b:shopify-sale:v1",
+            created_at: "2026-06-17T10:00:00.000Z",
+            updated_at: "2026-06-17T10:10:00.000Z",
+          },
+        ]);
+      }
+      return json([]);
+    }
+
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const board = await listInboundBoard({ scope: "all" });
+
+    assert.equal(board.items.length, 1);
+    assert.deepEqual(board.items[0]?.shopifyOrder, {
+      orderId: "Shared Trello card DHL Express",
+      orderNumber: "Suche",
+      url: "https://galaxybuzzdk.myshopify.com/admin/orders?query=Shared%20Trello%20card%20DHL%20Express",
+      source: "shopify_admin_search",
+      matchedBy: "shopify_admin_search",
+      matchLabel: "kein sicherer Match -> Suche Shared Trello card DHL Express",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
 test("listInboundBoard still links Shopify orders for inbound shipments without Trello IDs when offer references exist", async () => {
   const originalFetch = globalThis.fetch;
   const originalEnv = {
