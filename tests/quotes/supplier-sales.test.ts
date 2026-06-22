@@ -14,6 +14,7 @@ import {
   derivePaymentDecisionStatus,
   deriveSupplierRecommendation,
   generateSupplierOrderConfirmationPdf,
+  listSupplierSalesBoard,
   normalizeDateOnly,
   normalizeShopifyPaymentStatus,
   requestSupplierPaymentReminder,
@@ -297,6 +298,27 @@ test("neontrip offer events other than offer.completed are rejected for supplier
     event: "offer.viewed",
     offer: { id: "offer_123" },
   }), /offer\.completed/);
+});
+
+test("neontrip offer completed image fallback reads nested line item images", () => {
+  const parsed = buildSupplierSaleInputFromPayload({
+    source: "neontrip-offers",
+    event: "offer.completed",
+    offer: { id: "offer_nested_image", offerNumber: "A/N 16001" },
+    customer: { email: "kunde@example.com" },
+    totals: { totalGross: 595 },
+    lineItems: [
+      {
+        id: "line-1",
+        title: "LED Neon Flex Logo",
+        quantity: 1,
+        image: { url: "https://cdn.test/nested-line.webp" },
+      },
+    ],
+  });
+
+  assert.equal(parsed.sale.primaryImageUrl, "https://cdn.test/nested-line.webp");
+  assert.equal(parsed.sale.lineItems[0]?.imageUrl, "https://cdn.test/nested-line.webp");
 });
 
 test("shopify order payload preserves payment, images, customer and Quentin recommendation", () => {
@@ -675,6 +697,52 @@ test("supplier assignment task cleanup archives only supplier sale projections",
   assert.equal(dedicatedPatchCount, 1);
   assert.equal(fallbackPatchCount, 1);
   assert.equal(supplierSalesPatchCount, 1);
+});
+
+test("supplier sales active board hides rows already tagged in Shopify and uses bounded limit", async () => {
+  const unassignedRow = saleRow({
+    id: "sale-visible",
+    sale_key: "shopify:order:visible",
+    shopify_order_id: "visible",
+    shopify_order_name: "#2001",
+    raw_shopify: { tags: [] },
+  });
+  const taggedRow = saleRow({
+    id: "sale-tagged",
+    sale_key: "shopify:order:tagged",
+    shopify_order_id: "tagged",
+    shopify_order_name: "#2002",
+    assignment_status: "ready_to_assign",
+    assigned_supplier: null,
+    shopify_tag_value: null,
+    shopify_tag_sync_status: "not_started",
+    raw_shopify: { tags: ["Quentin (schon bezahlt)"] },
+  });
+  let supplierSalesGetLimit: string | null = null;
+  let itemSaleFilter: string | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      supplierSalesGetLimit = url.searchParams.get("limit");
+      assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
+      return Response.json([taggedRow, unassignedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      itemSaleFilter = url.searchParams.get("sale_id");
+      return Response.json([itemRow({ sale_id: unassignedRow.id })]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    assert.equal(board.items.length, 1);
+    assert.equal(board.items[0]?.id, "sale-visible");
+  });
+
+  assert.equal(supplierSalesGetLimit, "50");
+  assert.equal(itemSaleFilter, "in.(sale-visible)");
 });
 
 test("supplier Shopify tag retry resolves existing assigned offer sale", async () => {

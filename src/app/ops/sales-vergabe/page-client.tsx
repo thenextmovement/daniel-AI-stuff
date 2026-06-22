@@ -121,6 +121,8 @@ type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "deadline" | "s
 type SupplierFilter = "all" | "quentin" | "said" | "special" | "manual_review";
 type PaymentFilter = "all" | "paid" | "unpaid" | "pending" | "authorized" | "partially_paid" | "unknown";
 
+const BOARD_PAGE_SIZE = 50;
+
 function formatApiError(payload: { error?: string; issues?: string[] } | null) {
   if (!payload) return "Unbekannter Fehler.";
   if (payload.issues?.length) return payload.issues.join(" ");
@@ -716,6 +718,7 @@ export function SupplierSalesClient({
   const [scope, setScope] = useState<ScopeFilter>("active");
   const [supplier, setSupplier] = useState<SupplierFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
+  const [visibleLimit, setVisibleLimit] = useState(BOARD_PAGE_SIZE);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [savingSaleId, setSavingSaleId] = useState<string | null>(null);
@@ -740,7 +743,7 @@ export function SupplierSalesClient({
 
   useEffect(() => {
     if (hasSession || localMode) void loadBoard();
-  }, [hasSession, localMode, scope, supplier, payment]);
+  }, [hasSession, localMode, scope, supplier, payment, visibleLimit]);
 
   const items = useMemo(() => board?.items || [], [board]);
 
@@ -763,7 +766,7 @@ export function SupplierSalesClient({
     const syncResponse = await fetch("/api/ops/supplier-sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "sync_completed_offers", limit: 50, operatorName }),
+      body: JSON.stringify({ action: "sync_completed_offers", limit: Math.min(Math.max(visibleLimit, BOARD_PAGE_SIZE), 100), operatorName }),
     });
     const syncPayload = (await syncResponse.json().catch(() => null)) as SupplierSalesApiResponse | null;
     if (!syncResponse.ok || !syncPayload?.ok) {
@@ -798,6 +801,7 @@ export function SupplierSalesClient({
       params.set("scope", scope);
       params.set("supplier", supplier);
       params.set("payment", payment);
+      params.set("limit", String(visibleLimit));
       if (query.trim()) params.set("q", query.trim());
       const response = await fetch(`/api/ops/supplier-sales?${params.toString()}`);
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
@@ -826,9 +830,9 @@ export function SupplierSalesClient({
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       if (payload.board) setBoard(payload.board);
       setMessage(actionMessage(body.action, payload));
-      if (body.action === "assign_supplier") setScope("assigned");
-      if (body.action === "retry_shopify_tag") setScope("sync");
-      if (body.action === "create_deadline_tasks") setScope("deadline");
+      if (body.action === "assign_supplier") selectScope("assigned");
+      if (body.action === "retry_shopify_tag") selectScope("sync");
+      if (body.action === "create_deadline_tasks") selectScope("deadline");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     } finally {
@@ -857,6 +861,21 @@ export function SupplierSalesClient({
     } finally {
       setSavingSaleId(null);
     }
+  }
+
+  function selectScope(nextScope: ScopeFilter) {
+    setVisibleLimit(BOARD_PAGE_SIZE);
+    setScope(nextScope);
+  }
+
+  function selectSupplier(nextSupplier: SupplierFilter) {
+    setVisibleLimit(BOARD_PAGE_SIZE);
+    setSupplier(nextSupplier);
+  }
+
+  function selectPayment(nextPayment: PaymentFilter) {
+    setVisibleLimit(BOARD_PAGE_SIZE);
+    setPayment(nextPayment);
   }
 
   if (!opsEnabled) {
@@ -909,19 +928,19 @@ export function SupplierSalesClient({
         </section>
 
         <section className="grid gap-3 md:grid-cols-5">
-          <StatFilterButton active={scope === "ready"} onClick={() => setScope("ready")}>
+          <StatFilterButton active={scope === "ready"} onClick={() => selectScope("ready")}>
             <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "payment"} onClick={() => setScope("payment")}>
+          <StatFilterButton active={scope === "payment"} onClick={() => selectScope("payment")}>
             <OpsStatCard label="Zahlung" value={board?.counts.paymentOpen || 0} tone="warning" icon={<CreditCard className="h-5 w-5" />} detail="Offen oder Entscheidung fehlt." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "assigned"} onClick={() => setScope("assigned")}>
+          <StatFilterButton active={scope === "assigned"} onClick={() => selectScope("assigned")}>
             <OpsStatCard label="Vergeben" value={board?.counts.assigned || 0} tone="success" icon={<Factory className="h-5 w-5" />} detail="Supplier gesetzt." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "deadline"} onClick={() => setScope("deadline")}>
+          <StatFilterButton active={scope === "deadline"} onClick={() => selectScope("deadline")}>
             <OpsStatCard label="Deadline" value={(board?.counts.dueSoon || 0) + (board?.counts.overdue || 0)} tone="info" icon={<CalendarClock className="h-5 w-5" />} detail="In 7 Tagen faellig oder ueberfaellig." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "sync"} onClick={() => setScope("sync")}>
+          <StatFilterButton active={scope === "sync"} onClick={() => selectScope("sync")}>
             <OpsStatCard label="Sync" value={board?.counts.syncIssues || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Shopify/Trello/Aufgabe fehlerhaft." />
           </StatFilterButton>
         </section>
@@ -973,7 +992,7 @@ export function SupplierSalesClient({
                 placeholder="Kunde, Shopify, Angebot..."
               />
             </label>
-            <select value={scope} onChange={(event) => setScope(event.target.value as ScopeFilter)} aria-label="Bereich filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={scope} onChange={(event) => selectScope(event.target.value as ScopeFilter)} aria-label="Bereich filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="active">Aktive Sales</option>
               <option value="ready">Bereit</option>
               <option value="payment">Zahlung offen</option>
@@ -982,14 +1001,14 @@ export function SupplierSalesClient({
               <option value="sync">Sync-Fehler</option>
               <option value="all">Alle</option>
             </select>
-            <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierFilter)} aria-label="Supplier filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={supplier} onChange={(event) => selectSupplier(event.target.value as SupplierFilter)} aria-label="Supplier filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="all">Alle Supplier</option>
               <option value="quentin">Quentin</option>
               <option value="said">Saeid</option>
               <option value="special">Sonder</option>
               <option value="manual_review">Pruefen</option>
             </select>
-            <select value={payment} onChange={(event) => setPayment(event.target.value as PaymentFilter)} aria-label="Zahlungsstatus filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={payment} onChange={(event) => selectPayment(event.target.value as PaymentFilter)} aria-label="Zahlungsstatus filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="all">Alle Zahlungen</option>
               <option value="paid">Bezahlt</option>
               <option value="unpaid">Nicht bezahlt</option>
@@ -1033,6 +1052,7 @@ export function SupplierSalesClient({
             </button>
             {loading ? <span className="text-sm text-stone-500">Sales werden geladen...</span> : null}
             {savingSaleId === "live-check" ? <span className="text-sm text-stone-500">Live-Abgleich laeuft...</span> : null}
+            <span className="text-sm text-stone-500">Zeigt max. {visibleLimit} neueste Treffer.</span>
             {message ? <span className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">{message}</span> : null}
             {error ? <span className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</span> : null}
           </div>
@@ -1057,6 +1077,17 @@ export function SupplierSalesClient({
               <p className="mt-3">Keine Sales in dieser Ansicht.</p>
             </div>
           )}
+          {items.length >= visibleLimit ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setVisibleLimit((current) => Math.min(current + BOARD_PAGE_SIZE, 500))}
+              className="mx-auto inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Weitere {BOARD_PAGE_SIZE} laden
+            </button>
+          ) : null}
         </section>
       </div>
     </main>

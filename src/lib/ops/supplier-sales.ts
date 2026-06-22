@@ -1004,12 +1004,59 @@ function customerNameFromParts(parts: Array<unknown>) {
   return text || null;
 }
 
+function firstImageUrlFromValue(value: unknown, depth = 0): string | null {
+  if (depth > 5) return null;
+  if (typeof value === "string") {
+    const text = nullableText(value, 1000);
+    if (text && /^https?:\/\//i.test(text) && /\.(?:avif|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(text)) return text;
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const image = firstImageUrlFromValue(entry, depth + 1);
+      if (image) return image;
+    }
+    return null;
+  }
+  const record = jsonRecord(value);
+  if (!Object.keys(record).length) return null;
+  const direct = recordString(record, [
+    "imageUrl",
+    "image_url",
+    "sourceUrl",
+    "source_url",
+    "localUrl",
+    "local_url",
+    "previewUrl",
+    "preview_url",
+    "posterUrl",
+    "poster_url",
+    "previewVideoPosterUrl",
+    "src",
+    "url",
+  ], 1000);
+  if (direct && /^https?:\/\//i.test(direct) && !/\.pdf(?:[?#].*)?$/i.test(direct)) return direct;
+  for (const key of ["image", "images", "mockups", "media", "preview", "thumbnail", "asset", "file"]) {
+    const image = firstImageUrlFromValue(record[key], depth + 1);
+    if (image) return image;
+  }
+  return null;
+}
+
+function selectedImageFromOfferItem(item: JsonRecord, payload: JsonRecord) {
+  return firstImageUrlFromValue(item) || selectedImageFromOfferPayload(payload);
+}
+
 function selectedImageFromOfferPayload(payload: JsonRecord) {
   const media = jsonRecord(payload.media);
   const mockups = arrayRecords(media.mockups);
   return (
     recordString(mockups[0] || {}, ["url", "sourceUrl", "localUrl"], 1000) ||
-    recordString(media, ["posterUrl", "previewVideoPosterUrl"], 1000)
+    recordString(media, ["posterUrl", "previewVideoPosterUrl"], 1000) ||
+    firstImageUrlFromValue(payload.images) ||
+    firstImageUrlFromValue(jsonRecord(payload.offer).images) ||
+    firstImageUrlFromValue(payload.lineItems) ||
+    firstImageUrlFromValue(media)
   );
 }
 
@@ -1026,7 +1073,7 @@ function parseOfferCompletedPayload(payload: JsonRecord): SupplierSalePayloadPar
     variantTitle: recordString(item, ["variantTitle"], 500),
     quantity: numericValue(item.quantity) || numericValue(item.normalizedQuantity) || 1,
     productType: recordString(item, ["section"], 120),
-    imageUrl: selectedImageFromOfferPayload(payload),
+    imageUrl: selectedImageFromOfferItem(item, payload),
     section: recordString(item, ["section"], 120),
     description: recordString(item, ["description"], 4000),
     rawLineItem: item,
@@ -1636,6 +1683,34 @@ function assignedSupplierFromShopifyTags(input: SupplierSaleInput): SupplierSale
   if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"])) return "said";
   if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"])) return "special";
   return null;
+}
+
+function supplierTagsFromRow(row: SupplierSaleRow) {
+  const rawTags = [
+    row.shopify_tag_value,
+    row.raw_shopify?.tags,
+    jsonRecord(row.raw_shopify?.order).tags,
+    row.metadata?.shopify_tags,
+  ];
+  const tags: string[] = [];
+  for (const value of rawTags) {
+    if (Array.isArray(value)) tags.push(...value.map((entry) => cleanText(entry, 120)).filter(Boolean));
+    else if (typeof value === "string") tags.push(...value.split(",").map((entry) => cleanText(entry, 120)).filter(Boolean));
+  }
+  return [...new Set(tags)];
+}
+
+function assignedSupplierFromRowTags(row: SupplierSaleRow): SupplierSaleSupplier | null {
+  const tags = new Set(supplierTagsFromRow(row).map(normalizedTag));
+  if (!tags.size) return null;
+  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"])) return "quentin";
+  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"])) return "said";
+  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"])) return "special";
+  return null;
+}
+
+function hasExternalSupplierAssignmentSignal(row: SupplierSaleRow) {
+  return Boolean(row.assigned_supplier || assignedSupplierFromRowTags(row));
 }
 
 function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow | null) {
@@ -2273,7 +2348,7 @@ export async function listSupplierSalesBoard(options?: {
   const query: Record<string, string | number | boolean | null> = {
     select: "*",
     order: scope === "deadline" ? "supplier_due_date.asc.nullslast,updated_at.desc" : "created_at.desc,updated_at.desc",
-    limit: Math.min(Math.max(Number(options?.limit || 250), 1), 500),
+    limit: Math.min(Math.max(Number(options?.limit || 50), 1), 500),
   };
   if (scope === "ready") query.assignment_status = "eq.ready_to_assign";
   else if (scope === "payment") query.assignment_status = "eq.payment_open";
@@ -2291,6 +2366,9 @@ export async function listSupplierSalesBoard(options?: {
   }
 
   let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
+  if (scope === "active" || scope === "ready" || scope === "payment") {
+    saleRows = saleRows.filter((row) => !hasExternalSupplierAssignmentSignal(row));
+  }
   if (scope === "sync") {
     saleRows = saleRows.filter((row) => {
       if (["completed", "canceled"].includes(row.assignment_status)) return false;

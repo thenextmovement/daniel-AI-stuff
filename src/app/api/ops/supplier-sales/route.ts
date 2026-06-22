@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
       supplier: (params.get("supplier") || "all") as SupplierSaleSupplier | SupplierSaleRecommendation | "all",
       payment: (params.get("payment") || "all") as SupplierSalePaymentStatus | "unpaid" | "all",
       query: params.get("q"),
-      limit: Number(params.get("limit") || 250),
+      limit: Number(params.get("limit") || 50),
     });
     return NextResponse.json({ ok: true, board });
   } catch (error) {
