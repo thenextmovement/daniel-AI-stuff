@@ -523,7 +523,12 @@ function hashPayload(value: unknown) {
 }
 
 function normalizedTag(value: unknown) {
-  return cleanText(value, 120).toLowerCase();
+  return cleanText(value, 120)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function upsertPath(path: string, conflictColumn: string) {
@@ -733,6 +738,26 @@ function paymentLinkFromPayload(payload: JsonRecord) {
     nestedString(payload, ["invoice", "url"], 1000) ||
     null
   );
+}
+
+function shopifyFulfillmentStatusFromPayload(payload: JsonRecord) {
+  return normalizedTag(
+    recordString(payload, ["fulfillment_status", "fulfillmentStatus", "displayFulfillmentStatus"], 120) ||
+      recordString(jsonRecord(payload.order), ["fulfillment_status", "fulfillmentStatus", "displayFulfillmentStatus"], 120) ||
+      recordString(jsonRecord(payload.fulfillment), ["status", "shipment_status", "shipmentStatus"], 120) ||
+      recordString(jsonRecord(payload.shipping), ["status", "shipment_status", "shipmentStatus"], 120),
+  );
+}
+
+function isCompletedShopifyFulfillmentStatus(value: unknown) {
+  const status = normalizedTag(value);
+  return [
+    "fulfilled",
+    "shipped",
+    "delivered",
+    "complete",
+    "completed",
+  ].includes(status);
 }
 
 function envConfigured(...keys: string[]) {
@@ -1140,6 +1165,8 @@ function lineItemImage(item: JsonRecord) {
   return (
     nestedString(item, ["image", "src"], 1000) ||
     nestedString(item, ["image", "url"], 1000) ||
+    nestedString(item, ["variant", "image", "src"], 1000) ||
+    nestedString(item, ["variant", "image", "url"], 1000) ||
     recordString(item, ["image_url", "imageUrl"], 1000)
   );
 }
@@ -1225,6 +1252,7 @@ function parseShopifyOrderPayload(payload: JsonRecord): SupplierSalePayloadParse
         source_event: recordString(payload, ["event"], 120) || "shopify_order",
         payment_link: paymentLinkFromPayload(source),
         admin_graphql_api_id: shopifyGraphqlId,
+        fulfillment_status: shopifyFulfillmentStatusFromPayload(source) || null,
         idempotency_key: references.idempotencyKey,
       },
       idempotencyKey: recordString(payload, ["idempotencyKey", "idempotency_key"], 260) || recordString(source, ["idempotencyKey", "idempotency_key"], 260) || references.idempotencyKey,
@@ -1295,7 +1323,20 @@ function mapOrderConfirmationEmailState(metadata: JsonRecord): SupplierOrderConf
   };
 }
 
+function paymentLinkFromSaleRow(row: SupplierSaleRow, latestEvent: SupplierSaleEvent | null) {
+  return (
+    nullableText(row.metadata?.payment_link, 1000) ||
+    nullableText(row.metadata?.paymentLink, 1000) ||
+    nullableText(latestEvent?.payload?.payment_link, 1000) ||
+    nullableText(latestEvent?.payload?.paymentLink, 1000) ||
+    paymentLinkFromPayload(row.raw_shopify || {}) ||
+    paymentLinkFromPayload(jsonRecord(row.raw_shopify?.order)) ||
+    null
+  );
+}
+
 function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEvent: SupplierSaleEvent | null = null): SupplierSale {
+  const itemImage = items.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || null;
   return {
     id: row.id,
     saleKey: row.sale_key,
@@ -1303,7 +1344,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     shopifyOrderId: row.shopify_order_id,
     shopifyOrderName: row.shopify_order_name,
     shopifyOrderUrl: row.shopify_order_url,
-    paymentLink: nullableText(row.metadata?.payment_link, 1000) || nullableText(latestEvent?.payload?.payment_link, 1000) || null,
+    paymentLink: paymentLinkFromSaleRow(row, latestEvent),
     shopifyPaymentStatus: row.shopify_payment_status,
     paymentDecisionStatus: row.payment_decision_status,
     paymentDueAt: row.payment_due_at,
@@ -1347,7 +1388,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     activeTaskId: row.active_task_id,
     taskSyncError: row.task_sync_error,
     productSummary: row.product_summary,
-    primaryImageUrl: row.primary_image_url,
+    primaryImageUrl: row.primary_image_url || itemImage,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     items,
@@ -1676,12 +1717,21 @@ function hasNormalizedTag(tags: Set<string>, candidates: Array<string | null | u
   });
 }
 
+function tagsMentionSupplier(tags: Set<string>, supplier: SupplierSaleSupplier) {
+  const patterns: Record<SupplierSaleSupplier, RegExp[]> = {
+    quentin: [/\bquentin\b/],
+    said: [/\bsaeid\b/, /\bsaid\b/],
+    special: [/\bsonder\b/, /\bspecial\b/],
+  };
+  return [...tags].some((tag) => patterns[supplier].some((pattern) => pattern.test(tag)));
+}
+
 function assignedSupplierFromShopifyTags(input: SupplierSaleInput): SupplierSaleSupplier | null {
   const tags = new Set(shopifyTagsFromInput(input).map(normalizedTag));
   if (!tags.size) return null;
-  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"])) return "quentin";
-  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"])) return "said";
-  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"])) return "special";
+  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"]) || tagsMentionSupplier(tags, "quentin")) return "quentin";
+  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"]) || tagsMentionSupplier(tags, "said")) return "said";
+  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"]) || tagsMentionSupplier(tags, "special")) return "special";
   return null;
 }
 
@@ -1703,14 +1753,27 @@ function supplierTagsFromRow(row: SupplierSaleRow) {
 function assignedSupplierFromRowTags(row: SupplierSaleRow): SupplierSaleSupplier | null {
   const tags = new Set(supplierTagsFromRow(row).map(normalizedTag));
   if (!tags.size) return null;
-  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"])) return "quentin";
-  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"])) return "said";
-  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"])) return "special";
+  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"]) || tagsMentionSupplier(tags, "quentin")) return "quentin";
+  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"]) || tagsMentionSupplier(tags, "said")) return "said";
+  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"]) || tagsMentionSupplier(tags, "special")) return "special";
   return null;
 }
 
 function hasExternalSupplierAssignmentSignal(row: SupplierSaleRow) {
   return Boolean(row.assigned_supplier || assignedSupplierFromRowTags(row));
+}
+
+function hasCompletedShopifyFulfillmentSignal(row: SupplierSaleRow) {
+  return [
+    row.metadata?.fulfillment_status,
+    row.metadata?.fulfillmentStatus,
+    row.raw_shopify?.fulfillment_status,
+    row.raw_shopify?.fulfillmentStatus,
+    row.raw_shopify?.displayFulfillmentStatus,
+    jsonRecord(row.raw_shopify?.order).fulfillment_status,
+    jsonRecord(row.raw_shopify?.order).fulfillmentStatus,
+    jsonRecord(row.raw_shopify?.order).displayFulfillmentStatus,
+  ].some(isCompletedShopifyFulfillmentStatus);
 }
 
 function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow | null) {
@@ -1727,7 +1790,10 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
   const assignedSupplier = existing?.assigned_supplier || taggedSupplier || null;
   const detectedTagValue = taggedSupplier ? supplierTagValue(taggedSupplier) : null;
   const existingTagStatus = existing?.shopify_tag_sync_status;
-  const assignmentStatus = deriveAssignmentStatus({
+  const fulfillmentCompleted = isCompletedShopifyFulfillmentStatus(shopifyFulfillmentStatusFromPayload(input.rawShopify || {}));
+  const assignmentStatus = fulfillmentCompleted && source === "shopify"
+    ? "completed"
+    : deriveAssignmentStatus({
     paymentDecisionStatus: paymentDecision,
     assignedSupplier,
     currentStatus: existing?.assignment_status,
@@ -1780,6 +1846,7 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
       ...(existing?.metadata || {}),
       ...(input.metadata || {}),
       supplier_rule_version: SUPPLIER_RULE_VERSION,
+      fulfillment_status: shopifyFulfillmentStatusFromPayload(input.rawShopify || {}) || nullableText(input.metadata?.fulfillment_status, 120) || nullableText(existing?.metadata?.fulfillment_status, 120) || null,
     },
   };
 }
@@ -1925,6 +1992,7 @@ function shopifyOrderPayloadFromGraphql(order: JsonRecord, domain: string) {
     admin_url: numericId ? `https://${domain}/admin/orders/${numericId}` : null,
     order_status_url: recordString(order, ["statusPageUrl"], 1000),
     financial_status: recordString(order, ["displayFinancialStatus"], 80)?.toLowerCase(),
+    fulfillment_status: recordString(order, ["displayFulfillmentStatus"], 120)?.toLowerCase(),
     tags: Array.isArray(order.tags) ? order.tags.map((tag) => cleanText(tag, 120)).filter(Boolean) : [],
     created_at: recordString(order, ["createdAt"], 80),
     processed_at: recordString(order, ["processedAt"], 80),
@@ -1949,7 +2017,7 @@ function shopifyOrderPayloadFromGraphql(order: JsonRecord, domain: string) {
       variant_title: recordString(item, ["variantTitle"], 500),
       quantity: numericValue(item.quantity) || 1,
       product_type: nestedString(item, ["product", "productType"], 160),
-      image: { src: nestedString(item, ["image", "url"], 1000) },
+      image: { src: nestedString(item, ["image", "url"], 1000) || nestedString(item, ["variant", "image", "url"], 1000) },
       properties: shopifyCustomAttributes(item.customAttributes),
     })),
     idempotencyKey: orderGid ? `shopify-order:${orderGid}:supplier-sales:v1` : undefined,
@@ -2100,6 +2168,7 @@ async function syncRecentShopifyOrdersFromAdmin(
               createdAt
               processedAt
               displayFinancialStatus
+              displayFulfillmentStatus
               customAttributes { key value }
               totalPriceSet { shopMoney { amount currencyCode } }
               subtotalPriceSet { shopMoney { amount currencyCode } }
@@ -2115,6 +2184,7 @@ async function syncRecentShopifyOrdersFromAdmin(
                   variantTitle
                   customAttributes { key value }
                   image { url }
+                  variant { image { url } }
                   product { productType }
                 }
               }
@@ -2367,7 +2437,7 @@ export async function listSupplierSalesBoard(options?: {
 
   let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
   if (scope === "active" || scope === "ready" || scope === "payment") {
-    saleRows = saleRows.filter((row) => !hasExternalSupplierAssignmentSignal(row));
+    saleRows = saleRows.filter((row) => !hasExternalSupplierAssignmentSignal(row) && !hasCompletedShopifyFulfillmentSignal(row));
   }
   if (scope === "sync") {
     saleRows = saleRows.filter((row) => {

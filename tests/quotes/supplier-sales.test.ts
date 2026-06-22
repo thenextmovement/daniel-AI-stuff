@@ -705,7 +705,9 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     sale_key: "shopify:order:visible",
     shopify_order_id: "visible",
     shopify_order_name: "#2001",
-    raw_shopify: { tags: [] },
+    primary_image_url: null,
+    metadata: {},
+    raw_shopify: { tags: [], statusPageUrl: "https://shopify.test/orders/visible/status" },
   });
   const taggedRow = saleRow({
     id: "sale-tagged",
@@ -716,7 +718,15 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     assigned_supplier: null,
     shopify_tag_value: null,
     shopify_tag_sync_status: "not_started",
-    raw_shopify: { tags: ["Quentin (schon bezahlt)"] },
+    raw_shopify: { tags: ["Quentin - schon bezahlt"] },
+  });
+  const fulfilledRow = saleRow({
+    id: "sale-fulfilled",
+    sale_key: "shopify:order:fulfilled",
+    shopify_order_id: "fulfilled",
+    shopify_order_name: "#2003",
+    assignment_status: "ready_to_assign",
+    raw_shopify: { tags: [], displayFulfillmentStatus: "FULFILLED" },
   });
   let supplierSalesGetLimit: string | null = null;
   let itemSaleFilter: string | null = null;
@@ -727,11 +737,11 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       supplierSalesGetLimit = url.searchParams.get("limit");
       assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
-      return Response.json([taggedRow, unassignedRow]);
+      return Response.json([taggedRow, fulfilledRow, unassignedRow]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
       itemSaleFilter = url.searchParams.get("sale_id");
-      return Response.json([itemRow({ sale_id: unassignedRow.id })]);
+      return Response.json([itemRow({ sale_id: unassignedRow.id, image_url: "https://cdn.test/item-fallback.jpg" })]);
     }
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
@@ -739,6 +749,8 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     const board = await listSupplierSalesBoard({ scope: "active" });
     assert.equal(board.items.length, 1);
     assert.equal(board.items[0]?.id, "sale-visible");
+    assert.equal(board.items[0]?.primaryImageUrl, "https://cdn.test/item-fallback.jpg");
+    assert.equal(board.items[0]?.paymentLink, "https://shopify.test/orders/visible/status");
   });
 
   assert.equal(supplierSalesGetLimit, "50");
