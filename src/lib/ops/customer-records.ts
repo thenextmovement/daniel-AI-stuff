@@ -144,6 +144,16 @@ type MasterRequestRow = {
   referrer?: string | null;
 };
 
+type LatestSegmentClassificationRow = {
+  request_id?: string | null;
+  status?: string | null;
+  segment?: string | null;
+  s_kategorie?: string | null;
+  confidence?: number | string | null;
+  policy_version?: string | null;
+  created_at?: string | null;
+};
+
 type MasterQuoteRow = {
   id: string;
   request_id: string;
@@ -516,6 +526,7 @@ type EditableSnapshot = {
 type CustomerContext = {
   master: MasterCustomerRow;
   request: MasterRequestRow | null;
+  latestSegmentClassification: LatestSegmentClassificationRow | null;
   quote: MasterQuoteRow | null;
   order: MasterOrderRow | null;
   orderHistory: MasterOrderRow[];
@@ -1445,6 +1456,42 @@ function numericValue(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isManualSegmentSource(value: string | null | undefined) {
+  const source = String(value || "").toLowerCase();
+  return source.includes("manual") || source.includes("human") || source.includes("operator");
+}
+
+function resolveRequestSegmentForOpsUi(
+  request: MasterRequestRow | null,
+  latest: LatestSegmentClassificationRow | null,
+) {
+  const masterSource = trimNullable(request?.segment_source);
+  const masterIsManual = isManualSegmentSource(masterSource);
+  const latestSegment = trimNullable(latest?.segment);
+
+  if (!masterIsManual && latestSegment) {
+    return {
+      segment: latestSegment,
+      sKategorie: trimNullable(latest?.s_kategorie) || trimNullable(request?.s_kategorie),
+      status: trimNullable(latest?.status) || trimNullable(request?.segment_status),
+      confidence: numericValue(latest?.confidence) ?? numericValue(request?.segment_confidence),
+      source: masterSource || "request_segmenter",
+      classifiedAt: latest?.created_at || request?.segment_classified_at || null,
+      policyVersion: trimNullable(latest?.policy_version) || trimNullable(request?.segment_policy_version),
+    };
+  }
+
+  return {
+    segment: trimNullable(request?.segment),
+    sKategorie: trimNullable(request?.s_kategorie),
+    status: trimNullable(request?.segment_status),
+    confidence: numericValue(request?.segment_confidence),
+    source: masterSource,
+    classifiedAt: request?.segment_classified_at || null,
+    policyVersion: trimNullable(request?.segment_policy_version),
+  };
 }
 
 function parseFutureIsoDate(value: string) {
@@ -4032,7 +4079,7 @@ async function fetchDownstreamRows(
     ...emails.map((email) => emailArrayContainsClause("cc_emails", email)),
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
-  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, outlookMessages, inboundEmails, audits, caseStates, activeViews] = await Promise.all([
+  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, outlookMessages, inboundEmails, audits, caseStates, activeViews, latestSegmentRows] = await Promise.all([
     supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
       select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
       request_id: `eq.${master.request_id}`,
@@ -4150,6 +4197,13 @@ async function fetchDownstreamRows(
       order: "last_seen_at.desc",
       limit: 8,
     }),
+    request?.id
+      ? supabaseRequest<LatestSegmentClassificationRow[]>("request_segmentation_latest_classification", undefined, {
+          select: "request_id,status,segment,s_kategorie,confidence,policy_version,created_at",
+          request_id: `eq.${request.id}`,
+          limit: 1,
+        })
+      : Promise.resolve([]),
   ]);
 
   const relatedCustomers =
@@ -4265,6 +4319,7 @@ async function fetchDownstreamRows(
 
   return {
     request,
+    latestSegmentClassification: latestSegmentRows[0] || null,
     quote: quoteRows[0] || null,
     order:
       mergedOrders.find((row) => trimNullable(row.request_id) === master.request_id) ||
@@ -4333,6 +4388,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
   const specialCase = buildSpecialCaseSummary(context);
   const caseCoordination = buildCaseCoordinationSummary(context);
   const caseFlow = buildCaseFlowSummary(context);
+  const resolvedSegment = resolveRequestSegmentForOpsUi(context.request, context.latestSegmentClassification);
 
   return {
     masterCustomerId: context.master.id,
@@ -4368,14 +4424,14 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
           acDealId: context.request.ac_deal_id ?? null,
           acDealStage: trimNullable(context.request.ac_deal_stage),
           dealStatus: trimNullable(context.request.deal_status),
-          segment: trimNullable(context.request.segment),
-          segmentLabel: getCustomerSegmentOption(context.request.segment)?.label || null,
-          segmentStatus: trimNullable(context.request.segment_status),
-          segmentConfidence: numericValue(context.request.segment_confidence),
-          segmentSource: trimNullable(context.request.segment_source),
-          segmentClassifiedAt: context.request.segment_classified_at || null,
-          segmentPolicyVersion: trimNullable(context.request.segment_policy_version),
-          sKategorie: trimNullable(context.request.s_kategorie),
+          segment: resolvedSegment.segment,
+          segmentLabel: getCustomerSegmentOption(resolvedSegment.segment)?.label || null,
+          segmentStatus: resolvedSegment.status,
+          segmentConfidence: resolvedSegment.confidence,
+          segmentSource: resolvedSegment.source,
+          segmentClassifiedAt: resolvedSegment.classifiedAt,
+          segmentPolicyVersion: resolvedSegment.policyVersion,
+          sKategorie: resolvedSegment.sKategorie,
           estimatedValue: numericValue(context.request.estimated_value),
           finalValue: numericValue(context.request.final_value),
           size: trimNullable(context.request.size),
