@@ -718,7 +718,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     assigned_supplier: null,
     shopify_tag_value: null,
     shopify_tag_sync_status: "not_started",
-    raw_shopify: { tags: ["Quentin - schon bezahlt"] },
+    raw_shopify: { tags: ["Quentin (schon bezahlt)"] },
   });
   const fulfilledRow = saleRow({
     id: "sale-fulfilled",
@@ -727,6 +727,14 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     shopify_order_name: "#2003",
     assignment_status: "ready_to_assign",
     raw_shopify: { tags: [], displayFulfillmentStatus: "FULFILLED" },
+  });
+  const similarTagRow = saleRow({
+    id: "sale-similar-tag",
+    sale_key: "shopify:order:similar-tag",
+    shopify_order_id: "similar-tag",
+    shopify_order_name: "#2004",
+    assignment_status: "ready_to_assign",
+    raw_shopify: { tags: ["Quentin - schon bezahlt"] },
   });
   let supplierSalesGetLimit: string | null = null;
   let itemSaleFilter: string | null = null;
@@ -737,24 +745,27 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       supplierSalesGetLimit = url.searchParams.get("limit");
       assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
-      return Response.json([taggedRow, fulfilledRow, unassignedRow]);
+      return Response.json([taggedRow, fulfilledRow, similarTagRow, unassignedRow]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
       itemSaleFilter = url.searchParams.get("sale_id");
-      return Response.json([itemRow({ sale_id: unassignedRow.id, image_url: "https://cdn.test/item-fallback.jpg" })]);
+      return Response.json([
+        itemRow({ sale_id: unassignedRow.id, image_url: "https://cdn.test/item-fallback.jpg" }),
+        itemRow({ id: "item-similar", sale_id: similarTagRow.id }),
+      ]);
     }
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
     const board = await listSupplierSalesBoard({ scope: "active" });
-    assert.equal(board.items.length, 1);
-    assert.equal(board.items[0]?.id, "sale-visible");
-    assert.equal(board.items[0]?.primaryImageUrl, "https://cdn.test/item-fallback.jpg");
-    assert.equal(board.items[0]?.paymentLink, "https://shopify.test/orders/visible/status");
+    assert.deepEqual(new Set(board.items.map((item) => item.id)), new Set(["sale-visible", "sale-similar-tag"]));
+    const visible = board.items.find((item) => item.id === "sale-visible");
+    assert.equal(visible?.primaryImageUrl, "https://cdn.test/item-fallback.jpg");
+    assert.equal(visible?.paymentLink, "https://shopify.test/orders/visible/status");
   });
 
   assert.equal(supplierSalesGetLimit, "50");
-  assert.equal(itemSaleFilter, "in.(sale-visible)");
+  assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-visible)");
 });
 
 test("supplier Shopify tag retry resolves existing assigned offer sale", async () => {
@@ -1195,7 +1206,7 @@ test("shopify fallback treats existing supplier tags as already assigned", async
   assert.equal(salePostCount, 1);
 });
 
-test("shopify fallback matches existing offer sale by offer number and loose Quentin tag", async () => {
+test("shopify fallback matches existing offer sale by offer number and default Quentin tag", async () => {
   let salePatchCount = 0;
   let salePostCount = 0;
   const existingRow = saleRow({
@@ -1224,7 +1235,7 @@ test("shopify fallback matches existing offer sale by offer number and loose Que
               id: "gid://shopify/Order/987654444",
               name: "#1244",
               email: "tagged@example.com",
-              tags: ["Quentin"],
+              tags: ["Quentin (schon bezahlt)"],
               createdAt: "2026-06-16T12:40:00Z",
               processedAt: "2026-06-16T12:41:00Z",
               statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/status",
@@ -1326,7 +1337,7 @@ test("completed offers sync reconciles existing active supplier rows against Sho
             id: "gid://shopify/Order/987654777",
             name: "#1277",
             email: "tagged@example.com",
-            tags: ["Quentin Produktion"],
+            tags: ["Quentin (schon bezahlt)"],
             statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/status",
             createdAt: "2026-05-01T12:00:00Z",
             processedAt: "2026-05-01T12:01:00Z",

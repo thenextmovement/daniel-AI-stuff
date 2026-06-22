@@ -532,6 +532,10 @@ function normalizedTag(value: unknown) {
     .trim();
 }
 
+function supplierTagKey(value: unknown) {
+  return cleanText(value, 120).toLowerCase();
+}
+
 function upsertPath(path: string, conflictColumn: string) {
   return `${path}?on_conflict=${encodeURIComponent(conflictColumn)}`;
 }
@@ -1711,28 +1715,19 @@ function shopifyTagsFromInput(input: SupplierSaleInput) {
   return [...new Set(tags)];
 }
 
-function hasNormalizedTag(tags: Set<string>, candidates: Array<string | null | undefined>) {
+function hasConfiguredSupplierTag(tags: Set<string>, candidates: Array<string | null | undefined>) {
   return candidates.some((candidate) => {
-    const tag = normalizedTag(candidate);
+    const tag = supplierTagKey(candidate);
     return Boolean(tag && tags.has(tag));
   });
 }
 
-function tagsMentionSupplier(tags: Set<string>, supplier: SupplierSaleSupplier) {
-  const patterns: Record<SupplierSaleSupplier, RegExp[]> = {
-    quentin: [/\bquentin\b/],
-    said: [/\bsaeid\b/, /\bsaid\b/],
-    special: [/\bsonder\b/, /\bspecial\b/],
-  };
-  return [...tags].some((tag) => patterns[supplier].some((pattern) => pattern.test(tag)));
-}
-
 function assignedSupplierFromShopifyTags(input: SupplierSaleInput): SupplierSaleSupplier | null {
-  const tags = new Set(shopifyTagsFromInput(input).map(normalizedTag));
+  const tags = new Set(shopifyTagsFromInput(input).map(supplierTagKey));
   if (!tags.size) return null;
-  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"]) || tagsMentionSupplier(tags, "quentin")) return "quentin";
-  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"]) || tagsMentionSupplier(tags, "said")) return "said";
-  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"]) || tagsMentionSupplier(tags, "special")) return "special";
+  if (hasConfiguredSupplierTag(tags, [supplierTagValue("quentin")])) return "quentin";
+  if (hasConfiguredSupplierTag(tags, [supplierTagValue("said")])) return "said";
+  if (hasConfiguredSupplierTag(tags, [supplierTagValue("special")])) return "special";
   return null;
 }
 
@@ -1752,11 +1747,11 @@ function supplierTagsFromRow(row: SupplierSaleRow) {
 }
 
 function assignedSupplierFromRowTags(row: SupplierSaleRow): SupplierSaleSupplier | null {
-  const tags = new Set(supplierTagsFromRow(row).map(normalizedTag));
+  const tags = new Set(supplierTagsFromRow(row).map(supplierTagKey));
   if (!tags.size) return null;
-  if (hasNormalizedTag(tags, [supplierTagValue("quentin"), "quentin", "quentin schon bezahlt", "quentin bezahlt"]) || tagsMentionSupplier(tags, "quentin")) return "quentin";
-  if (hasNormalizedTag(tags, [supplierTagValue("said"), "saeid", "said", "saeid schon bezahlt", "said schon bezahlt", "saeid bezahlt", "said bezahlt"]) || tagsMentionSupplier(tags, "said")) return "said";
-  if (hasNormalizedTag(tags, [supplierTagValue("special"), "sonder supplier", "sondersupplier"]) || tagsMentionSupplier(tags, "special")) return "special";
+  if (hasConfiguredSupplierTag(tags, [supplierTagValue("quentin")])) return "quentin";
+  if (hasConfiguredSupplierTag(tags, [supplierTagValue("said")])) return "said";
+  if (hasConfiguredSupplierTag(tags, [supplierTagValue("special")])) return "special";
   return null;
 }
 
