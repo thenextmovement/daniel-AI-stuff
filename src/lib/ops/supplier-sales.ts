@@ -386,6 +386,7 @@ export type SupplierCompletedOffersSyncResult = {
   sources?: {
     completedOffers: { checked: number; upserted: number; failed: number };
     shopifyOrders: { checked: number; upserted: number; failed: number; skipped: boolean };
+    activeShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
   };
 };
 
@@ -2247,6 +2248,128 @@ async function syncRecentShopifyOrdersFromAdmin(
   };
 }
 
+async function fetchShopifyOrderByGid(config: NonNullable<ReturnType<typeof shopifyConfig>>, orderGid: string) {
+  const response = await fetch(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": config.token,
+    },
+    body: JSON.stringify({
+      query: `
+        query SupplierSalesOrderById($id: ID!) {
+          node(id: $id) {
+            ... on Order {
+              id
+              name
+              email
+              phone
+              tags
+              statusPageUrl
+              createdAt
+              processedAt
+              displayFinancialStatus
+              displayFulfillmentStatus
+              customAttributes { key value }
+              totalPriceSet { shopMoney { amount currencyCode } }
+              subtotalPriceSet { shopMoney { amount currencyCode } }
+              customer { firstName lastName email phone }
+              billingAddress { name company phone address1 address2 city zip country countryCodeV2 }
+              shippingAddress { name company phone address1 address2 city zip country countryCodeV2 }
+              lineItems(first: 50) {
+                nodes {
+                  id
+                  title
+                  sku
+                  quantity
+                  variantTitle
+                  customAttributes { key value }
+                  image { url }
+                  variant { image { url } }
+                  product { productType }
+                }
+              }
+            }
+          }
+        }
+      `,
+      variables: { id: orderGid },
+    }),
+    signal: AbortSignal.timeout(12_000),
+  });
+  const body = await response.json().catch(() => null) as JsonRecord | null;
+  if (!response.ok) return { order: null as JsonRecord | null, error: `Shopify Order-Abgleich HTTP ${response.status}` };
+  const graphErrors = arrayRecords(body?.errors);
+  if (graphErrors.length) {
+    return {
+      order: null as JsonRecord | null,
+      error: graphErrors.map((error) => cleanText(error.message || JSON.stringify(error), 200)).filter(Boolean).join("; ") || "Shopify Order-Abgleich fehlgeschlagen.",
+    };
+  }
+  const order = jsonRecord(jsonRecord(body?.data).node);
+  return { order: Object.keys(order).length ? order : null, error: null as string | null };
+}
+
+async function syncActiveSupplierSalesFromShopifyAdmin(
+  actor?: SupplierSaleActor | null,
+  options?: { limit?: number },
+) {
+  const config = shopifyConfig();
+  if (!config) {
+    return {
+      status: "skipped" as const,
+      checked: 0,
+      upserted: 0,
+      failed: 0,
+      errors: [] as Array<{ offerId: string | null; error: string }>,
+      warnings: ["Shopify Admin API ist nicht konfiguriert; aktiver Vergabe-Abgleich wurde uebersprungen."],
+    };
+  }
+
+  const limit = Math.min(Math.max(Number(options?.limit || 50), 1), 100);
+  const activeRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: "*",
+    assignment_status: "not.in.(assigned,in_production,completed,canceled)",
+    order: "updated_at.desc,created_at.desc",
+    limit,
+  });
+
+  const errors: Array<{ offerId: string | null; error: string }> = [];
+  const warnings: string[] = [];
+  let upserted = 0;
+  for (const row of activeRows) {
+    try {
+      const localOrderGid = shopifyOrderGid(row);
+      const lookup = localOrderGid ? { orderGid: localOrderGid, error: null as string | null } : await findShopifyOrderGid(config, row);
+      if (!lookup.orderGid) {
+        if (lookup.error && warnings.length < 5) warnings.push(`${row.shopify_order_name || row.offer_number || row.sale_key}: ${lookup.error}`);
+        continue;
+      }
+      const fetched = await fetchShopifyOrderByGid(config, lookup.orderGid);
+      if (!fetched.order) {
+        if (fetched.error) errors.push({ offerId: row.offer_id || row.offer_number || row.sale_key, error: fetched.error });
+        continue;
+      }
+      await upsertSupplierSaleFromPayload(shopifyOrderPayloadFromGraphql(fetched.order, config.domain), actor);
+      upserted += 1;
+    } catch (error) {
+      errors.push({
+        offerId: row.offer_id || row.offer_number || row.sale_key,
+        error: error instanceof Error ? error.message : "Aktive Vergabe konnte nicht mit Shopify abgeglichen werden.",
+      });
+    }
+  }
+
+  return {
+    status: errors.length ? "failed" as const : "synced" as const,
+    checked: activeRows.length,
+    upserted,
+    failed: errors.length,
+    errors,
+    warnings,
+  };
+}
+
 export async function syncCompletedOffersFromOffersApp(
   actor?: SupplierSaleActor | null,
   options?: { limit?: number },
@@ -2290,12 +2413,24 @@ export async function syncCompletedOffersFromOffersApp(
   }));
   errors.push(...shopify.errors);
   warnings.push(...shopify.warnings);
-  const checked = completedChecked + shopify.checked;
-  const upserted = completedUpserted + shopify.upserted;
-  const failed = completedFailed + shopify.failed;
+
+  const activeShopify = await syncActiveSupplierSalesFromShopifyAdmin(actor, { limit: options?.limit }).catch((error) => ({
+    status: "failed" as const,
+    checked: 0,
+    upserted: 0,
+    failed: 1,
+    errors: [{ offerId: null, error: error instanceof Error ? error.message : "Aktive Shopify-Vergabezeilen konnten nicht abgeglichen werden." }],
+    warnings: [] as string[],
+  }));
+  errors.push(...activeShopify.errors);
+  warnings.push(...activeShopify.warnings);
+  const checked = completedChecked + shopify.checked + activeShopify.checked;
+  const upserted = completedUpserted + shopify.upserted + activeShopify.upserted;
+  const failed = completedFailed + shopify.failed + activeShopify.failed;
   const completedConfigured = feed.configured;
   const shopifySkipped = shopify.status === "skipped";
-  const status = failed ? "failed" : (!completedConfigured && shopifySkipped ? "skipped" : "synced");
+  const activeShopifySkipped = activeShopify.status === "skipped";
+  const status = failed ? "failed" : (!completedConfigured && shopifySkipped && activeShopifySkipped ? "skipped" : "synced");
   return {
     status,
     checked,
@@ -2306,6 +2441,7 @@ export async function syncCompletedOffersFromOffersApp(
     sources: {
       completedOffers: { checked: completedChecked, upserted: completedUpserted, failed: completedFailed },
       shopifyOrders: { checked: shopify.checked, upserted: shopify.upserted, failed: shopify.failed, skipped: shopifySkipped },
+      activeShopifyRows: { checked: activeShopify.checked, upserted: activeShopify.upserted, failed: activeShopify.failed, skipped: activeShopifySkipped },
     },
   };
 }

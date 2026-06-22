@@ -1293,6 +1293,97 @@ test("shopify fallback matches existing offer sale by offer number and loose Que
   assert.equal(salePostCount, 0);
 });
 
+test("completed offers sync reconciles existing active supplier rows against Shopify tags", async () => {
+  let activeRowsLookupCount = 0;
+  let shopifyNodeLookupCount = 0;
+  let salePatchCount = 0;
+  const existingRow = saleRow({
+    id: "sale-active-stale-tag",
+    sale_key: "shopify:order:987654777",
+    source: "shopify",
+    shopify_order_id: "987654777",
+    shopify_order_name: "#1277",
+    assigned_supplier: null,
+    assignment_status: "ready_to_assign",
+    shopify_tag_value: null,
+    shopify_tag_sync_status: "not_started",
+    raw_shopify: { tags: [] },
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") return Response.json({ ok: true, sales: [], count: 0 });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      const body = JSON.parse(String(init?.body || "{}"));
+      if (String(body.query || "").includes("orders(")) {
+        return Response.json({ data: { orders: { nodes: [] } } });
+      }
+      shopifyNodeLookupCount += 1;
+      assert.equal(body.variables.id, "gid://shopify/Order/987654777");
+      return Response.json({
+        data: {
+          node: {
+            id: "gid://shopify/Order/987654777",
+            name: "#1277",
+            email: "tagged@example.com",
+            tags: ["Quentin Produktion"],
+            statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/status",
+            createdAt: "2026-05-01T12:00:00Z",
+            processedAt: "2026-05-01T12:01:00Z",
+            displayFinancialStatus: "PAID",
+            displayFulfillmentStatus: "UNFULFILLED",
+            customAttributes: [],
+            totalPriceSet: { shopMoney: { amount: "180.00", currencyCode: "EUR" } },
+            subtotalPriceSet: { shopMoney: { amount: "151.26", currencyCode: "EUR" } },
+            customer: { firstName: "Tagged", lastName: "Sale", email: "tagged@example.com", phone: null },
+            billingAddress: null,
+            shippingAddress: null,
+            lineItems: { nodes: [{ id: "gid://shopify/LineItem/7", title: "LED Neon", quantity: 1, customAttributes: [], image: null, variant: { image: null }, product: { productType: "LED-Neon-Flex" } }] },
+          },
+        },
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)") {
+        activeRowsLookupCount += 1;
+        return Response.json([existingRow]);
+      }
+      if (url.searchParams.get("shopify_order_id") === "eq.987654777") return Response.json([existingRow]);
+      if (url.searchParams.get("id") === `eq.${existingRow.id}`) return Response.json([{ ...existingRow, assigned_supplier: "quentin", assignment_status: "assigned", shopify_tag_value: "Quentin (schon bezahlt)", shopify_tag_sync_status: "synced" }]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      salePatchCount += 1;
+      const payload = JSON.parse(String(init?.body || "{}"));
+      assert.equal(payload.assigned_supplier, "quentin");
+      assert.equal(payload.assignment_status, "assigned");
+      assert.equal(payload.shopify_tag_sync_status, "synced");
+      return Response.json([{ ...existingRow, ...payload }]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: existingRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: existingRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.sources?.activeShopifyRows?.checked, 1);
+    assert.equal(result.sources?.activeShopifyRows?.upserted, 1);
+  });
+
+  assert.equal(activeRowsLookupCount, 1);
+  assert.equal(shopifyNodeLookupCount, 1);
+  assert.equal(salePatchCount, 1);
+});
+
 test("supplier sale action sets Shopify no payment reminder tag", async () => {
   let shopifyTagCount = 0;
   let currentRow = saleRow({
