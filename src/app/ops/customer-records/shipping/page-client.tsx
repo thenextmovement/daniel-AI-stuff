@@ -7,6 +7,8 @@ import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
 
+type ShippingBoardScope = "moving" | "active" | "problems" | "label_created" | "all";
+
 type ShippingApiResponse = {
   ok: boolean;
   board?: ShippingBoard;
@@ -99,7 +101,7 @@ export function CustomerShippingClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [board, setBoard] = useState<ShippingBoard | null>(null);
-  const [scope, setScope] = useState<"moving" | "active" | "problems" | "label_created" | "all">("moving");
+  const [scope, setScope] = useState<ShippingBoardScope>("active");
   const [carrier, setCarrier] = useState<"all" | "dpd" | "dhl">("all");
   const [requestId, setRequestId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -142,6 +144,14 @@ export function CustomerShippingClient({
     }
     setHasSession(true);
     setToken("");
+  }
+
+  function selectScope(nextScope: ShippingBoardScope) {
+    setScope(nextScope);
+  }
+
+  function statButtonClass(targetScope: ShippingBoardScope) {
+    return `text-left transition hover:-translate-y-0.5 ${scope === targetScope ? "rounded-[18px] ring-2 ring-stone-950 ring-offset-2 ring-offset-[#f7f4ee]" : ""}`;
   }
 
   async function loadBoard() {
@@ -219,12 +229,24 @@ export function CustomerShippingClient({
         />
 
         <section className="grid gap-3 md:grid-cols-6">
-          <OpsStatCard label="Fehler" value={board?.counts.actionRequired || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Echte Zustellprobleme." />
-          <OpsStatCard label="Watch" value={board?.counts.watch || 0} tone="info" icon={<Clock3 className="h-5 w-5" />} detail="Aktiv beobachten." />
-          <OpsStatCard label="Label" value={board?.counts.labelCreated || 0} tone="warning" icon={<Clock3 className="h-5 w-5" />} detail="Noch kein Carrier-Scan." />
-          <OpsStatCard label="Unterwegs" value={board?.counts.inTransit || 0} icon={<Truck className="h-5 w-5" />} detail="Echte Carrier-Bewegung." />
-          <OpsStatCard label="Zugestellt" value={board?.counts.delivered || 0} tone="success" icon={<PackageCheck className="h-5 w-5" />} detail="Sauber abgeschlossen." />
-          <OpsStatCard label="Aufgabe" value={board?.counts.withOpenTask || 0} tone="info" icon={<ListChecks className="h-5 w-5" />} detail="Mit Teamaufgabe." />
+          <button type="button" onClick={() => selectScope("problems")} className={statButtonClass("problems")}>
+            <OpsStatCard label="Fehler" value={board?.counts.actionRequired || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Echte Zustellprobleme." />
+          </button>
+          <button type="button" onClick={() => selectScope("active")} className={statButtonClass("active")}>
+            <OpsStatCard label="Watch" value={board?.counts.watch || 0} tone="info" icon={<Clock3 className="h-5 w-5" />} detail="Aktiv beobachten." />
+          </button>
+          <button type="button" onClick={() => selectScope("label_created")} className={statButtonClass("label_created")}>
+            <OpsStatCard label="Label" value={board?.counts.labelCreated || 0} tone="warning" icon={<Clock3 className="h-5 w-5" />} detail="Noch kein Carrier-Scan." />
+          </button>
+          <button type="button" onClick={() => selectScope("moving")} className={statButtonClass("moving")}>
+            <OpsStatCard label="Unterwegs" value={board?.counts.inTransit || 0} icon={<Truck className="h-5 w-5" />} detail="Echte Carrier-Bewegung." />
+          </button>
+          <button type="button" onClick={() => selectScope("all")} className={statButtonClass("all")}>
+            <OpsStatCard label="Zugestellt" value={board?.counts.delivered || 0} tone="success" icon={<PackageCheck className="h-5 w-5" />} detail="Sauber abgeschlossen." />
+          </button>
+          <button type="button" onClick={() => selectScope("problems")} className={statButtonClass("problems")}>
+            <OpsStatCard label="Aufgabe" value={board?.counts.withOpenTask || 0} tone="info" icon={<ListChecks className="h-5 w-5" />} detail="Mit Teamaufgabe." />
+          </button>
         </section>
 
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
@@ -242,11 +264,11 @@ export function CustomerShippingClient({
                 aria-label="Request-ID Filter"
               />
             </label>
-            <select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} aria-label="Paketversand-Statusfilter" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
-              <option value="moving">Wirklich unterwegs</option>
+            <select value={scope} onChange={(event) => selectScope(event.target.value as ShippingBoardScope)} aria-label="Paketversand-Statusfilter" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+              <option value="active">Aktive Sendungen</option>
               <option value="problems">Echte Fehler</option>
               <option value="label_created">Nur Label erstellt</option>
-              <option value="active">Aktive Sendungen</option>
+              <option value="moving">Wirklich unterwegs</option>
               <option value="all">Alle Sendungen</option>
             </select>
             <select value={carrier} onChange={(event) => setCarrier(event.target.value as typeof carrier)} aria-label="Carrier-Filter" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">

@@ -23,23 +23,35 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
 
+const SHIPPING_SCOPE_VALUES = ["moving", "active", "problems", "label_created", "all"] as const;
+const SHIPPING_CARRIER_FILTER_VALUES = ["all", "dpd", "dhl"] as const;
+const OPS_JSON_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+  "Vary": "Cookie, Cf-Access-Jwt-Assertion",
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: OPS_JSON_HEADERS });
+}
+
 function unauthorized() {
-  return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  return jsonResponse({ ok: false, error: "unauthorized" }, 401);
 }
 
 function notConfigured() {
-  return NextResponse.json({ ok: false, error: "ops_not_configured" }, { status: 503 });
+  return jsonResponse({ ok: false, error: "ops_not_configured" }, 503);
 }
 
 function failureResponse(error: unknown) {
   if (error instanceof QuoteValidationError) {
-    return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, issues: error.issues }, error.status);
   }
   if (error instanceof SupabaseRestError) {
-    return NextResponse.json({ ok: false, error: error.message, details: error.details }, { status: error.status });
+    console.error("ops customer-records shipping supabase request failed", { status: error.status, details: error.details });
+    return jsonResponse({ ok: false, error: error.message }, error.status);
   }
   console.error("ops customer-records shipping route failed", error);
-  return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
+  return jsonResponse({ ok: false, error: "internal_error" }, 500);
 }
 
 function getOpsHost(request: NextRequest) {
@@ -59,6 +71,22 @@ function tokenMatches(candidate: string, expected: string) {
 function getAutomationToken(request: NextRequest, bodyToken?: string | null) {
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   return String(bodyToken || request.headers.get("x-shipping-agent-token") || bearer || "").trim();
+}
+
+function parseScopeFilter(value: string | null) {
+  const scope = value || "active";
+  if (!SHIPPING_SCOPE_VALUES.includes(scope as (typeof SHIPPING_SCOPE_VALUES)[number])) {
+    throw new QuoteValidationError("Ungueltiger Paketversand-Filter.", [`scope=${scope} ist nicht unterstuetzt.`], 400);
+  }
+  return scope as (typeof SHIPPING_SCOPE_VALUES)[number];
+}
+
+function parseCarrierFilter(value: string | null) {
+  const carrier = value || "all";
+  if (!SHIPPING_CARRIER_FILTER_VALUES.includes(carrier as (typeof SHIPPING_CARRIER_FILTER_VALUES)[number])) {
+    throw new QuoteValidationError("Ungueltiger Carrier-Filter.", [`carrier=${carrier} ist nicht unterstuetzt.`], 400);
+  }
+  return carrier as ShippingCarrier | "all";
 }
 
 function hasShippingAutomationAccess(request: NextRequest, bodyToken?: string | null) {
@@ -100,10 +128,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const requestId = request.nextUrl.searchParams.get("requestId");
-    const carrier = (request.nextUrl.searchParams.get("carrier") || "all") as ShippingCarrier | "all";
-    const scope = (request.nextUrl.searchParams.get("scope") || "moving") as "moving" | "active" | "problems" | "label_created" | "all";
+    const carrier = parseCarrierFilter(request.nextUrl.searchParams.get("carrier"));
+    const scope = parseScopeFilter(request.nextUrl.searchParams.get("scope"));
     const board = await listShippingBoard({ requestId, carrier, scope });
-    return NextResponse.json({ ok: true, board });
+    return jsonResponse({ ok: true, board });
   } catch (error) {
     return failureResponse(error);
   }
@@ -145,7 +173,7 @@ export async function POST(request: NextRequest) {
     if (body?.action === "upsert_shipment") {
       const shipment = await upsertShippingShipment(body.shipment || {});
       const board = await listShippingBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, shipment, board });
+      return jsonResponse({ ok: true, action: body.action, shipment, board });
     }
     if (body?.action === "record_event") {
       const result = await recordShippingTrackingEvent(body.event || {
@@ -154,41 +182,41 @@ export async function POST(request: NextRequest) {
         eventTime: "",
       });
       const board = await listShippingBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, result, board });
+      return jsonResponse({ ok: true, action: body.action, result, board });
     }
     if (body?.action === "evaluate_shipment") {
       const incidents = await evaluateShippingShipment(String(body.shipmentId || ""));
       const board = await listShippingBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, incidents, board });
+      return jsonResponse({ ok: true, action: body.action, incidents, board });
     }
     if (body?.action === "create_task") {
       const result = await createShippingIncidentTask(String(body.incidentId || ""), actor);
       const board = await listShippingBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, result, board });
+      return jsonResponse({ ok: true, action: body.action, result, board });
     }
     if (body?.action === "acknowledge") {
       const incident = await updateShippingIncidentStatus(String(body.incidentId || ""), "acknowledged", actor);
       const board = await listShippingBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, incident, board });
+      return jsonResponse({ ok: true, action: body.action, incident, board });
     }
     if (body?.action === "resolve") {
       const incident = await updateShippingIncidentStatus(String(body.incidentId || ""), "resolved", actor);
       const board = await listShippingBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, incident, board });
+      return jsonResponse({ ok: true, action: body.action, incident, board });
     }
     if (body?.action === "ignore") {
       const incident = await updateShippingIncidentStatus(String(body.incidentId || ""), "ignored", actor);
       const board = await listShippingBoard({ scope: "problems" });
-      return NextResponse.json({ ok: true, action: body.action, incident, board });
+      return jsonResponse({ ok: true, action: body.action, incident, board });
     }
     if (body?.action === "enqueue_notifications") {
       const notifications = await enqueueShippingNotifications();
-      return NextResponse.json({ ok: true, action: body.action, notifications });
+      return jsonResponse({ ok: true, action: body.action, notifications });
     }
     if (body?.action === "claim_notifications") {
       await enqueueShippingNotifications();
       const notifications = await claimPendingShippingNotifications(Number(body.limit || 20));
-      return NextResponse.json({ ok: true, action: body.action, notifications });
+      return jsonResponse({ ok: true, action: body.action, notifications });
     }
     if (body?.action === "mark_notification_sent") {
       const notification = await markShippingNotificationSent({
@@ -196,7 +224,7 @@ export async function POST(request: NextRequest) {
         providerMessageId: body.providerMessageId || null,
         metadata: body.metadata || {},
       });
-      return NextResponse.json({ ok: true, action: body.action, notification });
+      return jsonResponse({ ok: true, action: body.action, notification });
     }
     if (body?.action === "mark_notification_failed") {
       const notification = await markShippingNotificationFailed({
@@ -204,9 +232,9 @@ export async function POST(request: NextRequest) {
         error: body.notificationError || "unknown",
         metadata: body.metadata || {},
       });
-      return NextResponse.json({ ok: true, action: body.action, notification });
+      return jsonResponse({ ok: true, action: body.action, notification });
     }
-    return NextResponse.json({ ok: false, error: "unsupported_action" }, { status: 400 });
+    return jsonResponse({ ok: false, error: "unsupported_action" }, 400);
   } catch (error) {
     return failureResponse(error);
   }

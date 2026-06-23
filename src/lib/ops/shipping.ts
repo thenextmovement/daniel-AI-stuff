@@ -311,6 +311,7 @@ export function normalizeCarrierStatus(input: {
   if (/out for delivery|in zustellung|zustellung heute|wird heute zugestellt/.test(text)) return "out_for_delivery";
   if (/label|announced|angekuendigt|angekündigt|daten.*uebermittelt|daten.*übermittelt|sendungsdaten|pre[-\s]*advice|shipment information received/.test(text)) return "label_created";
   if (/delay|delayed|verspaetet|verspätet|transit|unterwegs|sort|depot|hub|transport|scan|processed|verarbeitet/.test(text)) return "in_transit";
+  if (/\bsuccess\b|fulfilled/.test(text)) return "label_created";
   return "carrier_not_found";
 }
 

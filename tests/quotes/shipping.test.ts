@@ -71,6 +71,7 @@ test("normalizeCarrierStatus maps Shopify fulfillment event statuses into shippi
   assert.equal(normalizeCarrierStatus({ carrier: "shopify", statusCode: "CARRIER_PICKED_UP" }), "in_transit");
   assert.equal(normalizeCarrierStatus({ carrier: "shopify", statusCode: "LABEL_PURCHASED" }), "label_created");
   assert.equal(normalizeCarrierStatus({ carrier: "shopify", statusCode: "FAILURE" }), "delivery_failed");
+  assert.equal(normalizeCarrierStatus({ carrier: "shopify", statusCode: "SUCCESS", statusText: "FULFILLED" }), "label_created");
 });
 
 test("normalizeCarrierStatus never treats label-only or unknown carrier text as in transit", () => {
