@@ -64,11 +64,9 @@ const priorityOptions: Array<{ value: OpsInternalTaskPriority; label: string }> 
   { value: "low", label: "Niedrig" },
 ];
 
-const columns: Array<{ status: OpsInternalTaskStatus; title: string; helper: string }> = [
-  { status: "open", title: "Offen", helper: "Neue oder noch nicht gestartete Aufgaben." },
-  { status: "in_progress", title: "In Arbeit", helper: "Gerade aktiv bei einer Person." },
-  { status: "waiting", title: "Wartet", helper: "Blockiert, Rückmeldung oder Lieferung offen." },
-  { status: "done", title: "Erledigt", helper: "Heute sichtbar, danach per Historie." },
+const columns: Array<{ key: "open" | "done"; title: string; helper: string }> = [
+  { key: "open", title: "Offen", helper: "Alles, was noch nicht erledigt ist." },
+  { key: "done", title: "Erledigt", helper: "Abgeschlossene Aufgaben, wenn die Historie eingeblendet ist." },
 ];
 
 function formatApiError(payload: { error?: string; issues?: string[] } | null) {
@@ -134,6 +132,11 @@ function sortTasks(tasks: OpsInternalTask[]) {
   });
 }
 
+function columnKeyForTask(task: OpsInternalTask): "open" | "done" | null {
+  if (task.status === "archived") return null;
+  return task.status === "done" ? "done" : "open";
+}
+
 function confirmTaskDone(task: OpsInternalTask) {
   if (typeof window === "undefined") return true;
   return window.confirm(`Aufgabe "${task.title}" als erledigt markieren?`);
@@ -195,26 +198,6 @@ function TaskCard({
       ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {task.status !== "in_progress" && task.status !== "done" ? (
-          <button
-            type="button"
-            onClick={() => onUpdate(task.id, { status: "in_progress" })}
-            aria-label={`Aufgabe ${task.title} starten`}
-            className="rounded-xl bg-stone-950 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-800"
-          >
-            Starten
-          </button>
-        ) : null}
-        {task.status !== "waiting" && task.status !== "done" ? (
-          <button
-            type="button"
-            onClick={() => onUpdate(task.id, { status: "waiting" })}
-            aria-label={`Aufgabe ${task.title} auf Wartet setzen`}
-            className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-950"
-          >
-            Wartet
-          </button>
-        ) : null}
         {task.status !== "done" ? (
           <button
             type="button"
@@ -424,7 +407,7 @@ export function OpsTasksClient({
 
   const grouped = columns.map((column) => ({
     ...column,
-    tasks: sortTasks(tasks.filter((task) => task.status === column.status)),
+    tasks: sortTasks(tasks.filter((task) => columnKeyForTask(task) === column.key)),
   }));
 
   return (
@@ -472,7 +455,7 @@ export function OpsTasksClient({
           <OpsStatCard label="Heute" value={summary.dueToday} tone="info" detail="Heute fällig oder geplant." />
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
+        <section className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
           <form onSubmit={createTask} className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-stone-950 text-white">
@@ -590,9 +573,9 @@ export function OpsTasksClient({
                 Erledigte anzeigen
               </label>
             </div>
-            <div className="grid gap-4 xl:grid-cols-4">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
               {grouped.map((column) => (
-                <section key={column.status} className="rounded-[2rem] border border-stone-200 bg-stone-100/70 p-3">
+                <section key={column.key} className="min-w-0 rounded-[2rem] border border-stone-200 bg-stone-100/70 p-3">
                   <div className="px-2 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-semibold">{column.title}</h3>

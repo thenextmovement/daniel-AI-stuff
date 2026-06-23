@@ -132,7 +132,7 @@ export function OpsTaskNotifier() {
 
   const attentionTasks = useMemo(() => {
     const now = Date.now();
-    return sortAttentionTasks(tasks.filter((task) => shouldNotify(task, operatorName, now))).slice(0, 6);
+    return sortAttentionTasks(tasks.filter((task) => shouldNotify(task, operatorName, now)));
   }, [operatorName, tasks]);
 
   const currentKey = useMemo(() => notificationKey(attentionTasks), [attentionTasks]);
@@ -269,11 +269,14 @@ export function OpsTaskNotifier() {
           <div className={`${overdueCount ? "bg-rose-600" : "bg-stone-950"} px-5 py-4 text-white`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/65">Aufgaben-Hinweis</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/65">Fällige Aufgaben</p>
                 <h2 className="mt-2 text-lg font-semibold">
                   {operatorName ? `${operatorName}, ` : ""}
-                  {overdueCount ? "Aufgabe überfällig" : "Aufgabe fällig"}
+                  {overdueCount ? "Aufgaben überfällig" : "Aufgaben fällig"}
                 </h2>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Gezeigt werden fällige Aufgaben für dich und unzugewiesene dringende Aufgaben.
+                </p>
               </div>
               <button type="button" onClick={dismiss} className="rounded-full p-2 text-white/75 transition hover:bg-white/10 hover:text-white" aria-label="Hinweis schließen">
                 <X className="h-4 w-4" />
@@ -284,7 +287,7 @@ export function OpsTaskNotifier() {
           <div className="max-h-[60vh] overflow-y-auto px-4 py-4">
             {lastError ? (
               <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Aufgaben-Hinweise konnten gerade nicht aktualisiert werden: {lastError}
+                Fällige Aufgaben konnten gerade nicht aktualisiert werden: {lastError}
               </div>
             ) : null}
 
