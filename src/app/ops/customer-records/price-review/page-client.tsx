@@ -697,8 +697,8 @@ export function SupplierPriceReviewClient({
 
         <OpsPageIntro
           eyebrow="Customer Ops"
-          title="Preisprüfung"
-          description="Modellvorschläge bleiben hier im Review, bis ein Mensch sie freigibt oder zum Supplier Check schickt."
+          title="Schildpreise"
+          description="Trello-Karte eintragen, Zielgröße setzen und eine interne Supplierpreis-Schätzung mit Confidence erhalten."
         >
           <a
             href="/ops/customer-records"
@@ -736,42 +736,6 @@ export function SupplierPriceReviewClient({
               >
                 Entsperren
               </button>
-            </div>
-          </section>
-        ) : null}
-
-        {canLoad ? (
-          <section className="rounded-lg border border-black/10 bg-white p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-black">Review Queue</div>
-                <div className="mt-1 text-sm text-black/55">
-                  {loading ? "Lade Vorschläge..." : `${anchorItems.length} Anker · ${items.length} Preisvorschläge`}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={operatorName}
-                  onChange={(event) => setOperatorName(event.target.value)}
-                  placeholder="Reviewer"
-                  className="w-40 rounded-full border border-black/10 px-3 py-2 text-sm outline-none transition focus:border-[#fa31a2]"
-                />
-                {(["pending", "reviewed", "all"] as const).map((entry) => (
-                  <button
-                    key={entry}
-                    type="button"
-                    onClick={() => setFilter(entry)}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      filter === entry
-                        ? "border-black bg-black text-white"
-                        : "border-black/10 bg-white text-black/60 hover:border-[#fa31a2] hover:text-black"
-                    }`}
-                  >
-                    {entry === "pending" ? "Offen" : entry === "reviewed" ? "Reviewed" : "Alle"}
-                  </button>
-                ))}
-              </div>
             </div>
           </section>
         ) : null}
@@ -832,83 +796,133 @@ export function SupplierPriceReviewClient({
         ) : null}
 
         {canLoad ? (
-          <section className="grid gap-4">
-            {!loading && anchorItems.length ? (
-              <div className="rounded-lg border border-black/10 bg-[linear-gradient(135deg,#ffffff_0%,#fffafc_50%,#fbfdff_100%)] p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-black">
-                      <ShieldCheck className="h-4 w-4 text-[#fa31a2]" />
-                      Ankerprüfung
-                    </div>
-                    <div className="mt-1 text-sm text-black/55">
-                      OCR-/Supplier-Zeilen erst korrigieren und freigeben, danach entstehen Shadow-Preisvorschläge.
-                    </div>
-                  </div>
-                  <div className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-800">
-                    Human Gate
-                  </div>
+          <details className="group rounded-lg border border-black/10 bg-white/80">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 marker:hidden">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-black">
+                  <ShieldCheck className="h-4 w-4 text-[#fa31a2]" />
+                  Modelltraining & Review
                 </div>
-                <div className="mt-4 grid gap-3">
-                  {anchorItems.map((item) => (
-                    <AnchorReviewCard
-                      key={item.id}
-                      item={item}
-                      note={notes[item.id] || ""}
-                      corrections={anchorCorrections[item.id] || {}}
-                      running={runningId === `anchor:${item.id}`}
-                      onNoteChange={(value) => setNotes((current) => ({ ...current, [item.id]: value }))}
-                      onCorrectionChange={(key, value) =>
-                        setAnchorCorrections((current) => ({
-                          ...current,
-                          [item.id]: {
-                            ...(current[item.id] || {}),
-                            [key]: value,
-                          },
-                        }))
-                      }
-                      onReview={(decision) => void reviewAnchor(item, decision)}
-                    />
+                <div className="mt-1 text-sm text-black/55">
+                  {loading ? "Lade interne Modellprüfungen..." : `${anchorItems.length} Anker · ${items.length} Preisvorschläge`}
+                </div>
+              </div>
+              <span className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-medium text-black/55 transition group-open:bg-black group-open:text-white">
+                Aufklappen
+              </span>
+            </summary>
+
+            <div className="border-t border-black/10 p-5">
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Nur für Modellpflege: Hier werden erkannte Trainingsanker und Shadow-Preisvorschläge geprüft. Das ist nicht nötig, um eine einzelne Trello-Karte oben zu schätzen.
+              </div>
+
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-black">Review Queue</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={operatorName}
+                    onChange={(event) => setOperatorName(event.target.value)}
+                    placeholder="Reviewer"
+                    className="w-40 rounded-full border border-black/10 px-3 py-2 text-sm outline-none transition focus:border-[#fa31a2]"
+                  />
+                  {(["pending", "reviewed", "all"] as const).map((entry) => (
+                    <button
+                      key={entry}
+                      type="button"
+                      onClick={() => setFilter(entry)}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                        filter === entry
+                          ? "border-black bg-black text-white"
+                          : "border-black/10 bg-white text-black/60 hover:border-[#fa31a2] hover:text-black"
+                      }`}
+                    >
+                      {entry === "pending" ? "Offen" : entry === "reviewed" ? "Reviewed" : "Alle"}
+                    </button>
                   ))}
                 </div>
               </div>
-            ) : null}
-            {!loading && !groups.length ? (
-              <div className="rounded-lg border border-dashed border-black/10 bg-white/70 px-5 py-8 text-center text-sm text-black/50">
-                Keine Preisvorschläge in dieser Ansicht.
-              </div>
-            ) : null}
-            {groups.map((group) => (
-              <div key={group.key} className="rounded-lg border border-black/10 bg-[linear-gradient(135deg,#ffffff_0%,#fbfdff_52%,#fffdf9_100%)] p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-black">
-                      <ShieldCheck className="h-4 w-4 text-[#fa31a2]" />
-                      {group.key}
+
+              <section className="grid gap-4">
+                {!loading && anchorItems.length ? (
+                  <div className="rounded-lg border border-black/10 bg-[linear-gradient(135deg,#ffffff_0%,#fffafc_50%,#fbfdff_100%)] p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-black">
+                          <ShieldCheck className="h-4 w-4 text-[#fa31a2]" />
+                          Ankerprüfung
+                        </div>
+                        <div className="mt-1 text-sm text-black/55">
+                          OCR-/Supplier-Zeilen erst korrigieren und freigeben, danach entstehen Shadow-Preisvorschläge.
+                        </div>
+                      </div>
+                      <div className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-800">
+                        Human Gate
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-black/55">
-                      {group.items.length} Größenvorschläge · kleinste erkannte Größe zuerst prüfen
+                    <div className="mt-4 grid gap-3">
+                      {anchorItems.map((item) => (
+                        <AnchorReviewCard
+                          key={item.id}
+                          item={item}
+                          note={notes[item.id] || ""}
+                          corrections={anchorCorrections[item.id] || {}}
+                          running={runningId === `anchor:${item.id}`}
+                          onNoteChange={(value) => setNotes((current) => ({ ...current, [item.id]: value }))}
+                          onCorrectionChange={(key, value) =>
+                            setAnchorCorrections((current) => ({
+                              ...current,
+                              [item.id]: {
+                                ...(current[item.id] || {}),
+                                [key]: value,
+                              },
+                            }))
+                          }
+                          onReview={(decision) => void reviewAnchor(item, decision)}
+                        />
+                      ))}
                     </div>
                   </div>
-                  <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/50">
-                    Shadow
+                ) : null}
+                {!loading && !groups.length ? (
+                  <div className="rounded-lg border border-dashed border-black/10 bg-white/70 px-5 py-8 text-center text-sm text-black/50">
+                    Keine Preisvorschläge in dieser Ansicht.
                   </div>
-                </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  {group.items.map((item) => (
-                    <ReviewItemCard
-                      key={item.id}
-                      item={item}
-                      note={notes[item.id] || ""}
-                      running={runningId === item.id}
-                      onNoteChange={(value) => setNotes((current) => ({ ...current, [item.id]: value }))}
-                      onReview={(decision) => void reviewItem(item, decision)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </section>
+                ) : null}
+                {groups.map((group) => (
+                  <div key={group.key} className="rounded-lg border border-black/10 bg-[linear-gradient(135deg,#ffffff_0%,#fbfdff_52%,#fffdf9_100%)] p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-black">
+                          <ShieldCheck className="h-4 w-4 text-[#fa31a2]" />
+                          {group.key}
+                        </div>
+                        <div className="mt-1 text-sm text-black/55">
+                          {group.items.length} Größenvorschläge · kleinste erkannte Größe zuerst prüfen
+                        </div>
+                      </div>
+                      <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/50">
+                        Shadow
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      {group.items.map((item) => (
+                        <ReviewItemCard
+                          key={item.id}
+                          item={item}
+                          note={notes[item.id] || ""}
+                          running={runningId === item.id}
+                          onNoteChange={(value) => setNotes((current) => ({ ...current, [item.id]: value }))}
+                          onReview={(decision) => void reviewItem(item, decision)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            </div>
+          </details>
         ) : null}
       </div>
     </main>
