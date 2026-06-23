@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, CircleAlert, ExternalLink, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { Calculator, Check, CircleAlert, ExternalLink, RefreshCw, ShieldCheck, X } from "lucide-react";
 import type {
   SupplierPricePredictionReviewDecision,
   SupplierPricePredictionReviewItem,
+  SupplierPriceTrelloEstimateResult,
   SupplierQuoteTrainingItemAnchorReviewDecision,
   SupplierQuoteTrainingItemAnchorReviewItem,
 } from "@/lib/ops/supplier-price-review";
@@ -17,6 +18,7 @@ type ReviewResponse = {
   anchorItems?: SupplierQuoteTrainingItemAnchorReviewItem[];
   item?: SupplierPricePredictionReviewItem;
   createdPredictionItems?: SupplierPricePredictionReviewItem[];
+  estimate?: SupplierPriceTrelloEstimateResult;
   error?: string;
   issues?: string[];
 };
@@ -121,6 +123,20 @@ function anchorTitle(item: SupplierQuoteTrainingItemAnchorReviewItem) {
   return item.trelloCardName || item.designLabel || item.sourceKey || item.trelloCardId || "Unbekannter Anker";
 }
 
+function confidenceTone(level: string) {
+  if (level === "high") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (level === "medium") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (level === "blocked") return "border-rose-200 bg-rose-50 text-rose-800";
+  return "border-orange-200 bg-orange-50 text-orange-800";
+}
+
+function confidenceLabel(level: string) {
+  if (level === "high") return "hoch";
+  if (level === "medium") return "mittel";
+  if (level === "blocked") return "blockiert";
+  return "niedrig";
+}
+
 function AnchorInput({
   label,
   value,
@@ -140,6 +156,80 @@ function AnchorInput({
         className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
       />
     </label>
+  );
+}
+
+function TrelloEstimateResultCard({ estimate }: { estimate: SupplierPriceTrelloEstimateResult }) {
+  return (
+    <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-black">{estimate.card.name || estimate.card.id}</div>
+          <div className="mt-1 text-xs text-black/50">
+            Anchor {formatCm(estimate.anchor.widthCm)} x {formatCm(estimate.anchor.heightCm)} · Production {formatMoney(estimate.anchor.productionPrice, estimate.anchor.currency)} · Shipping {formatMoney(estimate.anchor.shippingPrice, estimate.anchor.currency)}
+          </div>
+        </div>
+        {estimate.card.shortUrl ? (
+          <a
+            href={estimate.card.shortUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs text-black/55 transition hover:border-[#fa31a2] hover:text-black"
+          >
+            Trello
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : null}
+      </div>
+
+      {estimate.warnings.length ? (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {estimate.warnings.join(" ")}
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {estimate.estimates.map((item) => (
+          <div key={`${item.requestedInput}-${item.widthCm}-${item.heightCm}`} className="rounded-lg border border-black/10 bg-black/[0.02] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold text-black">
+                  {formatCm(item.widthCm)} x {formatCm(item.heightCm)}
+                </div>
+                <div className="mt-1 text-xs text-black/45">
+                  Eingabe: {item.requestedInput} · {item.shippingBucket} · {item.shippingTrainingRows} Trainings
+                </div>
+              </div>
+              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${confidenceTone(item.confidenceLevel)}`}>
+                {confidenceLabel(item.confidenceLevel)} {Math.round(item.confidence * 100)}%
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Production</div>
+                <div className="mt-1 font-medium text-black">{formatMoney(item.predictedProductionPrice, item.currency)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Shipping</div>
+                <div className="mt-1 font-medium text-black">{formatMoney(item.predictedShippingPrice, item.currency)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Total</div>
+                <div className="mt-1 font-semibold text-black">{formatMoney(item.predictedTotalSupplierCost, item.currency)}</div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <span className={`rounded-full border px-2.5 py-1 ${item.needsSupplierCheck ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+                {item.needsSupplierCheck ? "lieber Supplier pruefen" : "intern plausibel"}
+              </span>
+              {!item.customerAutoQuoteEligible ? (
+                <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-black/50">ueber 200cm</span>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -402,6 +492,10 @@ export function SupplierPriceReviewClient({
   const [anchorItems, setAnchorItems] = useState<SupplierQuoteTrainingItemAnchorReviewItem[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [anchorCorrections, setAnchorCorrections] = useState<Record<string, AnchorCorrectionDraft>>({});
+  const [estimateTrelloCard, setEstimateTrelloCard] = useState("");
+  const [estimateTargetSizes, setEstimateTargetSizes] = useState("100");
+  const [estimateResult, setEstimateResult] = useState<SupplierPriceTrelloEstimateResult | null>(null);
+  const [estimating, setEstimating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -562,6 +656,40 @@ export function SupplierPriceReviewClient({
     }
   }
 
+  async function estimateFromTrello() {
+    setEstimating(true);
+    setError(null);
+    setMessage(null);
+    setEstimateResult(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/price-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "estimate_from_trello",
+          estimate: {
+            trelloCard: estimateTrelloCard,
+            targetSizes: estimateTargetSizes,
+            currency: "USD",
+          },
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
+      if (!response.ok || !payload?.ok || !payload.estimate) {
+        setError(formatApiError(payload));
+        setEstimating(false);
+        return;
+      }
+      setEstimateResult(payload.estimate);
+      setMessage("Schätzung berechnet.");
+      setEstimating(false);
+    } catch {
+      setError("Schätzung konnte nicht berechnet werden.");
+      setEstimating(false);
+    }
+  }
+
   return (
     <main className={`${opsPageShellClass} px-4 py-6 text-black md:px-6`}>
       <div className={`${opsPageContainerClass} flex flex-col gap-5`}>
@@ -645,6 +773,54 @@ export function SupplierPriceReviewClient({
                 ))}
               </div>
             </div>
+          </section>
+        ) : null}
+
+        {canLoad ? (
+          <section className="rounded-lg border border-black/10 bg-[linear-gradient(135deg,#ffffff_0%,#fffafc_52%,#fbfdff_100%)] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-black">
+                  <Calculator className="h-4 w-4 text-[#fa31a2]" />
+                  Trello-Preisschätzung
+                </div>
+                <div className="mt-1 text-sm text-black/55">
+                  Liest den Supplier-Anker aus Trello und berechnet Zielgrößen als interne Einschätzung.
+                </div>
+              </div>
+              <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/50">
+                No Auto-Send
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1.5fr_0.8fr_auto]">
+              <input
+                type="text"
+                value={estimateTrelloCard}
+                onChange={(event) => setEstimateTrelloCard(event.target.value)}
+                placeholder="Trello-Link oder Karten-ID"
+                className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              />
+              <input
+                type="text"
+                value={estimateTargetSizes}
+                onChange={(event) => setEstimateTargetSizes(event.target.value)}
+                placeholder="100 oder 50x75"
+                className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              />
+              <button
+                type="button"
+                disabled={estimating || !estimateTrelloCard.trim() || !estimateTargetSizes.trim()}
+                onClick={() => void estimateFromTrello()}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Calculator className="h-4 w-4" />
+                {estimating ? "Rechne..." : "Berechnen"}
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-black/45">
+              Mehrere Zielgrößen mit Komma trennen. <code>100</code> skaliert proportional auf 100cm Breite/Langseite, <code>50x75</code> setzt Breite und Höhe explizit.
+            </div>
+            {estimateResult ? <TrelloEstimateResultCard estimate={estimateResult} /> : null}
           </section>
         ) : null}
 

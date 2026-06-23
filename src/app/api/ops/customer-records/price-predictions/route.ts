@@ -4,6 +4,7 @@ import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib
 import {
   buildSupplierPricePredictionReviewDraftsFromAnchor,
   buildSupplierPricePredictionReviewDraftsFromTrainingItem,
+  estimateSupplierPricesFromTrello,
   isSupplierPricePredictionAutomationAction,
   listSupplierQuoteTrainingItemAnchorReviews,
   listSupplierPricePredictionReviews,
@@ -126,7 +127,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | {
-        action?: "review" | "create_from_anchor" | "create_from_training_item" | "review_training_item_anchor";
+        action?: "review" | "create_from_anchor" | "create_from_training_item" | "review_training_item_anchor" | "estimate_from_trello";
         predictionId?: string;
         decision?: SupplierPricePredictionReviewDecision;
         anchorDecision?: SupplierQuoteTrainingItemAnchorReviewDecision;
@@ -175,6 +176,11 @@ export async function POST(request: NextRequest) {
           maxLongSideCm?: number;
           currency?: string | null;
           featureValues?: Record<string, unknown>;
+        };
+        estimate?: {
+          trelloCard?: string | null;
+          targetSizes?: string | null;
+          currency?: string | null;
         };
       }
     | null;
@@ -250,6 +256,15 @@ export async function POST(request: NextRequest) {
       });
       const items = await upsertSupplierPricePredictionReviewDrafts(drafts);
       return NextResponse.json({ ok: true, items });
+    }
+
+    if (body?.action === "estimate_from_trello") {
+      const estimate = await estimateSupplierPricesFromTrello({
+        trelloCard: String(body.estimate?.trelloCard || ""),
+        targetSizes: String(body.estimate?.targetSizes || ""),
+        currency: trimNullable(body.estimate?.currency),
+      });
+      return NextResponse.json({ ok: true, estimate });
     }
 
     if (body?.action === "create_from_training_item") {

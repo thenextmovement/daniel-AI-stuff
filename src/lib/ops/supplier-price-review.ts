@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
 import {
   buildNeonflexAnchoredSizeLadder,
   NEONFLEX_ANCHORED_SCALING_MODEL,
+  predictNeonflexAnchoredSupplierPrice,
+  type NeonflexAnchoredScalingPrediction,
 } from "@/lib/quote-learning/neonflex-anchored-scaling";
 import {
   NEONFLEX_INTERNAL_REVIEW_MAX_LONG_SIDE_CM,
@@ -9,12 +16,14 @@ import {
   requiresNeonflexCustomerSizeRequest,
 } from "@/lib/quote-learning/neonflex-size-policy";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { downloadTrelloAttachment, getTrelloCard } from "@/lib/quotes/trello";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import type { UpdateActor } from "@/lib/ops/customer-records";
 
 const SUPPLIER_PRICE_REVIEW_WORKFLOW_NAME = "customer_records_console";
 const SUPPLIER_PRICE_REVIEW_ACTION = "supplier_price_prediction_reviewed";
 const SUPPLIER_QUOTE_ANCHOR_REVIEW_ACTION = "supplier_quote_training_item_anchor_reviewed";
+const execFileAsync = promisify(execFile);
 
 export type SupplierPricePredictionDecisionStatus =
   | "shadow"
@@ -151,6 +160,59 @@ export type BuildTrainingItemPredictionDraftsInput = {
   featureValues?: Record<string, unknown>;
 };
 
+export type SupplierPriceTrelloEstimateConfidenceLevel = "high" | "medium" | "low" | "blocked";
+
+export type SupplierPriceTrelloEstimateItem = {
+  requestedInput: string;
+  widthCm: number;
+  heightCm: number;
+  maxSideCm: number;
+  predictedProductionPrice: number;
+  predictedShippingPrice: number;
+  predictedTotalSupplierCost: number;
+  currency: string;
+  confidence: number;
+  confidenceLevel: SupplierPriceTrelloEstimateConfidenceLevel;
+  customerAutoQuoteEligible: boolean;
+  needsSupplierCheck: boolean;
+  reviewReason: string | null;
+  modelKey: string;
+  modelVersion: string;
+  shippingBucket: string;
+  shippingStrategy: string;
+  shippingTrainingRows: number;
+};
+
+export type SupplierPriceTrelloEstimateResult = {
+  card: {
+    id: string;
+    name: string | null;
+    shortUrl: string | null;
+  };
+  anchor: {
+    widthCm: number;
+    heightCm: number;
+    productionPrice: number;
+    shippingPrice: number;
+    totalSupplierCost: number;
+    currency: string;
+    source: "ocr_image" | "custom_fields" | "mixed" | "estimated_split";
+    attachmentName: string | null;
+    modelFamily: "neonflex" | "unsupported" | "unknown";
+    confidence: number;
+  };
+  estimates: SupplierPriceTrelloEstimateItem[];
+  warnings: string[];
+  evidence: {
+    sizeText: string | null;
+    productionText: string | null;
+    shippingText: string | null;
+    totalText: string | null;
+    ocrAvailable: boolean;
+    ocrTextPreview: string | null;
+  };
+};
+
 type SupplierPricePredictionRow = {
   id: string;
   prediction_key?: string | null;
@@ -272,6 +334,418 @@ function formatCmValue(value: number) {
 
 function defaultSizeLabel(widthCm: number, heightCm: number) {
   return `${formatCmValue(widthCm)}x${formatCmValue(heightCm)}cm`;
+}
+
+function parseTrelloCardIdentifier(value: unknown) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const urlMatch = normalized.match(/trello\.com\/c\/([^/?#\s]+)/i);
+  if (urlMatch?.[1]) return urlMatch[1];
+  const prefixed = normalized.match(/^trello:([^/\s]+)$/i);
+  if (prefixed?.[1]) return prefixed[1];
+  if (/^[A-Za-z0-9]{6,32}$/.test(normalized)) return normalized;
+  return null;
+}
+
+function normalizeNumericText(value: string) {
+  return value.replace(",", ".").trim();
+}
+
+function parseSupplierQuoteNumber(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = Number(normalizeNumericText(value).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseSizeText(value: string | null | undefined) {
+  const normalized = String(value || "").replace(",", ".").trim();
+  if (!normalized) return null;
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(?:x|\*|×|\/)\s*(\d+(?:\.\d+)?)\s*(?:cm)?/i);
+  if (!match) return null;
+  const widthCm = Number(match[1]);
+  const heightCm = Number(match[2]);
+  if (!Number.isFinite(widthCm) || !Number.isFinite(heightCm) || widthCm <= 0 || heightCm <= 0) return null;
+  return { widthCm, heightCm, raw: match[0] };
+}
+
+function parseTargetSizes(input: string, anchor: { widthCm: number; heightCm: number }) {
+  const normalized = String(input || "").trim();
+  if (!normalized) throw new QuoteValidationError("Zielgroesse fehlt.");
+
+  const chunks = normalized
+    .split(/[,\n;]/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+  const sourceChunks = chunks.length ? chunks : [normalized];
+  const widthDominant = anchor.widthCm >= anchor.heightCm;
+  const ratio = anchor.widthCm / anchor.heightCm;
+
+  return sourceChunks.map((chunk) => {
+    const size = parseSizeText(chunk);
+    if (size) {
+      return {
+        requestedInput: chunk,
+        widthCm: size.widthCm,
+        heightCm: size.heightCm,
+      };
+    }
+
+    const compact = chunk.replace(/\s+/g, "");
+    const fourDigit = compact.match(/^(\d{2})(\d{2})$/);
+    if (fourDigit) {
+      return {
+        requestedInput: chunk,
+        widthCm: Number(fourDigit[1]),
+        heightCm: Number(fourDigit[2]),
+      };
+    }
+
+    const twoNumbers = chunk.match(/^(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s*(?:cm)?$/i);
+    if (twoNumbers) {
+      return {
+        requestedInput: chunk,
+        widthCm: Number(normalizeNumericText(twoNumbers[1])),
+        heightCm: Number(normalizeNumericText(twoNumbers[2])),
+      };
+    }
+
+    const single = chunk.match(/(\d+(?:[.,]\d+)?)\s*(?:cm)?/i);
+    if (!single) throw new QuoteValidationError(`Zielgroesse "${chunk}" konnte nicht gelesen werden.`);
+    const longOrWidth = Number(normalizeNumericText(single[1]));
+    if (!Number.isFinite(longOrWidth) || longOrWidth <= 0) {
+      throw new QuoteValidationError(`Zielgroesse "${chunk}" ist ungueltig.`);
+    }
+
+    return {
+      requestedInput: chunk,
+      widthCm: widthDominant ? longOrWidth : longOrWidth * ratio,
+      heightCm: widthDominant ? longOrWidth / ratio : longOrWidth,
+    };
+  }).map((target) => ({
+    requestedInput: target.requestedInput,
+    widthCm: Math.round(target.widthCm * 10) / 10,
+    heightCm: Math.round(target.heightCm * 10) / 10,
+  }));
+}
+
+function quoteTextMatch(text: string, patterns: RegExp[]) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+function supplierQuoteImageAttachment(card: Awaited<ReturnType<typeof getTrelloCard>>) {
+  const attachments = card.attachments || [];
+  return (
+    attachments.find((attachment) => String(attachment.name || attachment.fileName || "").toLowerCase() === "image.png") ||
+    attachments.find((attachment) => /image/i.test(String(attachment.name || attachment.fileName || "")) && /png|jpe?g|webp/i.test(String(attachment.mimeType || attachment.name || attachment.fileName || ""))) ||
+    attachments.find((attachment) => /png|jpe?g|webp/i.test(String(attachment.mimeType || attachment.name || attachment.fileName || ""))) ||
+    null
+  );
+}
+
+function supplierQuoteImageAttachments(card: Awaited<ReturnType<typeof getTrelloCard>>) {
+  const attachments = card.attachments || [];
+  const rank = (attachment: (typeof attachments)[number]) => {
+    const name = String(attachment.name || attachment.fileName || "").toLowerCase();
+    if (name === "image.png") return 0;
+    if (/^image[_-]?\d*cm?/.test(name)) return 1;
+    if (/image/.test(name)) return 2;
+    if (/png|jpe?g|webp/i.test(String(attachment.mimeType || name))) return 3;
+    return 99;
+  };
+  return attachments
+    .filter((attachment) => rank(attachment) < 99)
+    .sort((left, right) => rank(left) - rank(right))
+    .slice(0, 5);
+}
+
+async function ocrTrelloAttachmentText(cardId: string, attachment: NonNullable<ReturnType<typeof supplierQuoteImageAttachment>>) {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "neontrip-price-ocr-"));
+  const extension = path.extname(String(attachment.name || attachment.fileName || "image.png")) || ".png";
+  const imagePath = path.join(tempDir, `source${extension}`);
+  try {
+    const download = await downloadTrelloAttachment(attachment);
+    if (!String(download.contentType || "").toLowerCase().startsWith("image/")) return null;
+    await writeFile(imagePath, Buffer.from(download.body));
+    const { stdout } = await execFileAsync("tesseract", [imagePath, "stdout", "--psm", "6"], {
+      timeout: 12_000,
+      maxBuffer: 256_000,
+    });
+    return String(stdout || "").trim() || null;
+  } catch (error) {
+    console.warn("supplier price trello estimate OCR skipped", {
+      cardId,
+      attachmentId: attachment.id,
+      reason: error instanceof Error ? error.message : "unknown_error",
+    });
+    return null;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+function detectSupplierModelFamily(text: string) {
+  if (/\b(3d|3-d|3\s*d|full\s*glow|non\s*-?\s*lit|channel\s*letter)\b/i.test(text)) return "unsupported" as const;
+  if (/neon\s*flex|neonflex|led\s+logo|wandschild/i.test(text)) return "neonflex" as const;
+  return "unknown" as const;
+}
+
+function confidenceLevel(score: number): SupplierPriceTrelloEstimateConfidenceLevel {
+  if (score <= 0) return "blocked";
+  if (score >= 0.78) return "high";
+  if (score >= 0.55) return "medium";
+  return "low";
+}
+
+function estimateConfidence(params: {
+  anchorConfidence: number;
+  prediction: NeonflexAnchoredScalingPrediction;
+  modelFamily: "neonflex" | "unsupported" | "unknown";
+}) {
+  if (params.modelFamily === "unsupported") return 0;
+  let score = params.anchorConfidence;
+  if (params.modelFamily === "unknown") score -= 0.15;
+  if (params.prediction.shipping_requires_review) score -= 0.2;
+  if (params.prediction.shipping_used_global_fallback) score -= 0.15;
+  if (params.prediction.target_width_cm < params.prediction.base_width_cm || params.prediction.target_height_cm < params.prediction.base_height_cm) score -= 0.1;
+  if (Math.max(params.prediction.target_width_cm, params.prediction.target_height_cm) > 200) score -= 0.25;
+  return Math.max(0.1, Math.min(0.95, Math.round(score * 100) / 100));
+}
+
+function readCustomFieldValue(card: Awaited<ReturnType<typeof getTrelloCard>>, names: string[]) {
+  const normalized = new Map(
+    Object.entries(card.customFields || {}).map(([key, value]) => [key.trim().toLowerCase(), String(value || "").trim()]),
+  );
+  for (const name of names) {
+    const value = normalized.get(name.toLowerCase());
+    if (value) return value;
+  }
+  return null;
+}
+
+function extractSupplierQuoteEvidence(text: string) {
+  const sizeText = quoteTextMatch(text, [
+    /(\d+(?:[.,]\d+)?)\s*(?:x|\*|×)\s*(\d+(?:[.,]\d+)?)\s*cm/i,
+  ]);
+  const sizeMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:x|\*|×)\s*(\d+(?:[.,]\d+)?)\s*cm/i);
+  const productionText = quoteTextMatch(text, [
+    /production\s+price\s*:?\s*(?:us\$|\$)?\s*(\d+(?:[.,]\d+)?)/i,
+    /\bprice\s*:?\s*(?:us\$|\$)?\s*(\d+(?:[.,]\d+)?)/i,
+  ]);
+  const shippingText = quoteTextMatch(text, [
+    /shipping\s+cost\s*:?\s*(?:us\$|\$)?\s*(\d+(?:[.,]\d+)?)/i,
+    /\bshipping\s*:?\s*(?:us\$|\$)?\s*(\d+(?:[.,]\d+)?)/i,
+  ]);
+  const totalText = quoteTextMatch(text, [
+    /total\s+(?:price\s*)?:?\s*(?:us\$|\$)?\s*(\d+(?:[.,]\d+)?)/i,
+    /\btotal\s*:?\s*(?:us\$|\$)?\s*(\d+(?:[.,]\d+)?)/i,
+  ]);
+  return {
+    size: sizeMatch ? {
+      widthCm: Number(normalizeNumericText(sizeMatch[1])),
+      heightCm: Number(normalizeNumericText(sizeMatch[2])),
+      raw: sizeMatch[0],
+    } : null,
+    sizeText: sizeMatch?.[0] || sizeText,
+    productionText,
+    shippingText,
+    totalText,
+    productionPrice: parseSupplierQuoteNumber(productionText),
+    shippingPrice: parseSupplierQuoteNumber(shippingText),
+    totalPrice: parseSupplierQuoteNumber(totalText),
+  };
+}
+
+export async function estimateSupplierPricesFromTrello(input: {
+  trelloCard: string;
+  targetSizes: string;
+  currency?: string | null;
+}): Promise<SupplierPriceTrelloEstimateResult> {
+  const cardIdentifier = parseTrelloCardIdentifier(input.trelloCard);
+  if (!cardIdentifier) throw new QuoteValidationError("Trello-Link oder Trello-Karten-ID ist ungueltig.");
+
+  const card = await getTrelloCard(cardIdentifier);
+  const warnings: string[] = [];
+  const currency = trimNullable(input.currency) || "USD";
+  const customSizeText = readCustomFieldValue(card, ["Size_1", "Größe 1", "Groesse 1", "Size"]);
+  const customTotalText = readCustomFieldValue(card, ["Price_1", "Preis 1", "Price"]);
+  const customSize = parseSizeText(customSizeText);
+  const customTotal = parseSupplierQuoteNumber(customTotalText || undefined);
+
+  let ocrText: string | null = null;
+  let ocrAttachmentName: string | null = null;
+  let ocrEvidence = extractSupplierQuoteEvidence("");
+  let bestOcrScore = -1;
+  for (const attachment of supplierQuoteImageAttachments(card)) {
+    const text = await ocrTrelloAttachmentText(card.id, attachment);
+    if (!text) continue;
+    const evidence = extractSupplierQuoteEvidence(text);
+    const hasSplitPrices = evidence.productionPrice !== null && evidence.shippingPrice !== null;
+    const sizeMatchesCustom =
+      !customSize ||
+      (Boolean(evidence.size) && Math.abs((evidence.size?.widthCm || 0) - customSize.widthCm) <= 1 && Math.abs((evidence.size?.heightCm || 0) - customSize.heightCm) <= 1);
+    const totalMatchesCustom =
+      !customTotal ||
+      (evidence.totalPrice !== null && Math.abs(evidence.totalPrice - customTotal) <= Math.max(3, customTotal * 0.03));
+    const score =
+      (hasSplitPrices ? 20 : 0) +
+      (sizeMatchesCustom ? 10 : 0) +
+      (totalMatchesCustom ? 10 : 0) +
+      (/^image[_-]?\d*cm?/i.test(String(attachment.name || attachment.fileName || "")) ? 2 : 0) +
+      (String(attachment.name || attachment.fileName || "").toLowerCase() === "image.png" ? 1 : 0);
+    if (score > bestOcrScore) {
+      ocrText = text;
+      ocrAttachmentName = String(attachment.name || attachment.fileName || "image");
+      ocrEvidence = evidence;
+      bestOcrScore = score;
+    }
+    if (hasSplitPrices && sizeMatchesCustom && totalMatchesCustom) break;
+  }
+
+  const allText = [card.name, customSizeText, customTotalText, ocrText].filter(Boolean).join("\n");
+  const modelFamily = detectSupplierModelFamily(allText);
+  if (modelFamily === "unsupported") {
+    warnings.push("Die Karte sieht nach 3D, Full Glow oder einem anderen Nicht-Neonflex-Modell aus. Neonflex-Schätzung wurde blockiert.");
+  } else if (modelFamily === "unknown") {
+    warnings.push("Modellfamilie konnte nicht sicher als Neonflex erkannt werden.");
+  }
+
+  const anchorSize = customSize || ocrEvidence.size;
+  if (!anchorSize) throw new QuoteValidationError("Keine Anker-Groesse gefunden. Erwartet z.B. Size_1 oder 80x63cm im Image.");
+
+  let productionPrice = ocrEvidence.productionPrice;
+  let shippingPrice = ocrEvidence.shippingPrice;
+  let totalSupplierCost = ocrEvidence.totalPrice || customTotal || null;
+  let source: SupplierPriceTrelloEstimateResult["anchor"]["source"] = "ocr_image";
+  let anchorConfidence = 0.86;
+
+  if ((productionPrice === null || shippingPrice === null) && customTotal) {
+    source = "estimated_split";
+    productionPrice = Math.round(customTotal * 0.45);
+    shippingPrice = Math.max(1, customTotal - productionPrice);
+    totalSupplierCost = customTotal;
+    anchorConfidence = 0.42;
+    warnings.push("Production/Shipping konnten nicht getrennt gelesen werden. Split wurde aus Gesamtpreis grob geschaetzt.");
+  } else if (customSize && ocrEvidence.productionPrice !== null && ocrEvidence.shippingPrice !== null) {
+    source = ocrEvidence.size ? "ocr_image" : "mixed";
+    anchorConfidence = ocrEvidence.size ? 0.88 : 0.78;
+  }
+
+  if (productionPrice === null || shippingPrice === null) {
+    throw new QuoteValidationError("Production Price und Shipping cost konnten nicht aus Trello/Image gelesen werden.");
+  }
+  totalSupplierCost = totalSupplierCost || productionPrice + shippingPrice;
+
+  const targets = parseTargetSizes(input.targetSizes, anchorSize);
+  if (targets.some((target) => target.widthCm * target.heightCm < anchorSize.widthCm * anchorSize.heightCm)) {
+    warnings.push("Mindestens eine Zielgroesse ist kleiner als der erkannte Anker. Das ist nur eine grobe Downscale-Extrapolation und sollte vom Supplier geprueft werden.");
+  }
+  const estimates = targets.map<SupplierPriceTrelloEstimateItem>((target) => {
+    const targetArea = target.widthCm * target.heightCm;
+    const anchorArea = anchorSize.widthCm * anchorSize.heightCm;
+    if (targetArea < anchorArea) {
+      const areaRatio = targetArea / anchorArea;
+      const production = Math.round(productionPrice * areaRatio ** NEONFLEX_ANCHORED_SCALING_MODEL.production.area_exponent);
+      const shipping = Math.round(Math.max(20, shippingPrice * Math.sqrt(areaRatio)));
+      const total = production + shipping;
+      const score = modelFamily === "unsupported" ? 0 : 0.25;
+      return {
+        requestedInput: target.requestedInput,
+        widthCm: target.widthCm,
+        heightCm: target.heightCm,
+        maxSideCm: Math.max(target.widthCm, target.heightCm),
+        predictedProductionPrice: production,
+        predictedShippingPrice: shipping,
+        predictedTotalSupplierCost: total,
+        currency,
+        confidence: score,
+        confidenceLevel: confidenceLevel(score),
+        customerAutoQuoteEligible: true,
+        needsSupplierCheck: true,
+        reviewReason:
+          modelFamily === "unsupported"
+            ? "unsupported_model_family"
+            : "target_smaller_than_anchor_downscale_extrapolation",
+        modelKey: NEONFLEX_ANCHORED_SCALING_MODEL.model_key,
+        modelVersion: NEONFLEX_ANCHORED_SCALING_MODEL.version,
+        shippingBucket: "below_anchor",
+        shippingStrategy: "downscale_extrapolation",
+        shippingTrainingRows: 0,
+      };
+    }
+
+    const prediction = predictNeonflexAnchoredSupplierPrice({
+      base_width_cm: anchorSize.widthCm,
+      base_height_cm: anchorSize.heightCm,
+      base_production_price_usd: productionPrice,
+      base_shipping_price_usd: shippingPrice,
+      target_width_cm: target.widthCm,
+      target_height_cm: target.heightCm,
+    });
+    const customerAutoQuoteEligible = !requiresNeonflexCustomerSizeRequest({
+      width_cm: prediction.target_width_cm,
+      height_cm: prediction.target_height_cm,
+    });
+    const score = modelFamily === "unsupported" ? 0 : estimateConfidence({ anchorConfidence, prediction, modelFamily });
+    return {
+      requestedInput: target.requestedInput,
+      widthCm: prediction.target_width_cm,
+      heightCm: prediction.target_height_cm,
+      maxSideCm: Math.max(prediction.target_width_cm, prediction.target_height_cm),
+      predictedProductionPrice: prediction.predicted_production_price_usd,
+      predictedShippingPrice: prediction.predicted_shipping_price_usd,
+      predictedTotalSupplierCost: prediction.predicted_total_supplier_cost_usd,
+      currency,
+      confidence: score,
+      confidenceLevel: confidenceLevel(score),
+      customerAutoQuoteEligible,
+      needsSupplierCheck: modelFamily === "unsupported" || !customerAutoQuoteEligible || prediction.shipping_requires_review || score < 0.55,
+      reviewReason:
+        modelFamily === "unsupported"
+          ? "unsupported_model_family"
+          : !customerAutoQuoteEligible
+            ? "target_size_requires_supplier_request"
+            : prediction.review_reason,
+      modelKey: prediction.model_key,
+      modelVersion: prediction.model_version,
+      shippingBucket: prediction.shipping_bucket,
+      shippingStrategy: prediction.shipping_strategy,
+      shippingTrainingRows: prediction.shipping_training_rows,
+    };
+  });
+
+  return {
+    card: {
+      id: card.id,
+      name: trimNullable(card.name),
+      shortUrl: `https://trello.com/c/${cardIdentifier}`,
+    },
+    anchor: {
+      widthCm: anchorSize.widthCm,
+      heightCm: anchorSize.heightCm,
+      productionPrice,
+      shippingPrice,
+      totalSupplierCost,
+      currency,
+      source,
+      attachmentName: ocrAttachmentName,
+      modelFamily,
+      confidence: anchorConfidence,
+    },
+    estimates,
+    warnings,
+    evidence: {
+      sizeText: customSizeText || ocrEvidence.sizeText,
+      productionText: ocrEvidence.productionText,
+      shippingText: ocrEvidence.shippingText,
+      totalText: ocrEvidence.totalText || customTotalText,
+      ocrAvailable: Boolean(ocrText),
+      ocrTextPreview: ocrText ? ocrText.slice(0, 900) : null,
+    },
+  };
 }
 
 function metadataString(metadata: Record<string, unknown> | null | undefined, key: string) {
