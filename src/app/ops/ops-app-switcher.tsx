@@ -35,28 +35,21 @@ const OPS_APPS: Array<{
   },
   {
     key: "priceReview",
-    label: "Schildpreise",
-    helper: "Kalkulator & Prüfung",
+    label: "Preisrechner",
+    helper: "Schildpreis prüfen",
     href: "/ops/customer-records/price-review",
     Icon: Calculator,
   },
   {
-    key: "management",
-    label: "Management",
-    helper: "KPIs & Kosten",
-    href: "/ops/management",
-    Icon: BarChart3,
-  },
-  {
     key: "calls",
     label: "Anrufe",
-    helper: "Rückrufe & Callliste",
+    helper: "Callliste & Rückrufe",
     href: "/ops/customer-records/calls",
     Icon: PhoneCall,
   },
   {
     key: "tasks",
-    label: "Teamaufgaben",
+    label: "Aufgaben",
     helper: "To-dos & Übergaben",
     href: "/ops/tasks",
     Icon: ClipboardList,
@@ -64,30 +57,37 @@ const OPS_APPS: Array<{
   {
     key: "offers",
     label: "Angebote",
-    helper: "Editor & Admin",
+    helper: "Erstellen & senden",
     href: "https://angebote.neontrip.de/admin/offers",
     Icon: FileText,
   },
   {
     key: "supplierSales",
-    label: "Sales-Vergabe",
+    label: "Produktion",
     helper: "Supplier & Deadlines",
     href: "/ops/sales-vergabe",
     Icon: Factory,
   },
   {
     key: "shipping",
-    label: "Paketversand",
-    helper: "Kundenpakete raus",
+    label: "Versand",
+    helper: "Pakete zum Kunden",
     href: "/ops/customer-records/shipping",
     Icon: Truck,
   },
   {
     key: "inboundShipping",
     label: "Wareneingang",
-    helper: "China-Sendungen rein",
+    helper: "Lieferungen rein",
     href: "/ops/customer-records/inbound-shipping",
     Icon: PlaneLanding,
+  },
+  {
+    key: "management",
+    label: "Kennzahlen",
+    helper: "Umsatz, Kosten, Risiken",
+    href: "/ops/management",
+    Icon: BarChart3,
   },
 ];
 
@@ -131,7 +131,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
       >
         <a href={activeApp.href} aria-current="page" className={`${appLinkClass(true, "mobile")} min-w-0 flex-1`}>
           <activeApp.Icon className="h-4 w-4" />
-          <span className="min-w-0 truncate">{activeApp.label}</span>
+          <span data-ops-app-label={activeApp.label} className="min-w-0 whitespace-normal">{activeApp.label}</span>
         </a>
         <button
           type="button"
@@ -162,7 +162,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
             return (
               <a key={key} href={href} aria-current={isActive ? "page" : undefined} className={appLinkClass(isActive, "mobile")}>
                 <Icon className="h-4 w-4" />
-                <span className="min-w-0 truncate">{label}</span>
+                <span data-ops-app-label={label} className="min-w-0 whitespace-normal">{label}</span>
                 <span className={helperClass(isActive)}>{helper}</span>
               </a>
             );
@@ -181,7 +181,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
           return (
             <a key={key} href={href} aria-current={isActive ? "page" : undefined} className={appLinkClass(isActive, "desktop")}>
               <Icon className="h-4 w-4" />
-              <span className="min-w-0 truncate">{label}</span>
+              <span data-ops-app-label={label} className="min-w-0 whitespace-normal">{label}</span>
               <span className={`${helperClass(isActive)} hidden lg:block`}>{helper}</span>
             </a>
           );

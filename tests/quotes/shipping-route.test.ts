@@ -23,7 +23,7 @@ test("shipping route rejects unsupported scope filters", async () => {
   assert.equal(response.status, 400);
   assertNoStore(response);
   assert.equal(payload.ok, false);
-  assert.match(payload.error, /Ungueltiger Paketversand-Filter/);
+  assert.match(payload.error, /Ungueltiger Versand-Filter/);
   assert.deepEqual(payload.issues, ["scope=stale-ish ist nicht unterstuetzt."]);
 });
 

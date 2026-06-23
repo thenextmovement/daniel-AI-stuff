@@ -693,11 +693,11 @@ export function SupplierPriceReviewClient({
   return (
     <main className={`${opsPageShellClass} px-4 py-6 text-black md:px-6`}>
       <div className={`${opsPageContainerClass} flex flex-col gap-5`}>
-        <OpsPageHeader active="priceReview" label="Preisprüfung" />
+        <OpsPageHeader active="priceReview" label="Preisrechner" />
 
         <OpsPageIntro
           eyebrow="Customer Ops"
-          title="Schildpreise"
+          title="Preisrechner"
           description="Trello-Karte eintragen, Zielgröße setzen und eine interne Supplierpreis-Schätzung mit Confidence erhalten."
         >
           <a

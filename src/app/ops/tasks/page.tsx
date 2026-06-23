@@ -3,7 +3,7 @@ import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib
 import { OpsTasksClient } from "./page-client";
 
 export const metadata = {
-  title: "Teamaufgaben - NEONTRIP Ops",
+  title: "Aufgaben - NEONTRIP Ops",
   robots: { index: false, follow: false },
 };
 

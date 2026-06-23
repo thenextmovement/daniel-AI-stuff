@@ -3,7 +3,7 @@ import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib
 import { CustomerShippingClient } from "./page-client";
 
 export const metadata = {
-  title: "Paketversand - NEONTRIP Ops",
+  title: "Versand - NEONTRIP Ops",
   robots: { index: false, follow: false },
 };
 

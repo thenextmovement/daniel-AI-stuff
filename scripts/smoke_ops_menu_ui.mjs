@@ -12,25 +12,25 @@ function assert(condition, message) {
 
 const appLabels = [
   "Kundenakte",
-  "Preisprüfung",
-  "Management",
+  "Preisrechner",
   "Anrufe",
-  "Teamaufgaben",
+  "Aufgaben",
   "Angebote",
-  "Sales-Vergabe",
-  "Paketversand",
+  "Produktion",
+  "Versand",
   "Wareneingang",
+  "Kennzahlen",
 ];
 
 const localPages = [
   "/ops/customer-records",
   "/ops/customer-records/price-review",
-  "/ops/management",
   "/ops/customer-records/calls",
   "/ops/tasks",
   "/ops/sales-vergabe",
   "/ops/customer-records/shipping",
   "/ops/customer-records/inbound-shipping",
+  "/ops/management",
 ];
 
 const emptyTaskPayload = {
@@ -240,6 +240,33 @@ async function assertMenuLabels(page, path, mode) {
     await link.waitFor({ timeout: 5_000 });
     assert(await link.isVisible(), `${mode}: ${path} zeigt Menüeintrag "${label}" nicht sichtbar`);
   }
+
+  const layout = await page.evaluate((labels) => {
+    const clipped = [];
+    for (const label of labels) {
+      const element = [...document.querySelectorAll(`[data-ops-app-label="${label}"]`)].find((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      if (!element) {
+        clipped.push(`${label}: missing label span`);
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      if (rect.width <= 0 || rect.height <= 0) clipped.push(`${label}: not rendered`);
+      if (element.scrollWidth > element.clientWidth + 1 && style.whiteSpace === "nowrap") clipped.push(`${label}: clipped`);
+    }
+    return {
+      noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      clipped,
+    };
+  }, appLabels);
+
+  assert(layout.noHorizontalOverflow, `${mode}: ${path} hat horizontalen Overflow ${layout.scrollWidth} > ${layout.clientWidth}`);
+  assert(layout.clipped.length === 0, `${mode}: ${path} hat abgeschnittene Menülabels: ${layout.clipped.join(" | ")}`);
 }
 
 async function runForViewport(browser, target, viewport, mode) {

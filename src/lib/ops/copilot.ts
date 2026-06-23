@@ -238,7 +238,7 @@ const COPILOT_TOOLS = [
   {
     type: "function",
     name: "get_ops_tasks",
-    description: "Listet interne Teamaufgaben. Nur lesen, keine Aufgabe erstellen oder aendern.",
+    description: "Listet interne Aufgaben. Nur lesen, keine Aufgabe erstellen oder aendern.",
     strict: true,
     parameters: {
       type: "object",
@@ -282,7 +282,7 @@ const OPS_HELP = [
   },
   {
     keywords: ["task", "aufgabe", "todo", "uebergabe", "team"],
-    title: "Teamaufgaben",
+    title: "Aufgaben",
     href: "/ops/tasks",
     detail: "Interne Aufgaben, Uebergaben, Deadlines und offene Mitarbeiterthemen.",
   },
@@ -294,7 +294,7 @@ const OPS_HELP = [
   },
   {
     keywords: ["paket", "versand", "shipping", "tracking", "shopify", "dpd", "dhl"],
-    title: "Paketversand",
+    title: "Versand",
     href: "/ops/customer-records/shipping",
     detail: "Ausgehende Kundenpakete, Carrier-Events, Incidents und Versandaufgaben.",
   },

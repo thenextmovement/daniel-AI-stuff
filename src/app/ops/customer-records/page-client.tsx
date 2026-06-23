@@ -19635,7 +19635,7 @@ function ShippingSnapshotPanel({ record }: { record: CustomerSearchResult }) {
             className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black"
           >
             <Truck className="h-4 w-4" />
-            Paketversand
+            Versand
           </a>
           <a
             href={`/ops/customer-records/inbound-shipping?requestId=${encodeURIComponent(record.requestId)}`}

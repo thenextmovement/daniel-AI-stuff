@@ -283,7 +283,7 @@ function buildClientFailedState(reason = "internal_error"): SalesCallModuleState
       complete: false,
       reason,
       nextRequiredAction:
-        "Die Anruf-Datenquelle meldet gerade einen Fehler. Kundenakte und Teamaufgaben bleiben erreichbar; bitte Tagesliste neu laden oder den Server-Log prüfen.",
+        "Die Anruf-Datenquelle meldet gerade einen Fehler. Kundenakte und Aufgaben bleiben erreichbar; bitte Tagesliste neu laden oder den Server-Log prüfen.",
     },
     bucketCounts: {
       due_today: 0,
@@ -1778,7 +1778,7 @@ export function CustomerSalesCallsClient({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Interne Aufgaben</p>
-              <h2 className="mt-2 text-2xl font-semibold text-stone-950">Teamaufgaben für heute</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-stone-950">Aufgaben für heute</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
                 Nachbestellungen, Problemfälle und interne To-dos aus dem Aufgabenboard. Call-Arbeit bleibt oben, interne Arbeit ist hier sichtbar.
               </p>

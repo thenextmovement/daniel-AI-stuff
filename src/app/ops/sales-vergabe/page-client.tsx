@@ -344,7 +344,7 @@ function LiveCheckPanel({ liveCheck }: { liveCheck: SupplierSalesLiveCheck | nul
     <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-stone-950">Live-Abgleich Angebote {"->"} Sales-Vergabe</p>
+          <p className="text-sm font-semibold text-stone-950">Live-Abgleich Angebote {"->"} Produktion</p>
           <p className="mt-1 text-sm text-stone-500">
             Geprueft {formatDateTime(liveCheck.checkedAt)} · {matched}/{liveCheck.latestCompletedOffers.length} neueste Completed Offers in der Vergabe gefunden.
           </p>
@@ -829,7 +829,7 @@ export function SupplierSalesClient({
       setMessage(nextMessage);
       setError(nextError);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Sales-Vergabe konnte nicht geladen werden.");
+      setError(loadError instanceof Error ? loadError.message : "Produktion konnte nicht geladen werden.");
     } finally {
       setLoading(false);
     }
@@ -906,9 +906,9 @@ export function SupplierSalesClient({
   if (!hasSession && !localMode) {
     return (
       <OpsLoginCard
-        eyebrow="Sales-Vergabe"
-        title="Sales-Vergabe anmelden"
-        description="Melde dich fuer die interne Vergabeuebersicht an. Supplier-Entscheidungen, Zahlungsausnahmen und Sync-Fehler bleiben protokolliert."
+        eyebrow="Produktion"
+        title="Produktion anmelden"
+        description="Melde dich fuer die interne Produktionsuebersicht an. Supplier-Entscheidungen, Zahlungsausnahmen und Sync-Fehler bleiben protokolliert."
         activeApp="supplierSales"
         operatorName={operatorName}
         password={token}
@@ -924,7 +924,7 @@ export function SupplierSalesClient({
   return (
     <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
       <div className={`${opsPageContainerClass} flex flex-col gap-6`}>
-        <OpsPageHeader active="supplierSales" label="Sales-Vergabe" />
+        <OpsPageHeader active="supplierSales" label="Produktion" />
 
         <OpsPageIntro
           eyebrow="Shopify Sales"
@@ -937,13 +937,13 @@ export function SupplierSalesClient({
             type="button"
             disabled={!canCleanupAssignmentTasks}
             onClick={() => {
-              if (!confirmAction("Alle automatisch erzeugten Sales-Vergabe-Aufgaben archivieren und die Task-Verknuepfung an den Sales entfernen?")) return;
+              if (!confirmAction("Alle automatisch erzeugten Produktionsaufgaben archivieren und die Task-Verknuepfung an den Sales entfernen?")) return;
               void runSaleAction("assignment-task-cleanup", { action: "cleanup_supplier_assignment_tasks", operatorName });
             }}
             className="inline-flex items-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-stone-300"
           >
             <ClipboardList className="h-4 w-4" />
-            Vergabe-Aufgaben bereinigen
+                Produktionsaufgaben bereinigen
           </button>
           {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
         </section>

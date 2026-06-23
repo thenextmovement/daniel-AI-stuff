@@ -168,7 +168,7 @@ export function CustomerShippingClient({
       if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
       setBoard(payload.board);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Paketversand konnte nicht geladen werden.");
+      setError(loadError instanceof Error ? loadError.message : "Versand konnte nicht geladen werden.");
     } finally {
       setLoading(false);
     }
@@ -203,8 +203,8 @@ export function CustomerShippingClient({
   if (!hasSession && !localMode) {
     return (
       <OpsLoginCard
-        eyebrow="Paketversand"
-        title="Paketversand anmelden"
+        eyebrow="Versand"
+        title="Versand anmelden"
         description="Melde dich für den Kundenversand an. Tracking-Prüfung, Incidents und Aufgaben bleiben geschützt und nachvollziehbar."
         activeApp="shipping"
         operatorName={operatorName}
@@ -221,7 +221,7 @@ export function CustomerShippingClient({
   return (
     <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
       <div className={`${opsPageContainerClass} flex flex-col gap-6`}>
-        <OpsPageHeader active="shipping" label="Paketversand" />
+        <OpsPageHeader active="shipping" label="Versand" />
 
         <OpsPageIntro
           eyebrow="Kundenpakete raus"
@@ -265,7 +265,7 @@ export function CustomerShippingClient({
                 aria-label="Request-ID Filter"
               />
             </label>
-            <select value={scope} onChange={(event) => selectScope(event.target.value as ShippingBoardScope)} aria-label="Paketversand-Statusfilter" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+            <select value={scope} onChange={(event) => selectScope(event.target.value as ShippingBoardScope)} aria-label="Versand-Statusfilter" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
               <option value="active">Aktive Sendungen</option>
               <option value="problems">Echte Fehler</option>
               <option value="label_created">Nur Label erstellt</option>
@@ -290,7 +290,7 @@ export function CustomerShippingClient({
               placeholder="Operator"
               aria-label="Operator"
             />
-            {loading ? <span className="text-sm text-stone-500" role="status" aria-live="polite">Paketversand wird geladen...</span> : null}
+            {loading ? <span className="text-sm text-stone-500" role="status" aria-live="polite">Versand wird geladen...</span> : null}
             {message ? <span className="text-sm text-emerald-700" role="status" aria-live="polite">{message}</span> : null}
             {error ? <span className="text-sm text-rose-700" role="alert">{error}</span> : null}
           </div>
@@ -364,7 +364,7 @@ export function CustomerShippingClient({
                     </div>
                   ) : (
                     <div className="mt-4 rounded-[0.5rem] border border-dashed border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-500">
-                      Keine offenen Paketversand-Incidents.
+                      Keine offenen Versand-Incidents.
                     </div>
                   )}
                 </article>

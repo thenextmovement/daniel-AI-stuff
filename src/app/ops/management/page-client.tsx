@@ -223,7 +223,7 @@ export function ManagementKpisClient({
       if (!response.ok || !payload?.ok || !payload.dashboard) throw new Error(formatApiError(payload));
       setDashboard(payload.dashboard);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Management KPIs konnten nicht geladen werden.");
+      setError(loadError instanceof Error ? loadError.message : "Kennzahlen konnten nicht geladen werden.");
     } finally {
       setLoading(false);
     }
@@ -236,8 +236,8 @@ export function ManagementKpisClient({
   if (!hasSession && !localMode) {
     return (
       <OpsLoginCard
-        eyebrow="Management KPIs"
-        title="Management Cockpit anmelden"
+        eyebrow="Kennzahlen"
+        title="Kennzahlen anmelden"
         description="Melde dich für interne Umsatz-, Kosten- und Operations-KPIs an. Sensible Managementdaten bleiben geschützt."
         activeApp="management"
         operatorName={operatorName}
@@ -254,7 +254,7 @@ export function ManagementKpisClient({
   return (
     <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
       <div className={`${opsPageContainerClass} space-y-6`}>
-        <OpsPageHeader active="management" label="Management" />
+        <OpsPageHeader active="management" label="Kennzahlen" />
 
         <OpsPageIntro
           eyebrow="NEONTRIP Ops"
@@ -445,7 +445,7 @@ export function ManagementKpisClient({
           </>
         ) : (
           <div className="mt-8 rounded-lg border border-stone-200 bg-white p-8 text-center text-sm text-stone-500">
-            {loading ? "Management KPIs werden geladen." : "Noch keine KPI-Daten geladen."}
+            {loading ? "Kennzahlen werden geladen." : "Noch keine KPI-Daten geladen."}
           </div>
         )}
         </section>

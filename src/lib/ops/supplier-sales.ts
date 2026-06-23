@@ -871,7 +871,7 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
     incomingTokenReady || incomingSignatureReady ? "ok" : "missing",
     "Offer-/Shopify-Import",
     incomingTokenReady || incomingSignatureReady
-      ? "Automatische Sales koennen serverseitig authentifiziert in die Sales-Vergabe schreiben."
+      ? "Automatische Sales koennen serverseitig authentifiziert in die Produktion schreiben."
       : "SUPPLIER_SALES_AGENT_API_TOKEN, ein interner Ops/Offers-Key oder SUPPLIER_SALES_WEBHOOK_SECRET fehlt. Neue Sales koennen nicht automatisiert importiert werden.",
   ));
 
@@ -1305,7 +1305,7 @@ export function buildSupplierSaleInputFromPayload(payload: unknown): SupplierSal
   if (offerCompleted) return offerCompleted;
   if (recordString(record, ["source"]) === "neontrip-offers") {
     throw new QuoteValidationError(
-      "Nur offer.completed Events koennen als Sales-Vergabe importiert werden.",
+      "Nur offer.completed Events koennen als Produktion importiert werden.",
       ["Unsupported neontrip-offers event."],
       422,
     );

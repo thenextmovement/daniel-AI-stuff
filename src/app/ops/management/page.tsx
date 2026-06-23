@@ -3,7 +3,7 @@ import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib
 import { ManagementKpisClient } from "./page-client";
 
 export const metadata = {
-  title: "Management KPIs - NEONTRIP Ops",
+  title: "Kennzahlen - NEONTRIP Ops",
   robots: { index: false, follow: false },
 };
 

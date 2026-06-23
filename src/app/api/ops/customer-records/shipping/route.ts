@@ -76,7 +76,7 @@ function getAutomationToken(request: NextRequest, bodyToken?: string | null) {
 function parseScopeFilter(value: string | null) {
   const scope = value || "active";
   if (!SHIPPING_SCOPE_VALUES.includes(scope as (typeof SHIPPING_SCOPE_VALUES)[number])) {
-    throw new QuoteValidationError("Ungueltiger Paketversand-Filter.", [`scope=${scope} ist nicht unterstuetzt.`], 400);
+    throw new QuoteValidationError("Ungueltiger Versand-Filter.", [`scope=${scope} ist nicht unterstuetzt.`], 400);
   }
   return scope as (typeof SHIPPING_SCOPE_VALUES)[number];
 }

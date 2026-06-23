@@ -391,9 +391,9 @@ export function OpsTasksClient({
   if (opsEnabled && !hasSession && !localMode) {
     return (
       <OpsLoginCard
-        eyebrow="Teamaufgaben"
-        title="Teamaufgaben anmelden"
-        description="Interne Teamaufgaben, Problemfälle und Nachbestellungen bleiben geschützt und werden serverseitig gespeichert."
+        eyebrow="Aufgaben"
+        title="Aufgaben anmelden"
+        description="Interne Aufgaben, Problemfälle und Nachbestellungen bleiben geschützt und werden serverseitig gespeichert."
         activeApp="tasks"
         operatorName={operatorName}
         password={token}
@@ -413,7 +413,7 @@ export function OpsTasksClient({
   return (
     <div className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
       <div className={`${opsPageContainerClass} space-y-6`}>
-        <OpsPageHeader active="tasks" label="Teamaufgaben" />
+        <OpsPageHeader active="tasks" label="Aufgaben" />
 
         <OpsPageIntro
           eyebrow="Team Ops"
@@ -561,7 +561,7 @@ export function OpsTasksClient({
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-[2rem] border border-stone-200 bg-white px-5 py-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-400">Board</p>
-                <h2 className="mt-1 text-xl font-semibold">Teamaufgaben</h2>
+                <h2 className="mt-1 text-xl font-semibold">Aufgaben</h2>
               </div>
               <label className="inline-flex items-center gap-2 text-sm text-stone-600">
                 <input
