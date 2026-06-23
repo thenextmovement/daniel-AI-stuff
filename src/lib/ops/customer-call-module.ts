@@ -1521,6 +1521,89 @@ function deriveAdHocSourceKeys(record: CustomerSearchResult): CustomerWorkboardS
 
 type CandidatePreview = Omit<SalesCallListItem, "id" | "runId" | "topTen" | "latestResult">;
 
+function pushUniqueCandidateId(list: string[], requestId: string | null | undefined) {
+  const normalized = normalizeWhitespace(requestId);
+  if (!normalized || list.includes(normalized)) return;
+  list.push(normalized);
+}
+
+function selectBalancedCandidateRequestIds(candidateGroups: string[][], limit: number) {
+  const cappedLimit = Math.max(1, Math.min(limit, SALES_CALL_CANDIDATE_CONTEXT_LIMIT));
+  const activeGroups = candidateGroups.filter((group) => group.length > 0);
+  if (!activeGroups.length) return [];
+
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  const perGroupQuota = Math.max(1, Math.floor(cappedLimit / activeGroups.length));
+
+  const add = (requestId: string) => {
+    if (selected.length >= cappedLimit || seen.has(requestId)) return;
+    seen.add(requestId);
+    selected.push(requestId);
+  };
+
+  for (const group of activeGroups) {
+    let taken = 0;
+    for (const requestId of group) {
+      if (taken >= perGroupQuota) break;
+      if (seen.has(requestId)) continue;
+      add(requestId);
+      taken += 1;
+    }
+  }
+
+  for (const group of activeGroups) {
+    for (const requestId of group) {
+      if (selected.length >= cappedLimit) return selected;
+      add(requestId);
+    }
+  }
+
+  return selected;
+}
+
+function previewTabForStage(stage: SalesCallCadenceStage) {
+  if (stage === "inquiry_call") return "new_inquiries" as const;
+  if (stage === "quote_call" || stage === "no_response_call") return "first_quotes" as const;
+  return "my_calls" as const;
+}
+
+function limitInitialPreviewCandidates(candidates: CandidatePreview[], limit: number) {
+  if (limit >= SALES_CALL_PREVIEW_LIMIT) {
+    return candidates.filter((item, index) => index < limit || visibleActiveSalesTasks(item.activeTasks).length > 0);
+  }
+
+  const cappedLimit = Math.max(1, limit);
+  const selected: CandidatePreview[] = [];
+  const selectedIds = new Set<string>();
+  const tabOrder = ["new_inquiries", "first_quotes", "my_calls"] as const;
+  const perTabQuota = Math.max(1, Math.floor(cappedLimit / tabOrder.length));
+
+  const add = (item: CandidatePreview) => {
+    if (selected.length >= cappedLimit || selectedIds.has(item.requestId)) return;
+    selectedIds.add(item.requestId);
+    selected.push(item);
+  };
+
+  for (const tab of tabOrder) {
+    let taken = 0;
+    for (const item of candidates) {
+      if (taken >= perTabQuota) break;
+      if (previewTabForStage(item.cadence.currentStage) !== tab) continue;
+      if (selectedIds.has(item.requestId)) continue;
+      add(item);
+      taken += 1;
+    }
+  }
+
+  for (const item of candidates) {
+    if (selected.length >= cappedLimit) break;
+    add(item);
+  }
+
+  return selected.sort((left, right) => candidates.indexOf(left) - candidates.indexOf(right));
+}
+
 async function loadCadenceStatesByRequestId(requestIds: string[]) {
   if (!requestIds.length) return new Map<string, SalesCallCadenceState>();
   try {
@@ -1584,7 +1667,11 @@ async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTE
   ]);
 
   const sourceKeysByRequestId = new Map<string, CustomerWorkboardSection["key"][]>();
-  const requestIds = new Set<string>();
+  const inquiryCandidateIds: string[] = [];
+  const quoteCandidateIds: string[] = [];
+  const crmQuoteCandidateIds: string[] = [];
+  const cadenceCandidateIds: string[] = [];
+  const taskCandidateIds: string[] = [];
 
   const addSourceKey = (requestId: string, key: CustomerWorkboardSection["key"]) => {
     const current = sourceKeysByRequestId.get(requestId) || [];
@@ -1593,27 +1680,27 @@ async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTE
   };
 
   for (const row of requestRows) {
-    if (row.request_id) requestIds.add(row.request_id);
+    pushUniqueCandidateId(inquiryCandidateIds, row.request_id);
   }
   for (const row of quoteRows) {
     if (!row.request_id || row.signed_at) continue;
-    requestIds.add(row.request_id);
+    pushUniqueCandidateId(quoteCandidateIds, row.request_id);
     if (row.viewed_at) addSourceKey(row.request_id, "sales_recovery");
     if (row.sent_at) addSourceKey(row.request_id, "due_followups");
   }
   for (const row of crmQuoteRows) {
     if (!row.request_id || row.accepted_at || row.rejected_at) continue;
-    requestIds.add(row.request_id);
+    pushUniqueCandidateId(crmQuoteCandidateIds, row.request_id);
     if (row.viewed_at) addSourceKey(row.request_id, "sales_recovery");
     if (row.sent_at) addSourceKey(row.request_id, "due_followups");
   }
   for (const row of cadenceRows) {
     if (!row.request_id) continue;
-    requestIds.add(row.request_id);
+    pushUniqueCandidateId(cadenceCandidateIds, row.request_id);
     if (row.queue_bucket === "callbacks") addSourceKey(row.request_id, "callbacks");
   }
   for (const task of activeTaskRefs) {
-    requestIds.add(task.requestId);
+    pushUniqueCandidateId(taskCandidateIds, task.requestId);
     if (task.taskType === "callback_scheduled") {
       addSourceKey(task.requestId, "callbacks");
     } else if (
@@ -1636,7 +1723,10 @@ async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTE
   }
 
   return {
-    requestIds: [...requestIds].slice(0, Math.max(1, Math.min(contextLimit, SALES_CALL_CANDIDATE_CONTEXT_LIMIT))),
+    requestIds: selectBalancedCandidateRequestIds(
+      [taskCandidateIds, quoteCandidateIds, crmQuoteCandidateIds, cadenceCandidateIds, inquiryCandidateIds],
+      contextLimit,
+    ),
     sourceKeysByRequestId,
   };
 }
@@ -1704,7 +1794,7 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
     };
   });
 
-  return candidates
+  const sortedCandidates = candidates
     .filter((item) => shouldIncludeInDailyCallList(item.record, item.cadence, item.activeTasks || []))
     .sort((left, right) => {
       if (left.guard.allowed !== right.guard.allowed) return left.guard.allowed ? -1 : 1;
@@ -1737,8 +1827,9 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
       if (left.priorityScore !== right.priorityScore) return right.priorityScore - left.priorityScore;
       if (left.dealValueEur !== right.dealValueEur) return right.dealValueEur - left.dealValueEur;
       return left.requestId.localeCompare(right.requestId);
-    })
-    .filter((item, index) => index < limit || (limit >= SALES_CALL_PREVIEW_LIMIT && visibleActiveSalesTasks(item.activeTasks).length > 0))
+    });
+
+  return limitInitialPreviewCandidates(sortedCandidates, limit)
     .map((item, index) => ({
       ...item,
       rank: index + 1,

@@ -119,8 +119,8 @@ const workTabs: Array<{
   },
   {
     key: "first_quotes",
-    title: "Erste Angebote gesendet",
-    helper: "Angebot raus, warmes Nachfassen.",
+    title: "Angebot gesendet",
+    helper: "Angebot raus, Nachfassen und Reminder.",
   },
   {
     key: "my_calls",
@@ -969,7 +969,7 @@ function isOverdue(item: SalesCallListItem) {
 
 function getWorkTabForItem(item: SalesCallListItem): WorkTabKey {
   if (item.cadence.currentStage === "inquiry_call") return "new_inquiries";
-  if (item.cadence.currentStage === "quote_call") return "first_quotes";
+  if (item.cadence.currentStage === "quote_call" || item.cadence.currentStage === "no_response_call") return "first_quotes";
   return "my_calls";
 }
 
