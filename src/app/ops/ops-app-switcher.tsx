@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { BadgeCheck, BarChart3, ClipboardList, Factory, FileText, Menu, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
+import { BarChart3, Calculator, ClipboardList, Factory, FileText, Menu, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -35,10 +35,10 @@ const OPS_APPS: Array<{
   },
   {
     key: "priceReview",
-    label: "Preisprüfung",
-    helper: "Supplierpreise",
+    label: "Schildpreise",
+    helper: "Kalkulator & Prüfung",
     href: "/ops/customer-records/price-review",
-    Icon: BadgeCheck,
+    Icon: Calculator,
   },
   {
     key: "management",
