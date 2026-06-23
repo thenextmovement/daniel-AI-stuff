@@ -264,8 +264,7 @@ export async function POST(request: NextRequest) {
         paymentDueAt: body.paymentDueAt || null,
         operatorName: body.operatorName || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "assigned" });
-      return NextResponse.json({ ok: true, action, sale, board });
+      return NextResponse.json({ ok: true, action, sale });
     }
 
     if (action === "request_payment_reminder") {
@@ -278,8 +277,7 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
         idempotencyKey: body.idempotencyKey || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "active" });
-      return NextResponse.json({ ok: true, action, sale, board });
+      return NextResponse.json({ ok: true, action, sale });
     }
 
     if (action === "send_order_confirmation_email") {
@@ -290,8 +288,7 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
         idempotencyKey: body.idempotencyKey || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "active" });
-      return NextResponse.json({ ok: true, action, sale: result.sale, orderConfirmationEmail: result, board });
+      return NextResponse.json({ ok: true, action, sale: result.sale, orderConfirmationEmail: result });
     }
 
     if (action === "retry_shopify_tag") {
@@ -299,8 +296,7 @@ export async function POST(request: NextRequest) {
         saleId: String(body.saleId || ""),
         operatorName: body.operatorName || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "sync" });
-      return NextResponse.json({ ok: true, action, sale, board });
+      return NextResponse.json({ ok: true, action, sale });
     }
 
     if (action === "apply_no_payment_reminder_tag") {
@@ -308,20 +304,17 @@ export async function POST(request: NextRequest) {
         saleId: String(body.saleId || ""),
         operatorName: body.operatorName || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "active" });
-      return NextResponse.json({ ok: true, action, sale: result.sale, noPaymentReminderTag: result.tag, board });
+      return NextResponse.json({ ok: true, action, sale: result.sale, noPaymentReminderTag: result.tag });
     }
 
     if (action === "create_deadline_tasks") {
       const deadlineTasks = await createSupplierDeadlineTasks(actor);
-      const board = await listSupplierSalesBoard({ scope: "deadline" });
-      return NextResponse.json({ ok: true, action, deadlineTasks, board });
+      return NextResponse.json({ ok: true, action, deadlineTasks });
     }
 
     if (action === "cleanup_supplier_assignment_tasks") {
       const assignmentTaskCleanup = await cleanupSupplierAssignmentTasks();
-      const board = await listSupplierSalesBoard({ scope: "active" });
-      return NextResponse.json({ ok: true, action, assignmentTaskCleanup, board });
+      return NextResponse.json({ ok: true, action, assignmentTaskCleanup });
     }
 
     if (action === "sync_completed_offers") {
@@ -347,8 +340,7 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
         assigneeLabel: body.assigneeLabel || null,
       }, actor);
-      const board = await listSupplierSalesBoard({ scope: "assigned" });
-      return NextResponse.json({ ok: true, action, sale, board });
+      return NextResponse.json({ ok: true, action, sale });
     }
 
     return NextResponse.json({ ok: false, error: "unsupported_action" }, { status: 400 });

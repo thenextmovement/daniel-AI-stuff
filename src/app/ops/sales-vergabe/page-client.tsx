@@ -284,17 +284,22 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
 function StatFilterButton({
   active,
   onClick,
+  label,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  label: string;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`block rounded-[18px] text-left transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-stone-950/30 ${active ? "ring-2 ring-stone-950/25" : ""}`}
+      aria-label={`${label} anzeigen`}
+      aria-pressed={active}
+      title={`${label} anzeigen`}
+      className={`block w-full cursor-pointer rounded-[0.5rem] text-left transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-stone-950/30 ${active ? "ring-2 ring-stone-950/30" : ""}`}
     >
       {children}
     </button>
@@ -785,6 +790,19 @@ export function SupplierSalesClient({
     return { message: "Completed-Offers-Sync: keine neuen Angebote.", warning: null };
   }
 
+  async function fetchCurrentBoard() {
+    const params = new URLSearchParams();
+    params.set("scope", scope);
+    params.set("supplier", supplier);
+    params.set("payment", payment);
+    params.set("limit", String(visibleLimit));
+    if (query.trim()) params.set("q", query.trim());
+    const response = await fetch(`/api/ops/supplier-sales?${params.toString()}`);
+    const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
+    if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
+    return payload.board;
+  }
+
   async function loadBoard(options?: { syncCompletedOffers?: boolean }) {
     setLoading(true);
     setError(null);
@@ -797,16 +815,7 @@ export function SupplierSalesClient({
         nextError = syncResult.warning;
       }
 
-      const params = new URLSearchParams();
-      params.set("scope", scope);
-      params.set("supplier", supplier);
-      params.set("payment", payment);
-      params.set("limit", String(visibleLimit));
-      if (query.trim()) params.set("q", query.trim());
-      const response = await fetch(`/api/ops/supplier-sales?${params.toString()}`);
-      const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
-      if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
-      setBoard(payload.board);
+      setBoard(await fetchCurrentBoard());
       setMessage(nextMessage);
       setError(nextError);
     } catch (loadError) {
@@ -828,11 +837,8 @@ export function SupplierSalesClient({
       });
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
-      if (payload.board) setBoard(payload.board);
       setMessage(actionMessage(body.action, payload));
-      if (body.action === "assign_supplier") selectScope("assigned");
-      if (body.action === "retry_shopify_tag") selectScope("sync");
-      if (body.action === "create_deadline_tasks") selectScope("deadline");
+      setBoard(await fetchCurrentBoard());
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     } finally {
@@ -928,19 +934,19 @@ export function SupplierSalesClient({
         </section>
 
         <section className="grid gap-3 md:grid-cols-5">
-          <StatFilterButton active={scope === "ready"} onClick={() => selectScope("ready")}>
+          <StatFilterButton active={scope === "ready"} label="Bereite Sales" onClick={() => selectScope("ready")}>
             <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "payment"} onClick={() => selectScope("payment")}>
+          <StatFilterButton active={scope === "payment"} label="Offene Zahlungen" onClick={() => selectScope("payment")}>
             <OpsStatCard label="Zahlung" value={board?.counts.paymentOpen || 0} tone="warning" icon={<CreditCard className="h-5 w-5" />} detail="Offen oder Entscheidung fehlt." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "assigned"} onClick={() => selectScope("assigned")}>
+          <StatFilterButton active={scope === "assigned"} label="Vergebene Sales" onClick={() => selectScope("assigned")}>
             <OpsStatCard label="Vergeben" value={board?.counts.assigned || 0} tone="success" icon={<Factory className="h-5 w-5" />} detail="Supplier gesetzt." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "deadline"} onClick={() => selectScope("deadline")}>
+          <StatFilterButton active={scope === "deadline"} label="Deadline Sales" onClick={() => selectScope("deadline")}>
             <OpsStatCard label="Deadline" value={(board?.counts.dueSoon || 0) + (board?.counts.overdue || 0)} tone="info" icon={<CalendarClock className="h-5 w-5" />} detail="In 7 Tagen faellig oder ueberfaellig." />
           </StatFilterButton>
-          <StatFilterButton active={scope === "sync"} onClick={() => selectScope("sync")}>
+          <StatFilterButton active={scope === "sync"} label="Sync-Fehler" onClick={() => selectScope("sync")}>
             <OpsStatCard label="Sync" value={board?.counts.syncIssues || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Shopify/Trello/Aufgabe fehlerhaft." />
           </StatFilterButton>
         </section>

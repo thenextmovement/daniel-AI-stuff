@@ -171,6 +171,14 @@ const taskPayload = {
   ],
 };
 
+function supplierSalesScopeResponse(page, scope) {
+  return page.waitForResponse((response) => {
+    if (!response.url().includes("/api/ops/supplier-sales")) return false;
+    if (response.request().method() !== "GET") return false;
+    return new URL(response.url()).searchParams.get("scope") === scope;
+  });
+}
+
 function setupRoutes(page, posts) {
   return Promise.all([
     page.route("**/api/ops/tasks?**", async (route) => {
@@ -335,6 +343,23 @@ async function main() {
 
   await page.goto(`${target}/ops/sales-vergabe`, { waitUntil: "networkidle" });
   await page.getByText("#QA-sale-unpaid").waitFor({ timeout: 10_000 });
+
+  await Promise.all([
+    supplierSalesScopeResponse(page, "ready"),
+    page.getByRole("button", { name: "Bereite Sales anzeigen" }).click(),
+  ]);
+  await Promise.all([
+    supplierSalesScopeResponse(page, "payment"),
+    page.getByRole("button", { name: "Offene Zahlungen anzeigen" }).click(),
+  ]);
+  await Promise.all([
+    supplierSalesScopeResponse(page, "assigned"),
+    page.getByRole("button", { name: "Vergebene Sales anzeigen" }).click(),
+  ]);
+  await Promise.all([
+    supplierSalesScopeResponse(page, "deadline"),
+    page.getByRole("button", { name: "Deadline Sales anzeigen" }).click(),
+  ]);
 
   await page.getByLabel("Sales suchen").fill("#QA-sale-paid");
   await page.keyboard.press("Enter");
