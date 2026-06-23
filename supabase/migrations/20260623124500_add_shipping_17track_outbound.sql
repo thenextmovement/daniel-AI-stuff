@@ -193,7 +193,7 @@ begin
         or (r.status = 'registering' and coalesce(r.last_attempt_at, r.updated_at) <= p_now - interval '30 minutes')
       )
       and coalesce(r.next_attempt_at, p_now) <= p_now
-    order by coalesce(r.next_attempt_at, s.shipped_at, s.created_at), s.updated_at
+    order by coalesce(r.next_attempt_at, p_now), coalesce(s.shipped_at, s.created_at, s.updated_at) desc, s.updated_at desc
     limit greatest(1, least(p_limit, 50))
     for update of s skip locked
   ), claimed as (
