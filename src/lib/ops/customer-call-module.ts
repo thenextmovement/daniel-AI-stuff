@@ -43,6 +43,7 @@ const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
 const VIP_VALUE_THRESHOLD = 1000;
 const SALES_CALL_PREVIEW_LIMIT = 80;
+const SALES_CALL_INITIAL_PREVIEW_LIMIT = 30;
 const SALES_CALL_LIVE_VISUAL_FALLBACK_LIMIT = SALES_CALL_PREVIEW_LIMIT;
 const SALES_CALL_TRELLO_VISUAL_LOOKUP_CONCURRENCY = 4;
 const SALES_CALL_CANDIDATE_CONTEXT_LIMIT = 160;
@@ -1547,7 +1548,7 @@ function cutoffIso(daysBack: number) {
   return cutoff.toISOString();
 }
 
-async function loadCandidateRequestIds() {
+async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTEXT_LIMIT) {
   const [requestRows, quoteRows, crmQuoteRows, cadenceRows, activeTaskRefs] = await Promise.all([
     supabaseRequest<CandidateRequestRow[]>("master_requests", undefined, {
       select: "request_id,created_at",
@@ -1635,13 +1636,16 @@ async function loadCandidateRequestIds() {
   }
 
   return {
-    requestIds: [...requestIds].slice(0, SALES_CALL_CANDIDATE_CONTEXT_LIMIT),
+    requestIds: [...requestIds].slice(0, Math.max(1, Math.min(contextLimit, SALES_CALL_CANDIDATE_CONTEXT_LIMIT))),
     sourceKeysByRequestId,
   };
 }
 
 async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Promise<CandidatePreview[]> {
-  const { requestIds, sourceKeysByRequestId } = await loadCandidateRequestIds();
+  const contextLimit = limit >= SALES_CALL_PREVIEW_LIMIT
+    ? SALES_CALL_CANDIDATE_CONTEXT_LIMIT
+    : Math.min(SALES_CALL_CANDIDATE_CONTEXT_LIMIT, Math.max(limit * 2, limit));
+  const { requestIds, sourceKeysByRequestId } = await loadCandidateRequestIds(contextLimit);
   const records = await loadLightweightSalesCallRecords(requestIds, { includeTrello: false });
   const recordIds = records.map((record) => record.requestId);
   const [latestResultsByRequestId, cadenceByRequestId, activeTasksByRequestId] = await Promise.all([
@@ -1649,7 +1653,9 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
     loadCadenceStatesByRequestId(recordIds),
     loadActiveSalesTasksByRequestId(recordIds),
   ]);
-  const directVisualCandidatesByRequestId = await loadDirectTrelloVisualCandidates(records);
+  const directVisualCandidatesByRequestId = limit >= SALES_CALL_PREVIEW_LIMIT
+    ? await loadDirectTrelloVisualCandidates(records)
+    : new Map<string, SalesCallVisualCandidate[]>();
 
   const candidates = records.map((record) => {
     const sourceKeys = sourceKeysByRequestId.get(record.requestId) || [];
@@ -1732,7 +1738,7 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
       if (left.dealValueEur !== right.dealValueEur) return right.dealValueEur - left.dealValueEur;
       return left.requestId.localeCompare(right.requestId);
     })
-    .filter((item, index) => index < limit || visibleActiveSalesTasks(item.activeTasks).length > 0)
+    .filter((item, index) => index < limit || (limit >= SALES_CALL_PREVIEW_LIMIT && visibleActiveSalesTasks(item.activeTasks).length > 0))
     .map((item, index) => ({
       ...item,
       rank: index + 1,
@@ -2614,7 +2620,12 @@ async function loadLightweightSalesCallRecords(
   options: { includeTrello?: boolean } = {},
 ): Promise<CustomerSearchResult[]> {
   if (!requestIds.length) return [];
-  return listCustomerRecordsByRequestIds(requestIds, { includeTrello: options.includeTrello ?? false });
+  return listCustomerRecordsByRequestIds(requestIds, {
+    includeTrello: options.includeTrello ?? false,
+    includeOfferTracking: false,
+    includeActivity: false,
+    includeRelated: false,
+  });
 }
 
 function isActionableSalesCallNote(value: string) {
@@ -2964,8 +2975,8 @@ function buildSalesCallListItemInsertRow(
   };
 }
 
-async function buildModuleStateFromPreview(storageReady: boolean): Promise<SalesCallModuleState> {
-  const preview = await previewSalesCallCandidates(SALES_CALL_PREVIEW_LIMIT);
+async function buildModuleStateFromPreview(storageReady: boolean, limit = SALES_CALL_INITIAL_PREVIEW_LIMIT): Promise<SalesCallModuleState> {
+  const preview = await previewSalesCallCandidates(limit);
   const requestIds = preview.map((item) => item.requestId);
   let latestResultsByRequestId = new Map<string, SalesCallResultEntry>();
   let cadenceByRequestId = new Map<string, SalesCallCadenceState>();

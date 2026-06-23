@@ -4023,10 +4023,12 @@ function entryTitleFromAuditAction(action: string | null | undefined) {
 
 async function fetchDownstreamRows(
   master: MasterCustomerRow,
-  options: { includeTrello?: boolean; includeOfferTracking?: boolean } = {},
+  options: { includeTrello?: boolean; includeOfferTracking?: boolean; includeActivity?: boolean; includeRelated?: boolean } = {},
 ) {
   const { includeTrello = true } = options;
   const { includeOfferTracking = true } = options;
+  const { includeActivity = true } = options;
+  const { includeRelated = true } = options;
   const emails = emailCandidates(master);
   const requestRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
     select:
@@ -4142,25 +4144,31 @@ async function fetchDownstreamRows(
       ...(documentJourneyOr ? { or: documentJourneyOr } : {}),
       order: "updated_at.desc",
     }),
-    supabaseRequest<MasterCommunicationRow[]>("master_communications", undefined, {
-      select: "id,type,direction,subject,content,status,created_at",
-      or: `(request_id.eq.${master.request_id},customer_id.eq.${master.id})`,
-      order: "created_at.desc",
-      limit: 6,
-    }),
-    supabaseRequest<QuoteEmailLogRow[]>("quote_email_log", undefined, {
-      select: "id,card_id,deal_id,recipient_email,recipient_name,subject,status,sent_at,created_at,card_url",
-      ...(quoteEmailOr ? { or: quoteEmailOr } : { recipient_email: "eq.__no_email__" }),
-      order: "created_at.desc",
-      limit: 6,
-    }),
-    supabaseRequest<QuoteByEmailRow[]>("v_quotes_by_email", undefined, {
-      select: "email,document_id,customer_name,status,total_value,share_link,created_at,sent_at,viewed_at,signed_at",
-      ...(emailQuoteOr ? { or: emailQuoteOr } : { email: "eq.__no_email__" }),
-      order: "created_at.desc",
-      limit: 6,
-    }),
-    outlookMessageOr
+    includeActivity
+      ? supabaseRequest<MasterCommunicationRow[]>("master_communications", undefined, {
+          select: "id,type,direction,subject,content,status,created_at",
+          or: `(request_id.eq.${master.request_id},customer_id.eq.${master.id})`,
+          order: "created_at.desc",
+          limit: 6,
+        })
+      : Promise.resolve([]),
+    includeActivity
+      ? supabaseRequest<QuoteEmailLogRow[]>("quote_email_log", undefined, {
+          select: "id,card_id,deal_id,recipient_email,recipient_name,subject,status,sent_at,created_at,card_url",
+          ...(quoteEmailOr ? { or: quoteEmailOr } : { recipient_email: "eq.__no_email__" }),
+          order: "created_at.desc",
+          limit: 6,
+        })
+      : Promise.resolve([]),
+    includeActivity
+      ? supabaseRequest<QuoteByEmailRow[]>("v_quotes_by_email", undefined, {
+          select: "email,document_id,customer_name,status,total_value,share_link,created_at,sent_at,viewed_at,signed_at",
+          ...(emailQuoteOr ? { or: emailQuoteOr } : { email: "eq.__no_email__" }),
+          order: "created_at.desc",
+          limit: 6,
+        })
+      : Promise.resolve([]),
+    includeActivity && outlookMessageOr
       ? safeOptionalSupabaseRows<CustomerEmailMessageRow>(
         "customer_email_messages",
         {
@@ -4173,18 +4181,22 @@ async function fetchDownstreamRows(
         { requestId: master.request_id, customerId: master.id },
       )
       : Promise.resolve([]),
-    supabaseRequest<EmailAgentLogRow[]>("email_agent_log", undefined, {
-      select: "id,from_email,from_name,subject,body_preview,category,draft_created,created_at",
-      ...(inboundEmailOr ? { or: inboundEmailOr } : { from_email: "eq.__no_email__" }),
-      order: "created_at.desc",
-      limit: 8,
-    }),
-    supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
-      select: "id,document_id,workflow_name,action,status,error_message,metadata,created_at",
-      document_id: `eq.${master.request_id}`,
-      order: "created_at.desc",
-      limit: 40,
-    }),
+    includeActivity
+      ? supabaseRequest<EmailAgentLogRow[]>("email_agent_log", undefined, {
+          select: "id,from_email,from_name,subject,body_preview,category,draft_created,created_at",
+          ...(inboundEmailOr ? { or: inboundEmailOr } : { from_email: "eq.__no_email__" }),
+          order: "created_at.desc",
+          limit: 8,
+        })
+      : Promise.resolve([]),
+    includeActivity
+      ? supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+          select: "id,document_id,workflow_name,action,status,error_message,metadata,created_at",
+          document_id: `eq.${master.request_id}`,
+          order: "created_at.desc",
+          limit: 40,
+        })
+      : Promise.resolve([]),
     supabaseRequest<CustomerCaseStateRow[]>("customer_case_state", undefined, {
       select: "request_id,state,snoozed_until,reason,updated_by,source_action,metadata,created_at,updated_at",
       request_id: `eq.${master.request_id}`,
@@ -4207,7 +4219,7 @@ async function fetchDownstreamRows(
   ]);
 
   const relatedCustomers =
-    relatedCustomersOr
+    includeRelated && relatedCustomersOr
       ? (
           await selectMasterCustomerRows({
             or: relatedCustomersOr,
@@ -5025,7 +5037,7 @@ type OfferBridgeEventRow = {
 
 export async function listCustomerRecordsByOfferBridge(
   input: OfferBridgeLookupInput,
-  options?: { includeTrello?: boolean; includeOfferTracking?: boolean },
+  options?: { includeTrello?: boolean; includeOfferTracking?: boolean; includeActivity?: boolean; includeRelated?: boolean },
 ): Promise<CustomerSearchResult[]> {
   const filters = [
     input.offerId ? `offer_id.eq.${encodeURIComponent(input.offerId)}` : null,
@@ -5048,7 +5060,7 @@ export async function listCustomerRecordsByOfferBridge(
 
 export async function listCustomerRecordsByRequestIds(
   requestIds: string[],
-  options?: { includeTrello?: boolean; includeOfferTracking?: boolean },
+  options?: { includeTrello?: boolean; includeOfferTracking?: boolean; includeActivity?: boolean; includeRelated?: boolean },
 ): Promise<CustomerSearchResult[]> {
   const normalizedRequestIds = uniqueValues(requestIds.map((requestId) => normalizeRequestSearch(requestId)));
   if (!normalizedRequestIds.length) return [];
@@ -5063,16 +5075,23 @@ export async function listCustomerRecordsByRequestIds(
     }),
   );
   const rows = rowBatches.flat();
+  const contextConcurrency = options?.includeTrello
+    ? 4
+    : options?.includeActivity === false && options?.includeRelated === false
+      ? 4
+      : 2;
 
   const contexts = await mapWithConcurrency(
     rows,
-    options?.includeTrello ? 4 : 2,
+    contextConcurrency,
     async (row) => {
       try {
         const includeTrello = options?.includeTrello ?? false;
         const downstream = await fetchDownstreamRows(row, {
           includeTrello,
           includeOfferTracking: options?.includeOfferTracking ?? includeTrello,
+          includeActivity: options?.includeActivity ?? true,
+          includeRelated: options?.includeRelated ?? true,
         });
         return { master: applyAuditCcEmails(row, downstream.audits), ...downstream };
       } catch (error) {
