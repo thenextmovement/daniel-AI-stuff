@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { recordShippingTrackingEvent, type ShippingCarrier } from "@/lib/ops/shipping";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 
 const API_BASE_URL = "https://api.17track.net/track/v2.2";
@@ -13,7 +14,7 @@ const DHL_PAKET_17TRACK_CARRIER_ID = 7041;
 type RegistrationClaimRow = {
   shipment_id: string;
   registration_id: string;
-  carrier: "dhl" | "fedex" | "other" | "unknown";
+  carrier: "dpd" | "dhl" | "fedex" | "other" | "unknown";
   tracking_number: string;
   trello_card_name: string | null;
   trello_card_url: string | null;
@@ -23,7 +24,7 @@ type RegistrationClaimRow = {
 export type SeventeenTrackTrackingClaimRow = {
   shipment_id: string;
   shipment_key: string;
-  carrier: "dhl" | "fedex" | "other" | "unknown";
+  carrier: "dpd" | "dhl" | "fedex" | "other" | "unknown";
   tracking_number: string;
   provider_carrier_id: number | null;
   provider_tag: string | null;
@@ -347,7 +348,7 @@ export function needs17TrackRegistrationRefresh(carrier: RegistrationClaimRow["c
 export function build17TrackRegistrationItem(claim: RegistrationClaimRow) {
   return {
     number: claim.tracking_number,
-    carrier: default17TrackCarrierId(claim.carrier),
+    carrier: default17TrackCarrierId(claim.carrier) || 0,
     tag: claim.shipment_id,
     note: claim.trello_card_name || undefined,
   };
@@ -479,14 +480,22 @@ async function record17TrackRegistrationPayload(payload: ReturnType<typeof parse
 }
 
 async function register17TrackShipmentBatch(claims: RegistrationClaimRow[]) {
+  return register17TrackShipmentBatchWithRecorder(claims, record17TrackRegistrationPayload, recordFailed17TrackRegistration);
+}
+
+async function register17TrackShipmentBatchWithRecorder(
+  claims: RegistrationClaimRow[],
+  recorder: (payload: ReturnType<typeof parse17TrackRegistrationResult>) => Promise<unknown>,
+  failedRecorder: (claim: RegistrationClaimRow, error: unknown) => Promise<unknown>,
+) {
   try {
     const response = await call17Track("/register", claims.map(build17TrackRegistrationItem));
     return Promise.all(claims.map((claim) => {
       const payload = parse17TrackRegistrationResult(response, claim);
-      return record17TrackRegistrationPayload(payload);
+      return recorder(payload);
     }));
   } catch (error) {
-    return Promise.all(claims.map((claim) => recordFailed17TrackRegistration(claim, error)));
+    return Promise.all(claims.map((claim) => failedRecorder(claim, error)));
   }
 }
 
@@ -503,11 +512,19 @@ function delay(ms: number) {
 }
 
 async function register17TrackShipments(claims: RegistrationClaimRow[]) {
+  return register17TrackShipmentsWithRecorder(claims, record17TrackRegistrationPayload, recordFailed17TrackRegistration);
+}
+
+async function register17TrackShipmentsWithRecorder(
+  claims: RegistrationClaimRow[],
+  recorder: (payload: ReturnType<typeof parse17TrackRegistrationResult>) => Promise<unknown>,
+  failedRecorder: (claim: RegistrationClaimRow, error: unknown) => Promise<unknown>,
+) {
   const results = [];
   const chunks = chunkArray(claims, REGISTER_BATCH_SIZE);
   for (const [index, chunk] of chunks.entries()) {
     if (index > 0) await delay(450);
-    results.push(...await register17TrackShipmentBatch(chunk));
+    results.push(...await register17TrackShipmentBatchWithRecorder(chunk, recorder, failedRecorder));
   }
   return results;
 }
@@ -515,6 +532,61 @@ async function register17TrackShipments(claims: RegistrationClaimRow[]) {
 export async function claimAndRegister17TrackShipments(limit = 20) {
   const claims = await supabaseRpc<RegistrationClaimRow[]>("inbound_claim_due_17track_registrations", { p_limit: limit });
   const results = await register17TrackShipments(claims || []);
+  return { claimed: claims?.length || 0, results };
+}
+
+function failedOutboundRegistrationPayload(claim: RegistrationClaimRow, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    p_payload: {
+      shipmentId: claim.shipment_id,
+      carrier: claim.carrier,
+      trackingNumber: claim.tracking_number,
+      status: "failed",
+      providerCarrierId: default17TrackCarrierId(claim.carrier),
+      error: message,
+      rawResponse: { error: message },
+    },
+  };
+}
+
+async function recordFailedOutbound17TrackRegistration(claim: RegistrationClaimRow, error: unknown) {
+  return supabaseRpc("shipping_record_17track_registration", failedOutboundRegistrationPayload(claim, error));
+}
+
+async function resolveAcceptedOutbound17TrackIncidents(shipmentId: string) {
+  try {
+    await supabaseRequest("shipping_incidents", {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }),
+      headers: { Prefer: "return=minimal" },
+    }, {
+      shipment_id: `eq.${shipmentId}`,
+      status: "eq.open",
+      incident_type: "eq.tracking_error",
+    });
+  } catch (error) {
+    console.error("outbound 17track incident auto-resolution failed", { shipmentId, error });
+  }
+}
+
+async function recordOutbound17TrackRegistrationPayload(payload: ReturnType<typeof parse17TrackRegistrationResult>) {
+  const result = await supabaseRpc("shipping_record_17track_registration", { p_payload: payload });
+  if (payload.status === "accepted") await resolveAcceptedOutbound17TrackIncidents(payload.shipmentId);
+  return result;
+}
+
+export async function claimAndRegisterOutbound17TrackShipments(limit = 20) {
+  const claims = await supabaseRpc<RegistrationClaimRow[]>("shipping_claim_due_17track_registrations", { p_limit: limit });
+  const results = await register17TrackShipmentsWithRecorder(
+    claims || [],
+    recordOutbound17TrackRegistrationPayload,
+    recordFailedOutbound17TrackRegistration,
+  );
   return { claimed: claims?.length || 0, results };
 }
 
@@ -598,6 +670,94 @@ export async function claimAndSync17TrackShipments(limit = 20) {
   for (const [index, claim] of (claims || []).entries()) {
     if (index > 0) await delay(450);
     results.push(await sync17TrackShipment(claim));
+  }
+  return { claimed: claims?.length || 0, results };
+}
+
+async function syncOutbound17TrackShipment(claim: SeventeenTrackTrackingClaimRow) {
+  try {
+    const snapshot = await fetch17TrackInfo(claim.tracking_number, effective17TrackCarrierId(claim.carrier, claim.provider_carrier_id));
+    const payload = build17TrackSyncCarrierPayload(snapshot, claim);
+    if (!payload) {
+      return {
+        shipmentId: claim.shipment_id,
+        trackingNumber: claim.tracking_number,
+        status: "unparseable",
+        eventCount: 0,
+      };
+    }
+
+    const results = [];
+    for (const [eventIndex, event] of payload.events.entries()) {
+      results.push(await recordShippingTrackingEvent({
+        carrier: claim.carrier as ShippingCarrier,
+        trackingNumber: claim.tracking_number,
+        carrierEventId: event.carrierEventId || event.eventKey || `17track:${eventIndex}`,
+        statusCode: event.statusCode,
+        statusText: event.statusText,
+        eventTime: event.eventTime,
+        eventLocation: event.eventLocation,
+        rawEvent: {
+          source: "17track",
+          shipmentId: claim.shipment_id,
+          providerCarrierId: claim.provider_carrier_id,
+          providerTag: claim.provider_tag,
+          event: event.rawEvent,
+          response: payload.rawResponse,
+        },
+      }));
+    }
+
+    if (!payload.events.length) {
+      await resolveAcceptedOutbound17TrackIncidents(claim.shipment_id);
+      return {
+        shipmentId: claim.shipment_id,
+        trackingNumber: claim.tracking_number,
+        status: "recorded_no_events",
+        eventCount: 0,
+      };
+    }
+
+    await resolveAcceptedOutbound17TrackIncidents(claim.shipment_id);
+    return {
+      shipmentId: claim.shipment_id,
+      trackingNumber: claim.tracking_number,
+      status: "recorded",
+      eventCount: payload.events.length,
+      results,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const result = await supabaseRpc("shipping_record_tracking_error", {
+      p_payload: {
+        shipmentId: claim.shipment_id,
+        carrier: claim.carrier,
+        trackingNumber: claim.tracking_number,
+        trackingError: {
+          provider: "17track",
+          title: "17TRACK tracking fetch failed",
+          detail,
+          node: "17TRACK outbound sync",
+        },
+        rawResponse: { error: detail },
+      },
+    });
+    return {
+      shipmentId: claim.shipment_id,
+      trackingNumber: claim.tracking_number,
+      status: "error",
+      error: detail,
+      result,
+    };
+  }
+}
+
+export async function claimAndSyncOutbound17TrackShipments(limit = 20) {
+  const claims = await supabaseRpc<SeventeenTrackTrackingClaimRow[]>("shipping_claim_due_17track_tracking_shipments", { p_limit: limit });
+  const results = [];
+  for (const [index, claim] of (claims || []).entries()) {
+    if (index > 0) await delay(450);
+    results.push(await syncOutbound17TrackShipment(claim));
   }
   return { claimed: claims?.length || 0, results };
 }

@@ -55,6 +55,7 @@ function severityTone(severity: ShippingIncidentSeverity) {
 
 function incidentKindLabel(incident: ShippingIncident) {
   if (incident.incidentType === "pickup_available") return "Kundenhinweis";
+  if (incident.incidentType === "tracking_error") return "Tracking-Fehler";
   if (["delivery_failed", "return_to_sender", "returned"].includes(incident.incidentType)) return "Fehlermeldung";
   return "Prüfung";
 }

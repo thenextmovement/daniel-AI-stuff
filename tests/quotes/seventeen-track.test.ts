@@ -257,6 +257,7 @@ test("parse17TrackRegistrationResult treats already registered responses as acce
 test("build17TrackRegistrationItem uses explicit carrier ids for known inbound carriers", () => {
   assert.equal(default17TrackCarrierId("dhl"), 100001);
   assert.equal(default17TrackCarrierId("fedex"), 100003);
+  assert.equal(default17TrackCarrierId("dpd"), null);
 
   const item = build17TrackRegistrationItem({
     shipment_id: "25d72523-b171-4267-98e0-2b9859c0feb2",
@@ -272,6 +273,20 @@ test("build17TrackRegistrationItem uses explicit carrier ids for known inbound c
   assert.equal(item.carrier, 100001);
   assert.equal(item.tag, "25d72523-b171-4267-98e0-2b9859c0feb2");
   assert.equal(item.note, "China Los");
+
+  const dpdItem = build17TrackRegistrationItem({
+    shipment_id: "35e116f4-5940-4a4e-b18a-21c8f4c6c8a5",
+    registration_id: "registration-dpd",
+    carrier: "dpd",
+    tracking_number: "01405045471553",
+    trello_card_name: "#4321",
+    trello_card_url: null,
+    attempts: 1,
+  });
+
+  assert.equal(dpdItem.number, "01405045471553");
+  assert.equal(dpdItem.carrier, 0);
+  assert.equal(dpdItem.tag, "35e116f4-5940-4a4e-b18a-21c8f4c6c8a5");
 });
 
 test("effective17TrackCarrierId upgrades legacy DHL Paket registrations to DHL Express", () => {

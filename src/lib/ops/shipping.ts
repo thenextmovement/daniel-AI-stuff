@@ -32,7 +32,8 @@ export type ShippingIncidentType =
   | "pickup_available"
   | "return_to_sender"
   | "returned"
-  | "lost_or_stale";
+  | "lost_or_stale"
+  | "tracking_error";
 
 export const SHIPPING_RULE_VERSION = "shipping_rules_v1_20260605";
 export const SHIPPING_MAPPING_VERSION = "carrier_status_mapping_v2_20260605";
@@ -261,7 +262,7 @@ export function isShipmentWithinShippingLookback(
 }
 
 export function isInternalShippingProblemIncident(incident: Pick<ShippingIncident, "incidentType" | "status">) {
-  return ["delivery_failed", "return_to_sender", "returned"].includes(incident.incidentType)
+  return ["delivery_failed", "return_to_sender", "returned", "tracking_error"].includes(incident.incidentType)
     && (incident.status === "open" || incident.status === "acknowledged");
 }
 

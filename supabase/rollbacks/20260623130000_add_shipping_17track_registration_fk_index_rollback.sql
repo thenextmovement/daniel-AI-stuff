@@ -1,0 +1,1 @@
+drop index if exists public.shipping_tracking_registrations_shipment_idx;
