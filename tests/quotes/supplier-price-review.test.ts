@@ -60,6 +60,7 @@ test("supplier price review automation scope can only enqueue training-item pred
   assert.equal(isSupplierPricePredictionAutomationAction("create_from_anchor"), false);
   assert.equal(isSupplierPricePredictionAutomationAction("review_training_item_anchor"), false);
   assert.equal(isSupplierPricePredictionAutomationAction("estimate_from_trello"), false);
+  assert.equal(isSupplierPricePredictionAutomationAction("import_trello_training_candidates"), false);
   assert.equal(isSupplierPricePredictionAutomationAction("review"), false);
   assert.equal(isSupplierPricePredictionAutomationAction(undefined), false);
 });

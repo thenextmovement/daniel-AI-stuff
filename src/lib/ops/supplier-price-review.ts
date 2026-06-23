@@ -16,13 +16,15 @@ import {
   requiresNeonflexCustomerSizeRequest,
 } from "@/lib/quote-learning/neonflex-size-policy";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
-import { downloadTrelloAttachment, getTrelloCard } from "@/lib/quotes/trello";
+import { downloadTrelloAttachment, getTrelloCard, getTrelloList, getTrelloListCards } from "@/lib/quotes/trello";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import type { UpdateActor } from "@/lib/ops/customer-records";
 
 const SUPPLIER_PRICE_REVIEW_WORKFLOW_NAME = "customer_records_console";
 const SUPPLIER_PRICE_REVIEW_ACTION = "supplier_price_prediction_reviewed";
 const SUPPLIER_QUOTE_ANCHOR_REVIEW_ACTION = "supplier_quote_training_item_anchor_reviewed";
+const SUPPLIER_QUOTE_TRELLO_IMPORT_ACTION = "supplier_quote_trello_training_candidates_imported";
+const SUPPLIER_QUOTE_TRELLO_IMPORT_PARSER_VERSION = "trello_ocr_anchor_v1";
 const execFileAsync = promisify(execFile);
 
 export type SupplierPricePredictionDecisionStatus =
@@ -213,6 +215,39 @@ export type SupplierPriceTrelloEstimateResult = {
   };
 };
 
+export type SupplierQuoteTrelloImportSkippedReason =
+  | "no_image_attachment"
+  | "ocr_unavailable"
+  | "missing_size"
+  | "missing_split_prices"
+  | "already_reviewed"
+  | "title_filter"
+  | "invalid_card";
+
+export type SupplierQuoteTrelloImportSkippedItem = {
+  cardId: string | null;
+  cardName: string | null;
+  attachmentId: string | null;
+  attachmentName: string | null;
+  reason: SupplierQuoteTrelloImportSkippedReason;
+  detail?: string | null;
+};
+
+export type SupplierQuoteTrelloImportErrorItem = {
+  cardInput: string;
+  message: string;
+};
+
+export type SupplierQuoteTrelloImportResult = {
+  scannedCards: number;
+  scannedAttachments: number;
+  imported: number;
+  updated: number;
+  skipped: SupplierQuoteTrelloImportSkippedItem[];
+  errors: SupplierQuoteTrelloImportErrorItem[];
+  anchorItems: SupplierQuoteTrainingItemAnchorReviewItem[];
+};
+
 type SupplierPricePredictionRow = {
   id: string;
   prediction_key?: string | null;
@@ -297,6 +332,9 @@ type SupplierQuoteImageSourceAnchorRow = {
   request_id?: string | null;
   storage_bucket?: string | null;
   storage_path?: string | null;
+  checksum_sha256?: string | null;
+  mime_type?: string | null;
+  import_status?: string | null;
   raw_metadata?: Record<string, unknown> | null;
 };
 
@@ -462,14 +500,18 @@ function supplierQuoteImageAttachments(card: Awaited<ReturnType<typeof getTrello
     .slice(0, 5);
 }
 
-async function ocrTrelloAttachmentText(cardId: string, attachment: NonNullable<ReturnType<typeof supplierQuoteImageAttachment>>) {
+async function ocrImageBufferText(params: {
+  cardId: string;
+  attachmentId?: string | null;
+  attachmentName?: string | null;
+  body: ArrayBuffer | Buffer;
+}) {
   const tempDir = await mkdtemp(path.join(tmpdir(), "neontrip-price-ocr-"));
-  const extension = path.extname(String(attachment.name || attachment.fileName || "image.png")) || ".png";
+  const extension = path.extname(String(params.attachmentName || "image.png")) || ".png";
   const imagePath = path.join(tempDir, `source${extension}`);
   try {
-    const download = await downloadTrelloAttachment(attachment);
-    if (!String(download.contentType || "").toLowerCase().startsWith("image/")) return null;
-    await writeFile(imagePath, Buffer.from(download.body));
+    const body = Buffer.isBuffer(params.body) ? params.body : Buffer.from(params.body);
+    await writeFile(imagePath, body);
     const { stdout } = await execFileAsync("tesseract", [imagePath, "stdout", "--psm", "6"], {
       timeout: 12_000,
       maxBuffer: 256_000,
@@ -477,14 +519,25 @@ async function ocrTrelloAttachmentText(cardId: string, attachment: NonNullable<R
     return String(stdout || "").trim() || null;
   } catch (error) {
     console.warn("supplier price trello estimate OCR skipped", {
-      cardId,
-      attachmentId: attachment.id,
+      cardId: params.cardId,
+      attachmentId: params.attachmentId,
       reason: error instanceof Error ? error.message : "unknown_error",
     });
     return null;
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+async function ocrTrelloAttachmentText(cardId: string, attachment: NonNullable<ReturnType<typeof supplierQuoteImageAttachment>>) {
+  const download = await downloadTrelloAttachment(attachment);
+  if (!String(download.contentType || "").toLowerCase().startsWith("image/")) return null;
+  return ocrImageBufferText({
+    cardId,
+    attachmentId: attachment.id,
+    attachmentName: attachment.name || attachment.fileName || "image.png",
+    body: download.body,
+  });
 }
 
 function detectSupplierModelFamily(text: string) {
@@ -745,6 +798,501 @@ export async function estimateSupplierPricesFromTrello(input: {
       ocrAvailable: Boolean(ocrText),
       ocrTextPreview: ocrText ? ocrText.slice(0, 900) : null,
     },
+  };
+}
+
+function attachmentName(attachment: { name?: string | null; fileName?: string | null }) {
+  return String(attachment.name || attachment.fileName || "image").trim() || "image";
+}
+
+function sourceKeyForTrelloAttachment(input: {
+  cardId: string;
+  attachmentId: string;
+  checksumSha256: string;
+}) {
+  return `trello:${input.cardId}:${input.attachmentId}:${input.checksumSha256.slice(0, 16)}`;
+}
+
+function parseTrelloImportCardInputs(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry || "").trim()).filter(Boolean);
+  }
+  return String(value || "")
+    .split(/[\n,;]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function titleMatchesImportFilter(title: string | null | undefined, filter: string | null | undefined) {
+  const terms = String(filter || "")
+    .split(/[,;]/)
+    .map((term) => term.trim().toLowerCase())
+    .filter(Boolean);
+  if (!terms.length) return true;
+  const normalized = String(title || "").toLowerCase();
+  return terms.some((term) => normalized.includes(term));
+}
+
+function importAnchorConfidence(params: {
+  modelFamily: "neonflex" | "unsupported" | "unknown";
+  evidence: ReturnType<typeof extractSupplierQuoteEvidence>;
+  hasCustomSize: boolean;
+}) {
+  if (params.modelFamily === "unsupported") return 0.12;
+  let score = params.modelFamily === "neonflex" ? 0.84 : 0.68;
+  if (params.evidence.size) score += 0.06;
+  if (params.hasCustomSize) score += 0.04;
+  if (params.evidence.totalPrice !== null) score += 0.03;
+  return Math.max(0.1, Math.min(0.94, Math.round(score * 100) / 100));
+}
+
+function importValidationIssues(params: {
+  modelFamily: "neonflex" | "unsupported" | "unknown";
+  source: "ocr_image" | "custom_fields" | "mixed";
+  evidence: ReturnType<typeof extractSupplierQuoteEvidence>;
+}) {
+  const issues: string[] = [];
+  if (params.modelFamily === "unsupported") issues.push("unsupported_model_family");
+  if (params.modelFamily === "unknown") issues.push("model_family_unknown_neonflex_candidate");
+  if (params.source !== "ocr_image") issues.push("size_from_custom_field");
+  if (params.evidence.totalPrice !== null) {
+    const splitTotal = (params.evidence.productionPrice || 0) + (params.evidence.shippingPrice || 0);
+    if (Math.abs(splitTotal - params.evidence.totalPrice) > Math.max(3, params.evidence.totalPrice * 0.04)) {
+      issues.push("split_total_differs_from_total");
+    }
+  }
+  return issues;
+}
+
+async function upsertSupplierQuoteImageSource(input: {
+  sourceKey: string;
+  card: Awaited<ReturnType<typeof getTrelloCard>>;
+  attachment: NonNullable<ReturnType<typeof supplierQuoteImageAttachment>>;
+  checksumSha256: string;
+  mimeType: string;
+  rawMetadata: Record<string, unknown>;
+}) {
+  const existingRows = await supabaseRequest<SupplierQuoteImageSourceAnchorRow[]>("supplier_quote_image_sources", undefined, {
+    select:
+      "id,source_key,trello_card_id,trello_attachment_id,trello_attachment_name,request_id,storage_bucket,storage_path,checksum_sha256,mime_type,import_status,raw_metadata",
+    source_key: `eq.${input.sourceKey}`,
+    limit: 1,
+  });
+  if (existingRows[0]) return { row: existingRows[0], created: false };
+
+  const rows = await supabaseRequest<SupplierQuoteImageSourceAnchorRow[]>(
+    "supplier_quote_image_sources",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        source_key: input.sourceKey,
+        trello_card_id: input.card.id,
+        trello_attachment_id: input.attachment.id,
+        trello_attachment_name: attachmentName(input.attachment),
+        request_id: null,
+        storage_bucket: null,
+        storage_path: null,
+        checksum_sha256: input.checksumSha256,
+        mime_type: input.mimeType,
+        import_status: "imported",
+        raw_metadata: input.rawMetadata,
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+  );
+  if (!rows[0]) throw new QuoteValidationError("Supplier Image Source konnte nicht gespeichert werden.");
+  return { row: rows[0], created: true };
+}
+
+async function upsertSupplierQuoteDesign(input: {
+  imageSourceId: string;
+  designLabel: string | null;
+  detectedModelFamily: "neonflex" | "unsupported" | "unknown";
+  confidence: number;
+}) {
+  const existingRows = await supabaseRequest<SupplierQuoteDesignAnchorRow[]>("supplier_quote_designs", undefined, {
+    select: "id,image_source_id,design_index,design_label,detected_model_family,review_status,reviewed_by,reviewed_at",
+    image_source_id: `eq.${input.imageSourceId}`,
+    design_index: "eq.0",
+    limit: 1,
+  });
+  const patch = {
+    design_label: input.designLabel || "Design 1",
+    detected_model_family: input.detectedModelFamily,
+    confidence: input.confidence,
+    review_status: input.detectedModelFamily === "unsupported" ? "rejected" : "unreviewed",
+  };
+  if (existingRows[0]) {
+    const existing = existingRows[0];
+    if (existing.review_status === "approved" || existing.review_status === "rejected") {
+      return { row: existing, created: false, lockedByReview: true };
+    }
+    const rows = await supabaseRequest<SupplierQuoteDesignAnchorRow[]>(
+      "supplier_quote_designs",
+      {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+        headers: { Prefer: "return=representation" },
+      },
+      { id: `eq.${existing.id}` },
+    );
+    return { row: rows[0] || existing, created: false, lockedByReview: false };
+  }
+
+  const rows = await supabaseRequest<SupplierQuoteDesignAnchorRow[]>(
+    "supplier_quote_designs",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        image_source_id: input.imageSourceId,
+        extraction_run_id: null,
+        design_index: 0,
+        ...patch,
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+  );
+  if (!rows[0]) throw new QuoteValidationError("Supplier Design konnte nicht gespeichert werden.");
+  return { row: rows[0], created: true, lockedByReview: false };
+}
+
+async function upsertSupplierQuoteTrainingItem(input: {
+  designId: string;
+  sizeLabel: string;
+  widthCm: number;
+  heightCm: number;
+  productionPrice: number;
+  shippingPrice: number;
+  totalSupplierCost: number;
+  currency: string;
+  productModelFamily: "neonflex_candidate";
+  excludedFromNeonflexTraining: boolean;
+  exclusionReason: string | null;
+  sourceText: string;
+  confidence: number;
+  validationStatus: "usable" | "rejected";
+  validationIssues: string[];
+  reviewStatus: "unreviewed" | "rejected";
+}) {
+  const existingRows = await supabaseRequest<SupplierQuoteTrainingItemAnchorRow[]>("supplier_quote_training_items", undefined, {
+    select:
+      "id,design_id,row_index,variant_index,size_label,width_cm,height_cm,max_side_cm,production_price,shipping_price,total_supplier_cost,currency,product_model_family,excluded_from_neonflex_training,exclusion_reason,excluded_reason,source_text,confidence,validation_status,validation_issues,review_status,reviewed_by,reviewed_at,created_at",
+    design_id: `eq.${input.designId}`,
+    row_index: "eq.0",
+    variant_index: "eq.0",
+    limit: 1,
+  });
+  const existing = existingRows[0] || null;
+  if (existing?.review_status === "approved" || existing?.review_status === "rejected") {
+    return { row: existing, created: false, updated: false, lockedByReview: true };
+  }
+
+  const payload = {
+    design_id: input.designId,
+    extraction_run_id: null,
+    row_index: 0,
+    variant_index: 0,
+    size_label: input.sizeLabel,
+    width_cm: input.widthCm,
+    height_cm: input.heightCm,
+    area_cm2: Math.round(input.widthCm * input.heightCm * 100) / 100,
+    max_side_cm: Math.max(input.widthCm, input.heightCm),
+    production_price: input.productionPrice,
+    shipping_price: input.shippingPrice,
+    total_supplier_cost: input.totalSupplierCost,
+    currency: input.currency,
+    product_model_family: input.productModelFamily,
+    excluded_from_neonflex_training: input.excludedFromNeonflexTraining,
+    exclusion_reason: input.exclusionReason,
+    excluded_reason: input.exclusionReason,
+    source_text: input.sourceText.slice(0, 8000),
+    confidence: input.confidence,
+    validation_status: input.validationStatus,
+    validation_issues: input.validationIssues,
+    review_status: input.reviewStatus,
+  };
+
+  if (existing) {
+    const rows = await supabaseRequest<SupplierQuoteTrainingItemAnchorRow[]>(
+      "supplier_quote_training_items",
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+        headers: { Prefer: "return=representation" },
+      },
+      { id: `eq.${existing.id}` },
+    );
+    return { row: rows[0] || existing, created: false, updated: true, lockedByReview: false };
+  }
+
+  const rows = await supabaseRequest<SupplierQuoteTrainingItemAnchorRow[]>(
+    "supplier_quote_training_items",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { Prefer: "return=representation" },
+    },
+  );
+  if (!rows[0]) throw new QuoteValidationError("Supplier Training Item konnte nicht gespeichert werden.");
+  return { row: rows[0], created: true, updated: false, lockedByReview: false };
+}
+
+async function importSupplierQuoteAttachment(input: {
+  card: Awaited<ReturnType<typeof getTrelloCard>>;
+  attachment: NonNullable<ReturnType<typeof supplierQuoteImageAttachment>>;
+  currency: string;
+  listName?: string | null;
+}) {
+  const download = await downloadTrelloAttachment(input.attachment);
+  if (!String(download.contentType || "").toLowerCase().startsWith("image/")) {
+    return { skipped: "ocr_unavailable" as const, detail: "Attachment ist kein Bild." };
+  }
+
+  const body = Buffer.from(download.body);
+  const checksumSha256 = createHash("sha256").update(body).digest("hex");
+  const ocrText = await ocrImageBufferText({
+    cardId: input.card.id,
+    attachmentId: input.attachment.id,
+    attachmentName: attachmentName(input.attachment),
+    body,
+  });
+  if (!ocrText) return { skipped: "ocr_unavailable" as const, detail: "Tesseract lieferte keinen Text." };
+
+  const customSizeText = readCustomFieldValue(input.card, ["Size_1", "Größe 1", "Groesse 1", "Size"]);
+  const customSize = parseSizeText(customSizeText);
+  const evidence = extractSupplierQuoteEvidence(ocrText);
+  const anchorSize = evidence.size || customSize;
+  if (!anchorSize) return { skipped: "missing_size" as const, detail: "Keine Größe erkannt." };
+  if (evidence.productionPrice === null || evidence.shippingPrice === null) {
+    return { skipped: "missing_split_prices" as const, detail: "Production/Shipping nicht separat erkannt." };
+  }
+
+  const allText = [input.card.name, customSizeText, ocrText].filter(Boolean).join("\n");
+  const modelFamily = detectSupplierModelFamily(allText);
+  const source = evidence.size ? "ocr_image" : customSize ? "custom_fields" : "mixed";
+  const confidence = importAnchorConfidence({ modelFamily, evidence, hasCustomSize: Boolean(customSize) });
+  const validationIssues = importValidationIssues({ modelFamily, source, evidence });
+  const excluded = modelFamily === "unsupported";
+  const totalSupplierCost = evidence.totalPrice || evidence.productionPrice + evidence.shippingPrice;
+  const sourceKey = sourceKeyForTrelloAttachment({
+    cardId: input.card.id,
+    attachmentId: input.attachment.id,
+    checksumSha256,
+  });
+  const rawMetadata = {
+    trello_card_url: `https://trello.com/c/${input.card.id}`,
+    trello_card_name: input.card.name || null,
+    trello_board_id: input.card.idBoard || null,
+    trello_list_id: input.card.idList || null,
+    trello_list_name: input.listName || null,
+    parser_version: SUPPLIER_QUOTE_TRELLO_IMPORT_PARSER_VERSION,
+    source: "ops_trello_training_import",
+    evidence: {
+      size_text: evidence.sizeText,
+      production_text: evidence.productionText,
+      shipping_text: evidence.shippingText,
+      total_text: evidence.totalText,
+      size_source: source,
+    },
+  };
+
+  const image = await upsertSupplierQuoteImageSource({
+    sourceKey,
+    card: input.card,
+    attachment: input.attachment,
+    checksumSha256,
+    mimeType: download.contentType || input.attachment.mimeType || "image/unknown",
+    rawMetadata,
+  });
+  const design = await upsertSupplierQuoteDesign({
+    imageSourceId: image.row.id,
+    designLabel: input.card.name || "Design 1",
+    detectedModelFamily: modelFamily,
+    confidence,
+  });
+  if (design.lockedByReview) {
+    return { skipped: "already_reviewed" as const, detail: "Design wurde bereits reviewed." };
+  }
+
+  const item = await upsertSupplierQuoteTrainingItem({
+    designId: design.row.id,
+    sizeLabel: defaultSizeLabel(anchorSize.widthCm, anchorSize.heightCm),
+    widthCm: anchorSize.widthCm,
+    heightCm: anchorSize.heightCm,
+    productionPrice: evidence.productionPrice,
+    shippingPrice: evidence.shippingPrice,
+    totalSupplierCost,
+    currency: input.currency,
+    productModelFamily: "neonflex_candidate",
+    excludedFromNeonflexTraining: excluded,
+    exclusionReason: excluded ? "unsupported_model_family_from_trello_import" : null,
+    sourceText: ocrText,
+    confidence,
+    validationStatus: excluded ? "rejected" : "usable",
+    validationIssues,
+    reviewStatus: excluded ? "rejected" : "unreviewed",
+  });
+  if (item.lockedByReview) {
+    return { skipped: "already_reviewed" as const, detail: "Training Item wurde bereits reviewed." };
+  }
+
+  return {
+    item: item.row,
+    imported: image.created || design.created || item.created,
+    updated: item.updated || (!item.created && !item.lockedByReview),
+  };
+}
+
+export async function importSupplierQuoteTrainingCandidatesFromTrello(input: {
+  trelloCards?: string | string[] | null;
+  listId?: string | null;
+  limit?: number | string | null;
+  titleFilter?: string | null;
+  currency?: string | null;
+}, actor?: UpdateActor | null): Promise<SupplierQuoteTrelloImportResult> {
+  const currency = trimNullable(input.currency) || "USD";
+  const limitValue = Number(input.limit || 25);
+  const limit = Number.isFinite(limitValue) && limitValue > 0 ? Math.min(Math.floor(limitValue), 100) : 25;
+  const explicitCards = parseTrelloImportCardInputs(input.trelloCards);
+  const listId = trimNullable(input.listId);
+  const skipped: SupplierQuoteTrelloImportSkippedItem[] = [];
+  const errors: SupplierQuoteTrelloImportErrorItem[] = [];
+  let listName: string | null = null;
+
+  let cardInputs = explicitCards;
+  if (!cardInputs.length && listId) {
+    const [list, cards] = await Promise.all([getTrelloList(listId), getTrelloListCards(listId)]);
+    listName = trimNullable(list.name);
+    cardInputs = cards
+      .filter((card) => {
+        const matches = titleMatchesImportFilter(card.name, input.titleFilter);
+        if (!matches) {
+          skipped.push({
+            cardId: card.id,
+            cardName: trimNullable(card.name),
+            attachmentId: null,
+            attachmentName: null,
+            reason: "title_filter",
+          });
+        }
+        return matches;
+      })
+      .slice(0, limit)
+      .map((card) => card.id);
+  }
+  cardInputs = cardInputs.slice(0, limit);
+  if (!cardInputs.length) {
+    throw new QuoteValidationError("Keine Trello-Karten fuer den Import gefunden.");
+  }
+
+  let scannedCards = 0;
+  let scannedAttachments = 0;
+  let imported = 0;
+  let updated = 0;
+  const changedTrainingItems: SupplierQuoteTrainingItemAnchorRow[] = [];
+
+  for (const cardInput of cardInputs) {
+    const cardIdentifier = parseTrelloCardIdentifier(cardInput);
+    if (!cardIdentifier) {
+      skipped.push({
+        cardId: null,
+        cardName: null,
+        attachmentId: null,
+        attachmentName: null,
+        reason: "invalid_card",
+        detail: cardInput,
+      });
+      continue;
+    }
+
+    try {
+      const card = await getTrelloCard(cardIdentifier);
+      scannedCards += 1;
+      if (!titleMatchesImportFilter(card.name, input.titleFilter)) {
+        skipped.push({
+          cardId: card.id,
+          cardName: trimNullable(card.name),
+          attachmentId: null,
+          attachmentName: null,
+          reason: "title_filter",
+        });
+        continue;
+      }
+
+      const attachments = supplierQuoteImageAttachments(card);
+      if (!attachments.length) {
+        skipped.push({
+          cardId: card.id,
+          cardName: trimNullable(card.name),
+          attachmentId: null,
+          attachmentName: null,
+          reason: "no_image_attachment",
+        });
+        continue;
+      }
+
+      for (const attachment of attachments) {
+        scannedAttachments += 1;
+        const result = await importSupplierQuoteAttachment({ card, attachment, currency, listName });
+        if ("skipped" in result && result.skipped) {
+          skipped.push({
+            cardId: card.id,
+            cardName: trimNullable(card.name),
+            attachmentId: trimNullable(attachment.id),
+            attachmentName: attachmentName(attachment),
+            reason: result.skipped,
+            detail: result.detail,
+          });
+          continue;
+        }
+        if (result.imported) imported += 1;
+        if (result.updated) updated += 1;
+        changedTrainingItems.push(result.item);
+      }
+    } catch (error) {
+      errors.push({
+        cardInput,
+        message: error instanceof Error ? error.message : "unknown_error",
+      });
+    }
+  }
+
+  const anchorItems = await hydrateTrainingItemAnchorReviewRows(changedTrainingItems);
+
+  await supabaseRequest("workflow_audit_log", {
+    method: "POST",
+    body: JSON.stringify({
+      document_id: listId ? `trello-list:${listId}` : `trello-import:${createHash("sha256").update(cardInputs.join("|")).digest("hex").slice(0, 16)}`,
+      workflow_name: SUPPLIER_PRICE_REVIEW_WORKFLOW_NAME,
+      action: SUPPLIER_QUOTE_TRELLO_IMPORT_ACTION,
+      status: errors.length ? "partial_success" : "success",
+      metadata: {
+        list_id: listId,
+        list_name: listName,
+        title_filter: trimNullable(input.titleFilter),
+        requested_cards: cardInputs.length,
+        scanned_cards: scannedCards,
+        scanned_attachments: scannedAttachments,
+        imported,
+        updated,
+        skipped_count: skipped.length,
+        errors_count: errors.length,
+        parser_version: SUPPLIER_QUOTE_TRELLO_IMPORT_PARSER_VERSION,
+        actor_label: actorLabel(actor),
+        actor: actor || null,
+      },
+    }),
+    headers: { Prefer: "return=minimal" },
+  });
+
+  return {
+    scannedCards,
+    scannedAttachments,
+    imported,
+    updated,
+    skipped,
+    errors,
+    anchorItems,
   };
 }
 

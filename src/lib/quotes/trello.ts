@@ -72,6 +72,16 @@ export type TrelloBoardList = {
   pos?: number;
 };
 
+export type TrelloListCard = {
+  id: string;
+  name?: string;
+  idBoard?: string;
+  idList?: string;
+  url?: string;
+  shortUrl?: string;
+  closed?: boolean;
+};
+
 export type CreatedTrelloCard = {
   id: string;
   idBoard?: string;
@@ -329,6 +339,19 @@ export async function getTrelloBoardLists(boardId: string) {
     `/boards/${encodeURIComponent(boardId)}/lists?fields=id,name,closed,pos`,
   );
   return (lists || []).filter((list) => !list.closed);
+}
+
+export async function getTrelloList(listId: string) {
+  return trelloFetch<TrelloBoardList>(
+    `/lists/${encodeURIComponent(listId)}?fields=id,name,closed,pos`,
+  );
+}
+
+export async function getTrelloListCards(listId: string) {
+  const cards = await trelloFetch<TrelloListCard[]>(
+    `/lists/${encodeURIComponent(listId)}/cards?fields=id,name,idBoard,idList,url,shortUrl,closed`,
+  );
+  return (cards || []).filter((card) => !card.closed);
 }
 
 export async function updateTrelloCard(

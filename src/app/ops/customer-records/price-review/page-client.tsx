@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Calculator, Check, CircleAlert, ExternalLink, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { Calculator, Check, CircleAlert, ExternalLink, RefreshCw, ShieldCheck, UploadCloud, X } from "lucide-react";
 import type {
   SupplierPricePredictionReviewDecision,
   SupplierPricePredictionReviewItem,
   SupplierPriceTrelloEstimateResult,
+  SupplierQuoteTrelloImportResult,
   SupplierQuoteTrainingItemAnchorReviewDecision,
   SupplierQuoteTrainingItemAnchorReviewItem,
 } from "@/lib/ops/supplier-price-review";
@@ -19,6 +20,7 @@ type ReviewResponse = {
   item?: SupplierPricePredictionReviewItem;
   createdPredictionItems?: SupplierPricePredictionReviewItem[];
   estimate?: SupplierPriceTrelloEstimateResult;
+  importResult?: SupplierQuoteTrelloImportResult;
   error?: string;
   issues?: string[];
 };
@@ -229,6 +231,50 @@ function TrelloEstimateResultCard({ estimate }: { estimate: SupplierPriceTrelloE
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function TrelloImportResultCard({ result }: { result: SupplierQuoteTrelloImportResult }) {
+  return (
+    <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
+      <div className="grid gap-3 text-sm sm:grid-cols-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Karten</div>
+          <div className="mt-1 font-semibold text-black">{result.scannedCards}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Bilder</div>
+          <div className="mt-1 font-semibold text-black">{result.scannedAttachments}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Neu</div>
+          <div className="mt-1 font-semibold text-black">{result.imported}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Aktualisiert</div>
+          <div className="mt-1 font-semibold text-black">{result.updated}</div>
+        </div>
+      </div>
+
+      {result.skipped.length || result.errors.length ? (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {result.skipped.length ? `${result.skipped.length} uebersprungen` : null}
+          {result.skipped.length && result.errors.length ? " · " : null}
+          {result.errors.length ? `${result.errors.length} Fehler` : null}
+          {result.skipped.slice(0, 4).map((item) => (
+            <div key={`${item.cardId || item.detail}-${item.attachmentId || item.reason}`} className="mt-1">
+              {item.cardName || item.cardId || "Karte"}: {item.reason}
+              {item.detail ? ` (${item.detail})` : ""}
+            </div>
+          ))}
+          {result.errors.slice(0, 3).map((item) => (
+            <div key={item.cardInput} className="mt-1">
+              {item.cardInput}: {item.message}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -496,6 +542,12 @@ export function SupplierPriceReviewClient({
   const [estimateTargetSizes, setEstimateTargetSizes] = useState("100");
   const [estimateResult, setEstimateResult] = useState<SupplierPriceTrelloEstimateResult | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [importListId, setImportListId] = useState("");
+  const [importCards, setImportCards] = useState("");
+  const [importTitleFilter, setImportTitleFilter] = useState("");
+  const [importLimit, setImportLimit] = useState("25");
+  const [importResult, setImportResult] = useState<SupplierQuoteTrelloImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -690,6 +742,44 @@ export function SupplierPriceReviewClient({
     }
   }
 
+  async function importFromTrello() {
+    setImporting(true);
+    setError(null);
+    setMessage(null);
+    setImportResult(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/price-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "import_trello_training_candidates",
+          trelloImport: {
+            listId: importListId || null,
+            trelloCards: importCards || null,
+            titleFilter: importTitleFilter || null,
+            limit: importLimit || 25,
+            currency: "USD",
+          },
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
+      if (!response.ok || !payload?.ok || !payload.importResult) {
+        setError(formatApiError(payload));
+        setImporting(false);
+        return;
+      }
+      setImportResult(payload.importResult);
+      setItems(payload.items || []);
+      setAnchorItems(payload.anchorItems || []);
+      setMessage(`${payload.importResult.imported} neue und ${payload.importResult.updated} aktualisierte Trainingsanker importiert.`);
+      setImporting(false);
+    } catch {
+      setError("Trello-Import konnte nicht ausgeführt werden.");
+      setImporting(false);
+    }
+  }
+
   return (
     <main className={`${opsPageShellClass} px-4 py-6 text-black md:px-6`}>
       <div className={`${opsPageContainerClass} flex flex-col gap-5`}>
@@ -815,6 +905,69 @@ export function SupplierPriceReviewClient({
             <div className="border-t border-black/10 p-5">
               <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 Nur für Modellpflege: Hier werden erkannte Trainingsanker und Shadow-Preisvorschläge geprüft. Das ist nicht nötig, um eine einzelne Trello-Karte oben zu schätzen.
+              </div>
+
+              <div className="mb-4 rounded-lg border border-black/10 bg-[linear-gradient(135deg,#ffffff_0%,#fbfdff_54%,#fffafc_100%)] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-black">
+                      <UploadCloud className="h-4 w-4 text-[#fa31a2]" />
+                      Trello-Training importieren
+                    </div>
+                    <div className="mt-1 text-sm text-black/55">
+                      Liest Trello read-only, OCRt Bild-Anhänge und schreibt nur prüfbare Anker in die Review Queue.
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/50">
+                    Human Gate
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.7fr_0.35fr_auto]">
+                  <input
+                    type="text"
+                    value={importListId}
+                    onChange={(event) => setImportListId(event.target.value)}
+                    placeholder="Trello Listen-ID"
+                    className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                  />
+                  <input
+                    type="text"
+                    value={importTitleFilter}
+                    onChange={(event) => setImportTitleFilter(event.target.value)}
+                    placeholder="Titel-Filter, z.B. 200cm,220cm"
+                    className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={importLimit}
+                    onChange={(event) => setImportLimit(event.target.value)}
+                    className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                    aria-label="Import Limit"
+                  />
+                  <button
+                    type="button"
+                    disabled={importing || (!importListId.trim() && !importCards.trim())}
+                    onClick={() => void importFromTrello()}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    {importing ? "Importiere..." : "Import"}
+                  </button>
+                </div>
+                <textarea
+                  value={importCards}
+                  onChange={(event) => setImportCards(event.target.value)}
+                  placeholder="Oder einzelne Trello-Links/Karten-IDs, eine pro Zeile"
+                  rows={2}
+                  className="mt-3 w-full resize-none rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+                />
+                <div className="mt-2 text-xs text-black/45">
+                  Importiert nur Zeilen mit erkannter Größe plus separatem Production- und Shipping-Preis. Sondermodelle werden gespeichert, aber fürs Neonflex-Training ausgeschlossen.
+                </div>
+                {importResult ? <TrelloImportResultCard result={importResult} /> : null}
               </div>
 
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

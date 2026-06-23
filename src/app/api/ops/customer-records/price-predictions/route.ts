@@ -5,6 +5,7 @@ import {
   buildSupplierPricePredictionReviewDraftsFromAnchor,
   buildSupplierPricePredictionReviewDraftsFromTrainingItem,
   estimateSupplierPricesFromTrello,
+  importSupplierQuoteTrainingCandidatesFromTrello,
   isSupplierPricePredictionAutomationAction,
   listSupplierQuoteTrainingItemAnchorReviews,
   listSupplierPricePredictionReviews,
@@ -127,7 +128,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | {
-        action?: "review" | "create_from_anchor" | "create_from_training_item" | "review_training_item_anchor" | "estimate_from_trello";
+        action?:
+          | "review"
+          | "create_from_anchor"
+          | "create_from_training_item"
+          | "review_training_item_anchor"
+          | "estimate_from_trello"
+          | "import_trello_training_candidates";
         predictionId?: string;
         decision?: SupplierPricePredictionReviewDecision;
         anchorDecision?: SupplierQuoteTrainingItemAnchorReviewDecision;
@@ -180,6 +187,13 @@ export async function POST(request: NextRequest) {
         estimate?: {
           trelloCard?: string | null;
           targetSizes?: string | null;
+          currency?: string | null;
+        };
+        trelloImport?: {
+          trelloCards?: string | string[] | null;
+          listId?: string | null;
+          limit?: number | string | null;
+          titleFilter?: string | null;
           currency?: string | null;
         };
       }
@@ -265,6 +279,20 @@ export async function POST(request: NextRequest) {
         currency: trimNullable(body.estimate?.currency),
       });
       return NextResponse.json({ ok: true, estimate });
+    }
+
+    if (body?.action === "import_trello_training_candidates") {
+      if (!opsActor) return forbidden();
+      const importResult = await importSupplierQuoteTrainingCandidatesFromTrello({
+        trelloCards: body.trelloImport?.trelloCards,
+        listId: trimNullable(body.trelloImport?.listId),
+        limit: body.trelloImport?.limit,
+        titleFilter: trimNullable(body.trelloImport?.titleFilter),
+        currency: trimNullable(body.trelloImport?.currency),
+      }, actor);
+      const items = await listSupplierPricePredictionReviews({ status: "pending", limit: 100 });
+      const anchorItems = await listSupplierQuoteTrainingItemAnchorReviews({ status: "pending", limit: 100 });
+      return NextResponse.json({ ok: true, importResult, items, anchorItems });
     }
 
     if (body?.action === "create_from_training_item") {
