@@ -3,7 +3,7 @@ import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib
 import { SupplierPriceReviewClient } from "./page-client";
 
 export const metadata = {
-  title: "Preisrechner - Customer Records Ops - NEONTRIP",
+  title: "Schildgrößen & Preise - Customer Records Ops - NEONTRIP",
   robots: { index: false, follow: false },
 };
 

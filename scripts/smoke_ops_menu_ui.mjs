@@ -12,7 +12,7 @@ function assert(condition, message) {
 
 const appLabels = [
   "Kundenakte",
-  "Preisrechner",
+  "Schildgrößen & Preise",
   "Anrufe",
   "Aufgaben",
   "Angebote",

@@ -35,8 +35,8 @@ const OPS_APPS: Array<{
   },
   {
     key: "priceReview",
-    label: "Preisrechner",
-    helper: "Schildpreis prüfen",
+    label: "Schildgrößen & Preise",
+    helper: "Größe und Preis prüfen",
     href: "/ops/customer-records/price-review",
     Icon: Calculator,
   },
