@@ -21,6 +21,7 @@ import {
   type SupplierSalePaymentStatus,
   type SupplierSaleRecommendation,
   type SupplierSaleSupplier,
+  type SupplierSaleUrgencyFilter,
 } from "@/lib/ops/supplier-sales";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -223,6 +224,7 @@ export async function GET(request: NextRequest) {
       scope: (params.get("scope") || "active") as "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all",
       supplier: (params.get("supplier") || "all") as SupplierSaleSupplier | SupplierSaleRecommendation | "all",
       payment: (params.get("payment") || "all") as SupplierSalePaymentStatus | "unpaid" | "all",
+      urgency: (params.get("urgency") || "all") as SupplierSaleUrgencyFilter,
       query: params.get("q"),
       limit: Number(params.get("limit") || 50),
     });

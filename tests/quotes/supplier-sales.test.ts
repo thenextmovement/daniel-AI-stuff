@@ -411,7 +411,7 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   const board = buildSupplierSaleBoardFromRows(
     [
       saleRow({ id: "sale-ready", assignment_status: "ready_to_assign", supplier_due_date: "2026-06-10" }),
-      saleRow({ id: "sale-payment", assignment_status: "payment_open", shopify_payment_status: "pending", payment_decision_status: "wait_for_payment", supplier_due_date: "2026-06-08" }),
+      saleRow({ id: "sale-payment", assignment_status: "payment_open", shopify_payment_status: "pending", payment_decision_status: "wait_for_payment", supplier_due_date: "2026-06-08", product_summary: "Eilauftrag LED Neon Logo" }),
       saleRow({ id: "sale-assigned", assignment_status: "assigned", assigned_supplier: "quentin", recommended_supplier: "quentin", shopify_tag_sync_status: "failed", supplier_due_date: "2026-06-11" }),
     ],
     [
@@ -429,8 +429,10 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   assert.equal(board.counts.assigned, 1);
   assert.equal(board.counts.overdue, 1);
   assert.equal(board.counts.dueSoon, 2);
+  assert.equal(board.counts.rushOrders, 1);
   assert.equal(board.counts.quentinRecommended, 1);
   assert.equal(board.counts.syncIssues, 1);
+  assert.equal(board.items.find((item) => item.id === "sale-payment")?.rushOrder, true);
   assert.equal(board.items[0].id, "sale-ready");
   assert.ok(board.diagnostics.items.length);
 });
@@ -736,15 +738,16 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     assignment_status: "ready_to_assign",
     raw_shopify: { tags: ["Quentin - schon bezahlt"] },
   });
-  let supplierSalesGetLimit: string | null = null;
+  const supplierSalesGetLimits: string[] = [];
   let itemSaleFilter: string | null = null;
 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
-      supplierSalesGetLimit = url.searchParams.get("limit");
-      assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
+      const limit = url.searchParams.get("limit");
+      supplierSalesGetLimits.push(limit || "");
+      if (limit === "50") assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
       return Response.json([taggedRow, fulfilledRow, similarTagRow, unassignedRow]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
@@ -764,8 +767,49 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     assert.equal(visible?.paymentLink, "https://shopify.test/orders/visible/status");
   });
 
-  assert.equal(supplierSalesGetLimit, "50");
+  assert.deepEqual(supplierSalesGetLimits, ["2000", "50"]);
   assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-visible)");
+});
+
+test("supplier sales board filters express and rush orders", async () => {
+  const rushRow = saleRow({
+    id: "sale-rush",
+    sale_key: "shopify:order:rush",
+    product_summary: "Eilauftrag LED Neon Logo",
+    raw_shopify: { tags: [] },
+  });
+  const standardRow = saleRow({
+    id: "sale-standard",
+    sale_key: "shopify:order:standard",
+    product_summary: "Standard LED Neon Logo",
+    raw_shopify: { tags: [] },
+  });
+  const supplierSalesGetLimits: string[] = [];
+  let itemSaleFilter: string | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      supplierSalesGetLimits.push(url.searchParams.get("limit") || "");
+      return Response.json([standardRow, rushRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      itemSaleFilter = url.searchParams.get("sale_id");
+      return Response.json([itemRow({ sale_id: rushRow.id })]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active", urgency: "rush" });
+    assert.deepEqual(board.items.map((item) => item.id), ["sale-rush"]);
+    assert.equal(board.items[0]?.rushOrder, true);
+    assert.equal(board.counts.rushOrders, 1);
+    assert.equal(board.counts.readyToAssign, 1);
+  });
+
+  assert.deepEqual(supplierSalesGetLimits, ["2000", "50"]);
+  assert.equal(itemSaleFilter, "in.(sale-rush)");
 });
 
 test("supplier Shopify tag retry resolves existing assigned offer sale", async () => {

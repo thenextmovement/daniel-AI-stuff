@@ -43,6 +43,7 @@ export type SupplierSalePaymentStatus = (typeof SUPPLIER_PAYMENT_STATUSES)[numbe
 export type SupplierSalePaymentDecision = (typeof SUPPLIER_PAYMENT_DECISIONS)[number];
 export type SupplierSaleAssignmentStatus = (typeof SUPPLIER_ASSIGNMENT_STATUSES)[number];
 export type SupplierSaleSyncStatus = (typeof SUPPLIER_SYNC_STATUSES)[number];
+export type SupplierSaleUrgencyFilter = "all" | "rush" | "standard";
 
 export const SUPPLIER_RULE_VERSION = "supplier_rules_v1_20260609";
 
@@ -185,6 +186,7 @@ export type SupplierSale = {
   taskSyncError: string | null;
   productSummary: string | null;
   primaryImageUrl: string | null;
+  rushOrder: boolean;
   createdAt: string;
   updatedAt: string;
   items: SupplierSaleItem[];
@@ -227,6 +229,7 @@ export type SupplierSaleBoard = {
     assigned: number;
     dueSoon: number;
     overdue: number;
+    rushOrders: number;
     quentinRecommended: number;
     saidRecommended: number;
     syncIssues: number;
@@ -649,6 +652,33 @@ function lineItemText(item: SupplierLineItemInput) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+const RUSH_ORDER_PATTERN = /\b(express|eilauftrag|eilproduktion|eilbestellung|eilig|rush|urgent|priority|asap|sofort|dringend|schnellstmoeglich|schnellstmoglich)\b|(^|\s)eilt(\s|$)/;
+
+function searchableSignalText(value: unknown, maxLength = 16000) {
+  let text = "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    text = String(value);
+  } else if (value && typeof value === "object") {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = "";
+    }
+  }
+  return cleanText(text, maxLength)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+}
+
+function hasRushOrderSignal(text: string) {
+  return RUSH_ORDER_PATTERN.test(text);
 }
 
 function isNonProductionLine(item: SupplierLineItemInput) {
@@ -1340,6 +1370,26 @@ function paymentLinkFromSaleRow(row: SupplierSaleRow, latestEvent: SupplierSaleE
   );
 }
 
+function supplierSaleHasRushSignal(row: SupplierSaleRow, items: SupplierSaleItem[] = []) {
+  const rowText = searchableSignalText([
+    row.product_summary,
+    row.due_date_note,
+    row.metadata,
+    row.raw_shopify,
+    row.offer_snapshot,
+  ]);
+  if (hasRushOrderSignal(rowText)) return true;
+  return items.some((item) =>
+    hasRushOrderSignal(searchableSignalText([
+      item.title,
+      item.variantTitle,
+      item.sku,
+      item.productType,
+      item.ruleReasons,
+    ])),
+  );
+}
+
 function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEvent: SupplierSaleEvent | null = null): SupplierSale {
   const itemImage = items.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || null;
   return {
@@ -1394,6 +1444,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     taskSyncError: row.task_sync_error,
     productSummary: row.product_summary,
     primaryImageUrl: row.primary_image_url || itemImage,
+    rushOrder: supplierSaleHasRushSignal(row, items),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     items,
@@ -1438,12 +1489,42 @@ function saleRecencyMs(row: SupplierSaleRow) {
   );
 }
 
+function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new Date()): SupplierSaleBoard["counts"] {
+  const today = now.toISOString().slice(0, 10);
+  const dueSoonLimit = new Date(now);
+  dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + 7);
+  const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
+  const activeRows = saleRows.filter((row) => !hasExternalSupplierAssignmentSignal(row) && !hasCompletedShopifyFulfillmentSignal(row));
+  return {
+    total: saleRows.length,
+    readyToAssign: activeRows.filter((row) => row.assignment_status === "ready_to_assign").length,
+    paymentOpen: activeRows.filter((row) => row.assignment_status === "payment_open").length,
+    assigned: saleRows.filter((row) => ["assigned", "in_production"].includes(row.assignment_status)).length,
+    dueSoon: saleRows.filter((row) => {
+      const dueDate = row.supplier_due_date || row.customer_due_date;
+      return Boolean(dueDate && dueDate >= today && dueDate <= dueSoon && !["completed", "canceled"].includes(row.assignment_status));
+    }).length,
+    overdue: saleRows.filter((row) => {
+      const dueDate = row.supplier_due_date || row.customer_due_date;
+      return Boolean(dueDate && dueDate < today && !["completed", "canceled"].includes(row.assignment_status));
+    }).length,
+    rushOrders: saleRows.filter((row) => supplierSaleHasRushSignal(row)).length,
+    quentinRecommended: saleRows.filter((row) => row.recommended_supplier === "quentin").length,
+    saidRecommended: saleRows.filter((row) => row.recommended_supplier === "said").length,
+    syncIssues: saleRows.filter((row) => {
+      if (["completed", "canceled"].includes(row.assignment_status)) return false;
+      return [row.shopify_tag_sync_status, row.trello_projection_status, row.task_sync_status].includes("failed");
+    }).length,
+  };
+}
+
 export function buildSupplierSaleBoardFromRows(
   saleRows: SupplierSaleRow[],
   itemRows: SupplierSaleItemRow[],
   eventRows: SupplierSaleEventRow[] = [],
   now = new Date(),
   sortMode: "newest" | "deadline" = "newest",
+  countsOverride?: SupplierSaleBoard["counts"],
 ): SupplierSaleBoard {
   const itemsBySale = new Map<string, SupplierSaleItem[]>();
   for (const row of itemRows) {
@@ -1479,23 +1560,9 @@ export function buildSupplierSaleBoardFromRows(
     return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
   });
 
-  const today = now.toISOString().slice(0, 10);
-  const dueSoonLimit = new Date(now);
-  dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + 7);
-  const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
   return {
     items,
-    counts: {
-      total: items.length,
-      readyToAssign: items.filter((item) => item.assignmentStatus === "ready_to_assign").length,
-      paymentOpen: items.filter((item) => item.assignmentStatus === "payment_open").length,
-      assigned: items.filter((item) => ["assigned", "in_production"].includes(item.assignmentStatus)).length,
-      dueSoon: items.filter((item) => item.supplierDueDate && item.supplierDueDate >= today && item.supplierDueDate <= dueSoon).length,
-      overdue: items.filter((item) => item.supplierDueDate && item.supplierDueDate < today && !["completed", "canceled"].includes(item.assignmentStatus)).length,
-      quentinRecommended: items.filter((item) => item.recommendedSupplier === "quentin").length,
-      saidRecommended: items.filter((item) => item.recommendedSupplier === "said").length,
-      syncIssues: items.filter((item) => [item.shopifyTagSyncStatus, item.trelloProjectionStatus, item.taskSyncStatus].includes("failed")).length,
-    },
+    counts: countsOverride || buildSupplierSaleCountsFromRows(saleRows, now),
     diagnostics: buildSupplierSalesDiagnostics(),
   };
 }
@@ -2538,6 +2605,7 @@ export async function listSupplierSalesBoard(options?: {
   scope?: "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all";
   supplier?: SupplierSaleSupplier | SupplierSaleRecommendation | "all" | null;
   payment?: SupplierSalePaymentStatus | "unpaid" | "all" | null;
+  urgency?: SupplierSaleUrgencyFilter | null;
   query?: string | null;
   limit?: number;
 }): Promise<SupplierSaleBoard> {
@@ -2566,6 +2634,41 @@ export async function listSupplierSalesBoard(options?: {
     query.shopify_payment_status = payment === "unpaid" ? "not.eq.paid" : `eq.${payment}`;
   }
 
+  const statsQuery: Record<string, string | number | boolean | null> = {
+    select: [
+      "id",
+      "assignment_status",
+      "shopify_payment_status",
+      "supplier_due_date",
+      "customer_due_date",
+      "recommended_supplier",
+      "assigned_supplier",
+      "shopify_tag_sync_status",
+      "shopify_tag_value",
+      "trello_projection_status",
+      "task_sync_status",
+      "product_summary",
+      "due_date_note",
+      "raw_shopify",
+      "offer_snapshot",
+      "metadata",
+      "customer_name",
+      "customer_email",
+      "shopify_order_name",
+      "offer_number",
+      "document_reference",
+      "created_at",
+      "updated_at",
+    ].join(","),
+    assignment_status: "not.in.(completed,canceled)",
+    order: "created_at.desc,updated_at.desc",
+    limit: 2000,
+  };
+  if (payment && payment !== "all") {
+    statsQuery.shopify_payment_status = payment === "unpaid" ? "not.eq.paid" : `eq.${payment}`;
+  }
+
+  let statsRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, statsQuery);
   let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
   if (scope === "active" || scope === "ready" || scope === "payment") {
     saleRows = saleRows.filter((row) => !hasExternalSupplierAssignmentSignal(row) && !hasCompletedShopifyFulfillmentSignal(row));
@@ -2584,19 +2687,29 @@ export async function listSupplierSalesBoard(options?: {
   const supplier = options?.supplier;
   if (supplier && supplier !== "all") {
     saleRows = saleRows.filter((row) => row.assigned_supplier === supplier || row.recommended_supplier === supplier);
+    statsRows = statsRows.filter((row) => row.assigned_supplier === supplier || row.recommended_supplier === supplier);
   }
   const search = nullableText(options?.query, 160)?.toLowerCase();
   if (search) {
-    saleRows = saleRows.filter((row) => [
+    const matchesSearch = (row: SupplierSaleRow) => [
       row.customer_name,
       row.customer_email,
       row.shopify_order_name,
       row.offer_number,
       row.document_reference,
       row.product_summary,
-    ].some((value) => String(value || "").toLowerCase().includes(search)));
+    ].some((value) => String(value || "").toLowerCase().includes(search));
+    saleRows = saleRows.filter(matchesSearch);
+    statsRows = statsRows.filter(matchesSearch);
   }
-  if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest");
+  const urgency = options?.urgency || "all";
+  if (urgency !== "all") {
+    const matchesUrgency = (row: SupplierSaleRow) => supplierSaleHasRushSignal(row) === (urgency === "rush");
+    saleRows = saleRows.filter(matchesUrgency);
+    statsRows = statsRows.filter(matchesUrgency);
+  }
+  const counts = buildSupplierSaleCountsFromRows(statsRows, now);
+  if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts);
   const saleIds = saleRows.map((row) => row.id);
   const [itemRows, eventRows] = await Promise.all([
     supabaseRequest<SupplierSaleItemRow[]>("supplier_sale_items", undefined, {
@@ -2612,7 +2725,7 @@ export async function listSupplierSalesBoard(options?: {
       limit: 1000,
     }),
   ]);
-  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows, now, scope === "deadline" ? "deadline" : "newest");
+  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows, now, scope === "deadline" ? "deadline" : "newest", counts);
 }
 
 function supplierLabel(supplier: SupplierSaleSupplier, specialSupplierName?: string | null) {

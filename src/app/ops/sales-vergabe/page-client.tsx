@@ -15,6 +15,7 @@ import {
   RefreshCcw,
   Search,
   ShoppingCart,
+  Zap,
 } from "lucide-react";
 import type {
   SupplierSale,
@@ -120,6 +121,7 @@ type SupplierSalesLiveCheck = {
 type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all";
 type SupplierFilter = "all" | "quentin" | "said" | "special" | "manual_review";
 type PaymentFilter = "all" | "paid" | "unpaid" | "pending" | "authorized" | "partially_paid" | "unknown";
+type UrgencyFilter = "all" | "rush" | "standard";
 
 const BOARD_PAGE_SIZE = 50;
 
@@ -472,6 +474,12 @@ function SaleCard({
                 ueberfaellig
               </span>
             ) : null}
+            {sale.rushOrder ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900">
+                <Zap className="h-3.5 w-3.5" />
+                Eil/Express
+              </span>
+            ) : null}
           </div>
 
           <h2 className="mt-3 truncate text-xl font-semibold text-stone-950">
@@ -723,6 +731,7 @@ export function SupplierSalesClient({
   const [scope, setScope] = useState<ScopeFilter>("active");
   const [supplier, setSupplier] = useState<SupplierFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
+  const [urgency, setUrgency] = useState<UrgencyFilter>("all");
   const [visibleLimit, setVisibleLimit] = useState(BOARD_PAGE_SIZE);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -748,7 +757,7 @@ export function SupplierSalesClient({
 
   useEffect(() => {
     if (hasSession || localMode) void loadBoard();
-  }, [hasSession, localMode, scope, supplier, payment, visibleLimit]);
+  }, [hasSession, localMode, scope, supplier, payment, urgency, visibleLimit]);
 
   const items = useMemo(() => board?.items || [], [board]);
 
@@ -795,6 +804,7 @@ export function SupplierSalesClient({
     params.set("scope", scope);
     params.set("supplier", supplier);
     params.set("payment", payment);
+    params.set("urgency", urgency);
     params.set("limit", String(visibleLimit));
     if (query.trim()) params.set("q", query.trim());
     const response = await fetch(`/api/ops/supplier-sales?${params.toString()}`);
@@ -884,6 +894,11 @@ export function SupplierSalesClient({
     setPayment(nextPayment);
   }
 
+  function selectUrgency(nextUrgency: UrgencyFilter) {
+    setVisibleLimit(BOARD_PAGE_SIZE);
+    setUrgency(nextUrgency);
+  }
+
   if (!opsEnabled) {
     return <div className="min-h-screen bg-stone-100 p-8 text-stone-700">Ops Portal ist nicht konfiguriert.</div>;
   }
@@ -933,7 +948,7 @@ export function SupplierSalesClient({
           {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
         </section>
 
-        <section className="grid gap-3 md:grid-cols-5">
+        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <StatFilterButton active={scope === "ready"} label="Bereite Sales" onClick={() => selectScope("ready")}>
             <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
           </StatFilterButton>
@@ -948,6 +963,16 @@ export function SupplierSalesClient({
           </StatFilterButton>
           <StatFilterButton active={scope === "sync"} label="Sync-Fehler" onClick={() => selectScope("sync")}>
             <OpsStatCard label="Sync" value={board?.counts.syncIssues || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Shopify/Trello/Aufgabe fehlerhaft." />
+          </StatFilterButton>
+          <StatFilterButton
+            active={urgency === "rush"}
+            label="Eil- und Express-Auftraege"
+            onClick={() => {
+              selectScope("active");
+              selectUrgency(urgency === "rush" ? "all" : "rush");
+            }}
+          >
+            <OpsStatCard label="Eil" value={board?.counts.rushOrders || 0} tone="warning" icon={<Zap className="h-5 w-5" />} detail="Express oder Eilauftrag." />
           </StatFilterButton>
         </section>
 
@@ -984,7 +1009,7 @@ export function SupplierSalesClient({
         ) : null}
 
         <section className="rounded-[0.5rem] border border-stone-200 bg-white p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_160px_140px]">
+          <div className="grid gap-3 lg:grid-cols-[1fr_150px_150px_150px_150px_140px]">
             <label className="relative">
               <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-stone-400" />
               <input
@@ -1021,6 +1046,11 @@ export function SupplierSalesClient({
               <option value="pending">Pending</option>
               <option value="authorized">Autorisiert</option>
               <option value="unknown">Unklar</option>
+            </select>
+            <select value={urgency} onChange={(event) => selectUrgency(event.target.value as UrgencyFilter)} aria-label="Dringlichkeit filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">
+              <option value="all">Alle Auftraege</option>
+              <option value="rush">Eil/Express</option>
+              <option value="standard">Ohne Eil</option>
             </select>
             <button type="button" disabled={loading} onClick={() => void loadBoard({ syncCompletedOffers: true })} className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-stone-300">
               <RefreshCcw className="h-4 w-4" />

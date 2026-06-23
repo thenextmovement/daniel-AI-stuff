@@ -66,6 +66,7 @@ function sale(overrides = {}) {
     taskSyncError: overrides.taskSyncError || null,
     productSummary: overrides.productSummary || "LED Neon Sign 120cm, Outdoor, warmweiss",
     primaryImageUrl: null,
+    rushOrder: Boolean(overrides.rushOrder),
     createdAt: now,
     updatedAt: now,
     items: [
@@ -108,6 +109,13 @@ const specialSale = sale({
   recommendedSupplier: "special",
   specialSupplierName: "Laser Studio",
 });
+const rushSale = sale({
+  id: "sale-rush",
+  offerNumber: "NT-RUSH",
+  customerName: "Express Kunde",
+  productSummary: "Eilauftrag LED Neon Sign",
+  rushOrder: true,
+});
 const syncFailedSale = sale({
   id: "sale-sync-failed",
   offerNumber: "NT-SYNC",
@@ -122,16 +130,17 @@ const syncFailedSale = sale({
 });
 
 const board = {
-  items: [paidSale, unpaidSale, specialSale, syncFailedSale],
+  items: [paidSale, unpaidSale, specialSale, rushSale, syncFailedSale],
   counts: {
-    total: 4,
-    readyToAssign: 2,
+    total: 5,
+    readyToAssign: 3,
     paymentOpen: 1,
     assigned: 1,
-    dueSoon: 3,
+    dueSoon: 4,
     overdue: 0,
+    rushOrders: 1,
     quentinRecommended: 1,
-    saidRecommended: 2,
+    saidRecommended: 3,
     syncIssues: 1,
   },
   diagnostics: {
@@ -360,6 +369,16 @@ async function main() {
     supplierSalesScopeResponse(page, "deadline"),
     page.getByRole("button", { name: "Deadline Sales anzeigen" }).click(),
   ]);
+  await Promise.all([
+    page.waitForResponse((response) => {
+      if (!response.url().includes("/api/ops/supplier-sales")) return false;
+      if (response.request().method() !== "GET") return false;
+      return new URL(response.url()).searchParams.get("urgency") === "rush";
+    }),
+    page.getByRole("button", { name: "Eil- und Express-Auftraege anzeigen" }).click(),
+  ]);
+  await page.getByText("#QA-sale-rush").waitFor({ timeout: 10_000 });
+  await page.getByLabel("Dringlichkeit filtern").selectOption("all");
 
   await page.getByLabel("Sales suchen").fill("#QA-sale-paid");
   await page.keyboard.press("Enter");
