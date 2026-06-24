@@ -6,6 +6,7 @@ import { GET as supplierSalesGET, POST as supplierSalesPOST } from "@/app/api/op
 import {
   applyNoPaymentReminderShopifyTag,
   assignSupplierSale,
+  buildShopifyOrderTrelloTitle,
   buildSupplierSaleBoardFromRows,
   buildSupplierSalesDiagnostics,
   buildSupplierSaleInputFromPayload,
@@ -23,6 +24,7 @@ import {
   sendSupplierOrderConfirmationEmail,
   supplierSaleNeedsDeadlineTask,
   syncCompletedOffersFromOffersApp,
+  upsertSupplierSale,
   type SupplierSaleItemRow,
   type SupplierSaleRow,
 } from "@/lib/ops/supplier-sales";
@@ -387,6 +389,7 @@ test("shopify order payload extracts NEONTRIP offer references from note attribu
       { name: "NEONTRIP Offer URL", value: "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg" },
       { name: "NEONTRIP PDF Snapshot", value: "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg/pdf" },
       { name: "Trello Card ID", value: "6a267a745c0826d898eec8fd" },
+      { name: "Nerdy-Forms_ID", value: "nerdy-request-123" },
       { name: "Idempotency Key", value: "offer:cmq4yn9gu006fqm39t1si9xam:shopify-sale:v1" },
     ],
     line_items: [
@@ -403,8 +406,100 @@ test("shopify order payload extracts NEONTRIP offer references from note attribu
   assert.equal(parsed.sale.offerPublicUrl, "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg");
   assert.equal(parsed.sale.finalPdfUrl, "https://angebote.neontrip.de/offer/ZMLrH8YijasUM6AKq3lwId2Nh-Y4V5I8oJ-o1cII4Mg/pdf");
   assert.equal(parsed.sale.trelloCardId, "6a267a745c0826d898eec8fd");
+  assert.equal(parsed.sale.requestId, "nerdy-request-123");
   assert.equal(parsed.sale.idempotencyKey, "offer:cmq4yn9gu006fqm39t1si9xam:shopify-sale:v1");
   assert.equal(parsed.sale.metadata?.idempotency_key, "offer:cmq4yn9gu006fqm39t1si9xam:shopify-sale:v1");
+});
+
+test("shopify order title helper prefixes once and replaces stale order prefixes", () => {
+  assert.equal(buildShopifyOrderTrelloTitle("Check Info Ada", "#NEONT4426"), "#NEONT4426 Check Info Ada");
+  assert.equal(buildShopifyOrderTrelloTitle("#NEONT4426 Check Info Ada", "#NEONT4426"), "#NEONT4426 Check Info Ada");
+  assert.equal(buildShopifyOrderTrelloTitle("#NEONT4000 Check Info Ada", "#NEONT4426"), "#NEONT4426 Check Info Ada");
+});
+
+test("shopify sale upsert prefixes all source Trello cards sharing the Nerdyforms request id", async () => {
+  const currentRow = saleRow({
+    id: "sale-shopify-title-sync",
+    sale_key: "shopify:order:8281257672971",
+    shopify_order_id: "8281257672971",
+    shopify_order_name: "#NEONT4426",
+    request_id: "nerdy-request-123",
+    trello_card_id: "carda1234",
+  });
+  const trelloUpdates: Array<{ cardId: string; name: string | null }> = [];
+  const eventTypes: string[] = [];
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (method === "GET" && url.pathname.includes("/cards/carda1234")) {
+        return Response.json({ id: "carda1234", idBoard: "board-1", name: "Check Info Ada", customFieldItems: [] });
+      }
+      if (method === "GET" && url.pathname.includes("/cards/cardb1234")) {
+        return Response.json({ id: "cardb1234", idBoard: "board-1", name: "#NEONT4426 Check Info Ada Update", customFieldItems: [] });
+      }
+      if (method === "GET" && url.pathname.includes("/boards/board-1/customFields")) {
+        return Response.json([]);
+      }
+      if (method === "PUT" && url.pathname.includes("/cards/")) {
+        trelloUpdates.push({
+          cardId: url.pathname.split("/").pop() || "",
+          name: url.searchParams.get("name"),
+        });
+        return Response.json({});
+      }
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("id") === `eq.${currentRow.id}`) return Response.json([currentRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      const payload = JSON.parse(String(init?.body || "{}"));
+      assert.equal(payload.request_id, "nerdy-request-123");
+      assert.equal(payload.shopify_order_name, "#NEONT4426");
+      return Response.json([currentRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      return Response.json([{ ...currentRow, ...JSON.parse(String(init?.body || "{}")) }]);
+    }
+    if (url.pathname.endsWith("/master_requests") && method === "GET") {
+      assert.equal(url.searchParams.get("request_id"), "eq.nerdy-request-123");
+      return Response.json([
+        { request_id: "nerdy-request-123", trello_card_id: "carda1234", trello_card_url: null },
+        { request_id: "nerdy-request-123", trello_card_id: null, trello_card_url: "https://trello.com/c/cardb1234/check-info-ada" },
+      ]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      const payload = JSON.parse(String(init?.body || "{}"));
+      eventTypes.push(payload.event_type);
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const sale = await upsertSupplierSale({
+      saleKey: "shopify:order:8281257672971",
+      source: "shopify",
+      shopifyOrderId: "8281257672971",
+      shopifyOrderName: "#NEONT4426",
+      requestId: "nerdy-request-123",
+      trelloCardId: "carda1234",
+      shopifyPaymentStatus: "paid",
+      lineItems: [{ title: "LED Neon Logo", quantity: 1 }],
+    }, { operatorName: "Shopify Webhook" });
+
+    assert.equal(sale.id, currentRow.id);
+  });
+
+  assert.deepEqual(trelloUpdates, [
+    { cardId: "carda1234", name: "#NEONT4426 Check Info Ada" },
+  ]);
+  assert.ok(eventTypes.includes("source_trello_order_title_synced"));
 });
 
 test("supplier sales board counts deadlines, payment, assignment and sync issues", () => {

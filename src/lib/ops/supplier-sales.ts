@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
-import { createTrelloCard } from "@/lib/quotes/trello";
+import { createTrelloCard, getTrelloCard, updateTrelloCard } from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -48,6 +48,13 @@ export type SupplierSaleUrgencyFilter = "all" | "rush" | "standard";
 export const SUPPLIER_RULE_VERSION = "supplier_rules_v1_20260609";
 
 type JsonRecord = Record<string, unknown>;
+
+type MasterRequestTrelloRow = {
+  request_id?: string | null;
+  trello_card_id?: string | null;
+  trello_card_url?: string | null;
+  updated_at?: string | null;
+};
 
 export type SupplierSaleRow = {
   id: string;
@@ -1012,6 +1019,19 @@ function shopifyOfferReferences(payload: JsonRecord) {
     trelloCardId:
       noteAttributeString(payload, ["Trello Card ID", "trello_card_id", "trelloCardId"], 160) ||
       shopifyNoteMatch(payload, /Trello\s+Card\s+ID\s*:?\s*([0-9a-f]{24})/i, 160),
+    requestId:
+      noteAttributeString(payload, [
+        "Nerdy-Forms_ID",
+        "Nerdy Forms ID",
+        "NerdyForms ID",
+        "nerdy_forms_id",
+        "nerdyforms_id",
+        "nerdyform_id",
+        "request_id",
+        "requestId",
+        "Unique Identifier Code",
+      ], 160) ||
+      shopifyNoteMatch(payload, /(?:Nerdy[-_\s]*Forms(?:[_\s-]*ID)?|nerdy[_\s-]*forms[_\s-]*id|request[_\s-]*id|unique\s+identifier\s+code)\s*:?\s*([a-z0-9_-]+)/i, 160),
     idempotencyKey:
       noteAttributeString(payload, ["Idempotency Key", "idempotency_key", "idempotencyKey"], 260) ||
       shopifyNoteMatch(payload, /Idempotency\s+Key\s*:?\s*([^\s]+)/i, 260),
@@ -1255,7 +1275,7 @@ function parseShopifyOrderPayload(payload: JsonRecord): SupplierSalePayloadParse
       offerPublicUrl: recordString(source, ["offer_public_url", "offerPublicUrl"], 1000) || references.offerPublicUrl,
       finalPdfUrl: recordString(source, ["final_pdf_url", "finalPdfUrl"], 1000) || references.finalPdfUrl,
       trelloCardId: recordString(source, ["trello_card_id", "trelloCardId"], 160) || references.trelloCardId,
-      requestId: recordString(source, ["request_id", "requestId"], 160),
+      requestId: recordString(source, ["request_id", "requestId", "nerdy_forms_id", "nerdyforms_id", "Nerdy-Forms_ID"], 160) || references.requestId,
       customerName:
         recordString(source, ["customer_name", "customerName"], 260) ||
         customerNameFromParts([customer.first_name, customer.firstName, customer.last_name, customer.lastName]) ||
@@ -1952,6 +1972,135 @@ async function replaceSaleItems(
   return rows;
 }
 
+function trelloConfigured() {
+  return Boolean(process.env.TRELLO_API_KEY && process.env.TRELLO_TOKEN);
+}
+
+function trelloCardIdFromValue(value: unknown) {
+  const text = nullableText(value, 1000);
+  if (!text) return null;
+  const fromUrl =
+    text.match(/trello\.com\/c\/([a-z0-9]+)/i)?.[1] ||
+    text.match(/\/cards\/([a-z0-9]{8,24})/i)?.[1];
+  const cardId = fromUrl || text;
+  return /^[a-z0-9_-]{6,32}$/i.test(cardId) ? cardId : null;
+}
+
+function normalizeShopifyOrderTitlePrefix(value: unknown) {
+  const text = nullableText(value, 120)?.replace(/\s+/g, " ");
+  if (!text) return null;
+  return text.startsWith("#") ? text : `#${text}`;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeLeadingShopifyOrderTitlePrefix(title: string, prefix: string) {
+  const exactPrefix = new RegExp(`^${escapeRegExp(prefix)}(?:\\s+|\\s*[-:|]\\s*)?`, "i");
+  const withoutExact = title.replace(exactPrefix, "").trim();
+  if (withoutExact !== title.trim()) return withoutExact;
+  return title.replace(/^#(?:NEON[-\s]?T|NT)?\d+\s*(?:[-:|]\s*)?/i, "").trim();
+}
+
+export function buildShopifyOrderTrelloTitle(currentTitle: unknown, shopifyOrderName: unknown) {
+  const prefix = normalizeShopifyOrderTitlePrefix(shopifyOrderName);
+  if (!prefix) return null;
+  const title = cleanText(currentTitle, 1000);
+  const baseTitle = removeLeadingShopifyOrderTitlePrefix(title, prefix);
+  return baseTitle ? `${prefix} ${baseTitle}`.slice(0, 500) : prefix;
+}
+
+async function listRequestTrelloCardIds(requestId: string | null, fallbackCardId: string | null) {
+  const ids = new Set<string>();
+  if (fallbackCardId) ids.add(fallbackCardId);
+  if (!requestId) return [...ids];
+
+  const rows = await supabaseRequest<MasterRequestTrelloRow[]>("master_requests", undefined, {
+    select: "request_id,trello_card_id,trello_card_url,updated_at",
+    request_id: `eq.${encodeFilterValue(requestId)}`,
+    order: "updated_at.desc",
+    limit: 500,
+  });
+
+  for (const row of rows) {
+    const cardId = trelloCardIdFromValue(row.trello_card_id) || trelloCardIdFromValue(row.trello_card_url);
+    if (cardId) ids.add(cardId);
+  }
+  return [...ids];
+}
+
+async function syncShopifyOrderNumberToSourceTrelloCards(row: SupplierSaleRow, actor?: SupplierSaleActor | null) {
+  const orderPrefix = normalizeShopifyOrderTitlePrefix(row.shopify_order_name);
+  if (!orderPrefix || !trelloConfigured()) return;
+
+  const requestId = nullableText(row.request_id, 160);
+  const fallbackCardId = trelloCardIdFromValue(row.trello_card_id);
+  if (!requestId && !fallbackCardId) return;
+
+  try {
+    const cardIds = await listRequestTrelloCardIds(requestId, fallbackCardId);
+    if (!cardIds.length) return;
+
+    const updated: Array<{ cardId: string; previousName: string | null; nextName: string }> = [];
+    const skipped: Array<{ cardId: string; reason: string }> = [];
+    const failed: Array<{ cardId: string; error: string }> = [];
+
+    for (const cardId of cardIds) {
+      try {
+        const card = await getTrelloCard(cardId);
+        const nextName = buildShopifyOrderTrelloTitle(card.name || "", orderPrefix);
+        if (!nextName) {
+          skipped.push({ cardId, reason: "missing_order_name" });
+          continue;
+        }
+        if (nextName === cleanText(card.name, 1000)) {
+          skipped.push({ cardId, reason: "already_current" });
+          continue;
+        }
+        await updateTrelloCard(cardId, { name: nextName });
+        updated.push({ cardId, previousName: nullableText(card.name, 500), nextName });
+      } catch (error) {
+        failed.push({ cardId, error: error instanceof Error ? error.message : "unknown_error" });
+      }
+    }
+
+    await insertEvent({
+      saleId: row.id,
+      eventType: failed.length ? "source_trello_order_title_sync_failed" : "source_trello_order_title_synced",
+      actor,
+      idempotencyKey: `supplier-sale:${row.id}:source-trello-order-title:${hashPayload({
+        orderPrefix,
+        cardIds,
+        failed: failed.map((entry) => entry.cardId),
+      })}`,
+      payload: {
+        request_id: requestId,
+        shopify_order_name: orderPrefix,
+        updated,
+        skipped,
+        failed,
+      },
+    });
+  } catch (error) {
+    await insertEvent({
+      saleId: row.id,
+      eventType: "source_trello_order_title_sync_failed",
+      actor,
+      idempotencyKey: `supplier-sale:${row.id}:source-trello-order-title:error:${hashPayload({
+        orderPrefix,
+        requestId,
+        message: error instanceof Error ? error.message : "unknown_error",
+      })}`,
+      payload: {
+        request_id: requestId,
+        shopify_order_name: orderPrefix,
+        error: error instanceof Error ? error.message : "unknown_error",
+      },
+    });
+  }
+}
+
 export async function upsertSupplierSale(input: SupplierSaleInput, actor?: SupplierSaleActor | null) {
   const existing = await fetchExistingSaleRow(input);
   const payload = buildSalePayload(input, existing);
@@ -1993,6 +2142,8 @@ export async function upsertSupplierSale(input: SupplierSaleInput, actor?: Suppl
       payment_status: saleRow.shopify_payment_status,
     },
   });
+
+  await syncShopifyOrderNumberToSourceTrelloCards(saleRow, actor);
 
   if (saleRow.assignment_status === "ready_to_assign" && !saleRow.active_task_id && supplierAssignmentTasksEnabled()) {
     await ensureSupplierAssignmentTask(saleRow.id, actor || undefined).catch(async (error) => {
