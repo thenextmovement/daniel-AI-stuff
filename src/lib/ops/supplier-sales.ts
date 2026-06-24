@@ -1789,12 +1789,18 @@ function hasConfiguredSupplierTag(tags: Set<string>, candidates: Array<string | 
   });
 }
 
+function supplierTagCandidates(supplier: SupplierSaleSupplier) {
+  const configured = supplierTagValue(supplier);
+  if (supplier === "quentin") return [configured, "Quentin (schon bezahlt)"];
+  return [configured];
+}
+
 function assignedSupplierFromShopifyTags(input: SupplierSaleInput): SupplierSaleSupplier | null {
   const tags = new Set(shopifyTagsFromInput(input).map(supplierTagKey));
   if (!tags.size) return null;
-  if (hasConfiguredSupplierTag(tags, [supplierTagValue("quentin")])) return "quentin";
-  if (hasConfiguredSupplierTag(tags, [supplierTagValue("said")])) return "said";
-  if (hasConfiguredSupplierTag(tags, [supplierTagValue("special")])) return "special";
+  if (hasConfiguredSupplierTag(tags, supplierTagCandidates("quentin"))) return "quentin";
+  if (hasConfiguredSupplierTag(tags, supplierTagCandidates("said"))) return "said";
+  if (hasConfiguredSupplierTag(tags, supplierTagCandidates("special"))) return "special";
   return null;
 }
 
@@ -1816,9 +1822,9 @@ function supplierTagsFromRow(row: SupplierSaleRow) {
 function assignedSupplierFromRowTags(row: SupplierSaleRow): SupplierSaleSupplier | null {
   const tags = new Set(supplierTagsFromRow(row).map(supplierTagKey));
   if (!tags.size) return null;
-  if (hasConfiguredSupplierTag(tags, [supplierTagValue("quentin")])) return "quentin";
-  if (hasConfiguredSupplierTag(tags, [supplierTagValue("said")])) return "said";
-  if (hasConfiguredSupplierTag(tags, [supplierTagValue("special")])) return "special";
+  if (hasConfiguredSupplierTag(tags, supplierTagCandidates("quentin"))) return "quentin";
+  if (hasConfiguredSupplierTag(tags, supplierTagCandidates("said"))) return "said";
+  if (hasConfiguredSupplierTag(tags, supplierTagCandidates("special"))) return "special";
   return null;
 }
 
@@ -2736,11 +2742,15 @@ function supplierLabel(supplier: SupplierSaleSupplier, specialSupplierName?: str
 
 function supplierTagValue(supplier: SupplierSaleSupplier) {
   const values: Record<SupplierSaleSupplier, string | undefined> = {
-    quentin: process.env.SUPPLIER_TAG_QUENTIN || process.env.SHOPIFY_SUPPLIER_TAG_QUENTIN || "Quentin (schon bezahlt)",
+    quentin: process.env.SUPPLIER_TAG_QUENTIN || process.env.SHOPIFY_SUPPLIER_TAG_QUENTIN || "Quentin (noch bezahlen)",
     said: process.env.SUPPLIER_TAG_SAID || process.env.SHOPIFY_SUPPLIER_TAG_SAID || "Saeid (schon bezahlt)",
     special: process.env.SUPPLIER_TAG_SPECIAL || process.env.SHOPIFY_SUPPLIER_TAG_SPECIAL,
   };
-  return nullableText(values[supplier], 80);
+  const value = nullableText(values[supplier], 80);
+  if (supplier === "quentin" && supplierTagKey(value) === supplierTagKey("Quentin (schon bezahlt)")) {
+    return "Quentin (noch bezahlen)";
+  }
+  return value;
 }
 
 function noPaymentReminderTagValue() {
@@ -4022,7 +4032,11 @@ export async function retrySupplierSaleShopifyTag(input: SupplierShopifyTagRetry
   const row = await fetchSaleRowById(sale.id);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
 
-  const tagValue = row.shopify_tag_value || supplierTagValue(sale.assignedSupplier);
+  const configuredTagValue = supplierTagValue(sale.assignedSupplier);
+  const rowTagValue = nullableText(row.shopify_tag_value, 80);
+  const tagValue = sale.assignedSupplier === "quentin" && supplierTagKey(rowTagValue) === supplierTagKey("Quentin (schon bezahlt)")
+    ? configuredTagValue
+    : rowTagValue || configuredTagValue;
   let updated: SupplierSaleRow;
   try {
     await patchSaleRow(sale.id, {

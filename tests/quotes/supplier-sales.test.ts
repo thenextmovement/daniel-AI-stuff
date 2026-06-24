@@ -592,7 +592,7 @@ test("supplier assignment finds Shopify order by offer reference before tagging"
       }
       shopifyTagCount += 1;
       assert.equal(body.variables.id, "gid://shopify/Order/987654321");
-      assert.deepEqual(body.variables.tags, ["Quentin (schon bezahlt)"]);
+      assert.deepEqual(body.variables.tags, ["Quentin (noch bezahlen)"]);
       return Response.json({ data: { tagsAdd: { node: { id: "gid://shopify/Order/987654321" }, userErrors: [] } } });
     }
 
@@ -850,7 +850,7 @@ test("supplier Shopify tag retry resolves existing assigned offer sale", async (
       }
       shopifyTagCount += 1;
       assert.equal(body.variables.id, "gid://shopify/Order/987654322");
-      assert.deepEqual(body.variables.tags, ["Quentin (schon bezahlt)"]);
+      assert.deepEqual(body.variables.tags, ["Quentin (noch bezahlen)"]);
       return Response.json({ data: { tagsAdd: { node: { id: "gid://shopify/Order/987654322" }, userErrors: [] } } });
     }
 
@@ -1279,7 +1279,7 @@ test("shopify fallback matches existing offer sale by offer number and default Q
               id: "gid://shopify/Order/987654444",
               name: "#1244",
               email: "tagged@example.com",
-              tags: ["Quentin (schon bezahlt)"],
+              tags: ["Quentin (noch bezahlen)"],
               createdAt: "2026-06-16T12:40:00Z",
               processedAt: "2026-06-16T12:41:00Z",
               statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/status",
@@ -1320,7 +1320,7 @@ test("shopify fallback matches existing offer sale by offer number and default Q
       const payload = JSON.parse(String(init?.body || "{}"));
       assert.equal(payload.assigned_supplier, "quentin");
       assert.equal(payload.assignment_status, "assigned");
-      assert.equal(payload.shopify_tag_value, "Quentin (schon bezahlt)");
+      assert.equal(payload.shopify_tag_value, "Quentin (noch bezahlen)");
       assert.equal(payload.shopify_tag_sync_status, "synced");
       return Response.json([{ ...existingRow, ...payload }]);
     }
@@ -1989,7 +1989,7 @@ test("supplier sales diagnostics expose missing and configured production links"
     process.env.SUPPLIER_SALES_AGENT_API_TOKEN = "agent";
     process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key".repeat(2);
     process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify";
-    process.env.SUPPLIER_TAG_QUENTIN = "Quentin (schon bezahlt)";
+    process.env.SUPPLIER_TAG_QUENTIN = "Quentin (noch bezahlen)";
     process.env.SUPPLIER_TAG_SAID = "Saeid (schon bezahlt)";
     process.env.TRELLO_API_KEY = "trello-key";
     process.env.TRELLO_TOKEN = "trello-token";
