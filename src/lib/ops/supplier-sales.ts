@@ -141,6 +141,15 @@ export type SupplierSaleEventRow = {
   created_at: string;
 };
 
+export type SupplierSalePostOrderReview = {
+  status: "open" | "closed" | "change_requested" | "unknown";
+  signedAt: string | null;
+  expiresAt: string | null;
+  changeRequestedAt: string | null;
+  message: string | null;
+  eventId: string | null;
+};
+
 export type SupplierSale = {
   id: string;
   saleKey: string;
@@ -199,6 +208,7 @@ export type SupplierSale = {
   items: SupplierSaleItem[];
   latestEvent: SupplierSaleEvent | null;
   orderConfirmationEmail: SupplierOrderConfirmationEmailState | null;
+  postOrderReview: SupplierSalePostOrderReview;
 };
 
 export type SupplierSaleItem = {
@@ -1209,6 +1219,7 @@ function parseOfferCompletedPayload(payload: JsonRecord): SupplierSalePayloadPar
         signed_at: recordString(offer, ["signedAt"], 80),
         tax_exempt: Boolean(totals.taxExempt),
         payment_link: paymentLinkFromPayload(payload),
+        post_order_review: jsonRecord(payload.postOrderReview),
       },
       idempotencyKey,
       lineItems,
@@ -1390,6 +1401,29 @@ function paymentLinkFromSaleRow(row: SupplierSaleRow, latestEvent: SupplierSaleE
   );
 }
 
+function postOrderReviewFromRow(row: SupplierSaleRow): SupplierSalePostOrderReview {
+  const metadataReview = jsonRecord(row.metadata?.post_order_review);
+  const snapshotReview = jsonRecord(row.offer_snapshot?.postOrderReview);
+  const review = Object.keys(metadataReview).length ? metadataReview : snapshotReview;
+  const signedAt = nullableText(review.signedAt, 80);
+  const expiresAt = nullableText(review.expiresAt, 80);
+  const changeRequestedAt = nullableText(review.changeRequestedAt, 80);
+  const message = nullableText(review.message, 2000);
+  const eventId = nullableText(review.eventId, 160);
+  const rawStatus = nullableText(review.status, 60);
+  const expiresMs = expiresAt ? new Date(expiresAt).getTime() : NaN;
+  const status: SupplierSalePostOrderReview["status"] =
+    rawStatus === "change_requested" || Boolean(message || changeRequestedAt)
+      ? "change_requested"
+      : Number.isFinite(expiresMs)
+        ? Date.now() < expiresMs ? "open" : "closed"
+        : rawStatus === "open" || rawStatus === "closed"
+          ? rawStatus
+          : "unknown";
+
+  return { status, signedAt, expiresAt, changeRequestedAt, message, eventId };
+}
+
 function supplierSaleHasRushSignal(row: SupplierSaleRow, items: SupplierSaleItem[] = []) {
   const rowText = searchableSignalText([
     row.product_summary,
@@ -1470,6 +1504,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     items,
     latestEvent,
     orderConfirmationEmail: mapOrderConfirmationEmailState(row.metadata || {}),
+    postOrderReview: postOrderReviewFromRow(row),
   };
 }
 
@@ -4037,6 +4072,16 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     throw new QuoteValidationError("Lieferdatum fehlt.", ["Bitte bestaetigen, wann geliefert werden soll."], 422);
   }
   const sale = await getSupplierSale(input.saleId);
+  if (sale.postOrderReview.status === "open") {
+    throw new QuoteValidationError("24h-Aenderungsfenster laeuft noch.", [
+      "Diese Sale noch nicht vergeben. Der Kunde kann innerhalb von 24 Stunden nach Bestellung noch Abweichungen melden.",
+    ], 422);
+  }
+  if (sale.postOrderReview.status === "change_requested") {
+    throw new QuoteValidationError("Kunden-Aenderung muss geprueft werden.", [
+      "Der Kunde hat nach der Bestellung eine Abweichung gemeldet. Bitte vor der Vergabe pruefen und dokumentieren.",
+    ], 422);
+  }
   const decision = input.paymentDecisionStatus
     ? assertPaymentDecision(input.paymentDecisionStatus)
     : sale.paymentDecisionStatus;

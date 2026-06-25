@@ -219,6 +219,31 @@ function syncSummary(sale: SupplierSale) {
   return parts.join(" · ");
 }
 
+function formatPostOrderCountdown(ms: number) {
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+}
+
+function postOrderRemainingMs(sale: SupplierSale, now: number) {
+  const expiresAt = sale.postOrderReview.expiresAt ? new Date(sale.postOrderReview.expiresAt).getTime() : NaN;
+  return Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now) : 0;
+}
+
+function postOrderReviewBlocksAssignment(sale: SupplierSale, now: number) {
+  if (sale.postOrderReview.status === "change_requested") return true;
+  if (sale.postOrderReview.status !== "open") return false;
+  return postOrderRemainingMs(sale, now) > 0;
+}
+
+function postOrderReviewBadgeLabel(sale: SupplierSale, now: number) {
+  if (sale.postOrderReview.status === "change_requested") return "Kunden-Aenderung gemeldet";
+  if (postOrderReviewBlocksAssignment(sale, now)) return `24h Pruefung ${formatPostOrderCountdown(postOrderRemainingMs(sale, now))}`;
+  if (sale.postOrderReview.status === "closed") return "24h Pruefung abgeschlossen";
+  return null;
+}
+
 function diagnosticTone(status: string) {
   if (status === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-900";
   if (status === "missing") return "border-rose-200 bg-rose-50 text-rose-900";
@@ -430,6 +455,7 @@ function SaleCard({
   const [paymentDecision, setPaymentDecision] = useState<SupplierSalePaymentDecision>(defaultPaymentDecision(sale));
   const [assignmentNote, setAssignmentNote] = useState("");
   const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
+  const [reviewNow, setReviewNow] = useState(() => Date.now());
 
   useEffect(() => {
     setSupplier(defaultSupplier(sale));
@@ -439,10 +465,18 @@ function SaleCard({
     setReminderLink(sale.paymentLink || sale.shopifyOrderUrl || "");
   }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
 
+  useEffect(() => {
+    if (sale.postOrderReview.status !== "open") return;
+    const timer = window.setInterval(() => setReviewNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [sale.postOrderReview.status, sale.postOrderReview.expiresAt]);
+
   const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
   const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.shopifyTagSyncStatus !== "synced";
   const lastOrderConfirmationEmail = sale.orderConfirmationEmail;
+  const reviewBlocksAssignment = postOrderReviewBlocksAssignment(sale, reviewNow);
+  const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
 
   return (
     <article className="rounded-[0.5rem] border border-stone-200 bg-white p-4 shadow-sm">
@@ -478,6 +512,12 @@ function SaleCard({
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900">
                 <Zap className="h-3.5 w-3.5" />
                 Eil/Express
+              </span>
+            ) : null}
+            {reviewBadge ? (
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${sale.postOrderReview.status === "change_requested" ? "border-rose-200 bg-rose-50 text-rose-900" : reviewBlocksAssignment ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {reviewBadge}
               </span>
             ) : null}
           </div>
@@ -524,6 +564,22 @@ function SaleCard({
 
         <div className="min-w-0 rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
           <div className="grid gap-3">
+            {sale.postOrderReview.status === "change_requested" ? (
+              <div className="rounded-[0.5rem] border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">
+                <p className="font-semibold">Kunde hat nach Bestellung eine Aenderung gemeldet.</p>
+                <p className="mt-1 whitespace-pre-line text-xs leading-5">{sale.postOrderReview.message || "Bitte Kundenmeldung im Angebot/Aktivitaetsverlauf pruefen."}</p>
+              </div>
+            ) : reviewBlocksAssignment ? (
+              <div className="rounded-[0.5rem] border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-semibold">Noch nicht vergeben: 24h-Aenderungsfenster laeuft.</p>
+                <p className="mt-1 text-xs leading-5">Restzeit: {formatPostOrderCountdown(postOrderRemainingMs(sale, reviewNow))}. Erst danach an Supplier vergeben, falls keine Kundenmeldung eingeht.</p>
+              </div>
+            ) : sale.postOrderReview.status === "closed" ? (
+              <div className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-900">
+                24h-Aenderungsfenster abgeschlossen. Keine gemeldete Abweichung im aktuellen Stand.
+              </div>
+            ) : null}
+
             <label className="grid gap-1.5">
               <span className="text-xs font-medium text-stone-600">Wann soll geliefert werden?</span>
               <input
@@ -575,8 +631,9 @@ function SaleCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving || !deliveryDate || (needsManualPaymentRelease && paymentDecision === "wait_for_payment")}
+                disabled={saving || !deliveryDate || reviewBlocksAssignment || (needsManualPaymentRelease && paymentDecision === "wait_for_payment")}
                 onClick={() => {
+                  if (reviewBlocksAssignment) return;
                   const selectedSupplier = supplierLabel(supplier, specialSupplierName);
                   const confirmationMessage =
                     needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid"

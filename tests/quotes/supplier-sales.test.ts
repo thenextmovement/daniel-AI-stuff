@@ -267,6 +267,14 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
       subtotalNet: 1000,
       totalGross: 1190,
     },
+    postOrderReview: {
+      status: "open",
+      signedAt: "2026-06-16T13:44:30.000Z",
+      expiresAt: "2026-06-17T13:44:30.000Z",
+      changeRequestedAt: null,
+      message: null,
+      eventId: null,
+    },
     lineItems: [
       {
         id: "line-1",
@@ -291,7 +299,36 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
   assert.equal(parsed.sale.primaryImageUrl, "https://cdn.test/mockup.jpg");
   assert.equal(parsed.sale.metadata?.accepted_at, "2026-06-16T13:45:00.000Z");
   assert.equal(parsed.sale.metadata?.signed_at, "2026-06-16T13:44:30.000Z");
+  assert.deepEqual(parsed.sale.metadata?.post_order_review, {
+    status: "open",
+    signedAt: "2026-06-16T13:44:30.000Z",
+    expiresAt: "2026-06-17T13:44:30.000Z",
+    changeRequestedAt: null,
+    message: null,
+    eventId: null,
+  });
   assert.equal(deriveSupplierRecommendation(parsed.sale.lineItems).recommendedSupplier, "said");
+});
+
+test("supplier sale board exposes post-order review status and change message", () => {
+  const board = buildSupplierSaleBoardFromRows([
+    saleRow({
+      id: "sale-post-order-change",
+      metadata: {
+        post_order_review: {
+          status: "change_requested",
+          signedAt: "2026-06-16T13:44:30.000Z",
+          expiresAt: "2026-06-17T13:44:30.000Z",
+          changeRequestedAt: "2026-06-16T14:00:00.000Z",
+          message: "Bitte ohne UV-Druck produzieren.",
+          eventId: "event-post-order-change",
+        },
+      },
+    }),
+  ], [], []);
+
+  assert.equal(board.items[0]?.postOrderReview.status, "change_requested");
+  assert.equal(board.items[0]?.postOrderReview.message, "Bitte ohne UV-Druck produzieren.");
 });
 
 test("neontrip offer events other than offer.completed are rejected for supplier sales", () => {
@@ -729,6 +766,46 @@ test("supplier assignment finds Shopify order by offer reference before tagging"
   assert.equal(shopifyLookupCount, 1);
   assert.equal(shopifyTagCount, 1);
   assert.equal(assignmentTaskWriteCount, 0);
+});
+
+test("supplier assignment is blocked while post-order review window is open", async () => {
+  let attemptPostCount = 0;
+  const currentRow = saleRow({
+    id: "sale-open-post-order-review",
+    source: "neontrip-offers",
+    metadata: {
+      post_order_review: {
+        status: "open",
+        signedAt: "2026-06-16T13:44:30.000Z",
+        expiresAt: "2099-06-17T13:44:30.000Z",
+      },
+    },
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "POST") {
+      attemptPostCount += 1;
+      return Response.json({});
+    }
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      () => assignSupplierSale({
+        saleId: currentRow.id,
+        supplier: "said",
+        requestedDeliveryDate: "2026-07-13",
+        paymentDecisionStatus: "paid_confirmed",
+        operatorName: "Ops",
+      }),
+      /24h-Aenderungsfenster/,
+    );
+  });
+
+  assert.equal(attemptPostCount, 0);
 });
 
 test("supplier assignment task cleanup archives only supplier sale projections", async () => {
