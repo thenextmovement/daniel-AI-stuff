@@ -1743,6 +1743,22 @@ async function fetchExistingSaleRow(input: SupplierSaleInput) {
     if (rows.length === 1) return rows[0];
   }
 
+  const source = nullableText(input.source, 80);
+  const customerEmail = lowerNullable(input.customerEmail, 260);
+  const totalPrice = numericValue(input.totalPrice);
+  if (source === "shopify" && customerEmail && totalPrice !== null) {
+    const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select: "*",
+      source: "eq.neontrip-offers",
+      shopify_order_id: "is.null",
+      customer_email: `eq.${customerEmail}`,
+      total_price: `eq.${totalPrice}`,
+      order: "created_at.desc",
+      limit: 2,
+    });
+    if (rows.length === 1) return rows[0];
+  }
+
   const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
     select: "*",
     sale_key: `eq.${input.saleKey}`,

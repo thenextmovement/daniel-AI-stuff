@@ -1336,6 +1336,127 @@ test("completed offers sync imports recent Shopify orders as fallback", async ()
   assert.equal(salePostCount, 1);
 });
 
+test("shopify fallback enriches existing completed offer by unique customer email and total", async () => {
+  let salePatchCount = 0;
+  let salePostCount = 0;
+  const existingOfferRow = saleRow({
+    id: "sale-offer-payment-link",
+    sale_key: "offer:offer-payment-link",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    offer_id: "offer-payment-link",
+    offer_number: "A/N 16001",
+    document_reference: "A-N-16001",
+    customer_name: "Filippo Melena",
+    customer_email: "giulian.melena@icloud.com",
+    total_price: 806,
+    assignment_status: "payment_open",
+    metadata: {},
+    raw_shopify: {},
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") return Response.json({ ok: true, sales: [], count: 0 });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      return Response.json({
+        data: {
+          orders: {
+            nodes: [{
+              id: "gid://shopify/Order/987654806",
+              name: "#1806",
+              email: "giulian.melena@icloud.com",
+              statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/987654806/status",
+              createdAt: "2026-06-29T08:00:00Z",
+              processedAt: "2026-06-29T08:01:00Z",
+              displayFinancialStatus: "PENDING",
+              displayFulfillmentStatus: "UNFULFILLED",
+              customAttributes: [],
+              totalPriceSet: { shopMoney: { amount: "806.00", currencyCode: "EUR" } },
+              subtotalPriceSet: { shopMoney: { amount: "677.31", currencyCode: "EUR" } },
+              customer: { firstName: "Filippo", lastName: "Melena", email: "giulian.melena@icloud.com", phone: null },
+              billingAddress: null,
+              shippingAddress: null,
+              lineItems: {
+                nodes: [{
+                  id: "gid://shopify/LineItem/806",
+                  title: "LED Neon Logo",
+                  sku: null,
+                  quantity: 1,
+                  variantTitle: null,
+                  customAttributes: [],
+                  image: null,
+                  variant: { image: null },
+                  product: { productType: "LED-Neon-Flex" },
+                }],
+              },
+            }],
+          },
+        },
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("shopify_order_id") === "eq.987654806") return Response.json([]);
+      if (
+        url.searchParams.get("source") === "eq.neontrip-offers" &&
+        url.searchParams.get("shopify_order_id") === "is.null" &&
+        url.searchParams.get("customer_email") === "eq.giulian.melena@icloud.com" &&
+        url.searchParams.get("total_price") === "eq.806"
+      ) {
+        return Response.json([existingOfferRow]);
+      }
+      if (url.searchParams.get("id") === `eq.${existingOfferRow.id}`) {
+        return Response.json([{
+          ...existingOfferRow,
+          source: "shopify",
+          shopify_order_id: "987654806",
+          shopify_order_name: "#1806",
+          shopify_payment_status: "pending",
+          shopify_order_url: "https://galaxybuzzdk.myshopify.com/orders/987654806/status",
+          metadata: {
+            payment_link: "https://galaxybuzzdk.myshopify.com/orders/987654806/status",
+            admin_graphql_api_id: "gid://shopify/Order/987654806",
+          },
+        }]);
+      }
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      salePatchCount += 1;
+      const payload = JSON.parse(String(init?.body || "{}"));
+      assert.equal(payload.shopify_order_id, "987654806");
+      assert.equal(payload.shopify_order_name, "#1806");
+      assert.equal(payload.metadata?.payment_link, "https://galaxybuzzdk.myshopify.com/orders/987654806/status");
+      return Response.json([{ ...existingOfferRow, ...payload }]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      salePostCount += 1;
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: existingOfferRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: existingOfferRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.sources?.shopifyOrders.checked, 1);
+    assert.equal(result.sources?.shopifyOrders.upserted, 1);
+  });
+
+  assert.equal(salePatchCount, 1);
+  assert.equal(salePostCount, 0);
+});
+
 test("shopify fallback treats existing supplier tags as already assigned", async () => {
   let salePostCount = 0;
   const importedRow = saleRow({
