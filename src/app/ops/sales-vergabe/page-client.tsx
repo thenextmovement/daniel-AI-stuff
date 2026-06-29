@@ -261,6 +261,21 @@ function confirmAction(message: string) {
   return window.confirm(message);
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 30_000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Anfrage abgebrochen: Sync dauert zu lange. Bitte erneut versuchen oder Live-Abgleich pruefen.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 function assignmentMessage(sale: SupplierSale | undefined) {
   if (!sale) return "Vergabe gespeichert. Sync-Status wurde aktualisiert.";
   const syncStatuses = [sale.shopifyTagSyncStatus, sale.trelloProjectionStatus, sale.taskSyncStatus];
@@ -834,11 +849,11 @@ export function SupplierSalesClient({
   }
 
   async function syncCompletedOffers() {
-    const syncResponse = await fetch("/api/ops/supplier-sales", {
+    const syncResponse = await fetchWithTimeout("/api/ops/supplier-sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "sync_completed_offers", limit: Math.min(Math.max(visibleLimit, BOARD_PAGE_SIZE), 100), operatorName }),
-    });
+    }, 30_000);
     const syncPayload = (await syncResponse.json().catch(() => null)) as SupplierSalesApiResponse | null;
     if (!syncResponse.ok || !syncPayload?.ok) {
       return { message: null, warning: `Completed-Offers-Sync fehlgeschlagen: ${formatApiError(syncPayload)}` };
@@ -864,7 +879,7 @@ export function SupplierSalesClient({
     params.set("urgency", urgency);
     params.set("limit", String(visibleLimit));
     if (query.trim()) params.set("q", query.trim());
-    const response = await fetch(`/api/ops/supplier-sales?${params.toString()}`);
+    const response = await fetchWithTimeout(`/api/ops/supplier-sales?${params.toString()}`, undefined, 20_000);
     const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
     if (!response.ok || !payload?.ok || !payload.board) throw new Error(formatApiError(payload));
     return payload.board;
@@ -897,11 +912,11 @@ export function SupplierSalesClient({
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/ops/supplier-sales", {
+      const response = await fetchWithTimeout("/api/ops/supplier-sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...body, operatorName }),
-      });
+      }, 30_000);
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       setMessage(actionMessage(body.action, payload));
@@ -918,11 +933,11 @@ export function SupplierSalesClient({
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/ops/supplier-sales", {
+      const response = await fetchWithTimeout("/api/ops/supplier-sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "diagnose_sales_flow", limit: 10, operatorName }),
-      });
+      }, 30_000);
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok || !payload.liveCheck) throw new Error(formatApiError(payload));
       setLiveCheck(payload.liveCheck);

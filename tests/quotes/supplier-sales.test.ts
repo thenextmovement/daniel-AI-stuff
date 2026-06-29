@@ -919,7 +919,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       const limit = url.searchParams.get("limit");
       supplierSalesGetLimits.push(limit || "");
-      if (limit === "50") assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
+      if (limit === "200") assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
       return Response.json([taggedRow, fulfilledRow, similarTagRow, unassignedRow]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
@@ -939,7 +939,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     assert.equal(visible?.paymentLink, "https://shopify.test/orders/visible/status");
   });
 
-  assert.deepEqual(supplierSalesGetLimits, ["2000", "50"]);
+  assert.deepEqual(supplierSalesGetLimits, ["2000", "200"]);
   assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-visible)");
 });
 
@@ -980,7 +980,7 @@ test("supplier sales board filters express and rush orders", async () => {
     assert.equal(board.counts.readyToAssign, 1);
   });
 
-  assert.deepEqual(supplierSalesGetLimits, ["2000", "50"]);
+  assert.deepEqual(supplierSalesGetLimits, ["2000", "200"]);
   assert.equal(itemSaleFilter, "in.(sale-rush)");
 });
 

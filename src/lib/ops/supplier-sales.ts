@@ -2580,10 +2580,11 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
     };
   }
 
-  const limit = Math.min(Math.max(Number(options?.limit || 50), 1), 100);
+  const limit = Math.min(Math.max(Number(options?.limit || 10), 1), 25);
   const activeRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
     select: "*",
     assignment_status: "not.in.(assigned,in_production,completed,canceled)",
+    shopify_order_id: "not.is.null",
     order: "updated_at.desc,created_at.desc",
     limit,
   });
@@ -2593,13 +2594,12 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
   let upserted = 0;
   for (const row of activeRows) {
     try {
-      const localOrderGid = shopifyOrderGid(row);
-      const lookup = localOrderGid ? { orderGid: localOrderGid, error: null as string | null } : await findShopifyOrderGid(config, row);
-      if (!lookup.orderGid) {
-        if (lookup.error && warnings.length < 5) warnings.push(`${row.shopify_order_name || row.offer_number || row.sale_key}: ${lookup.error}`);
+      const orderGid = shopifyOrderGid(row);
+      if (!orderGid) {
+        if (warnings.length < 5) warnings.push(`${row.shopify_order_name || row.offer_number || row.sale_key}: Shopify Order-ID fehlt; aktiver Kurzabgleich ueberspringt Referenzsuche.`);
         continue;
       }
-      const fetched = await fetchShopifyOrderByGid(config, lookup.orderGid);
+      const fetched = await fetchShopifyOrderByGid(config, orderGid);
       if (!fetched.order) {
         if (fetched.error) errors.push({ offerId: row.offer_id || row.offer_number || row.sale_key, error: fetched.error });
         continue;
@@ -2668,7 +2668,7 @@ export async function syncCompletedOffersFromOffersApp(
   errors.push(...shopify.errors);
   warnings.push(...shopify.warnings);
 
-  const activeShopify = await syncActiveSupplierSalesFromShopifyAdmin(actor, { limit: options?.limit }).catch((error) => ({
+  const activeShopify = await syncActiveSupplierSalesFromShopifyAdmin(actor, { limit: 10 }).catch((error) => ({
     status: "failed" as const,
     checked: 0,
     upserted: 0,
@@ -2802,14 +2802,17 @@ export async function listSupplierSalesBoard(options?: {
   limit?: number;
 }): Promise<SupplierSaleBoard> {
   const scope = options?.scope || "active";
+  const requestedLimit = Math.min(Math.max(Number(options?.limit || 50), 1), 500);
+  const needsPostFilter = ["active", "ready", "payment", "deadline", "sync"].includes(scope);
+  const fetchLimit = needsPostFilter ? Math.min(Math.max(requestedLimit * 4, 100), 500) : requestedLimit;
   const now = new Date();
   const dueSoonLimit = new Date(now);
   dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + 7);
   const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
   const query: Record<string, string | number | boolean | null> = {
     select: "*",
-    order: scope === "deadline" ? "supplier_due_date.asc.nullslast,updated_at.desc" : "created_at.desc,updated_at.desc",
-    limit: Math.min(Math.max(Number(options?.limit || 50), 1), 500),
+    order: scope === "deadline" ? "supplier_due_date.asc.nullslast,updated_at.desc" : "updated_at.desc,created_at.desc",
+    limit: fetchLimit,
   };
   if (scope === "ready") query.assignment_status = "eq.ready_to_assign";
   else if (scope === "payment") query.assignment_status = "eq.payment_open";
@@ -2900,6 +2903,7 @@ export async function listSupplierSalesBoard(options?: {
     saleRows = saleRows.filter(matchesUrgency);
     statsRows = statsRows.filter(matchesUrgency);
   }
+  saleRows = saleRows.slice(0, requestedLimit);
   const counts = buildSupplierSaleCountsFromRows(statsRows, now);
   if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts);
   const saleIds = saleRows.map((row) => row.id);

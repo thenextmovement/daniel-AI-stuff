@@ -321,8 +321,7 @@ export async function POST(request: NextRequest) {
 
     if (action === "sync_completed_offers") {
       const completedOffersSync = await syncCompletedOffersFromOffersApp(actor, { limit: Number(body.limit || 50) });
-      const board = await listSupplierSalesBoard({ scope: "active" });
-      return NextResponse.json({ ok: true, action, completedOffersSync, board });
+      return NextResponse.json({ ok: true, action, completedOffersSync });
     }
 
     if (action === "diagnose_sales_flow") {
