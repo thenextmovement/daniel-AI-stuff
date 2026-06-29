@@ -1238,6 +1238,81 @@ test("completed offers pull falls back to service role when the dedicated offers
   assert.deepEqual(attemptedAuth, ["Bearer stale-offers-key", "Bearer service-role"]);
 });
 
+test("completed offers sync reports partial when offers import but Shopify fallback fails", async () => {
+  let salePostCount = 0;
+  const importedRow = saleRow({
+    id: "sale-partial-completed-offer",
+    sale_key: "offer:offer-partial-1",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    offer_id: "offer-partial-1",
+    offer_number: "A/N 15999",
+    document_reference: "A-N-15999",
+    customer_email: "partial@example.com",
+    total_price: 806,
+    assignment_status: "payment_open",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") {
+      return Response.json({
+        ok: true,
+        sales: [{
+          offerId: "offer-partial-1",
+          payload: {
+            source: "neontrip-offers",
+            event: "offer.completed",
+            idempotencyKey: "offer:offer-partial-1:supplier-sales:v1",
+            offer: {
+              id: "offer-partial-1",
+              offerNumber: "A/N 15999",
+              documentReference: "A-N-15999",
+              currency: "EUR",
+              acceptedAt: "2026-06-29T08:00:00.000Z",
+            },
+            customer: { email: "partial@example.com" },
+            totals: { totalGross: 806 },
+            lineItems: [{ id: "line-1", title: "LED Neon Logo", quantity: 1, lineGross: 806 }],
+          },
+        }],
+      });
+    }
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      return Response.json({ errors: [{ message: "Shopify temporarily unavailable" }] }, { status: 500 });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("id") === `eq.${importedRow.id}`) return Response.json([importedRow]);
+      if (url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)") return Response.json([]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
+      salePostCount += 1;
+      return Response.json([importedRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: importedRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "partial", JSON.stringify(result));
+    assert.equal(result.sources?.completedOffers.upserted, 1);
+    assert.equal(result.sources?.shopifyOrders.failed, 1);
+    assert.equal(result.upserted, 1);
+    assert.equal(result.failed, 1);
+  });
+
+  assert.equal(salePostCount, 1);
+});
+
 test("completed offers sync imports recent Shopify orders as fallback", async () => {
   let shopifyOrderLookupCount = 0;
   let salePostCount = 0;

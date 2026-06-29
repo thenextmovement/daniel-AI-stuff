@@ -397,7 +397,7 @@ export type SupplierDeadlineTaskResult = {
 };
 
 export type SupplierCompletedOffersSyncResult = {
-  status: "synced" | "skipped" | "failed";
+  status: "synced" | "partial" | "skipped" | "failed";
   checked: number;
   upserted: number;
   failed: number;
@@ -2700,7 +2700,9 @@ export async function syncCompletedOffersFromOffersApp(
   const completedConfigured = feed.configured;
   const shopifySkipped = shopify.status === "skipped";
   const activeShopifySkipped = activeShopify.status === "skipped";
-  const status = failed ? "failed" : (!completedConfigured && shopifySkipped && activeShopifySkipped ? "skipped" : "synced");
+  const status = failed
+    ? (upserted > 0 || checked > failed ? "partial" : "failed")
+    : (!completedConfigured && shopifySkipped && activeShopifySkipped ? "skipped" : "synced");
   return {
     status,
     checked,

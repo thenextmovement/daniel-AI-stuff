@@ -57,7 +57,7 @@ type SupplierSalesApiResponse = {
     error: string | null;
   };
   completedOffersSync?: {
-    status: "synced" | "skipped" | "failed";
+    status: "synced" | "partial" | "skipped" | "failed";
     checked: number;
     upserted: number;
     failed: number;
@@ -307,6 +307,7 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
     const sync = payload?.completedOffersSync;
     if (!sync) return "Completed Offers wurden geprueft.";
     if (sync.status === "skipped") return "Completed-Offers-Sync uebersprungen: Konfiguration fehlt.";
+    if (sync.status === "partial") return `Completed-Offers-Sync teilweise: ${sync.upserted} importiert/aktualisiert, ${sync.failed} Nebenfehler.`;
     if (sync.failed) return `Completed-Offers-Sync mit Fehlern: ${sync.upserted} importiert, ${sync.failed} Fehler.`;
     return `Completed-Offers-Sync: ${sync.upserted} von ${sync.checked} Angeboten importiert/aktualisiert.`;
   }
@@ -861,6 +862,12 @@ export function SupplierSalesClient({
     const sync = syncPayload.completedOffersSync;
     if (sync?.status === "failed") {
       return { message: null, warning: `Completed-Offers-Sync fehlgeschlagen: ${sync.errors[0]?.error || "unbekannter Fehler"}` };
+    }
+    if (sync?.status === "partial") {
+      return {
+        message: `Completed-Offers-Sync teilweise: ${sync.upserted} importiert/aktualisiert, ${sync.failed} Nebenfehler.`,
+        warning: sync.errors[0]?.error || "Ein Nebenabgleich ist fehlgeschlagen.",
+      };
     }
     if (sync?.status === "skipped") {
       return { message: null, warning: sync.warnings[0] || "Completed-Offers-Sync uebersprungen." };
