@@ -755,6 +755,10 @@ function shopifyOrderNumericIdFromUrl(value: unknown) {
   return match ? match[1] : null;
 }
 
+function isShopifyAdminOrderUrl(value: unknown) {
+  return Boolean(trimNullable(value)?.match(/^https?:\/\/[^/]+\/admin\/orders\/\d+(?:[/?#].*)?$/i));
+}
+
 function shopifyAdminOrderUrl(orderId: unknown) {
   const domain = shopifyShopDomain();
   const numericId = shopifyOrderNumericId(orderId);
@@ -809,7 +813,8 @@ function supplierSaleOrderLink(
     trimNullable(row.shopify_order_id) ||
     recordString(rawShopify, ["admin_graphql_api_id", "adminGraphqlApiId", "id", "order_id", "orderId"], 180) ||
     shopifyOrderNumericIdFromUrl(storedUrl);
-  const url = storedUrl || shopifyAdminOrderUrl(orderId);
+  const derivedAdminUrl = shopifyAdminOrderUrl(orderId);
+  const url = isShopifyAdminOrderUrl(storedUrl) ? storedUrl : derivedAdminUrl || storedUrl;
   if (!url || !orderId) return null;
   return {
     orderId,
@@ -1311,9 +1316,17 @@ export async function generateInboundDeliveryNotePdf(shipmentId: string): Promis
       shipment_id: `eq.${encodeFilterValue(shipment.id)}`,
       order: "event_time.desc",
       limit: 1,
+    }).catch((error) => {
+      console.warn("inbound delivery note tracking events unavailable", { shipmentId: shipment.id, error });
+      return [];
     }),
     fetchInboundSupplierSaleForShipment(shipment),
-    shipment.trello_card_id ? fetchShopifyOrdersByTrelloCardId([shipment.trello_card_id]) : Promise.resolve(new Map<string, InboundShopifyOrderLink>()),
+    shipment.trello_card_id
+      ? fetchShopifyOrdersByTrelloCardId([shipment.trello_card_id]).catch((error) => {
+          console.warn("inbound delivery note shopify link unavailable", { shipmentId: shipment.id, trelloCardId: shipment.trello_card_id, error });
+          return new Map<string, InboundShopifyOrderLink>();
+        })
+      : Promise.resolve(new Map<string, InboundShopifyOrderLink>()),
   ]);
   const itemRows = sale
     ? await supabaseRequest<InboundSupplierSaleItemRow[]>("supplier_sale_items", undefined, {

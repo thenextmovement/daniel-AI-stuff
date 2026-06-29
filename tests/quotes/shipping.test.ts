@@ -772,7 +772,7 @@ test("listInboundBoard keeps Shopify supplier-sale links when only Shopify URL o
             trello_card_id: null,
             shopify_order_id: null,
             shopify_order_name: "#NEONT4600",
-            shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/8281257674600",
+            shopify_order_url: "https://galaxybuzzdk.myshopify.com/orders/8281257674600/status",
             offer_id: "offer-raw-shopify",
             offer_number: "A/N 14061",
             document_reference: "A/N 14061",
@@ -1391,6 +1391,82 @@ test("generateInboundDeliveryNotePdf creates a NEONTRIP delivery note without pr
     assert.doesNotMatch(content, /1000\.00/);
     assert.doesNotMatch(content, /1190\.00/);
     assert.doesNotMatch(content, /\bEUR\b/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("generateInboundDeliveryNotePdf survives optional Shopify enrichment failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const path = url.pathname;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+    if (path.endsWith("/rest/v1/inbound_shipments")) {
+      return json([
+        {
+          id: "inbound-lieferschein-enrichment-fail",
+          shipment_key: "trello:card-lieferschein-fail:dhl:7055403121",
+          source: "trello",
+          trello_card_id: "card-lieferschein-fail",
+          trello_card_name: "Fallback Lieferschein",
+          trello_card_url: "https://trello.example/card-lieferschein-fail",
+          trello_list_id: "list-sign-shipped",
+          trello_list_name: "sign shipped",
+          carrier: "dhl",
+          tracking_number: "7055403121",
+          tracking_raw: "DHL Express 7055403121",
+          status: "in_transit",
+          status_reason: null,
+          risk_level: "normal",
+          first_seen_at: "2026-06-15T08:00:00.000Z",
+          tracking_first_seen_at: "2026-06-15T08:00:00.000Z",
+          tendered_at: "2026-06-15T09:00:00.000Z",
+          last_event_at: null,
+          last_movement_at: null,
+          last_checked_at: null,
+          next_check_at: null,
+          delivered_at: null,
+          created_at: "2026-06-15T08:00:00.000Z",
+          updated_at: "2026-06-15T08:00:00.000Z",
+        },
+      ]);
+    }
+
+    if (path.endsWith("/rest/v1/inbound_tracking_events") || path.endsWith("/rest/v1/master_requests")) {
+      return new Response(JSON.stringify({ error: "optional downstream unavailable" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+    if (path.endsWith("/rest/v1/supplier_sales")) return json([]);
+
+    return new Response(JSON.stringify({ error: `unexpected ${path}` }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const pdf = await generateInboundDeliveryNotePdf("inbound-lieferschein-enrichment-fail");
+    const content = Buffer.from(pdf.bytes).toString("latin1");
+
+    assert.match(pdf.fileName, /^lieferschein-/);
+    assert.match(content, /^%PDF-1\.4/);
+    assert.match(content, /7055403121/);
+    assert.match(content, /Fallback Lieferschein/);
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries(originalEnv)) {
