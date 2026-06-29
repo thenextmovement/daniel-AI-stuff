@@ -1,0 +1,203 @@
+{
+  "name": "NEONTRIP Supplier Payment Reminder Email v0.1 (INACTIVE DRAFT)",
+  "nodes": [
+    {
+      "id": "workflow-notes",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -220
+      ],
+      "parameters": {
+        "content": "Inactive draft for Sales-Vergabe payment reminders. Triggered only by the Ops app button through SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL. The Ops app reserves the reminder in Supabase with reminderKey before this workflow sends the customer-visible email. This workflow validates recipientEmail, paymentLink, sale.id and reminderKey, sends via Outlook, and returns a provider message id. Do not use Outlook Email Trigger here.",
+        "height": 300,
+        "width": 500
+      }
+    },
+    {
+      "id": "payment-reminder-webhook",
+      "name": "Payment Reminder Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        160
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "path": "supplier-payment-reminder",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-and-build-email",
+      "name": "Validate + Build Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first();\nconst body = input?.json?.body || input?.json || {};\nconst sale = body.sale || {};\nconst errors = [];\n\nfunction clean(value, max = 1000) {\n  const text = String(value ?? '').trim();\n  return text ? text.slice(0, max) : '';\n}\n\nfunction isEmail(value) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(value || '').trim());\n}\n\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nfunction signatureHtml() {\n  return `<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-family:Arial,Helvetica,sans-serif;color:#111111;margin-top:24px;\"><tbody><tr><td style=\"padding:0;\"><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"max-width:600px;width:100%;\"><tbody><tr><td style=\"padding:16px 0;\"><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\"><tbody><tr><td valign=\"top\" style=\"width:140px;padding-right:16px;\"><img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" alt=\"Fabienne Trapp\" width=\"120\" height=\"120\" style=\"display:block;width:120px;height:120px;border-radius:60px;border:2px solid #111111;object-fit:cover;\"></td><td valign=\"top\" style=\"padding-top:2px;\"><div style=\"font-size:16px;font-weight:700;color:#111111;margin:0 0 4px 0;\">Fabienne Trapp</div><div style=\"font-size:12px;color:#6b7280;margin:0 0 10px 0;\">Beratung &amp; Realisierung</div><div style=\"font-size:13px;font-weight:700;color:#111111;margin:0 0 8px 0;\">NEONTRIP</div><div style=\"font-size:13px;line-height:1.6;color:#111111;\">Tel: <a href=\"tel:+4921154257240\" style=\"color:#111111;text-decoration:none;\">+49 211 54257240</a><br>E-Mail: <a href=\"mailto:support@neontrip.de\" style=\"color:#111111;text-decoration:none;\">support@neontrip.de</a><br>Web: <a href=\"https://www.neontrip.de\" style=\"color:#111111;text-decoration:none;\">www.neontrip.de</a><br>Adresse: Bilker Allee 29, 40219 Duesseldorf</div></td></tr></tbody></table></td></tr><tr><td style=\"padding:0;\"><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color:#121212;border-radius:10px;\"><tbody><tr><td align=\"center\" style=\"padding:18px 16px;\"><img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450\" alt=\"NEONTRIP\" width=\"420\" style=\"display:block;width:100%;max-width:420px;height:auto;border:0;outline:none;text-decoration:none;\"><div style=\"margin-top:8px;font-size:11px;font-weight:700;letter-spacing:0.6px;color:#ffffff;\">UNIQUE LIGHTING AND BRANDING</div></td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></table>`;\n}\n\nconst recipientEmail = clean(body.recipientEmail, 260).toLowerCase();\nconst paymentLink = clean(body.paymentLink, 1000);\nconst reminderKey = clean(body.reminderKey, 260);\nconst saleId = clean(sale.id, 120);\nconst customerName = clean(sale.customerName || sale.customerCompany, 180);\nconst orderRef = clean(sale.shopifyOrderName || sale.offerNumber || sale.saleKey, 180);\nconst operatorMessage = clean(body.message, 2000);\n\nif (!saleId) errors.push('sale.id missing');\nif (!isEmail(recipientEmail)) errors.push('recipientEmail invalid');\nif (!paymentLink) errors.push('paymentLink missing');\nif (!reminderKey) errors.push('reminderKey missing');\nif (recipientEmail.endsWith('@neontrip.test')) errors.push('test recipient blocked');\n\nif (errors.length) {\n  return [{\n    json: {\n      valid: false,\n      statusCode: 400,\n      error: errors.join('; '),\n      saleId: saleId || null,\n      reminderKey: reminderKey || null\n    }\n  }];\n}\n\nconst subject = `Zahlungserinnerung zu Ihrer NEONTRIP Bestellung${orderRef ? ` ${orderRef}` : ''}`;\nconst greeting = customerName ? `Hallo ${escapeHtml(customerName)},` : 'Hallo,';\nconst customMessage = operatorMessage ? `<p style=\"margin:0 0 16px 0;\">${escapeHtml(operatorMessage).replace(/\\n/g, '<br>')}</p>` : '';\nconst bodyHtml = `<div style=\"font-family:Arial,Helvetica,sans-serif;color:#111111;font-size:15px;line-height:1.55;max-width:620px;\"><p style=\"margin:0 0 16px 0;\">${greeting}</p><p style=\"margin:0 0 16px 0;\">zu Ihrer NEONTRIP Bestellung ist die Zahlung noch offen. Sie koennen die Zahlung direkt ueber den folgenden sicheren Shopify-Link abschliessen:</p><p style=\"margin:22px 0;\"><a href=\"${escapeHtml(paymentLink)}\" style=\"display:inline-block;background:#111111;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:6px;\">Jetzt bezahlen</a></p><p style=\"margin:0 0 16px 0;\"><a href=\"${escapeHtml(paymentLink)}\" style=\"color:#111111;word-break:break-all;\">${escapeHtml(paymentLink)}</a></p>${customMessage}<p style=\"margin:0 0 16px 0;\">Wenn Sie bereits bezahlt haben, koennen Sie diese Nachricht ignorieren.</p><p style=\"margin:0;\">Viele Gruesse<br>Fabienne von NEONTRIP</p></div>${signatureHtml()}`;\n\nreturn [{\n  json: {\n    valid: true,\n    saleId,\n    reminderKey,\n    recipientEmail,\n    subject,\n    bodyHtml\n  }\n}];"
+      }
+    },
+    {
+      "id": "payload-valid",
+      "name": "Payload Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "valid-true",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-via-outlook",
+      "name": "Send via Outlook",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        280,
+        60
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.recipientEmail }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.bodyHtml }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      }
+    },
+    {
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        560,
+        60
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, status: 'sent', messageId: $json.id || $json.messageId || $execution.id, providerMessageId: $json.id || $json.messageId || $execution.id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "respond-invalid",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, status: 'rejected', error: $json.error, saleId: $json.saleId || null, reminderKey: $json.reminderKey || null }) }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 400 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Payment Reminder Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate + Build Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Build Email": {
+      "main": [
+        [
+          {
+            "node": "Payload Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload Valid?": {
+      "main": [
+        [
+          {
+            "node": "Send via Outlook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via Outlook": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none"
+  },
+  "staticData": null,
+  "pinData": {},
+  "versionId": "supplier-payment-reminder-email-v0.1",
+  "triggerCount": 0,
+  "active": false
+}
