@@ -87,6 +87,8 @@ function sale(overrides = {}) {
       },
     ],
     latestEvent: null,
+    orderConfirmationEmail: null,
+    postOrderReview: { status: "none", expiresAt: null, message: null },
     ...overrides,
   };
 }
@@ -447,7 +449,7 @@ async function main() {
   assert(posts.length === 6 && posts[5].body.action === "create_deadline_tasks", "Deadline-Pruefung sendet falsche Action");
 
   await page.getByRole("button", { name: "Live-Abgleich testen" }).click();
-  await page.getByText("Live-Abgleich Angebote -> Sales-Vergabe").waitFor();
+  await page.getByText("Live-Abgleich Angebote -> Produktion").waitFor();
   await page.getByText("AN-LIVE-2").waitFor();
   assert(posts.length === 7 && posts[6].body.action === "diagnose_sales_flow", "Live-Abgleich sendet falsche Action");
 

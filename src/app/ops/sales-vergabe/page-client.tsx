@@ -131,6 +131,18 @@ function formatApiError(payload: { error?: string; issues?: string[] } | null) {
   return payload.error || "Unbekannter Fehler.";
 }
 
+function formatUnknownError(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function replaceBoardSale(board: SupplierSaleBoard | null, sale: SupplierSale | undefined) {
+  if (!board || !sale) return board;
+  return {
+    ...board,
+    items: board.items.map((item) => (item.id === sale.id ? sale : item)),
+  };
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "Keine Deadline";
   const date = new Date(`${value}T00:00:00`);
@@ -927,9 +939,14 @@ export function SupplierSalesClient({
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       setMessage(actionMessage(body.action, payload));
-      setBoard(await fetchCurrentBoard());
+      if (payload.sale) setBoard((current) => replaceBoardSale(current, payload.sale));
+      try {
+        setBoard(await fetchCurrentBoard());
+      } catch (refreshError) {
+        setError(`Aktion gespeichert, aber Liste konnte nicht aktualisiert werden: ${formatUnknownError(refreshError, "Bitte neu laden.")}`);
+      }
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+      setError(formatUnknownError(actionError, "Aktion fehlgeschlagen."));
     } finally {
       setSavingSaleId(null);
     }
