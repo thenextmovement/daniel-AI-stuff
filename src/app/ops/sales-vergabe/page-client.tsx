@@ -389,6 +389,40 @@ function QuickLink({ href, label }: { href: string | null; label: string }) {
   );
 }
 
+function supplierSalesPdfUrl(saleId: string, action: "snapshot_pdf" | "order_confirmation_pdf") {
+  return `/api/ops/supplier-sales?action=${action}&saleId=${encodeURIComponent(saleId)}`;
+}
+
+function SnapshotSelection({ sale }: { sale: SupplierSale }) {
+  const items = sale.items.slice(0, 5);
+  if (!items.length) return null;
+  return (
+    <div className="mt-3 border-t border-stone-100 pt-3">
+      <p className="text-xs font-semibold uppercase text-stone-500">Kundenauswahl</p>
+      <div className="mt-2 divide-y divide-stone-100">
+        {items.map((item) => (
+          <div key={item.id} className="py-2 first:pt-0 last:pb-0">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm font-medium text-stone-900">{item.title}</p>
+              <span className="text-xs font-semibold text-stone-500">{item.quantity}x</span>
+            </div>
+            {item.description ? (
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-600">{item.description}</p>
+            ) : null}
+            {item.selectionDetails.length ? (
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
+                {item.selectionDetails.slice(0, 6).map((detail) => (
+                  <span key={detail}>{detail}</span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LiveCheckPanel({ liveCheck }: { liveCheck: SupplierSalesLiveCheck | null }) {
   if (!liveCheck) return null;
   const matched = liveCheck.latestCompletedOffers.filter((entry) => entry.inVergabe).length;
@@ -559,6 +593,7 @@ function SaleCard({
           <p className="mt-3 line-clamp-2 text-sm leading-6 text-stone-600">
             {sale.productSummary || sale.items.map((item) => item.title).join(", ") || "Keine Produktzusammenfassung"}
           </p>
+          <SnapshotSelection sale={sale} />
 
           <div className="mt-4 grid gap-2 text-xs text-stone-500 sm:grid-cols-2">
             <div className="inline-flex items-center gap-2">
@@ -581,11 +616,14 @@ function SaleCard({
 
           <div className="mt-4 flex flex-wrap gap-2">
             <QuickLink href={sale.offerPublicUrl} label="Angebot" />
-            <QuickLink href={sale.finalPdfUrl} label="Snapshot" />
-            <QuickLink href={`/api/ops/supplier-sales?action=order_confirmation_pdf&saleId=${encodeURIComponent(sale.id)}`} label="AB-PDF" />
+            <QuickLink href={supplierSalesPdfUrl(sale.id, "snapshot_pdf")} label="Snapshot" />
+            <QuickLink href={sale.finalPdfUrl} label="Original-PDF" />
+            <QuickLink href={supplierSalesPdfUrl(sale.id, "order_confirmation_pdf")} label="AB-PDF" />
             <QuickLink href={sale.shopifyOrderUrl} label="Shopify" />
             <QuickLink href={sale.paymentLink} label="Bezahlen" />
             <QuickLink href={sale.supplierTrelloCardUrl} label="Supplier-Karte" />
+            <QuickLink href={sale.sourceTrelloCardUrl} label="Ursprung-Trello" />
+            <QuickLink href={sale.quentinTrelloSearchUrl || sale.quentinTrelloBoardUrl} label="Quentin-Suche" />
             {sale.requestId ? <QuickLink href={`/ops/customer-records?query=${encodeURIComponent(sale.requestId)}`} label="Kundenakte" /> : null}
           </div>
         </div>

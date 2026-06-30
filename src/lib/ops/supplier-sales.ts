@@ -169,6 +169,9 @@ export type SupplierSale = {
   offerPublicUrl: string | null;
   finalPdfUrl: string | null;
   trelloCardId: string | null;
+  sourceTrelloCardUrl: string | null;
+  quentinTrelloBoardUrl: string | null;
+  quentinTrelloSearchUrl: string | null;
   requestId: string | null;
   customerName: string | null;
   customerEmail: string | null;
@@ -218,6 +221,8 @@ export type SupplierSaleItem = {
   title: string;
   sku: string | null;
   variantTitle: string | null;
+  description: string | null;
+  selectionDetails: string[];
   quantity: number;
   productType: string | null;
   imageUrl: string | null;
@@ -1344,7 +1349,44 @@ export function buildSupplierSaleInputFromPayload(payload: unknown): SupplierSal
   return parseShopifyOrderPayload(record);
 }
 
+function itemDetailLine(label: string, value: unknown, maxLength = 220) {
+  const text = nullableText(value, maxLength);
+  return text ? `${label}: ${text}` : null;
+}
+
+function optionDetailLines(value: unknown) {
+  const records = arrayRecords(value);
+  return records.map((entry) => {
+    const name = recordString(entry, ["name", "label", "title", "key"], 80);
+    const optionValue = recordString(entry, ["value", "text", "selected", "option"], 180);
+    if (!name && !optionValue) return null;
+    return name && optionValue ? `${name}: ${optionValue}` : name || optionValue;
+  }).filter((line): line is string => Boolean(line));
+}
+
+function itemSelectionDetails(row: SupplierSaleItemRow) {
+  const raw = jsonRecord(row.raw_line_item);
+  const details = [
+    itemDetailLine("Bereich", row.product_type || raw.section || raw.category),
+    itemDetailLine("Variante", row.variant_title || raw.variantTitle),
+    itemDetailLine("SKU", row.sku || raw.sku),
+    itemDetailLine("Groesse", raw.size || raw.format || raw.dimensions),
+    itemDetailLine("Breite", raw.width),
+    itemDetailLine("Hoehe", raw.height),
+    itemDetailLine("Farbe", raw.color || raw.lightColor || raw.ledColor),
+    itemDetailLine("Rueckwand", raw.backboard || raw.backing || raw.acrylic),
+    itemDetailLine("Montage", raw.mounting || raw.installation),
+    itemDetailLine("Outdoor", raw.outdoor),
+    ...optionDetailLines(raw.options),
+    ...optionDetailLines(raw.properties),
+    ...optionDetailLines(raw.selectedOptions),
+  ].filter((line): line is string => Boolean(line));
+
+  return [...new Set(details)].slice(0, 10);
+}
+
 function mapItem(row: SupplierSaleItemRow): SupplierSaleItem {
+  const raw = jsonRecord(row.raw_line_item);
   return {
     id: row.id,
     saleId: row.sale_id,
@@ -1352,6 +1394,8 @@ function mapItem(row: SupplierSaleItemRow): SupplierSaleItem {
     title: row.title,
     sku: row.sku,
     variantTitle: row.variant_title,
+    description: recordString(raw, ["description", "summary", "details"], 1000),
+    selectionDetails: itemSelectionDetails(row),
     quantity: Number(row.quantity || 1),
     productType: row.product_type,
     imageUrl: row.image_url,
@@ -1424,6 +1468,28 @@ function postOrderReviewFromRow(row: SupplierSaleRow): SupplierSalePostOrderRevi
   return { status, signedAt, expiresAt, changeRequestedAt, message, eventId };
 }
 
+const QUENTIN_NEON_BOARD_URL = "https://trello.com/b/9QNAfkv4/quentin-neon-signs";
+const QUENTIN_NEON_BOARD_ID = "62bae9b97705e7419ed64593";
+
+function trelloCardUrlFromId(value: unknown) {
+  const cardId = trelloCardIdFromValue(value);
+  return cardId ? `https://trello.com/c/${encodeURIComponent(cardId)}` : null;
+}
+
+function supplierSaleTrelloSearchUrl(row: SupplierSaleRow) {
+  const query = nullableText(
+    row.shopify_order_name ||
+      row.offer_number ||
+      row.document_reference ||
+      row.offer_id ||
+      row.request_id ||
+      row.sale_key,
+    180,
+  );
+  if (!query) return QUENTIN_NEON_BOARD_URL;
+  return `https://trello.com/search?q=${encodeURIComponent(`${query} board:${QUENTIN_NEON_BOARD_ID}`)}`;
+}
+
 function supplierSaleHasRushSignal(row: SupplierSaleRow, items: SupplierSaleItem[] = []) {
   const rowText = searchableSignalText([
     row.product_summary,
@@ -1465,6 +1531,9 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     offerPublicUrl: row.offer_public_url,
     finalPdfUrl: row.final_pdf_url,
     trelloCardId: row.trello_card_id,
+    sourceTrelloCardUrl: trelloCardUrlFromId(row.trello_card_id),
+    quentinTrelloBoardUrl: QUENTIN_NEON_BOARD_URL,
+    quentinTrelloSearchUrl: supplierSaleTrelloSearchUrl(row),
     requestId: row.request_id,
     customerName: row.customer_name,
     customerEmail: row.customer_email,

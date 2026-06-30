@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const params = request.nextUrl.searchParams;
-    if (params.get("action") === "order_confirmation_pdf") {
+    if (params.get("action") === "order_confirmation_pdf" || params.get("action") === "snapshot_pdf") {
       const pdf = await generateSupplierOrderConfirmationPdf(String(params.get("saleId") || ""));
       return new NextResponse(Buffer.from(pdf.bytes), {
         headers: {

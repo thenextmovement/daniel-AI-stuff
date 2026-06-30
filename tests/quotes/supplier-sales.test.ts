@@ -569,6 +569,40 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   assert.ok(board.diagnostics.items.length);
 });
 
+test("supplier sales board exposes snapshot selection details and Trello lookup links", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [
+      saleRow({
+        id: "sale-selection-details",
+        shopify_order_name: "#NEONT7777",
+        trello_card_id: "6a267a745c0826d898eec8fd",
+      }),
+    ],
+    [
+      itemRow({
+        sale_id: "sale-selection-details",
+        raw_line_item: {
+          description: "Ausgewaehlte Produktion laut Snapshot.",
+          section: "LED Neon",
+          size: "120cm",
+          color: "warmweiss",
+          options: [{ name: "Rueckwand", value: "Acryl klar" }],
+        },
+      }),
+    ],
+    [],
+  );
+
+  const sale = board.items[0];
+  assert.equal(sale?.sourceTrelloCardUrl, "https://trello.com/c/6a267a745c0826d898eec8fd");
+  assert.equal(sale?.quentinTrelloBoardUrl, "https://trello.com/b/9QNAfkv4/quentin-neon-signs");
+  assert.match(sale?.quentinTrelloSearchUrl || "", /board%3A62bae9b97705e7419ed64593/);
+  assert.equal(sale?.items[0]?.description, "Ausgewaehlte Produktion laut Snapshot.");
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Groesse: 120cm"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Farbe: warmweiss"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Rueckwand: Acryl klar"));
+});
+
 test("supplier sales board sorts newest sales first by accepted snapshot", () => {
   const board = buildSupplierSaleBoardFromRows(
     [
@@ -1948,6 +1982,13 @@ test("supplier sales route downloads order confirmation PDF", async () => {
     assert.match(response.headers.get("content-disposition") || "", /auftragsbestaetigung-A-N-15334-ABCDEF\.pdf/);
     const bytes = new Uint8Array(await response.arrayBuffer());
     assert.equal(Buffer.from(bytes).toString("utf8", 0, 8), "%PDF-1.4");
+
+    const snapshotRequest = new NextRequest(`http://127.0.0.1:3100/api/ops/supplier-sales?action=snapshot_pdf&saleId=${row.id}`, {
+      headers: { host: "127.0.0.1:3100" },
+    });
+    const snapshotResponse = await supplierSalesGET(snapshotRequest);
+    assert.equal(snapshotResponse.status, 200);
+    assert.match(snapshotResponse.headers.get("content-type") || "", /^application\/pdf/);
   });
 });
 
