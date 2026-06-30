@@ -1752,6 +1752,7 @@ test("shopify fallback matches existing offer sale by offer number and default Q
 
 test("completed offers sync reconciles existing active supplier rows against Shopify tags", async () => {
   let activeRowsLookupCount = 0;
+  let activeRowsLookupLimit: string | null = null;
   let shopifyNodeLookupCount = 0;
   let salePatchCount = 0;
   const existingRow = saleRow({
@@ -1805,6 +1806,7 @@ test("completed offers sync reconciles existing active supplier rows against Sho
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       if (url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)") {
         activeRowsLookupCount += 1;
+        activeRowsLookupLimit = url.searchParams.get("limit");
         return Response.json([existingRow]);
       }
       if (url.searchParams.get("shopify_order_id") === "eq.987654777") return Response.json([existingRow]);
@@ -1837,6 +1839,7 @@ test("completed offers sync reconciles existing active supplier rows against Sho
   });
 
   assert.equal(activeRowsLookupCount, 1);
+  assert.equal(activeRowsLookupLimit, "50");
   assert.equal(shopifyNodeLookupCount, 1);
   assert.equal(salePatchCount, 1);
 });

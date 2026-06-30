@@ -2665,7 +2665,7 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
     };
   }
 
-  const limit = Math.min(Math.max(Number(options?.limit || 10), 1), 25);
+  const limit = Math.min(Math.max(Number(options?.limit || 50), 1), 100);
   const activeRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
     select: "*",
     assignment_status: "not.in.(assigned,in_production,completed,canceled)",
@@ -2753,7 +2753,7 @@ export async function syncCompletedOffersFromOffersApp(
   errors.push(...shopify.errors);
   warnings.push(...shopify.warnings);
 
-  const activeShopify = await syncActiveSupplierSalesFromShopifyAdmin(actor, { limit: 10 }).catch((error) => ({
+  const activeShopify = await syncActiveSupplierSalesFromShopifyAdmin(actor, { limit: Math.min(Math.max(Number(options?.limit || 50), 50), 100) }).catch((error) => ({
     status: "failed" as const,
     checked: 0,
     upserted: 0,
