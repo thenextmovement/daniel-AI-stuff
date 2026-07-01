@@ -146,6 +146,9 @@ export type SupplierSalePostOrderReview = {
   signedAt: string | null;
   expiresAt: string | null;
   changeRequestedAt: string | null;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewNote: string | null;
   message: string | null;
   eventId: string | null;
 };
@@ -342,6 +345,12 @@ export type SupplierSaleAssignInput = {
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
   operatorName?: string | null;
   assigneeLabel?: string | null;
+};
+
+export type SupplierSalePostOrderReviewInput = {
+  saleId: string;
+  operatorName?: string | null;
+  reviewNote?: string | null;
 };
 
 export type SupplierPaymentReminderInput = {
@@ -1452,12 +1461,17 @@ function postOrderReviewFromRow(row: SupplierSaleRow): SupplierSalePostOrderRevi
   const signedAt = nullableText(review.signedAt, 80);
   const expiresAt = nullableText(review.expiresAt, 80);
   const changeRequestedAt = nullableText(review.changeRequestedAt, 80);
+  const reviewedAt = nullableText(review.reviewedAt, 80);
+  const reviewedBy = nullableText(review.reviewedBy, 120);
+  const reviewNote = nullableText(review.reviewNote, 1000);
   const message = nullableText(review.message, 2000);
   const eventId = nullableText(review.eventId, 160);
   const rawStatus = nullableText(review.status, 60);
   const expiresMs = expiresAt ? new Date(expiresAt).getTime() : NaN;
   const status: SupplierSalePostOrderReview["status"] =
-    rawStatus === "change_requested" || Boolean(message || changeRequestedAt)
+    rawStatus === "closed"
+      ? "closed"
+      : rawStatus === "change_requested" || Boolean(message || changeRequestedAt)
       ? "change_requested"
       : Number.isFinite(expiresMs)
         ? Date.now() < expiresMs ? "open" : "closed"
@@ -1465,7 +1479,7 @@ function postOrderReviewFromRow(row: SupplierSaleRow): SupplierSalePostOrderRevi
           ? rawStatus
           : "unknown";
 
-  return { status, signedAt, expiresAt, changeRequestedAt, message, eventId };
+  return { status, signedAt, expiresAt, changeRequestedAt, reviewedAt, reviewedBy, reviewNote, message, eventId };
 }
 
 const QUENTIN_NEON_BOARD_URL = "https://trello.com/b/9QNAfkv4/quentin-neon-signs";
@@ -4115,6 +4129,47 @@ export async function updateSupplierSalePaymentDecision(input: {
     payload: { decision },
   });
   return mapSale(updated, sale.items, sale.latestEvent);
+}
+
+export async function acknowledgeSupplierSalePostOrderChange(input: SupplierSalePostOrderReviewInput, actor?: SupplierSaleActor | null) {
+  const id = nullableText(input.saleId, 120);
+  if (!id) throw new QuoteValidationError("Sale-ID fehlt.", ["Sale-ID fehlt."], 422);
+  const row = await fetchSaleRowById(id);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+
+  const currentReview = jsonRecord(row.metadata?.post_order_review);
+  const snapshotReview = jsonRecord(row.offer_snapshot?.postOrderReview);
+  const review = Object.keys(currentReview).length ? currentReview : snapshotReview;
+  const now = new Date().toISOString();
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  const reviewNote = nullableText(input.reviewNote, 1000);
+  const metadata = {
+    ...jsonRecord(row.metadata),
+    post_order_review: {
+      ...review,
+      status: "closed",
+      reviewedAt: now,
+      reviewedBy: operatorName,
+      reviewNote,
+    },
+  };
+
+  const updated = await patchSaleRow(row.id, { metadata });
+  await insertEvent({
+    saleId: row.id,
+    eventType: "post_order_change_acknowledged",
+    actor: actor || { operatorName },
+    idempotencyKey: `supplier-sale:${row.id}:post-order-change-ack:${Date.now()}`,
+    payload: {
+      reviewed_at: now,
+      reviewed_by: operatorName,
+      review_note: reviewNote,
+      previous_status: postOrderReviewFromRow(row).status,
+    },
+  });
+
+  const [items, latestEvent] = await Promise.all([fetchItemsForSale(updated.id), fetchLatestEventForSale(updated.id)]);
+  return mapSale(updated, items.map(mapItem), latestEvent ? mapEvent(latestEvent) : null);
 }
 
 async function reserveSupplierAssignmentAttempt(input: {

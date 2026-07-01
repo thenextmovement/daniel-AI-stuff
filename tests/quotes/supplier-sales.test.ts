@@ -4,6 +4,7 @@ import test from "node:test";
 import { NextRequest } from "next/server";
 import { GET as supplierSalesGET, POST as supplierSalesPOST } from "@/app/api/ops/supplier-sales/route";
 import {
+  acknowledgeSupplierSalePostOrderChange,
   applyNoPaymentReminderShopifyTag,
   assignSupplierSale,
   buildShopifyOrderTrelloTitle,
@@ -329,6 +330,83 @@ test("supplier sale board exposes post-order review status and change message", 
 
   assert.equal(board.items[0]?.postOrderReview.status, "change_requested");
   assert.equal(board.items[0]?.postOrderReview.message, "Bitte ohne UV-Druck produzieren.");
+});
+
+test("supplier sale board treats acknowledged post-order change as closed while keeping message", () => {
+  const board = buildSupplierSaleBoardFromRows([
+    saleRow({
+      id: "sale-post-order-change-closed",
+      metadata: {
+        post_order_review: {
+          status: "closed",
+          signedAt: "2026-06-16T13:44:30.000Z",
+          expiresAt: "2026-06-17T13:44:30.000Z",
+          changeRequestedAt: "2026-06-16T14:00:00.000Z",
+          reviewedAt: "2026-06-16T14:15:00.000Z",
+          reviewedBy: "Daniel",
+          reviewNote: "Ohne UV-Druck eingetragen.",
+          message: "Bitte ohne UV-Druck produzieren.",
+          eventId: "event-post-order-change",
+        },
+      },
+    }),
+  ], [], []);
+
+  assert.equal(board.items[0]?.postOrderReview.status, "closed");
+  assert.equal(board.items[0]?.postOrderReview.message, "Bitte ohne UV-Druck produzieren.");
+  assert.equal(board.items[0]?.postOrderReview.reviewedBy, "Daniel");
+});
+
+test("supplier post-order change can be acknowledged for later assignment", async () => {
+  let row = saleRow({
+    id: "sale-post-order-change-ack",
+    metadata: {
+      post_order_review: {
+        status: "change_requested",
+        signedAt: "2026-06-16T13:44:30.000Z",
+        expiresAt: "2026-06-17T13:44:30.000Z",
+        changeRequestedAt: "2026-06-16T14:00:00.000Z",
+        message: "Bitte ohne UV-Druck produzieren.",
+        eventId: "event-post-order-change",
+      },
+    },
+  });
+  let patchedMetadata: any = null;
+  let eventPayload: any = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      const patch = JSON.parse(String(init?.body || "{}")) as Partial<SupplierSaleRow>;
+      patchedMetadata = patch.metadata as Record<string, unknown>;
+      row = { ...row, ...patch, updated_at: "2026-06-16T14:15:00.000Z" };
+      return Response.json([row]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: row.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      eventPayload = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+      return Response.json({});
+    }
+    return Response.json([]);
+  }, async () => {
+    const sale = await acknowledgeSupplierSalePostOrderChange({
+      saleId: row.id,
+      operatorName: "Daniel",
+      reviewNote: "Ohne UV-Druck eingetragen.",
+    });
+
+    assert.equal(sale.postOrderReview.status, "closed");
+    assert.equal(sale.postOrderReview.reviewedBy, "Daniel");
+    assert.equal(sale.postOrderReview.reviewNote, "Ohne UV-Druck eingetragen.");
+  });
+
+  const review = patchedMetadata?.post_order_review as Record<string, unknown>;
+  assert.equal(review.status, "closed");
+  assert.equal(review.reviewedBy, "Daniel");
+  assert.equal(review.reviewNote, "Ohne UV-Druck eingetragen.");
+  assert.equal(eventPayload?.event_type, "post_order_change_acknowledged");
 });
 
 test("neontrip offer events other than offer.completed are rejected for supplier sales", () => {

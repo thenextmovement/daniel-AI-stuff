@@ -298,6 +298,7 @@ function assignmentMessage(sale: SupplierSale | undefined) {
 
 function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null) {
   if (action === "assign_supplier") return assignmentMessage(payload?.sale);
+  if (action === "acknowledge_post_order_change") return "Kunden-Aenderung wurde als geprueft markiert. Vergabe ist wieder moeglich.";
   if (action === "retry_shopify_tag") {
     if (payload?.sale?.shopifyTagSyncStatus === "synced") return "Shopify-Tag wurde gesetzt.";
     return "Shopify-Tag erneut geprueft. Bitte Sync-Status pruefen.";
@@ -393,31 +394,85 @@ function supplierSalesPdfUrl(saleId: string, action: "snapshot_pdf" | "order_con
   return `/api/ops/supplier-sales?action=${action}&saleId=${encodeURIComponent(saleId)}`;
 }
 
-function SnapshotSelection({ sale }: { sale: SupplierSale }) {
-  const items = sale.items.slice(0, 5);
+function itemKind(item: SupplierSale["items"][number]) {
+  const text = [item.title, item.productType, item.variantTitle, item.selectionDetails.join(" ")]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/(liefer|versand|delivery|termin)/.test(text)) return "delivery";
+  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|kleber|radseil|deckenabh)/.test(text)) return "addon";
+  return "product";
+}
+
+function SnapshotSelectionGroup({
+  title,
+  items,
+  renderDetails,
+}: {
+  title: string;
+  items: SupplierSale["items"];
+  renderDetails: (item: SupplierSale["items"][number]) => ReactNode;
+}) {
   if (!items.length) return null;
   return (
-    <div className="mt-3 border-t border-stone-100 pt-3">
-      <p className="text-xs font-semibold uppercase text-stone-500">Kundenauswahl</p>
-      <div className="mt-2 divide-y divide-stone-100">
+    <div className="mt-3 first:mt-0">
+      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-stone-500">{title}</p>
+      <div className="mt-1 divide-y divide-stone-100">
         {items.map((item) => (
           <div key={item.id} className="py-2 first:pt-0 last:pb-0">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-sm font-medium text-stone-900">{item.title}</p>
+              <p className="text-sm font-semibold text-stone-950">{item.title}</p>
               <span className="text-xs font-semibold text-stone-500">{item.quantity}x</span>
             </div>
-            {item.description ? (
-              <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-600">{item.description}</p>
-            ) : null}
-            {item.selectionDetails.length ? (
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
-                {item.selectionDetails.slice(0, 6).map((detail) => (
-                  <span key={detail}>{detail}</span>
-                ))}
-              </div>
-            ) : null}
+            {renderDetails(item)}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function SnapshotSelection({ sale }: { sale: SupplierSale }) {
+  const productItems = sale.items.filter((item) => itemKind(item) === "product");
+  const addonItems = sale.items.filter((item) => itemKind(item) === "addon");
+  const deliveryItems = sale.items.filter((item) => itemKind(item) === "delivery");
+  if (!productItems.length && !addonItems.length && !deliveryItems.length) return null;
+  return (
+    <div className="mt-3 border-t border-stone-100 pt-3">
+      <p className="text-xs font-semibold uppercase text-stone-500">Kundenauswahl</p>
+      <div className="mt-2">
+        <SnapshotSelectionGroup
+          title="Leuchtschilder"
+          items={productItems}
+          renderDetails={(item) => (
+            <>
+              {item.description ? (
+                <p className="mt-1 text-xs leading-5 text-stone-600">{item.description}</p>
+              ) : null}
+              {item.selectionDetails.length ? (
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
+                  {item.selectionDetails.slice(0, 8).map((detail) => (
+                    <span key={detail}>{detail}</span>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
+        />
+        <SnapshotSelectionGroup
+          title="Zusatzoptionen"
+          items={addonItems}
+          renderDetails={() => null}
+        />
+        <SnapshotSelectionGroup
+          title="Liefertermin"
+          items={deliveryItems}
+          renderDetails={() => (
+            <p className="mt-1 text-xs leading-5 text-stone-600">
+              Gewaehlt: {formatDate(sale.customerDueDate || sale.supplierDueDate)}
+            </p>
+          )}
+        />
       </div>
     </div>
   );
@@ -634,6 +689,26 @@ function SaleCard({
               <div className="rounded-[0.5rem] border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">
                 <p className="font-semibold">Kunde hat nach Bestellung eine Aenderung gemeldet.</p>
                 <p className="mt-1 whitespace-pre-line text-xs leading-5">{sale.postOrderReview.message || "Bitte Kundenmeldung im Angebot/Aktivitaetsverlauf pruefen."}</p>
+                {sale.postOrderReview.changeRequestedAt ? (
+                  <p className="mt-2 text-xs text-rose-800">Gemeldet: {formatDateTime(sale.postOrderReview.changeRequestedAt)}</p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    if (!confirmAction("Bestaetigen, dass die Kunden-Aenderung geprueft und in den Produktionsdaten eingetragen wurde? Danach kann die Sale vergeben werden.")) return;
+                    void onAction({
+                      action: "acknowledge_post_order_change",
+                      saleId: sale.id,
+                      reviewNote: assignmentNote,
+                      operatorName,
+                    });
+                  }}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[0.5rem] border border-rose-300 bg-white px-3 py-2 text-sm font-semibold text-rose-900 transition hover:border-rose-500 disabled:cursor-not-allowed disabled:bg-rose-100"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Aenderung geprueft/eingetragen
+                </button>
               </div>
             ) : reviewBlocksAssignment ? (
               <div className="rounded-[0.5rem] border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">

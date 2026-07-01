@@ -3,6 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
   assignSupplierSale,
+  acknowledgeSupplierSalePostOrderChange,
   applyNoPaymentReminderShopifyTag,
   cleanupSupplierAssignmentTasks,
   createSupplierDeadlineTasks,
@@ -35,6 +36,7 @@ type SupplierSalesPostBody = {
   action?:
     | "upsert_sale"
     | "assign_supplier"
+    | "acknowledge_post_order_change"
     | "update_payment_decision"
     | "request_payment_reminder"
     | "send_order_confirmation_email"
@@ -52,6 +54,7 @@ type SupplierSalesPostBody = {
   requestedDeliveryDate?: string | null;
   specialSupplierName?: string | null;
   assignmentNote?: string | null;
+  reviewNote?: string | null;
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
   paymentDueAt?: string | null;
   requestedBy?: string | null;
@@ -265,6 +268,15 @@ export async function POST(request: NextRequest) {
         paymentDecisionStatus: body.paymentDecisionStatus || "pending",
         paymentDueAt: body.paymentDueAt || null,
         operatorName: body.operatorName || null,
+      }, actor);
+      return NextResponse.json({ ok: true, action, sale });
+    }
+
+    if (action === "acknowledge_post_order_change") {
+      const sale = await acknowledgeSupplierSalePostOrderChange({
+        saleId: String(body.saleId || ""),
+        operatorName: body.operatorName || null,
+        reviewNote: body.reviewNote || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale });
     }
