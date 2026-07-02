@@ -251,15 +251,19 @@ function postOrderRemainingMs(sale: SupplierSale, now: number) {
   return Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now) : 0;
 }
 
-function postOrderReviewBlocksAssignment(sale: SupplierSale, now: number) {
+function postOrderReviewBlocksAssignment(sale: SupplierSale) {
   if (sale.postOrderReview.status === "change_requested") return true;
+  return false;
+}
+
+function postOrderReviewWindowOpen(sale: SupplierSale, now: number) {
   if (sale.postOrderReview.status !== "open") return false;
   return postOrderRemainingMs(sale, now) > 0;
 }
 
 function postOrderReviewBadgeLabel(sale: SupplierSale, now: number) {
   if (sale.postOrderReview.status === "change_requested") return "Kunden-Aenderung gemeldet";
-  if (postOrderReviewBlocksAssignment(sale, now)) return `24h Pruefung ${formatPostOrderCountdown(postOrderRemainingMs(sale, now))}`;
+  if (postOrderReviewWindowOpen(sale, now)) return `24h Fenster ${formatPostOrderCountdown(postOrderRemainingMs(sale, now))}`;
   if (sale.postOrderReview.status === "closed") return "24h Pruefung abgeschlossen";
   return null;
 }
@@ -600,7 +604,8 @@ function SaleCard({
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
   const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.shopifyTagSyncStatus !== "synced";
   const lastOrderConfirmationEmail = sale.orderConfirmationEmail;
-  const reviewBlocksAssignment = postOrderReviewBlocksAssignment(sale, reviewNow);
+  const reviewBlocksAssignment = postOrderReviewBlocksAssignment(sale);
+  const reviewWindowOpen = postOrderReviewWindowOpen(sale, reviewNow);
   const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
   const paidPriority = paidAssignmentPriority(sale);
 
@@ -622,7 +627,7 @@ function SaleCard({
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950">
               <CheckCircle2 className="h-4 w-4 text-emerald-700" />
               Bezahlt - sofort vergeben
-              {reviewBlocksAssignment ? <span className="text-xs font-medium text-emerald-800">nach 24h-Pruefung</span> : null}
+              {reviewWindowOpen ? <span className="text-xs font-medium text-emerald-800">24h-Fenster offen</span> : null}
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
@@ -648,7 +653,7 @@ function SaleCard({
               </span>
             ) : null}
             {reviewBadge ? (
-              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${sale.postOrderReview.status === "change_requested" ? "border-rose-200 bg-rose-50 text-rose-900" : reviewBlocksAssignment ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${sale.postOrderReview.status === "change_requested" ? "border-rose-200 bg-rose-50 text-rose-900" : reviewWindowOpen ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {reviewBadge}
               </span>
@@ -726,10 +731,10 @@ function SaleCard({
                   Aenderung geprueft/eingetragen
                 </button>
               </div>
-            ) : reviewBlocksAssignment ? (
+            ) : reviewWindowOpen ? (
               <div className="rounded-[0.5rem] border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                <p className="font-semibold">Noch nicht vergeben: 24h-Aenderungsfenster laeuft.</p>
-                <p className="mt-1 text-xs leading-5">Restzeit: {formatPostOrderCountdown(postOrderRemainingMs(sale, reviewNow))}. Erst danach an Supplier vergeben, falls keine Kundenmeldung eingeht.</p>
+                <p className="font-semibold">Hinweis: 24h-Aenderungsfenster laeuft.</p>
+                <p className="mt-1 text-xs leading-5">Restzeit: {formatPostOrderCountdown(postOrderRemainingMs(sale, reviewNow))}. Vergabe ist trotzdem moeglich, wenn ihr die Produktion bewusst freigeben wollt.</p>
               </div>
             ) : sale.postOrderReview.status === "closed" ? (
               <div className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-900">
@@ -788,9 +793,8 @@ function SaleCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving || !deliveryDate || reviewBlocksAssignment || (needsManualPaymentRelease && paymentDecision === "wait_for_payment")}
+                disabled={saving || !deliveryDate || (needsManualPaymentRelease && paymentDecision === "wait_for_payment")}
                 onClick={() => {
-                  if (reviewBlocksAssignment) return;
                   const selectedSupplier = supplierLabel(supplier, specialSupplierName);
                   const confirmationMessage =
                     needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid"

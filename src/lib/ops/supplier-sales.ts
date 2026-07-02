@@ -4229,11 +4229,6 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     throw new QuoteValidationError("Lieferdatum fehlt.", ["Bitte bestaetigen, wann geliefert werden soll."], 422);
   }
   const sale = await getSupplierSale(input.saleId);
-  if (sale.postOrderReview.status === "open") {
-    throw new QuoteValidationError("24h-Aenderungsfenster laeuft noch.", [
-      "Diese Sale noch nicht vergeben. Der Kunde kann innerhalb von 24 Stunden nach Bestellung noch Abweichungen melden.",
-    ], 422);
-  }
   if (sale.postOrderReview.status === "change_requested") {
     throw new QuoteValidationError("Kunden-Aenderung muss geprueft werden.", [
       "Der Kunde hat nach der Bestellung eine Abweichung gemeldet. Bitte vor der Vergabe pruefen und dokumentieren.",

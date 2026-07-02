@@ -123,6 +123,18 @@ const rushSale = sale({
   productSummary: "Eilauftrag LED Neon Sign",
   rushOrder: true,
 });
+const openReviewSale = sale({
+  id: "sale-open-review",
+  offerNumber: "NT-OPEN-REVIEW",
+  customerName: "24h Fenster",
+  postOrderReview: {
+    status: "open",
+    signedAt: "2026-06-15T09:00:00.000Z",
+    expiresAt: "2099-06-16T09:00:00.000Z",
+    message: null,
+    changeRequestedAt: null,
+  },
+});
 const syncFailedSale = sale({
   id: "sale-sync-failed",
   offerNumber: "NT-SYNC",
@@ -137,11 +149,11 @@ const syncFailedSale = sale({
 });
 
 const board = {
-  items: [paidSale, unpaidSale, specialSale, rushSale, syncFailedSale],
+  items: [paidSale, unpaidSale, specialSale, rushSale, openReviewSale, syncFailedSale],
   counts: {
-    total: 5,
-    paidUnassigned: 3,
-    readyToAssign: 3,
+    total: 6,
+    paidUnassigned: 4,
+    readyToAssign: 4,
     paymentOpen: 1,
     assigned: 1,
     dueSoon: 4,
@@ -400,10 +412,13 @@ async function main() {
   const paidCard = page.locator("article").filter({ hasText: "#QA-sale-paid" });
   const unpaidCard = page.locator("article").filter({ hasText: "#QA-sale-unpaid" });
   const specialCard = page.locator("article").filter({ hasText: "#QA-sale-special" });
+  const openReviewCard = page.locator("article").filter({ hasText: "#QA-sale-open-review" });
 
   assert(await paidCard.count() === 1, "paid sale card fehlt");
   assert(await unpaidCard.count() === 1, "unpaid sale card fehlt");
   assert(await specialCard.count() === 1, "special sale card fehlt");
+  assert(await openReviewCard.count() === 1, "open-review sale card fehlt");
+  assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
 
   await unpaidCard.getByLabel("Zahlungsentscheidung").selectOption("wait_for_payment");
   assert(await unpaidCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Vergeben bleibt bei Warten nicht disabled");

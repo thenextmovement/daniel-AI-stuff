@@ -881,11 +881,13 @@ test("supplier assignment finds Shopify order by offer reference before tagging"
   assert.equal(assignmentTaskWriteCount, 0);
 });
 
-test("supplier assignment is blocked while post-order review window is open", async () => {
+test("supplier assignment is allowed while post-order review window is open", async () => {
   let attemptPostCount = 0;
-  const currentRow = saleRow({
+  let currentRow = saleRow({
     id: "sale-open-post-order-review",
     source: "neontrip-offers",
+    payment_decision_status: "paid_confirmed",
+    assignment_status: "ready_to_assign",
     metadata: {
       post_order_review: {
         status: "open",
@@ -897,6 +899,9 @@ test("supplier assignment is blocked while post-order review window is open", as
 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      return Response.json({ id: "trello-open-review", url: "https://trello.test/c/open-review" });
+    }
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
@@ -904,21 +909,28 @@ test("supplier assignment is blocked while post-order review window is open", as
       attemptPostCount += 1;
       return Response.json({});
     }
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "PATCH") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
     return Response.json([]);
   }, async () => {
-    await assert.rejects(
-      () => assignSupplierSale({
-        saleId: currentRow.id,
-        supplier: "said",
-        requestedDeliveryDate: "2026-07-13",
-        paymentDecisionStatus: "paid_confirmed",
-        operatorName: "Ops",
-      }),
-      /24h-Aenderungsfenster/,
-    );
+    const sale = await assignSupplierSale({
+      saleId: currentRow.id,
+      supplier: "said",
+      requestedDeliveryDate: "2026-07-13",
+      paymentDecisionStatus: "paid_confirmed",
+      operatorName: "Ops",
+    });
+
+    assert.equal(sale.assignmentStatus, "assigned");
+    assert.equal(sale.assignedSupplier, "said");
+    assert.equal(sale.postOrderReview.status, "open");
   });
 
-  assert.equal(attemptPostCount, 0);
+  assert.equal(attemptPostCount, 1);
 });
 
 test("supplier assignment task cleanup archives only supplier sale projections", async () => {
