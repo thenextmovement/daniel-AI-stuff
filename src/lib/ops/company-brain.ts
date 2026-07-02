@@ -12,6 +12,7 @@ import {
   type OpsOfferSearchResult,
   type OpsOfferSnapshot,
 } from "@/lib/ops/offers";
+import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export type CompanyBrainIdentifierType =
@@ -101,7 +102,7 @@ export type CompanyBrainOfferSummary = {
 };
 
 export type CompanyBrainDiagnostic = {
-  source: "customer_records" | "offers" | "offer_bridge";
+  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit";
   ok: boolean;
   label: string;
   detail: string | null;
@@ -121,6 +122,51 @@ export type CompanyBrainCheck = {
   status: "verified" | "warning" | "missing" | "unknown";
   summary: string;
   evidenceIds: string[];
+};
+
+export type CompanyBrainSourceHealth = {
+  key:
+    | "customer_records"
+    | "offers"
+    | "offer_bridge"
+    | "outlook_mirror"
+    | "workflow_audit"
+    | "shopify"
+    | "trello"
+    | "evidence";
+  label: string;
+  status: "ok" | "partial" | "missing" | "error";
+  summary: string;
+  count: number;
+  lastSeenAt: string | null;
+  detail: string | null;
+};
+
+export type CompanyBrainAutomationRun = {
+  id: string;
+  workflowName: string | null;
+  action: string | null;
+  status: string | null;
+  error: string | null;
+  createdAt: string | null;
+  requestId: string | null;
+  executionId: string | null;
+  correlationId: string | null;
+  sourceEventId: string | null;
+  targetRecordId: string | null;
+};
+
+export type CompanyBrainDossierSection = {
+  title: string;
+  lines: string[];
+};
+
+export type CompanyBrainDossier = {
+  title: string;
+  generatedAt: string;
+  confidence: "high" | "medium" | "low";
+  sections: CompanyBrainDossierSection[];
+  copyText: string;
 };
 
 export type CompanyBrainResolveInput = {
@@ -144,6 +190,9 @@ export type CompanyBrainResolveResult = {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
   checks: CompanyBrainCheck[];
+  sourceHealth: CompanyBrainSourceHealth[];
+  automationRuns: CompanyBrainAutomationRun[];
+  dossier: CompanyBrainDossier;
   evidence: CompanyBrainEvidence[];
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
@@ -209,6 +258,26 @@ function clampLimit(value: number | null | undefined) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unbekannter Fehler.";
+}
+
+function latestIso(values: Array<string | null | undefined>) {
+  const times = values
+    .map((value) => (value ? new Date(value).getTime() : 0))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => right - left);
+  return times[0] ? new Date(times[0]).toISOString() : null;
+}
+
+function metadataText(metadata: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!metadata) return null;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" || typeof value === "number") {
+      const normalized = cleanText(value);
+      if (normalized) return normalized;
+    }
+  }
+  return null;
 }
 
 function pushIdentifier(
@@ -544,6 +613,246 @@ function buildGaps(records: CompanyBrainRecordSummary[], offers: CompanyBrainOff
   return gaps;
 }
 
+type WorkflowAuditLogRow = {
+  id: string;
+  document_id?: string | null;
+  workflow_name?: string | null;
+  action?: string | null;
+  status?: string | null;
+  error_message?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
+async function fetchAutomationRuns(records: CompanyBrainRecordSummary[], offers: CompanyBrainOfferSummary[]): Promise<{
+  runs: CompanyBrainAutomationRun[];
+  diagnostic: CompanyBrainDiagnostic;
+}> {
+  const requestIds = uniqueStrings(records.map((record) => record.requestId));
+  const offerNumbers = uniqueStrings(offers.map((offer) => offer.offerNumber));
+  const filters = [
+    requestIds.length ? `document_id.in.(${requestIds.map(encodeURIComponent).join(",")})` : null,
+    ...requestIds.map((requestId) => `metadata->>request_id.eq.${encodeURIComponent(requestId)}`),
+    ...offerNumbers.map((offerNumber) => `metadata->>offer_number.eq.${encodeURIComponent(offerNumber)}`),
+  ].filter((value): value is string => Boolean(value));
+
+  if (!filters.length) {
+    return {
+      runs: [],
+      diagnostic: { source: "workflow_audit", ok: true, label: "Automation Audit", detail: "Kein Request/Angebot für Audit-Lookup.", count: 0 },
+    };
+  }
+
+  try {
+    const rows = await supabaseRequest<WorkflowAuditLogRow[]>("workflow_audit_log", undefined, {
+      select: "id,document_id,workflow_name,action,status,error_message,metadata,created_at",
+      or: `(${filters.join(",")})`,
+      order: "created_at.desc",
+      limit: 30,
+    });
+    const runs = rows.map((row) => ({
+      id: row.id,
+      workflowName: cleanText(row.workflow_name) || null,
+      action: cleanText(row.action) || null,
+      status: cleanText(row.status) || null,
+      error: cleanText(row.error_message) || null,
+      createdAt: row.created_at || null,
+      requestId: cleanText(row.document_id) || metadataText(row.metadata, ["request_id", "task_request_id"]),
+      executionId: metadataText(row.metadata, ["execution_id", "n8n_execution_id", "workflow_execution_id"]),
+      correlationId: metadataText(row.metadata, ["correlation_id", "request_correlation_id", "idempotency_key"]),
+      sourceEventId: metadataText(row.metadata, ["source_event_id", "event_id", "message_id", "offer_event_id"]),
+      targetRecordId: metadataText(row.metadata, ["target_record_id", "task_id", "offer_id", "shopify_order_id"]),
+    }));
+    return {
+      runs,
+      diagnostic: { source: "workflow_audit", ok: true, label: "Automation Audit", detail: null, count: runs.length },
+    };
+  } catch (error) {
+    return {
+      runs: [],
+      diagnostic: {
+        source: "workflow_audit",
+        ok: false,
+        label: "Automation Audit",
+        detail: error instanceof SupabaseRestError ? error.message : errorMessage(error),
+        count: 0,
+      },
+    };
+  }
+}
+
+function buildSourceHealth(
+  records: CompanyBrainRecordSummary[],
+  offers: CompanyBrainOfferSummary[],
+  evidence: CompanyBrainEvidence[],
+  diagnostics: CompanyBrainDiagnostic[],
+  automationRuns: CompanyBrainAutomationRun[],
+): CompanyBrainSourceHealth[] {
+  const diagnosticBySource = new Map(diagnostics.map((entry) => [entry.source, entry] as const));
+  const customerDiagnostic = diagnosticBySource.get("customer_records");
+  const offerDiagnostic = diagnosticBySource.get("offers");
+  const bridgeDiagnostics = diagnostics.filter((entry) => entry.source === "offer_bridge");
+  const workflowDiagnostic = diagnosticBySource.get("workflow_audit");
+  const outlookEvidence = evidence.filter((entry) => entry.source === "customer_email_messages");
+  const shopifyLinked = records.filter((record) => record.latestOrderNumber);
+  const trelloLinked = records.filter((record) => record.trelloCardId || record.trelloCardUrl);
+
+  return [
+    {
+      key: "customer_records",
+      label: "Kundenakte",
+      status: customerDiagnostic?.ok ? (records.length ? "ok" : "missing") : "error",
+      summary: records.length ? `${records.length} Kundenakte(n) gefunden.` : customerDiagnostic?.ok ? "Keine Kundenakte gefunden." : "Kundenakte nicht lesbar.",
+      count: records.length,
+      lastSeenAt: latestIso(records.map((record) => record.latestInboundAt || record.latestOutboundAt || record.latestOfferViewedAt)),
+      detail: customerDiagnostic?.detail || null,
+    },
+    {
+      key: "offers",
+      label: "Angebote",
+      status: offerDiagnostic?.ok ? (offers.length ? "ok" : "missing") : "error",
+      summary: offers.length ? `${offers.length} Angebotssnapshot(s) geladen.` : offerDiagnostic?.ok ? "Kein Angebotssnapshot gefunden." : "Offers API nicht lesbar.",
+      count: offers.length,
+      lastSeenAt: latestIso(offers.map((offer) => offer.updatedAt || offer.viewedAt || offer.acceptedAt)),
+      detail: offerDiagnostic?.detail || null,
+    },
+    {
+      key: "offer_bridge",
+      label: "Offer-Bridge",
+      status: bridgeDiagnostics.some((entry) => !entry.ok) ? "partial" : bridgeDiagnostics.length ? "ok" : "missing",
+      summary: bridgeDiagnostics.length
+        ? `${bridgeDiagnostics.reduce((sum, entry) => sum + entry.count, 0)} verknüpfte Bridge-Treffer.`
+        : "Keine Bridge-Nachsuche ausgeführt.",
+      count: bridgeDiagnostics.reduce((sum, entry) => sum + entry.count, 0),
+      lastSeenAt: null,
+      detail: bridgeDiagnostics.find((entry) => !entry.ok)?.detail || null,
+    },
+    {
+      key: "outlook_mirror",
+      label: "Outlook-Spiegel",
+      status: outlookEvidence.length ? "ok" : records.length ? "missing" : "partial",
+      summary: outlookEvidence.length ? `${outlookEvidence.length} Outlook-Mailbeleg(e) im Spiegel.` : "Kein Outlook-Spiegel-Beleg in diesem Ergebnis.",
+      count: outlookEvidence.length,
+      lastSeenAt: latestIso(outlookEvidence.map((entry) => entry.occurredAt)),
+      detail: "Quelle: customer_email_messages, nicht Live Outlook.",
+    },
+    {
+      key: "workflow_audit",
+      label: "n8n / Automation Audit",
+      status: workflowDiagnostic?.ok ? (automationRuns.length ? "ok" : "missing") : "error",
+      summary: automationRuns.length ? `${automationRuns.length} Automation-/Workflow-Einträge.` : "Keine Workflow-Audit-Einträge für diesen Fall.",
+      count: automationRuns.length,
+      lastSeenAt: latestIso(automationRuns.map((run) => run.createdAt)),
+      detail: workflowDiagnostic?.detail || "Read-only aus workflow_audit_log.",
+    },
+    {
+      key: "shopify",
+      label: "Shopify",
+      status: shopifyLinked.length ? "ok" : records.length ? "missing" : "partial",
+      summary: shopifyLinked.length ? `${shopifyLinked.length} verknüpfte Bestellung(en).` : "Keine verknüpfte Bestellung im geladenen Fall.",
+      count: shopifyLinked.length,
+      lastSeenAt: null,
+      detail: null,
+    },
+    {
+      key: "trello",
+      label: "Trello",
+      status: trelloLinked.length ? "ok" : records.length ? "missing" : "partial",
+      summary: trelloLinked.length ? `${trelloLinked.length} Trello-Referenz(en).` : "Keine Trello-Referenz im geladenen Fall.",
+      count: trelloLinked.length,
+      lastSeenAt: null,
+      detail: "Trello bleibt Projektion, nicht Source of Truth.",
+    },
+    {
+      key: "evidence",
+      label: "Beleg-Timeline",
+      status: evidence.length ? "ok" : "missing",
+      summary: evidence.length ? `${evidence.length} Belege geladen.` : "Keine Belege geladen.",
+      count: evidence.length,
+      lastSeenAt: latestIso(evidence.map((entry) => entry.occurredAt)),
+      detail: null,
+    },
+  ];
+}
+
+function buildDossier(input: {
+  generatedAt: string;
+  answer: CompanyBrainResolveResult["answer"];
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  checks: CompanyBrainCheck[];
+  sourceHealth: CompanyBrainSourceHealth[];
+  automationRuns: CompanyBrainAutomationRun[];
+  conflicts: CompanyBrainFinding[];
+  gaps: CompanyBrainFinding[];
+  evidence: CompanyBrainEvidence[];
+}): CompanyBrainDossier {
+  const primaryRecord = input.records[0] || null;
+  const title = primaryRecord
+    ? `Fall-Dossier ${primaryRecord.displayName || primaryRecord.company || primaryRecord.email || primaryRecord.requestId}`
+    : "Fall-Dossier";
+  const sections: CompanyBrainDossierSection[] = [
+    {
+      title: "Kurzfazit",
+      lines: [input.answer.headline, ...input.answer.bullets],
+    },
+    {
+      title: "Kunde / Anfrage",
+      lines: primaryRecord
+        ? [
+            `Request: ${primaryRecord.requestId}`,
+            `Kontakt: ${primaryRecord.displayName || primaryRecord.company || primaryRecord.email || "unbekannt"}`,
+            `E-Mail: ${primaryRecord.email || "unbekannt"}`,
+            `Farbe: ${primaryRecord.requestedColors.join(", ") || "keine Angabe"}`,
+            `Größe: ${primaryRecord.requestedSize || "keine Angabe"}`,
+            `Trello: ${primaryRecord.trelloCardId || primaryRecord.trelloCardUrl || "nicht verknüpft"}`,
+          ]
+        : ["Keine Kundenakte eindeutig gefunden."],
+    },
+    {
+      title: "Angebote",
+      lines: input.offers.length
+        ? input.offers.flatMap((offer) => [
+            `${offer.offerNumber || offer.documentReference}: ${offer.status}, ${offer.itemCount} Positionen, ${offer.imageCount} Bilder/Designs`,
+            `Ausgewählt: ${offer.selectedItems.map((item) => item.title).join(", ") || "keine Angabe"}`,
+            `Produkt/Farbe: ${offer.productHints.join(", ") || "unbekannt"} / ${offer.colorHints.join(", ") || "unbekannt"}`,
+          ])
+        : ["Kein Angebotssnapshot geladen."],
+    },
+    {
+      title: "Prüfmatrix",
+      lines: input.checks.map((check) => `${check.label}: ${check.status} - ${check.summary}`),
+    },
+    {
+      title: "Automationen / n8n",
+      lines: input.automationRuns.length
+        ? input.automationRuns.slice(0, 8).map((run) => `${run.createdAt || "ohne Zeit"} · ${run.workflowName || "Workflow"} · ${run.action || "Aktion"} · ${run.status || "Status unbekannt"}${run.error ? ` · Fehler: ${run.error}` : ""}`)
+        : ["Keine Workflow-Audit-Einträge für diesen Fall."],
+    },
+    {
+      title: "Quellenstatus",
+      lines: input.sourceHealth.map((source) => `${source.label}: ${source.status} - ${source.summary}`),
+    },
+    {
+      title: "Lücken / Konflikte",
+      lines: [...input.conflicts, ...input.gaps].length
+        ? [...input.conflicts, ...input.gaps].map((finding) => `${finding.severity}: ${finding.title} - ${finding.detail}`)
+        : ["Keine Konflikte oder kritischen Lücken im geladenen Ergebnis."],
+    },
+    {
+      title: "Jüngste Belege",
+      lines: input.evidence.slice(0, 10).map((entry) => `${entry.occurredAt || "ohne Zeit"} · ${entry.source} · ${entry.title}${entry.detail ? ` · ${entry.detail}` : ""}`),
+    },
+  ];
+  return {
+    title,
+    generatedAt: input.generatedAt,
+    confidence: input.answer.confidence,
+    sections,
+    copyText: [`${title}`, `Erstellt: ${input.generatedAt}`, ...sections.flatMap((section) => ["", section.title, ...section.lines])].join("\n"),
+  };
+}
+
 function buildConflicts(records: CompanyBrainRecordSummary[], offers: CompanyBrainOfferSummary[]) {
   const conflicts: CompanyBrainFinding[] = [];
   const requestColors = uniqueStrings(records.flatMap((record) => record.requestedColors));
@@ -822,17 +1131,36 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
   const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
   const answer = buildAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question);
+  const automation = await fetchAutomationRuns(recordSummaries, offerSummaries);
+  diagnostics.push(automation.diagnostic);
+  const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automation.runs);
+  const generatedAt = new Date().toISOString();
+  const dossier = buildDossier({
+    generatedAt,
+    answer,
+    records: recordSummaries,
+    offers: offerSummaries,
+    checks,
+    sourceHealth,
+    automationRuns: automation.runs,
+    conflicts,
+    gaps,
+    evidence,
+  });
 
   return {
     query,
     question,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     mode: "deterministic_read_only",
     identifiers,
     answer,
     records: recordSummaries,
     offers: offerSummaries,
     checks,
+    sourceHealth,
+    automationRuns: automation.runs,
+    dossier,
     evidence,
     conflicts,
     gaps,
