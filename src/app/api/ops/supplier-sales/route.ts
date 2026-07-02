@@ -14,6 +14,7 @@ import {
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
   syncCompletedOffersFromOffersApp,
+  syncSupplierSalesShopifyTags,
   updateSupplierSalePaymentDecision,
   upsertSupplierSaleFromPayload,
   type SupplierSaleActor,
@@ -45,6 +46,7 @@ type SupplierSalesPostBody = {
     | "create_deadline_tasks"
     | "cleanup_supplier_assignment_tasks"
     | "sync_completed_offers"
+    | "sync_shopify_supplier_tags"
     | "diagnose_sales_flow";
   payload?: unknown;
   sale?: unknown;
@@ -175,8 +177,6 @@ async function getActorOrAutomation(
   body: SupplierSalesPostBody | null,
   operatorName?: string | null,
 ) {
-  const actor = await getOpsActor(request, operatorName);
-  if (actor) return actor;
   if (
     hasSupplierSalesAutomationAccess(request, body?.agentToken || null) ||
     verifySignature(rawBody, request.headers.get("x-neontrip-signature"), request.headers.get("x-neontrip-timestamp"))
@@ -188,6 +188,8 @@ async function getActorOrAutomation(
       operatorName: operatorName || "Supplier Sales Agent",
     };
   }
+  const actor = await getOpsActor(request, operatorName);
+  if (actor) return actor;
   return null;
 }
 
@@ -246,7 +248,7 @@ export async function POST(request: NextRequest) {
   const body = parseJsonBody(rawBody || "{}");
   const action = body.action || "upsert_sale";
   let actor: SupplierSaleActor | null = null;
-  if (action === "upsert_sale" || action === "create_deadline_tasks" || action === "sync_completed_offers") {
+  if (action === "upsert_sale" || action === "create_deadline_tasks" || action === "sync_completed_offers" || action === "sync_shopify_supplier_tags") {
     actor = await getActorOrAutomation(request, rawBody, body, body.operatorName || null);
   } else {
     const access = await assertOpsAccess(request, body.operatorName || null);
@@ -334,6 +336,11 @@ export async function POST(request: NextRequest) {
     if (action === "sync_completed_offers") {
       const completedOffersSync = await syncCompletedOffersFromOffersApp(actor, { limit: Number(body.limit || 50) });
       return NextResponse.json({ ok: true, action, completedOffersSync });
+    }
+
+    if (action === "sync_shopify_supplier_tags") {
+      const shopifySupplierTagSync = await syncSupplierSalesShopifyTags(actor, { limit: Number(body.limit || 50) });
+      return NextResponse.json({ ok: true, action, shopifySupplierTagSync });
     }
 
     if (action === "diagnose_sales_flow") {

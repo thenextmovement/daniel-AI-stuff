@@ -2734,6 +2734,15 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
   };
 }
 
+export async function syncSupplierSalesShopifyTags(
+  actor?: SupplierSaleActor | null,
+  options?: { limit?: number },
+) {
+  return syncActiveSupplierSalesFromShopifyAdmin(actor, {
+    limit: Math.min(Math.max(Number(options?.limit || 50), 1), 100),
+  });
+}
+
 export async function syncCompletedOffersFromOffersApp(
   actor?: SupplierSaleActor | null,
   options?: { limit?: number },

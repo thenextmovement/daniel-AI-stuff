@@ -4,6 +4,52 @@ Purpose: production setup for the Sales-Vergabe diagnostics `Supplier-Trello` an
 
 Supabase remains the source of truth. Trello is only a projection after a supplier assignment. Payment reminder emails are only sent after the Ops app has reserved the reminder in `supplier_payment_reminders`.
 
+## Shopify Supplier Tag Sync
+
+The Sales-Vergabe app can regularly reconcile active, not-yet-assigned rows against Shopify Admin tags. This catches orders that were tagged in Shopify outside the Ops UI, especially:
+
+```text
+Quentin (noch bezahlen)
+```
+
+Import this inactive n8n draft:
+
+```text
+workflows/supplier-shopify-tag-sync-v0.1.inactive-draft.json
+```
+
+Structure:
+
+1. `Every 5 Minutes`
+2. `Config`
+3. `Config Preflight`
+4. `Ops: Sync Shopify Supplier Tags`
+
+The workflow calls:
+
+```http
+POST https://ops.neontrip.de/api/ops/supplier-sales
+Authorization: Bearer <internal-token>
+Content-Type: application/json
+
+{
+  "action": "sync_shopify_supplier_tags",
+  "limit": 50,
+  "operatorName": "n8n Supplier Shopify Tag Sync"
+}
+```
+
+Use one of these n8n environment variables for the bearer token. It must match the Ops app runtime token:
+
+```text
+SUPPLIER_SALES_AGENT_API_TOKEN
+QUOTE_INTERNAL_API_TOKEN
+OPS_INTERNAL_API_KEY
+NEONTRIP_OFFERS_INTERNAL_API_KEY
+```
+
+The Ops app keeps the batch bounded to max. 100 active rows. Replays are safe: existing Shopify tags update the Supabase row to assigned, and already assigned rows are skipped by the active-row query.
+
 ## Supplier Trello
 
 Set these runtime variables in Coolify:
@@ -94,6 +140,7 @@ The workflow rejects invalid payloads and missing payment links.
 4. Assign one safe test sale to Quentin. Expected: a Trello card appears in the configured Quentin list.
 5. Trigger one payment reminder on a safe test sale with a real payment link. Expected: one Outlook email is sent and `supplier_payment_reminders.status` becomes `sent`.
 6. Trigger the same reminder again with the same idempotency key. Expected: no duplicate email.
+7. Manually execute the Shopify Supplier Tag Sync workflow once. Expected: HTTP 200 with `shopifySupplierTagSync.status` as `synced` or `skipped`. If an active Shopify order already has `Quentin (noch bezahlen)`, it should disappear from the active Sales-Vergabe view after reload.
 
 ## Rollback
 
@@ -110,5 +157,7 @@ To disable payment reminder emails, remove or blank:
 ```text
 SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL
 ```
+
+To disable regular Shopify supplier tag reconciliation, deactivate the n8n workflow `NEONTRIP Supplier Shopify Tag Sync v0.1`.
 
 Restart the Ops app after rollback. Without the reminder webhook, the app falls back to internal tasks.
