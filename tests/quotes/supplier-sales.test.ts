@@ -2008,7 +2008,8 @@ test("supplier sales sync_shopify_supplier_tags accepts automation bearer access
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
-    process.env.QUOTE_INTERNAL_API_TOKEN = "internal-offers-key";
+    process.env.SUPPLIER_SALES_AGENT_API_TOKEN = "stale-agent-key";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
     process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
     process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
     const response = await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales", {
