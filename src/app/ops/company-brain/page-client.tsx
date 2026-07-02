@@ -3,8 +3,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Bell,
   BrainCircuit,
   CheckCircle2,
+  ClipboardList,
   ClipboardCopy,
   Clock3,
   ExternalLink,
@@ -14,6 +16,8 @@ import {
   MailCheck,
   MessageSquareText,
   Network,
+  PackageSearch,
+  PlugZap,
   RefreshCcw,
   Search,
   ShieldCheck,
@@ -131,6 +135,19 @@ function riskClass(riskLevel: string) {
   return "border-emerald-200 bg-emerald-50 text-emerald-900";
 }
 
+function readinessClass(status: string) {
+  if (status === "configured") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "partial") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
+function watcherClass(status: string, severity: string) {
+  if (status === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (severity === "critical") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (severity === "warning") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-sky-200 bg-sky-50 text-sky-900";
+}
+
 export function OpsCompanyBrainClient({
   initialHasSession,
   opsEnabled,
@@ -150,6 +167,7 @@ export function OpsCompanyBrainClient({
   const [error, setError] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [draftCopyMessage, setDraftCopyMessage] = useState<string | null>(null);
+  const [actionCopyMessage, setActionCopyMessage] = useState<string | null>(null);
   const sharedOperatorNameKey = "neontrip-ops-operator";
 
   useEffect(() => {
@@ -172,6 +190,8 @@ export function OpsCompanyBrainClient({
     findings: (result?.gaps.length || 0) + (result?.conflicts.length || 0),
     automations: result?.automationRuns.length || 0,
     events: result?.caseEvents.length || 0,
+    assets: result?.assets.length || 0,
+    openWatchers: result?.watchers.filter((watcher) => watcher.status === "open").length || 0,
   }), [result]);
 
   const quickQuestions = [
@@ -219,6 +239,7 @@ export function OpsCompanyBrainClient({
       setResult(payload.result);
       setCopyMessage(null);
       setDraftCopyMessage(null);
+      setActionCopyMessage(null);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Fallprüfung konnte nicht geladen werden.");
     } finally {
@@ -243,6 +264,24 @@ export function OpsCompanyBrainClient({
       setDraftCopyMessage("Entwurf kopiert.");
     } catch {
       setDraftCopyMessage("Kopieren nicht möglich.");
+    }
+  }
+
+  async function copyActionProposal(actionKey: string) {
+    const action = result?.actionProposals.find((entry) => entry.key === actionKey);
+    if (!action) return;
+    try {
+      await navigator.clipboard.writeText([
+        action.label,
+        action.summary,
+        `Freigabe: ${action.approvalRequired ? "ja" : "nein"}`,
+        `Risiko: ${action.riskLevel}`,
+        "",
+        ...action.payloadPreview,
+      ].join("\n"));
+      setActionCopyMessage(`${action.label} kopiert.`);
+    } catch {
+      setActionCopyMessage("Kopieren nicht möglich.");
     }
   }
 
@@ -338,12 +377,13 @@ export function OpsCompanyBrainClient({
 
         {result ? (
           <>
-            <section className="grid gap-4 md:grid-cols-5">
+            <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
               <OpsStatCard label="Kundenakten" value={stats.records} icon={<BrainCircuit className="h-5 w-5" />} />
               <OpsStatCard label="Angebote" value={stats.offers} tone="info" icon={<FileSearch className="h-5 w-5" />} />
               <OpsStatCard label="Belege" value={stats.evidence} tone="success" icon={<MailCheck className="h-5 w-5" />} />
               <OpsStatCard label="Fallakte" value={stats.events} tone="info" icon={<History className="h-5 w-5" />} />
-              <OpsStatCard label="Automationen" value={stats.automations} tone={stats.automations ? "info" : stats.findings ? "warning" : "neutral"} icon={<Workflow className="h-5 w-5" />} />
+              <OpsStatCard label="Assets" value={stats.assets} tone="neutral" icon={<PackageSearch className="h-5 w-5" />} />
+              <OpsStatCard label="Watcher" value={stats.openWatchers} tone={stats.openWatchers ? "warning" : "success"} icon={<Bell className="h-5 w-5" />} />
             </section>
 
             <section className="grid gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
@@ -488,6 +528,53 @@ export function OpsCompanyBrainClient({
                 </article>
 
                 <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Action Center</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Vorbereitete Aktionen</h2>
+                    </div>
+                    <ClipboardList className="h-6 w-6 text-stone-500" />
+                  </div>
+                  {actionCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{actionCopyMessage}</p> : null}
+                  <div className="mt-4 grid gap-3">
+                    {result.actionProposals.map((action) => (
+                      <div key={action.key} className={`rounded-2xl border px-4 py-3 text-sm ${riskClass(action.riskLevel)}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{action.label}</p>
+                            <p className="mt-1 leading-6 opacity-80">{action.summary}</p>
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium opacity-80">
+                            {action.enabled ? "Bereit" : "Vorlage"}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 opacity-70">{action.confirmationText}</p>
+                        {action.payloadPreview.length ? (
+                          <div className="mt-3 rounded-xl border border-current/15 bg-white/40 p-3 text-xs leading-5">
+                            {action.payloadPreview.slice(0, 5).map((line) => <p key={line}>{line}</p>)}
+                          </div>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void copyActionProposal(action.key)}
+                            className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 px-3 text-xs font-medium transition hover:bg-white/60"
+                          >
+                            <ClipboardCopy className="h-3.5 w-3.5" />
+                            Paket kopieren
+                          </button>
+                          {action.href ? (
+                            <a href={action.href} className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 px-3 text-xs font-medium transition hover:bg-white/60">
+                              Öffnen <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Identifier</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {result.identifiers.map((identifier) => (
@@ -572,6 +659,57 @@ export function OpsCompanyBrainClient({
                 <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Integrationen</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Readiness</h2>
+                    </div>
+                    <PlugZap className="h-6 w-6 text-stone-500" />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {result.integrationReadiness.map((entry) => (
+                      <div key={entry.key} className={`rounded-2xl border px-4 py-3 text-sm ${readinessClass(entry.status)}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{entry.label}</p>
+                            <p className="mt-1 leading-6 opacity-80">{entry.summary}</p>
+                            {entry.detail ? <p className="mt-1 text-xs leading-5 opacity-65">{entry.detail}</p> : null}
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium opacity-80">
+                            {entry.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Proaktive Wächter</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Offene Risiken</h2>
+                    </div>
+                    <Bell className="h-6 w-6 text-stone-500" />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {result.watchers.map((watcher) => (
+                      <div key={watcher.key} className={`rounded-2xl border px-4 py-3 text-sm ${watcherClass(watcher.status, watcher.severity)}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{watcher.title}</p>
+                            <p className="mt-1 leading-6 opacity-80">{watcher.detail}</p>
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium opacity-80">
+                            {watcher.status === "ok" ? "OK" : watcher.severity}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Source Health</p>
                       <h2 className="mt-2 text-xl font-semibold text-stone-950">Quellenlage</h2>
                     </div>
@@ -596,6 +734,38 @@ export function OpsCompanyBrainClient({
                         </div>
                       </div>
                     ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Assets / Anhänge</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Design-Inventar</h2>
+                    </div>
+                    <PackageSearch className="h-6 w-6 text-stone-500" />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {result.assets.length ? result.assets.slice(0, 12).map((asset) => (
+                      <div key={asset.id} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-stone-950">{asset.label}</p>
+                            <p className="mt-1 text-stone-600">{asset.kind} · {asset.source}{asset.linkedTo ? ` · ${asset.linkedTo}` : ""}</p>
+                          </div>
+                          <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-500">
+                            {asset.status}
+                          </span>
+                        </div>
+                        {asset.href ? (
+                          <a href={asset.href} className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-stone-800 hover:text-stone-950">
+                            Asset öffnen <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : null}
+                      </div>
+                    )) : (
+                      <p className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">Keine Assets im geladenen Fall gefunden.</p>
+                    )}
                   </div>
                 </article>
 

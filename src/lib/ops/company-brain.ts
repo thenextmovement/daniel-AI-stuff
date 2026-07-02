@@ -102,7 +102,7 @@ export type CompanyBrainOfferSummary = {
 };
 
 export type CompanyBrainDiagnostic = {
-  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit";
+  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness";
   ok: boolean;
   label: string;
   detail: string | null;
@@ -129,6 +129,17 @@ export type CompanyBrainCaseEvent = {
   evidenceIds: string[];
 };
 
+export type CompanyBrainAsset = {
+  id: string;
+  kind: "reference_image" | "mockup" | "offer_image" | "video" | "followup_mockup" | "pdf" | "other";
+  label: string;
+  source: "trello" | "offers" | "customer_records" | "outlook_mirror";
+  href: string | null;
+  linkedTo: string | null;
+  status: "available" | "metadata_only" | "missing";
+  evidenceIds: string[];
+};
+
 export type CompanyBrainCrossCheck = {
   key: "color_match" | "offer_sent" | "design_count" | "product_type" | "customer_confirmation" | "order_link";
   label: string;
@@ -138,6 +149,48 @@ export type CompanyBrainCrossCheck = {
   actual: string | null;
   summary: string;
   evidenceIds: string[];
+};
+
+export type CompanyBrainIntegrationReadiness = {
+  key: "live_outlook" | "n8n_live" | "coolify";
+  label: string;
+  status: "configured" | "partial" | "missing";
+  summary: string;
+  detail: string | null;
+};
+
+export type CompanyBrainWatcher = {
+  key:
+    | "offer_without_send_proof"
+    | "customer_reply_without_task"
+    | "order_without_color_confirmation"
+    | "automation_failed"
+    | "missing_live_outlook"
+    | "missing_design_assets";
+  severity: "info" | "warning" | "critical";
+  status: "open" | "ok";
+  title: string;
+  detail: string;
+  actionKey: string | null;
+};
+
+export type CompanyBrainActionProposal = {
+  key:
+    | "copy_reply_draft"
+    | "create_internal_task"
+    | "verify_live_outlook"
+    | "open_offer_admin"
+    | "inspect_n8n_run"
+    | "collect_design_assets";
+  label: string;
+  type: "copy" | "manual_check" | "prepared_task" | "open_link";
+  riskLevel: "low" | "medium" | "high";
+  approvalRequired: boolean;
+  enabled: boolean;
+  summary: string;
+  confirmationText: string;
+  href: string | null;
+  payloadPreview: string[];
 };
 
 export type CompanyBrainCheck = {
@@ -225,7 +278,11 @@ export type CompanyBrainResolveResult = {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
   caseEvents: CompanyBrainCaseEvent[];
+  assets: CompanyBrainAsset[];
   crossChecks: CompanyBrainCrossCheck[];
+  integrationReadiness: CompanyBrainIntegrationReadiness[];
+  watchers: CompanyBrainWatcher[];
+  actionProposals: CompanyBrainActionProposal[];
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
@@ -843,13 +900,151 @@ function buildSourceHealth(
   ];
 }
 
+function hasEnv(...names: string[]) {
+  return names.some((name) => Boolean(cleanText(process.env[name])));
+}
+
+function buildIntegrationReadiness(): CompanyBrainIntegrationReadiness[] {
+  const graphTenant = hasEnv("MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID");
+  const graphClient = hasEnv("MICROSOFT_GRAPH_CLIENT_ID", "AZURE_CLIENT_ID");
+  const graphSecret = hasEnv("MICROSOFT_GRAPH_CLIENT_SECRET", "AZURE_CLIENT_SECRET");
+  const graphMailbox = hasEnv("MICROSOFT_GRAPH_MAILBOX", "OUTLOOK_SHARED_MAILBOX", "OUTLOOK_MAILBOX");
+  const n8nApi = hasEnv("N8N_API_URL", "N8N_BASE_URL") && hasEnv("N8N_API_KEY");
+  const n8nWebhooks = hasEnv(
+    "OPS_VISUAL_REQUEST_WEBHOOK_URL",
+    "SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL",
+    "N8N_SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL",
+    "SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+    "N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
+  );
+  const coolifyRuntime = hasEnv("COOLIFY_API_URL", "COOLIFY_URL") && hasEnv("COOLIFY_API_TOKEN");
+  const coolifyDeploy = hasEnv("COOLIFY_DEPLOY_WEBHOOK");
+
+  return [
+    {
+      key: "live_outlook",
+      label: "Live Outlook / Graph",
+      status: graphTenant && graphClient && graphSecret && graphMailbox ? "configured" : graphTenant || graphClient || graphSecret || graphMailbox ? "partial" : "missing",
+      summary: graphTenant && graphClient && graphSecret && graphMailbox
+        ? "Graph-Livezugriff scheint im Runtime-Env konfiguriert."
+        : "Kein vollständiger Graph-Livezugriff im Runtime-Env erkannt; Company Brain nutzt den Outlook-Spiegel.",
+      detail: "Erwartete Bausteine: Tenant, Client, Secret und Mailbox. Secrets werden nicht angezeigt.",
+    },
+    {
+      key: "n8n_live",
+      label: "Live n8n",
+      status: n8nApi ? "configured" : n8nWebhooks ? "partial" : "missing",
+      summary: n8nApi
+        ? "n8n API-Zugriff scheint konfiguriert."
+        : n8nWebhooks
+          ? "n8n Webhooks sind teilweise konfiguriert; Live-Workflow-API ist nicht vollständig erkannt."
+          : "Kein Live-n8n-API-Zugriff im Runtime-Env erkannt.",
+      detail: "Read-only Live-Workflowdiagnose braucht N8N_API_URL/N8N_BASE_URL plus N8N_API_KEY. Aktuell bleiben workflow_audit_log und Webhook-Readiness die sichere Quelle.",
+    },
+    {
+      key: "coolify",
+      label: "Coolify",
+      status: coolifyRuntime ? "configured" : coolifyDeploy ? "partial" : "missing",
+      summary: coolifyRuntime
+        ? "Coolify API-Zugriff scheint konfiguriert."
+        : coolifyDeploy
+          ? "Deploy-Webhook ist konfiguriert; Runtime-API-Health ist nicht vollständig erkannt."
+          : "Kein Coolify Runtime-API-Zugriff im App-Env erkannt.",
+      detail: "GitHub Actions triggert Deploys über Secrets. Die App zeigt keine Secret-Werte und führt keine Deploy-Aktion aus.",
+    },
+  ];
+}
+
+function buildAssetInventory(records: CustomerSearchResult[], offers: CompanyBrainOfferSummary[], evidence: CompanyBrainEvidence[]): CompanyBrainAsset[] {
+  const assets: CompanyBrainAsset[] = [];
+  const addAsset = (asset: CompanyBrainAsset) => {
+    if (assets.some((entry) => entry.id === asset.id)) return;
+    assets.push(asset);
+  };
+
+  for (const record of records) {
+    if (record.trello?.referenceImage) {
+      addAsset({
+        id: `trello-reference:${record.trello.referenceImage.cardId}:${record.trello.referenceImage.attachmentId}`,
+        kind: "reference_image",
+        label: record.trello.referenceImage.name || "Referenzbild",
+        source: "trello",
+        href: record.trello.referenceImage.proxyUrl,
+        linkedTo: record.trello.referenceImage.cardName || record.requestId,
+        status: "available",
+        evidenceIds: [],
+      });
+    }
+    for (const mockup of record.trello?.mockups || []) {
+      addAsset({
+        id: `trello-mockup:${mockup.cardId}:${mockup.attachmentId}`,
+        kind: "mockup",
+        label: mockup.name || "Mockup",
+        source: "trello",
+        href: mockup.proxyUrl,
+        linkedTo: mockup.cardName || record.requestId,
+        status: "available",
+        evidenceIds: [],
+      });
+    }
+    for (const video of record.trello?.videoLinks || []) {
+      addAsset({
+        id: `trello-video:${video.url}`,
+        kind: "video",
+        label: video.label || "Video",
+        source: "trello",
+        href: video.url,
+        linkedTo: video.boardName || record.requestId,
+        status: "available",
+        evidenceIds: [],
+      });
+    }
+    for (const mockup of record.followupMockups || []) {
+      addAsset({
+        id: `followup-mockup:${mockup.followupId}:${mockup.url}`,
+        kind: "followup_mockup",
+        label: mockup.label || `Follow-up Mockup ${mockup.followupNumber || ""}`.trim(),
+        source: "customer_records",
+        href: mockup.url,
+        linkedTo: mockup.status || record.requestId,
+        status: "available",
+        evidenceIds: [],
+      });
+    }
+  }
+
+  for (const offer of offers) {
+    for (const image of offer.imageEvidence) {
+      addAsset({
+        id: `offer-image:${offer.offerId}:${image.title || image.kind}:${image.linkedItemTitle || "unlinked"}`,
+        kind: "offer_image",
+        label: image.title || "Angebotsbild",
+        source: "offers",
+        href: offer.publicUrl,
+        linkedTo: image.linkedItemTitle || offer.offerNumber || offer.documentReference,
+        status: image.enabled ? "metadata_only" : "missing",
+        evidenceIds: evidence
+          .filter((entry) => entry.source === "offers_api.images" && entry.title.includes(image.title || "Design/Bild"))
+          .slice(0, 2)
+          .map((entry) => entry.id),
+      });
+    }
+  }
+
+  return assets.slice(0, 40);
+}
+
 function buildDossier(input: {
   generatedAt: string;
   answer: CompanyBrainResolveResult["answer"];
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
   caseEvents: CompanyBrainCaseEvent[];
+  assets: CompanyBrainAsset[];
   crossChecks: CompanyBrainCrossCheck[];
+  integrationReadiness: CompanyBrainIntegrationReadiness[];
+  watchers: CompanyBrainWatcher[];
+  actionProposals: CompanyBrainActionProposal[];
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
@@ -903,6 +1098,28 @@ function buildDossier(input: {
       lines: input.caseEvents.length
         ? input.caseEvents.slice(0, 12).map((event) => `${event.occurredAt || "ohne Zeit"} · ${event.label} · ${event.summary}`)
         : ["Keine normalisierten Fallereignisse geladen."],
+    },
+    {
+      title: "Assets / Anhänge",
+      lines: input.assets.length
+        ? input.assets.slice(0, 12).map((asset) => `${asset.kind} · ${asset.label} · ${asset.source} · ${asset.status}${asset.linkedTo ? ` · ${asset.linkedTo}` : ""}`)
+        : ["Keine Design-/Anhang-Assets im geladenen Fall gefunden."],
+    },
+    {
+      title: "Integrations-Readiness",
+      lines: input.integrationReadiness.map((entry) => `${entry.label}: ${entry.status} - ${entry.summary}`),
+    },
+    {
+      title: "Proaktive Wächter",
+      lines: input.watchers.length
+        ? input.watchers.map((watcher) => `${watcher.status}/${watcher.severity}: ${watcher.title} - ${watcher.detail}`)
+        : ["Keine Wächter ausgewertet."],
+    },
+    {
+      title: "Action Center",
+      lines: input.actionProposals.length
+        ? input.actionProposals.map((action) => `${action.label}: ${action.enabled ? "bereit" : "nicht direkt ausführbar"} - ${action.summary}`)
+        : ["Keine Aktion vorgeschlagen."],
     },
     {
       title: "Automationen / n8n",
@@ -1197,6 +1414,212 @@ function buildReplyDraft(input: {
   };
 }
 
+function buildWatchers(input: {
+  records: CustomerSearchResult[];
+  recordSummaries: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  evidence: CompanyBrainEvidence[];
+  crossChecks: CompanyBrainCrossCheck[];
+  automationRuns: CompanyBrainAutomationRun[];
+  integrationReadiness: CompanyBrainIntegrationReadiness[];
+  assets: CompanyBrainAsset[];
+}): CompanyBrainWatcher[] {
+  const watchers: CompanyBrainWatcher[] = [];
+  const latestRecord = input.recordSummaries[0] || null;
+  const latestOffer = input.offers[0] || null;
+  const latestInbound = input.evidence.find((entry) => entry.direction === "inbound") || null;
+  const openTasks = input.records.flatMap((record) => record.internalTasks || []).filter((task) => task.status === "open");
+  const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
+  const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent");
+  const colorCheck = input.crossChecks.find((check) => check.key === "color_match");
+  const liveOutlook = input.integrationReadiness.find((entry) => entry.key === "live_outlook");
+  const designAssets = input.assets.filter((asset) => asset.kind === "reference_image" || asset.kind === "mockup" || asset.kind === "offer_image");
+
+  watchers.push({
+    key: "offer_without_send_proof",
+    severity: offerSentCheck?.status === "review" ? "warning" : "info",
+    status: offerSentCheck?.status === "review" ? "open" : "ok",
+    title: "Angebot ohne eindeutigen Versandbeleg",
+    detail: offerSentCheck?.summary || "Kein Angebot für Versandprüfung geladen.",
+    actionKey: offerSentCheck?.status === "review" ? "verify_live_outlook" : null,
+  });
+
+  watchers.push({
+    key: "customer_reply_without_task",
+    severity: latestInbound && !openTasks.length ? "warning" : "info",
+    status: latestInbound && !openTasks.length ? "open" : "ok",
+    title: "Kundenantwort ohne offene Aufgabe",
+    detail: latestInbound
+      ? openTasks.length
+        ? `${openTasks.length} offene Aufgabe(n) im Fall vorhanden.`
+        : `Kundeneingang ${latestInbound.occurredAt || "ohne Zeitpunkt"} gefunden, aber keine offene interne Aufgabe im geladenen Fall.`
+      : "Kein Kundeneingang im geladenen Zeitstrahl.",
+    actionKey: latestInbound && !openTasks.length ? "create_internal_task" : null,
+  });
+
+  watchers.push({
+    key: "order_without_color_confirmation",
+    severity: latestRecord?.latestOrderNumber && colorCheck?.status !== "pass" ? "critical" : "info",
+    status: latestRecord?.latestOrderNumber && colorCheck?.status !== "pass" ? "open" : "ok",
+    title: "Bestellung ohne saubere Farbbestätigung",
+    detail: latestRecord?.latestOrderNumber
+      ? colorCheck?.status === "pass"
+        ? `Bestellung ${latestRecord.latestOrderNumber} ist verknüpft und Farbe ist belegt.`
+        : `Bestellung ${latestRecord.latestOrderNumber} ist verknüpft, aber Farbe ist nicht eindeutig bestätigt.`
+      : "Keine verknüpfte Bestellung im geladenen Fall.",
+    actionKey: latestRecord?.latestOrderNumber && colorCheck?.status !== "pass" ? "copy_reply_draft" : null,
+  });
+
+  watchers.push({
+    key: "automation_failed",
+    severity: failedAutomation ? "critical" : "info",
+    status: failedAutomation ? "open" : "ok",
+    title: "n8n-/Automation-Fehler",
+    detail: failedAutomation
+      ? `${failedAutomation.workflowName || "Workflow"} · ${failedAutomation.action || "Aktion"} · ${failedAutomation.error || failedAutomation.status || "Fehlerstatus"}`
+      : "Keine fehlgeschlagenen Automation-Runs im geladenen Audit gefunden.",
+    actionKey: failedAutomation ? "inspect_n8n_run" : null,
+  });
+
+  watchers.push({
+    key: "missing_live_outlook",
+    severity: liveOutlook?.status === "configured" ? "info" : "warning",
+    status: liveOutlook?.status === "configured" ? "ok" : "open",
+    title: "Live-Outlook nicht vollständig angebunden",
+    detail: liveOutlook?.summary || "Outlook-Readiness konnte nicht bestimmt werden.",
+    actionKey: liveOutlook?.status === "configured" ? null : "verify_live_outlook",
+  });
+
+  watchers.push({
+    key: "missing_design_assets",
+    severity: latestOffer && !designAssets.length ? "warning" : "info",
+    status: latestOffer && !designAssets.length ? "open" : "ok",
+    title: "Design-/Anhang-Assets fehlen",
+    detail: designAssets.length
+      ? `${designAssets.length} Design-/Anhang-Asset(s) im geladenen Fall gefunden.`
+      : latestOffer
+        ? "Angebot gefunden, aber kein direktes Design-/Anhang-Asset im Inventar."
+        : "Kein Angebot für Asset-Prüfung geladen.",
+    actionKey: latestOffer && !designAssets.length ? "collect_design_assets" : null,
+  });
+
+  return watchers;
+}
+
+function buildActionProposals(input: {
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  replyDraft: CompanyBrainReplyDraft;
+  watchers: CompanyBrainWatcher[];
+  automationRuns: CompanyBrainAutomationRun[];
+  integrationReadiness: CompanyBrainIntegrationReadiness[];
+  assets: CompanyBrainAsset[];
+}): CompanyBrainActionProposal[] {
+  const primaryRecord = input.records[0] || null;
+  const primaryOffer = input.offers[0] || null;
+  const liveOutlook = input.integrationReadiness.find((entry) => entry.key === "live_outlook");
+  const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
+  const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
+
+  const actions: CompanyBrainActionProposal[] = [
+    {
+      key: "copy_reply_draft",
+      label: "Antwortentwurf kopieren",
+      type: "copy",
+      riskLevel: input.replyDraft.riskLevel,
+      approvalRequired: true,
+      enabled: true,
+      summary: "Kopiert den internen Entwurf. Versand bleibt manuell und freigabepflichtig.",
+      confirmationText: "Entwurf nur nach fachlicher Freigabe an Kunden senden.",
+      href: null,
+      payloadPreview: [`Betreff: ${input.replyDraft.subject}`, ...input.replyDraft.body.split("\n").slice(0, 6)],
+    },
+    {
+      key: "create_internal_task",
+      label: "Interne Aufgabe vorbereiten",
+      type: "prepared_task",
+      riskLevel: openWatcherTitles.length ? "medium" : "low",
+      approvalRequired: true,
+      enabled: false,
+      summary: "Bereitet eine Aufgabenbeschreibung aus offenen Watchern vor. Es wird noch nichts in die DB geschrieben.",
+      confirmationText: "Vor dem Anlegen Assignee, Priorität und Fälligkeit prüfen.",
+      href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
+      payloadPreview: [
+        `Request: ${primaryRecord?.requestId || "unbekannt"}`,
+        `Titel: Company-Brain-Prüfung ${primaryOffer?.offerNumber || primaryRecord?.requestId || ""}`.trim(),
+        ...openWatcherTitles.map((title) => `Offen: ${title}`),
+      ],
+    },
+    {
+      key: "verify_live_outlook",
+      label: "Live-Outlook prüfen",
+      type: "manual_check",
+      riskLevel: "low",
+      approvalRequired: false,
+      enabled: liveOutlook?.status === "configured",
+      summary: liveOutlook?.status === "configured"
+        ? "Runtime wirkt vorbereitet; Live-Suche kann als nächster Backend-Schritt aktiviert werden."
+        : "Graph-Konfiguration fehlt oder ist unvollständig; aktuell nur Outlook-Spiegel nutzen.",
+      confirmationText: "Nur lesen, keine Mail senden.",
+      href: null,
+      payloadPreview: [
+        `Status: ${liveOutlook?.status || "unknown"}`,
+        primaryRecord?.email ? `Kunde: ${primaryRecord.email}` : "Kunde: unbekannt",
+        primaryOffer?.offerNumber ? `Angebot: ${primaryOffer.offerNumber}` : "Angebot: unbekannt",
+      ],
+    },
+    {
+      key: "open_offer_admin",
+      label: "Angebot prüfen",
+      type: "open_link",
+      riskLevel: "low",
+      approvalRequired: false,
+      enabled: Boolean(primaryOffer?.publicUrl),
+      summary: "Öffnet den vorhandenen Angebotslink zur manuellen Sichtprüfung.",
+      confirmationText: "Nur prüfen; Änderungen im Angebotsadmin separat bestätigen.",
+      href: primaryOffer?.publicUrl || null,
+      payloadPreview: [
+        `Angebot: ${primaryOffer?.offerNumber || primaryOffer?.documentReference || "unbekannt"}`,
+        `Assets: ${input.assets.length}`,
+      ],
+    },
+    {
+      key: "inspect_n8n_run",
+      label: "n8n-Run untersuchen",
+      type: "manual_check",
+      riskLevel: failedAutomation ? "medium" : "low",
+      approvalRequired: false,
+      enabled: Boolean(failedAutomation),
+      summary: failedAutomation ? "Ein fehlerhafter Audit-Run ist vorhanden." : "Kein fehlerhafter Audit-Run im Fall.",
+      confirmationText: "Keinen Workflow ohne Backup, Diff und Rollback ändern.",
+      href: null,
+      payloadPreview: failedAutomation
+        ? [
+            `Workflow: ${failedAutomation.workflowName || "unbekannt"}`,
+            `Action: ${failedAutomation.action || "unbekannt"}`,
+            `Execution: ${failedAutomation.executionId || "unbekannt"}`,
+          ]
+        : ["Kein Fehler-Run gefunden."],
+    },
+    {
+      key: "collect_design_assets",
+      label: "Design-Assets sammeln",
+      type: "manual_check",
+      riskLevel: input.assets.length ? "low" : "medium",
+      approvalRequired: false,
+      enabled: true,
+      summary: input.assets.length ? `${input.assets.length} Asset(s) im Inventar.` : "Keine Assets im Inventar; Trello/Angebot/Outlook-Anhänge prüfen.",
+      confirmationText: "Keine Kundenaussage über Designs treffen, solange relevante Anhänge fehlen.",
+      href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
+      payloadPreview: input.assets.length
+        ? input.assets.slice(0, 5).map((asset) => `${asset.kind}: ${asset.label}`)
+        : ["Trello-Referenzbild, Mockups, Angebotsbilder und Outlook-Anhänge prüfen."],
+    },
+  ];
+
+  return actions;
+}
+
 function questionMentions(question: string | null, ...needles: string[]) {
   const normalized = (question || "").toLowerCase();
   return needles.some((needle) => normalized.includes(needle));
@@ -1452,6 +1875,15 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   ]
     .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
     .slice(0, 30);
+  const assets = buildAssetInventory(records, offerSummaries, evidence);
+  const integrationReadiness = buildIntegrationReadiness();
+  diagnostics.push({
+    source: "integration_readiness",
+    ok: true,
+    label: "Integrations-Readiness",
+    detail: integrationReadiness.map((entry) => `${entry.label}: ${entry.status}`).join(" · "),
+    count: integrationReadiness.filter((entry) => entry.status === "configured").length,
+  });
   const crossChecks = buildCompanyBrainCrossChecks({ records: recordSummaries, offers: offerSummaries, evidence, question });
   const conflicts = buildConflicts(crossChecks);
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
@@ -1471,13 +1903,36 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     gaps,
     evidence,
   });
+  const watchers = buildWatchers({
+    records,
+    recordSummaries,
+    offers: offerSummaries,
+    evidence,
+    crossChecks,
+    automationRuns: automation.runs,
+    integrationReadiness,
+    assets,
+  });
+  const actionProposals = buildActionProposals({
+    records: recordSummaries,
+    offers: offerSummaries,
+    replyDraft,
+    watchers,
+    automationRuns: automation.runs,
+    integrationReadiness,
+    assets,
+  });
   const dossier = buildDossier({
     generatedAt,
     answer,
     records: recordSummaries,
     offers: offerSummaries,
     caseEvents,
+    assets,
     crossChecks,
+    integrationReadiness,
+    watchers,
+    actionProposals,
     checks,
     sourceHealth,
     automationRuns: automation.runs,
@@ -1497,7 +1952,11 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     records: recordSummaries,
     offers: offerSummaries,
     caseEvents,
+    assets,
     crossChecks,
+    integrationReadiness,
+    watchers,
+    actionProposals,
     checks,
     sourceHealth,
     automationRuns: automation.runs,
