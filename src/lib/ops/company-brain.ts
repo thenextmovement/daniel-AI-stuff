@@ -3,6 +3,7 @@ import {
   listCustomerRecordsByOfferBridge,
   searchCustomerRecords,
   type CustomerSearchResult,
+  type CustomerSpecialCaseKind,
   type CustomerTimelineEntry,
 } from "@/lib/ops/customer-records";
 import {
@@ -174,10 +175,47 @@ export type CompanyBrainWatcher = {
   actionKey: string | null;
 };
 
+export type CompanyBrainProblemType =
+  | "color_dispute"
+  | "damaged_sign"
+  | "offer_not_sent"
+  | "customer_waiting"
+  | "design_unclear"
+  | "delivery_problem"
+  | "payment_order_unclear"
+  | "automation_failed"
+  | "other";
+
+export type CompanyBrainEvidenceScore = {
+  status: "strong" | "medium" | "weak" | "conflicting";
+  score: number;
+  summary: string;
+  safeToAnswerCustomer: boolean;
+  reasons: string[];
+};
+
+export type CompanyBrainProblemResolution = {
+  problemType: CompanyBrainProblemType;
+  label: string;
+  severity: "info" | "warning" | "critical";
+  confidence: "high" | "medium" | "low";
+  specialCaseKind: CustomerSpecialCaseKind;
+  rootCause: string;
+  recommendedResolution: string;
+  internalTaskTitle: string;
+  internalTaskDescription: string;
+  customerReplyPolicy: string[];
+  escalationPath: string[];
+  requiredEvidence: string[];
+  missingEvidence: string[];
+};
+
 export type CompanyBrainActionProposal = {
   key:
     | "copy_reply_draft"
+    | "open_problem_case"
     | "create_internal_task"
+    | "save_case_note"
     | "verify_live_outlook"
     | "open_offer_admin"
     | "inspect_n8n_run"
@@ -260,12 +298,14 @@ export type CompanyBrainReplyDraft = {
 export type CompanyBrainResolveInput = {
   query: string;
   question?: string | null;
+  problemType?: CompanyBrainProblemType | null;
   limit?: number | null;
 };
 
 export type CompanyBrainResolveResult = {
   query: string;
   question: string | null;
+  problemType: CompanyBrainProblemType | null;
   generatedAt: string;
   mode: "deterministic_read_only";
   identifiers: CompanyBrainIdentifier[];
@@ -283,6 +323,8 @@ export type CompanyBrainResolveResult = {
   integrationReadiness: CompanyBrainIntegrationReadiness[];
   watchers: CompanyBrainWatcher[];
   actionProposals: CompanyBrainActionProposal[];
+  evidenceScore: CompanyBrainEvidenceScore;
+  problemResolution: CompanyBrainProblemResolution;
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
@@ -1045,6 +1087,8 @@ function buildDossier(input: {
   integrationReadiness: CompanyBrainIntegrationReadiness[];
   watchers: CompanyBrainWatcher[];
   actionProposals: CompanyBrainActionProposal[];
+  evidenceScore: CompanyBrainEvidenceScore;
+  problemResolution: CompanyBrainProblemResolution;
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
@@ -1092,6 +1136,18 @@ function buildDossier(input: {
     {
       title: "Konfliktmatrix",
       lines: input.crossChecks.map((check) => `${check.label}: ${check.status} - Erwartet: ${check.expected || "unbekannt"} / Tatsächlich: ${check.actual || "unbekannt"} - ${check.summary}`),
+    },
+    {
+      title: "Problemfall-Lösung",
+      lines: [
+        `Typ: ${input.problemResolution.label}`,
+        `Schweregrad: ${input.problemResolution.severity}`,
+        `Beweis-Score: ${input.evidenceScore.score}/100 (${input.evidenceScore.status})`,
+        `Ursache: ${input.problemResolution.rootCause}`,
+        `Empfehlung: ${input.problemResolution.recommendedResolution}`,
+        `Sicher an Kunden antworten: ${input.evidenceScore.safeToAnswerCustomer ? "ja" : "nein"}`,
+        ...input.problemResolution.escalationPath.map((entry) => `Eskalation: ${entry}`),
+      ],
     },
     {
       title: "Fallakte",
@@ -1506,9 +1562,280 @@ function buildWatchers(input: {
   return watchers;
 }
 
+export function normalizeCompanyBrainProblemType(value: string | null | undefined): CompanyBrainProblemType | null {
+  switch (value) {
+    case "color_dispute":
+    case "damaged_sign":
+    case "offer_not_sent":
+    case "customer_waiting":
+    case "design_unclear":
+    case "delivery_problem":
+    case "payment_order_unclear":
+    case "automation_failed":
+    case "other":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function inferProblemType(input: {
+  requested: CompanyBrainProblemType | null;
+  question: string | null;
+  crossChecks: CompanyBrainCrossCheck[];
+  watchers: CompanyBrainWatcher[];
+}): CompanyBrainProblemType {
+  if (input.requested) return input.requested;
+  const text = cleanText(input.question).toLowerCase();
+  if (/farbe|blau|rot|gruen|grün|weiss|weiß|falsch.*farbe|andere.*farbe/.test(text)) return "color_dispute";
+  if (/kaputt|beschädigt|beschaedigt|defekt|gebrochen|schaden/.test(text)) return "damaged_sign";
+  if (/angebot.*(nicht|kein).*raus|nicht.*gesendet|mail.*nicht/.test(text)) return "offer_not_sent";
+  if (/wartet|lange|antwort|rückmeldung|rueckmeldung/.test(text)) return "customer_waiting";
+  if (/design|mockup|entwurf|motiv|layout/.test(text)) return "design_unclear";
+  if (/liefer|tracking|paket|sendung|zugestellt|versand/.test(text)) return "delivery_problem";
+  if (/zahlung|bezahlt|bestellung|shopify|auftrag/.test(text)) return "payment_order_unclear";
+  if (input.watchers.some((watcher) => watcher.key === "automation_failed" && watcher.status === "open")) return "automation_failed";
+  if (input.crossChecks.some((check) => check.key === "color_match" && check.status === "fail")) return "color_dispute";
+  return "other";
+}
+
+function problemTypeLabel(problemType: CompanyBrainProblemType) {
+  switch (problemType) {
+    case "color_dispute":
+      return "Farbkonflikt";
+    case "damaged_sign":
+      return "Schild beschädigt/defekt";
+    case "offer_not_sent":
+      return "Angebot nicht raus";
+    case "customer_waiting":
+      return "Kunde wartet";
+    case "design_unclear":
+      return "Design unklar";
+    case "delivery_problem":
+      return "Lieferproblem";
+    case "payment_order_unclear":
+      return "Zahlung/Bestellung unklar";
+    case "automation_failed":
+      return "Automation fehlgeschlagen";
+    default:
+      return "Sonstiger Problemfall";
+  }
+}
+
+function specialCaseKindFor(problemType: CompanyBrainProblemType): CustomerSpecialCaseKind {
+  switch (problemType) {
+    case "damaged_sign":
+    case "delivery_problem":
+      return "replacement";
+    case "customer_waiting":
+    case "design_unclear":
+    case "offer_not_sent":
+    case "payment_order_unclear":
+    case "automation_failed":
+    case "color_dispute":
+      return "open_question";
+    default:
+      return "other";
+  }
+}
+
+function buildEvidenceScore(input: {
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  evidence: CompanyBrainEvidence[];
+  assets: CompanyBrainAsset[];
+  crossChecks: CompanyBrainCrossCheck[];
+  sourceHealth: CompanyBrainSourceHealth[];
+}): CompanyBrainEvidenceScore {
+  const reasons: string[] = [];
+  let score = 0;
+  if (input.records.length) {
+    score += 20;
+    reasons.push("Kundenakte gefunden.");
+  }
+  if (input.offers.length) {
+    score += 20;
+    reasons.push("Angebotssnapshot geladen.");
+  }
+  if (input.evidence.some((entry) => entry.direction === "inbound")) {
+    score += 12;
+    reasons.push("Kundeneingang vorhanden.");
+  }
+  if (input.evidence.some((entry) => entry.direction === "outbound")) {
+    score += 12;
+    reasons.push("Ausgehender Kommunikationsbeleg vorhanden.");
+  }
+  if (input.assets.length) {
+    score += 12;
+    reasons.push("Design-/Anhang-Assets vorhanden.");
+  }
+  if (input.sourceHealth.filter((source) => source.status === "ok").length >= 4) {
+    score += 12;
+    reasons.push("Mehrere Quellen sind verfügbar.");
+  }
+  if (input.crossChecks.some((check) => check.status === "pass")) {
+    score += 12;
+    reasons.push("Mindestens ein Kerncheck ist belegt.");
+  }
+  const failedChecks = input.crossChecks.filter((check) => check.status === "fail");
+  const reviewChecks = input.crossChecks.filter((check) => check.status === "review");
+  if (failedChecks.length) {
+    score = Math.max(0, score - 35);
+    reasons.push(`${failedChecks.length} Konflikt(e) in der Matrix.`);
+  } else if (reviewChecks.length) {
+    score = Math.max(0, score - 12);
+    reasons.push(`${reviewChecks.length} Punkt(e) müssen geprüft werden.`);
+  }
+
+  const bounded = Math.max(0, Math.min(100, score));
+  const status: CompanyBrainEvidenceScore["status"] = failedChecks.length
+    ? "conflicting"
+    : bounded >= 75
+      ? "strong"
+      : bounded >= 45
+        ? "medium"
+        : "weak";
+  return {
+    status,
+    score: bounded,
+    summary:
+      status === "strong"
+        ? "Beweislage stark genug für eine vorsichtige, belegbasierte Antwort."
+        : status === "medium"
+          ? "Beweislage brauchbar, aber vor verbindlicher Aussage prüfen."
+          : status === "conflicting"
+            ? "Beweislage widersprüchlich; keine verbindliche Kundenaussage ohne Klärung."
+            : "Beweislage schwach; erst fehlende Quellen prüfen.",
+    safeToAnswerCustomer: status === "strong" && !failedChecks.length,
+    reasons,
+  };
+}
+
+function buildProblemResolution(input: {
+  problemType: CompanyBrainProblemType;
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  crossChecks: CompanyBrainCrossCheck[];
+  watchers: CompanyBrainWatcher[];
+  evidenceScore: CompanyBrainEvidenceScore;
+  assets: CompanyBrainAsset[];
+}): CompanyBrainProblemResolution {
+  const primaryRecord = input.records[0] || null;
+  const primaryOffer = input.offers[0] || null;
+  const openWatchers = input.watchers.filter((watcher) => watcher.status === "open");
+  const failedChecks = input.crossChecks.filter((check) => check.status === "fail");
+  const reviewChecks = input.crossChecks.filter((check) => check.status === "review");
+  const missingEvidence = [
+    input.assets.length ? null : "Design-/Anhang-Assets prüfen",
+    input.evidenceScore.status === "weak" ? "Weitere Belege aus Kundenakte/Outlook/Angebot laden" : null,
+    ...reviewChecks.map((check) => `${check.label} klären`),
+  ].filter(Boolean) as string[];
+  const severity: CompanyBrainProblemResolution["severity"] =
+    failedChecks.length || openWatchers.some((watcher) => watcher.severity === "critical")
+      ? "critical"
+      : openWatchers.length || input.evidenceScore.status !== "strong"
+        ? "warning"
+        : "info";
+  const baseRef = primaryOffer?.offerNumber || primaryOffer?.documentReference || primaryRecord?.requestId || "Fall";
+  const label = problemTypeLabel(input.problemType);
+  const policy = [
+    "Keine Preise, Rabatte, Liefertermine oder Schuldzusagen erfinden.",
+    "Nur belegte Fakten nennen und Unsicherheiten offen als Prüfung formulieren.",
+    "Bei Konflikten zuerst intern klären, dann Kundenantwort finalisieren.",
+  ];
+
+  const playbooks: Record<CompanyBrainProblemType, { rootCause: string; resolution: string; required: string[]; escalation: string[] }> = {
+    color_dispute: {
+      rootCause: failedChecks.some((check) => check.key === "color_match") ? "Farbhinweise widersprechen sich." : "Farbe ist nicht ausreichend belegt.",
+      resolution: "Anfragefarbe, Kundenmails, Mockups und Angebotspositionen vergleichen; erst danach entscheiden, ob Korrektur, Rückfrage oder Kulanzfall nötig ist.",
+      required: ["Kundenmail mit Farbangabe", "Angebotsposition/Farbhint", "Mockup/Designbeleg"],
+      escalation: ["Design/Sales prüft Belege", "Bei Bestellung/Produktion: Daniel oder Produktion freigeben lassen"],
+    },
+    damaged_sign: {
+      rootCause: "Kunde meldet Schaden oder Defekt; Ursache muss mit Foto/Video und Lieferstatus geprüft werden.",
+      resolution: "Fotos/Video anfordern oder prüfen, Bestell-/Lieferbezug sichern und dann Ersatz/Kulanz/Technikprüfung entscheiden.",
+      required: ["Kundenfoto/Video", "Bestellnummer", "Lieferstatus", "Produkt-/Komponentendaten"],
+      escalation: ["Produktion/Qualität prüfen", "Bei Ersatz: Freigabe vor Kundenzusage"],
+    },
+    offer_not_sent: {
+      rootCause: "Angebot existiert oder wird erwartet, aber Versandbeleg ist unklar.",
+      resolution: "Outlook-Spiegel/Live-Outlook, Offer-Status und Automation-Audit prüfen; Angebot erst nach eindeutigem Stand erneut senden.",
+      required: ["Angebotssnapshot", "Versandbeleg", "n8n/Workflow-Audit"],
+      escalation: ["Sales prüft Angebot", "Automation prüfen, wenn Versandworkflow fehlte"],
+    },
+    customer_waiting: {
+      rootCause: "Kunde wartet auf Antwort oder nächsten Schritt.",
+      resolution: "Offene Aufgabe anlegen, letzten Kundeneingang beantworten und fehlende interne Klärung mit Owner versehen.",
+      required: ["Letzter Kundeneingang", "offene interne Aufgabe", "Owner/Fälligkeit"],
+      escalation: ["Owner setzen", "Heute beantworten, wenn Kundeneingang offen ist"],
+    },
+    design_unclear: {
+      rootCause: "Designanzahl, Mockup oder bestätigte Variante ist unklar.",
+      resolution: "Design-Assets sammeln, bestätigte Variante markieren und Kundenantwort nur mit belegtem Designstand erstellen.",
+      required: ["Mockups/Referenzbilder", "Kundenbestätigung", "Angebotsbilder"],
+      escalation: ["Design-Team prüfen", "Sales bestätigt Kundenversion"],
+    },
+    delivery_problem: {
+      rootCause: "Lieferstatus oder Zustellung widerspricht Kundenaussage.",
+      resolution: "Tracking, Shopify-Bestellung und Kundenaussage vergleichen; bei offenem Problem interne Versandaufgabe anlegen.",
+      required: ["Trackingnummer", "Carrier-Status", "Shopify-Bestellung", "Kundenmeldung"],
+      escalation: ["Versand prüfen", "Bei Verlust/Beschädigung Ersatzprozess freigeben"],
+    },
+    payment_order_unclear: {
+      rootCause: "Zahlungs-/Bestellstatus ist nicht eindeutig verknüpft.",
+      resolution: "Shopify, Angebot und Customer Records abgleichen; keine Produktions- oder Zahlungszusage ohne Beleg.",
+      required: ["Shopify-Bestellung", "Angebotsannahme", "Zahlungsstatus"],
+      escalation: ["Sales/Vergabe prüfen", "Produktion erst mit sauberem Status"],
+    },
+    automation_failed: {
+      rootCause: "Ein Automation-Run ist fehlgeschlagen oder nicht nachvollziehbar.",
+      resolution: "Workflow-Audit mit Correlation/Execution-ID prüfen; Retry nur ausführen, wenn idempotent und Fehlerursache geklärt ist.",
+      required: ["Workflow-Name", "Execution-ID", "Correlation-ID", "Fehlertext"],
+      escalation: ["n8n prüfen", "Kein Workflow-Change ohne Backup, Diff und Rollback"],
+    },
+    other: {
+      rootCause: "Problemtyp ist nicht eindeutig klassifiziert.",
+      resolution: "Fall als offene Rückfrage sichern, Belege sammeln und Owner setzen.",
+      required: ["Kundenmeldung", "betroffene Anfrage/Bestellung", "nächster Owner"],
+      escalation: ["Ops Owner setzt konkreten Problemtyp"],
+    },
+  };
+  const playbook = playbooks[input.problemType];
+  const taskTitle = `${label}: ${baseRef}`;
+  const taskDescription = [
+    `Problemfall: ${label}`,
+    `Beweis-Score: ${input.evidenceScore.score}/100 (${input.evidenceScore.status})`,
+    `Empfohlene Lösung: ${playbook.resolution}`,
+    "",
+    "Offene Wächter:",
+    ...(openWatchers.length ? openWatchers.map((watcher) => `- ${watcher.title}: ${watcher.detail}`) : ["- Keine offenen Wächter"]),
+    "",
+    "Fehlende Belege:",
+    ...(missingEvidence.length ? missingEvidence.map((entry) => `- ${entry}`) : ["- Keine kritischen Lücken aus der Matrix"]),
+  ].join("\n");
+
+  return {
+    problemType: input.problemType,
+    label,
+    severity,
+    confidence: input.evidenceScore.status === "strong" ? "high" : input.evidenceScore.status === "weak" ? "low" : "medium",
+    specialCaseKind: specialCaseKindFor(input.problemType),
+    rootCause: playbook.rootCause,
+    recommendedResolution: playbook.resolution,
+    internalTaskTitle: taskTitle,
+    internalTaskDescription: taskDescription,
+    customerReplyPolicy: policy,
+    escalationPath: playbook.escalation,
+    requiredEvidence: playbook.required,
+    missingEvidence,
+  };
+}
+
 function buildActionProposals(input: {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
+  evidenceScore: CompanyBrainEvidenceScore;
+  problemResolution: CompanyBrainProblemResolution;
   replyDraft: CompanyBrainReplyDraft;
   watchers: CompanyBrainWatcher[];
   automationRuns: CompanyBrainAutomationRun[];
@@ -1522,6 +1849,39 @@ function buildActionProposals(input: {
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
 
   const actions: CompanyBrainActionProposal[] = [
+    {
+      key: "open_problem_case",
+      label: "Problemfall anlegen",
+      type: "prepared_task",
+      riskLevel: input.problemResolution.severity === "critical" ? "high" : input.problemResolution.severity === "warning" ? "medium" : "low",
+      approvalRequired: true,
+      enabled: Boolean(primaryRecord),
+      summary: "Legt nach Bestätigung einen Problemfall-Audit und eine interne Aufgabe an. Kein Kundenkontakt.",
+      confirmationText: "Problemfall nur anlegen, wenn die Fallprüfung fachlich plausibel ist.",
+      href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
+      payloadPreview: [
+        `Typ: ${input.problemResolution.label}`,
+        `Request: ${primaryRecord?.requestId || "unbekannt"}`,
+        `Aufgabe: ${input.problemResolution.internalTaskTitle}`,
+        `Beweis-Score: ${input.evidenceScore.score}/100`,
+      ],
+    },
+    {
+      key: "save_case_note",
+      label: "Fallnotiz speichern",
+      type: "prepared_task",
+      riskLevel: "low",
+      approvalRequired: true,
+      enabled: Boolean(primaryRecord),
+      summary: "Speichert die Fallanalyse als interne Notiz in der Kundenakte. Kein Kundenkontakt.",
+      confirmationText: "Nur interne, belegbasierte Analyse speichern.",
+      href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
+      payloadPreview: [
+        `Problemfall: ${input.problemResolution.label}`,
+        `Empfehlung: ${input.problemResolution.recommendedResolution}`,
+        ...input.problemResolution.missingEvidence.slice(0, 3).map((entry) => `Fehlt: ${entry}`),
+      ],
+    },
     {
       key: "copy_reply_draft",
       label: "Antwortentwurf kopieren",
@@ -1791,6 +2151,7 @@ function nextActionsFor(gaps: CompanyBrainFinding[], conflicts: CompanyBrainFind
 export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Promise<CompanyBrainResolveResult> {
   const query = normalizeCompanyBrainQuery(input.query);
   const question = cleanText(input.question) || null;
+  const requestedProblemType = normalizeCompanyBrainProblemType(input.problemType);
   const limit = clampLimit(input.limit);
   if (query.length < 2) throw new QuoteValidationError("Bitte mindestens 2 Zeichen suchen.");
 
@@ -1913,9 +2274,34 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     integrationReadiness,
     assets,
   });
+  const inferredProblemType = inferProblemType({
+    requested: requestedProblemType,
+    question,
+    crossChecks,
+    watchers,
+  });
+  const evidenceScore = buildEvidenceScore({
+    records: recordSummaries,
+    offers: offerSummaries,
+    evidence,
+    assets,
+    crossChecks,
+    sourceHealth,
+  });
+  const problemResolution = buildProblemResolution({
+    problemType: inferredProblemType,
+    records: recordSummaries,
+    offers: offerSummaries,
+    crossChecks,
+    watchers,
+    evidenceScore,
+    assets,
+  });
   const actionProposals = buildActionProposals({
     records: recordSummaries,
     offers: offerSummaries,
+    evidenceScore,
+    problemResolution,
     replyDraft,
     watchers,
     automationRuns: automation.runs,
@@ -1933,6 +2319,8 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     integrationReadiness,
     watchers,
     actionProposals,
+    evidenceScore,
+    problemResolution,
     checks,
     sourceHealth,
     automationRuns: automation.runs,
@@ -1945,6 +2333,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   return {
     query,
     question,
+    problemType: inferredProblemType,
     generatedAt,
     mode: "deterministic_read_only",
     identifiers,
@@ -1957,6 +2346,8 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     integrationReadiness,
     watchers,
     actionProposals,
+    evidenceScore,
+    problemResolution,
     checks,
     sourceHealth,
     automationRuns: automation.runs,

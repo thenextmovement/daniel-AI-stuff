@@ -23,7 +23,7 @@ import {
   ShieldCheck,
   Workflow,
 } from "lucide-react";
-import type { CompanyBrainResolveResult } from "@/lib/ops/company-brain";
+import type { CompanyBrainProblemType, CompanyBrainResolveResult } from "@/lib/ops/company-brain";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -135,6 +135,13 @@ function riskClass(riskLevel: string) {
   return "border-emerald-200 bg-emerald-50 text-emerald-900";
 }
 
+function evidenceScoreClass(status: string) {
+  if (status === "strong") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "conflicting") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (status === "medium") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
 function readinessClass(status: string) {
   if (status === "configured") return "border-emerald-200 bg-emerald-50 text-emerald-900";
   if (status === "partial") return "border-amber-200 bg-amber-50 text-amber-900";
@@ -162,12 +169,15 @@ export function OpsCompanyBrainClient({
   const [operatorName, setOperatorName] = useState("");
   const [query, setQuery] = useState("");
   const [question, setQuestion] = useState("");
+  const [problemType, setProblemType] = useState<CompanyBrainProblemType | "">("");
   const [result, setResult] = useState<CompanyBrainResolveResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [draftCopyMessage, setDraftCopyMessage] = useState<string | null>(null);
   const [actionCopyMessage, setActionCopyMessage] = useState<string | null>(null);
+  const [actionResultMessage, setActionResultMessage] = useState<string | null>(null);
   const sharedOperatorNameKey = "neontrip-ops-operator";
 
   useEffect(() => {
@@ -200,6 +210,18 @@ export function OpsCompanyBrainClient({
     "Ist es ein 3D-Schild mit zwei Designs?",
     "Gab es eine Kundenbestätigung?",
   ];
+  const problemTypeOptions: Array<{ value: CompanyBrainProblemType | ""; label: string }> = [
+    { value: "", label: "Automatisch erkennen" },
+    { value: "color_dispute", label: "Farbe falsch" },
+    { value: "damaged_sign", label: "Schild beschädigt" },
+    { value: "offer_not_sent", label: "Angebot nicht raus" },
+    { value: "customer_waiting", label: "Kunde wartet" },
+    { value: "design_unclear", label: "Design unklar" },
+    { value: "delivery_problem", label: "Lieferproblem" },
+    { value: "payment_order_unclear", label: "Zahlung/Bestellung" },
+    { value: "automation_failed", label: "Automation Fehler" },
+    { value: "other", label: "Sonstiges" },
+  ];
 
   async function login() {
     setError(null);
@@ -225,7 +247,7 @@ export function OpsCompanyBrainClient({
       const response = await fetch("/api/ops/company-brain/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, question, limit: 5 }),
+        body: JSON.stringify({ query, question, problemType: problemType || null, limit: 5 }),
       });
       const payload = (await response.json().catch(() => null)) as ResolveApiResponse | null;
       if (response.status === 401) {
@@ -240,6 +262,7 @@ export function OpsCompanyBrainClient({
       setCopyMessage(null);
       setDraftCopyMessage(null);
       setActionCopyMessage(null);
+      setActionResultMessage(null);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Fallprüfung konnte nicht geladen werden.");
     } finally {
@@ -282,6 +305,59 @@ export function OpsCompanyBrainClient({
       setActionCopyMessage(`${action.label} kopiert.`);
     } catch {
       setActionCopyMessage("Kopieren nicht möglich.");
+    }
+  }
+
+  function executableAction(actionKey: string) {
+    return actionKey === "open_problem_case" || actionKey === "create_internal_task" || actionKey === "save_case_note";
+  }
+
+  async function executeActionProposal(actionKey: string) {
+    const action = result?.actionProposals.find((entry) => entry.key === actionKey);
+    const primaryRecord = result?.records[0] || null;
+    if (!action || !result?.problemResolution || !primaryRecord) return;
+    const confirmation = window.prompt(`"${action.label}" wirklich intern ausführen? Bitte Freigabe eingeben.`);
+    if (confirmation !== "Freigabe") {
+      setActionResultMessage("Aktion abgebrochen: Bestätigungstext fehlt.");
+      return;
+    }
+
+    setActionLoadingKey(actionKey);
+    setActionResultMessage(null);
+    try {
+      const response = await fetch("/api/ops/company-brain/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionKey,
+          requestId: primaryRecord.requestId,
+          problemType: result.problemResolution.problemType,
+          specialCaseKind: result.problemResolution.specialCaseKind,
+          title: result.problemResolution.internalTaskTitle,
+          description: result.problemResolution.internalTaskDescription,
+          note: result.dossier.copyText,
+          operatorName,
+          assigneeLabel: operatorName || null,
+          urgent: result.problemResolution.severity === "critical",
+          confirmed: true,
+          confirmationText: confirmation,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; issues?: string[]; task?: { id?: string }; note?: { id?: string }; specialCase?: unknown } | null;
+      if (!response.ok || !payload?.ok) {
+        setActionResultMessage(formatApiError(payload));
+        return;
+      }
+      const created = [
+        payload.task?.id ? `Aufgabe ${payload.task.id}` : null,
+        payload.note?.id ? `Notiz ${payload.note.id}` : null,
+        payload.specialCase ? "Problemfall-Audit" : null,
+      ].filter(Boolean).join(", ");
+      setActionResultMessage(created ? `Ausgeführt: ${created}.` : "Aktion ausgeführt.");
+    } catch (executeError) {
+      setActionResultMessage(executeError instanceof Error ? executeError.message : "Aktion konnte nicht ausgeführt werden.");
+    } finally {
+      setActionLoadingKey(null);
     }
   }
 
@@ -333,7 +409,7 @@ export function OpsCompanyBrainClient({
         {error ? <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700">{error}</div> : null}
 
         <form onSubmit={resolve} className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_auto] lg:items-end">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(220px,0.55fr)_auto] lg:items-end">
             <label className="grid gap-2">
               <span className="text-sm font-medium text-stone-800">Fall, E-Mail, Angebotsnummer, Trello-ID</span>
               <input
@@ -351,6 +427,18 @@ export function OpsCompanyBrainClient({
                 className="h-12 rounded-2xl border border-stone-300 px-4 text-sm outline-none focus:border-stone-950"
                 placeholder="Ist das Angebot raus? Welche Farbe war bestätigt?"
               />
+            </label>
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-stone-800">Problemfall</span>
+              <select
+                value={problemType}
+                onChange={(event) => setProblemType(event.target.value as CompanyBrainProblemType | "")}
+                className="h-12 rounded-2xl border border-stone-300 bg-white px-4 text-sm outline-none focus:border-stone-950"
+              >
+                {problemTypeOptions.map((option) => (
+                  <option key={option.value || "auto"} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </label>
             <button
               type="submit"
@@ -402,6 +490,59 @@ export function OpsCompanyBrainClient({
                         {bullet}
                       </p>
                     ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Problemfall-Modus</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">{result.problemResolution.label}</h2>
+                    </div>
+                    <span className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${evidenceScoreClass(result.evidenceScore.status)}`}>
+                      Beweis: {result.evidenceScore.score}/100
+                    </span>
+                  </div>
+                  <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${evidenceScoreClass(result.evidenceScore.status)}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="font-semibold">{result.evidenceScore.summary}</span>
+                      <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium">
+                        Kundenantwort: {result.evidenceScore.safeToAnswerCustomer ? "möglich" : "erst prüfen"}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-1 text-xs leading-5 opacity-80">
+                      {result.evidenceScore.reasons.slice(0, 5).map((reason) => <p key={reason}>{reason}</p>)}
+                    </div>
+                  </div>
+                  <dl className="mt-4 grid gap-3 text-sm">
+                    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                      <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Ursache</dt>
+                      <dd className="mt-2 leading-6 text-stone-700">{result.problemResolution.rootCause}</dd>
+                    </div>
+                    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                      <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Empfohlene Lösung</dt>
+                      <dd className="mt-2 leading-6 text-stone-700">{result.problemResolution.recommendedResolution}</dd>
+                    </div>
+                  </dl>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm">
+                      <p className="font-semibold text-stone-950">Fehlende Belege</p>
+                      <div className="mt-2 grid gap-1 text-xs leading-5 text-stone-600">
+                        {(result.problemResolution.missingEvidence.length ? result.problemResolution.missingEvidence : ["Keine kritischen Lücken aus dem Playbook."]).map((entry) => <p key={entry}>{entry}</p>)}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm">
+                      <p className="font-semibold text-stone-950">Eskalation</p>
+                      <div className="mt-2 grid gap-1 text-xs leading-5 text-stone-600">
+                        {result.problemResolution.escalationPath.map((entry) => <p key={entry}>{entry}</p>)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm">
+                    <p className="font-semibold text-stone-950">Kundenantwort-Guardrails</p>
+                    <div className="mt-2 grid gap-1 text-xs leading-5 text-stone-600">
+                      {result.problemResolution.customerReplyPolicy.map((entry) => <p key={entry}>{entry}</p>)}
+                    </div>
                   </div>
                 </article>
 
@@ -536,6 +677,7 @@ export function OpsCompanyBrainClient({
                     <ClipboardList className="h-6 w-6 text-stone-500" />
                   </div>
                   {actionCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{actionCopyMessage}</p> : null}
+                  {actionResultMessage ? <p className="mt-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs font-medium text-stone-700">{actionResultMessage}</p> : null}
                   <div className="mt-4 grid gap-3">
                     {result.actionProposals.map((action) => (
                       <div key={action.key} className={`rounded-2xl border px-4 py-3 text-sm ${riskClass(action.riskLevel)}`}>
@@ -567,6 +709,16 @@ export function OpsCompanyBrainClient({
                             <a href={action.href} className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 px-3 text-xs font-medium transition hover:bg-white/60">
                               Öffnen <ExternalLink className="h-3.5 w-3.5" />
                             </a>
+                          ) : null}
+                          {executableAction(action.key) ? (
+                            <button
+                              type="button"
+                              onClick={() => void executeActionProposal(action.key)}
+                              disabled={!action.enabled || actionLoadingKey === action.key}
+                              className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 bg-white/50 px-3 text-xs font-semibold transition hover:bg-white disabled:opacity-50"
+                            >
+                              {actionLoadingKey === action.key ? "Führt aus..." : "Mit Freigabe ausführen"}
+                            </button>
                           ) : null}
                         </div>
                       </div>
