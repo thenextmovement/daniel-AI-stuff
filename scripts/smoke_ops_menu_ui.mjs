@@ -15,11 +15,12 @@ const appLabels = [
   "Schildgrößen & Preise",
   "Anrufe",
   "Aufgaben",
+  "Company Brain",
   "Angebote",
-  "Produktion",
+  "Sales-Vergabe",
   "Versand",
   "Wareneingang",
-  "Kennzahlen",
+  "Management",
 ];
 
 const localPages = [
@@ -27,6 +28,7 @@ const localPages = [
   "/ops/customer-records/price-review",
   "/ops/customer-records/calls",
   "/ops/tasks",
+  "/ops/company-brain",
   "/ops/sales-vergabe",
   "/ops/customer-records/shipping",
   "/ops/customer-records/inbound-shipping",
@@ -200,6 +202,30 @@ function managementPayload() {
 async function setupRoutes(page) {
   await page.route("**/api/ops/tasks**", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyTaskPayload) });
+  });
+  await page.route("**/api/ops/company-brain/resolve**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        result: {
+          query: "QA",
+          question: null,
+          generatedAt: "2026-06-17T12:00:00.000Z",
+          mode: "deterministic_read_only",
+          identifiers: [],
+          answer: { verdict: "not_found", confidence: "low", headline: "Kein belastbarer Falltreffer.", bullets: [] },
+          records: [],
+          offers: [],
+          evidence: [],
+          conflicts: [],
+          gaps: [],
+          diagnostics: [],
+          nextActions: [],
+        },
+      }),
+    });
   });
   await page.route("**/api/ops/customer-records/views", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });

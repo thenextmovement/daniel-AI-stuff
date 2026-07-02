@@ -1,13 +1,14 @@
 "use client";
 
 import { useId, useState } from "react";
-import { BarChart3, Calculator, ClipboardList, Factory, FileText, Menu, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
+import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Menu, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
   | "priceReview"
   | "calls"
   | "tasks"
+  | "companyBrain"
   | "offers"
   | "supplierSales"
   | "shipping"
@@ -53,6 +54,13 @@ const OPS_APPS: Array<{
     helper: "To-dos & Übergaben",
     href: "/ops/tasks",
     Icon: ClipboardList,
+  },
+  {
+    key: "companyBrain",
+    label: "Company Brain",
+    helper: "Fälle & Belege",
+    href: "/ops/company-brain",
+    Icon: BrainCircuit,
   },
   {
     key: "offers",
