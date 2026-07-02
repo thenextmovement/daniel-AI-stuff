@@ -140,6 +140,7 @@ const board = {
   items: [paidSale, unpaidSale, specialSale, rushSale, syncFailedSale],
   counts: {
     total: 5,
+    paidUnassigned: 3,
     readyToAssign: 3,
     paymentOpen: 1,
     assigned: 1,
@@ -359,6 +360,8 @@ async function main() {
 
   await page.goto(`${target}/ops/sales-vergabe`, { waitUntil: "networkidle" });
   await page.getByText("#QA-sale-unpaid").waitFor({ timeout: 10_000 });
+  await page.getByText("Bezahlt offen").waitFor({ timeout: 10_000 });
+  await page.getByText("Bezahlt - sofort vergeben").first().waitFor({ timeout: 10_000 });
 
   await Promise.all([
     supplierSalesScopeResponse(page, "ready"),

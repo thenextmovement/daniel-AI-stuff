@@ -620,7 +620,7 @@ test("shopify sale upsert prefixes all source Trello cards sharing the Nerdyform
 test("supplier sales board counts deadlines, payment, assignment and sync issues", () => {
   const board = buildSupplierSaleBoardFromRows(
     [
-      saleRow({ id: "sale-ready", assignment_status: "ready_to_assign", supplier_due_date: "2026-06-10" }),
+      saleRow({ id: "sale-ready", assignment_status: "ready_to_assign", shopify_payment_status: "paid", supplier_due_date: "2026-06-10" }),
       saleRow({ id: "sale-payment", assignment_status: "payment_open", shopify_payment_status: "pending", payment_decision_status: "wait_for_payment", supplier_due_date: "2026-06-08", product_summary: "Eilauftrag LED Neon Logo" }),
       saleRow({ id: "sale-assigned", assignment_status: "assigned", assigned_supplier: "quentin", recommended_supplier: "quentin", shopify_tag_sync_status: "failed", supplier_due_date: "2026-06-11" }),
     ],
@@ -634,6 +634,7 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   );
 
   assert.equal(board.counts.total, 3);
+  assert.equal(board.counts.paidUnassigned, 1);
   assert.equal(board.counts.readyToAssign, 1);
   assert.equal(board.counts.paymentOpen, 1);
   assert.equal(board.counts.assigned, 1);

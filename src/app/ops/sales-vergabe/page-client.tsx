@@ -208,6 +208,14 @@ function paymentTone(sale: SupplierSale) {
   return "border-stone-200 bg-stone-50 text-stone-700";
 }
 
+function paidAssignmentPriority(sale: SupplierSale) {
+  return (
+    sale.shopifyPaymentStatus === "paid" &&
+    !sale.assignedSupplier &&
+    !["assigned", "in_production", "completed", "canceled"].includes(sale.assignmentStatus)
+  );
+}
+
 function supplierTone(sale: SupplierSale) {
   if (sale.recommendedSupplier === "quentin") return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900";
   if (sale.recommendedSupplier === "said") return "border-sky-200 bg-sky-50 text-sky-900";
@@ -594,9 +602,10 @@ function SaleCard({
   const lastOrderConfirmationEmail = sale.orderConfirmationEmail;
   const reviewBlocksAssignment = postOrderReviewBlocksAssignment(sale, reviewNow);
   const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
+  const paidPriority = paidAssignmentPriority(sale);
 
   return (
-    <article className="rounded-[0.5rem] border border-stone-200 bg-white p-4 shadow-sm">
+    <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : "border-stone-200"}`}>
       <div className="grid gap-4 lg:grid-cols-[7rem_minmax(0,1fr)_minmax(20rem,0.78fr)]">
         <div className="h-28 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100">
           {sale.primaryImageUrl ? (
@@ -609,6 +618,13 @@ function SaleCard({
         </div>
 
         <div className="min-w-0">
+          {paidPriority ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950">
+              <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+              Bezahlt - sofort vergeben
+              {reviewBlocksAssignment ? <span className="text-xs font-medium text-emerald-800">nach 24h-Pruefung</span> : null}
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${paymentTone(sale)}`}>
               {paymentLabel(sale.shopifyPaymentStatus)}
@@ -1157,7 +1173,17 @@ export function SupplierSalesClient({
           {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+          <StatFilterButton
+            active={scope === "active" && payment === "paid"}
+            label="Bezahlte offene Sales"
+            onClick={() => {
+              selectScope("active");
+              selectPayment("paid");
+            }}
+          >
+            <OpsStatCard label="Bezahlt offen" value={board?.counts.paidUnassigned || 0} tone="success" icon={<CheckCircle2 className="h-5 w-5" />} detail="Sofort vergeben." />
+          </StatFilterButton>
           <StatFilterButton active={scope === "ready"} label="Bereite Sales" onClick={() => selectScope("ready")}>
             <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
           </StatFilterButton>

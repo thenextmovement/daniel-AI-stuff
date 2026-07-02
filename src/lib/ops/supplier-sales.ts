@@ -249,6 +249,7 @@ export type SupplierSaleBoard = {
   items: SupplierSale[];
   counts: {
     total: number;
+    paidUnassigned: number;
     readyToAssign: number;
     paymentOpen: number;
     assigned: number;
@@ -1599,6 +1600,12 @@ function assignmentPriority(row: SupplierSaleRow) {
   return 4;
 }
 
+function paidUnassignedPriority(row: SupplierSaleRow) {
+  if (row.shopify_payment_status !== "paid") return false;
+  if (hasExternalSupplierAssignmentSignal(row) || hasCompletedShopifyFulfillmentSignal(row)) return false;
+  return !["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status);
+}
+
 function dateTimeMs(value: unknown) {
   const text = nullableText(value, 80);
   if (!text) return null;
@@ -1635,6 +1642,7 @@ function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new 
   const activeRows = saleRows.filter((row) => !hasExternalSupplierAssignmentSignal(row) && !hasCompletedShopifyFulfillmentSignal(row));
   return {
     total: saleRows.length,
+    paidUnassigned: activeRows.filter((row) => paidUnassignedPriority(row)).length,
     readyToAssign: activeRows.filter((row) => row.assignment_status === "ready_to_assign").length,
     paymentOpen: activeRows.filter((row) => row.assignment_status === "payment_open").length,
     assigned: saleRows.filter((row) => ["assigned", "in_production"].includes(row.assignment_status)).length,
@@ -1692,6 +1700,9 @@ export function buildSupplierSaleBoardFromRows(
       const leftDue = left.supplierDueDate ? new Date(left.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
       const rightDue = right.supplierDueDate ? new Date(right.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
       if (leftDue !== rightDue) return leftDue - rightDue;
+    } else {
+      const paidRank = Number(paidUnassignedPriority(rightRow)) - Number(paidUnassignedPriority(leftRow));
+      if (paidRank !== 0) return paidRank;
     }
     const recency = saleRecencyMs(rightRow) - saleRecencyMs(leftRow);
     if (recency !== 0) return recency;
