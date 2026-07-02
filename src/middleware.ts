@@ -270,6 +270,10 @@ function isOpsApiPath(pathname: string) {
   return pathname === "/api/ops" || pathname.startsWith("/api/ops/");
 }
 
+function isSelfAuthenticatedOpsApiPath(pathname: string) {
+  return pathname === "/api/ops/supplier-sales";
+}
+
 function isOpsPagePath(pathname: string) {
   return pathname === "/ops" || pathname.startsWith("/ops/");
 }
@@ -316,6 +320,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/api/ops/session" && request.method === "POST") {
+    return NextResponse.next();
+  }
+
+  if (isSelfAuthenticatedOpsApiPath(pathname)) {
     return NextResponse.next();
   }
 

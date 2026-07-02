@@ -91,6 +91,20 @@ test("ops middleware lets session login POST reach the route handler", async () 
   });
 });
 
+test("ops middleware lets supplier sales route validate its own automation auth", async () => {
+  await withOpsMiddlewareEnv(async () => {
+    const response = await middleware(
+      buildRequest("https://ops.neontrip.de/api/ops/supplier-sales", {
+        method: "POST",
+        headers: { authorization: "Bearer internal-token" },
+      }),
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-middleware-next"), "1");
+  });
+});
+
 test("ops middleware keeps localhost routes testable", async () => {
   await withOpsMiddlewareEnv(async () => {
     const response = await middleware(
