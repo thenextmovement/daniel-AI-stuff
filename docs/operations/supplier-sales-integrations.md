@@ -39,13 +39,14 @@ Content-Type: application/json
 }
 ```
 
-Use one of these n8n environment variables for the bearer token. It must match the Ops app runtime token:
+Use one of these n8n environment variables for the bearer token. It must match the Ops app runtime token.
+Prefer the shared Offers/Ops key first so a stale supplier-specific token cannot shadow the working runtime key:
 
 ```text
-SUPPLIER_SALES_AGENT_API_TOKEN
-QUOTE_INTERNAL_API_TOKEN
-OPS_INTERNAL_API_KEY
 NEONTRIP_OFFERS_INTERNAL_API_KEY
+OPS_INTERNAL_API_KEY
+QUOTE_INTERNAL_API_TOKEN
+SUPPLIER_SALES_AGENT_API_TOKEN
 ```
 
 The Ops app keeps the batch bounded to max. 100 active rows. Replays are safe: existing Shopify tags update the Supabase row to assigned, and already assigned rows are skipped by the active-row query.

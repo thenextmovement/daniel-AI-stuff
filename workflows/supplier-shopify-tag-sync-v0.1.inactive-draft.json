@@ -57,7 +57,7 @@
             {
               "id": "agent-token",
               "name": "agentToken",
-              "value": "={{ $env.SUPPLIER_SALES_AGENT_API_TOKEN || $env.QUOTE_INTERNAL_API_TOKEN || $env.OPS_INTERNAL_API_KEY || $env.NEONTRIP_OFFERS_INTERNAL_API_KEY || '' }}",
+              "value": "={{ $env.NEONTRIP_OFFERS_INTERNAL_API_KEY || $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.SUPPLIER_SALES_AGENT_API_TOKEN || '' }}",
               "type": "string"
             },
             {
@@ -80,7 +80,7 @@
         160
       ],
       "parameters": {
-        "jsCode": "const cfg = $input.first()?.json || {};\nconst errors = [];\n\nfunction cleanUrl(value) {\n  return String(value || '').trim().replace(/\\/+$/, '');\n}\n\nconst opsApiUrl = cleanUrl(cfg.opsApiUrl);\nconst agentToken = String(cfg.agentToken || '').trim();\nconst limit = Math.min(Math.max(Number(cfg.limit || 50), 1), 100);\n\nif (!/^https:\\/\\//i.test(opsApiUrl)) errors.push('NEONTRIP_OPS_BASE_URL/opsApiUrl must resolve to an https URL');\nif (!agentToken) errors.push('SUPPLIER_SALES_AGENT_API_TOKEN/QUOTE_INTERNAL_API_TOKEN/OPS_INTERNAL_API_KEY missing');\nif (!Number.isFinite(limit) || limit < 1 || limit > 100) errors.push('limit must be 1..100');\n\nif (errors.length) {\n  throw new Error('Supplier Shopify Tag Sync config failed: ' + errors.join('; '));\n}\n\nreturn [{\n  json: {\n    opsApiUrl,\n    limit,\n    authorizationHeader: 'Bearer ' + agentToken,\n    correlationId: 'supplier-shopify-tag-sync:' + new Date().toISOString()\n  }\n}];"
+        "jsCode": "const cfg = $input.first()?.json || {};\nconst errors = [];\n\nfunction cleanUrl(value) {\n  return String(value || '').trim().replace(/\\/+$/, '');\n}\n\nconst opsApiUrl = cleanUrl(cfg.opsApiUrl);\nconst agentToken = String(cfg.agentToken || '').trim();\nconst limit = Math.min(Math.max(Number(cfg.limit || 50), 1), 100);\n\nif (!/^https:\\/\\//i.test(opsApiUrl)) errors.push('NEONTRIP_OPS_BASE_URL/opsApiUrl must resolve to an https URL');\nif (!agentToken) errors.push('NEONTRIP_OFFERS_INTERNAL_API_KEY/OPS_INTERNAL_API_KEY/QUOTE_INTERNAL_API_TOKEN/SUPPLIER_SALES_AGENT_API_TOKEN missing');\nif (!Number.isFinite(limit) || limit < 1 || limit > 100) errors.push('limit must be 1..100');\n\nif (errors.length) {\n  throw new Error('Supplier Shopify Tag Sync config failed: ' + errors.join('; '));\n}\n\nreturn [{\n  json: {\n    opsApiUrl,\n    limit,\n    authorizationHeader: 'Bearer ' + agentToken,\n    correlationId: 'supplier-shopify-tag-sync:' + new Date().toISOString()\n  }\n}];"
       }
     },
     {
