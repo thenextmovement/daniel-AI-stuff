@@ -172,7 +172,7 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
 
       <nav
         aria-label="Ops-Bereiche"
-        className={`hidden min-w-0 w-full max-w-full gap-1.5 rounded-[1rem] border p-1 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] ${
+        className={`hidden min-w-0 w-full max-w-full gap-1.5 rounded-[1rem] border p-1 sm:grid sm:grid-cols-[repeat(auto-fit,minmax(11.75rem,1fr))] ${
           dark ? "border-white/12 bg-white/[0.045]" : "border-black/10 bg-black/[0.03]"
         }`}
       >
@@ -180,8 +180,8 @@ export function OpsAppSwitcher({ active, tone = "dark" }: OpsAppSwitcherProps) {
           const isActive = key === active;
           return (
             <a key={key} href={href} aria-current={isActive ? "page" : undefined} className={appLinkClass(isActive, "desktop")}>
-              <Icon className="h-4 w-4" />
-              <span data-ops-app-label={label} className="min-w-0 whitespace-normal">{label}</span>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span data-ops-app-label={label} className="min-w-0 whitespace-normal break-words">{label}</span>
               <span className={`${helperClass(isActive)} hidden lg:block`}>{helper}</span>
             </a>
           );

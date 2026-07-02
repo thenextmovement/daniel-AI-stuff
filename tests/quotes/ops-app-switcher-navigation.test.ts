@@ -34,4 +34,7 @@ test("ops app switcher exposes the complete internal software menu", () => {
   for (const href of expectedHrefs) {
     assert.match(source, new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+
+  assert.match(source, /minmax\(11\.75rem,1fr\)/);
+  assert.match(source, /whitespace-normal break-words/);
 });
