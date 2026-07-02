@@ -105,6 +105,24 @@ export type TrelloAction = {
   date?: string;
   data?: {
     text?: string;
+    card?: {
+      id?: string;
+      name?: string;
+      idList?: string;
+    };
+    list?: {
+      id?: string;
+      name?: string;
+    };
+    listBefore?: {
+      id?: string;
+      name?: string;
+    };
+    listAfter?: {
+      id?: string;
+      name?: string;
+    };
+    old?: Record<string, unknown>;
   };
 };
 

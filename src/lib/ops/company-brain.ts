@@ -8,11 +8,17 @@ import {
 } from "@/lib/ops/customer-records";
 import {
   getOfferById,
+  getOfferByTrelloCardId,
   searchOffers,
   type OpsOfferApiError,
   type OpsOfferSearchResult,
   type OpsOfferSnapshot,
 } from "@/lib/ops/offers";
+import {
+  getTrelloFailureContext,
+  type TrelloFailureContext,
+  type TrelloFailureContextAction,
+} from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -103,7 +109,7 @@ export type CompanyBrainOfferSummary = {
 };
 
 export type CompanyBrainDiagnostic = {
-  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness";
+  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness" | "trello_live";
   ok: boolean;
   label: string;
   detail: string | null;
@@ -167,7 +173,8 @@ export type CompanyBrainWatcher = {
     | "order_without_color_confirmation"
     | "automation_failed"
     | "missing_live_outlook"
-    | "missing_design_assets";
+    | "missing_design_assets"
+    | "trello_trigger_failure";
   severity: "info" | "warning" | "critical";
   status: "open" | "ok";
   title: string;
@@ -271,6 +278,53 @@ export type CompanyBrainAutomationRun = {
   targetRecordId: string | null;
 };
 
+export type CompanyBrainTrelloFailureDiagnosis = {
+  requested: boolean;
+  status: "not_requested" | "not_configured" | "loaded" | "error";
+  severity: "info" | "warning" | "critical";
+  expectedAction: "offer_send" | "internal_followup" | "unknown";
+  card: {
+    id: string;
+    shortLink: string | null;
+    name: string | null;
+    url: string | null;
+    currentListName: string | null;
+    dateLastActivity: string | null;
+    attachmentsCount: number;
+  } | null;
+  triggerMove: {
+    id: string;
+    occurredAt: string | null;
+    fromListName: string | null;
+    toListName: string | null;
+  } | null;
+  rootCauseKey:
+    | "not_requested"
+    | "trello_not_configured"
+    | "trello_error"
+    | "no_trigger_move"
+    | "no_source_record"
+    | "offer_missing"
+    | "offer_exists_no_send_proof"
+    | "automation_failed"
+    | "automation_missing"
+    | "sent"
+    | "undetermined";
+  rootCause: string;
+  recommendedFix: string;
+  evidenceStrength: "strong" | "medium" | "weak" | "conflicting";
+  duplicateRisk: "low" | "medium" | "high";
+  safeFixes: string[];
+  blockedFixes: string[];
+  timeline: Array<{
+    id: string;
+    label: string;
+    occurredAt: string | null;
+    detail: string;
+  }>;
+  diagnostics: string[];
+};
+
 export type CompanyBrainDossierSection = {
   title: string;
   lines: string[];
@@ -328,6 +382,7 @@ export type CompanyBrainResolveResult = {
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
+  trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
   dossier: CompanyBrainDossier;
   replyDraft: CompanyBrainReplyDraft;
   evidence: CompanyBrainEvidence[];
@@ -476,6 +531,97 @@ export function extractCompanyBrainIdentifiers(query: string): CompanyBrainIdent
   }
 
   return identifiers;
+}
+
+function trelloCardLookupFromValue(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const urlMatch = text.match(/trello\.com\/c\/([A-Za-z0-9]+)/i);
+  if (urlMatch?.[1]) return urlMatch[1];
+  const explicitMatch = text.match(/\btrello:([A-Za-z0-9]{8}|[a-f0-9]{24})\b/i);
+  if (explicitMatch?.[1]) return explicitMatch[1];
+  const longId = text.match(/\b[a-f0-9]{24}\b/i);
+  if (longId?.[0]) return longId[0];
+  return null;
+}
+
+function companyBrainTrelloRequested(query: string, question: string | null, problemType: CompanyBrainProblemType | null) {
+  const text = `${query} ${question || ""}`.toLowerCase();
+  return Boolean(trelloCardLookupFromValue(query)) ||
+    text.includes("trello") ||
+    problemType === "offer_not_sent" ||
+    problemType === "automation_failed";
+}
+
+function primaryTrelloLookup(input: {
+  query: string;
+  identifiers: CompanyBrainIdentifier[];
+  records?: CompanyBrainRecordSummary[];
+}) {
+  const queryLookup = trelloCardLookupFromValue(input.query);
+  if (queryLookup) return queryLookup;
+  const identifierLookup = input.identifiers.find((entry) => entry.type === "trello_card_id")?.value;
+  if (identifierLookup) return identifierLookup;
+  for (const record of input.records || []) {
+    const lookup = trelloCardLookupFromValue(record.trelloCardId) || trelloCardLookupFromValue(record.trelloCardUrl);
+    if (lookup) return lookup;
+  }
+  return null;
+}
+
+function emptyTrelloFailureDiagnosis(requested: boolean): CompanyBrainTrelloFailureDiagnosis {
+  return {
+    requested,
+    status: requested ? "not_configured" : "not_requested",
+    severity: requested ? "warning" : "info",
+    expectedAction: "unknown",
+    card: null,
+    triggerMove: null,
+    rootCauseKey: requested ? "trello_not_configured" : "not_requested",
+    rootCause: requested
+      ? "Es wurde ein Trello-bezogener Fall erkannt, aber keine Trello-Karte konnte live geladen werden."
+      : "Keine Trello-Triggerdiagnose angefordert.",
+    recommendedFix: requested
+      ? "Trello-Karten-URL oder Card-ID eingeben und Trello API-Konfiguration prüfen."
+      : "Für Triggerdiagnose eine Trello-Karten-URL oder Card-ID suchen.",
+    evidenceStrength: "weak",
+    duplicateRisk: "medium",
+    safeFixes: [],
+    blockedFixes: requested ? ["Kein Retry ohne geladene Trello-Karte, Source-of-Truth-Abgleich und Duplicate-Mail-Check."] : [],
+    timeline: [],
+    diagnostics: requested ? ["Trello-Lookup fehlt oder ist nicht konfiguriert."] : [],
+  };
+}
+
+async function fetchTrelloFailureContextForLookup(lookup: string | null): Promise<{
+  context: TrelloFailureContext | null;
+  diagnostic: CompanyBrainDiagnostic;
+}> {
+  if (!lookup) {
+    return {
+      context: null,
+      diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: "Kein Trello-Lookup ausgeführt.", count: 0 },
+    };
+  }
+
+  try {
+    const context = await getTrelloFailureContext(lookup);
+    return {
+      context,
+      diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: null, count: 1 },
+    };
+  } catch (error) {
+    return {
+      context: null,
+      diagnostic: {
+        source: "trello_live",
+        ok: false,
+        label: "Trello Live",
+        detail: errorMessage(error),
+        count: 0,
+      },
+    };
+  }
 }
 
 function timelineTime(entry: Pick<CustomerTimelineEntry, "occurredAt">) {
@@ -709,6 +855,45 @@ function mapOfferEvidence(offer: CompanyBrainOfferSummary): CompanyBrainEvidence
   return entries;
 }
 
+function mapTrelloEvidence(context: TrelloFailureContext | null): CompanyBrainEvidence[] {
+  if (!context) return [];
+  const entries: CompanyBrainEvidence[] = [
+    {
+      id: `trello-live-${context.card.id}`,
+      source: "trello_live",
+      title: `Trello-Karte: ${context.card.name || context.card.id}`,
+      detail: [
+        context.card.currentListName ? `Aktuelle Liste: ${context.card.currentListName}` : null,
+        context.card.attachmentsCount ? `${context.card.attachmentsCount} Anhang/Anhänge` : null,
+      ].filter(Boolean).join(" · ") || null,
+      occurredAt: context.card.dateLastActivity,
+      direction: "system",
+      href: context.card.url || context.card.shortUrl,
+      confidence: "medium",
+    },
+  ];
+
+  for (const action of context.actions.slice(0, 10)) {
+    const isMove = Boolean(action.fromListName || action.toListName);
+    entries.push({
+      id: `trello-live-action-${action.id}`,
+      source: "trello_live.actions",
+      title: isMove
+        ? `Kartenbewegung: ${action.fromListName || "unbekannt"} -> ${action.toListName || "unbekannt"}`
+        : action.type === "commentCard"
+          ? "Trello-Kommentar"
+          : `Trello-Aktion: ${action.type || "unbekannt"}`,
+      detail: action.text || context.card.name || null,
+      occurredAt: action.date,
+      direction: action.type === "commentCard" ? "internal" : "system",
+      href: context.card.url || context.card.shortUrl,
+      confidence: "medium",
+    });
+  }
+
+  return entries;
+}
+
 function dedupeRecords(records: CustomerSearchResult[]) {
   const byRequestId = new Map<string, CustomerSearchResult>();
   for (const record of records) {
@@ -719,6 +904,14 @@ function dedupeRecords(records: CustomerSearchResult[]) {
 
 function dedupeOfferSearchResults(results: OpsOfferSearchResult[]) {
   const byId = new Map<string, OpsOfferSearchResult>();
+  for (const result of results) {
+    if (!byId.has(result.offerId)) byId.set(result.offerId, result);
+  }
+  return [...byId.values()];
+}
+
+function dedupeOfferSnapshots(results: OpsOfferSnapshot[]) {
+  const byId = new Map<string, OpsOfferSnapshot>();
   for (const result of results) {
     if (!byId.has(result.offerId)) byId.set(result.offerId, result);
   }
@@ -791,16 +984,27 @@ type WorkflowAuditLogRow = {
   created_at?: string | null;
 };
 
-async function fetchAutomationRuns(records: CompanyBrainRecordSummary[], offers: CompanyBrainOfferSummary[]): Promise<{
+async function fetchAutomationRuns(
+  records: CompanyBrainRecordSummary[],
+  offers: CompanyBrainOfferSummary[],
+  extraTrelloCardIds: string[] = [],
+): Promise<{
   runs: CompanyBrainAutomationRun[];
   diagnostic: CompanyBrainDiagnostic;
 }> {
   const requestIds = uniqueStrings(records.map((record) => record.requestId));
   const offerNumbers = uniqueStrings(offers.map((offer) => offer.offerNumber));
+  const trelloCardIds = uniqueStrings([
+    ...extraTrelloCardIds,
+    ...records.map((record) => record.trelloCardId),
+    ...offers.map((offer) => offer.trelloCardId),
+  ]);
   const filters = [
     requestIds.length ? `document_id.in.(${requestIds.map(encodeURIComponent).join(",")})` : null,
     ...requestIds.map((requestId) => `metadata->>request_id.eq.${encodeURIComponent(requestId)}`),
     ...offerNumbers.map((offerNumber) => `metadata->>offer_number.eq.${encodeURIComponent(offerNumber)}`),
+    ...trelloCardIds.map((cardId) => `metadata->>trello_card_id.eq.${encodeURIComponent(cardId)}`),
+    ...trelloCardIds.map((cardId) => `metadata->>trelloCardId.eq.${encodeURIComponent(cardId)}`),
   ].filter((value): value is string => Boolean(value));
 
   if (!filters.length) {
@@ -1092,6 +1296,7 @@ function buildDossier(input: {
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
+  trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
   replyDraft: CompanyBrainReplyDraft;
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
@@ -1182,6 +1387,20 @@ function buildDossier(input: {
       lines: input.automationRuns.length
         ? input.automationRuns.slice(0, 8).map((run) => `${run.createdAt || "ohne Zeit"} · ${run.workflowName || "Workflow"} · ${run.action || "Aktion"} · ${run.status || "Status unbekannt"}${run.error ? ` · Fehler: ${run.error}` : ""}`)
         : ["Keine Workflow-Audit-Einträge für diesen Fall."],
+    },
+    {
+      title: "Trello Triggerdiagnose",
+      lines: input.trelloFailureDiagnosis.requested
+        ? [
+            `Status: ${input.trelloFailureDiagnosis.status}`,
+            `Karte: ${input.trelloFailureDiagnosis.card?.name || input.trelloFailureDiagnosis.card?.id || "nicht geladen"}`,
+            `Erwartete Aktion: ${input.trelloFailureDiagnosis.expectedAction}`,
+            `Ursache: ${input.trelloFailureDiagnosis.rootCause}`,
+            `Empfohlener Fix: ${input.trelloFailureDiagnosis.recommendedFix}`,
+            `Duplicate-Risiko: ${input.trelloFailureDiagnosis.duplicateRisk}`,
+            ...input.trelloFailureDiagnosis.blockedFixes.map((entry) => `Blockiert: ${entry}`),
+          ]
+        : ["Keine Trello-Triggerdiagnose angefordert."],
     },
     {
       title: "Quellenstatus",
@@ -1479,6 +1698,7 @@ function buildWatchers(input: {
   automationRuns: CompanyBrainAutomationRun[];
   integrationReadiness: CompanyBrainIntegrationReadiness[];
   assets: CompanyBrainAsset[];
+  trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
 }): CompanyBrainWatcher[] {
   const watchers: CompanyBrainWatcher[] = [];
   const latestRecord = input.recordSummaries[0] || null;
@@ -1559,7 +1779,193 @@ function buildWatchers(input: {
     actionKey: latestOffer && !designAssets.length ? "collect_design_assets" : null,
   });
 
+  watchers.push({
+    key: "trello_trigger_failure",
+    severity: input.trelloFailureDiagnosis.severity,
+    status:
+      input.trelloFailureDiagnosis.requested &&
+      !["sent", "not_requested"].includes(input.trelloFailureDiagnosis.rootCauseKey)
+        ? "open"
+        : "ok",
+    title: "Trello-Triggerdiagnose",
+    detail: input.trelloFailureDiagnosis.rootCause,
+    actionKey:
+      input.trelloFailureDiagnosis.requested &&
+      ["automation_failed", "automation_missing", "offer_exists_no_send_proof"].includes(input.trelloFailureDiagnosis.rootCauseKey)
+        ? "inspect_n8n_run"
+        : null,
+  });
+
   return watchers;
+}
+
+function expectedTrelloAction(question: string | null, problemType: CompanyBrainProblemType | null): CompanyBrainTrelloFailureDiagnosis["expectedAction"] {
+  const text = cleanText(question).toLowerCase();
+  if (problemType === "offer_not_sent" || /angebot|mail|e-?mail|raus|gesendet|versendet|verschickt/.test(text)) {
+    return "offer_send";
+  }
+  if (problemType === "customer_waiting" || /aufgabe|nachfassen|follow.?up|antwort/.test(text)) {
+    return "internal_followup";
+  }
+  return "unknown";
+}
+
+function latestTrelloMove(actions: TrelloFailureContextAction[]) {
+  return actions.find((action) => action.fromListName || action.toListName) || null;
+}
+
+function trelloMoveMatchesOfferIntent(move: TrelloFailureContextAction | null) {
+  const text = `${move?.fromListName || ""} ${move?.toListName || ""}`.toLowerCase();
+  return /angebot|offer|quote|raus|send|sent|fertig|ready|versand|mail/.test(text);
+}
+
+function buildTrelloFailureDiagnosis(input: {
+  requested: boolean;
+  context: TrelloFailureContext | null;
+  diagnostic: CompanyBrainDiagnostic | null;
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  crossChecks: CompanyBrainCrossCheck[];
+  automationRuns: CompanyBrainAutomationRun[];
+  question: string | null;
+  problemType: CompanyBrainProblemType | null;
+}): CompanyBrainTrelloFailureDiagnosis {
+  if (!input.requested && !input.context) return emptyTrelloFailureDiagnosis(false);
+  if (!input.context) {
+    const base = emptyTrelloFailureDiagnosis(true);
+    const expectedAction = expectedTrelloAction(input.question, input.problemType);
+    return {
+      ...base,
+      status: input.diagnostic?.ok === false ? "error" : "not_configured",
+      expectedAction,
+      rootCauseKey: input.diagnostic?.ok === false ? "trello_error" : "trello_not_configured",
+      rootCause: input.diagnostic?.ok === false
+        ? `Trello konnte nicht live gelesen werden: ${input.diagnostic.detail || "unbekannter Fehler"}.`
+        : base.rootCause,
+      recommendedFix: input.diagnostic?.ok === false
+        ? "Trello-Zugriff, Card-ID und API-Limits prüfen; danach Diagnose erneut starten."
+        : base.recommendedFix,
+      diagnostics: [input.diagnostic?.detail || "Trello Live nicht verfügbar."],
+    };
+  }
+
+  const expectedAction = expectedTrelloAction(input.question, input.problemType);
+  const triggerMove = latestTrelloMove(input.context.actions);
+  const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent");
+  const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
+  const hasAutomation = input.automationRuns.length > 0;
+  const hasRecord = input.records.length > 0;
+  const hasOffer = input.offers.length > 0;
+  const offerSent = offerSentCheck?.status === "pass";
+  const offerIntentMove = trelloMoveMatchesOfferIntent(triggerMove);
+  let rootCauseKey: CompanyBrainTrelloFailureDiagnosis["rootCauseKey"] = "undetermined";
+  let rootCause = "Trello-Karte wurde geladen, aber die Ursache ist noch nicht eindeutig belegbar.";
+  let recommendedFix = "Kartenbewegung, Source-of-Truth-Datensatz, Angebot, Versandbeleg und Workflow-Audit gemeinsam prüfen.";
+  let severity: CompanyBrainTrelloFailureDiagnosis["severity"] = "warning";
+
+  if (!triggerMove) {
+    rootCauseKey = "no_trigger_move";
+    rootCause = "In der geladenen Trello-Historie wurde kein Listenwechsel gefunden.";
+    recommendedFix = "Prüfen, ob die richtige Karte eingegeben wurde oder ob der relevante Listenwechsel außerhalb des geladenen Action-Fensters liegt.";
+  } else if (!hasRecord) {
+    rootCauseKey = "no_source_record";
+    rootCause = "Die Trello-Karte ist live lesbar, aber es wurde keine verknüpfte Kundenakte als Source of Truth gefunden.";
+    recommendedFix = "Karte mit Request-ID/Kundenakte verknüpfen; keinen Versand-Retry aus Trello allein starten.";
+  } else if (expectedAction === "offer_send" && !hasOffer) {
+    rootCauseKey = "offer_missing";
+    rootCause = "Für die Karte/Kundenakte wurde kein Angebotssnapshot gefunden.";
+    recommendedFix = "Angebotsanlage und Offer-Bridge prüfen; erst danach Versandlogik oder Retry bewerten.";
+  } else if (failedAutomation) {
+    rootCauseKey = "automation_failed";
+    rootCause = `${failedAutomation.workflowName || "Workflow"} ist fehlgeschlagen: ${failedAutomation.error || failedAutomation.status || "Fehlerstatus"}.`;
+    recommendedFix = "n8n-Execution mit Correlation/Execution-ID prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.";
+    severity = "critical";
+  } else if (expectedAction === "offer_send" && offerSent) {
+    rootCauseKey = "sent";
+    rootCause = "Ein Versandbeleg ist vorhanden; das Problem wirkt eher wie fehlende Rückschreibung oder Wahrnehmung im Prozess.";
+    recommendedFix = "Kein erneuter Versand. Status-Rückschreibung und sichtbare Aufgaben-/Trello-Projektion prüfen.";
+    severity = "info";
+  } else if (expectedAction === "offer_send" && hasOffer && !offerSent && !hasAutomation && offerIntentMove) {
+    rootCauseKey = "automation_missing";
+    rootCause = "Die Karte wurde in eine angebotsnahe Liste bewegt, aber es gibt keinen passenden Workflow-Audit-Eintrag.";
+    recommendedFix = "Trello-Trigger/Webhook und Listen-Mapping prüfen; Retry nur über idempotente Queue mit Duplicate-Mail-Check.";
+    severity = "critical";
+  } else if (expectedAction === "offer_send" && hasOffer && !offerSent) {
+    rootCauseKey = "offer_exists_no_send_proof";
+    rootCause = "Angebot existiert, aber ein eindeutiger Versandbeleg fehlt.";
+    recommendedFix = "Outlook-Spiegel/Live-Outlook und n8n-Audit prüfen; bei eindeutig fehlendem Versand idempotenten Retry vorbereiten.";
+    severity = "warning";
+  }
+
+  const evidenceStrength: CompanyBrainTrelloFailureDiagnosis["evidenceStrength"] =
+    rootCauseKey === "sent"
+      ? "strong"
+      : failedAutomation || (hasRecord && hasOffer && triggerMove)
+        ? "medium"
+        : hasRecord || triggerMove
+          ? "weak"
+          : "weak";
+  const duplicateRisk: CompanyBrainTrelloFailureDiagnosis["duplicateRisk"] =
+    expectedAction === "offer_send" && !offerSent ? "high" : expectedAction === "unknown" ? "medium" : "low";
+  const safeFixes = [
+    hasRecord ? "Interne Problemfall-Aufgabe mit Trello-Card-ID und Befund anlegen." : null,
+    rootCauseKey === "no_source_record" ? "Karte manuell mit Request-ID/Kundenakte verknüpfen." : null,
+    rootCauseKey === "sent" ? "Status-/Trello-Projektion nachziehen, keinen erneuten Versand auslösen." : null,
+    ["automation_failed", "automation_missing", "offer_exists_no_send_proof"].includes(rootCauseKey)
+      ? "Idempotenten Retry vorbereiten, aber erst nach Versand-Duplicate-Check freigeben."
+      : null,
+  ].filter(Boolean) as string[];
+  const blockedFixes = [
+    expectedAction === "offer_send" && !offerSent ? "Kein automatischer Angebotsversand ohne Outlook-Duplicate-Check." : null,
+    "Kein n8n-Workflow-Change ohne Backup, Diff, Test und Rollback.",
+    "Trello-Listenwechsel allein reicht nicht als Source of Truth.",
+  ].filter(Boolean) as string[];
+
+  return {
+    requested: true,
+    status: "loaded",
+    severity,
+    expectedAction,
+    card: {
+      id: input.context.card.id,
+      shortLink: input.context.card.shortLink,
+      name: input.context.card.name,
+      url: input.context.card.url || input.context.card.shortUrl,
+      currentListName: input.context.card.currentListName,
+      dateLastActivity: input.context.card.dateLastActivity,
+      attachmentsCount: input.context.card.attachmentsCount,
+    },
+    triggerMove: triggerMove
+      ? {
+          id: triggerMove.id,
+          occurredAt: triggerMove.date,
+          fromListName: triggerMove.fromListName,
+          toListName: triggerMove.toListName,
+        }
+      : null,
+    rootCauseKey,
+    rootCause,
+    recommendedFix,
+    evidenceStrength,
+    duplicateRisk,
+    safeFixes,
+    blockedFixes,
+    timeline: input.context.actions.slice(0, 12).map((action) => ({
+      id: action.id,
+      label: action.fromListName || action.toListName
+        ? `Move ${action.fromListName || "unbekannt"} -> ${action.toListName || "unbekannt"}`
+        : action.type || "Trello-Aktion",
+      occurredAt: action.date,
+      detail: action.text || input.context?.card.name || "",
+    })),
+    diagnostics: [
+      `Karte: ${input.context.card.id}`,
+      triggerMove ? `Letzter Move: ${triggerMove.fromListName || "unbekannt"} -> ${triggerMove.toListName || "unbekannt"}` : "Kein Move im Action-Fenster.",
+      `Kundenakte: ${hasRecord ? "gefunden" : "fehlt"}`,
+      `Angebot: ${hasOffer ? "gefunden" : "fehlt"}`,
+      `Workflow-Audit: ${hasAutomation ? `${input.automationRuns.length} Eintrag/Einträge` : "kein Eintrag"}`,
+    ],
+  };
 }
 
 export function normalizeCompanyBrainProblemType(value: string | null | undefined): CompanyBrainProblemType | null {
@@ -2138,12 +2544,19 @@ function buildAnswer(
   } satisfies CompanyBrainResolveResult["answer"];
 }
 
-function nextActionsFor(gaps: CompanyBrainFinding[], conflicts: CompanyBrainFinding[]) {
+function nextActionsFor(
+  gaps: CompanyBrainFinding[],
+  conflicts: CompanyBrainFinding[],
+  trelloFailureDiagnosis?: CompanyBrainTrelloFailureDiagnosis,
+) {
   const actions = [
     conflicts.length ? "Konflikt mit Kunde/Angebot manuell prüfen, bevor eine Antwort rausgeht." : null,
     gaps.some((gap) => gap.source === "customer_records") ? "Mit E-Mail, Angebotsnummer oder Trello-ID erneut suchen." : null,
     gaps.some((gap) => gap.source === "offers") ? "Angebotssoftware-Verbindung prüfen oder direkt im Angebotsadmin öffnen." : null,
     gaps.some((gap) => gap.title.includes("Versandbeleg")) ? "Outlook-/customer_email_messages-Sync prüfen, bevor Versandstatus bestätigt wird." : null,
+    trelloFailureDiagnosis?.requested && trelloFailureDiagnosis.rootCauseKey !== "sent"
+      ? `Trello-Triggerdiagnose: ${trelloFailureDiagnosis.recommendedFix}`
+      : null,
   ].filter(Boolean) as string[];
   return actions.length ? actions : ["Belege im Zeitstrahl prüfen und erst danach Kundenaussage formulieren."];
 }
@@ -2159,6 +2572,27 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   const identifiers = extractCompanyBrainIdentifiers(query);
   const customerRecords: CustomerSearchResult[] = [];
   let offerSearchResults: OpsOfferSearchResult[] = [];
+  const trelloRequested = companyBrainTrelloRequested(query, question, requestedProblemType);
+  let trelloLookup = primaryTrelloLookup({ query, identifiers });
+  let trelloContext: TrelloFailureContext | null = null;
+  let trelloDiagnostic: CompanyBrainDiagnostic | null = null;
+
+  if (trelloLookup) {
+    const trelloLive = await fetchTrelloFailureContextForLookup(trelloLookup);
+    trelloContext = trelloLive.context;
+    trelloDiagnostic = trelloLive.diagnostic;
+    diagnostics.push(trelloLive.diagnostic);
+    if (trelloContext) {
+      trelloLookup = trelloContext.card.id;
+      pushIdentifier(identifiers, "trello_card_id", "Trello-ID", trelloContext.card.id, "high", trelloContext.card.url || trelloContext.card.shortUrl);
+      if (trelloContext.card.shortLink) {
+        pushIdentifier(identifiers, "trello_card_id", "Trello Shortlink", trelloContext.card.shortLink, "medium", trelloContext.card.url || trelloContext.card.shortUrl);
+      }
+    }
+  } else if (trelloRequested) {
+    trelloDiagnostic = { source: "trello_live", ok: true, label: "Trello Live", detail: "Kein Trello-Karten-Identifier in der Suche.", count: 0 };
+    diagnostics.push(trelloDiagnostic);
+  }
 
   try {
     customerRecords.push(...await searchCustomerRecords(query));
@@ -2180,6 +2614,16 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
       customerRecords.push(...await searchCustomerRecords(`trello:${identifier.value}`));
     } catch {
       // the main customer-record diagnostic above is enough for the operator.
+    }
+  }
+
+  if (trelloContext) {
+    for (const lookup of uniqueStrings([trelloContext.card.id, trelloContext.card.shortLink])) {
+      try {
+        customerRecords.push(...await searchCustomerRecords(`trello:${lookup}`));
+      } catch {
+        // Trello live evidence remains visible even when the projection lookup misses.
+      }
     }
   }
 
@@ -2225,14 +2669,36 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     }
   }
 
-  const recordSummaries = records.map(mapRecordSummary);
-  const offerSummaries = offerSnapshots.map(mapOfferSummary);
+  let recordSummaries = records.map(mapRecordSummary);
+  if (!trelloContext && !trelloLookup) {
+    const fallbackLookup = primaryTrelloLookup({ query, identifiers, records: recordSummaries });
+    if (fallbackLookup) {
+      const trelloLive = await fetchTrelloFailureContextForLookup(fallbackLookup);
+      trelloContext = trelloLive.context;
+      trelloDiagnostic = trelloLive.diagnostic;
+      diagnostics.push(trelloLive.diagnostic);
+      if (trelloContext) {
+        pushIdentifier(identifiers, "trello_card_id", "Trello-ID", trelloContext.card.id, "high", trelloContext.card.url || trelloContext.card.shortUrl);
+      }
+    }
+  }
+  if (trelloContext && !offerSnapshots.some((offer) => offer.trelloCardId === trelloContext?.card.id)) {
+    try {
+      offerSnapshots.push(await getOfferByTrelloCardId(trelloContext.card.id));
+      diagnostics.push({ source: "offer_bridge", ok: true, label: `Angebot per Trello ${trelloContext.card.id}`, detail: null, count: 1 });
+    } catch (error) {
+      diagnostics.push({ source: "offer_bridge", ok: false, label: `Angebot per Trello ${trelloContext.card.id}`, detail: errorMessage(error), count: 0 });
+    }
+  }
+
+  const offerSummaries = dedupeOfferSnapshots(offerSnapshots).map(mapOfferSummary);
   addRecordIdentifiers(identifiers, records);
   addOfferIdentifiers(identifiers, offerSummaries);
 
   const evidence = [
     ...records.flatMap(mapTimelineEvidence),
     ...offerSummaries.flatMap(mapOfferEvidence),
+    ...mapTrelloEvidence(trelloContext),
   ]
     .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
     .slice(0, 30);
@@ -2250,8 +2716,19 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
   const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
   const answer = buildAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question);
-  const automation = await fetchAutomationRuns(recordSummaries, offerSummaries);
+  const automation = await fetchAutomationRuns(recordSummaries, offerSummaries, trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink || ""] : []);
   diagnostics.push(automation.diagnostic);
+  const trelloFailureDiagnosis = buildTrelloFailureDiagnosis({
+    requested: trelloRequested || Boolean(trelloContext),
+    context: trelloContext,
+    diagnostic: trelloDiagnostic,
+    records: recordSummaries,
+    offers: offerSummaries,
+    crossChecks,
+    automationRuns: automation.runs,
+    question,
+    problemType: requestedProblemType,
+  });
   const caseEvents = buildCaseEvents(evidence, automation.runs);
   const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automation.runs);
   const generatedAt = new Date().toISOString();
@@ -2273,6 +2750,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     automationRuns: automation.runs,
     integrationReadiness,
     assets,
+    trelloFailureDiagnosis,
   });
   const inferredProblemType = inferProblemType({
     requested: requestedProblemType,
@@ -2324,6 +2802,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     checks,
     sourceHealth,
     automationRuns: automation.runs,
+    trelloFailureDiagnosis,
     replyDraft,
     conflicts,
     gaps,
@@ -2351,12 +2830,13 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     checks,
     sourceHealth,
     automationRuns: automation.runs,
+    trelloFailureDiagnosis,
     dossier,
     replyDraft,
     evidence,
     conflicts,
     gaps,
     diagnostics,
-    nextActions: nextActionsFor(gaps, conflicts),
+    nextActions: nextActionsFor(gaps, conflicts, trelloFailureDiagnosis),
   };
 }

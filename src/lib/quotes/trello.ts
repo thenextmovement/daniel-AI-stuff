@@ -90,6 +90,39 @@ export type CreatedTrelloCard = {
   shortUrl?: string;
 };
 
+export type TrelloFailureContextAction = {
+  id: string;
+  type: string | null;
+  date: string | null;
+  text: string | null;
+  fromListId: string | null;
+  fromListName: string | null;
+  toListId: string | null;
+  toListName: string | null;
+};
+
+export type TrelloFailureContextCard = {
+  id: string;
+  shortLink: string | null;
+  name: string | null;
+  desc: string | null;
+  idBoard: string | null;
+  idList: string | null;
+  currentListName: string | null;
+  url: string | null;
+  shortUrl: string | null;
+  closed: boolean;
+  dateLastActivity: string | null;
+  createdAt: string | null;
+  customFields: CustomFieldMap;
+  attachmentsCount: number;
+};
+
+export type TrelloFailureContext = {
+  card: TrelloFailureContextCard;
+  actions: TrelloFailureContextAction[];
+};
+
 function customFieldValue(item: TrelloCustomFieldItem) {
   const value = item.value || {};
   return value.text ?? value.number ?? value.checked ?? value.date ?? "";
@@ -160,6 +193,19 @@ function trelloCardCreatedAt(cardId: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function mapFailureContextAction(action: TrelloAction): TrelloFailureContextAction {
+  return {
+    id: action.id,
+    type: action.type || null,
+    date: action.date || null,
+    text: action.data?.text || null,
+    fromListId: action.data?.listBefore?.id || null,
+    fromListName: action.data?.listBefore?.name || null,
+    toListId: action.data?.listAfter?.id || action.data?.list?.id || null,
+    toListName: action.data?.listAfter?.name || action.data?.list?.name || null,
+  };
+}
+
 export async function getTrelloCard(cardId: string): Promise<TrelloCardData> {
   const card = await trelloFetch<{
     id: string;
@@ -206,6 +252,60 @@ export async function getTrelloCardVisuals(cardId: string) {
     url?: string;
     attachments?: TrelloAttachment[];
   }>(`/cards/${encodeURIComponent(cardId)}?fields=id,name,url&attachments=true`);
+}
+
+export async function getTrelloFailureContext(cardId: string): Promise<TrelloFailureContext> {
+  const card = await trelloFetch<{
+    id: string;
+    idShort?: number;
+    shortLink?: string;
+    name?: string;
+    desc?: string;
+    idBoard?: string;
+    idList?: string;
+    url?: string;
+    shortUrl?: string;
+    closed?: boolean;
+    dateLastActivity?: string;
+    customFieldItems?: TrelloCustomFieldItem[];
+    attachments?: TrelloAttachment[];
+    actions?: TrelloAction[];
+  }>(
+    `/cards/${encodeURIComponent(cardId)}?fields=id,idShort,shortLink,name,desc,idBoard,idList,url,shortUrl,closed,dateLastActivity&customFieldItems=true&attachments=true&actions=updateCard,commentCard,createCard&actions_limit=80&action_fields=id,type,date,data`,
+  );
+  const fields = card.idBoard
+    ? await trelloFetch<TrelloCustomField[]>(`/boards/${encodeURIComponent(card.idBoard)}/customFields`)
+    : [];
+  const currentList = card.idList
+    ? await trelloFetch<{ id: string; name?: string }>(`/lists/${encodeURIComponent(card.idList)}?fields=id,name`).catch(() => null)
+    : null;
+  const fieldNameById = new Map(fields.map((field) => [field.id, field.name]));
+  const customFields: CustomFieldMap = {};
+
+  for (const item of card.customFieldItems || []) {
+    const name = fieldNameById.get(item.idCustomField);
+    if (name) customFields[name] = customFieldValue(item);
+  }
+
+  return {
+    card: {
+      id: card.id,
+      shortLink: card.shortLink || null,
+      name: card.name || null,
+      desc: card.desc || null,
+      idBoard: card.idBoard || null,
+      idList: card.idList || null,
+      currentListName: currentList?.name || null,
+      url: card.url || null,
+      shortUrl: card.shortUrl || null,
+      closed: Boolean(card.closed),
+      dateLastActivity: card.dateLastActivity || null,
+      createdAt: trelloCardCreatedAt(card.id),
+      customFields,
+      attachmentsCount: card.attachments?.length || 0,
+    },
+    actions: (card.actions || []).map(mapFailureContextAction),
+  };
 }
 
 export async function searchTrelloCards(query: string, boardIds: string[] = []) {
