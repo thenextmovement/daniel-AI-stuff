@@ -63,7 +63,7 @@ const OPS_APPS: Array<{
   },
   {
     key: "supplierSales",
-    label: "Produktion",
+    label: "Sales-Vergabe",
     helper: "Supplier & Deadlines",
     href: "/ops/sales-vergabe",
     Icon: Factory,
@@ -84,7 +84,7 @@ const OPS_APPS: Array<{
   },
   {
     key: "management",
-    label: "Kennzahlen",
+    label: "Management",
     helper: "Umsatz, Kosten, Risiken",
     href: "/ops/management",
     Icon: BarChart3,
