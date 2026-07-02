@@ -218,6 +218,7 @@ async function setupRoutes(page) {
           answer: { verdict: "not_found", confidence: "low", headline: "Kein belastbarer Falltreffer.", bullets: [] },
           records: [],
           offers: [],
+          checks: [],
           evidence: [],
           conflicts: [],
           gaps: [],

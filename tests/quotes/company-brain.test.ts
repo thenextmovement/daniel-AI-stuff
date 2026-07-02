@@ -15,6 +15,12 @@ test("company brain extracts operational identifiers from a mixed support questi
   );
 });
 
+test("company brain extracts exact Trello lookup hints", () => {
+  const identifiers = extractCompanyBrainIdentifiers("Bitte Trello 64b7f9e2aabbccddeeff0011 prüfen");
+  assert.equal(identifiers[0]?.type, "trello_card_id");
+  assert.equal(identifiers[0]?.value, "64b7f9e2aabbccddeeff0011");
+});
+
 test("company brain keeps long pasted requests bounded", () => {
   const normalized = normalizeCompanyBrainQuery(`  ${"x".repeat(500)}  `);
   assert.equal(normalized.length, 240);

@@ -11,6 +11,7 @@ import {
   MailCheck,
   RefreshCcw,
   Search,
+  ShieldCheck,
 } from "lucide-react";
 import type { CompanyBrainResolveResult } from "@/lib/ops/company-brain";
 import { OpsLoginCard } from "../ops-login-card";
@@ -66,6 +67,20 @@ function compactList(values: string[]) {
   return values.length ? values.join(", ") : "Keine Angabe";
 }
 
+function checkClass(status: string) {
+  if (status === "verified") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "warning") return "border-amber-300 bg-amber-50 text-amber-900";
+  if (status === "missing") return "border-rose-200 bg-rose-50 text-rose-900";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
+function statusLabel(status: string) {
+  if (status === "verified") return "Belegt";
+  if (status === "warning") return "Prüfen";
+  if (status === "missing") return "Fehlt";
+  return "Unklar";
+}
+
 export function OpsCompanyBrainClient({
   initialHasSession,
   opsEnabled,
@@ -104,6 +119,13 @@ export function OpsCompanyBrainClient({
     evidence: result?.evidence.length || 0,
     findings: (result?.gaps.length || 0) + (result?.conflicts.length || 0),
   }), [result]);
+
+  const quickQuestions = [
+    "Ist das Angebot rausgegangen?",
+    "Welche Farbe ist belegt?",
+    "Ist es ein 3D-Schild mit zwei Designs?",
+    "Gab es eine Kundenbestätigung?",
+  ];
 
   async function login() {
     setError(null);
@@ -224,6 +246,18 @@ export function OpsCompanyBrainClient({
               Suchen
             </button>
           </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {quickQuestions.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => setQuestion(prompt)}
+                className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-medium text-stone-600 transition hover:border-stone-950 hover:text-stone-950"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         </form>
 
         {result ? (
@@ -250,6 +284,29 @@ export function OpsCompanyBrainClient({
                       <p key={bullet} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">
                         {bullet}
                       </p>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Prüfmatrix</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Belegstatus</h2>
+                    </div>
+                    <ShieldCheck className="h-6 w-6 text-stone-500" />
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {(result.checks || []).map((check) => (
+                      <div key={check.key} className={`rounded-2xl border px-4 py-3 text-sm ${checkClass(check.status)}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="font-semibold">{check.label}</p>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium opacity-80">
+                            {statusLabel(check.status)}
+                          </span>
+                        </div>
+                        <p className="mt-2 leading-6 opacity-80">{check.summary}</p>
+                      </div>
                     ))}
                   </div>
                 </article>
@@ -318,6 +375,19 @@ export function OpsCompanyBrainClient({
                       <div><dt className="text-stone-400">Farben</dt><dd className="font-medium text-stone-800">{compactList(offer.colorHints)}</dd></div>
                       <div><dt className="text-stone-400">Angenommen</dt><dd className="font-medium text-stone-800">{formatDateTime(offer.acceptedAt)}</dd></div>
                     </dl>
+                    {offer.selectedItems.length ? (
+                      <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Ausgewählt</p>
+                        <div className="mt-3 grid gap-2">
+                          {offer.selectedItems.slice(0, 5).map((item) => (
+                            <div key={`${offer.offerId}-${item.title}`} className="text-sm text-stone-700">
+                              <span className="font-semibold text-stone-950">{item.title}</span>
+                              {item.description ? <span className="text-stone-500"> · {item.description}</span> : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -368,6 +438,23 @@ export function OpsCompanyBrainClient({
                   <div className="mt-4 grid gap-2">
                     {result.nextActions.map((action) => (
                       <p key={action} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">{action}</p>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Quellenstatus</p>
+                  <div className="mt-4 grid gap-2">
+                    {result.diagnostics.map((diagnostic) => (
+                      <div key={`${diagnostic.source}-${diagnostic.label}`} className="flex items-start justify-between gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm">
+                        <div>
+                          <p className="font-semibold text-stone-900">{diagnostic.label}</p>
+                          {diagnostic.detail ? <p className="mt-1 leading-5 text-stone-500">{diagnostic.detail}</p> : null}
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${diagnostic.ok ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                          {diagnostic.ok ? `${diagnostic.count}` : "Fehler"}
+                        </span>
+                      </div>
                     ))}
                   </div>
                 </article>

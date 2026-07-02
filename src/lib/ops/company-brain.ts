@@ -85,6 +85,19 @@ export type CompanyBrainOfferSummary = {
   designEvidenceCount: number;
   productHints: string[];
   colorHints: string[];
+  selectedItems: Array<{
+    title: string;
+    section: string | null;
+    description: string | null;
+    quantity: number;
+    unitPriceNet: number;
+  }>;
+  imageEvidence: Array<{
+    title: string | null;
+    kind: string;
+    enabled: boolean;
+    linkedItemTitle: string | null;
+  }>;
 };
 
 export type CompanyBrainDiagnostic = {
@@ -100,6 +113,14 @@ export type CompanyBrainFinding = {
   title: string;
   detail: string;
   source: string | null;
+};
+
+export type CompanyBrainCheck = {
+  key: "offer_sent" | "color" | "design" | "product_type" | "customer_reply" | "order";
+  label: string;
+  status: "verified" | "warning" | "missing" | "unknown";
+  summary: string;
+  evidenceIds: string[];
 };
 
 export type CompanyBrainResolveInput = {
@@ -122,6 +143,7 @@ export type CompanyBrainResolveResult = {
   };
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
+  checks: CompanyBrainCheck[];
   evidence: CompanyBrainEvidence[];
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
@@ -158,6 +180,19 @@ const COLOR_WORDS = [
   "black",
   "rgb",
 ];
+
+const COLOR_GROUPS: Record<string, string[]> = {
+  blau: ["blau", "blue"],
+  rot: ["rot", "red"],
+  gruen: ["gruen", "green", "grün"],
+  pink: ["pink", "rosa"],
+  weiss: ["weiss", "weiß", "white", "warmweiss", "warmweiß", "kaltweiss", "kaltweiß"],
+  gelb: ["gelb", "yellow"],
+  orange: ["orange"],
+  lila: ["lila", "purple", "violett"],
+  schwarz: ["schwarz", "black"],
+  rgb: ["rgb"],
+};
 
 function cleanText(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -277,6 +312,14 @@ function extractColorHints(text: string) {
   return COLOR_WORDS.filter((word) => normalized.includes(word.toLowerCase()));
 }
 
+function normalizeColorGroup(color: string) {
+  const normalized = color.toLowerCase();
+  for (const [group, aliases] of Object.entries(COLOR_GROUPS)) {
+    if (aliases.some((alias) => normalized.includes(alias))) return group;
+  }
+  return normalized;
+}
+
 function offerText(offer: OpsOfferSnapshot) {
   return [
     offer.offer.projectTitle,
@@ -323,6 +366,25 @@ function mapOfferSummary(offer: OpsOfferSnapshot): CompanyBrainOfferSummary {
     designEvidenceCount,
     productHints,
     colorHints: uniqueStrings(extractColorHints(text)),
+    selectedItems: offer.items
+      .filter((item) => item.selectedFinal ?? item.selectedByDefault)
+      .slice(0, 8)
+      .map((item) => ({
+        title: item.title,
+        section: item.section,
+        description: item.description,
+        quantity: item.quantity,
+        unitPriceNet: item.unitPriceNet,
+      })),
+    imageEvidence: offer.images
+      .filter((image) => image.enabled)
+      .slice(0, 8)
+      .map((image) => ({
+        title: image.title,
+        kind: image.kind,
+        enabled: image.enabled,
+        linkedItemTitle: image.linkedItemTitle,
+      })),
   };
 }
 
@@ -375,6 +437,34 @@ function mapOfferEvidence(offer: CompanyBrainOfferSummary): CompanyBrainEvidence
       title: "Angebot angenommen",
       detail: offer.offerNumber || offer.documentReference,
       occurredAt: offer.acceptedAt,
+      direction: "system",
+      href: offer.publicUrl,
+      confidence: "high",
+    });
+  }
+  for (const item of offer.selectedItems.slice(0, 5)) {
+    entries.push({
+      id: `offer-${offer.offerId}-item-${item.title}`,
+      source: "offers_api.items",
+      title: `Ausgewählte Position: ${item.title}`,
+      detail: [
+        item.section,
+        item.quantity ? `Menge ${item.quantity}` : null,
+        item.description,
+      ].filter(Boolean).join(" · ") || null,
+      occurredAt: offer.updatedAt,
+      direction: "system",
+      href: offer.publicUrl,
+      confidence: "high",
+    });
+  }
+  for (const image of offer.imageEvidence.slice(0, 5)) {
+    entries.push({
+      id: `offer-${offer.offerId}-image-${image.title || image.kind}`,
+      source: "offers_api.images",
+      title: image.title ? `Design/Bild: ${image.title}` : "Design/Bild im Angebot",
+      detail: image.linkedItemTitle ? `Verknüpft mit: ${image.linkedItemTitle}` : image.kind,
+      occurredAt: offer.updatedAt,
       direction: "system",
       href: offer.publicUrl,
       confidence: "high",
@@ -459,8 +549,8 @@ function buildConflicts(records: CompanyBrainRecordSummary[], offers: CompanyBra
   const requestColors = uniqueStrings(records.flatMap((record) => record.requestedColors));
   const offerColors = uniqueStrings(offers.flatMap((offer) => offer.colorHints));
   if (requestColors.length && offerColors.length) {
-    const normalizedOfferColors = new Set(offerColors.map((color) => color.toLowerCase()));
-    const missingInOffer = requestColors.filter((color) => !normalizedOfferColors.has(color.toLowerCase()));
+    const normalizedOfferColors = new Set(offerColors.map(normalizeColorGroup));
+    const missingInOffer = requestColors.filter((color) => !normalizedOfferColors.has(normalizeColorGroup(color)));
     if (missingInOffer.length) {
       conflicts.push({
         severity: "warning",
@@ -471,6 +561,111 @@ function buildConflicts(records: CompanyBrainRecordSummary[], offers: CompanyBra
     }
   }
   return conflicts;
+}
+
+function questionMentions(question: string | null, ...needles: string[]) {
+  const normalized = (question || "").toLowerCase();
+  return needles.some((needle) => normalized.includes(needle));
+}
+
+function buildChecks(
+  records: CompanyBrainRecordSummary[],
+  offers: CompanyBrainOfferSummary[],
+  evidence: CompanyBrainEvidence[],
+  conflicts: CompanyBrainFinding[],
+  question: string | null,
+): CompanyBrainCheck[] {
+  const latestRecord = records[0] || null;
+  const latestOffer = offers[0] || null;
+  const outboundEvidence = evidence.find((entry) => entry.direction === "outbound" && /angebot|mail|e-mail|follow-up|dokument/i.test(entry.title));
+  const inboundEvidence = evidence.find((entry) => entry.direction === "inbound");
+  const offerEvidence = evidence.find((entry) => entry.source.startsWith("offers_api"));
+  const designEvidence = evidence.filter((entry) => /design|bild|position|mockup|entwurf/i.test(`${entry.title} ${entry.detail || ""}`));
+  const colorConflict = conflicts.find((entry) => entry.source === "request_vs_offer") || null;
+  const requestColors = uniqueStrings(records.flatMap((record) => record.requestedColors));
+  const offerColors = uniqueStrings(offers.flatMap((offer) => offer.colorHints));
+  const checks: CompanyBrainCheck[] = [];
+
+  checks.push({
+    key: "offer_sent",
+    label: "Angebot versendet",
+    status: latestRecord?.latestOfferSentAt || outboundEvidence ? "verified" : latestOffer ? "warning" : "unknown",
+    summary:
+      latestRecord?.latestOfferSentAt
+        ? `Master-Quote meldet Versand am ${latestRecord.latestOfferSentAt}.`
+        : outboundEvidence?.occurredAt
+          ? `Timeline enthält ausgehenden Beleg am ${outboundEvidence.occurredAt}.`
+          : latestOffer
+            ? "Angebot existiert, aber kein eindeutiger Versandbeleg in der Timeline."
+            : "Kein Angebot gefunden.",
+    evidenceIds: [outboundEvidence?.id, offerEvidence?.id].filter(Boolean) as string[],
+  });
+
+  checks.push({
+    key: "color",
+    label: "Farbe belegt",
+    status:
+      colorConflict
+        ? "warning"
+        : requestColors.length && offerColors.length
+          ? "verified"
+          : questionMentions(question, "farbe", "blau", "rot", "grün", "gruen", "weiss", "weiß", "pink")
+            ? "missing"
+            : "unknown",
+    summary:
+      colorConflict?.detail ||
+      (requestColors.length || offerColors.length
+        ? `Request: ${requestColors.join(", ") || "keine Farbe"} · Angebot: ${offerColors.join(", ") || "keine Farbe"}`
+        : "Keine belastbare Farbangabe in den angebundenen Quellen."),
+    evidenceIds: evidence.filter((entry) => /farbe|color|angebot|position/i.test(`${entry.title} ${entry.detail || ""}`)).slice(0, 4).map((entry) => entry.id),
+  });
+
+  checks.push({
+    key: "design",
+    label: "Designs/Bilder",
+    status: latestOffer?.designEvidenceCount ? "verified" : questionMentions(question, "design", "entwurf", "mockup", "motiv") ? "missing" : "unknown",
+    summary: latestOffer
+      ? `${latestOffer.designEvidenceCount} Design-/Bildhinweise im Angebot, ${latestOffer.imageCount} aktive Bilder.`
+      : "Kein Angebotssnapshot für Designprüfung geladen.",
+    evidenceIds: designEvidence.slice(0, 6).map((entry) => entry.id),
+  });
+
+  checks.push({
+    key: "product_type",
+    label: "Produktart",
+    status:
+      questionMentions(question, "3d", "3-d")
+        ? latestOffer?.productHints.includes("3D")
+          ? "verified"
+          : latestOffer
+            ? "warning"
+            : "unknown"
+        : latestOffer?.productHints.length
+          ? "verified"
+          : "unknown",
+    summary: latestOffer?.productHints.length ? `Produkt-Hinweise: ${latestOffer.productHints.join(", ")}.` : "Keine Produktart sicher erkannt.",
+    evidenceIds: [offerEvidence?.id].filter(Boolean) as string[],
+  });
+
+  checks.push({
+    key: "customer_reply",
+    label: "Kundenantwort",
+    status: inboundEvidence ? "verified" : "unknown",
+    summary: inboundEvidence?.occurredAt ? `Letzter Eingang am ${inboundEvidence.occurredAt}: ${inboundEvidence.title}.` : "Kein Eingang in den geladenen Timeline-Belegen.",
+    evidenceIds: [inboundEvidence?.id].filter(Boolean) as string[],
+  });
+
+  checks.push({
+    key: "order",
+    label: "Bestellung",
+    status: latestRecord?.latestOrderNumber ? "verified" : questionMentions(question, "bestellung", "shopify", "bezahlt", "gekauft") ? "missing" : "unknown",
+    summary: latestRecord?.latestOrderNumber
+      ? `Bestellung ${latestRecord.latestOrderNumber}${latestRecord.latestOrderStatus ? ` · ${latestRecord.latestOrderStatus}` : ""}.`
+      : "Keine verknüpfte Bestellung im geladenen Fall.",
+    evidenceIds: evidence.filter((entry) => /bestellung|order|shopify/i.test(`${entry.title} ${entry.detail || ""}`)).slice(0, 3).map((entry) => entry.id),
+  });
+
+  return checks;
 }
 
 function buildAnswer(
@@ -496,6 +691,7 @@ function buildAnswer(
     bullets.push(`Angebot: ${latestOffer.offerNumber || latestOffer.documentReference}, Status ${latestOffer.status}, ${latestOffer.itemCount} Positionen, ${latestOffer.imageCount} Bilder/Designs.`);
     if (latestOffer.productHints.length) bullets.push(`Produkt-Hinweise im Angebot: ${latestOffer.productHints.join(", ")}.`);
     if (latestOffer.colorHints.length) bullets.push(`Farb-Hinweise im Angebot: ${latestOffer.colorHints.join(", ")}.`);
+    if (latestOffer.selectedItems.length) bullets.push(`Ausgewählte Positionen: ${latestOffer.selectedItems.map((item) => item.title).slice(0, 3).join(", ")}.`);
   }
   if (lowerQuestion.includes("3d") || lowerQuestion.includes("design")) {
     if (latestOffer) {
@@ -561,6 +757,14 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     }
   }
 
+  for (const identifier of identifiers.filter((entry) => entry.type === "trello_card_id").slice(0, 2)) {
+    try {
+      customerRecords.push(...await searchCustomerRecords(`trello:${identifier.value}`));
+    } catch {
+      // the main customer-record diagnostic above is enough for the operator.
+    }
+  }
+
   try {
     const offerSearch = await searchOffers(query, limit);
     offerSearchResults = dedupeOfferSearchResults(offerSearch.results).slice(0, limit);
@@ -577,6 +781,19 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
       ));
     } catch (error) {
       diagnostics.push({ source: "offer_bridge", ok: false, label: "Offer-Bridge", detail: errorMessage(error), count: 0 });
+    }
+  }
+
+  for (const identifier of identifiers.filter((entry) => entry.type === "offer_number").slice(0, 3)) {
+    try {
+      const bridgeRecords = await listCustomerRecordsByOfferBridge(
+        { offerNumber: identifier.value },
+        { includeActivity: true, includeOfferTracking: true, includeRelated: true, includeTrello: false },
+      );
+      customerRecords.push(...bridgeRecords);
+      diagnostics.push({ source: "offer_bridge", ok: true, label: `Offer-Bridge ${identifier.value}`, detail: null, count: bridgeRecords.length });
+    } catch (error) {
+      diagnostics.push({ source: "offer_bridge", ok: false, label: `Offer-Bridge ${identifier.value}`, detail: errorMessage(error), count: 0 });
     }
   }
 
@@ -603,6 +820,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     .slice(0, 30);
   const conflicts = buildConflicts(recordSummaries, offerSummaries);
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
+  const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
   const answer = buildAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question);
 
   return {
@@ -614,6 +832,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     answer,
     records: recordSummaries,
     offers: offerSummaries,
+    checks,
     evidence,
     conflicts,
     gaps,
