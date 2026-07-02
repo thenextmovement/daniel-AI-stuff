@@ -116,6 +116,30 @@ export type CompanyBrainFinding = {
   source: string | null;
 };
 
+export type CompanyBrainCaseEvent = {
+  id: string;
+  category: "customer_message" | "offer" | "order" | "automation" | "trello" | "design" | "internal";
+  label: string;
+  summary: string;
+  occurredAt: string | null;
+  source: string;
+  direction: CompanyBrainEvidence["direction"];
+  href: string | null;
+  confidence: CompanyBrainEvidence["confidence"];
+  evidenceIds: string[];
+};
+
+export type CompanyBrainCrossCheck = {
+  key: "color_match" | "offer_sent" | "design_count" | "product_type" | "customer_confirmation" | "order_link";
+  label: string;
+  status: "pass" | "review" | "fail" | "unknown";
+  severity: "info" | "warning" | "critical";
+  expected: string | null;
+  actual: string | null;
+  summary: string;
+  evidenceIds: string[];
+};
+
 export type CompanyBrainCheck = {
   key: "offer_sent" | "color" | "design" | "product_type" | "customer_reply" | "order";
   label: string;
@@ -169,6 +193,17 @@ export type CompanyBrainDossier = {
   copyText: string;
 };
 
+export type CompanyBrainReplyDraft = {
+  title: string;
+  riskLevel: "low" | "medium" | "high";
+  approvalRequired: true;
+  canSendAutomatically: false;
+  subject: string;
+  body: string;
+  blockers: string[];
+  sourceEvidenceIds: string[];
+};
+
 export type CompanyBrainResolveInput = {
   query: string;
   question?: string | null;
@@ -189,10 +224,13 @@ export type CompanyBrainResolveResult = {
   };
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
+  caseEvents: CompanyBrainCaseEvent[];
+  crossChecks: CompanyBrainCrossCheck[];
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
   dossier: CompanyBrainDossier;
+  replyDraft: CompanyBrainReplyDraft;
   evidence: CompanyBrainEvidence[];
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
@@ -387,6 +425,36 @@ function normalizeColorGroup(color: string) {
     if (aliases.some((alias) => normalized.includes(alias))) return group;
   }
   return normalized;
+}
+
+function normalizeColorList(colors: string[]) {
+  return uniqueStrings(colors.map(normalizeColorGroup));
+}
+
+function quotedCount(text: string, pattern: RegExp) {
+  const normalized = text.toLowerCase();
+  const matches = normalized.match(pattern);
+  if (!matches) return null;
+  const numeric = matches.map((match) => Number.parseInt(match.replace(/\D+/g, ""), 10)).find((value) => Number.isFinite(value));
+  if (numeric) return numeric;
+  if (/\bzwei\b|\b2\b/.test(normalized)) return 2;
+  if (/\bdrei\b|\b3\b/.test(normalized)) return 3;
+  if (/\bein\b|\b1\b/.test(normalized)) return 1;
+  return null;
+}
+
+export function extractCompanyBrainSignals(text: string) {
+  const normalized = cleanText(text);
+  const lower = normalized.toLowerCase();
+  return {
+    colors: normalizeColorList(extractColorHints(normalized)),
+    designCount: quotedCount(lower, /\b\d+\s*(?:designs?|entwuerfe|entwürfe|mockups?|motive|bilder)\b/g) ||
+      (/\bzwei\s+(?:designs?|entwuerfe|entwürfe|mockups?|motive|bilder)\b/.test(lower) ? 2 : null),
+    mentions3d: /\b3\s*-?\s*d\b|\b3d\b/.test(lower),
+    asksOfferSent: /\b(raus|gesendet|verschickt|versendet|mail|e-?mail|angebot.*weg)\b/i.test(normalized),
+    asksCustomerConfirmation: /\b(bestätigt|bestaetigt|freigabe|zugesagt|antwort|kunde sagt|kundin sagt)\b/i.test(normalized),
+    asksOrder: /\b(bestellung|shopify|bezahlt|gekauft|order)\b/i.test(normalized),
+  };
 }
 
 function offerText(offer: OpsOfferSnapshot) {
@@ -780,9 +848,12 @@ function buildDossier(input: {
   answer: CompanyBrainResolveResult["answer"];
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
+  caseEvents: CompanyBrainCaseEvent[];
+  crossChecks: CompanyBrainCrossCheck[];
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
+  replyDraft: CompanyBrainReplyDraft;
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
   evidence: CompanyBrainEvidence[];
@@ -824,6 +895,16 @@ function buildDossier(input: {
       lines: input.checks.map((check) => `${check.label}: ${check.status} - ${check.summary}`),
     },
     {
+      title: "Konfliktmatrix",
+      lines: input.crossChecks.map((check) => `${check.label}: ${check.status} - Erwartet: ${check.expected || "unbekannt"} / Tatsächlich: ${check.actual || "unbekannt"} - ${check.summary}`),
+    },
+    {
+      title: "Fallakte",
+      lines: input.caseEvents.length
+        ? input.caseEvents.slice(0, 12).map((event) => `${event.occurredAt || "ohne Zeit"} · ${event.label} · ${event.summary}`)
+        : ["Keine normalisierten Fallereignisse geladen."],
+    },
+    {
       title: "Automationen / n8n",
       lines: input.automationRuns.length
         ? input.automationRuns.slice(0, 8).map((run) => `${run.createdAt || "ohne Zeit"} · ${run.workflowName || "Workflow"} · ${run.action || "Aktion"} · ${run.status || "Status unbekannt"}${run.error ? ` · Fehler: ${run.error}` : ""}`)
@@ -840,6 +921,16 @@ function buildDossier(input: {
         : ["Keine Konflikte oder kritischen Lücken im geladenen Ergebnis."],
     },
     {
+      title: "Antwortentwurf",
+      lines: [
+        `Freigabe erforderlich: ${input.replyDraft.approvalRequired ? "ja" : "nein"}`,
+        `Risiko: ${input.replyDraft.riskLevel}`,
+        `Betreff: ${input.replyDraft.subject}`,
+        ...input.replyDraft.body.split("\n"),
+        ...(input.replyDraft.blockers.length ? ["Blocker:", ...input.replyDraft.blockers] : []),
+      ],
+    },
+    {
       title: "Jüngste Belege",
       lines: input.evidence.slice(0, 10).map((entry) => `${entry.occurredAt || "ohne Zeit"} · ${entry.source} · ${entry.title}${entry.detail ? ` · ${entry.detail}` : ""}`),
     },
@@ -853,23 +944,257 @@ function buildDossier(input: {
   };
 }
 
-function buildConflicts(records: CompanyBrainRecordSummary[], offers: CompanyBrainOfferSummary[]) {
+function eventCategoryFromEvidence(entry: CompanyBrainEvidence): CompanyBrainCaseEvent["category"] {
+  const text = `${entry.source} ${entry.title} ${entry.detail || ""}`.toLowerCase();
+  if (/design|bild|mockup|entwurf|motiv|layout/.test(text)) return "design";
+  if (/bestellung|shopify|order|zahlung|bezahlt/.test(text)) return "order";
+  if (/trello/.test(text)) return "trello";
+  if (entry.source.startsWith("offers_api") || /angebot|quote|offer/.test(text)) return "offer";
+  if (entry.direction === "inbound" || entry.direction === "outbound" || entry.source === "customer_email_messages") return "customer_message";
+  return entry.direction === "system" ? "internal" : "internal";
+}
+
+function buildCaseEvents(evidence: CompanyBrainEvidence[], automationRuns: CompanyBrainAutomationRun[]): CompanyBrainCaseEvent[] {
+  const evidenceEvents = evidence.map((entry) => ({
+    id: `evidence:${entry.id}`,
+    category: eventCategoryFromEvidence(entry),
+    label: entry.title,
+    summary: entry.detail || entry.source,
+    occurredAt: entry.occurredAt,
+    source: entry.source,
+    direction: entry.direction,
+    href: entry.href,
+    confidence: entry.confidence,
+    evidenceIds: [entry.id],
+  } satisfies CompanyBrainCaseEvent));
+
+  const automationEvents = automationRuns.map((run) => ({
+    id: `automation:${run.id}`,
+    category: "automation" as const,
+    label: run.workflowName || "Automation",
+    summary: [
+      run.action || "Aktion unbekannt",
+      run.status || "Status unbekannt",
+      run.error ? `Fehler: ${run.error}` : null,
+    ].filter(Boolean).join(" · "),
+    occurredAt: run.createdAt,
+    source: "workflow_audit_log",
+    direction: "system" as const,
+    href: null,
+    confidence: "high" as const,
+    evidenceIds: [],
+  }));
+
+  return [...evidenceEvents, ...automationEvents]
+    .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
+    .slice(0, 40);
+}
+
+function statusSeverity(status: CompanyBrainCrossCheck["status"]): CompanyBrainCrossCheck["severity"] {
+  if (status === "fail") return "critical";
+  if (status === "review") return "warning";
+  return "info";
+}
+
+function joinOrNull(values: string[]) {
+  return values.length ? values.join(", ") : null;
+}
+
+export function buildCompanyBrainCrossChecks(input: {
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  evidence: CompanyBrainEvidence[];
+  question: string | null;
+}): CompanyBrainCrossCheck[] {
+  const { records, offers, evidence, question } = input;
+  const signals = extractCompanyBrainSignals(`${question || ""} ${evidence.filter((entry) => entry.direction === "inbound").map((entry) => `${entry.title} ${entry.detail || ""}`).join(" ")}`);
+  const requestedColors = normalizeColorList(records.flatMap((record) => record.requestedColors));
+  const inboundColors = normalizeColorList(evidence.filter((entry) => entry.direction === "inbound").flatMap((entry) => extractColorHints(`${entry.title} ${entry.detail || ""}`)));
+  const expectedColors = uniqueStrings([...requestedColors, ...inboundColors, ...signals.colors]);
+  const offerColors = normalizeColorList(offers.flatMap((offer) => offer.colorHints));
+  const latestRecord = records[0] || null;
+  const latestOffer = offers[0] || null;
+  const outboundEvidence = evidence.find((entry) => entry.direction === "outbound" && /angebot|mail|e-mail|follow-up|dokument/i.test(`${entry.title} ${entry.detail || ""}`));
+  const inboundEvidence = evidence.find((entry) => entry.direction === "inbound");
+  const offerEvidence = evidence.find((entry) => entry.source.startsWith("offers_api"));
+  const designEvidence = evidence.filter((entry) => /design|bild|position|mockup|entwurf|motiv/i.test(`${entry.title} ${entry.detail || ""}`));
+  const maxDesignEvidence = Math.max(...offers.map((offer) => Math.max(offer.designEvidenceCount, offer.imageCount)), 0);
+  const checks: CompanyBrainCrossCheck[] = [];
+
+  const missingColors = expectedColors.filter((color) => !offerColors.includes(color));
+  const colorStatus: CompanyBrainCrossCheck["status"] =
+    expectedColors.length && offerColors.length
+      ? missingColors.length ? "fail" : "pass"
+      : expectedColors.length || offerColors.length
+        ? "review"
+        : "unknown";
+  checks.push({
+    key: "color_match",
+    label: "Farbe Request/Kunde vs. Angebot",
+    status: colorStatus,
+    severity: statusSeverity(colorStatus),
+    expected: joinOrNull(expectedColors),
+    actual: joinOrNull(offerColors),
+    summary: colorStatus === "fail"
+      ? `Im Kunden-/Request-Kontext steht ${expectedColors.join(", ")}, im Angebot aber ${offerColors.join(", ")}.`
+      : colorStatus === "pass"
+        ? "Farbhinweise aus Kunde/Request und Angebot passen zusammen."
+        : "Farben sind nicht vollständig belegt.",
+    evidenceIds: evidence.filter((entry) => /farbe|color|angebot|position/i.test(`${entry.title} ${entry.detail || ""}`)).slice(0, 6).map((entry) => entry.id),
+  });
+
+  const offerSent = Boolean(latestRecord?.latestOfferSentAt || outboundEvidence);
+  const offerSentStatus: CompanyBrainCrossCheck["status"] = offerSent ? "pass" : latestOffer ? "review" : "unknown";
+  checks.push({
+    key: "offer_sent",
+    label: "Angebotsversand",
+    status: offerSentStatus,
+    severity: statusSeverity(offerSentStatus),
+    expected: signals.asksOfferSent ? "Versandstatus beantworten" : "Versandbeleg",
+    actual: latestRecord?.latestOfferSentAt || outboundEvidence?.occurredAt || null,
+    summary: offerSent
+      ? "Ein Versand- oder Ausgangsbeleg ist vorhanden."
+      : latestOffer
+        ? "Angebot existiert, aber ein eindeutiger Versandbeleg fehlt im geladenen Ergebnis."
+        : "Kein Angebot für Versandprüfung geladen.",
+    evidenceIds: [outboundEvidence?.id, offerEvidence?.id].filter(Boolean) as string[],
+  });
+
+  const designStatus: CompanyBrainCrossCheck["status"] =
+    signals.designCount
+      ? maxDesignEvidence >= signals.designCount ? "pass" : latestOffer ? "fail" : "unknown"
+      : maxDesignEvidence ? "pass" : "review";
+  checks.push({
+    key: "design_count",
+    label: "Design-/Bildanzahl",
+    status: designStatus,
+    severity: statusSeverity(designStatus),
+    expected: signals.designCount ? `${signals.designCount} Design/Bild-Hinweis(e)` : null,
+    actual: latestOffer ? `${maxDesignEvidence} Design-/Bildhinweis(e)` : null,
+    summary: signals.designCount
+      ? (maxDesignEvidence >= signals.designCount ? "Die angefragte Designanzahl ist belegt." : "Die angefragte Designanzahl ist im Angebot nicht belegt.")
+      : "Keine konkrete Designanzahl angefragt; vorhandene Design-/Bildhinweise werden angezeigt.",
+    evidenceIds: designEvidence.slice(0, 8).map((entry) => entry.id),
+  });
+
+  const productStatus: CompanyBrainCrossCheck["status"] =
+    signals.mentions3d ? latestOffer?.productHints.includes("3D") ? "pass" : latestOffer ? "fail" : "unknown" : latestOffer?.productHints.length ? "pass" : "unknown";
+  checks.push({
+    key: "product_type",
+    label: "Produktart",
+    status: productStatus,
+    severity: statusSeverity(productStatus),
+    expected: signals.mentions3d ? "3D" : null,
+    actual: latestOffer?.productHints.length ? latestOffer.productHints.join(", ") : null,
+    summary: signals.mentions3d
+      ? (latestOffer?.productHints.includes("3D") ? "3D-Hinweis im Angebot gefunden." : "3D-Hinweis im Angebot nicht gefunden.")
+      : "Produkt-Hinweise aus dem Angebot extrahiert.",
+    evidenceIds: [offerEvidence?.id].filter(Boolean) as string[],
+  });
+
+  const confirmationStatus: CompanyBrainCrossCheck["status"] = inboundEvidence ? "pass" : signals.asksCustomerConfirmation ? "fail" : "unknown";
+  checks.push({
+    key: "customer_confirmation",
+    label: "Kundenbestätigung",
+    status: confirmationStatus,
+    severity: statusSeverity(confirmationStatus),
+    expected: signals.asksCustomerConfirmation ? "Kundenantwort/Freigabe" : null,
+    actual: inboundEvidence?.occurredAt || null,
+    summary: inboundEvidence ? `Kundeneingang vorhanden: ${inboundEvidence.title}.` : "Keine Kundenantwort im geladenen Ergebnis.",
+    evidenceIds: [inboundEvidence?.id].filter(Boolean) as string[],
+  });
+
+  const orderStatus: CompanyBrainCrossCheck["status"] = latestRecord?.latestOrderNumber ? "pass" : signals.asksOrder ? "fail" : "unknown";
+  checks.push({
+    key: "order_link",
+    label: "Bestellung verknüpft",
+    status: orderStatus,
+    severity: statusSeverity(orderStatus),
+    expected: signals.asksOrder ? "Shopify-/Bestellbeleg" : null,
+    actual: latestRecord?.latestOrderNumber || null,
+    summary: latestRecord?.latestOrderNumber ? `Bestellung ${latestRecord.latestOrderNumber} ist verknüpft.` : "Keine Bestellung im geladenen Fall verknüpft.",
+    evidenceIds: evidence.filter((entry) => /bestellung|order|shopify/i.test(`${entry.title} ${entry.detail || ""}`)).slice(0, 4).map((entry) => entry.id),
+  });
+
+  return checks;
+}
+
+function buildConflicts(crossChecks: CompanyBrainCrossCheck[]) {
   const conflicts: CompanyBrainFinding[] = [];
-  const requestColors = uniqueStrings(records.flatMap((record) => record.requestedColors));
-  const offerColors = uniqueStrings(offers.flatMap((offer) => offer.colorHints));
-  if (requestColors.length && offerColors.length) {
-    const normalizedOfferColors = new Set(offerColors.map(normalizeColorGroup));
-    const missingInOffer = requestColors.filter((color) => !normalizedOfferColors.has(normalizeColorGroup(color)));
-    if (missingInOffer.length) {
-      conflicts.push({
-        severity: "warning",
-        title: "Farbhinweise weichen ab",
-        detail: `Request nennt ${requestColors.join(", ")}; im Angebotstext erkannt: ${offerColors.join(", ")}.`,
-        source: "request_vs_offer",
-      });
-    }
+  for (const check of crossChecks.filter((entry) => entry.status === "fail")) {
+    conflicts.push({
+      severity: check.severity,
+      title: check.label,
+      detail: check.summary,
+      source: check.key,
+    });
+  }
+  for (const check of crossChecks.filter((entry) => entry.status === "review" && entry.severity === "warning")) {
+    conflicts.push({
+      severity: "warning",
+      title: `${check.label} prüfen`,
+      detail: check.summary,
+      source: check.key,
+    });
   }
   return conflicts;
+}
+
+function buildReplyDraft(input: {
+  answer: CompanyBrainResolveResult["answer"];
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  crossChecks: CompanyBrainCrossCheck[];
+  conflicts: CompanyBrainFinding[];
+  gaps: CompanyBrainFinding[];
+  evidence: CompanyBrainEvidence[];
+}): CompanyBrainReplyDraft {
+  const primaryRecord = input.records[0] || null;
+  const primaryOffer = input.offers[0] || null;
+  const blockers = [
+    ...input.conflicts.filter((finding) => finding.severity !== "info").map((finding) => `${finding.title}: ${finding.detail}`),
+    ...input.gaps.filter((finding) => finding.severity === "warning").map((finding) => `${finding.title}: ${finding.detail}`),
+  ].slice(0, 8);
+  const riskLevel: CompanyBrainReplyDraft["riskLevel"] = input.conflicts.some((finding) => finding.severity === "critical")
+    ? "high"
+    : blockers.length
+      ? "medium"
+      : "low";
+  const subjectReference = primaryOffer?.offerNumber || primaryOffer?.documentReference || primaryRecord?.requestId || "Ihrem Anliegen";
+  const provenLines = input.crossChecks
+    .filter((check) => check.status === "pass")
+    .slice(0, 4)
+    .map((check) => `- ${check.label}: ${check.actual || check.summary}`);
+  const uncertainLines = [...input.conflicts, ...input.gaps]
+    .filter((finding) => finding.severity !== "info")
+    .slice(0, 4)
+    .map((finding) => `- ${finding.title}: ${finding.detail}`);
+
+  return {
+    title: "Interner Antwortentwurf",
+    riskLevel,
+    approvalRequired: true,
+    canSendAutomatically: false,
+    subject: `Prüfung zu ${subjectReference}`,
+    body: [
+      "Hallo,",
+      "",
+      "wir haben den Fall anhand der internen Belege geprüft.",
+      provenLines.length ? "" : null,
+      provenLines.length ? "Belegt ist:" : null,
+      ...provenLines,
+      uncertainLines.length ? "" : null,
+      uncertainLines.length ? "Vor einer verbindlichen Aussage müssen wir noch prüfen:" : null,
+      ...uncertainLines,
+      "",
+      "Bitte diesen Entwurf vor dem Versand fachlich prüfen und erst nach Freigabe anpassen/versenden.",
+      "",
+      "Viele Grüße",
+      "NEONTRIP",
+    ].filter((line): line is string => line !== null).join("\n"),
+    blockers,
+    sourceEvidenceIds: input.evidence.slice(0, 8).map((entry) => entry.id),
+  };
 }
 
 function questionMentions(question: string | null, ...needles: string[]) {
@@ -890,7 +1215,7 @@ function buildChecks(
   const inboundEvidence = evidence.find((entry) => entry.direction === "inbound");
   const offerEvidence = evidence.find((entry) => entry.source.startsWith("offers_api"));
   const designEvidence = evidence.filter((entry) => /design|bild|position|mockup|entwurf/i.test(`${entry.title} ${entry.detail || ""}`));
-  const colorConflict = conflicts.find((entry) => entry.source === "request_vs_offer") || null;
+  const colorConflict = conflicts.find((entry) => entry.source === "color_match") || null;
   const requestColors = uniqueStrings(records.flatMap((record) => record.requestedColors));
   const offerColors = uniqueStrings(offers.flatMap((offer) => offer.colorHints));
   const checks: CompanyBrainCheck[] = [];
@@ -1127,22 +1452,36 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   ]
     .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
     .slice(0, 30);
-  const conflicts = buildConflicts(recordSummaries, offerSummaries);
+  const crossChecks = buildCompanyBrainCrossChecks({ records: recordSummaries, offers: offerSummaries, evidence, question });
+  const conflicts = buildConflicts(crossChecks);
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
   const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
   const answer = buildAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question);
   const automation = await fetchAutomationRuns(recordSummaries, offerSummaries);
   diagnostics.push(automation.diagnostic);
+  const caseEvents = buildCaseEvents(evidence, automation.runs);
   const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automation.runs);
   const generatedAt = new Date().toISOString();
+  const replyDraft = buildReplyDraft({
+    answer,
+    records: recordSummaries,
+    offers: offerSummaries,
+    crossChecks,
+    conflicts,
+    gaps,
+    evidence,
+  });
   const dossier = buildDossier({
     generatedAt,
     answer,
     records: recordSummaries,
     offers: offerSummaries,
+    caseEvents,
+    crossChecks,
     checks,
     sourceHealth,
     automationRuns: automation.runs,
+    replyDraft,
     conflicts,
     gaps,
     evidence,
@@ -1157,10 +1496,13 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     answer,
     records: recordSummaries,
     offers: offerSummaries,
+    caseEvents,
+    crossChecks,
     checks,
     sourceHealth,
     automationRuns: automation.runs,
     dossier,
+    replyDraft,
     evidence,
     conflicts,
     gaps,

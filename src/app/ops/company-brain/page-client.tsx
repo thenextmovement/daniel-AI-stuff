@@ -9,7 +9,10 @@ import {
   Clock3,
   ExternalLink,
   FileSearch,
+  History,
+  ListChecks,
   MailCheck,
+  MessageSquareText,
   Network,
   RefreshCcw,
   Search,
@@ -98,6 +101,36 @@ function sourceHealthLabel(status: string) {
   return "Fehlt";
 }
 
+function crossCheckClass(status: string) {
+  if (status === "pass") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "fail") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (status === "review") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
+function crossCheckLabel(status: string) {
+  if (status === "pass") return "Passt";
+  if (status === "fail") return "Konflikt";
+  if (status === "review") return "Prüfen";
+  return "Unklar";
+}
+
+function caseCategoryLabel(category: string) {
+  if (category === "customer_message") return "Kunde/Mail";
+  if (category === "offer") return "Angebot";
+  if (category === "order") return "Bestellung";
+  if (category === "automation") return "Automation";
+  if (category === "trello") return "Trello";
+  if (category === "design") return "Design";
+  return "Intern";
+}
+
+function riskClass(riskLevel: string) {
+  if (riskLevel === "high") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (riskLevel === "medium") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-emerald-200 bg-emerald-50 text-emerald-900";
+}
+
 export function OpsCompanyBrainClient({
   initialHasSession,
   opsEnabled,
@@ -116,6 +149,7 @@ export function OpsCompanyBrainClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [draftCopyMessage, setDraftCopyMessage] = useState<string | null>(null);
   const sharedOperatorNameKey = "neontrip-ops-operator";
 
   useEffect(() => {
@@ -137,6 +171,7 @@ export function OpsCompanyBrainClient({
     evidence: result?.evidence.length || 0,
     findings: (result?.gaps.length || 0) + (result?.conflicts.length || 0),
     automations: result?.automationRuns.length || 0,
+    events: result?.caseEvents.length || 0,
   }), [result]);
 
   const quickQuestions = [
@@ -183,6 +218,7 @@ export function OpsCompanyBrainClient({
       }
       setResult(payload.result);
       setCopyMessage(null);
+      setDraftCopyMessage(null);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Fallprüfung konnte nicht geladen werden.");
     } finally {
@@ -197,6 +233,16 @@ export function OpsCompanyBrainClient({
       setCopyMessage("Dossier kopiert.");
     } catch {
       setCopyMessage("Kopieren nicht möglich.");
+    }
+  }
+
+  async function copyReplyDraft() {
+    if (!result?.replyDraft.body) return;
+    try {
+      await navigator.clipboard.writeText(`Betreff: ${result.replyDraft.subject}\n\n${result.replyDraft.body}`);
+      setDraftCopyMessage("Entwurf kopiert.");
+    } catch {
+      setDraftCopyMessage("Kopieren nicht möglich.");
     }
   }
 
@@ -292,10 +338,11 @@ export function OpsCompanyBrainClient({
 
         {result ? (
           <>
-            <section className="grid gap-4 md:grid-cols-4">
+            <section className="grid gap-4 md:grid-cols-5">
               <OpsStatCard label="Kundenakten" value={stats.records} icon={<BrainCircuit className="h-5 w-5" />} />
               <OpsStatCard label="Angebote" value={stats.offers} tone="info" icon={<FileSearch className="h-5 w-5" />} />
               <OpsStatCard label="Belege" value={stats.evidence} tone="success" icon={<MailCheck className="h-5 w-5" />} />
+              <OpsStatCard label="Fallakte" value={stats.events} tone="info" icon={<History className="h-5 w-5" />} />
               <OpsStatCard label="Automationen" value={stats.automations} tone={stats.automations ? "info" : stats.findings ? "warning" : "neutral"} icon={<Workflow className="h-5 w-5" />} />
             </section>
 
@@ -360,6 +407,84 @@ export function OpsCompanyBrainClient({
                       </div>
                     ))}
                   </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Konfliktmatrix</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Erwartet vs. belegt</h2>
+                    </div>
+                    <ListChecks className="h-6 w-6 text-stone-500" />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {(result.crossChecks || []).map((check) => (
+                      <div key={check.key} className={`rounded-2xl border px-4 py-3 text-sm ${crossCheckClass(check.status)}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{check.label}</p>
+                            <p className="mt-1 leading-6 opacity-80">{check.summary}</p>
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium opacity-80">
+                            {crossCheckLabel(check.status)}
+                          </span>
+                        </div>
+                        <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                          <div>
+                            <dt className="opacity-60">Erwartet</dt>
+                            <dd className="font-medium">{check.expected || "Keine Angabe"}</dd>
+                          </div>
+                          <div>
+                            <dt className="opacity-60">Belegt</dt>
+                            <dd className="font-medium">{check.actual || "Keine Angabe"}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Antwortentwurf</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Nur mit Freigabe</h2>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MessageSquareText className="h-5 w-5 text-stone-500" />
+                      <button
+                        type="button"
+                        onClick={() => void copyReplyDraft()}
+                        className="inline-flex h-10 items-center gap-2 rounded-2xl border border-stone-200 px-3 text-xs font-medium text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                      >
+                        <ClipboardCopy className="h-4 w-4" />
+                        Entwurf kopieren
+                      </button>
+                    </div>
+                  </div>
+                  <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${riskClass(result.replyDraft.riskLevel)}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="font-semibold">Freigabe erforderlich</span>
+                      <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium">
+                        Risiko: {result.replyDraft.riskLevel}
+                      </span>
+                    </div>
+                    <p className="mt-2 leading-6 opacity-80">Dieser Entwurf wird nicht automatisch versendet und darf vor Kundenkontakt fachlich angepasst werden.</p>
+                  </div>
+                  {draftCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{draftCopyMessage}</p> : null}
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                    <p className="text-sm font-semibold text-stone-950">{result.replyDraft.subject}</p>
+                    <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-stone-700">{result.replyDraft.body}</pre>
+                  </div>
+                  {result.replyDraft.blockers.length ? (
+                    <div className="mt-4 grid gap-2">
+                      {result.replyDraft.blockers.map((blocker) => (
+                        <p key={blocker} className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+                          {blocker}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
 
                 <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
@@ -521,6 +646,38 @@ export function OpsCompanyBrainClient({
                     </div>
                   </article>
                 ) : null}
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Fallakte</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Chronologie</h2>
+                    </div>
+                    <History className="h-6 w-6 text-stone-500" />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {result.caseEvents.length ? result.caseEvents.slice(0, 14).map((event) => (
+                      <div key={event.id} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-stone-950">{event.label}</p>
+                            <p className="mt-1 text-sm leading-6 text-stone-600">{event.summary}</p>
+                          </div>
+                          <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-500">
+                            {caseCategoryLabel(event.category)}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
+                          <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />{formatDateTime(event.occurredAt)}</span>
+                          <span>{event.source}</span>
+                          {event.href ? <a href={event.href} className="inline-flex items-center gap-1 font-medium text-stone-800 hover:text-stone-950">Quelle <ExternalLink className="h-3 w-3" /></a> : null}
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">Keine Fallereignisse geladen.</p>
+                    )}
+                  </div>
+                </article>
 
                 <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Evidenz-Zeitstrahl</p>
