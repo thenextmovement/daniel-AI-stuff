@@ -1048,6 +1048,7 @@ export function OpsCompanyBrainClient({
                           <div>
                             <p className="font-semibold text-stone-950">{run.workflowName || "Workflow"}</p>
                             <p className="mt-1 text-stone-600">{run.action || "Aktion unbekannt"} · {run.status || "Status unbekannt"}</p>
+                            {run.summary ? <p className="mt-1 text-stone-600">{run.summary}</p> : null}
                             {run.error ? <p className="mt-1 text-rose-700">{run.error}</p> : null}
                           </div>
                           <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-500">
@@ -1055,10 +1056,13 @@ export function OpsCompanyBrainClient({
                           </span>
                         </div>
                         <div className="mt-3 grid gap-1 text-xs text-stone-500">
+                          {run.failedNode ? <span>Failed Node: {run.failedNode}</span> : null}
                           {run.executionId ? <span>Execution: {run.executionId}</span> : null}
                           {run.correlationId ? <span>Correlation: {run.correlationId}</span> : null}
                           {run.sourceEventId ? <span>Source Event: {run.sourceEventId}</span> : null}
                           {run.targetRecordId ? <span>Target: {run.targetRecordId}</span> : null}
+                          {run.idempotencyKey ? <span>Idempotency: {run.idempotencyKey}</span> : null}
+                          {run.retrySafety ? <span>Retry-Sicherheit: {run.retrySafety}</span> : null}
                         </div>
                       </div>
                     )) : (

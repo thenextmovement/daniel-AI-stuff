@@ -276,6 +276,10 @@ export type CompanyBrainAutomationRun = {
   correlationId: string | null;
   sourceEventId: string | null;
   targetRecordId: string | null;
+  failedNode: string | null;
+  idempotencyKey: string | null;
+  retrySafety: string | null;
+  summary: string | null;
 };
 
 export type CompanyBrainTrelloFailureDiagnosis = {
@@ -1047,13 +1051,17 @@ async function fetchAutomationRuns(
       workflowName: cleanText(row.workflow_name) || null,
       action: cleanText(row.action) || null,
       status: cleanText(row.status) || null,
-      error: cleanText(row.error_message) || null,
+      error: cleanText(row.error_message) || metadataText(row.metadata, ["error_message", "error", "message"]),
       createdAt: row.created_at || null,
       requestId: cleanText(row.document_id) || metadataText(row.metadata, ["request_id", "task_request_id"]),
       executionId: metadataText(row.metadata, ["execution_id", "n8n_execution_id", "workflow_execution_id"]),
       correlationId: metadataText(row.metadata, ["correlation_id", "request_correlation_id", "idempotency_key"]),
       sourceEventId: metadataText(row.metadata, ["source_event_id", "event_id", "message_id", "offer_event_id"]),
       targetRecordId: metadataText(row.metadata, ["target_record_id", "task_id", "offer_id", "shopify_order_id"]),
+      failedNode: metadataText(row.metadata, ["failed_node", "failedNode", "node_name", "nodeName"]),
+      idempotencyKey: metadataText(row.metadata, ["idempotency_key", "idempotencyKey"]),
+      retrySafety: metadataText(row.metadata, ["retry_safety", "retrySafety"]),
+      summary: metadataText(row.metadata, ["summary", "detail", "description"]),
     }));
     return {
       runs,
@@ -1414,7 +1422,16 @@ function buildDossier(input: {
     {
       title: "Automationen / n8n",
       lines: input.automationRuns.length
-        ? input.automationRuns.slice(0, 8).map((run) => `${run.createdAt || "ohne Zeit"} · ${run.workflowName || "Workflow"} · ${run.action || "Aktion"} · ${run.status || "Status unbekannt"}${run.error ? ` · Fehler: ${run.error}` : ""}`)
+        ? input.automationRuns.slice(0, 8).map((run) => [
+            run.createdAt || "ohne Zeit",
+            run.workflowName || "Workflow",
+            run.action || "Aktion",
+            run.status || "Status unbekannt",
+            run.failedNode ? `Node: ${run.failedNode}` : null,
+            run.executionId ? `Execution: ${run.executionId}` : null,
+            run.retrySafety ? `Retry: ${run.retrySafety}` : null,
+            run.error ? `Fehler: ${run.error}` : null,
+          ].filter(Boolean).join(" · "))
         : ["Keine Workflow-Audit-Einträge für diesen Fall."],
     },
     {
@@ -1784,7 +1801,7 @@ function buildWatchers(input: {
     status: failedAutomation ? "open" : "ok",
     title: "n8n-/Automation-Fehler",
     detail: failedAutomation
-      ? `${failedAutomation.workflowName || "Workflow"} · ${failedAutomation.action || "Aktion"} · ${failedAutomation.error || failedAutomation.status || "Fehlerstatus"}`
+      ? `${failedAutomation.workflowName || "Workflow"} · ${failedAutomation.action || "Aktion"}${failedAutomation.failedNode ? ` · Node ${failedAutomation.failedNode}` : ""} · ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}`
       : "Keine fehlgeschlagenen Automation-Runs im geladenen Audit gefunden.",
     actionKey: failedAutomation ? "inspect_n8n_run" : null,
   });
@@ -1909,8 +1926,10 @@ function buildTrelloFailureDiagnosis(input: {
     recommendedFix = "Angebotsanlage und Offer-Bridge prüfen; erst danach Versandlogik oder Retry bewerten.";
   } else if (failedAutomation) {
     rootCauseKey = "automation_failed";
-    rootCause = `${failedAutomation.workflowName || "Workflow"} ist fehlgeschlagen: ${failedAutomation.error || failedAutomation.status || "Fehlerstatus"}.`;
-    recommendedFix = "n8n-Execution mit Correlation/Execution-ID prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.";
+    rootCause = `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen: ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}.`;
+    recommendedFix = failedAutomation.idempotencyKey
+      ? `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "ohne ID"} prüfen. Retry nur mit Idempotency-Key ${failedAutomation.idempotencyKey} und nach Duplicate-Mail-Check freigeben.`
+      : "n8n-Execution mit Correlation/Execution-ID prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.";
     severity = "critical";
   } else if (expectedAction === "offer_send" && offerSent) {
     rootCauseKey = "sent";
@@ -1998,7 +2017,11 @@ function buildTrelloFailureDiagnosis(input: {
       `Kundenakte: ${hasRecord ? "gefunden" : "fehlt"}`,
       `Angebot: ${hasOffer ? "gefunden" : "fehlt"}`,
       `Workflow-Audit: ${hasAutomation ? `${input.automationRuns.length} Eintrag/Einträge` : "kein Eintrag"}`,
-    ],
+      failedAutomation?.executionId ? `Fehler-Execution: ${failedAutomation.executionId}` : null,
+      failedAutomation?.failedNode ? `Fehler-Node: ${failedAutomation.failedNode}` : null,
+      failedAutomation?.idempotencyKey ? `Idempotency: ${failedAutomation.idempotencyKey}` : null,
+      failedAutomation?.retrySafety ? `Retry-Sicherheit: ${failedAutomation.retrySafety}` : null,
+    ].filter(Boolean) as string[],
   };
 }
 
@@ -2398,7 +2421,11 @@ function buildActionProposals(input: {
             `Workflow: ${failedAutomation.workflowName || "unbekannt"}`,
             `Action: ${failedAutomation.action || "unbekannt"}`,
             `Execution: ${failedAutomation.executionId || "unbekannt"}`,
+            failedAutomation.failedNode ? `Node: ${failedAutomation.failedNode}` : null,
+            failedAutomation.idempotencyKey ? `Idempotency: ${failedAutomation.idempotencyKey}` : null,
+            failedAutomation.retrySafety ? `Retry-Sicherheit: ${failedAutomation.retrySafety}` : null,
           ]
+            .filter(Boolean) as string[]
         : ["Kein Fehler-Run gefunden."],
     },
     {

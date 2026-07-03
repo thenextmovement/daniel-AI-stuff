@@ -1,0 +1,6 @@
+drop index if exists public.workflow_audit_log_metadata_idempotency_key_idx;
+drop index if exists public.workflow_audit_log_metadata_correlation_id_idx;
+drop index if exists public.workflow_audit_log_metadata_execution_id_idx;
+drop index if exists public.workflow_audit_log_metadata_request_id_idx;
+drop index if exists public.workflow_audit_log_metadata_trello_card_id_idx;
+drop index if exists public.workflow_audit_log_audit_event_key_idx;
