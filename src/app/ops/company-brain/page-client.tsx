@@ -602,6 +602,29 @@ export function OpsCompanyBrainClient({
                         <p className="mt-1 text-xs text-stone-500">{formatDateTime(result.trelloFailureDiagnosis.triggerMove?.occurredAt || null)}</p>
                       </div>
                     </dl>
+                    {result.trelloFailureDiagnosis.card?.descriptionPreview || result.trelloFailureDiagnosis.card?.customFields.length ? (
+                      <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm">
+                        {result.trelloFailureDiagnosis.card.descriptionPreview ? (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Beschreibung</p>
+                            <p className="mt-2 leading-6 text-stone-700">{result.trelloFailureDiagnosis.card.descriptionPreview}</p>
+                          </div>
+                        ) : null}
+                        {result.trelloFailureDiagnosis.card.customFields.length ? (
+                          <div className={result.trelloFailureDiagnosis.card.descriptionPreview ? "mt-4" : ""}>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Kartenfelder</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {result.trelloFailureDiagnosis.card.customFields.slice(0, 8).map((field) => (
+                                <div key={`${field.name}-${field.value}`} className="rounded-xl border border-stone-200 bg-white px-3 py-2">
+                                  <p className="text-[11px] font-medium text-stone-400">{field.name}</p>
+                                  <p className="mt-1 text-xs font-medium text-stone-700">{field.value}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                         <p className="font-semibold">Sichere Fixes</p>

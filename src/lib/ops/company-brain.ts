@@ -287,10 +287,15 @@ export type CompanyBrainTrelloFailureDiagnosis = {
     id: string;
     shortLink: string | null;
     name: string | null;
+    descriptionPreview: string | null;
     url: string | null;
     currentListName: string | null;
     dateLastActivity: string | null;
     attachmentsCount: number;
+    customFields: Array<{
+      name: string;
+      value: string;
+    }>;
   } | null;
   triggerMove: {
     id: string;
@@ -567,6 +572,22 @@ function primaryTrelloLookup(input: {
     if (lookup) return lookup;
   }
   return null;
+}
+
+function previewText(value: unknown, maxLength = 360) {
+  const text = cleanText(value);
+  if (!text) return null;
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function trelloCustomFieldEntries(context: TrelloFailureContext) {
+  return Object.entries(context.card.customFields || {})
+    .map(([name, value]) => ({
+      name: cleanText(name),
+      value: previewText(value, 160),
+    }))
+    .filter((entry): entry is { name: string; value: string } => Boolean(entry.name && entry.value))
+    .slice(0, 10);
 }
 
 function emptyTrelloFailureDiagnosis(requested: boolean): CompanyBrainTrelloFailureDiagnosis {
@@ -1058,6 +1079,7 @@ function buildSourceHealth(
   evidence: CompanyBrainEvidence[],
   diagnostics: CompanyBrainDiagnostic[],
   automationRuns: CompanyBrainAutomationRun[],
+  trelloFailureDiagnosis?: CompanyBrainTrelloFailureDiagnosis,
 ): CompanyBrainSourceHealth[] {
   const diagnosticBySource = new Map(diagnostics.map((entry) => [entry.source, entry] as const));
   const customerDiagnostic = diagnosticBySource.get("customer_records");
@@ -1067,6 +1089,7 @@ function buildSourceHealth(
   const outlookEvidence = evidence.filter((entry) => entry.source === "customer_email_messages");
   const shopifyLinked = records.filter((record) => record.latestOrderNumber);
   const trelloLinked = records.filter((record) => record.trelloCardId || record.trelloCardUrl);
+  const liveTrelloCard = trelloFailureDiagnosis?.card || null;
 
   return [
     {
@@ -1128,11 +1151,17 @@ function buildSourceHealth(
     {
       key: "trello",
       label: "Trello",
-      status: trelloLinked.length ? "ok" : records.length ? "missing" : "partial",
-      summary: trelloLinked.length ? `${trelloLinked.length} Trello-Referenz(en).` : "Keine Trello-Referenz im geladenen Fall.",
-      count: trelloLinked.length,
-      lastSeenAt: null,
-      detail: "Trello bleibt Projektion, nicht Source of Truth.",
+      status: liveTrelloCard || trelloLinked.length ? "ok" : records.length ? "missing" : "partial",
+      summary: liveTrelloCard
+        ? `Live-Karte gelesen: ${liveTrelloCard.name || liveTrelloCard.id}.`
+        : trelloLinked.length
+          ? `${trelloLinked.length} Trello-Referenz(en).`
+          : "Keine Trello-Referenz im geladenen Fall.",
+      count: liveTrelloCard ? 1 : trelloLinked.length,
+      lastSeenAt: liveTrelloCard?.dateLastActivity || null,
+      detail: liveTrelloCard
+        ? "Live-Trello wurde gelesen; Source of Truth bleibt Postgres/Offer/Audit."
+        : "Trello bleibt Projektion, nicht Source of Truth.",
     },
     {
       key: "evidence",
@@ -1394,12 +1423,15 @@ function buildDossier(input: {
         ? [
             `Status: ${input.trelloFailureDiagnosis.status}`,
             `Karte: ${input.trelloFailureDiagnosis.card?.name || input.trelloFailureDiagnosis.card?.id || "nicht geladen"}`,
+            input.trelloFailureDiagnosis.card?.currentListName ? `Aktuelle Liste: ${input.trelloFailureDiagnosis.card.currentListName}` : null,
+            input.trelloFailureDiagnosis.card?.descriptionPreview ? `Beschreibung: ${input.trelloFailureDiagnosis.card.descriptionPreview}` : null,
+            ...(input.trelloFailureDiagnosis.card?.customFields || []).slice(0, 6).map((field) => `Kartenfeld ${field.name}: ${field.value}`),
             `Erwartete Aktion: ${input.trelloFailureDiagnosis.expectedAction}`,
             `Ursache: ${input.trelloFailureDiagnosis.rootCause}`,
             `Empfohlener Fix: ${input.trelloFailureDiagnosis.recommendedFix}`,
             `Duplicate-Risiko: ${input.trelloFailureDiagnosis.duplicateRisk}`,
             ...input.trelloFailureDiagnosis.blockedFixes.map((entry) => `Blockiert: ${entry}`),
-          ]
+          ].filter((line): line is string => Boolean(line))
         : ["Keine Trello-Triggerdiagnose angefordert."],
     },
     {
@@ -1930,10 +1962,12 @@ function buildTrelloFailureDiagnosis(input: {
       id: input.context.card.id,
       shortLink: input.context.card.shortLink,
       name: input.context.card.name,
+      descriptionPreview: previewText(input.context.card.desc),
       url: input.context.card.url || input.context.card.shortUrl,
       currentListName: input.context.card.currentListName,
       dateLastActivity: input.context.card.dateLastActivity,
       attachmentsCount: input.context.card.attachmentsCount,
+      customFields: trelloCustomFieldEntries(input.context),
     },
     triggerMove: triggerMove
       ? {
@@ -2491,18 +2525,34 @@ function buildChecks(
   return checks;
 }
 
-function buildAnswer(
+export function buildCompanyBrainAnswer(
   records: CompanyBrainRecordSummary[],
   offers: CompanyBrainOfferSummary[],
   evidence: CompanyBrainEvidence[],
   gaps: CompanyBrainFinding[],
   conflicts: CompanyBrainFinding[],
   question: string | null,
+  trelloFailureDiagnosis?: CompanyBrainTrelloFailureDiagnosis,
 ) {
   const bullets: string[] = [];
   const latestRecord = records[0] || null;
   const latestOffer = offers[0] || null;
   const lowerQuestion = (question || "").toLowerCase();
+  const liveTrelloCard = trelloFailureDiagnosis?.card || null;
+
+  if (liveTrelloCard) {
+    bullets.push(`Trello-Karte gelesen: ${liveTrelloCard.name || liveTrelloCard.id}${liveTrelloCard.currentListName ? ` · Liste: ${liveTrelloCard.currentListName}` : ""}.`);
+    if (trelloFailureDiagnosis?.triggerMove) {
+      bullets.push(`Letzter Karten-Move: ${trelloFailureDiagnosis.triggerMove.fromListName || "unbekannt"} -> ${trelloFailureDiagnosis.triggerMove.toListName || "unbekannt"}${trelloFailureDiagnosis.triggerMove.occurredAt ? ` am ${trelloFailureDiagnosis.triggerMove.occurredAt}` : ""}.`);
+    }
+    if (liveTrelloCard.descriptionPreview) bullets.push(`Trello-Beschreibung: ${liveTrelloCard.descriptionPreview}`);
+    if (liveTrelloCard.customFields.length) {
+      bullets.push(`Kartenfelder: ${liveTrelloCard.customFields.slice(0, 4).map((field) => `${field.name}: ${field.value}`).join(" · ")}.`);
+    }
+    if (!records.length) bullets.push("Keine verknüpfte Kundenakte als Source of Truth gefunden.");
+    if (!offers.length && trelloFailureDiagnosis?.expectedAction === "offer_send") bullets.push("Kein Angebotssnapshot zur Trello-Karte gefunden.");
+    if (trelloFailureDiagnosis?.rootCause) bullets.push(`Trello-Diagnose: ${trelloFailureDiagnosis.rootCause}`);
+  }
 
   if (latestRecord) {
     bullets.push(`Kundenakte: ${latestRecord.displayName || latestRecord.company || latestRecord.email || latestRecord.requestId} (${latestRecord.requestId}).`);
@@ -2528,8 +2578,18 @@ function buildAnswer(
   if (conflicts.length) bullets.push(`Konflikt: ${conflicts[0].detail}`);
   if (!bullets.length) bullets.push("Keine belastbare Aussage möglich, weil keine verknüpften Daten gefunden wurden.");
 
-  const verdict = records.length || offers.length ? (gaps.some((gap) => gap.severity !== "info") ? "partial" : "found") : "not_found";
-  const confidence = conflicts.length || gaps.some((gap) => gap.severity === "warning") ? "medium" : verdict === "found" ? "high" : "low";
+  const verdict = records.length || offers.length
+    ? (gaps.some((gap) => gap.severity !== "info") ? "partial" : "found")
+    : liveTrelloCard
+      ? "partial"
+      : "not_found";
+  const confidence = conflicts.length || gaps.some((gap) => gap.severity === "warning")
+    ? "medium"
+    : verdict === "found"
+      ? "high"
+      : liveTrelloCard
+        ? "medium"
+        : "low";
 
   return {
     verdict,
@@ -2537,8 +2597,12 @@ function buildAnswer(
     headline:
       verdict === "found"
         ? "Fall gefunden, Belege geladen."
-        : verdict === "partial"
-          ? "Fall teilweise gefunden, Quellenlücken beachten."
+        : liveTrelloCard && !records.length
+          ? "Trello-Karte gelesen, aber Source-of-Truth-Verknüpfung fehlt."
+          : liveTrelloCard && !offers.length && trelloFailureDiagnosis?.expectedAction === "offer_send"
+            ? "Trello-Karte gelesen, aber kein Angebot gefunden."
+            : verdict === "partial"
+              ? "Fall teilweise gefunden, Quellenlücken beachten."
           : "Kein belastbarer Falltreffer.",
     bullets: bullets.slice(0, 8),
   } satisfies CompanyBrainResolveResult["answer"];
@@ -2715,7 +2779,6 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   const conflicts = buildConflicts(crossChecks);
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
   const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
-  const answer = buildAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question);
   const automation = await fetchAutomationRuns(recordSummaries, offerSummaries, trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink || ""] : []);
   diagnostics.push(automation.diagnostic);
   const trelloFailureDiagnosis = buildTrelloFailureDiagnosis({
@@ -2729,8 +2792,9 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     question,
     problemType: requestedProblemType,
   });
+  const answer = buildCompanyBrainAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question, trelloFailureDiagnosis);
   const caseEvents = buildCaseEvents(evidence, automation.runs);
-  const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automation.runs);
+  const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automation.runs, trelloFailureDiagnosis);
   const generatedAt = new Date().toISOString();
   const replyDraft = buildReplyDraft({
     answer,

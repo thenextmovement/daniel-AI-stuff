@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildCompanyBrainAnswer,
   buildCompanyBrainCrossChecks,
   extractCompanyBrainIdentifiers,
   extractCompanyBrainSignals,
   normalizeCompanyBrainQuery,
   type CompanyBrainEvidence,
+  type CompanyBrainFinding,
   type CompanyBrainOfferSummary,
   type CompanyBrainRecordSummary,
+  type CompanyBrainTrelloFailureDiagnosis,
 } from "@/lib/ops/company-brain";
 
 test("company brain extracts operational identifiers from a mixed support question", () => {
@@ -108,4 +111,55 @@ test("company brain cross checks flag offer color and design mismatches", () => 
 
   assert.equal(checks.find((check) => check.key === "color_match")?.status, "fail");
   assert.equal(checks.find((check) => check.key === "design_count")?.status, "fail");
+});
+
+test("company brain answers with Trello-only diagnostics when source records are missing", () => {
+  const trelloDiagnosis: CompanyBrainTrelloFailureDiagnosis = {
+    requested: true,
+    status: "loaded",
+    severity: "warning",
+    expectedAction: "offer_send",
+    card: {
+      id: "64b7f9e2aabbccddeeff0011",
+      shortLink: "FYXcIQ9K",
+      name: "LED Flex Samuele Micacchioni",
+      descriptionPreview: "Kunde wartet seit Tagen auf Angebot.",
+      url: "https://trello.com/c/FYXcIQ9K",
+      currentListName: "Anfrage Management",
+      dateLastActivity: "2026-07-03T08:00:00.000Z",
+      attachmentsCount: 2,
+      customFields: [{ name: "Usage", value: "Shopfront" }],
+    },
+    triggerMove: {
+      id: "move-1",
+      occurredAt: "2026-07-03T08:00:00.000Z",
+      fromListName: "Neue Anfrage",
+      toListName: "Anfrage Management",
+    },
+    rootCauseKey: "no_source_record",
+    rootCause: "Die Trello-Karte ist live lesbar, aber es wurde keine verknüpfte Kundenakte als Source of Truth gefunden.",
+    recommendedFix: "Karte mit Request-ID/Kundenakte verknüpfen; keinen Versand-Retry aus Trello allein starten.",
+    evidenceStrength: "weak",
+    duplicateRisk: "high",
+    safeFixes: ["Karte manuell mit Request-ID/Kundenakte verknüpfen."],
+    blockedFixes: ["Kein automatischer Angebotsversand ohne Outlook-Duplicate-Check."],
+    timeline: [],
+    diagnostics: [],
+  };
+  const gaps: CompanyBrainFinding[] = [
+    {
+      severity: "warning",
+      title: "Keine Kundenakte eindeutig gefunden",
+      detail: "Die Suche hat keinen verknüpften Request geliefert.",
+      source: "customer_records",
+    },
+  ];
+
+  const answer = buildCompanyBrainAnswer([], [], [], gaps, [], "Trello-Karte gezogen, aber Angebot nicht raus", trelloDiagnosis);
+
+  assert.equal(answer.verdict, "partial");
+  assert.match(answer.headline, /Trello-Karte gelesen/);
+  assert.ok(answer.bullets.some((bullet) => bullet.includes("LED Flex Samuele Micacchioni")));
+  assert.ok(answer.bullets.some((bullet) => bullet.includes("Keine verknüpfte Kundenakte")));
+  assert.ok(answer.bullets.some((bullet) => bullet.includes("Kein Angebotssnapshot")));
 });
