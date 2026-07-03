@@ -15,6 +15,16 @@ import {
   NEONFLEX_CUSTOMER_AUTO_QUOTE_MAX_LONG_SIDE_CM,
   requiresNeonflexCustomerSizeRequest,
 } from "@/lib/quote-learning/neonflex-size-policy";
+import {
+  getOfferByTrelloCardId,
+  patchOfferByTrelloCardId,
+  type OpsOfferItem,
+  type OpsOfferPatchInput,
+  type OpsOfferPatchResult,
+  type OpsOfferSnapshot,
+} from "@/lib/ops/offers";
+import { SUPPLIER_PRICE_TO_OFFER_FACTOR } from "@/lib/ops/supplier-price-review-constants";
+import { roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { downloadTrelloAttachment, getTrelloCard, getTrelloList, getTrelloListCards } from "@/lib/quotes/trello";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -212,6 +222,33 @@ export type SupplierPriceTrelloEstimateResult = {
     totalText: string | null;
     ocrAvailable: boolean;
     ocrTextPreview: string | null;
+  };
+};
+
+export type SupplierPriceOfferApplyPlausibilityStatus = "ok" | "warning" | "blocked";
+
+export type SupplierPriceOfferApplyPlausibility = {
+  status: SupplierPriceOfferApplyPlausibilityStatus;
+  areaRatio: number;
+  supplierPriceRatio: number;
+  issues: string[];
+};
+
+export type SupplierPriceOfferApplyResult = {
+  dryRun: boolean;
+  offer: OpsOfferSnapshot;
+  diff?: OpsOfferPatchResult["diff"];
+  estimate: SupplierPriceTrelloEstimateResult;
+  applied: {
+    itemId: string;
+    itemTitle: string;
+    requestedInput: string;
+    widthCm: number;
+    heightCm: number;
+    supplierTotalCost: number;
+    offerUnitPriceNet: number;
+    factor: number;
+    plausibility: SupplierPriceOfferApplyPlausibility;
   };
 };
 
@@ -797,6 +834,220 @@ export async function estimateSupplierPricesFromTrello(input: {
       totalText: ocrEvidence.totalText || customTotalText,
       ocrAvailable: Boolean(ocrText),
       ocrTextPreview: ocrText ? ocrText.slice(0, 900) : null,
+    },
+  };
+}
+
+function roundedRatio(value: number) {
+  return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : 0;
+}
+
+export function calculateSupplierEstimateOfferUnitPrice(
+  supplierTotalCost: number,
+  factor = SUPPLIER_PRICE_TO_OFFER_FACTOR,
+) {
+  const total = requiredPositiveNumber("Supplier Total", supplierTotalCost);
+  const multiplier = requiredPositiveNumber("Offer Faktor", factor);
+  return roundDownToFive(total * multiplier);
+}
+
+export function checkSupplierEstimatePlausibility(params: {
+  anchorWidthCm: number;
+  anchorHeightCm: number;
+  anchorSupplierTotalCost: number;
+  targetWidthCm: number;
+  targetHeightCm: number;
+  targetSupplierTotalCost: number;
+}): SupplierPriceOfferApplyPlausibility {
+  const anchorArea = requiredPositiveNumber("Anker-Flaeche", params.anchorWidthCm * params.anchorHeightCm);
+  const targetArea = requiredPositiveNumber("Ziel-Flaeche", params.targetWidthCm * params.targetHeightCm);
+  const anchorTotal = requiredPositiveNumber("Anker Supplier Total", params.anchorSupplierTotalCost);
+  const targetTotal = requiredPositiveNumber("Ziel Supplier Total", params.targetSupplierTotalCost);
+  const areaRatio = targetArea / anchorArea;
+  const supplierPriceRatio = targetTotal / anchorTotal;
+  const issues: string[] = [];
+  let status: SupplierPriceOfferApplyPlausibilityStatus = "ok";
+  const bothDimensionsLarger =
+    params.targetWidthCm >= params.anchorWidthCm * 1.02 &&
+    params.targetHeightCm >= params.anchorHeightCm * 1.02;
+  const bothDimensionsSmaller =
+    params.targetWidthCm <= params.anchorWidthCm * 0.98 &&
+    params.targetHeightCm <= params.anchorHeightCm * 0.98;
+
+  if (bothDimensionsLarger && supplierPriceRatio < 0.98) {
+    issues.push("larger_sign_cheaper_than_anchor");
+    status = "blocked";
+  }
+  if (bothDimensionsSmaller && supplierPriceRatio > 1.05) {
+    issues.push("smaller_sign_more_expensive_than_anchor");
+    status = "blocked";
+  }
+  if (areaRatio >= 1.75 && supplierPriceRatio < 1.2) {
+    issues.push("large_area_increase_has_too_small_price_increase");
+    status = "blocked";
+  } else if (areaRatio >= 1.35 && supplierPriceRatio < 1.08 && status !== "blocked") {
+    issues.push("area_increase_price_increase_low");
+    status = "warning";
+  }
+  if (areaRatio <= 0.55 && supplierPriceRatio > 0.85) {
+    issues.push("large_area_decrease_has_too_small_price_decrease");
+    status = "blocked";
+  } else if (areaRatio <= 0.75 && supplierPriceRatio > 0.96 && status !== "blocked") {
+    issues.push("area_decrease_price_decrease_low");
+    status = "warning";
+  }
+
+  return {
+    status,
+    areaRatio: roundedRatio(areaRatio),
+    supplierPriceRatio: roundedRatio(supplierPriceRatio),
+    issues,
+  };
+}
+
+function offerItemPatch(item: OpsOfferItem): NonNullable<OpsOfferPatchInput["items"]>[number] {
+  return {
+    id: item.id,
+    section: item.section || "LED-Leuchtschild",
+    title: item.title,
+    description: item.description || null,
+    quantity: item.quantity,
+    unitPriceNet: item.unitPriceNet,
+    listPriceNet: item.listPriceNet,
+    discountLabel: item.discountLabel || null,
+    selectable: item.selectable,
+    selectedByDefault: item.selectedByDefault,
+    quantityEditable: item.quantityEditable,
+    minQuantity: item.minQuantity,
+    maxQuantity: item.maxQuantity,
+    sortOrder: item.sortOrder,
+  };
+}
+
+function isLikelySignOfferItem(item: OpsOfferItem) {
+  const haystack = `${item.section || ""}\n${item.title || ""}`.toLowerCase();
+  return /\b(led|neon|leucht|schild|logo|wandschild)\b/i.test(haystack);
+}
+
+function resolveOfferTargetItem(offer: OpsOfferSnapshot, itemId?: string | null) {
+  const explicitItemId = trimNullable(itemId);
+  if (explicitItemId) {
+    const item = offer.items.find((entry) => entry.id === explicitItemId);
+    if (!item) throw new QuoteValidationError("Ausgewaehlte Angebotsposition wurde nicht gefunden.", [], 404);
+    return item;
+  }
+
+  const candidates = offer.items.filter(isLikelySignOfferItem);
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length === 0 && offer.items.length === 1) return offer.items[0];
+  if (candidates.length > 1) {
+    throw new QuoteValidationError(
+      "Mehrere moegliche Schildpositionen im Angebot gefunden. Bitte zuerst die Zielposition auswaehlen.",
+      candidates.map((item) => `${item.id}: ${item.title}`),
+      409,
+    );
+  }
+  throw new QuoteValidationError("Keine passende Schildposition im Angebot gefunden.", [], 409);
+}
+
+function upsertSizeLine(description: string | null | undefined, sizeLabel: string) {
+  const lines = String(description || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nextLine = `Größe: ${sizeLabel}`;
+  const index = lines.findIndex((line) => /^gr(?:ö|oe|o)ße\s*:/i.test(line));
+  if (index >= 0) {
+    lines[index] = nextLine;
+  } else {
+    lines.unshift(nextLine);
+  }
+  return lines.join("\n");
+}
+
+export async function applySupplierTrelloEstimateToOffer(input: {
+  trelloCard: string;
+  targetSize: string;
+  itemId?: string | null;
+  dryRun?: boolean;
+  revisionReason?: string | null;
+  operatorName?: string | null;
+  currency?: string | null;
+}): Promise<SupplierPriceOfferApplyResult> {
+  const estimate = await estimateSupplierPricesFromTrello({
+    trelloCard: input.trelloCard,
+    targetSizes: input.targetSize,
+    currency: input.currency,
+  });
+  if (estimate.estimates.length !== 1) {
+    throw new QuoteValidationError("Bitte genau eine Zielgroesse ins Angebot uebernehmen.");
+  }
+  const target = estimate.estimates[0];
+  if (target.confidenceLevel === "blocked") {
+    throw new QuoteValidationError("Diese Schildpreisschaetzung ist blockiert und darf nicht ins Angebot uebernommen werden.");
+  }
+  const plausibility = checkSupplierEstimatePlausibility({
+    anchorWidthCm: estimate.anchor.widthCm,
+    anchorHeightCm: estimate.anchor.heightCm,
+    anchorSupplierTotalCost: estimate.anchor.totalSupplierCost,
+    targetWidthCm: target.widthCm,
+    targetHeightCm: target.heightCm,
+    targetSupplierTotalCost: target.predictedTotalSupplierCost,
+  });
+  if (plausibility.status === "blocked") {
+    throw new QuoteValidationError(
+      "Preis/Groesse wirkt unplausibel im Vergleich zur Originalquote. Bitte Supplier pruefen.",
+      plausibility.issues,
+      409,
+    );
+  }
+
+  const offer = await getOfferByTrelloCardId(estimate.card.id);
+  if (!offer.lock.editable || offer.lock.lockLevel === "hard") {
+    throw new QuoteValidationError(offer.lock.lockReason || "Dieses Angebot ist gesperrt und kann nicht aktualisiert werden.", [], 409);
+  }
+
+  const targetItem = resolveOfferTargetItem(offer, input.itemId);
+  const offerUnitPriceNet = calculateSupplierEstimateOfferUnitPrice(target.predictedTotalSupplierCost);
+  const sizeLabel = `${formatCmValue(target.widthCm)} x ${formatCmValue(target.heightCm)}cm`;
+  const patchItems = offer.items.map((item) => {
+    if (item.id !== targetItem.id) return offerItemPatch(item);
+    return {
+      ...offerItemPatch(item),
+      description: upsertSizeLine(item.description, sizeLabel),
+      unitPriceNet: offerUnitPriceNet,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+    };
+  });
+  const patch: OpsOfferPatchInput = {
+    expectedUpdatedAt: offer.updatedAt,
+    actor: trimNullable(input.operatorName) || "Ops",
+    reason: "schildpreis_kalkulator_apply",
+    revisionReason: offer.lock.requiresRevisionReason
+      ? trimNullable(input.revisionReason) || "Preis aus Schildpreis-Kalkulator uebernommen."
+      : undefined,
+    items: patchItems,
+  };
+  const result = await patchOfferByTrelloCardId(estimate.card.id, patch, input.dryRun === true);
+
+  return {
+    dryRun: result.dryRun === true,
+    offer: result.offer,
+    diff: result.diff,
+    estimate,
+    applied: {
+      itemId: targetItem.id,
+      itemTitle: targetItem.title,
+      requestedInput: target.requestedInput,
+      widthCm: target.widthCm,
+      heightCm: target.heightCm,
+      supplierTotalCost: target.predictedTotalSupplierCost,
+      offerUnitPriceNet,
+      factor: SUPPLIER_PRICE_TO_OFFER_FACTOR,
+      plausibility,
     },
   };
 }

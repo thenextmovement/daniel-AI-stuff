@@ -1,0 +1,1 @@
+export const SUPPLIER_PRICE_TO_OFFER_FACTOR = 2.3;

@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calculator, Check, CircleAlert, ExternalLink, RefreshCw, ShieldCheck, UploadCloud, X } from "lucide-react";
+import { SUPPLIER_PRICE_TO_OFFER_FACTOR } from "@/lib/ops/supplier-price-review-constants";
 import type {
+  SupplierPriceOfferApplyResult,
   SupplierPricePredictionReviewDecision,
   SupplierPricePredictionReviewItem,
+  SupplierPriceTrelloEstimateItem,
   SupplierPriceTrelloEstimateResult,
   SupplierQuoteTrelloImportResult,
   SupplierQuoteTrainingItemAnchorReviewDecision,
@@ -20,6 +23,7 @@ type ReviewResponse = {
   item?: SupplierPricePredictionReviewItem;
   createdPredictionItems?: SupplierPricePredictionReviewItem[];
   estimate?: SupplierPriceTrelloEstimateResult;
+  applyResult?: SupplierPriceOfferApplyResult;
   importResult?: SupplierQuoteTrelloImportResult;
   error?: string;
   issues?: string[];
@@ -50,6 +54,11 @@ function formatMoney(value: number, currency = "USD") {
 
 function formatCm(value: number) {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}cm`;
+}
+
+function roundDownToFiveClient(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.floor(value / 5) * 5;
 }
 
 function statusLabel(item: SupplierPricePredictionReviewItem) {
@@ -139,6 +148,10 @@ function confidenceLabel(level: string) {
   return "niedrig";
 }
 
+function estimateApplyKey(item: SupplierPriceTrelloEstimateItem) {
+  return `${item.requestedInput}-${item.widthCm}-${item.heightCm}`;
+}
+
 function AnchorInput({
   label,
   value,
@@ -161,7 +174,19 @@ function AnchorInput({
   );
 }
 
-function TrelloEstimateResultCard({ estimate }: { estimate: SupplierPriceTrelloEstimateResult }) {
+function TrelloEstimateResultCard({
+  estimate,
+  applyingKey,
+  checkedApplyKey,
+  applyResult,
+  onApplyToOffer,
+}: {
+  estimate: SupplierPriceTrelloEstimateResult;
+  applyingKey: string | null;
+  checkedApplyKey: string | null;
+  applyResult: SupplierPriceOfferApplyResult | null;
+  onApplyToOffer: (item: SupplierPriceTrelloEstimateItem, dryRun: boolean) => void;
+}) {
   return (
     <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -190,9 +215,22 @@ function TrelloEstimateResultCard({ estimate }: { estimate: SupplierPriceTrelloE
         </div>
       ) : null}
 
+      {applyResult ? (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          Angebot {applyResult.dryRun ? "geprüft" : "gespeichert"}: {applyResult.applied.itemTitle} · Verkaufspreis {formatMoney(applyResult.applied.offerUnitPriceNet, "EUR")} netto · Faktor {applyResult.applied.factor.toFixed(1)}
+          {applyResult.applied.plausibility.status === "warning" ? " · Plausibilität mit Warnung" : ""}
+        </div>
+      ) : null}
+
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {estimate.estimates.map((item) => (
-          <div key={`${item.requestedInput}-${item.widthCm}-${item.heightCm}`} className="rounded-lg border border-black/10 bg-black/[0.02] p-3">
+        {estimate.estimates.map((item) => {
+          const key = estimateApplyKey(item);
+          const offerUnitPrice = roundDownToFiveClient(item.predictedTotalSupplierCost * SUPPLIER_PRICE_TO_OFFER_FACTOR);
+          const checking = applyingKey === `${key}:dry`;
+          const saving = applyingKey === `${key}:save`;
+          const checked = checkedApplyKey === key;
+          return (
+          <div key={key} className="rounded-lg border border-black/10 bg-black/[0.02] p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold text-black">
@@ -220,6 +258,15 @@ function TrelloEstimateResultCard({ estimate }: { estimate: SupplierPriceTrelloE
                 <div className="mt-1 font-semibold text-black">{formatMoney(item.predictedTotalSupplierCost, item.currency)}</div>
               </div>
             </div>
+            <div className="mt-3 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Angebot</div>
+              <div className="mt-1 font-semibold text-black">
+                {formatMoney(offerUnitPrice, "EUR")} netto
+              </div>
+              <div className="mt-1 text-xs text-black/45">
+                Supplier Total x {SUPPLIER_PRICE_TO_OFFER_FACTOR.toFixed(1)}, abgerundet auf 5 EUR
+              </div>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
               <span className={`rounded-full border px-2.5 py-1 ${item.needsSupplierCheck ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
                 {item.needsSupplierCheck ? "lieber Supplier pruefen" : "intern plausibel"}
@@ -228,8 +275,29 @@ function TrelloEstimateResultCard({ estimate }: { estimate: SupplierPriceTrelloE
                 <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-black/50">ueber 200cm</span>
               ) : null}
             </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={Boolean(applyingKey)}
+                onClick={() => onApplyToOffer(item, true)}
+                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {checking ? "Prüft..." : checked ? "Geprüft" : "Angebot prüfen"}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(applyingKey) || !checked}
+                onClick={() => onApplyToOffer(item, false)}
+                className="inline-flex items-center gap-2 rounded-full border border-black bg-black px-3 py-2 text-xs font-medium text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" />
+                {saving ? "Speichert..." : "Ins Angebot"}
+              </button>
+            </div>
           </div>
-        ))}
+        );
+        })}
       </div>
     </div>
   );
@@ -542,6 +610,9 @@ export function SupplierPriceReviewClient({
   const [estimateTargetSizes, setEstimateTargetSizes] = useState("100");
   const [estimateResult, setEstimateResult] = useState<SupplierPriceTrelloEstimateResult | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [offerApplyingKey, setOfferApplyingKey] = useState<string | null>(null);
+  const [checkedOfferApplyKey, setCheckedOfferApplyKey] = useState<string | null>(null);
+  const [offerApplyResult, setOfferApplyResult] = useState<SupplierPriceOfferApplyResult | null>(null);
   const [importListId, setImportListId] = useState("");
   const [importCards, setImportCards] = useState("");
   const [importTitleFilter, setImportTitleFilter] = useState("");
@@ -713,6 +784,8 @@ export function SupplierPriceReviewClient({
     setError(null);
     setMessage(null);
     setEstimateResult(null);
+    setCheckedOfferApplyKey(null);
+    setOfferApplyResult(null);
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
         method: "POST",
@@ -739,6 +812,48 @@ export function SupplierPriceReviewClient({
     } catch {
       setError("Schätzung konnte nicht berechnet werden.");
       setEstimating(false);
+    }
+  }
+
+  async function applyEstimateToOffer(item: SupplierPriceTrelloEstimateItem, dryRun: boolean) {
+    const key = estimateApplyKey(item);
+    setOfferApplyingKey(`${key}:${dryRun ? "dry" : "save"}`);
+    setError(null);
+    setMessage(null);
+    if (dryRun) setOfferApplyResult(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/price-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "apply_trello_estimate_to_offer",
+          offerApply: {
+            trelloCard: estimateTrelloCard || estimateResult?.card.id || null,
+            targetSize: item.requestedInput,
+            dryRun,
+            currency: "USD",
+          },
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
+      if (!response.ok || !payload?.ok || !payload.applyResult) {
+        setError(formatApiError(payload));
+        setOfferApplyingKey(null);
+        return;
+      }
+      setOfferApplyResult(payload.applyResult);
+      if (dryRun) {
+        setCheckedOfferApplyKey(key);
+        setMessage("Angebotsänderung geprüft. Du kannst sie jetzt ins Angebot speichern.");
+      } else {
+        setCheckedOfferApplyKey(null);
+        setMessage("Preis wurde ins Angebot übernommen. Das Angebot wurde nicht automatisch versendet.");
+      }
+      setOfferApplyingKey(null);
+    } catch {
+      setError("Preis konnte nicht ins Angebot übernommen werden.");
+      setOfferApplyingKey(null);
     }
   }
 
@@ -874,7 +989,15 @@ export function SupplierPriceReviewClient({
             <div className="mt-2 text-xs text-black/45">
               Mehrere Zielgrößen mit Komma trennen. <code>100</code> skaliert proportional auf 100cm Breite/Langseite, <code>50x75</code> setzt Breite und Höhe explizit.
             </div>
-            {estimateResult ? <TrelloEstimateResultCard estimate={estimateResult} /> : null}
+            {estimateResult ? (
+              <TrelloEstimateResultCard
+                estimate={estimateResult}
+                applyingKey={offerApplyingKey}
+                checkedApplyKey={checkedOfferApplyKey}
+                applyResult={offerApplyResult}
+                onApplyToOffer={(item, dryRun) => void applyEstimateToOffer(item, dryRun)}
+              />
+            ) : null}
           </section>
         ) : null}
 

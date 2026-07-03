@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
+  applySupplierTrelloEstimateToOffer,
   buildSupplierPricePredictionReviewDraftsFromAnchor,
   buildSupplierPricePredictionReviewDraftsFromTrainingItem,
   estimateSupplierPricesFromTrello,
@@ -16,6 +17,7 @@ import {
   type SupplierQuoteTrainingItemAnchorReviewDecision,
 } from "@/lib/ops/supplier-price-review";
 import type { UpdateActor } from "@/lib/ops/customer-records";
+import { OpsOfferApiError } from "@/lib/ops/offers";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -44,6 +46,13 @@ function failureResponse(error: unknown) {
   if (error instanceof SupabaseRestError) {
     return NextResponse.json(
       { ok: false, error: error.message, details: error.details },
+      { status: error.status },
+    );
+  }
+
+  if (error instanceof OpsOfferApiError) {
+    return NextResponse.json(
+      { ok: false, error: error.message, code: error.code, issues: error.issues },
       { status: error.status },
     );
   }
@@ -134,6 +143,7 @@ export async function POST(request: NextRequest) {
           | "create_from_training_item"
           | "review_training_item_anchor"
           | "estimate_from_trello"
+          | "apply_trello_estimate_to_offer"
           | "import_trello_training_candidates";
         predictionId?: string;
         decision?: SupplierPricePredictionReviewDecision;
@@ -187,6 +197,14 @@ export async function POST(request: NextRequest) {
         estimate?: {
           trelloCard?: string | null;
           targetSizes?: string | null;
+          currency?: string | null;
+        };
+        offerApply?: {
+          trelloCard?: string | null;
+          targetSize?: string | null;
+          itemId?: string | null;
+          dryRun?: boolean;
+          revisionReason?: string | null;
           currency?: string | null;
         };
         trelloImport?: {
@@ -279,6 +297,20 @@ export async function POST(request: NextRequest) {
         currency: trimNullable(body.estimate?.currency),
       });
       return NextResponse.json({ ok: true, estimate });
+    }
+
+    if (body?.action === "apply_trello_estimate_to_offer") {
+      if (!opsActor) return forbidden();
+      const applyResult = await applySupplierTrelloEstimateToOffer({
+        trelloCard: String(body.offerApply?.trelloCard || ""),
+        targetSize: String(body.offerApply?.targetSize || ""),
+        itemId: trimNullable(body.offerApply?.itemId),
+        dryRun: body.offerApply?.dryRun === true,
+        revisionReason: trimNullable(body.offerApply?.revisionReason),
+        operatorName: actor.operatorName || actor.mode,
+        currency: trimNullable(body.offerApply?.currency),
+      });
+      return NextResponse.json({ ok: true, applyResult });
     }
 
     if (body?.action === "import_trello_training_candidates") {
