@@ -665,6 +665,7 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
           section: "LED Neon",
           size: "120cm",
           color: "warmweiss",
+          cutType: "Konturschnitt",
           options: [{ name: "Rueckwand", value: "Acryl klar" }],
         },
       }),
@@ -679,6 +680,7 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
   assert.equal(sale?.items[0]?.description, "Ausgewaehlte Produktion laut Snapshot.");
   assert.ok(sale?.items[0]?.selectionDetails.includes("Groesse: 120cm"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Farbe: warmweiss"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Zuschnitt: Konturschnitt"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Rueckwand: Acryl klar"));
 });
 

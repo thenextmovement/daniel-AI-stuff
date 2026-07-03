@@ -1384,6 +1384,7 @@ function itemSelectionDetails(row: SupplierSaleItemRow) {
     itemDetailLine("Breite", raw.width),
     itemDetailLine("Hoehe", raw.height),
     itemDetailLine("Farbe", raw.color || raw.lightColor || raw.ledColor),
+    itemDetailLine("Zuschnitt", raw.cut || raw.cutType || raw.contourCut || raw.shape || raw.form),
     itemDetailLine("Rueckwand", raw.backboard || raw.backing || raw.acrylic),
     itemDetailLine("Montage", raw.mounting || raw.installation),
     itemDetailLine("Outdoor", raw.outdoor),
