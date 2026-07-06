@@ -594,6 +594,92 @@ function trelloCustomFieldEntries(context: TrelloFailureContext) {
     .slice(0, 10);
 }
 
+function extractTrelloAutomationExecutionIds(context: TrelloFailureContext | null) {
+  if (!context) return [];
+  const texts = [
+    context.card.name,
+    context.card.desc,
+    ...context.actions.flatMap((action) => [action.text, action.id]),
+  ];
+  const ids: string[] = [];
+  for (const text of texts) {
+    const normalized = cleanText(text);
+    if (!normalized) continue;
+    const executionMatches = normalized.matchAll(/(?:execution|ausfuehrung|ausführung|run)\s*[:#-]?\s*([0-9]{4,})/gi);
+    for (const match of executionMatches) ids.push(match[1]);
+    const n8nMatches = normalized.matchAll(/\/executions?\/([0-9]{4,})/gi);
+    for (const match of n8nMatches) ids.push(match[1]);
+  }
+  return uniqueStrings(ids);
+}
+
+function requestIdFromTrelloContext(context: TrelloFailureContext) {
+  const candidates = [
+    context.card.customFields?.Nerdy_Forms_ID,
+    context.card.customFields?.NerdyForms_ID,
+    context.card.customFields?.["Nerdy-Forms_ID"],
+    context.card.customFields?.Request_ID,
+    context.card.customFields?.["Request-ID"],
+    context.card.desc,
+  ];
+  for (const candidate of candidates) {
+    const text = cleanText(candidate);
+    if (!text) continue;
+    const direct = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
+    if (direct) return direct;
+  }
+  return null;
+}
+
+function trelloActionLooksFailed(action: TrelloFailureContextAction) {
+  return /fehler|fehlgeschlagen|failed|error|nicht rausgeschickt|nicht versendet|nicht gesendet/i.test(`${action.text || ""} ${action.type || ""}`);
+}
+
+function trelloActionFailureSummary(action: TrelloFailureContextAction) {
+  const text = cleanText(action.text);
+  if (!text) return "Trello-Historie meldet einen Automation-Fehler.";
+  const reason = text.match(/(?:Grund|Reason)\s*:\s*([^\n]+)/i)?.[1];
+  if (reason) return `Trello-Historie meldet Automation-Fehler: ${reason.trim()}`;
+  return previewText(text.replace(/\\n/g, " "), 220) || "Trello-Historie meldet einen Automation-Fehler.";
+}
+
+export function buildTrelloAutomationRuns(context: TrelloFailureContext | null): CompanyBrainAutomationRun[] {
+  if (!context) return [];
+  const executionIds = extractTrelloAutomationExecutionIds(context);
+  const requestId = requestIdFromTrelloContext(context);
+  return context.actions
+    .filter(trelloActionLooksFailed)
+    .map((action, index) => ({
+      id: `trello-action-${action.id}`,
+      workflowName: "Trello Triggerdiagnose",
+      action: "offer_send",
+      status: "failed",
+      error: trelloActionFailureSummary(action),
+      createdAt: action.date,
+      requestId,
+      executionId: executionIds[index] || executionIds[0] || null,
+      correlationId: context.card.id,
+      sourceEventId: action.id,
+      targetRecordId: null,
+      failedNode: null,
+      idempotencyKey: null,
+      retrySafety: "Nur nach Outlook-Duplicate-Check und idempotentem Retry freigeben.",
+      summary: "Aus Trello-Aktionshistorie rekonstruiert; workflow_audit_log hatte keinen passenden Eintrag.",
+    }));
+}
+
+function dedupeAutomationRuns(runs: CompanyBrainAutomationRun[]) {
+  const seen = new Set<string>();
+  const deduped: CompanyBrainAutomationRun[] = [];
+  for (const run of runs) {
+    const key = run.executionId ? `execution:${run.executionId}` : run.sourceEventId ? `event:${run.sourceEventId}` : run.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(run);
+  }
+  return deduped;
+}
+
 function emptyTrelloFailureDiagnosis(requested: boolean): CompanyBrainTrelloFailureDiagnosis {
   return {
     requested,
@@ -1013,6 +1099,7 @@ async function fetchAutomationRuns(
   records: CompanyBrainRecordSummary[],
   offers: CompanyBrainOfferSummary[],
   extraTrelloCardIds: string[] = [],
+  extraExecutionIds: string[] = [],
 ): Promise<{
   runs: CompanyBrainAutomationRun[];
   diagnostic: CompanyBrainDiagnostic;
@@ -1024,12 +1111,16 @@ async function fetchAutomationRuns(
     ...records.map((record) => record.trelloCardId),
     ...offers.map((offer) => offer.trelloCardId),
   ]);
+  const executionIds = uniqueStrings(extraExecutionIds);
   const filters = [
     requestIds.length ? `document_id.in.(${requestIds.map(encodeURIComponent).join(",")})` : null,
     ...requestIds.map((requestId) => `metadata->>request_id.eq.${encodeURIComponent(requestId)}`),
     ...offerNumbers.map((offerNumber) => `metadata->>offer_number.eq.${encodeURIComponent(offerNumber)}`),
     ...trelloCardIds.map((cardId) => `metadata->>trello_card_id.eq.${encodeURIComponent(cardId)}`),
     ...trelloCardIds.map((cardId) => `metadata->>trelloCardId.eq.${encodeURIComponent(cardId)}`),
+    ...executionIds.map((executionId) => `metadata->>execution_id.eq.${encodeURIComponent(executionId)}`),
+    ...executionIds.map((executionId) => `metadata->>n8n_execution_id.eq.${encodeURIComponent(executionId)}`),
+    ...executionIds.map((executionId) => `metadata->>workflow_execution_id.eq.${encodeURIComponent(executionId)}`),
   ].filter((value): value is string => Boolean(value));
 
   if (!filters.length) {
@@ -1868,7 +1959,7 @@ function trelloMoveMatchesOfferIntent(move: TrelloFailureContextAction | null) {
   return /angebot|offer|quote|raus|send|sent|fertig|ready|versand|mail/.test(text);
 }
 
-function buildTrelloFailureDiagnosis(input: {
+export function buildTrelloFailureDiagnosis(input: {
   requested: boolean;
   context: TrelloFailureContext | null;
   diagnostic: CompanyBrainDiagnostic | null;
@@ -1912,7 +2003,14 @@ function buildTrelloFailureDiagnosis(input: {
   let recommendedFix = "Kartenbewegung, Source-of-Truth-Datensatz, Angebot, Versandbeleg und Workflow-Audit gemeinsam prüfen.";
   let severity: CompanyBrainTrelloFailureDiagnosis["severity"] = "warning";
 
-  if (!triggerMove) {
+  if (failedAutomation) {
+    rootCauseKey = "automation_failed";
+    rootCause = `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen: ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}.`;
+    recommendedFix = failedAutomation.idempotencyKey
+      ? `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "ohne ID"} prüfen. Retry nur mit Idempotency-Key ${failedAutomation.idempotencyKey} und nach Duplicate-Mail-Check freigeben.`
+      : `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "mit Correlation-ID"} prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.`;
+    severity = "critical";
+  } else if (!triggerMove) {
     rootCauseKey = "no_trigger_move";
     rootCause = "In der geladenen Trello-Historie wurde kein Listenwechsel gefunden.";
     recommendedFix = "Prüfen, ob die richtige Karte eingegeben wurde oder ob der relevante Listenwechsel außerhalb des geladenen Action-Fensters liegt.";
@@ -1924,13 +2022,6 @@ function buildTrelloFailureDiagnosis(input: {
     rootCauseKey = "offer_missing";
     rootCause = "Für die Karte/Kundenakte wurde kein Angebotssnapshot gefunden.";
     recommendedFix = "Angebotsanlage und Offer-Bridge prüfen; erst danach Versandlogik oder Retry bewerten.";
-  } else if (failedAutomation) {
-    rootCauseKey = "automation_failed";
-    rootCause = `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen: ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}.`;
-    recommendedFix = failedAutomation.idempotencyKey
-      ? `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "ohne ID"} prüfen. Retry nur mit Idempotency-Key ${failedAutomation.idempotencyKey} und nach Duplicate-Mail-Check freigeben.`
-      : "n8n-Execution mit Correlation/Execution-ID prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.";
-    severity = "critical";
   } else if (expectedAction === "offer_send" && offerSent) {
     rootCauseKey = "sent";
     rootCause = "Ein Versandbeleg ist vorhanden; das Problem wirkt eher wie fehlende Rückschreibung oder Wahrnehmung im Prozess.";
@@ -2413,7 +2504,7 @@ function buildActionProposals(input: {
       riskLevel: failedAutomation ? "medium" : "low",
       approvalRequired: false,
       enabled: Boolean(failedAutomation),
-      summary: failedAutomation ? "Ein fehlerhafter Audit-Run ist vorhanden." : "Kein fehlerhafter Audit-Run im Fall.",
+      summary: failedAutomation ? "Ein fehlerhafter Automation-Beleg ist vorhanden." : "Kein fehlerhafter Automation-Run im Fall.",
       confirmationText: "Keinen Workflow ohne Backup, Diff und Rollback ändern.",
       href: null,
       payloadPreview: failedAutomation
@@ -2568,6 +2659,10 @@ export function buildCompanyBrainAnswer(
   const liveTrelloCard = trelloFailureDiagnosis?.card || null;
 
   if (liveTrelloCard) {
+    if (trelloFailureDiagnosis?.rootCauseKey === "automation_failed") {
+      bullets.push(`Automation-Fehler erkannt: ${trelloFailureDiagnosis.rootCause}`);
+      bullets.push(`Sicherer nächster Schritt: ${trelloFailureDiagnosis.recommendedFix}`);
+    }
     bullets.push(`Trello-Karte gelesen: ${liveTrelloCard.name || liveTrelloCard.id}${liveTrelloCard.currentListName ? ` · Liste: ${liveTrelloCard.currentListName}` : ""}.`);
     if (trelloFailureDiagnosis?.triggerMove) {
       bullets.push(`Letzter Karten-Move: ${trelloFailureDiagnosis.triggerMove.fromListName || "unbekannt"} -> ${trelloFailureDiagnosis.triggerMove.toListName || "unbekannt"}${trelloFailureDiagnosis.triggerMove.occurredAt ? ` am ${trelloFailureDiagnosis.triggerMove.occurredAt}` : ""}.`);
@@ -2624,6 +2719,8 @@ export function buildCompanyBrainAnswer(
     headline:
       verdict === "found"
         ? "Fall gefunden, Belege geladen."
+        : trelloFailureDiagnosis?.rootCauseKey === "automation_failed"
+          ? "Automation-Fehler erkannt; Retry nur nach Duplicate-Check."
         : liveTrelloCard && !records.length
           ? "Trello-Karte gelesen, aber Source-of-Truth-Verknüpfung fehlt."
           : liveTrelloCard && !offers.length && trelloFailureDiagnosis?.expectedAction === "offer_send"
@@ -2709,6 +2806,15 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   }
 
   if (trelloContext) {
+    const trelloRequestId = requestIdFromTrelloContext(trelloContext);
+    if (trelloRequestId) {
+      pushIdentifier(identifiers, "request_id", "Request-ID", trelloRequestId, "high", `/ops/customer-records?query=${encodeURIComponent(trelloRequestId)}`);
+      try {
+        customerRecords.push(await getCustomerRecordByRequestId(trelloRequestId, { includeTrello: false }));
+      } catch {
+        // The Trello card remains useful evidence even when the request projection is missing.
+      }
+    }
     for (const lookup of uniqueStrings([trelloContext.card.id, trelloContext.card.shortLink])) {
       try {
         customerRecords.push(...await searchCustomerRecords(`trello:${lookup}`));
@@ -2806,8 +2912,24 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   const conflicts = buildConflicts(crossChecks);
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
   const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
-  const automation = await fetchAutomationRuns(recordSummaries, offerSummaries, trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink || ""] : []);
-  diagnostics.push(automation.diagnostic);
+  const trelloAutomationRuns = buildTrelloAutomationRuns(trelloContext);
+  const automation = await fetchAutomationRuns(
+    recordSummaries,
+    offerSummaries,
+    trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink || ""] : [],
+    extractTrelloAutomationExecutionIds(trelloContext),
+  );
+  const automationRuns = dedupeAutomationRuns([...automation.runs, ...trelloAutomationRuns]);
+  diagnostics.push(
+    trelloAutomationRuns.length && !automation.runs.length
+      ? {
+          ...automation.diagnostic,
+          ok: true,
+          detail: "Kein passender workflow_audit_log-Eintrag; Automation-Fehler wurde aus der Trello-Historie rekonstruiert.",
+          count: automationRuns.length,
+        }
+      : { ...automation.diagnostic, count: automationRuns.length },
+  );
   const trelloFailureDiagnosis = buildTrelloFailureDiagnosis({
     requested: trelloRequested || Boolean(trelloContext),
     context: trelloContext,
@@ -2815,13 +2937,13 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     records: recordSummaries,
     offers: offerSummaries,
     crossChecks,
-    automationRuns: automation.runs,
+    automationRuns,
     question,
     problemType: requestedProblemType,
   });
   const answer = buildCompanyBrainAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question, trelloFailureDiagnosis);
-  const caseEvents = buildCaseEvents(evidence, automation.runs);
-  const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automation.runs, trelloFailureDiagnosis);
+  const caseEvents = buildCaseEvents(evidence, automationRuns);
+  const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automationRuns, trelloFailureDiagnosis);
   const generatedAt = new Date().toISOString();
   const replyDraft = buildReplyDraft({
     answer,
@@ -2838,7 +2960,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     offers: offerSummaries,
     evidence,
     crossChecks,
-    automationRuns: automation.runs,
+    automationRuns,
     integrationReadiness,
     assets,
     trelloFailureDiagnosis,
@@ -2873,7 +2995,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     problemResolution,
     replyDraft,
     watchers,
-    automationRuns: automation.runs,
+    automationRuns,
     integrationReadiness,
     assets,
   });
@@ -2892,7 +3014,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     problemResolution,
     checks,
     sourceHealth,
-    automationRuns: automation.runs,
+    automationRuns,
     trelloFailureDiagnosis,
     replyDraft,
     conflicts,
@@ -2920,7 +3042,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     problemResolution,
     checks,
     sourceHealth,
-    automationRuns: automation.runs,
+    automationRuns,
     trelloFailureDiagnosis,
     dossier,
     replyDraft,

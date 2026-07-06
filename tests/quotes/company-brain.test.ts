@@ -3,15 +3,19 @@ import assert from "node:assert/strict";
 import {
   buildCompanyBrainAnswer,
   buildCompanyBrainCrossChecks,
+  buildTrelloAutomationRuns,
+  buildTrelloFailureDiagnosis,
   extractCompanyBrainIdentifiers,
   extractCompanyBrainSignals,
   normalizeCompanyBrainQuery,
+  type CompanyBrainAutomationRun,
   type CompanyBrainEvidence,
   type CompanyBrainFinding,
   type CompanyBrainOfferSummary,
   type CompanyBrainRecordSummary,
   type CompanyBrainTrelloFailureDiagnosis,
 } from "@/lib/ops/company-brain";
+import type { TrelloFailureContext } from "@/lib/quotes/trello";
 
 test("company brain extracts operational identifiers from a mixed support question", () => {
   const identifiers = extractCompanyBrainIdentifiers("Kunde max@example.com fragt zu AN-4798 und Trello 64b7f9e2aabbccddeeff0011");
@@ -162,4 +166,105 @@ test("company brain answers with Trello-only diagnostics when source records are
   assert.ok(answer.bullets.some((bullet) => bullet.includes("LED Flex Samuele Micacchioni")));
   assert.ok(answer.bullets.some((bullet) => bullet.includes("Keine verknüpfte Kundenakte")));
   assert.ok(answer.bullets.some((bullet) => bullet.includes("Kein Angebotssnapshot")));
+});
+
+test("company brain turns Trello execution failures into automation evidence", () => {
+  const context: TrelloFailureContext = {
+    card: {
+      id: "6a4b53ee91f140e2ecd67e2f",
+      shortLink: "BiP93WuG",
+      name: "FEHLER - LED Flex",
+      desc: "Request-ID: b514ed9c-368d-4c37-9b33-f45534a0677e",
+      idBoard: null,
+      idList: null,
+      currentListName: "Quote Ready",
+      url: "https://trello.com/c/BiP93WuG",
+      shortUrl: "https://trello.com/c/BiP93WuG",
+      closed: false,
+      dateLastActivity: "2026-07-06T07:41:13.459Z",
+      createdAt: null,
+      customFields: { "Nerdy-Forms_ID": "b514ed9c-368d-4c37-9b33-f45534a0677e" },
+      attachmentsCount: 11,
+    },
+    actions: [{
+      id: "action-1",
+      type: "updateCard",
+      date: "2026-07-06T07:41:13.408Z",
+      text: "FEHLER: KI-Video-Angebot wurde nicht versendet.\\n\\nGrund: Angebot wurde nicht rausgeschickt. Die Offer-Erstellung ist fehlgeschlagen.\\n\\nExecution: 2770420",
+      fromListId: null,
+      fromListName: "Neue Angebote schicken + KI-Video",
+      toListId: null,
+      toListName: "Quote Ready",
+    }],
+  };
+
+  const runs = buildTrelloAutomationRuns(context);
+
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].executionId, "2770420");
+  assert.equal(runs[0].requestId, "b514ed9c-368d-4c37-9b33-f45534a0677e");
+  assert.match(runs[0].error || "", /Offer-Erstellung ist fehlgeschlagen/);
+});
+
+test("company brain prioritizes automation failures over missing customer records", () => {
+  const automationRuns: CompanyBrainAutomationRun[] = [{
+    id: "run-1",
+    workflowName: "Trello Triggerdiagnose",
+    action: "offer_send",
+    status: "failed",
+    error: "Trello-Historie meldet Automation-Fehler: Angebot wurde nicht rausgeschickt.",
+    createdAt: "2026-07-06T07:41:13.408Z",
+    requestId: "b514ed9c-368d-4c37-9b33-f45534a0677e",
+    executionId: "2770420",
+    correlationId: "6a4b53ee91f140e2ecd67e2f",
+    sourceEventId: "action-1",
+    targetRecordId: null,
+    failedNode: null,
+    idempotencyKey: null,
+    retrySafety: "Nur nach Duplicate-Check.",
+    summary: "Aus Trello rekonstruiert.",
+  }];
+  const diagnosis = buildTrelloFailureDiagnosis({
+    requested: true,
+    context: {
+      card: {
+        id: "6a4b53ee91f140e2ecd67e2f",
+        shortLink: "BiP93WuG",
+        name: "FEHLER - LED Flex",
+        desc: null,
+        idBoard: null,
+        idList: null,
+        currentListName: "Quote Ready",
+        url: "https://trello.com/c/BiP93WuG",
+        shortUrl: "https://trello.com/c/BiP93WuG",
+        closed: false,
+        dateLastActivity: "2026-07-06T07:41:13.459Z",
+        createdAt: null,
+        customFields: {},
+        attachmentsCount: 11,
+      },
+      actions: [{
+        id: "action-1",
+        type: "updateCard",
+        date: "2026-07-06T07:41:13.408Z",
+        text: "FEHLER: KI-Video-Angebot wurde nicht versendet. Execution: 2770420",
+        fromListId: null,
+        fromListName: "Neue Angebote schicken + KI-Video",
+        toListId: null,
+        toListName: "Quote Ready",
+      }],
+    },
+    diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: null, count: 1 },
+    records: [],
+    offers: [],
+    crossChecks: [],
+    automationRuns,
+    question: "Wieso wurde das Angebot nicht rausgeschickt?",
+    problemType: "offer_not_sent",
+  });
+
+  assert.equal(diagnosis.rootCauseKey, "automation_failed");
+  assert.equal(diagnosis.severity, "critical");
+  assert.match(diagnosis.rootCause, /Angebot wurde nicht rausgeschickt/);
+  assert.match(diagnosis.recommendedFix, /2770420/);
 });
