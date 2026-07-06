@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { extractTrelloMockupPromptBlocks } from "@/lib/ops/design";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -32,6 +33,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /active="design"/);
   assert.match(client, /\/ops\/company-brain/);
   assert.match(client, /Prompt/);
+  assert.match(client, /sourceLabel/);
+  assert.match(client, /Video-Prompt aus Trello/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
   assert.match(client, /Generierung freigeben/);
@@ -90,6 +93,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.doesNotMatch(workerCallbackRoute, /hasOpsSession/);
 
   assert.match(service, /loadDesignWorkspace/);
+  assert.match(service, /extractTrelloMockupPromptBlocks/);
+  assert.match(service, /#startprompt/);
+  assert.match(service, /KI-Mockup Prompt aus Trello/);
   assert.match(service, /createDesignJobDraft/);
   assert.match(service, /queueDesignJob/);
   assert.match(service, /generateDesignJobNow/);
@@ -123,6 +129,39 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(operationsDoc, /Offer-Link/);
   assert.match(workflowPlan, /max 30 nodes|Node Structure/);
   assert.match(workflowPlan, /No credential value belongs in workflow JSON/);
+});
+
+test("design ops extracts the same Trello prompt markers used by quote-ready mockups", () => {
+  const description = [
+    "Kundendaten und interne Notizen",
+    "#startprompt",
+    "Ein realistisches Wandmockup mit warmweisser LED-Schrift.",
+    "Bitte Acryltraeger sichtbar halten.",
+    "#endprompt",
+    "",
+    "#startvideoprompt",
+    "Langsame Kamerafahrt ueber das fertige Schild.",
+    "#endvideoprompt",
+  ].join("\n");
+
+  const blocks = extractTrelloMockupPromptBlocks(description);
+
+  assert.equal(blocks.hasMarkers, true);
+  assert.equal(
+    blocks.imagePrompt,
+    "Ein realistisches Wandmockup mit warmweisser LED-Schrift.\nBitte Acryltraeger sichtbar halten.",
+  );
+  assert.equal(blocks.videoPrompt, "Langsame Kamerafahrt ueber das fertige Schild.");
+});
+
+test("design ops reports missing Trello prompt markers", () => {
+  const blocks = extractTrelloMockupPromptBlocks("Nur normale Kartenbeschreibung ohne n8n Promptblock.");
+
+  assert.deepEqual(blocks, {
+    imagePrompt: null,
+    videoPrompt: null,
+    hasMarkers: false,
+  });
 });
 
 test("design ops schema has source-of-truth tables, RLS and rollback", () => {

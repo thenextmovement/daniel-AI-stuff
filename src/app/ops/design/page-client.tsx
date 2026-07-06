@@ -558,6 +558,11 @@ export function DesignOpsClient({
                             <div>
                               <div className="font-semibold">{card.cardName || card.cardId}</div>
                               <div className="text-xs text-stone-500">{card.attachments.length} Anhänge · Board {card.boardId || "-"}</div>
+                              {card.promptBlocks.hasMarkers ? (
+                                <div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
+                                  Prompt Marker
+                                </div>
+                              ) : null}
                             </div>
                             {card.cardUrl ? (
                               <a href={card.cardUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-stone-700">
@@ -672,7 +677,14 @@ export function DesignOpsClient({
             <aside className="space-y-5">
               <div className="rounded-[18px] border border-[#ded8d0] bg-white p-5 shadow-[0_10px_30px_rgba(20,16,12,0.05)]">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold">Prompt</h2>
+                  <div>
+                    <h2 className="text-lg font-semibold">Prompt</h2>
+                    {workspace ? (
+                      <div className="mt-1 inline-flex rounded-full border border-[#ded8d0] bg-[#fffdf9] px-2.5 py-1 text-xs font-semibold text-stone-700">
+                        {workspace.promptPreview.sourceLabel}
+                      </div>
+                    ) : null}
+                  </div>
                   <button type="button" onClick={() => void copyPrompt()} disabled={!promptDraft} className="inline-flex items-center gap-2 rounded-[0.65rem] border border-[#ded8d0] px-3 py-2 text-xs font-semibold disabled:opacity-50">
                     <Copy className="h-4 w-4" />
                     {copied ? "Kopiert" : "Kopieren"}
@@ -687,6 +699,14 @@ export function DesignOpsClient({
                       </div>
                     ))}
                   </div>
+                ) : null}
+                {workspace?.promptPreview.videoPrompt ? (
+                  <details className="mt-3 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-3 text-xs text-stone-700">
+                    <summary className="cursor-pointer font-semibold text-stone-900">Video-Prompt aus Trello</summary>
+                    <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap font-mono leading-5">
+                      {workspace.promptPreview.videoPrompt}
+                    </pre>
+                  </details>
                 ) : null}
                 <textarea
                   value={promptDraft}

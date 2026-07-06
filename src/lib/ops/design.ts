@@ -35,6 +35,7 @@ export type DesignCardSummary = {
   boardId: string | null;
   listId: string | null;
   description: string | null;
+  promptBlocks: DesignTrelloPromptBlocks;
   attachments: DesignAttachment[];
 };
 
@@ -52,7 +53,16 @@ export type DesignOfferCandidate = {
 export type DesignPromptPreview = {
   title: string;
   prompt: string;
+  source: "trello_image_prompt" | "ops_generated";
+  sourceLabel: string;
+  videoPrompt: string | null;
   warnings: string[];
+};
+
+export type DesignTrelloPromptBlocks = {
+  imagePrompt: string | null;
+  videoPrompt: string | null;
+  hasMarkers: boolean;
 };
 
 export type DesignWorkspace = {
@@ -262,6 +272,18 @@ function trimNullable(value: unknown) {
   return normalized || null;
 }
 
+export function extractTrelloMockupPromptBlocks(description: string | null | undefined): DesignTrelloPromptBlocks {
+  const text = String(description || "");
+  const imageMatch = text.match(/#startprompt([\s\S]*?)#endprompt/i);
+  const videoMatch = text.match(/#startvideoprompt([\s\S]*?)#endvideoprompt/i);
+
+  return {
+    imagePrompt: trimNullable(imageMatch?.[1]),
+    videoPrompt: trimNullable(videoMatch?.[1]),
+    hasMarkers: Boolean(imageMatch || videoMatch),
+  };
+}
+
 function isTrelloObjectId(value: string) {
   return /^[0-9a-f]{24}$/i.test(value);
 }
@@ -334,6 +356,7 @@ function attachmentProxyUrl(cardId: string, attachmentId: string, kind: DesignAt
 async function loadDesignCard(cardId: string, cardUrl?: string | null): Promise<DesignCardSummary> {
   const card = await getTrelloCard(cardId);
   const reference = selectReferenceTrelloAttachment(card.attachments || []);
+  const description = trimNullable(card.desc);
   const attachments = (card.attachments || [])
     .map((attachment) => {
       const kind = classifyAttachment(attachment, reference?.id || null);
@@ -360,7 +383,8 @@ async function loadDesignCard(cardId: string, cardUrl?: string | null): Promise<
     cardUrl: trimNullable(cardUrl) || `https://trello.com/c/${card.id}`,
     boardId: trimNullable(card.idBoard),
     listId: trimNullable(card.idList),
-    description: trimNullable(card.desc),
+    description,
+    promptBlocks: extractTrelloMockupPromptBlocks(description),
     attachments,
   };
 }
@@ -404,6 +428,20 @@ function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: De
   const warnings: string[] = [];
   if (!record) warnings.push("Kein Customer Record gefunden. Prompt basiert nur auf Trello-Daten.");
   if (!primaryCard) warnings.push("Keine Trello-Karte geladen. Prompt ist noch nicht generierbar.");
+  if (primaryCard?.promptBlocks.imagePrompt) {
+    return {
+      title: request?.title || primaryCard.cardName || "Design Mockup Prompt",
+      prompt: primaryCard.promptBlocks.imagePrompt,
+      source: "trello_image_prompt",
+      sourceLabel: "KI-Mockup Prompt aus Trello (#startprompt)",
+      videoPrompt: primaryCard.promptBlocks.videoPrompt,
+      warnings,
+    };
+  }
+
+  if (primaryCard?.description && !primaryCard.promptBlocks.hasMarkers) {
+    warnings.push("Kein #startprompt/#endprompt in der Trello-Beschreibung gefunden. Fallback-Prompt wurde aus Ops-Kontext gebaut.");
+  }
   if (record && !request?.description && !primaryCard?.description) warnings.push("Wenig Briefing-Text vorhanden. Vor Generierung manuell ergänzen.");
 
   const lines = [
@@ -436,6 +474,9 @@ function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: De
   return {
     title: request?.title || primaryCard?.cardName || "Design Mockup Prompt",
     prompt: lines.join("\n"),
+    source: "ops_generated",
+    sourceLabel: "Fallback-Prompt aus Ops-Kontext",
+    videoPrompt: primaryCard?.promptBlocks.videoPrompt || null,
     warnings,
   };
 }
