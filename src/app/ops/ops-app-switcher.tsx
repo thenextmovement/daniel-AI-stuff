@@ -66,7 +66,7 @@ const OPS_APPS: Array<{
     key: "offers",
     label: "Angebote",
     helper: "Erstellen & senden",
-    href: "https://angebote.neontrip.de/admin/offers",
+    href: "/ops/offers",
     Icon: FileText,
   },
   {

@@ -29,6 +29,7 @@ const localPages = [
   "/ops/customer-records/calls",
   "/ops/tasks",
   "/ops/company-brain",
+  "/ops/offers",
   "/ops/sales-vergabe",
   "/ops/customer-records/shipping",
   "/ops/customer-records/inbound-shipping",
