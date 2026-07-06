@@ -11,6 +11,36 @@ const checks = [
     label: "sales_call_list_items.visual_candidates_json + visual_snapshot_created_at",
     migration: "supabase/migrations/202605210004_add_sales_call_visual_snapshots.sql",
   },
+  {
+    table: "design_jobs",
+    select: "id,job_key,status,prompt_version_id,selected_asset_id",
+    label: "design_jobs core columns",
+    migration: "supabase/migrations/20260706102534_create_design_ops_tables.sql",
+  },
+  {
+    table: "design_prompt_versions",
+    select: "id,job_id,version_number,prompt_hash",
+    label: "design_prompt_versions core columns",
+    migration: "supabase/migrations/20260706102534_create_design_ops_tables.sql",
+  },
+  {
+    table: "design_assets",
+    select: "id,asset_key,job_id,status,public_url,trello_attachment_id",
+    label: "design_assets core columns",
+    migration: "supabase/migrations/20260706102534_create_design_ops_tables.sql",
+  },
+  {
+    table: "design_trello_removal_backups",
+    select: "id,backup_key,status,attachments",
+    label: "design_trello_removal_backups core columns",
+    migration: "supabase/migrations/20260706102534_create_design_ops_tables.sql",
+  },
+  {
+    table: "design_offer_asset_links",
+    select: "id,link_key,asset_id,offer_id,status",
+    label: "design_offer_asset_links core columns",
+    migration: "supabase/migrations/20260706102534_create_design_ops_tables.sql",
+  },
 ];
 
 function requiredEnv(name) {

@@ -415,6 +415,79 @@ export async function createTrelloCard(input: {
   return (await response.json()) as CreatedTrelloCard;
 }
 
+export async function addTrelloCardAttachment(input: {
+  cardId: string;
+  url: string;
+  name?: string | null;
+}) {
+  const { key, token } = trelloConfig();
+  const sourceUrl = String(input.url || "").trim();
+  if (!sourceUrl) throw new Error("Trello Attachment URL fehlt.");
+
+  const url = new URL(`https://api.trello.com/1/cards/${encodeURIComponent(input.cardId)}/attachments`);
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+  url.searchParams.set("url", sourceUrl);
+  if (input.name) url.searchParams.set("name", input.name);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Attachment konnte nicht angehaengt werden: ${response.status}`);
+  }
+
+  return (await response.json()) as TrelloAttachment;
+}
+
+export async function deleteTrelloCardAttachment(input: {
+  cardId: string;
+  attachmentId: string;
+}) {
+  const { key, token } = trelloConfig();
+  const url = new URL(
+    `https://api.trello.com/1/cards/${encodeURIComponent(input.cardId)}/attachments/${encodeURIComponent(input.attachmentId)}`,
+  );
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+
+  const response = await fetch(url.toString(), {
+    method: "DELETE",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Attachment konnte nicht entfernt werden: ${response.status}`);
+  }
+}
+
+export async function addTrelloCardComment(input: {
+  cardId: string;
+  text: string;
+}) {
+  const { key, token } = trelloConfig();
+  const text = String(input.text || "").trim();
+  if (!text) return null;
+
+  const url = new URL(`https://api.trello.com/1/cards/${encodeURIComponent(input.cardId)}/actions/comments`);
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+  url.searchParams.set("text", text);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Kommentar konnte nicht erstellt werden: ${response.status}`);
+  }
+
+  return (await response.json()) as { id: string };
+}
+
 export async function getTrelloBoardCustomFields(boardId: string) {
   return trelloFetch<TrelloCustomField[]>(`/boards/${encodeURIComponent(boardId)}/customFields`);
 }

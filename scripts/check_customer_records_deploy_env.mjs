@@ -6,6 +6,7 @@ const required = [
   "OPS_CLOUDFLARE_ACCESS_ISSUER",
   "OPS_CLOUDFLARE_ACCESS_AUD",
   "SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN",
+  "DESIGN_WORKER_API_KEY",
 ];
 
 const recommended = [

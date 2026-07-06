@@ -1,0 +1,155 @@
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import assert from "node:assert/strict";
+
+test("ops design module is visible and destructive actions stay guarded", () => {
+  const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
+  const page = readFileSync("src/app/ops/design/page.tsx", "utf8");
+  const client = readFileSync("src/app/ops/design/page-client.tsx", "utf8");
+  const route = readFileSync("src/app/api/ops/design/route.ts", "utf8");
+  const jobsRoute = readFileSync("src/app/api/ops/design/jobs/route.ts", "utf8");
+  const queueRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/queue/route.ts", "utf8");
+  const generateRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/generate/route.ts", "utf8");
+  const removalPlansRoute = readFileSync("src/app/api/ops/design/removal-plans/route.ts", "utf8");
+  const removalApplyRoute = readFileSync("src/app/api/ops/design/removal-plans/[planId]/apply/route.ts", "utf8");
+  const trelloAttachRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/trello/route.ts", "utf8");
+  const offerLinksRoute = readFileSync("src/app/api/ops/design/offer-links/route.ts", "utf8");
+  const workerJobsRoute = readFileSync("src/app/api/ops/design/worker/jobs/route.ts", "utf8");
+  const workerCallbackRoute = readFileSync("src/app/api/ops/design/worker/callback/route.ts", "utf8");
+  const service = readFileSync("src/lib/ops/design.ts", "utf8");
+  const envExample = readFileSync(".env.ops.example", "utf8");
+  const deployCheck = readFileSync("scripts/check_customer_records_deploy_env.mjs", "utf8");
+  const operationsDoc = readFileSync("docs/operations/design-ops.md", "utf8");
+  const workflowPlan = readFileSync("workflows/plans/design-generation-worker-v0.1.md", "utf8");
+
+  assert.match(nav, /key: "design"/);
+  assert.match(nav, /href: "\/ops\/design"/);
+  assert.match(nav, /Palette/);
+
+  assert.match(page, /hasOpsSession/);
+  assert.match(page, /DesignOpsClient/);
+
+  assert.match(client, /active="design"/);
+  assert.match(client, /\/ops\/company-brain/);
+  assert.match(client, /Prompt/);
+  assert.match(client, /Offer Integration/);
+  assert.match(client, /Draft speichern/);
+  assert.match(client, /Generierung freigeben/);
+  assert.match(client, /Jetzt generieren/);
+  assert.match(client, /Removal vorbereiten/);
+  assert.match(client, /Backup vor Delete/);
+  assert.match(client, /ENTFERNEN/);
+  assert.match(client, /An Trello/);
+  assert.match(client, /In Angebot übernehmen/);
+
+  assert.match(route, /export async function GET/);
+  assert.doesNotMatch(route, /export async function (POST|PATCH|DELETE)/);
+  assert.match(route, /hasOpsSession/);
+  assert.match(route, /loadDesignWorkspace/);
+
+  assert.match(jobsRoute, /export async function POST/);
+  assert.match(jobsRoute, /export async function GET/);
+  assert.doesNotMatch(jobsRoute, /export async function (PATCH|DELETE)/);
+  assert.match(jobsRoute, /createDesignJobDraft/);
+  assert.match(jobsRoute, /listDesignJobs/);
+  assert.match(jobsRoute, /idempotencyKey/);
+
+  assert.match(queueRoute, /export async function POST/);
+  assert.doesNotMatch(queueRoute, /export async function (GET|PATCH|DELETE)/);
+  assert.match(queueRoute, /queueDesignJob/);
+  assert.match(queueRoute, /hasOpsSession/);
+
+  assert.match(generateRoute, /generateDesignJobNow/);
+  assert.match(generateRoute, /idempotencyKey/);
+  assert.match(generateRoute, /hasOpsSession/);
+
+  assert.match(removalPlansRoute, /export async function POST/);
+  assert.doesNotMatch(removalPlansRoute, /export async function (GET|PATCH|DELETE)/);
+  assert.match(removalPlansRoute, /prepareDesignRemovalPlan/);
+  assert.match(removalPlansRoute, /idempotencyKey/);
+
+  assert.match(removalApplyRoute, /applyDesignRemovalPlan/);
+  assert.match(removalApplyRoute, /confirmText/);
+  assert.match(removalApplyRoute, /hasOpsSession/);
+
+  assert.match(trelloAttachRoute, /attachDesignAssetToTrello/);
+  assert.match(trelloAttachRoute, /hasOpsSession/);
+
+  assert.match(offerLinksRoute, /linkDesignAssetToOffer/);
+  assert.match(offerLinksRoute, /OpsOfferApiError/);
+  assert.match(offerLinksRoute, /dryRun/);
+
+  assert.match(workerJobsRoute, /DESIGN_WORKER_API_KEY/);
+  assert.match(workerJobsRoute, /listQueuedDesignJobsForWorker/);
+  assert.match(workerJobsRoute, /markDesignJobGenerating/);
+  assert.doesNotMatch(workerJobsRoute, /hasOpsSession/);
+
+  assert.match(workerCallbackRoute, /DESIGN_WORKER_API_KEY/);
+  assert.match(workerCallbackRoute, /applyDesignWorkerCallback/);
+  assert.match(workerCallbackRoute, /idempotencyKey/);
+  assert.doesNotMatch(workerCallbackRoute, /hasOpsSession/);
+
+  assert.match(service, /loadDesignWorkspace/);
+  assert.match(service, /createDesignJobDraft/);
+  assert.match(service, /queueDesignJob/);
+  assert.match(service, /generateDesignJobNow/);
+  assert.match(service, /https:\/\/api\.openai\.com\/v1\/images\/generations/);
+  assert.match(service, /storage\/v1\/object/);
+  assert.match(service, /prepareDesignRemovalPlan/);
+  assert.match(service, /applyDesignRemovalPlan/);
+  assert.match(service, /attachDesignAssetToTrello/);
+  assert.match(service, /linkDesignAssetToOffer/);
+  assert.match(service, /listDesignJobs/);
+  assert.match(service, /listQueuedDesignJobsForWorker/);
+  assert.match(service, /applyDesignWorkerCallback/);
+  assert.match(service, /Prompt basiert/);
+  assert.match(service, /removalEligible: true/);
+  assert.match(service, /prepared_without_delete: true/);
+  assert.match(service, /confirmText/);
+  assert.match(service, /ENTFERNEN/);
+  assert.match(service, /deleteTrelloCardAttachment/);
+  assert.match(service, /addTrelloCardAttachment/);
+  assert.match(service, /patchOfferById/);
+  assert.match(service, /dryRun/);
+  assert.match(service, /manual_design_link_requires_price_review/);
+
+  assert.match(envExample, /DESIGN_WORKER_API_KEY=/);
+  assert.match(envExample, /OPS_OPENAI_IMAGE_MODEL=/);
+  assert.match(envExample, /DESIGN_ASSET_BUCKET=/);
+  assert.match(deployCheck, /DESIGN_WORKER_API_KEY/);
+  assert.match(operationsDoc, /DESIGN_WORKER_API_KEY/);
+  assert.match(operationsDoc, /Trello is a projection/);
+  assert.match(operationsDoc, /ENTFERNEN/);
+  assert.match(operationsDoc, /Offer-Link/);
+  assert.match(workflowPlan, /max 30 nodes|Node Structure/);
+  assert.match(workflowPlan, /No credential value belongs in workflow JSON/);
+});
+
+test("design ops schema has source-of-truth tables, RLS and rollback", () => {
+  const migration = readFileSync("supabase/migrations/20260706102534_create_design_ops_tables.sql", "utf8");
+  const rollback = readFileSync("supabase/rollbacks/20260706102534_create_design_ops_tables_rollback.sql", "utf8");
+
+  for (const table of [
+    "design_jobs",
+    "design_prompt_versions",
+    "design_assets",
+    "design_trello_removal_backups",
+    "design_offer_asset_links",
+  ]) {
+    assert.match(migration, new RegExp(`create table if not exists public\\.${table}`));
+    assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(migration, new RegExp(`grant select, insert, update on public\\.${table} to service_role`));
+    assert.match(rollback, new RegExp(`drop table if exists public\\.${table}`));
+  }
+
+  assert.match(migration, /job_key text not null unique/);
+  assert.match(migration, /backup_key text not null unique/);
+  assert.match(migration, /attachments jsonb not null default '\[\]'::jsonb/);
+  assert.match(migration, /insert into storage\.buckets/);
+  assert.match(migration, /design-assets/);
+  assert.match(migration, /selected_asset_id uuid null/);
+  assert.match(migration, /attached_to_trello/);
+  assert.match(migration, /linked_to_offer/);
+  assert.doesNotMatch(migration, /grant .* to anon/i);
+  assert.doesNotMatch(migration, /grant .* to authenticated/i);
+});

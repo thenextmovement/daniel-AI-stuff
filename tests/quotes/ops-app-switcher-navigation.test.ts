@@ -47,7 +47,7 @@ test("secondary ops entry points expose Company Brain", () => {
   const managementSource = readFileSync("src/app/ops/management/page-client.tsx", "utf8");
   const loginSource = readFileSync("src/app/ops/ops-login-card.tsx", "utf8");
   const offersSource = readFileSync("src/app/ops/offers/page.tsx", "utf8");
-  const designSource = readFileSync("src/app/ops/design/page.tsx", "utf8");
+  const designSource = readFileSync("src/app/ops/design/page-client.tsx", "utf8");
 
   assert.match(managementSource, /\/ops\/company-brain/);
   assert.match(managementSource, /Fälle & Belege prüfen/);

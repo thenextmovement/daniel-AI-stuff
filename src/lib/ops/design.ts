@@ -1,0 +1,1567 @@
+import { createHash } from "node:crypto";
+import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
+import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, getTrelloCard, searchTrelloCards } from "@/lib/quotes/trello";
+import type { TrelloAttachment } from "@/lib/quotes/types";
+import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { getOfferById, patchOfferById, type OpsOfferPatchResult } from "@/lib/ops/offers";
+import {
+  getCustomerRecordByRequestId,
+  listCustomerRecordsByRequestIds,
+  parseTrelloCardIdentifier,
+  searchCustomerRecords,
+  selectReferenceTrelloAttachment,
+  type CustomerCrmQuoteSummary,
+  type CustomerSearchResult,
+} from "@/lib/ops/customer-records";
+import { QuoteValidationError } from "@/lib/quotes/validation";
+
+export type DesignAttachmentKind = "mockup" | "reference" | "image" | "video" | "other";
+
+export type DesignAttachment = {
+  id: string;
+  cardId: string;
+  name: string;
+  mimeType: string | null;
+  url: string | null;
+  proxyUrl: string | null;
+  kind: DesignAttachmentKind;
+  removalEligible: boolean;
+};
+
+export type DesignCardSummary = {
+  cardId: string;
+  cardName: string | null;
+  cardUrl: string | null;
+  boardId: string | null;
+  listId: string | null;
+  description: string | null;
+  attachments: DesignAttachment[];
+};
+
+export type DesignOfferCandidate = {
+  id: string;
+  label: string;
+  status: string | null;
+  totalGross: number | null;
+  acceptedAt: string | null;
+  updatedAt: string | null;
+  locked: boolean;
+  imageCount: number;
+};
+
+export type DesignPromptPreview = {
+  title: string;
+  prompt: string;
+  warnings: string[];
+};
+
+export type DesignWorkspace = {
+  query: string;
+  record: Pick<
+    CustomerSearchResult,
+    "requestId" | "displayName" | "email" | "phone" | "company" | "request" | "crmQuote"
+  > | null;
+  cards: DesignCardSummary[];
+  primaryCard: DesignCardSummary | null;
+  offerCandidates: DesignOfferCandidate[];
+  promptPreview: DesignPromptPreview;
+  stats: {
+    totalAttachments: number;
+    mockups: number;
+    removable: number;
+    offers: number;
+  };
+};
+
+export type DesignJobDraft = {
+  id: string;
+  jobKey: string;
+  status: string;
+  requestId: string | null;
+  trelloCardId: string | null;
+  offerId: string | null;
+  promptVersion: {
+    id: string;
+    versionNumber: number;
+    title: string;
+    promptHash: string;
+  };
+};
+
+export type DesignRemovalPlan = {
+  id: string;
+  backupKey: string;
+  status: string;
+  trelloCardId: string;
+  trelloCardUrl: string | null;
+  selectedAttachmentCount: number;
+};
+
+export type DesignAssetSummary = {
+  id: string;
+  assetKey: string;
+  jobId: string | null;
+  status: string;
+  publicUrl: string | null;
+  trelloAttachmentId: string | null;
+  name: string | null;
+  mimeType: string | null;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DesignJobSummary = {
+  id: string;
+  jobKey: string;
+  status: string;
+  requestId: string | null;
+  trelloCardId: string | null;
+  offerId: string | null;
+  sourceQuery: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assets?: DesignAssetSummary[];
+};
+
+export type DesignTrelloAttachResult = {
+  job: DesignJobSummary;
+  asset: DesignAssetSummary;
+  trelloAttachmentId: string;
+  trelloAttachmentUrl: string | null;
+};
+
+export type DesignRemovalApplyResult = {
+  removalPlan: DesignRemovalPlan;
+  deleted: number;
+  failed: Array<{ attachmentId: string; error: string }>;
+};
+
+export type DesignOfferLinkResult = {
+  status: string;
+  offerId: string;
+  assetId: string;
+  dryRun: boolean;
+  offerPatch?: OpsOfferPatchResult | null;
+};
+
+export type DesignGenerateResult = {
+  job: DesignJobSummary;
+  asset: DesignAssetSummary | null;
+  model: string;
+  storagePath: string | null;
+};
+
+export type DesignWorkerJob = DesignJobSummary & {
+  promptVersion: {
+    id: string;
+    versionNumber: number;
+    title: string;
+    promptText: string;
+    promptHash: string;
+  };
+};
+
+type DesignJobRow = {
+  id: string;
+  job_key: string;
+  request_id: string | null;
+  trello_card_id: string | null;
+  trello_card_url: string | null;
+  offer_id: string | null;
+  source_query: string | null;
+  status: string;
+  prompt_version_id: string | null;
+  operator_name: string | null;
+  created_by: string | null;
+  error_message: string | null;
+  selected_asset_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DesignPromptVersionRow = {
+  id: string;
+  job_id: string;
+  version_number: number;
+  prompt_title: string;
+  prompt_text: string;
+  prompt_hash: string;
+  source: string;
+  edited_by: string | null;
+  created_at: string;
+};
+
+type DesignAssetRow = {
+  id: string;
+  asset_key: string;
+  job_id: string;
+  prompt_version_id: string | null;
+  request_id: string | null;
+  trello_card_id: string | null;
+  source: string;
+  status: string;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  public_url: string | null;
+  trello_attachment_id: string | null;
+  name: string | null;
+  mime_type: string | null;
+  width: number | null;
+  height: number | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DesignOfferAssetLinkRow = {
+  id: string;
+  link_key: string;
+  asset_id: string;
+  offer_id: string;
+  offer_item_id: string | null;
+  offer_version_id: string | null;
+  design_group_key: string | null;
+  status: string;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DesignRemovalBackupRow = {
+  id: string;
+  backup_key: string;
+  trello_card_id: string;
+  trello_card_url: string | null;
+  status: string;
+  selected_attachment_count: number;
+  attachments?: Array<{
+    id?: string;
+    card_id?: string;
+    name?: string;
+    mime_type?: string | null;
+    url?: string | null;
+    kind?: string;
+  }> | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const DESIGN_JOB_SELECT =
+  "id,job_key,request_id,trello_card_id,trello_card_url,offer_id,source_query,status,prompt_version_id,selected_asset_id,operator_name,created_by,error_message,metadata,created_at,updated_at";
+const DESIGN_PROMPT_VERSION_SELECT = "id,job_id,version_number,prompt_title,prompt_text,prompt_hash,source,edited_by,created_at";
+const DESIGN_ASSET_SELECT =
+  "id,asset_key,job_id,prompt_version_id,request_id,trello_card_id,source,status,storage_bucket,storage_path,public_url,trello_attachment_id,name,mime_type,width,height,metadata,created_at,updated_at";
+
+function trimNullable(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized || null;
+}
+
+function isTrelloObjectId(value: string) {
+  return /^[0-9a-f]{24}$/i.test(value);
+}
+
+function uniqueValues(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((value) => trimNullable(value)).filter((value): value is string => Boolean(value))));
+}
+
+function stableHash(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function stableActionKey(prefix: string, parts: Array<string | null | undefined>) {
+  return `${prefix}:${stableHash(parts.map((part) => trimNullable(part) || "-").join("|")).slice(0, 32)}`;
+}
+
+function slugPathPart(value: unknown, fallback: string) {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+}
+
+function supabaseProjectUrl() {
+  const url = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/+$/, "");
+  if (!url) throw new QuoteValidationError("SUPABASE_URL fehlt.");
+  return url;
+}
+
+function supabaseServiceRoleKey() {
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!key) throw new QuoteValidationError("SUPABASE_SERVICE_ROLE_KEY fehlt.");
+  return key;
+}
+
+function designAssetBucket() {
+  return String(process.env.DESIGN_ASSET_BUCKET || "design-assets").trim() || "design-assets";
+}
+
+function openAiImageApiKey() {
+  const key = String(process.env.OPS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "").trim();
+  if (!key) throw new QuoteValidationError("OPS_OPENAI_API_KEY oder OPENAI_API_KEY fehlt fuer direkte Design-Generierung.", [], 503);
+  return key;
+}
+
+function requestIdCandidate(value: string) {
+  const direct = value.trim();
+  if (/^[A-Za-z0-9][A-Za-z0-9_-]{5,80}$/.test(direct) && !direct.includes("trello.com")) return direct;
+  const requestMatch = direct.match(/(?:request[_-]?id|requestId|rid)[=:\/\s]+([A-Za-z0-9_-]{6,80})/i);
+  return requestMatch?.[1] || null;
+}
+
+function classifyAttachment(attachment: TrelloAttachment, referenceId: string | null): DesignAttachmentKind {
+  if (referenceId && attachment.id === referenceId) return "reference";
+  if (isValidMockupAttachment(attachment)) return "mockup";
+  const name = attachmentName(attachment);
+  if ((attachment.mimeType && /^image\//i.test(attachment.mimeType)) || /\.(png|jpe?g|webp|avif)$/i.test(name)) return "image";
+  if ((attachment.mimeType && /^video\//i.test(attachment.mimeType)) || /\.(mp4|mov|webm|m4v)$/i.test(name)) return "video";
+  return "other";
+}
+
+function attachmentProxyUrl(cardId: string, attachmentId: string, kind: DesignAttachmentKind) {
+  if (!["mockup", "reference", "image", "video"].includes(kind)) return null;
+  const params = new URLSearchParams({ cardId, attachmentId });
+  return `/api/ops/customer-records/trello-attachments?${params.toString()}`;
+}
+
+async function loadDesignCard(cardId: string, cardUrl?: string | null): Promise<DesignCardSummary> {
+  const card = await getTrelloCard(cardId);
+  const reference = selectReferenceTrelloAttachment(card.attachments || []);
+  const attachments = (card.attachments || [])
+    .map((attachment) => {
+      const kind = classifyAttachment(attachment, reference?.id || null);
+      return {
+        id: attachment.id,
+        cardId: card.id,
+        name: attachmentName(attachment) || attachment.id,
+        mimeType: trimNullable(attachment.mimeType),
+        url: trimNullable(attachment.url),
+        proxyUrl: attachmentProxyUrl(card.id, attachment.id, kind),
+        kind,
+        removalEligible: true,
+      } satisfies DesignAttachment;
+    })
+    .sort((left, right) => {
+      const kindOrder: Record<DesignAttachmentKind, number> = { mockup: 0, reference: 1, image: 2, video: 3, other: 4 };
+      const kindDiff = kindOrder[left.kind] - kindOrder[right.kind];
+      return kindDiff || left.name.localeCompare(right.name, "de", { numeric: true });
+    });
+
+  return {
+    cardId: card.id,
+    cardName: trimNullable(card.name),
+    cardUrl: trimNullable(cardUrl) || `https://trello.com/c/${card.id}`,
+    boardId: trimNullable(card.idBoard),
+    listId: trimNullable(card.idList),
+    description: trimNullable(card.desc),
+    attachments,
+  };
+}
+
+function cardIdsFromRecord(record: CustomerSearchResult | null) {
+  if (!record) return [];
+  return uniqueValues([
+    parseTrelloCardIdentifier(record.request?.trelloCardUrl),
+    ...(record.trello?.cards || []).map((card) => card.cardId),
+  ]);
+}
+
+function offerLocked(offer: CustomerCrmQuoteSummary) {
+  return Boolean(offer.acceptedAt || ["accepted", "completed", "downloaded"].includes(String(offer.status || "").toLowerCase()));
+}
+
+function offerCandidates(record: CustomerSearchResult | null): DesignOfferCandidate[] {
+  if (!record?.crmQuote) return [];
+  const quote = record.crmQuote;
+  return [
+    {
+      id: quote.id,
+      label: quote.quoteNumber || quote.projectNumber || quote.id,
+      status: quote.status,
+      totalGross: quote.customerLiveTotal ?? quote.totalGross,
+      acceptedAt: quote.acceptedAt,
+      updatedAt: quote.updatedAt,
+      locked: offerLocked(quote),
+      imageCount: quote.latestVersionImages.length,
+    },
+  ];
+}
+
+function compactLine(label: string, value: unknown) {
+  const normalized = Array.isArray(value) ? value.filter(Boolean).join(", ") : trimNullable(value);
+  return normalized ? `${label}: ${normalized}` : null;
+}
+
+function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: DesignCardSummary | null): DesignPromptPreview {
+  const request = record?.request || null;
+  const warnings: string[] = [];
+  if (!record) warnings.push("Kein Customer Record gefunden. Prompt basiert nur auf Trello-Daten.");
+  if (!primaryCard) warnings.push("Keine Trello-Karte geladen. Prompt ist noch nicht generierbar.");
+  if (record && !request?.description && !primaryCard?.description) warnings.push("Wenig Briefing-Text vorhanden. Vor Generierung manuell ergänzen.");
+
+  const lines = [
+    "Erstelle ein realistisches NEONTRIP Mockup fuer ein Kundenangebot.",
+    "",
+    "Ziel: Ein verkaufsfaehiges Produktbild, das Design, Groesse, Materialwirkung und Einsatzort klar zeigt.",
+    "",
+    compactLine("Kunde", record?.displayName || record?.company || record?.email),
+    compactLine("Request ID", record?.requestId),
+    compactLine("Projekt", request?.title || primaryCard?.cardName),
+    compactLine("Kategorie", request?.sKategorie || request?.segmentLabel || request?.segment),
+    compactLine("Groesse", request?.size),
+    compactLine("Farben", request?.colors),
+    compactLine("Anwendung", request?.application),
+    compactLine("Lieferzeit", request?.deliveryTime),
+    compactLine("Land", request?.country),
+    compactLine("Trello Karte", primaryCard?.cardUrl),
+    "",
+    "Briefing:",
+    request?.description || primaryCard?.description || "Bitte Briefing vor der Generierung ergaenzen.",
+    "",
+    "Ausgabeanforderungen:",
+    "- sauberer heller Hintergrund oder glaubwuerdiger Einsatzkontext",
+    "- Produkt muss klar im Fokus stehen",
+    "- keine falschen Logos oder lesbaren Marken erfinden",
+    "- keine Preisangaben oder Lieferzusagen im Bild",
+    "- Ergebnis als Mockup fuer interne Angebotspruefung behandeln",
+  ].filter((line): line is string => line !== null);
+
+  return {
+    title: request?.title || primaryCard?.cardName || "Design Mockup Prompt",
+    prompt: lines.join("\n"),
+    warnings,
+  };
+}
+
+async function findRecord(query: string) {
+  const requestId = requestIdCandidate(query);
+  if (requestId && !isTrelloObjectId(requestId)) {
+    try {
+      return await getCustomerRecordByRequestId(requestId, { includeTrello: true });
+    } catch {
+      // Fall through to broad search.
+    }
+  }
+
+  const records = await searchCustomerRecords(query);
+  return records[0] || null;
+}
+
+async function cardIdsFromQuery(query: string) {
+  const directId = isTrelloObjectId(query) ? query : null;
+  const shortLink = parseTrelloCardIdentifier(query);
+  if (directId) return [directId];
+  if (shortLink) return [shortLink];
+
+  try {
+    const matches = await searchTrelloCards(query);
+    return matches.map((match) => match.id).slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+export async function loadDesignWorkspace(query: string): Promise<DesignWorkspace> {
+  const normalizedQuery = trimNullable(query);
+  if (!normalizedQuery) {
+    throw new QuoteValidationError("Suchbegriff ist erforderlich.");
+  }
+
+  const record = await findRecord(normalizedQuery);
+  const ids = uniqueValues([...(await cardIdsFromQuery(normalizedQuery)), ...cardIdsFromRecord(record)]).slice(0, 6);
+  const cards = (
+    await Promise.all(
+      ids.map(async (cardId) => {
+        try {
+          return await loadDesignCard(cardId, record?.request?.trelloCardUrl);
+        } catch (error) {
+          console.warn("design card lookup failed", { cardId, error });
+          return null;
+        }
+      }),
+    )
+  ).filter((card): card is DesignCardSummary => Boolean(card));
+
+  const primaryCard =
+    cards.find((card) => card.attachments.some((attachment) => attachment.kind === "mockup")) ||
+    cards.find((card) => card.attachments.some((attachment) => attachment.kind === "reference" || attachment.kind === "image")) ||
+    cards[0] ||
+    null;
+  const offers = offerCandidates(record);
+  const totalAttachments = cards.reduce((sum, card) => sum + card.attachments.length, 0);
+  const mockups = cards.reduce((sum, card) => sum + card.attachments.filter((attachment) => attachment.kind === "mockup").length, 0);
+
+  return {
+    query: normalizedQuery,
+    record: record
+      ? {
+          requestId: record.requestId,
+          displayName: record.displayName,
+          email: record.email,
+          phone: record.phone,
+          company: record.company,
+          request: record.request,
+          crmQuote: record.crmQuote,
+        }
+      : null,
+    cards,
+    primaryCard,
+    offerCandidates: offers,
+    promptPreview: buildPromptPreview(record, primaryCard),
+    stats: {
+      totalAttachments,
+      mockups,
+      removable: totalAttachments,
+      offers: offers.length,
+    },
+  };
+}
+
+export async function loadDesignWorkspaceByRequestId(requestId: string): Promise<DesignWorkspace> {
+  const [record] = await listCustomerRecordsByRequestIds([requestId], { includeTrello: true });
+  if (!record) throw new QuoteValidationError("Kein Fall für diese Request-ID gefunden.");
+  return loadDesignWorkspace(record.requestId);
+}
+
+export async function createDesignJobDraft(input: {
+  idempotencyKey: string;
+  query: string;
+  promptTitle: string;
+  promptText: string;
+  operatorName?: string | null;
+  offerId?: string | null;
+}) {
+  const idempotencyKey = trimNullable(input.idempotencyKey);
+  const promptText = trimNullable(input.promptText);
+  const query = trimNullable(input.query);
+  if (!idempotencyKey) throw new QuoteValidationError("idempotencyKey ist erforderlich.");
+  if (!query) throw new QuoteValidationError("Suchbegriff ist erforderlich.");
+  if (!promptText || promptText.length < 40) throw new QuoteValidationError("Prompt ist zu kurz.");
+
+  const existing = await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, {
+    select: DESIGN_JOB_SELECT,
+    job_key: `eq.${idempotencyKey}`,
+    limit: 1,
+  });
+  if (existing[0]?.prompt_version_id) {
+    const versions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", undefined, {
+      select: DESIGN_PROMPT_VERSION_SELECT,
+      id: `eq.${existing[0].prompt_version_id}`,
+      limit: 1,
+    });
+    const version = versions[0];
+    if (!version) throw new QuoteValidationError("Bestehender Design-Job ist unvollständig.");
+    return mapDesignJobDraft(existing[0], version);
+  }
+
+  const workspace = await loadDesignWorkspace(query);
+  const primaryCard = workspace.primaryCard;
+  const requestId = workspace.record?.requestId || null;
+  const operatorName = trimNullable(input.operatorName);
+  const offerId = trimNullable(input.offerId);
+  const promptTitle = trimNullable(input.promptTitle) || workspace.promptPreview.title;
+  const promptHash = stableHash(promptText);
+
+  const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      job_key: idempotencyKey,
+      request_id: requestId,
+      trello_card_id: primaryCard?.cardId || null,
+      trello_card_url: primaryCard?.cardUrl || null,
+      offer_id: offerId,
+      source_query: query,
+      status: "draft",
+      operator_name: operatorName,
+      created_by: operatorName,
+      metadata: {
+        source: "ops_design_ui",
+        attachment_count: workspace.stats.totalAttachments,
+        mockup_count: workspace.stats.mockups,
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const job = jobs[0];
+  if (!job) throw new QuoteValidationError("Design-Job konnte nicht erstellt werden.");
+
+  const versions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", {
+    method: "POST",
+    body: JSON.stringify({
+      job_id: job.id,
+      version_number: 1,
+      prompt_title: promptTitle,
+      prompt_text: promptText,
+      prompt_hash: promptHash,
+      source: "manual",
+      edited_by: operatorName,
+      metadata: {
+        source: "ops_design_ui",
+        warnings: workspace.promptPreview.warnings,
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const promptVersion = versions[0];
+  if (!promptVersion) throw new QuoteValidationError("Prompt-Version konnte nicht erstellt werden.");
+
+  const updatedJobs = await supabaseRequest<DesignJobRow[]>(
+    "design_jobs",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        prompt_version_id: promptVersion.id,
+        updated_at: new Date().toISOString(),
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${job.id}` },
+  );
+
+  return mapDesignJobDraft(updatedJobs[0] || { ...job, prompt_version_id: promptVersion.id }, promptVersion);
+}
+
+async function getDesignJob(jobId: string) {
+  const normalizedJobId = trimNullable(jobId);
+  if (!normalizedJobId) throw new QuoteValidationError("Design-Job ist erforderlich.");
+  const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, {
+    select: DESIGN_JOB_SELECT,
+    id: `eq.${normalizedJobId}`,
+    limit: 1,
+  });
+  const job = jobs[0];
+  if (!job) throw new QuoteValidationError("Design-Job wurde nicht gefunden.", ["Design-Job wurde nicht gefunden."], 404);
+  return job;
+}
+
+async function getPromptVersion(promptVersionId: string | null) {
+  if (!promptVersionId) throw new QuoteValidationError("Design-Job hat noch keine Prompt-Version.");
+  const versions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", undefined, {
+    select: DESIGN_PROMPT_VERSION_SELECT,
+    id: `eq.${promptVersionId}`,
+    limit: 1,
+  });
+  const version = versions[0];
+  if (!version) throw new QuoteValidationError("Prompt-Version wurde nicht gefunden.", ["Prompt-Version wurde nicht gefunden."], 404);
+  return version;
+}
+
+async function getOrCreateDraftAsset(job: DesignJobRow, promptVersion: DesignPromptVersionRow, operatorName: string | null) {
+  const assetKey = stableActionKey("design-asset", [job.id, promptVersion.id, "primary"]);
+  const existing = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+    select: DESIGN_ASSET_SELECT,
+    asset_key: `eq.${assetKey}`,
+    limit: 1,
+  });
+  if (existing[0]) return existing[0];
+
+  const rows = await supabaseRequest<DesignAssetRow[]>("design_assets", {
+    method: "POST",
+    body: JSON.stringify({
+      asset_key: assetKey,
+      job_id: job.id,
+      prompt_version_id: promptVersion.id,
+      request_id: job.request_id,
+      trello_card_id: job.trello_card_id,
+      source: "generated",
+      status: "draft",
+      name: promptVersion.prompt_title || "Design Mockup",
+      metadata: {
+        source: "ops_design_ui",
+        queued_by: operatorName,
+        prompt_hash: promptVersion.prompt_hash,
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const asset = rows[0];
+  if (!asset) throw new QuoteValidationError("Design-Asset konnte nicht vorbereitet werden.");
+  return asset;
+}
+
+async function getOrCreateOfferAssetLink(input: {
+  asset: DesignAssetRow;
+  offerId: string;
+  requestId: string | null;
+  trelloCardId: string | null;
+  operatorName: string | null;
+}) {
+  const linkKey = stableActionKey("design-offer-link", [input.asset.id, input.offerId]);
+  const existing = await supabaseRequest<DesignOfferAssetLinkRow[]>("design_offer_asset_links", undefined, {
+    select: "id,link_key,asset_id,offer_id,offer_item_id,offer_version_id,design_group_key,status,created_at,updated_at",
+    link_key: `eq.${linkKey}`,
+    limit: 1,
+  });
+  if (existing[0]) return existing[0];
+
+  const rows = await supabaseRequest<DesignOfferAssetLinkRow[]>("design_offer_asset_links", {
+    method: "POST",
+    body: JSON.stringify({
+      link_key: linkKey,
+      asset_id: input.asset.id,
+      offer_id: input.offerId,
+      design_group_key: input.trelloCardId || input.requestId || input.asset.id,
+      status: "needs_price_review",
+      reviewed_by: input.operatorName,
+      reviewed_at: input.operatorName ? new Date().toISOString() : null,
+      price_context: {
+        source: "ops_design_ui",
+        rule: "manual_design_link_requires_price_review",
+      },
+      metadata: {
+        request_id: input.requestId,
+        trello_card_id: input.trelloCardId,
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const link = rows[0];
+  if (!link) throw new QuoteValidationError("Angebotszuordnung konnte nicht vorbereitet werden.");
+  return link;
+}
+
+export async function queueDesignJob(input: {
+  jobId: string;
+  operatorName?: string | null;
+  offerId?: string | null;
+}) {
+  const operatorName = trimNullable(input.operatorName);
+  const offerId = trimNullable(input.offerId);
+  const job = await getDesignJob(input.jobId);
+  const promptVersion = await getPromptVersion(job.prompt_version_id);
+
+  if (["generated", "attached_to_trello", "linked_to_offer"].includes(job.status)) {
+    throw new QuoteValidationError("Design-Job ist bereits verarbeitet.");
+  }
+
+  const asset = await getOrCreateDraftAsset(job, promptVersion, operatorName);
+  if (offerId || job.offer_id) {
+    await getOrCreateOfferAssetLink({
+      asset,
+      offerId: offerId || job.offer_id || "",
+      requestId: job.request_id,
+      trelloCardId: job.trello_card_id,
+      operatorName,
+    });
+  }
+
+  const updated = await supabaseRequest<DesignJobRow[]>(
+    "design_jobs",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "queued",
+        offer_id: offerId || job.offer_id,
+        selected_asset_id: asset.id,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          source: "ops_design_ui",
+          queued_by: operatorName,
+          queued_without_side_effects: true,
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${job.id}` },
+  );
+
+  return mapDesignJobDraft(updated[0] || { ...job, status: "queued", selected_asset_id: asset.id }, promptVersion);
+}
+
+export async function prepareDesignRemovalPlan(input: {
+  idempotencyKey: string;
+  query: string;
+  attachmentIds: string[];
+  operatorName?: string | null;
+  reason?: string | null;
+}): Promise<DesignRemovalPlan> {
+  const idempotencyKey = trimNullable(input.idempotencyKey);
+  const query = trimNullable(input.query);
+  const operatorName = trimNullable(input.operatorName);
+  const selectedIds = uniqueValues(input.attachmentIds || []);
+  if (!idempotencyKey) throw new QuoteValidationError("idempotencyKey ist erforderlich.");
+  if (!query) throw new QuoteValidationError("Suchbegriff ist erforderlich.");
+  if (!selectedIds.length) throw new QuoteValidationError("Mindestens ein Anhang muss ausgewählt werden.");
+
+  const existing = await supabaseRequest<DesignRemovalBackupRow[]>("design_trello_removal_backups", undefined, {
+    select: "id,backup_key,trello_card_id,trello_card_url,status,selected_attachment_count,created_at,updated_at",
+    backup_key: `eq.${idempotencyKey}`,
+    limit: 1,
+  });
+  if (existing[0]) return mapRemovalPlan(existing[0]);
+
+  const workspace = await loadDesignWorkspace(query);
+  const selected = workspace.cards.flatMap((card) =>
+    card.attachments
+      .filter((attachment) => selectedIds.includes(attachment.id) && attachment.removalEligible)
+      .map((attachment) => ({ card, attachment })),
+  );
+  if (!selected.length) throw new QuoteValidationError("Keine entfernbaren Anhänge gefunden.");
+
+  const cardIds = uniqueValues(selected.map((item) => item.card.cardId));
+  if (cardIds.length !== 1) throw new QuoteValidationError("Bulk-Removal ist pro Trello-Karte vorzubereiten.");
+
+  const primaryCard = selected[0].card;
+  const rows = await supabaseRequest<DesignRemovalBackupRow[]>("design_trello_removal_backups", {
+    method: "POST",
+    body: JSON.stringify({
+      backup_key: idempotencyKey,
+      trello_card_id: primaryCard.cardId,
+      trello_card_url: primaryCard.cardUrl,
+      operator_name: operatorName,
+      reason: trimNullable(input.reason) || "ops_design_bulk_removal",
+      status: "prepared",
+      selected_attachment_count: selected.length,
+      attachments: selected.map(({ attachment }) => ({
+        id: attachment.id,
+        card_id: attachment.cardId,
+        name: attachment.name,
+        mime_type: attachment.mimeType,
+        url: attachment.url,
+        kind: attachment.kind,
+      })),
+      metadata: {
+        source: "ops_design_ui",
+        request_id: workspace.record?.requestId || null,
+        query: workspace.query,
+        prepared_without_delete: true,
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const backup = rows[0];
+  if (!backup) throw new QuoteValidationError("Removal-Backup konnte nicht erstellt werden.");
+  return mapRemovalPlan(backup);
+}
+
+export async function listDesignJobs(input: {
+  status?: string | null;
+  limit?: number | null;
+} = {}): Promise<DesignJobSummary[]> {
+  const status = trimNullable(input.status);
+  const limit = Math.max(1, Math.min(Number(input.limit || 20), 50));
+  const query: Record<string, string | number | boolean | null> = {
+    select: DESIGN_JOB_SELECT,
+    order: "updated_at.desc",
+    limit,
+  };
+  if (status && status !== "all") query.status = `eq.${status}`;
+  const rows = await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, query);
+  const summaries = rows.map(mapDesignJobSummary);
+  for (const summary of summaries) {
+    summary.assets = await listDesignAssetsForJob(summary.id);
+  }
+  return summaries;
+}
+
+export async function listDesignAssetsForJob(jobId: string): Promise<DesignAssetSummary[]> {
+  const normalizedJobId = trimNullable(jobId);
+  if (!normalizedJobId) return [];
+  const rows = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+    select: DESIGN_ASSET_SELECT,
+    job_id: `eq.${normalizedJobId}`,
+    order: "created_at.desc",
+    limit: 20,
+  });
+  return rows.map(mapDesignAssetSummary);
+}
+
+async function getDesignAsset(assetId: string) {
+  const normalizedAssetId = trimNullable(assetId);
+  if (!normalizedAssetId) throw new QuoteValidationError("Design-Asset ist erforderlich.");
+  const rows = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+    select: DESIGN_ASSET_SELECT,
+    id: `eq.${normalizedAssetId}`,
+    limit: 1,
+  });
+  const asset = rows[0];
+  if (!asset) throw new QuoteValidationError("Design-Asset wurde nicht gefunden.", ["Design-Asset wurde nicht gefunden."], 404);
+  return asset;
+}
+
+async function latestGeneratedAssetForJob(jobId: string) {
+  const rows = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+    select: DESIGN_ASSET_SELECT,
+    job_id: `eq.${jobId}`,
+    source: "eq.generated",
+    order: "created_at.desc",
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+export async function attachDesignAssetToTrello(input: {
+  jobId: string;
+  assetId?: string | null;
+  operatorName?: string | null;
+}): Promise<DesignTrelloAttachResult> {
+  const job = await getDesignJob(input.jobId);
+  const asset = input.assetId ? await getDesignAsset(input.assetId) : await latestGeneratedAssetForJob(job.id);
+  if (!asset) throw new QuoteValidationError("Kein generiertes Asset fuer diesen Job gefunden.");
+  if (!job.trello_card_id) throw new QuoteValidationError("Design-Job hat keine Trello-Karte.");
+  if (!asset.public_url) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer Trello.");
+
+  if (asset.trello_attachment_id) {
+    return {
+      job: mapDesignJobSummary(job),
+      asset: mapDesignAssetSummary(asset),
+      trelloAttachmentId: asset.trello_attachment_id,
+      trelloAttachmentUrl: null,
+    };
+  }
+
+  const attachment = await addTrelloCardAttachment({
+    cardId: job.trello_card_id,
+    url: asset.public_url,
+    name: asset.name || "NEONTRIP Design Mockup",
+  });
+  const now = new Date().toISOString();
+  const updatedAssets = await supabaseRequest<DesignAssetRow[]>(
+    "design_assets",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "attached_to_trello",
+        trello_attachment_id: attachment.id,
+        updated_at: now,
+        metadata: {
+          ...(asset.metadata || {}),
+          trello_attached_by: trimNullable(input.operatorName),
+          trello_attached_at: now,
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${asset.id}` },
+  );
+
+  const updatedJobs = await supabaseRequest<DesignJobRow[]>(
+    "design_jobs",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "attached_to_trello",
+        selected_asset_id: asset.id,
+        updated_at: now,
+        metadata: {
+          ...(job.metadata || {}),
+          trello_attachment_id: attachment.id,
+          trello_attached_by: trimNullable(input.operatorName),
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${job.id}` },
+  );
+
+  await addTrelloCardComment({
+    cardId: job.trello_card_id,
+    text: `NEONTRIP Design-Ops: neues Mockup angehaengt (${updatedAssets[0]?.name || asset.name || asset.id}).`,
+  }).catch((error) => console.warn("design trello comment skipped", { jobId: job.id, error }));
+
+  return {
+    job: mapDesignJobSummary(updatedJobs[0] || { ...job, status: "attached_to_trello" }),
+    asset: mapDesignAssetSummary(updatedAssets[0] || { ...asset, status: "attached_to_trello", trello_attachment_id: attachment.id }),
+    trelloAttachmentId: attachment.id,
+    trelloAttachmentUrl: trimNullable(attachment.url),
+  };
+}
+
+export async function applyDesignRemovalPlan(input: {
+  removalPlanId: string;
+  confirmText: string;
+  operatorName?: string | null;
+}): Promise<DesignRemovalApplyResult> {
+  const normalizedId = trimNullable(input.removalPlanId);
+  if (!normalizedId) throw new QuoteValidationError("Removal-Plan ist erforderlich.");
+  if (trimNullable(input.confirmText) !== "ENTFERNEN") {
+    throw new QuoteValidationError("Bitte bestaetige mit ENTFERNEN.");
+  }
+
+  const rows = await supabaseRequest<DesignRemovalBackupRow[]>("design_trello_removal_backups", undefined, {
+    select: "id,backup_key,trello_card_id,trello_card_url,status,selected_attachment_count,attachments,metadata,created_at,updated_at",
+    id: `eq.${normalizedId}`,
+    limit: 1,
+  });
+  const backup = rows[0];
+  if (!backup) throw new QuoteValidationError("Removal-Plan wurde nicht gefunden.", ["Removal-Plan wurde nicht gefunden."], 404);
+  if (backup.status === "applied") {
+    return { removalPlan: mapRemovalPlan(backup), deleted: backup.selected_attachment_count, failed: [] };
+  }
+  if (backup.status !== "prepared") {
+    throw new QuoteValidationError("Removal-Plan ist nicht mehr im vorbereiteten Status.");
+  }
+
+  const deleted: string[] = [];
+  const failed: Array<{ attachmentId: string; error: string }> = [];
+  for (const attachment of backup.attachments || []) {
+    const attachmentId = trimNullable(attachment.id);
+    if (!attachmentId) continue;
+    try {
+      await deleteTrelloCardAttachment({ cardId: backup.trello_card_id, attachmentId });
+      deleted.push(attachmentId);
+    } catch (error) {
+      failed.push({
+        attachmentId,
+        error: error instanceof Error ? error.message : "Trello Delete fehlgeschlagen.",
+      });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const nextStatus = failed.length ? "failed" : "applied";
+  const updated = await supabaseRequest<DesignRemovalBackupRow[]>(
+    "design_trello_removal_backups",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: nextStatus,
+        applied_at: failed.length ? null : now,
+        updated_at: now,
+        metadata: {
+          ...(backup.metadata || {}),
+          applied_by: trimNullable(input.operatorName),
+          deleted_attachment_ids: deleted,
+          failed,
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${backup.id}` },
+  );
+
+  return {
+    removalPlan: mapRemovalPlan(updated[0] || { ...backup, status: nextStatus }),
+    deleted: deleted.length,
+    failed,
+  };
+}
+
+export async function linkDesignAssetToOffer(input: {
+  assetId: string;
+  offerId: string;
+  offerImageId?: string | null;
+  offerItemId?: string | null;
+  expectedUpdatedAt?: string | null;
+  operatorName?: string | null;
+  dryRun?: boolean | null;
+}): Promise<DesignOfferLinkResult> {
+  const asset = await getDesignAsset(input.assetId);
+  const offerId = trimNullable(input.offerId);
+  if (!offerId) throw new QuoteValidationError("Offer-ID ist erforderlich.");
+
+  const offer = await getOfferById(offerId);
+  if (!offer.lock.editable || offer.lock.lockLevel === "hard") {
+    throw new QuoteValidationError("Angebot ist fuer Design-Integration gesperrt.");
+  }
+
+  const offerImageId = trimNullable(input.offerImageId);
+  const offerItemId = trimNullable(input.offerItemId);
+  const offerImage = offerImageId ? offer.images.find((image) => image.id === offerImageId) : null;
+  const offerItem = offerItemId ? offer.items.find((item) => item.id === offerItemId) : null;
+  if (offerImageId && !offerImage) throw new QuoteValidationError("Ausgewaehlter Bildslot existiert nicht im Angebot.");
+  if (offerItemId && !offerItem) throw new QuoteValidationError("Ausgewaehltes Produkt existiert nicht im Angebot.");
+
+  const link = await getOrCreateOfferAssetLink({
+    asset,
+    offerId,
+    requestId: asset.request_id,
+    trelloCardId: asset.trello_card_id,
+    operatorName: trimNullable(input.operatorName),
+  });
+
+  let offerPatch: OpsOfferPatchResult | null = null;
+  if (offerImage) {
+    offerPatch = await patchOfferById(
+      offer.offerId,
+      {
+        expectedUpdatedAt: trimNullable(input.expectedUpdatedAt) || offer.updatedAt,
+        actor: trimNullable(input.operatorName) || "Ops Design",
+        reason: "ops_design_asset_link",
+        images: [
+          {
+            id: offerImage.id,
+            title: asset.name || offerImage.title || "Design Mockup",
+            enabled: true,
+            sortOrder: offerImage.sortOrder,
+          },
+        ],
+      },
+      Boolean(input.dryRun),
+    );
+  }
+
+  if (!input.dryRun) {
+    const nextStatus = offerPatch ? "linked" : "needs_price_review";
+    await supabaseRequest<DesignOfferAssetLinkRow[]>(
+      "design_offer_asset_links",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          offer_item_id: offerItemId,
+          offer_version_id: offer.updatedAt,
+          status: nextStatus,
+          reviewed_by: trimNullable(input.operatorName),
+          reviewed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          metadata: {
+            ...(link.metadata || {}),
+            offer_image_id: offerImageId,
+            offer_item_title: offerItem?.title || null,
+            asset_public_url: asset.public_url,
+          },
+        }),
+        headers: { Prefer: "return=representation" },
+      },
+      { id: `eq.${link.id}` },
+    );
+
+    await supabaseRequest<DesignAssetRow[]>(
+      "design_assets",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "linked_to_offer",
+          updated_at: new Date().toISOString(),
+        }),
+        headers: { Prefer: "return=representation" },
+      },
+      { id: `eq.${asset.id}` },
+    );
+  }
+
+  return {
+    status: offerPatch ? (input.dryRun ? "dry_run_ok" : "linked") : "needs_price_review",
+    offerId,
+    assetId: asset.id,
+    dryRun: Boolean(input.dryRun),
+    offerPatch,
+  };
+}
+
+export async function listQueuedDesignJobsForWorker(input: {
+  limit?: number | null;
+} = {}): Promise<DesignWorkerJob[]> {
+  const limit = Math.max(1, Math.min(Number(input.limit || 5), 10));
+  const rows = await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, {
+    select: DESIGN_JOB_SELECT,
+    status: "eq.queued",
+    order: "updated_at.asc",
+    limit,
+  });
+  const jobs: DesignWorkerJob[] = [];
+  for (const job of rows) {
+    if (!job.prompt_version_id) continue;
+    const promptVersion = await getPromptVersion(job.prompt_version_id);
+    jobs.push({
+      ...mapDesignJobSummary(job),
+      promptVersion: {
+        id: promptVersion.id,
+        versionNumber: promptVersion.version_number,
+        title: promptVersion.prompt_title,
+        promptText: promptVersion.prompt_text,
+        promptHash: promptVersion.prompt_hash,
+      },
+    });
+  }
+  return jobs;
+}
+
+export async function markDesignJobGenerating(input: {
+  jobId: string;
+  workerRunId?: string | null;
+}) {
+  const job = await getDesignJob(input.jobId);
+  if (job.status !== "queued" && job.status !== "generating") {
+    throw new QuoteValidationError("Nur queued Design-Jobs koennen gestartet werden.");
+  }
+  const updated = await supabaseRequest<DesignJobRow[]>(
+    "design_jobs",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "generating",
+        updated_at: new Date().toISOString(),
+        metadata: {
+          source: "design_worker",
+          worker_run_id: trimNullable(input.workerRunId),
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${job.id}` },
+  );
+  return mapDesignJobSummary(updated[0] || { ...job, status: "generating" });
+}
+
+async function uploadDesignAssetToStorage(input: {
+  job: DesignJobRow;
+  promptVersion: DesignPromptVersionRow;
+  idempotencyKey: string;
+  bytes: Buffer;
+  contentType: string;
+  extension: string;
+}) {
+  const bucket = designAssetBucket();
+  const path = [
+    slugPathPart(input.job.request_id, "no-request"),
+    input.job.id,
+    `${stableHash(`${input.promptVersion.prompt_hash}:${input.idempotencyKey}`).slice(0, 24)}.${input.extension}`,
+  ].join("/");
+  const uploadUrl = `${supabaseProjectUrl()}/storage/v1/object/${encodeURIComponent(bucket)}/${path
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")}`;
+  const key = supabaseServiceRoleKey();
+  const uploadBody = new Blob([new Uint8Array(input.bytes)], { type: input.contentType });
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": input.contentType,
+      "x-upsert": "true",
+    },
+    body: uploadBody,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new QuoteValidationError(`Design-Asset konnte nicht gespeichert werden (${response.status}).`, [body.slice(0, 300)]);
+  }
+
+  return {
+    bucket,
+    path,
+    publicUrl: `${supabaseProjectUrl()}/storage/v1/object/public/${encodeURIComponent(bucket)}/${path
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/")}`,
+  };
+}
+
+async function generateOpenAiDesignImage(promptText: string) {
+  const model = String(process.env.OPS_OPENAI_IMAGE_MODEL || "gpt-image-1.5").trim() || "gpt-image-1.5";
+  const outputFormat = String(process.env.OPS_OPENAI_IMAGE_FORMAT || "webp").trim().toLowerCase();
+  const imageFormat = outputFormat === "png" || outputFormat === "jpeg" ? outputFormat : "webp";
+  const response = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiImageApiKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      prompt: promptText,
+      n: 1,
+      size: "1024x1024",
+      quality: "medium",
+      output_format: imageFormat,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    data?: Array<{ b64_json?: string; url?: string }>;
+    error?: { message?: string };
+  } | null;
+
+  if (!response.ok) {
+    throw new QuoteValidationError(
+      `OpenAI Image API antwortete mit ${response.status}.`,
+      [payload?.error?.message || "Bitte OPS_OPENAI_API_KEY, Organisation und Modellzugriff pruefen."],
+      response.status,
+    );
+  }
+
+  const image = payload?.data?.[0] || null;
+  if (image?.b64_json) {
+    return {
+      model,
+      bytes: Buffer.from(image.b64_json, "base64"),
+      contentType: imageFormat === "jpeg" ? "image/jpeg" : `image/${imageFormat}`,
+      extension: imageFormat === "jpeg" ? "jpg" : imageFormat,
+      remoteUrl: null as string | null,
+    };
+  }
+
+  if (image?.url) {
+    const imageResponse = await fetch(image.url, { cache: "no-store" });
+    if (!imageResponse.ok) throw new QuoteValidationError(`OpenAI Bild-URL konnte nicht geladen werden (${imageResponse.status}).`);
+    const contentType = imageResponse.headers.get("content-type") || "image/png";
+    const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png";
+    return {
+      model,
+      bytes: Buffer.from(await imageResponse.arrayBuffer()),
+      contentType,
+      extension,
+      remoteUrl: image.url,
+    };
+  }
+
+  throw new QuoteValidationError("OpenAI Image API lieferte kein Bild.");
+}
+
+export async function generateDesignJobNow(input: {
+  jobId: string;
+  idempotencyKey: string;
+  operatorName?: string | null;
+}): Promise<DesignGenerateResult> {
+  const idempotencyKey = trimNullable(input.idempotencyKey);
+  if (!idempotencyKey) throw new QuoteValidationError("idempotencyKey ist erforderlich.");
+
+  const job = await getDesignJob(input.jobId);
+  const promptVersion = await getPromptVersion(job.prompt_version_id);
+  if (["generated", "attached_to_trello", "linked_to_offer"].includes(job.status)) {
+    const existingAsset = job.selected_asset_id ? await getDesignAsset(job.selected_asset_id).catch(() => null) : await latestGeneratedAssetForJob(job.id);
+    return {
+      job: mapDesignJobSummary(job),
+      asset: existingAsset ? mapDesignAssetSummary(existingAsset) : null,
+      model: "existing",
+      storagePath: existingAsset?.storage_path || null,
+    };
+  }
+
+  await supabaseRequest<DesignJobRow[]>(
+    "design_jobs",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "generating",
+        updated_at: new Date().toISOString(),
+        metadata: {
+          ...(job.metadata || {}),
+          direct_generate_by: trimNullable(input.operatorName),
+          direct_generate_idempotency_key: idempotencyKey,
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${job.id}` },
+  );
+
+  try {
+    const generated = await generateOpenAiDesignImage(promptVersion.prompt_text);
+    const stored = await uploadDesignAssetToStorage({
+      job,
+      promptVersion,
+      idempotencyKey,
+      bytes: generated.bytes,
+      contentType: generated.contentType,
+      extension: generated.extension,
+    });
+    const updatedJob = await applyDesignWorkerCallback({
+      jobId: job.id,
+      idempotencyKey,
+      status: "generated",
+      workerRunId: stableActionKey("direct-openai", [job.id, idempotencyKey]),
+      asset: {
+        assetKey: stableActionKey("design-asset", [job.id, promptVersion.id, idempotencyKey]),
+        storageBucket: stored.bucket,
+        storagePath: stored.path,
+        publicUrl: stored.publicUrl,
+        mimeType: generated.contentType,
+        name: promptVersion.prompt_title,
+      },
+    });
+    const asset = await latestGeneratedAssetForJob(job.id);
+    return {
+      job: updatedJob,
+      asset: asset ? mapDesignAssetSummary(asset) : null,
+      model: generated.model,
+      storagePath: stored.path,
+    };
+  } catch (error) {
+    await applyDesignWorkerCallback({
+      jobId: job.id,
+      idempotencyKey,
+      status: "failed",
+      workerRunId: stableActionKey("direct-openai", [job.id, idempotencyKey]),
+      errorMessage: error instanceof Error ? error.message : "Direkte Design-Generierung fehlgeschlagen.",
+    }).catch((callbackError) => console.warn("design direct failure callback failed", { jobId: job.id, callbackError }));
+    throw error;
+  }
+}
+
+export async function applyDesignWorkerCallback(input: {
+  jobId: string;
+  idempotencyKey: string;
+  status: "generated" | "failed";
+  asset?: {
+    assetKey?: string | null;
+    storageBucket?: string | null;
+    storagePath?: string | null;
+    publicUrl?: string | null;
+    mimeType?: string | null;
+    width?: number | null;
+    height?: number | null;
+    name?: string | null;
+    trelloAttachmentId?: string | null;
+  } | null;
+  errorMessage?: string | null;
+  workerRunId?: string | null;
+}) {
+  const job = await getDesignJob(input.jobId);
+  const promptVersion = await getPromptVersion(job.prompt_version_id);
+  const idempotencyKey = trimNullable(input.idempotencyKey);
+  if (!idempotencyKey) throw new QuoteValidationError("idempotencyKey ist erforderlich.");
+
+  if (input.status === "failed") {
+    const updated = await supabaseRequest<DesignJobRow[]>(
+      "design_jobs",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "failed",
+          error_message: trimNullable(input.errorMessage) || "Worker meldete einen Fehler.",
+          updated_at: new Date().toISOString(),
+          metadata: {
+            source: "design_worker",
+            worker_run_id: trimNullable(input.workerRunId),
+            idempotency_key: idempotencyKey,
+          },
+        }),
+        headers: { Prefer: "return=representation" },
+      },
+      { id: `eq.${job.id}` },
+    );
+    return mapDesignJobSummary(updated[0] || { ...job, status: "failed", error_message: trimNullable(input.errorMessage) });
+  }
+
+  const assetInput = input.asset || {};
+  const assetKey = trimNullable(assetInput.assetKey) || stableActionKey("design-asset", [job.id, promptVersion.id, idempotencyKey]);
+  const existing = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+    select: DESIGN_ASSET_SELECT,
+    asset_key: `eq.${assetKey}`,
+    limit: 1,
+  });
+  const assetStatus = trimNullable(assetInput.storagePath) || trimNullable(assetInput.publicUrl) ? "stored" : "generated";
+  const assetBody = {
+    asset_key: assetKey,
+    job_id: job.id,
+    prompt_version_id: promptVersion.id,
+    request_id: job.request_id,
+    trello_card_id: job.trello_card_id,
+    source: "generated",
+    status: assetStatus,
+    storage_bucket: trimNullable(assetInput.storageBucket),
+    storage_path: trimNullable(assetInput.storagePath),
+    public_url: trimNullable(assetInput.publicUrl),
+    trello_attachment_id: trimNullable(assetInput.trelloAttachmentId),
+    name: trimNullable(assetInput.name) || promptVersion.prompt_title,
+    mime_type: trimNullable(assetInput.mimeType),
+    width: Number.isFinite(assetInput.width) ? Number(assetInput.width) : null,
+    height: Number.isFinite(assetInput.height) ? Number(assetInput.height) : null,
+    metadata: {
+      source: "design_worker",
+      worker_run_id: trimNullable(input.workerRunId),
+      idempotency_key: idempotencyKey,
+      prompt_hash: promptVersion.prompt_hash,
+    },
+  };
+  const assetRows = existing[0]
+    ? await supabaseRequest<DesignAssetRow[]>(
+        "design_assets",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ ...assetBody, updated_at: new Date().toISOString() }),
+          headers: { Prefer: "return=representation" },
+        },
+        { id: `eq.${existing[0].id}` },
+      )
+    : await supabaseRequest<DesignAssetRow[]>("design_assets", {
+        method: "POST",
+        body: JSON.stringify(assetBody),
+        headers: { Prefer: "return=representation" },
+      });
+  const asset = assetRows[0] || existing[0];
+  if (!asset) throw new QuoteValidationError("Worker-Asset konnte nicht gespeichert werden.");
+
+  const updated = await supabaseRequest<DesignJobRow[]>(
+    "design_jobs",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "generated",
+        selected_asset_id: asset.id,
+        error_message: null,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          source: "design_worker",
+          worker_run_id: trimNullable(input.workerRunId),
+          idempotency_key: idempotencyKey,
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${job.id}` },
+  );
+  return mapDesignJobSummary(updated[0] || { ...job, status: "generated" });
+}
+
+function mapDesignJobDraft(job: DesignJobRow, promptVersion: DesignPromptVersionRow): DesignJobDraft {
+  return {
+    id: job.id,
+    jobKey: job.job_key,
+    status: job.status,
+    requestId: job.request_id,
+    trelloCardId: job.trello_card_id,
+    offerId: job.offer_id,
+    promptVersion: {
+      id: promptVersion.id,
+      versionNumber: promptVersion.version_number,
+      title: promptVersion.prompt_title,
+      promptHash: promptVersion.prompt_hash,
+    },
+  };
+}
+
+function mapDesignJobSummary(job: DesignJobRow): DesignJobSummary {
+  return {
+    id: job.id,
+    jobKey: job.job_key,
+    status: job.status,
+    requestId: job.request_id,
+    trelloCardId: job.trello_card_id,
+    offerId: job.offer_id,
+    sourceQuery: job.source_query,
+    errorMessage: job.error_message,
+    createdAt: job.created_at,
+    updatedAt: job.updated_at,
+  };
+}
+
+function mapDesignAssetSummary(asset: DesignAssetRow): DesignAssetSummary {
+  return {
+    id: asset.id,
+    assetKey: asset.asset_key,
+    jobId: asset.job_id,
+    status: asset.status,
+    publicUrl: asset.public_url,
+    trelloAttachmentId: asset.trello_attachment_id,
+    name: asset.name,
+    mimeType: asset.mime_type,
+    width: asset.width,
+    height: asset.height,
+    createdAt: asset.created_at,
+    updatedAt: asset.updated_at,
+  };
+}
+
+function mapRemovalPlan(row: DesignRemovalBackupRow): DesignRemovalPlan {
+  return {
+    id: row.id,
+    backupKey: row.backup_key,
+    status: row.status,
+    trelloCardId: row.trello_card_id,
+    trelloCardUrl: row.trello_card_url,
+    selectedAttachmentCount: row.selected_attachment_count,
+  };
+}

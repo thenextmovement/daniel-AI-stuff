@@ -16,6 +16,7 @@ const appLabels = [
   "Anrufe",
   "Aufgaben",
   "Company Brain",
+  "Design",
   "Angebote",
   "Sales-Vergabe",
   "Versand",
@@ -29,6 +30,7 @@ const localPages = [
   "/ops/customer-records/calls",
   "/ops/tasks",
   "/ops/company-brain",
+  "/ops/design",
   "/ops/offers",
   "/ops/sales-vergabe",
   "/ops/customer-records/shipping",
@@ -41,6 +43,42 @@ const emptyTaskPayload = {
   tasks: [],
   summary: { open: 0, urgent: 0, overdue: 0, dueToday: 0 },
 };
+
+function designJobsPayload() {
+  return {
+    ok: true,
+    jobs: [
+      {
+        id: "00000000-0000-4000-8000-000000000201",
+        jobKey: "smoke-design-job",
+        status: "generated",
+        requestId: "SMOKE-DESIGN",
+        trelloCardId: "65f000000000000000000001",
+        offerId: "offer-smoke",
+        sourceQuery: "SMOKE-DESIGN",
+        errorMessage: null,
+        createdAt: "2026-07-06T10:00:00.000Z",
+        updatedAt: "2026-07-06T10:02:00.000Z",
+        assets: [
+          {
+            id: "00000000-0000-4000-8000-000000000301",
+            assetKey: "smoke-design-asset",
+            jobId: "00000000-0000-4000-8000-000000000201",
+            status: "stored",
+            publicUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='480'%3E%3Crect width='640' height='480' fill='%23f7f4ee'/%3E%3Ctext x='80' y='245' font-size='40' fill='%23171412'%3EDesign Smoke%3C/text%3E%3C/svg%3E",
+            trelloAttachmentId: null,
+            name: "Design Smoke",
+            mimeType: "image/svg+xml",
+            width: 640,
+            height: 480,
+            createdAt: "2026-07-06T10:02:00.000Z",
+            updatedAt: "2026-07-06T10:02:00.000Z",
+          },
+        ],
+      },
+    ],
+  };
+}
 
 function callsPayload() {
   return {
@@ -203,6 +241,31 @@ function managementPayload() {
 async function setupRoutes(page) {
   await page.route("**/api/ops/tasks**", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyTaskPayload) });
+  });
+  await page.route("**/api/ops/design/jobs?**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(designJobsPayload()) });
+  });
+  await page.route("**/api/ops/design?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        workspace: {
+          query: "SMOKE-DESIGN",
+          record: null,
+          cards: [],
+          primaryCard: null,
+          offerCandidates: [],
+          promptPreview: {
+            title: "Smoke Design",
+            prompt: "Erstelle ein realistisches NEONTRIP Mockup fuer den UI-Smoke.",
+            warnings: ["Smoke-Kontext"],
+          },
+          stats: { totalAttachments: 0, mockups: 0, removable: 0, offers: 0 },
+        },
+      }),
+    });
   });
   await page.route("**/api/ops/company-brain/resolve**", async (route) => {
     await route.fulfill({
