@@ -1632,6 +1632,13 @@ function joinOrNull(values: string[]) {
   return values.length ? values.join(", ") : null;
 }
 
+function isOfferDeliveryFailureEvidence(entry: CompanyBrainEvidence) {
+  const text = `${entry.source} ${entry.title} ${entry.detail || ""}`.toLowerCase();
+  if (entry.source !== "customer_email_messages" && !/outlook|mail/.test(text)) return false;
+  if (!/angebot|quote|a\/n|nr\.?\s*\d+/.test(text)) return false;
+  return /unzustellbar|nicht zugestellt|konnte nicht zugestellt|postfach ist nicht verfuegbar|postfach ist nicht verfügbar|recipient.*unknown|mail delivery|delivery status notification|undeliver/.test(text);
+}
+
 export function buildCompanyBrainCrossChecks(input: {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
@@ -1647,6 +1654,7 @@ export function buildCompanyBrainCrossChecks(input: {
   const latestRecord = records[0] || null;
   const latestOffer = offers[0] || null;
   const outboundEvidence = evidence.find((entry) => entry.direction === "outbound" && /angebot|mail|e-mail|follow-up|dokument/i.test(`${entry.title} ${entry.detail || ""}`));
+  const deliveryFailureEvidence = evidence.find(isOfferDeliveryFailureEvidence);
   const inboundEvidence = evidence.find((entry) => entry.direction === "inbound");
   const offerEvidence = evidence.find((entry) => entry.source.startsWith("offers_api"));
   const designEvidence = evidence.filter((entry) => /design|bild|position|mockup|entwurf|motiv/i.test(`${entry.title} ${entry.detail || ""}`));
@@ -1676,20 +1684,22 @@ export function buildCompanyBrainCrossChecks(input: {
   });
 
   const offerSent = Boolean(latestRecord?.latestOfferSentAt || outboundEvidence);
-  const offerSentStatus: CompanyBrainCrossCheck["status"] = offerSent ? "pass" : latestOffer ? "review" : "unknown";
+  const offerSentStatus: CompanyBrainCrossCheck["status"] = deliveryFailureEvidence ? "fail" : offerSent ? "pass" : latestOffer ? "review" : "unknown";
   checks.push({
     key: "offer_sent",
     label: "Angebotsversand",
     status: offerSentStatus,
     severity: statusSeverity(offerSentStatus),
     expected: signals.asksOfferSent ? "Versandstatus beantworten" : "Versandbeleg",
-    actual: latestRecord?.latestOfferSentAt || outboundEvidence?.occurredAt || null,
-    summary: offerSent
+    actual: deliveryFailureEvidence?.occurredAt || latestRecord?.latestOfferSentAt || outboundEvidence?.occurredAt || null,
+    summary: deliveryFailureEvidence
+      ? `Outlook meldet Unzustellbarkeit: ${deliveryFailureEvidence.title}${deliveryFailureEvidence.detail ? ` · ${deliveryFailureEvidence.detail}` : ""}`
+      : offerSent
       ? "Ein Versand- oder Ausgangsbeleg ist vorhanden."
       : latestOffer
         ? "Angebot existiert, aber ein eindeutiger Versandbeleg fehlt im geladenen Ergebnis."
         : "Kein Angebot für Versandprüfung geladen.",
-    evidenceIds: [outboundEvidence?.id, offerEvidence?.id].filter(Boolean) as string[],
+    evidenceIds: [deliveryFailureEvidence?.id, outboundEvidence?.id, offerEvidence?.id].filter(Boolean) as string[],
   });
 
   const designStatus: CompanyBrainCrossCheck["status"] =
@@ -1843,7 +1853,8 @@ function buildWatchers(input: {
   const watchers: CompanyBrainWatcher[] = [];
   const latestRecord = input.recordSummaries[0] || null;
   const latestOffer = input.offers[0] || null;
-  const latestInbound = input.evidence.find((entry) => entry.direction === "inbound") || null;
+  const deliveryFailureEvidence = input.evidence.find(isOfferDeliveryFailureEvidence) || null;
+  const latestInbound = input.evidence.find((entry) => entry.direction === "inbound" && !isOfferDeliveryFailureEvidence(entry)) || null;
   const openTasks = input.records.flatMap((record) => record.internalTasks || []).filter((task) => task.status === "open");
   const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
   const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent");
@@ -1853,11 +1864,11 @@ function buildWatchers(input: {
 
   watchers.push({
     key: "offer_without_send_proof",
-    severity: offerSentCheck?.status === "review" ? "warning" : "info",
-    status: offerSentCheck?.status === "review" ? "open" : "ok",
-    title: "Angebot ohne eindeutigen Versandbeleg",
-    detail: offerSentCheck?.summary || "Kein Angebot für Versandprüfung geladen.",
-    actionKey: offerSentCheck?.status === "review" ? "verify_live_outlook" : null,
+    severity: offerSentCheck?.status === "fail" ? "critical" : offerSentCheck?.status === "review" ? "warning" : "info",
+    status: offerSentCheck?.status === "fail" || offerSentCheck?.status === "review" ? "open" : "ok",
+    title: offerSentCheck?.status === "fail" ? "Angebotsversand fehlgeschlagen" : "Angebot ohne eindeutigen Versandbeleg",
+    detail: offerSentCheck?.summary || deliveryFailureEvidence?.title || "Kein Angebot für Versandprüfung geladen.",
+    actionKey: offerSentCheck?.status === "fail" || offerSentCheck?.status === "review" ? "verify_live_outlook" : null,
   });
 
   watchers.push({
@@ -2279,6 +2290,7 @@ function buildProblemResolution(input: {
   const openWatchers = input.watchers.filter((watcher) => watcher.status === "open");
   const failedChecks = input.crossChecks.filter((check) => check.status === "fail");
   const reviewChecks = input.crossChecks.filter((check) => check.status === "review");
+  const failedOfferSentCheck = input.crossChecks.find((check) => check.key === "offer_sent" && check.status === "fail") || null;
   const missingEvidence = [
     input.assets.length ? null : "Design-/Anhang-Assets prüfen",
     input.evidenceScore.status === "weak" ? "Weitere Belege aus Kundenakte/Outlook/Angebot laden" : null,
@@ -2312,10 +2324,18 @@ function buildProblemResolution(input: {
       escalation: ["Produktion/Qualität prüfen", "Bei Ersatz: Freigabe vor Kundenzusage"],
     },
     offer_not_sent: {
-      rootCause: "Angebot existiert oder wird erwartet, aber Versandbeleg ist unklar.",
-      resolution: "Outlook-Spiegel/Live-Outlook, Offer-Status und Automation-Audit prüfen; Angebot erst nach eindeutigem Stand erneut senden.",
-      required: ["Angebotssnapshot", "Versandbeleg", "n8n/Workflow-Audit"],
-      escalation: ["Sales prüft Angebot", "Automation prüfen, wenn Versandworkflow fehlte"],
+      rootCause: failedOfferSentCheck
+        ? "Outlook meldet einen fehlgeschlagenen Angebotsversand."
+        : "Angebot existiert oder wird erwartet, aber Versandbeleg ist unklar.",
+      resolution: failedOfferSentCheck
+        ? "Empfängeradresse/Postfach mit Sales oder Kunde klären; erneuten Versand erst nach Duplicate-Check und eindeutig korrigierter Adresse freigeben."
+        : "Outlook-Spiegel/Live-Outlook, Offer-Status und Automation-Audit prüfen; Angebot erst nach eindeutigem Stand erneut senden.",
+      required: failedOfferSentCheck
+        ? ["Bounce-/Unzustellbarkeitsbeleg", "korrigierte Empfängeradresse", "Duplicate-Mail-Check", "Versandlog nach Resend"]
+        : ["Angebotssnapshot", "Versandbeleg", "n8n/Workflow-Audit"],
+      escalation: failedOfferSentCheck
+        ? ["Sales klärt korrekte E-Mail-Adresse", "Automation/Offer-Log prüfen, wenn Resend nicht protokolliert wurde"]
+        : ["Sales prüft Angebot", "Automation prüfen, wenn Versandworkflow fehlte"],
     },
     customer_waiting: {
       rootCause: "Kunde wartet auf Antwort oder nächsten Schritt.",
@@ -2553,6 +2573,7 @@ function buildChecks(
   const latestRecord = records[0] || null;
   const latestOffer = offers[0] || null;
   const outboundEvidence = evidence.find((entry) => entry.direction === "outbound" && /angebot|mail|e-mail|follow-up|dokument/i.test(entry.title));
+  const deliveryFailureEvidence = evidence.find(isOfferDeliveryFailureEvidence);
   const inboundEvidence = evidence.find((entry) => entry.direction === "inbound");
   const offerEvidence = evidence.find((entry) => entry.source.startsWith("offers_api"));
   const designEvidence = evidence.filter((entry) => /design|bild|position|mockup|entwurf/i.test(`${entry.title} ${entry.detail || ""}`));
@@ -2564,16 +2585,18 @@ function buildChecks(
   checks.push({
     key: "offer_sent",
     label: "Angebot versendet",
-    status: latestRecord?.latestOfferSentAt || outboundEvidence ? "verified" : latestOffer ? "warning" : "unknown",
+    status: deliveryFailureEvidence ? "missing" : latestRecord?.latestOfferSentAt || outboundEvidence ? "verified" : latestOffer ? "warning" : "unknown",
     summary:
-      latestRecord?.latestOfferSentAt
+      deliveryFailureEvidence
+        ? `Outlook-Bounce gefunden: ${deliveryFailureEvidence.title}${deliveryFailureEvidence.detail ? ` · ${deliveryFailureEvidence.detail}` : ""}`
+        : latestRecord?.latestOfferSentAt
         ? `Master-Quote meldet Versand am ${latestRecord.latestOfferSentAt}.`
         : outboundEvidence?.occurredAt
           ? `Timeline enthält ausgehenden Beleg am ${outboundEvidence.occurredAt}.`
           : latestOffer
             ? "Angebot existiert, aber kein eindeutiger Versandbeleg in der Timeline."
             : "Kein Angebot gefunden.",
-    evidenceIds: [outboundEvidence?.id, offerEvidence?.id].filter(Boolean) as string[],
+    evidenceIds: [deliveryFailureEvidence?.id, outboundEvidence?.id, offerEvidence?.id].filter(Boolean) as string[],
   });
 
   checks.push({

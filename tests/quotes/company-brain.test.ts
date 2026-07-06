@@ -117,6 +117,76 @@ test("company brain cross checks flag offer color and design mismatches", () => 
   assert.equal(checks.find((check) => check.key === "design_count")?.status, "fail");
 });
 
+test("company brain treats Outlook delivery failures as failed offer sends", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-BOUNCE",
+    displayName: "Grüll",
+    company: null,
+    email: "praxis@kurswechsel.de",
+    phone: null,
+    status: "open",
+    title: "Grüll",
+    requestedSize: "100 cm",
+    requestedColors: ["Wie im Logo"],
+    trelloCardId: null,
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-14427",
+    offerNumber: "14427",
+    documentReference: "A/N 14427",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Grüll",
+    customerEmail: "praxis@kurswechsel.de",
+    projectTitle: "Leuchtschild",
+    trelloCardId: null,
+    updatedAt: "2026-07-06T07:39:11.809Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 33,
+    imageCount: 6,
+    selectedItemCount: 5,
+    designEvidenceCount: 6,
+    productHints: ["LED", "Schild"],
+    colorHints: ["blau", "kaltweiß"],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [{
+    id: "bounce-1",
+    source: "customer_email_messages",
+    title: "Unzustellbar: Ihr NEONTRIP Angebot Nr. 14427",
+    detail: "Ihre Nachricht an praxis@kurswechsel.de konnte nicht zugestellt werden. praxis wurde nicht in kurswechsel.de gefunden.",
+    occurredAt: "2026-07-06T08:39:05.000Z",
+    direction: "inbound",
+    href: null,
+    confidence: "high",
+  }];
+
+  const checks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence,
+    question: "Wieso wurde das Angebot nicht rausgeschickt?",
+  });
+
+  const offerSent = checks.find((check) => check.key === "offer_sent");
+  assert.equal(offerSent?.status, "fail");
+  assert.equal(offerSent?.severity, "critical");
+  assert.match(offerSent?.summary || "", /Unzustellbarkeit/);
+  assert.deepEqual(offerSent?.evidenceIds, ["bounce-1"]);
+});
+
 test("company brain answers with Trello-only diagnostics when source records are missing", () => {
   const trelloDiagnosis: CompanyBrainTrelloFailureDiagnosis = {
     requested: true,
