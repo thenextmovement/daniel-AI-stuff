@@ -154,7 +154,16 @@ export type DesignOfferLinkResult = {
   offerId: string;
   assetId: string;
   dryRun: boolean;
+  crmQuoteImage?: DesignCrmQuoteImageLink | null;
   offerPatch?: OpsOfferPatchResult | null;
+};
+
+export type DesignCrmQuoteImageLink = {
+  id: string;
+  versionId: string;
+  itemIndex: number;
+  imageIndex: number;
+  url: string;
 };
 
 export type DesignGenerateResult = {
@@ -239,6 +248,25 @@ type DesignOfferAssetLinkRow = {
   metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+};
+
+type CrmQuoteVersionRow = {
+  id: string;
+  quote_id: string;
+  version_number: number;
+  created_at: string | null;
+};
+
+type CrmQuoteVersionImageRow = {
+  id: string;
+  version_id: string;
+  item_index: number;
+  image_index: number;
+  original_url: string;
+  copied_url: string | null;
+  versioned_url: string | null;
+  copy_status: string | null;
+  created_at: string | null;
 };
 
 type DesignRemovalBackupRow = {
@@ -736,7 +764,7 @@ async function getOrCreateOfferAssetLink(input: {
 }) {
   const linkKey = stableActionKey("design-offer-link", [input.asset.id, input.offerId]);
   const existing = await supabaseRequest<DesignOfferAssetLinkRow[]>("design_offer_asset_links", undefined, {
-    select: "id,link_key,asset_id,offer_id,offer_item_id,offer_version_id,design_group_key,status,created_at,updated_at",
+    select: "id,link_key,asset_id,offer_id,offer_item_id,offer_version_id,design_group_key,status,metadata,created_at,updated_at",
     link_key: `eq.${linkKey}`,
     limit: 1,
   });
@@ -766,6 +794,87 @@ async function getOrCreateOfferAssetLink(input: {
   const link = rows[0];
   if (!link) throw new QuoteValidationError("Angebotszuordnung konnte nicht vorbereitet werden.");
   return link;
+}
+
+function offerItemIndex(
+  offer: Awaited<ReturnType<typeof getOfferById>>,
+  offerItemId: string | null,
+  linkedItemTitle: string | null,
+) {
+  const items = [...offer.items].sort((left, right) => left.sortOrder - right.sortOrder || left.title.localeCompare(right.title, "de"));
+  const directIndex = offerItemId ? items.findIndex((item) => item.id === offerItemId) : -1;
+  if (directIndex >= 0) return directIndex;
+
+  const titleIndex = linkedItemTitle ? items.findIndex((item) => item.title === linkedItemTitle) : -1;
+  if (titleIndex >= 0) return titleIndex;
+
+  return 0;
+}
+
+function mapCrmQuoteImageLink(row: CrmQuoteVersionImageRow): DesignCrmQuoteImageLink {
+  return {
+    id: row.id,
+    versionId: row.version_id,
+    itemIndex: row.item_index,
+    imageIndex: row.image_index,
+    url: trimNullable(row.versioned_url) || trimNullable(row.copied_url) || row.original_url,
+  };
+}
+
+async function latestCrmQuoteVersion(offerId: string) {
+  const versions = await supabaseRequest<CrmQuoteVersionRow[]>("crm_quote_versions", undefined, {
+    select: "id,quote_id,version_number,created_at",
+    quote_id: `eq.${offerId}`,
+    order: "version_number.desc,created_at.desc",
+    limit: 1,
+  });
+  return versions[0] || null;
+}
+
+async function getOrCreateCrmQuoteVersionImage(input: {
+  offerId: string;
+  asset: DesignAssetRow;
+  itemIndex: number;
+}) {
+  const publicUrl = trimNullable(input.asset.public_url);
+  if (!publicUrl) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer die Angebotsanreicherung.");
+
+  const version = await latestCrmQuoteVersion(input.offerId);
+  if (!version) throw new QuoteValidationError("Keine CRM-Angebotsversion fuer die Design-Anreicherung gefunden.");
+
+  const existing = await supabaseRequest<CrmQuoteVersionImageRow[]>("crm_quote_version_images", undefined, {
+    select: "id,version_id,item_index,image_index,original_url,copied_url,versioned_url,copy_status,created_at",
+    version_id: `eq.${version.id}`,
+    original_url: `eq.${publicUrl}`,
+    limit: 1,
+  });
+  if (existing[0]) return mapCrmQuoteImageLink(existing[0]);
+
+  const latestForItem = await supabaseRequest<CrmQuoteVersionImageRow[]>("crm_quote_version_images", undefined, {
+    select: "id,version_id,item_index,image_index,original_url,copied_url,versioned_url,copy_status,created_at",
+    version_id: `eq.${version.id}`,
+    item_index: `eq.${input.itemIndex}`,
+    order: "image_index.desc",
+    limit: 1,
+  });
+  const nextImageIndex = Math.max(0, Number(latestForItem[0]?.image_index ?? -1) + 1);
+
+  const rows = await supabaseRequest<CrmQuoteVersionImageRow[]>("crm_quote_version_images", {
+    method: "POST",
+    body: JSON.stringify({
+      version_id: version.id,
+      item_index: input.itemIndex,
+      image_index: nextImageIndex,
+      original_url: publicUrl,
+      copied_url: publicUrl,
+      versioned_url: publicUrl,
+      copy_status: "done",
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const row = rows[0];
+  if (!row) throw new QuoteValidationError("Design-Bild konnte nicht in der CRM-Angebotsversion gespeichert werden.");
+  return mapCrmQuoteImageLink(row);
 }
 
 export async function queueDesignJob(input: {
@@ -1109,6 +1218,7 @@ export async function linkDesignAssetToOffer(input: {
   const offerItem = offerItemId ? offer.items.find((item) => item.id === offerItemId) : null;
   if (offerImageId && !offerImage) throw new QuoteValidationError("Ausgewaehlter Bildslot existiert nicht im Angebot.");
   if (offerItemId && !offerItem) throw new QuoteValidationError("Ausgewaehltes Produkt existiert nicht im Angebot.");
+  if (!asset.public_url) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer die Angebotsanreicherung.");
 
   const link = await getOrCreateOfferAssetLink({
     asset,
@@ -1139,7 +1249,14 @@ export async function linkDesignAssetToOffer(input: {
     );
   }
 
+  let crmQuoteImage: DesignCrmQuoteImageLink | null = null;
   if (!input.dryRun) {
+    const itemIndex = offerItemIndex(offer, offerItemId, offerImage?.linkedItemTitle || null);
+    crmQuoteImage = await getOrCreateCrmQuoteVersionImage({
+      offerId,
+      asset,
+      itemIndex,
+    });
     const nextStatus = offerPatch ? "linked" : "needs_price_review";
     await supabaseRequest<DesignOfferAssetLinkRow[]>(
       "design_offer_asset_links",
@@ -1157,6 +1274,10 @@ export async function linkDesignAssetToOffer(input: {
             offer_image_id: offerImageId,
             offer_item_title: offerItem?.title || null,
             asset_public_url: asset.public_url,
+            crm_quote_image_id: crmQuoteImage.id,
+            crm_quote_version_id: crmQuoteImage.versionId,
+            crm_quote_item_index: crmQuoteImage.itemIndex,
+            crm_quote_image_index: crmQuoteImage.imageIndex,
           },
         }),
         headers: { Prefer: "return=representation" },
@@ -1171,6 +1292,16 @@ export async function linkDesignAssetToOffer(input: {
         body: JSON.stringify({
           status: "linked_to_offer",
           updated_at: new Date().toISOString(),
+          metadata: {
+            ...(asset.metadata || {}),
+            offer_id: offerId,
+            offer_item_id: offerItemId,
+            offer_image_id: offerImageId,
+            crm_quote_image_id: crmQuoteImage.id,
+            crm_quote_version_id: crmQuoteImage.versionId,
+            crm_quote_item_index: crmQuoteImage.itemIndex,
+            crm_quote_image_index: crmQuoteImage.imageIndex,
+          },
         }),
         headers: { Prefer: "return=representation" },
       },
@@ -1183,6 +1314,7 @@ export async function linkDesignAssetToOffer(input: {
     offerId,
     assetId: asset.id,
     dryRun: Boolean(input.dryRun),
+    crmQuoteImage,
     offerPatch,
   };
 }

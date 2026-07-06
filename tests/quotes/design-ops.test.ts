@@ -44,6 +44,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /ENTFERNEN/);
   assert.match(client, /An Trello/);
   assert.match(client, /In Angebot übernehmen/);
+  assert.match(client, /CRM-Bildkontext/);
 
   assert.match(route, /export async function GET/);
   assert.doesNotMatch(route, /export async function (POST|PATCH|DELETE)/);
@@ -105,6 +106,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /applyDesignRemovalPlan/);
   assert.match(service, /attachDesignAssetToTrello/);
   assert.match(service, /linkDesignAssetToOffer/);
+  assert.match(service, /crm_quote_version_images/);
+  assert.match(service, /getOrCreateCrmQuoteVersionImage/);
+  assert.match(service, /crm_quote_image_id/);
   assert.match(service, /listDesignJobs/);
   assert.match(service, /listQueuedDesignJobsForWorker/);
   assert.match(service, /applyDesignWorkerCallback/);

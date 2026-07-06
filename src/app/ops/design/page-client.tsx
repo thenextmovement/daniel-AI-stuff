@@ -314,7 +314,7 @@ export function DesignOpsClient({
       });
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
-      setMessage(dryRun ? "Offer-Link geprüft. Du kannst ihn jetzt übernehmen." : "Design-Asset wurde mit dem Angebot verknüpft.");
+      setMessage(dryRun ? "Offer-Link geprüft. Du kannst ihn jetzt übernehmen." : "Design-Asset wurde mit Angebot und CRM-Bildkontext verknüpft.");
       void loadRecentJobs();
     } catch (linkError) {
       setError(linkError instanceof Error ? linkError.message : "Offer-Link konnte nicht erstellt werden.");
