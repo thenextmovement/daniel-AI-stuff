@@ -2751,12 +2751,13 @@ export async function syncCompletedOffersFromOffersApp(
   actor?: SupplierSaleActor | null,
   options?: { limit?: number },
 ): Promise<SupplierCompletedOffersSyncResult> {
+  const limit = Math.min(Math.max(Number(options?.limit || 50), 1), 100);
   const errors: Array<{ offerId: string | null; error: string }> = [];
   const warnings: string[] = [];
   let completedChecked = 0;
   let completedUpserted = 0;
   let completedFailed = 0;
-  const feed = await fetchCompletedOffersFeed({ limit: options?.limit });
+  const feed = await fetchCompletedOffersFeed({ limit });
   warnings.push(...feed.warnings);
   if (feed.status === "failed") {
     completedFailed += feed.failed;
@@ -2780,7 +2781,7 @@ export async function syncCompletedOffersFromOffersApp(
     }
   }
 
-  const shopify = await syncRecentShopifyOrdersFromAdmin(actor, { limit: options?.limit }).catch((error) => ({
+  const shopify = await syncRecentShopifyOrdersFromAdmin(actor, { limit }).catch((error) => ({
     status: "failed" as const,
     checked: 0,
     upserted: 0,
@@ -2791,7 +2792,7 @@ export async function syncCompletedOffersFromOffersApp(
   errors.push(...shopify.errors);
   warnings.push(...shopify.warnings);
 
-  const activeShopify = await syncActiveSupplierSalesFromShopifyAdmin(actor, { limit: Math.min(Math.max(Number(options?.limit || 50), 50), 100) }).catch((error) => ({
+  const activeShopify = await syncActiveSupplierSalesFromShopifyAdmin(actor, { limit }).catch((error) => ({
     status: "failed" as const,
     checked: 0,
     upserted: 0,

@@ -1961,7 +1961,7 @@ test("completed offers sync reconciles existing active supplier rows against Sho
   });
 
   assert.equal(activeRowsLookupCount, 1);
-  assert.equal(activeRowsLookupLimit, "50");
+  assert.equal(activeRowsLookupLimit, "25");
   assert.equal(shopifyNodeLookupCount, 1);
   assert.equal(salePatchCount, 1);
 });

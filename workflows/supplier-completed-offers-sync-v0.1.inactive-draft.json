@@ -63,7 +63,7 @@
             {
               "id": "limit",
               "name": "limit",
-              "value": 50,
+              "value": 20,
               "type": "number"
             }
           ]
