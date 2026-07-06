@@ -1070,6 +1070,35 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
   assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-visible)");
 });
 
+test("supplier sales board reads payment link from offer snapshot fallback", async () => {
+  const snapshotPaymentRow = saleRow({
+    id: "sale-snapshot-payment",
+    sale_key: "offer:snapshot-payment",
+    source: "neontrip-offers",
+    shopify_order_id: null,
+    shopify_order_name: null,
+    raw_shopify: {},
+    metadata: {},
+    offer_snapshot: {
+      shopifyOrder: {
+        statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/snapshot-payment/status",
+      },
+    },
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([snapshotPaymentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: snapshotPaymentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    assert.equal(board.items[0]?.paymentLink, "https://galaxybuzzdk.myshopify.com/orders/snapshot-payment/status");
+  });
+});
+
 test("supplier sales board filters express and rush orders", async () => {
   const rushRow = saleRow({
     id: "sale-rush",

@@ -1,0 +1,184 @@
+{
+  "name": "NEONTRIP Supplier Completed Offers Sync v0.1 (INACTIVE DRAFT)",
+  "nodes": [
+    {
+      "id": "workflow-notes",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -220
+      ],
+      "parameters": {
+        "content": "Inactive draft. Regularly asks the Ops app to import completed offers and enrich Sales-Vergabe rows with recent Shopify Admin order data, including statusPageUrl/payment links. Supabase/Ops remains source of truth; Shopify is a reconciliation source; Trello is not read. The Ops endpoint is bounded, idempotent, and authenticated via an internal bearer token from n8n environment variables. No customer communication is sent.",
+        "height": 320,
+        "width": 580
+      }
+    },
+    {
+      "id": "schedule-10-min",
+      "name": "Every 10 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -520,
+        160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -260,
+        160
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ops-api-url",
+              "name": "opsApiUrl",
+              "value": "={{ ($env.NEONTRIP_OPS_BASE_URL || 'https://ops.neontrip.de').replace(/\\/$/, '') + '/api/ops/supplier-sales' }}",
+              "type": "string"
+            },
+            {
+              "id": "agent-token",
+              "name": "agentToken",
+              "value": "={{ $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.SUPPLIER_SALES_AGENT_API_TOKEN || $env.NEONTRIP_OFFERS_INTERNAL_API_KEY || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "limit",
+              "name": "limit",
+              "value": 50,
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config-preflight",
+      "name": "Config Preflight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const cfg = $input.first()?.json || {};\nconst errors = [];\n\nfunction cleanUrl(value) {\n  return String(value || '').trim().replace(/\\/+$/, '');\n}\n\nconst opsApiUrl = cleanUrl(cfg.opsApiUrl);\nconst agentToken = String(cfg.agentToken || '').trim();\nconst limit = Math.min(Math.max(Number(cfg.limit || 50), 1), 100);\n\nif (!/^https:\\/\\//i.test(opsApiUrl)) errors.push('NEONTRIP_OPS_BASE_URL/opsApiUrl must resolve to an https URL');\nif (!agentToken) errors.push('OPS_INTERNAL_API_KEY/QUOTE_INTERNAL_API_TOKEN/SUPPLIER_SALES_AGENT_API_TOKEN/NEONTRIP_OFFERS_INTERNAL_API_KEY missing');\nif (!Number.isFinite(limit) || limit < 1 || limit > 100) errors.push('limit must be 1..100');\n\nif (errors.length) {\n  throw new Error('Supplier Completed Offers Sync config failed: ' + errors.join('; '));\n}\n\nreturn [{\n  json: {\n    opsApiUrl,\n    limit,\n    authorizationHeader: 'Bearer ' + agentToken,\n    correlationId: 'supplier-completed-offers-sync:' + new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "ops-sync-completed-offers",
+      "name": "Ops: Sync Completed Offers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsApiUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorizationHeader }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-NEONTRIP-Correlation-ID",
+              "value": "={{ $json.correlationId }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { action: 'sync_completed_offers', limit: $json.limit, operatorName: 'n8n Supplier Completed Offers Sync' } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 60000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 10 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Config Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Preflight": {
+      "main": [
+        [
+          {
+            "node": "Ops: Sync Completed Offers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": [
+    {
+      "name": "neontrip"
+    },
+    {
+      "name": "supplier-sales"
+    }
+  ],
+  "active": false,
+  "versionId": "supplier-completed-offers-sync-v0.1"
+}

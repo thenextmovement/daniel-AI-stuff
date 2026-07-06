@@ -1452,6 +1452,9 @@ function paymentLinkFromSaleRow(row: SupplierSaleRow, latestEvent: SupplierSaleE
     nullableText(latestEvent?.payload?.paymentLink, 1000) ||
     paymentLinkFromPayload(row.raw_shopify || {}) ||
     paymentLinkFromPayload(jsonRecord(row.raw_shopify?.order)) ||
+    paymentLinkFromPayload(row.offer_snapshot || {}) ||
+    paymentLinkFromPayload(jsonRecord(row.offer_snapshot?.order)) ||
+    paymentLinkFromPayload(jsonRecord(row.offer_snapshot?.shopifyOrder)) ||
     null
   );
 }
