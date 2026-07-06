@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
+  BrainCircuit,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
@@ -367,6 +368,11 @@ export function ManagementKpisClient({
                     <h2 className="text-sm font-semibold text-stone-950">Operations</h2>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <a href="/ops/company-brain" className="rounded-lg border border-stone-100 bg-stone-50 p-3 transition hover:border-stone-300">
+                      <BrainCircuit className="h-4 w-4 text-stone-500" />
+                      <p className="mt-3 text-2xl font-semibold">Brain</p>
+                      <p className="text-xs text-stone-500">Fälle & Belege prüfen</p>
+                    </a>
                     <a href="/ops/customer-records/calls" className="rounded-lg border border-stone-100 bg-stone-50 p-3 transition hover:border-stone-300">
                       <PhoneCall className="h-4 w-4 text-stone-500" />
                       <p className="mt-3 text-2xl font-semibold">{dashboard.operations.completedCalls}</p>

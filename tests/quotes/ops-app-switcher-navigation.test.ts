@@ -40,3 +40,12 @@ test("ops app switcher exposes the complete internal software menu", () => {
   assert.match(source, /minmax\(11\.75rem,1fr\)/);
   assert.match(source, /whitespace-normal break-words/);
 });
+
+test("secondary ops entry points expose Company Brain", () => {
+  const managementSource = readFileSync("src/app/ops/management/page-client.tsx", "utf8");
+  const loginSource = readFileSync("src/app/ops/ops-login-card.tsx", "utf8");
+
+  assert.match(managementSource, /\/ops\/company-brain/);
+  assert.match(managementSource, /Fälle & Belege prüfen/);
+  assert.match(loginSource, /Company Brain/);
+});
