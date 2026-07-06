@@ -10,6 +10,7 @@ test("ops app switcher exposes the complete internal software menu", () => {
     "Anrufe",
     "Aufgaben",
     "Company Brain",
+    "Design",
     "Angebote",
     "Sales-Vergabe",
     "Versand",
@@ -22,6 +23,7 @@ test("ops app switcher exposes the complete internal software menu", () => {
     "/ops/customer-records/calls",
     "/ops/tasks",
     "/ops/company-brain",
+    "/ops/design",
     "/ops/offers",
     "/ops/sales-vergabe",
     "/ops/customer-records/shipping",
@@ -45,10 +47,13 @@ test("secondary ops entry points expose Company Brain", () => {
   const managementSource = readFileSync("src/app/ops/management/page-client.tsx", "utf8");
   const loginSource = readFileSync("src/app/ops/ops-login-card.tsx", "utf8");
   const offersSource = readFileSync("src/app/ops/offers/page.tsx", "utf8");
+  const designSource = readFileSync("src/app/ops/design/page.tsx", "utf8");
 
   assert.match(managementSource, /\/ops\/company-brain/);
   assert.match(managementSource, /Fälle & Belege prüfen/);
   assert.match(loginSource, /Company Brain/);
   assert.match(offersSource, /OpsPageHeader active="offers"/);
   assert.match(offersSource, /\/ops\/company-brain/);
+  assert.match(designSource, /OpsPageHeader active="design"/);
+  assert.match(designSource, /\/ops\/company-brain/);
 });

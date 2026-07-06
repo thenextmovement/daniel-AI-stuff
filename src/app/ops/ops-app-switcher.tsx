@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Menu, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
+import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Menu, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -9,6 +9,7 @@ export type OpsAppKey =
   | "calls"
   | "tasks"
   | "companyBrain"
+  | "design"
   | "offers"
   | "supplierSales"
   | "shipping"
@@ -61,6 +62,13 @@ const OPS_APPS: Array<{
     helper: "Fälle & Belege",
     href: "/ops/company-brain",
     Icon: BrainCircuit,
+  },
+  {
+    key: "design",
+    label: "Design",
+    helper: "Mockups & Freigaben",
+    href: "/ops/design",
+    Icon: Palette,
   },
   {
     key: "offers",
