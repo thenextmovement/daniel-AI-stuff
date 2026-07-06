@@ -162,6 +162,23 @@ function trelloFailureClass(severity: string) {
   return "border-emerald-200 bg-emerald-50 text-emerald-900";
 }
 
+function verdictClass(verdict: string) {
+  if (verdict === "found") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (verdict === "not_found") return "border-rose-200 bg-rose-50 text-rose-950";
+  return "border-amber-200 bg-amber-50 text-amber-950";
+}
+
+function severityBadgeClass(severity: string) {
+  if (severity === "critical" || severity === "high") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (severity === "warning" || severity === "medium") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-emerald-200 bg-emerald-50 text-emerald-900";
+}
+
+function shortText(value: string | null | undefined, max = 180) {
+  if (!value) return "";
+  return value.length > max ? `${value.slice(0, max - 1)}...` : value;
+}
+
 export function OpsCompanyBrainClient({
   initialHasSession,
   opsEnabled,
@@ -210,6 +227,27 @@ export function OpsCompanyBrainClient({
     assets: result?.assets.length || 0,
     openWatchers: result?.watchers.filter((watcher) => watcher.status === "open").length || 0,
   }), [result]);
+  const operatorView = useMemo(() => {
+    if (!result) {
+      return {
+        openWatchers: [],
+        failedChecks: [],
+        reviewChecks: [],
+        importantFindings: [],
+        primaryActions: [],
+      };
+    }
+    const openWatchers = result.watchers.filter((watcher) => watcher.status === "open");
+    const failedChecks = result.crossChecks.filter((check) => check.status === "fail");
+    const reviewChecks = result.crossChecks.filter((check) => check.status === "review");
+    const importantFindings = [...result.conflicts, ...result.gaps]
+      .filter((finding) => finding.severity !== "info")
+      .slice(0, 5);
+    const primaryActions = result.actionProposals
+      .filter((action) => action.enabled || action.riskLevel === "high" || action.approvalRequired)
+      .slice(0, 4);
+    return { openWatchers, failedChecks, reviewChecks, importantFindings, primaryActions };
+  }, [result]);
 
   const quickQuestions = [
     "Ist das Angebot rausgegangen?",
@@ -482,6 +520,118 @@ export function OpsCompanyBrainClient({
               <OpsStatCard label="Watcher" value={stats.openWatchers} tone={stats.openWatchers ? "warning" : "success"} icon={<Bell className="h-5 w-5" />} />
             </section>
 
+            <section className="rounded-[2rem] border border-stone-200 bg-white shadow-sm">
+              <div className="border-b border-stone-200 px-5 py-4 md:px-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Fall-Kommandostand</p>
+                    <h2 className="mt-1 text-2xl font-semibold text-stone-950">Was ist los, was ist belegt, was ist der nächste Schritt?</h2>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${verdictClass(result.answer.verdict)}`}>
+                      {result.answer.verdict === "found" ? "Belegt" : result.answer.verdict === "not_found" ? "Nicht gefunden" : "Prüfen"}
+                    </span>
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${evidenceScoreClass(result.evidenceScore.status)}`}>
+                      Beweis {result.evidenceScore.score}/100
+                    </span>
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${severityBadgeClass(result.problemResolution.severity)}`}>
+                      {result.problemResolution.severity}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+                <div className="border-b border-stone-200 p-5 md:p-6 lg:border-b-0 lg:border-r">
+                  <div className="flex items-start gap-3">
+                    {result.answer.verdict === "found" ? <CheckCircle2 className="mt-1 h-6 w-6 shrink-0 text-emerald-600" /> : <AlertTriangle className="mt-1 h-6 w-6 shrink-0 text-amber-600" />}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-stone-500">Kurzfazit</p>
+                      <h3 className="mt-1 text-xl font-semibold leading-7 text-stone-950">{result.answer.headline}</h3>
+                      <div className="mt-4 grid gap-2">
+                        {result.answer.bullets.slice(0, 4).map((bullet) => (
+                          <p key={bullet} className="text-sm leading-6 text-stone-700">
+                            {bullet}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-5 md:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Ursache</p>
+                      <p className="mt-2 text-sm leading-6 text-stone-800">{result.problemResolution.rootCause}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Empfohlene Lösung</p>
+                      <p className="mt-2 text-sm leading-6 text-stone-800">{result.problemResolution.recommendedResolution}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 md:p-6">
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-stone-950">Offen oder kritisch</p>
+                      <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-semibold text-stone-500">
+                        {operatorView.openWatchers.length + operatorView.failedChecks.length} offen
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {operatorView.failedChecks.slice(0, 3).map((check) => (
+                        <div key={`failed-${check.key}`} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+                          <p className="font-semibold">{check.label}</p>
+                          <p className="mt-1 leading-5 opacity-80">{shortText(check.summary, 170)}</p>
+                        </div>
+                      ))}
+                      {operatorView.openWatchers.slice(0, 4).map((watcher) => (
+                        <div key={`watcher-${watcher.key}`} className={`rounded-2xl border px-4 py-3 text-sm ${watcherClass(watcher.status, watcher.severity)}`}>
+                          <p className="font-semibold">{watcher.title}</p>
+                          <p className="mt-1 leading-5 opacity-80">{shortText(watcher.detail, 170)}</p>
+                        </div>
+                      ))}
+                      {!operatorView.failedChecks.length && !operatorView.openWatchers.length ? (
+                        <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">Keine offenen kritischen Wächter.</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <p className="text-sm font-semibold text-stone-950">Nächste sichere Aktion</p>
+                    <div className="mt-3 grid gap-2">
+                      {result.nextActions.slice(0, 3).map((action) => (
+                        <p key={action} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">{action}</p>
+                      ))}
+                    </div>
+                    {operatorView.primaryActions.length ? (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {operatorView.primaryActions.map((action) => (
+                          <button
+                            key={action.key}
+                            type="button"
+                            onClick={() => void copyActionProposal(action.key)}
+                            className={`inline-flex h-10 items-center gap-2 rounded-2xl border px-3 text-xs font-semibold transition hover:bg-white ${severityBadgeClass(action.riskLevel)}`}
+                          >
+                            <ClipboardCopy className="h-3.5 w-3.5" />
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {actionCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{actionCopyMessage}</p> : null}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <details className="group rounded-[2rem] border border-stone-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-stone-950 marker:hidden md:px-6">
+                <span>Alle Belege, Quellen und Detailmatrizen anzeigen</span>
+                <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs text-stone-500 group-open:hidden">öffnen</span>
+                <span className="hidden rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs text-stone-500 group-open:inline">schließen</span>
+              </summary>
+              <div className="border-t border-stone-200 p-5 md:p-6">
             <section className="grid gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
               <div className="space-y-6">
                 <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
@@ -1170,6 +1320,8 @@ export function OpsCompanyBrainClient({
                 </article>
               </div>
             </section>
+              </div>
+            </details>
           </>
         ) : (
           <section className="rounded-[2rem] border border-stone-200 bg-white p-8 text-center shadow-sm">
