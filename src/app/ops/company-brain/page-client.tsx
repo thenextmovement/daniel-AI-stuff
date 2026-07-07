@@ -262,6 +262,29 @@ function routeStepToneFromSeverity(severity: string): "ok" | "warning" | "blocke
   return "neutral";
 }
 
+function isCompanyBrainFixRun(run: CompanyBrainResolveResult["automationRuns"][number]) {
+  return run.workflowName === "company_brain_fix_center";
+}
+
+function fixHistoryLabel(action: string | null) {
+  if (action === "open_problem_case") return "Problemfall/Aufgabe angelegt";
+  if (action === "create_internal_task") return "Interne Aufgabe angelegt";
+  if (action === "save_case_note") return "Fallnotiz gespeichert";
+  if (action === "prepare_email_correction") return "E-Mail-Korrektur vorbereitet";
+  if (action === "correct_customer_email") return "Kunden-E-Mail korrigiert";
+  if (action === "post_trello_status_comment") return "Trello-Status kommentiert";
+  if (action === "prepare_offer_retry") return "Angebots-Retry vorbereitet";
+  if (action === "guarded_offer_resend") return "Guarded Retry";
+  return action || "Fix-Center-Aktion";
+}
+
+function runStatusClass(status: string | null, retrySafety?: string | null) {
+  const text = `${status || ""} ${retrySafety || ""}`.toLowerCase();
+  if (/blocked|failed|error|unsafe/.test(text)) return "border-rose-200 bg-rose-50 text-rose-950";
+  if (/prepared|waiting|unknown|review/.test(text)) return "border-amber-200 bg-amber-50 text-amber-950";
+  return "border-emerald-200 bg-emerald-50 text-emerald-950";
+}
+
 function buildOperatorDecision(result: CompanyBrainResolveResult) {
   const executableFixes = result.actionProposals.filter((action) => action.enabled && executableAction(action.key));
   const dataFixAvailable = executableFixes.some((action) =>
@@ -330,7 +353,8 @@ function buildCaseRoute(result: CompanyBrainResolveResult) {
     .map((key) => result.actionProposals.find((action) => action.enabled && action.key === key))
     .find((action): action is CompanyBrainActionProposalView => Boolean(action));
   const customerAction = result.actionProposals.find((action) => action.key === "guarded_offer_resend");
-  const automationRun = [...result.automationRuns]
+  const automationRun = result.automationRuns
+    .filter((run) => !isCompanyBrainFixRun(run))
     .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
   const triggerTone: "ok" | "warning" | "blocked" | "neutral" = result.trelloFailureDiagnosis.requested
     ? result.trelloFailureDiagnosis.status === "loaded" ? "ok" : routeStepToneFromSeverity(result.trelloFailureDiagnosis.severity)
@@ -507,6 +531,8 @@ export function OpsCompanyBrainClient({
         sourceWarnings: [],
         decisionItems: [],
         setupBlockers: [],
+        fixHistory: [],
+        automationHistory: [],
         decision: null,
         caseRoute: [],
         primaryRun: null,
@@ -532,6 +558,11 @@ export function OpsCompanyBrainClient({
         nextStep: setupActionForIntegration(entry.key, entry.status),
       }))
       .slice(0, 3);
+    const fixHistory = result.automationRuns
+      .filter(isCompanyBrainFixRun)
+      .slice(0, 5);
+    const automationHistory = result.automationRuns
+      .filter((run) => !isCompanyBrainFixRun(run));
     const decisionItems = [
       ...result.checks
         .filter((check) => check.status === "warning" || check.status === "missing")
@@ -540,7 +571,7 @@ export function OpsCompanyBrainClient({
         .filter((check) => check.status === "fail" || check.status === "review")
         .map((check) => ({ key: `cross-${check.key}`, label: check.label, summary: check.summary, status: check.status })),
     ].slice(0, 5);
-    const primaryRun = [...result.automationRuns]
+    const primaryRun = [...automationHistory]
       .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
     return {
       readyActions,
@@ -548,6 +579,8 @@ export function OpsCompanyBrainClient({
       sourceWarnings,
       decisionItems,
       setupBlockers,
+      fixHistory,
+      automationHistory,
       decision: buildOperatorDecision(result),
       caseRoute: buildCaseRoute(result),
       primaryRun,
@@ -1135,6 +1168,29 @@ export function OpsCompanyBrainClient({
                         </div>
                       )) : (
                         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">Alle Live-Integrationen sind als konfiguriert erkannt.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-stone-950">Schon erledigt</p>
+                      <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-semibold text-stone-500">
+                        {operatorView.fixHistory.length}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {operatorView.fixHistory.length ? operatorView.fixHistory.map((run) => (
+                        <div key={`fix-history-${run.id}`} className={`rounded-xl border px-3 py-2 text-sm ${runStatusClass(run.status, run.retrySafety)}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold">{fixHistoryLabel(run.action)}</p>
+                            <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium">{run.status || "ok"}</span>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 opacity-80">{run.summary || "Interne Company-Brain-Aktion wurde protokolliert. Kein Kundenkontakt."}</p>
+                          <p className="mt-1 text-[11px] opacity-65">{formatDateTime(run.createdAt)}</p>
+                        </div>
+                      )) : (
+                        <p className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm leading-6 text-stone-600">Noch keine Fix-Center-Aktion für diesen Fall protokolliert.</p>
                       )}
                     </div>
                   </div>
@@ -1918,13 +1974,47 @@ export function OpsCompanyBrainClient({
                 <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Fix-Historie</p>
+                      <h2 className="mt-2 text-xl font-semibold text-stone-950">Interne Aktionen</h2>
+                    </div>
+                    <ClipboardList className="h-6 w-6 text-stone-500" />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {operatorView.fixHistory.length ? operatorView.fixHistory.map((run) => (
+                      <div key={`fix-detail-${run.id}`} className={`rounded-2xl border px-4 py-3 text-sm ${runStatusClass(run.status, run.retrySafety)}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{fixHistoryLabel(run.action)}</p>
+                            <p className="mt-1 leading-6 opacity-80">{run.summary || "Interne Company-Brain-Aktion wurde protokolliert."}</p>
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold">
+                            {run.status || "ok"}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-1 text-xs opacity-70">
+                          <span>Zeitpunkt: {formatDateTime(run.createdAt)}</span>
+                          {run.targetRecordId ? <span>Target: {run.targetRecordId}</span> : null}
+                          {run.sourceEventId ? <span>Source Event: {run.sourceEventId}</span> : null}
+                          {run.idempotencyKey ? <span>Idempotency: {run.idempotencyKey}</span> : null}
+                          <span>Kundenkontakt: nein</span>
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">Noch keine internen Fix-Center-Aktionen für diesen Fall protokolliert.</p>
+                    )}
+                  </div>
+                </article>
+
+                <article className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">n8n / Automation</p>
                       <h2 className="mt-2 text-xl font-semibold text-stone-950">Run-Status</h2>
                     </div>
                     <Workflow className="h-6 w-6 text-stone-500" />
                   </div>
                   <div className="mt-4 grid gap-3">
-                    {result.automationRuns.length ? result.automationRuns.slice(0, 10).map((run) => (
+                    {operatorView.automationHistory.length ? operatorView.automationHistory.slice(0, 10).map((run) => (
                       <div key={run.id} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
@@ -1948,7 +2038,7 @@ export function OpsCompanyBrainClient({
                         </div>
                       </div>
                     )) : (
-                      <p className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">Keine Workflow-Audit-Einträge für diesen Fall.</p>
+                      <p className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">Keine n8n-/Workflow-Fehlerläufe für diesen Fall.</p>
                     )}
                   </div>
                 </article>
