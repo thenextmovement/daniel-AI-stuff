@@ -5,6 +5,7 @@ import {
   addCustomerOpsNote,
   getCustomerRecordByRequestId,
   reportCustomerSpecialCase,
+  updateCustomerRecord,
   type CustomerSpecialCaseKind,
   type UpdateActor,
 } from "@/lib/ops/customer-records";
@@ -31,6 +32,7 @@ type CompanyBrainActionKey =
   | "create_internal_task"
   | "save_case_note"
   | "prepare_email_correction"
+  | "correct_customer_email"
   | "prepare_offer_retry"
   | "guarded_offer_resend";
 
@@ -55,6 +57,7 @@ type CompanyBrainActionInput = {
   subject?: string | null;
   message?: string | null;
   idempotencyKey?: string | null;
+  newCustomerEmail?: string | null;
 };
 
 type QuoteEmailGuardRow = {
@@ -138,6 +141,7 @@ function normalizeActionKey(value: unknown): CompanyBrainActionKey {
     value === "create_internal_task" ||
     value === "save_case_note" ||
     value === "prepare_email_correction" ||
+    value === "correct_customer_email" ||
     value === "prepare_offer_retry" ||
     value === "guarded_offer_resend"
   ) return value;
@@ -421,6 +425,57 @@ export async function POST(request: NextRequest) {
         },
         { operatorName },
       );
+    }
+
+    if (actionKey === "correct_customer_email") {
+      const newCustomerEmail = normalizeEmail(body.newCustomerEmail);
+      const currentEmail = normalizeEmail(record.email);
+      if (!newCustomerEmail || isPlaceholderCustomerEmail(newCustomerEmail) || !isValidEmail(newCustomerEmail)) {
+        throw new QuoteValidationError("Neue Kunden-E-Mail ist ungueltig.", ["Bitte eine echte Kunden-E-Mail-Adresse eintragen."], 422);
+      }
+      if (isInternalNeontripEmail(newCustomerEmail)) {
+        throw new QuoteValidationError(
+          "Interne E-Mail blockiert.",
+          ["Die Kunden-Hauptadresse darf keine interne NEONTRIP-Adresse sein."],
+          409,
+        );
+      }
+      if (newCustomerEmail === currentEmail) {
+        throw new QuoteValidationError("Keine Aenderung erkannt.", ["Die neue E-Mail entspricht bereits der Kundenakte."], 422);
+      }
+      const updateResult = await updateCustomerRecord(
+        record.requestId,
+        { email: newCustomerEmail },
+        actor,
+      );
+      retryAudit = await recordWorkflowAuditEvent({
+        workflowName: "company_brain_fix_center",
+        action: "correct_customer_email",
+        status: "success",
+        requestId: record.requestId,
+        trelloCardId,
+        offerId,
+        offerNumber,
+        idempotencyKey: `company-brain-email-correction:${record.requestId}:${newCustomerEmail}`,
+        retrySafety: "safe_after_review",
+        metadata: {
+          operator_name: operatorName,
+          previous_email: currentEmail || null,
+          new_email: newCustomerEmail,
+          customer_communication_sent: false,
+          next_step: "resolve_again_before_retry",
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        actionKey,
+        requestId: record.requestId,
+        record: updateResult.record,
+        changedTables: updateResult.changedTables,
+        audit: retryAudit,
+        customerCommunicationSent: false,
+      });
     }
 
     if (actionKey === "guarded_offer_resend") {

@@ -228,6 +228,7 @@ export type CompanyBrainActionProposal = {
     | "inspect_n8n_run"
     | "collect_design_assets"
     | "prepare_email_correction"
+    | "correct_customer_email"
     | "prepare_offer_retry"
     | "guarded_offer_resend";
   label: string;
@@ -1111,6 +1112,140 @@ type WorkflowAuditLogRow = {
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 };
+
+type N8nExecutionResponse = {
+  id?: string | number | null;
+  workflowId?: string | number | null;
+  mode?: string | null;
+  status?: string | null;
+  finished?: boolean | null;
+  startedAt?: string | null;
+  stoppedAt?: string | null;
+  createdAt?: string | null;
+  workflowData?: {
+    name?: string | null;
+  } | null;
+  data?: {
+    resultData?: {
+      error?: {
+        message?: string | null;
+        description?: string | null;
+        node?: {
+          name?: string | null;
+        } | null;
+        nodeName?: string | null;
+      } | null;
+      lastNodeExecuted?: string | null;
+      runData?: Record<string, unknown> | null;
+    } | null;
+  } | null;
+};
+
+function n8nApiConfig() {
+  const baseUrl = cleanText(process.env.N8N_API_URL || process.env.N8N_BASE_URL || "").replace(/\/+$/, "");
+  const apiKey = cleanText(process.env.N8N_API_KEY || "");
+  if (!baseUrl || !apiKey) return null;
+  return { baseUrl, apiKey };
+}
+
+function n8nExecutionStatus(execution: N8nExecutionResponse) {
+  const explicitStatus = cleanText(execution.status);
+  if (explicitStatus) return explicitStatus;
+  if (execution.finished === true) return "success";
+  if (execution.finished === false) return "running_or_failed";
+  return null;
+}
+
+function n8nExecutionError(execution: N8nExecutionResponse) {
+  const error = execution.data?.resultData?.error;
+  return cleanText(error?.message || error?.description) || null;
+}
+
+function n8nFailedNode(execution: N8nExecutionResponse) {
+  const error = execution.data?.resultData?.error;
+  return cleanText(error?.node?.name || error?.nodeName || execution.data?.resultData?.lastNodeExecuted) || null;
+}
+
+function n8nWorkflowName(execution: N8nExecutionResponse) {
+  return cleanText(execution.workflowData?.name) || (execution.workflowId ? `n8n Workflow ${execution.workflowId}` : "n8n Live Execution");
+}
+
+async function fetchN8nExecution(executionId: string): Promise<N8nExecutionResponse | null> {
+  const config = n8nApiConfig();
+  if (!config) return null;
+  const response = await fetch(`${config.baseUrl}/api/v1/executions/${encodeURIComponent(executionId)}?includeData=true`, {
+    method: "GET",
+    headers: {
+      "X-N8N-API-KEY": config.apiKey,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`n8n API antwortete mit ${response.status}.`);
+  }
+  return (await response.json()) as N8nExecutionResponse;
+}
+
+async function fetchN8nLiveRuns(
+  executionIds: string[],
+  fallbackRuns: CompanyBrainAutomationRun[],
+): Promise<{ runs: CompanyBrainAutomationRun[]; diagnostic: CompanyBrainDiagnostic | null }> {
+  const config = n8nApiConfig();
+  const ids = uniqueStrings(executionIds).slice(0, 5);
+  if (!ids.length || !config) return { runs: [], diagnostic: null };
+  const fallbackByExecutionId = new Map(
+    fallbackRuns
+      .filter((run) => run.executionId)
+      .map((run) => [run.executionId as string, run] as const),
+  );
+  const runs: CompanyBrainAutomationRun[] = [];
+  const errors: string[] = [];
+
+  for (const executionId of ids) {
+    try {
+      const execution = await fetchN8nExecution(executionId);
+      if (!execution) {
+        errors.push(`${executionId}: nicht mehr in n8n verfügbar`);
+        continue;
+      }
+      const fallback = fallbackByExecutionId.get(executionId) || null;
+      const status = n8nExecutionStatus(execution);
+      const error = n8nExecutionError(execution);
+      runs.push({
+        id: `n8n-live-${executionId}`,
+        workflowName: n8nWorkflowName(execution),
+        action: fallback?.action || "offer_send",
+        status: error ? "failed" : status,
+        error: error || fallback?.error || null,
+        createdAt: execution.stoppedAt || execution.startedAt || execution.createdAt || fallback?.createdAt || null,
+        requestId: fallback?.requestId || null,
+        executionId,
+        correlationId: fallback?.correlationId || null,
+        sourceEventId: fallback?.sourceEventId || null,
+        targetRecordId: fallback?.targetRecordId || null,
+        failedNode: n8nFailedNode(execution) || fallback?.failedNode || null,
+        idempotencyKey: fallback?.idempotencyKey || null,
+        retrySafety: fallback?.retrySafety || "Nur nach Duplicate-Mail-Check und idempotentem Retry freigeben.",
+        summary: "Read-only aus der n8n Live-API geladen.",
+      });
+    } catch (error) {
+      errors.push(`${executionId}: ${errorMessage(error)}`);
+    }
+  }
+
+  return {
+    runs,
+    diagnostic: {
+      source: "workflow_audit",
+      ok: errors.length === 0,
+      label: "Live n8n",
+      detail: errors.length ? errors.join(" · ") : "n8n Live-Execution-Daten read-only geladen.",
+      count: runs.length,
+    },
+  };
+}
 
 async function fetchAutomationRuns(
   records: CompanyBrainRecordSummary[],
@@ -2666,6 +2801,23 @@ function buildActionProposals(input: {
       ],
     },
     {
+      key: "correct_customer_email",
+      label: "Kunden-E-Mail korrigieren",
+      type: "prepared_task",
+      riskLevel: "high",
+      approvalRequired: true,
+      enabled: Boolean(primaryRecord && retry.status === "needs_fix"),
+      summary: "Ändert nach Eingabe und Freigabe die E-Mail in der Kundenakte und synchronisiert abhängige Ops-Tabellen. Kein Angebotsversand.",
+      confirmationText: "Nur ausführen, wenn die neue E-Mail-Adresse fachlich belegt ist. Danach erneut prüfen.",
+      href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
+      payloadPreview: [
+        `Aktuell: ${retry.recipientEmail || primaryRecord?.email || "unbekannt"}`,
+        `Angebot: ${retry.offerNumber || retry.offerId || "unbekannt"}`,
+        "Neue E-Mail wird beim Ausführen abgefragt.",
+        ...retry.safeFixes.slice(0, 3).map((entry) => `Guardrail: ${entry}`),
+      ],
+    },
+    {
       key: "prepare_offer_retry",
       label: "Retry-Aufgabe vorbereiten",
       type: "prepared_task",
@@ -3128,7 +3280,15 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink || ""] : [],
     extractTrelloAutomationExecutionIds(trelloContext),
   );
-  const automationRuns = dedupeAutomationRuns([...automation.runs, ...trelloAutomationRuns]);
+  const n8nLive = await fetchN8nLiveRuns(
+    uniqueStrings([
+      ...extractTrelloAutomationExecutionIds(trelloContext),
+      ...automation.runs.map((run) => run.executionId),
+      ...trelloAutomationRuns.map((run) => run.executionId),
+    ].filter((value): value is string => Boolean(value))),
+    [...automation.runs, ...trelloAutomationRuns],
+  );
+  const automationRuns = dedupeAutomationRuns([...n8nLive.runs, ...automation.runs, ...trelloAutomationRuns]);
   diagnostics.push(
     trelloAutomationRuns.length && !automation.runs.length
       ? {
@@ -3139,6 +3299,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
         }
       : { ...automation.diagnostic, count: automationRuns.length },
   );
+  if (n8nLive.diagnostic) diagnostics.push(n8nLive.diagnostic);
   const trelloFailureDiagnosis = buildTrelloFailureDiagnosis({
     requested: trelloRequested || Boolean(trelloContext),
     context: trelloContext,

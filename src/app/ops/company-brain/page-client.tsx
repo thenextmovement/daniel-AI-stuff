@@ -370,6 +370,7 @@ export function OpsCompanyBrainClient({
       "create_internal_task",
       "save_case_note",
       "prepare_email_correction",
+      "correct_customer_email",
       "prepare_offer_retry",
       "guarded_offer_resend",
     ].includes(actionKey);
@@ -380,6 +381,13 @@ export function OpsCompanyBrainClient({
     const primaryRecord = result?.records[0] || null;
     const primaryOffer = result?.offers[0] || null;
     if (!action || !result?.problemResolution || !primaryRecord) return;
+    const newCustomerEmail = actionKey === "correct_customer_email"
+      ? window.prompt("Neue Kunden-E-Mail eintragen. Es wird noch kein Angebot gesendet.")
+      : null;
+    if (actionKey === "correct_customer_email" && !newCustomerEmail?.trim()) {
+      setActionResultMessage("Aktion abgebrochen: neue E-Mail fehlt.");
+      return;
+    }
     const confirmation = window.prompt(`"${action.label}" wirklich intern ausführen? Bitte Freigabe eingeben.`);
     if (confirmation !== "Freigabe") {
       setActionResultMessage("Aktion abgebrochen: Bestätigungstext fehlt.");
@@ -414,6 +422,7 @@ export function OpsCompanyBrainClient({
           idempotencyKey: result.retryAssessment.idempotencyKey || null,
           subject: DEFAULT_OFFER_RETRY_SUBJECT,
           message: DEFAULT_OFFER_RETRY_MESSAGE,
+          newCustomerEmail: newCustomerEmail?.trim() || null,
           confirmed: true,
           confirmationText: confirmation,
         }),
@@ -428,6 +437,7 @@ export function OpsCompanyBrainClient({
         sent?: boolean;
         duplicate?: boolean;
         blockers?: string[];
+        changedTables?: Record<string, number>;
       } | null;
       if (!response.ok || !payload?.ok) {
         setActionResultMessage(payload?.blockers?.length ? payload.blockers.join(" ") : formatApiError(payload));
@@ -435,6 +445,7 @@ export function OpsCompanyBrainClient({
       }
       const created = [
         payload.sent ? (payload.duplicate ? "Versand bereits idempotent vorhanden" : "Angebot erneut gesendet") : null,
+        payload.changedTables ? "Kunden-E-Mail aktualisiert" : null,
         payload.task?.id ? `Aufgabe ${payload.task.id}` : null,
         payload.note?.id ? `Notiz ${payload.note.id}` : null,
         payload.specialCase ? "Problemfall-Audit" : null,
