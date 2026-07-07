@@ -89,6 +89,29 @@ function kindTone(kind: DesignAttachment["kind"]) {
   return "border-[#ded8d0] bg-[#fffdf9] text-[#62584d]";
 }
 
+const DESIGN_CONSTRAINT_START = "[[NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
+const DESIGN_CONSTRAINT_END = "[[/NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
+const TABLETOP_DEVICE_CONSTRAINT = [
+  DESIGN_CONSTRAINT_START,
+  "Preset: Tischgerät / Standgerät",
+  "Nutze den bestehenden Kartenprompt als Basis, visualisiere das Produkt aber ausschließlich als freistehendes Tischgerät.",
+  "Das Schild steht auf einem Tisch, Tresen, Sideboard oder Schreibtisch und ist nicht an Wand, Fenster, Fassade oder Schaufenster montiert.",
+  "Zeige eine glaubwürdige Tischaufstellung mit stabilem Standfuß, Sockel oder freistehendem Acrylaufsteller.",
+  "Keine Wandmontage, keine Wandhalterung, keine Außenfassade, keine große Rauminstallation.",
+  DESIGN_CONSTRAINT_END,
+].join("\n");
+
+function removeDesignConstraint(prompt: string) {
+  const escapedStart = DESIGN_CONSTRAINT_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedEnd = DESIGN_CONSTRAINT_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return prompt.replace(new RegExp(`\\n*${escapedStart}[\\s\\S]*?${escapedEnd}\\n*`, "g"), "\n").trim();
+}
+
+function promptWithTabletopConstraint(prompt: string) {
+  const base = removeDesignConstraint(prompt);
+  return [base, TABLETOP_DEVICE_CONSTRAINT].filter(Boolean).join("\n\n");
+}
+
 export function DesignOpsClient({
   initialHasSession,
   opsEnabled,
@@ -102,6 +125,7 @@ export function DesignOpsClient({
   const [query, setQuery] = useState("");
   const [workspace, setWorkspace] = useState<DesignWorkspace | null>(null);
   const [promptDraft, setPromptDraft] = useState("");
+  const [promptPreset, setPromptPreset] = useState<"original" | "tabletop">("original");
   const [operatorName, setOperatorName] = useState("");
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [offer, setOffer] = useState<OpsOfferSnapshot | null>(null);
@@ -157,6 +181,7 @@ export function DesignOpsClient({
 
   useEffect(() => {
     setPromptDraft(workspace?.promptPreview.prompt || "");
+    setPromptPreset("original");
     const nextOfferId = workspace?.offerCandidates.find((candidate) => !candidate.locked)?.id || "";
     setSelectedOfferId(nextOfferId);
     setOffer(null);
@@ -166,6 +191,14 @@ export function DesignOpsClient({
     setRemovalPlan(null);
     setJob(null);
   }, [workspace]);
+
+  function applyPromptPreset(nextPreset: "original" | "tabletop") {
+    if (!workspace) return;
+    setPromptPreset(nextPreset);
+    setJob(null);
+    const basePrompt = removeDesignConstraint(promptDraft || workspace.promptPreview.prompt || "");
+    setPromptDraft(nextPreset === "tabletop" ? promptWithTabletopConstraint(basePrompt) : basePrompt);
+  }
 
   async function searchDesignWorkspace(nextQuery = query) {
     const normalized = nextQuery.trim();
@@ -707,6 +740,24 @@ export function DesignOpsClient({
                       {workspace.promptPreview.videoPrompt}
                     </pre>
                   </details>
+                ) : null}
+                {workspace ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1">
+                    <button
+                      type="button"
+                      onClick={() => applyPromptPreset("original")}
+                      className={`h-9 rounded-[0.55rem] px-3 text-xs font-semibold ${promptPreset === "original" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
+                    >
+                      Original
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPromptPreset("tabletop")}
+                      className={`h-9 rounded-[0.55rem] px-3 text-xs font-semibold ${promptPreset === "tabletop" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
+                    >
+                      Tischgerät
+                    </button>
+                  </div>
                 ) : null}
                 <textarea
                   value={promptDraft}

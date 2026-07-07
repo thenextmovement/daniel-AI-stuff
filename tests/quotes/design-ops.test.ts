@@ -35,6 +35,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Prompt/);
   assert.match(client, /sourceLabel/);
   assert.match(client, /Video-Prompt aus Trello/);
+  assert.match(client, /promptWithTabletopConstraint/);
+  assert.match(client, /NEONTRIP_DESIGN_STUDIO_CONSTRAINT/);
+  assert.match(client, /Tischgerät/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
   assert.match(client, /Generierung freigeben/);
