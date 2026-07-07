@@ -720,14 +720,18 @@ export async function createDesignJobDraft(input: {
       mimeType: asset.mime_type,
     });
   }
+  const referenceCard = referenceAttachments[0]
+    ? workspace.cards.find((card) => card.cardId === referenceAttachments[0]?.cardId) || null
+    : null;
+  const jobCard = referenceCard || primaryCard;
 
   const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", {
     method: "POST",
     body: JSON.stringify({
       job_key: idempotencyKey,
       request_id: requestId,
-      trello_card_id: primaryCard?.cardId || null,
-      trello_card_url: primaryCard?.cardUrl || null,
+      trello_card_id: jobCard?.cardId || null,
+      trello_card_url: jobCard?.cardUrl || null,
       offer_id: offerId,
       source_query: query,
       status: "draft",

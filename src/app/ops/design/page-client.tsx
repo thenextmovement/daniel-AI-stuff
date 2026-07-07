@@ -226,6 +226,7 @@ export function DesignOpsClient({
   const [jobs, setJobs] = useState<DesignJobSummary[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>([]);
+  const [selectedRecolorAttachmentIds, setSelectedRecolorAttachmentIds] = useState<string[]>([]);
   const [removalPlan, setRemovalPlan] = useState<DesignRemovalPlan | null>(null);
   const [confirmRemoval, setConfirmRemoval] = useState("");
   const [loading, setLoading] = useState(false);
@@ -287,6 +288,7 @@ export function DesignOpsClient({
     setSelectedReferenceAttachmentId(defaultReference?.id || "");
     setSelectedReferenceAssetId("");
     setSelectedAttachmentIds([]);
+    setSelectedRecolorAttachmentIds([]);
     setRemovalPlan(null);
     setJob(null);
   }, [workspace]);
@@ -431,6 +433,92 @@ export function DesignOpsClient({
     }
   }
 
+  async function recolorSelectedAttachments(attachToTrelloAfterGenerate: boolean) {
+    if (!workspace) return;
+    if (!selectedRecolorAttachmentIds.length) {
+      setError("Bitte mindestens ein Mockup für Farbe auswählen.");
+      return;
+    }
+    if (!selectedLightColor(lightColorPreset, customLightColor)) {
+      setError("Bitte zuerst eine Leuchtfarbe wählen.");
+      return;
+    }
+    const basePrompt = promptDraft.trim();
+    if (basePrompt.length < 40) {
+      setError("Prompt ist zu kurz.");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    let generatedCount = 0;
+    let attachedCount = 0;
+    const failures: string[] = [];
+    try {
+      if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
+      for (const attachmentId of selectedRecolorAttachmentIds) {
+        try {
+          const draftResponse = await fetch("/api/ops/design/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              idempotencyKey: createClientActionId(),
+              query: workspace.query,
+              promptTitle: `${workspace.promptPreview.title} · Farbänderung`,
+              promptText: basePrompt,
+              operatorName,
+              offerId: null,
+              referenceAttachmentIds: [attachmentId],
+              referenceAssetId: null,
+            }),
+          });
+          const draftPayload = (await draftResponse.json().catch(() => null)) as DesignApiResponse | null;
+          if (!draftResponse.ok || !draftPayload?.ok || !draftPayload.job) throw new Error(formatApiError(draftPayload));
+
+          const generateResponse = await fetch(`/api/ops/design/jobs/${encodeURIComponent(draftPayload.job.id)}/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idempotencyKey: createClientActionId(), operatorName }),
+          });
+          const generatePayload = (await generateResponse.json().catch(() => null)) as DesignApiResponse | null;
+          if (!generateResponse.ok || !generatePayload?.ok || !generatePayload.result) throw new Error(formatApiError(generatePayload));
+          generatedCount += 1;
+          if (generatePayload.result.asset?.id) {
+            setSelectedAssetId(generatePayload.result.asset.id);
+            setSelectedReferenceAssetId(generatePayload.result.asset.id);
+            setSelectedReferenceAttachmentId("");
+          }
+
+          if (attachToTrelloAfterGenerate && generatePayload.result.asset?.id) {
+            const attachResponse = await fetch(`/api/ops/design/jobs/${encodeURIComponent(draftPayload.job.id)}/trello`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ assetId: generatePayload.result.asset.id, operatorName }),
+            });
+            const attachPayload = (await attachResponse.json().catch(() => null)) as DesignApiResponse | null;
+            if (!attachResponse.ok || !attachPayload?.ok) throw new Error(formatApiError(attachPayload));
+            attachedCount += 1;
+          }
+        } catch (itemError) {
+          failures.push(itemError instanceof Error ? itemError.message : "Farbänderung fehlgeschlagen.");
+        }
+      }
+
+      setMessage(
+        attachToTrelloAfterGenerate
+          ? `Farbänderung abgeschlossen: ${generatedCount} generiert, ${attachedCount} an Trello angehängt${failures.length ? `, ${failures.length} Fehler` : ""}.`
+          : `Farbänderung abgeschlossen: ${generatedCount} generiert${failures.length ? `, ${failures.length} Fehler` : ""}.`,
+      );
+      setSelectedRecolorAttachmentIds([]);
+      void loadRecentJobs();
+      if (attachToTrelloAfterGenerate) void searchDesignWorkspace(workspace.query);
+      if (failures.length) setError(failures.slice(0, 2).join(" "));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadOffer(offerId = selectedOfferId) {
     if (!offerId) return;
     setBusy(true);
@@ -570,6 +658,12 @@ export function DesignOpsClient({
     );
   }
 
+  function toggleRecolorSelection(attachmentId: string) {
+    setSelectedRecolorAttachmentIds((current) =>
+      current.includes(attachmentId) ? current.filter((id) => id !== attachmentId) : [...current, attachmentId],
+    );
+  }
+
   if (!opsEnabled) {
     return (
       <main className={opsPageShellClass}>
@@ -701,15 +795,35 @@ export function DesignOpsClient({
                           Backup vor Delete
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void prepareRemovalPlan()}
-                        disabled={busy || !selectedAttachmentIds.length}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Removal vorbereiten
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void recolorSelectedAttachments(false)}
+                          disabled={busy || !selectedRecolorAttachmentIds.length}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
+                        >
+                          <Palette className="h-4 w-4" />
+                          Farbe ändern
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void recolorSelectedAttachments(true)}
+                          disabled={busy || !selectedRecolorAttachmentIds.length}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          <UploadCloud className="h-4 w-4" />
+                          Farbe ändern + an Karte
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void prepareRemovalPlan()}
+                          disabled={busy || !selectedAttachmentIds.length}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Removal vorbereiten
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-4 space-y-4">
@@ -735,7 +849,7 @@ export function DesignOpsClient({
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {card.attachments.map((asset) => (
                               <div key={asset.id} className="overflow-hidden rounded-[14px] border border-[#ded8d0] bg-white">
-                                <div className="grid grid-cols-2 border-b border-[#ece6dc] bg-[#fffdf9] text-xs font-semibold text-stone-700">
+                                <div className="grid grid-cols-3 border-b border-[#ece6dc] bg-[#fffdf9] text-xs font-semibold text-stone-700">
                                   <button
                                     type="button"
                                     onClick={() => toggleAttachmentSelection(asset.id)}
@@ -746,12 +860,24 @@ export function DesignOpsClient({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setSelectedReferenceAttachmentId(asset.id)}
+                                    onClick={() => {
+                                      setSelectedReferenceAttachmentId(asset.id);
+                                      setSelectedReferenceAssetId("");
+                                    }}
                                     disabled={!["mockup", "reference", "image"].includes(asset.kind)}
-                                    className={`flex items-center justify-between gap-2 px-3 py-2 text-left disabled:opacity-40 ${selectedReferenceAttachmentId === asset.id ? "bg-stone-950 text-white" : ""}`}
+                                    className={`flex items-center justify-between gap-2 border-r border-[#ece6dc] px-3 py-2 text-left disabled:opacity-40 ${selectedReferenceAttachmentId === asset.id ? "bg-stone-950 text-white" : ""}`}
                                   >
                                     <span>Vorlage</span>
                                     <Eye className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRecolorSelection(asset.id)}
+                                    disabled={!["mockup", "reference", "image"].includes(asset.kind)}
+                                    className={`flex items-center justify-between gap-2 px-3 py-2 text-left disabled:opacity-40 ${selectedRecolorAttachmentIds.includes(asset.id) ? "bg-stone-950 text-white" : ""}`}
+                                  >
+                                    <span>Farbe</span>
+                                    {selectedRecolorAttachmentIds.includes(asset.id) ? <CheckSquare className="h-4 w-4" /> : <Palette className="h-4 w-4" />}
                                   </button>
                                 </div>
                                 {asset.proxyUrl && asset.kind !== "video" ? (

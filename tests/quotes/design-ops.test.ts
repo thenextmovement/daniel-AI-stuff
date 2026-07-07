@@ -48,7 +48,11 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Ausgangsbild/);
   assert.match(client, /setSelectedReferenceAttachmentId/);
   assert.match(client, /setSelectedReferenceAssetId/);
+  assert.match(client, /selectedRecolorAttachmentIds/);
+  assert.match(client, /toggleRecolorSelection/);
   assert.match(client, /Als Vorlage/);
+  assert.match(client, /Farbe ändern \+ an Karte/);
+  assert.match(client, /recolorSelectedAttachments/);
   assert.match(client, /Generiertes KI-Mockup wird als Image-Edit-Vorlage genutzt/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
@@ -129,6 +133,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /reference_attachments/);
   assert.match(service, /reference_assets/);
   assert.match(service, /referenceAssetsFromJob/);
+  assert.match(service, /jobCard/);
   assert.match(service, /downloadTrelloAttachment/);
   assert.match(service, /storage\/v1\/object/);
   assert.match(service, /prepareDesignRemovalPlan/);
