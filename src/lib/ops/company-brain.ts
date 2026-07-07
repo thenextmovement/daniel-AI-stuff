@@ -1512,7 +1512,7 @@ function hasEnv(...names: string[]) {
   return names.some((name) => Boolean(cleanText(process.env[name])));
 }
 
-type OutlookGraphConfig = {
+export type OutlookGraphConfig = {
   tenantId: string;
   clientId: string;
   clientSecret: string;
@@ -1526,7 +1526,7 @@ type OutlookGraphRecipient = {
   } | null;
 };
 
-type OutlookGraphMessage = {
+export type OutlookGraphMessage = {
   id?: string | null;
   subject?: string | null;
   bodyPreview?: string | null;
@@ -1541,6 +1541,14 @@ type OutlookGraphMessage = {
 function envValue(...names: string[]) {
   for (const name of names) {
     const value = cleanText(process.env[name]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function envValueFrom(env: Record<string, string | undefined>, ...names: string[]) {
+  for (const name of names) {
+    const value = cleanText(env[name]);
     if (value) return value;
   }
   return "";
@@ -1622,11 +1630,11 @@ async function fetchCoolifyLiveDiagnostic(): Promise<CompanyBrainDiagnostic | nu
   }
 }
 
-function outlookGraphConfig(): OutlookGraphConfig | null {
-  const tenantId = envValue("MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID");
-  const clientId = envValue("MICROSOFT_GRAPH_CLIENT_ID", "AZURE_CLIENT_ID");
-  const clientSecret = envValue("MICROSOFT_GRAPH_CLIENT_SECRET", "AZURE_CLIENT_SECRET");
-  const mailbox = envValue("MICROSOFT_GRAPH_MAILBOX", "OUTLOOK_SHARED_MAILBOX", "OUTLOOK_MAILBOX");
+export function resolveOutlookGraphConfig(env: Record<string, string | undefined> = process.env): OutlookGraphConfig | null {
+  const tenantId = envValueFrom(env, "MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID");
+  const clientId = envValueFrom(env, "MICROSOFT_GRAPH_CLIENT_ID", "AZURE_CLIENT_ID");
+  const clientSecret = envValueFrom(env, "MICROSOFT_GRAPH_CLIENT_SECRET", "AZURE_CLIENT_SECRET");
+  const mailbox = envValueFrom(env, "MICROSOFT_GRAPH_MAILBOX", "OUTLOOK_SHARED_MAILBOX", "OUTLOOK_MAILBOX");
   if (!tenantId || !clientId || !clientSecret || !mailbox) return null;
   return { tenantId, clientId, clientSecret, mailbox };
 }
@@ -1650,7 +1658,7 @@ async function getOutlookGraphAccessToken(config: OutlookGraphConfig) {
   return payload.access_token;
 }
 
-function graphSearchTerms(input: {
+export function buildOutlookGraphSearchTerms(input: {
   query: string;
   identifiers: CompanyBrainIdentifier[];
   records: CompanyBrainRecordSummary[];
@@ -1671,7 +1679,7 @@ function graphRecipients(recipients: OutlookGraphRecipient[] | null | undefined)
     .filter(Boolean);
 }
 
-function mapGraphMessageToEvidence(message: OutlookGraphMessage, term: string): CompanyBrainEvidence {
+export function mapOutlookGraphMessageToEvidence(message: OutlookGraphMessage, term: string): CompanyBrainEvidence {
   const from = cleanText(message.from?.emailAddress?.address || message.from?.emailAddress?.name).slice(0, 120);
   const to = graphRecipients(message.toRecipients);
   const direction: CompanyBrainEvidence["direction"] =
@@ -1705,9 +1713,9 @@ async function fetchOutlookGraphEvidence(input: {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
 }): Promise<{ evidence: CompanyBrainEvidence[]; diagnostic: CompanyBrainDiagnostic | null }> {
-  const config = outlookGraphConfig();
+  const config = resolveOutlookGraphConfig();
   if (!config) return { evidence: [], diagnostic: null };
-  const terms = graphSearchTerms(input);
+  const terms = buildOutlookGraphSearchTerms(input);
   if (!terms.length) {
     return {
       evidence: [],
@@ -1742,7 +1750,7 @@ async function fetchOutlookGraphEvidence(input: {
         const key = cleanText(message.id) || `${term}:${message.subject}:${message.receivedDateTime || message.sentDateTime}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        messages.push(mapGraphMessageToEvidence(message, term));
+        messages.push(mapOutlookGraphMessageToEvidence(message, term));
       }
     }
     return {

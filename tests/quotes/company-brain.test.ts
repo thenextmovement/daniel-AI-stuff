@@ -4,13 +4,16 @@ import {
   buildCompanyBrainAnswer,
   buildCompanyBrainCrossChecks,
   buildCompanyBrainRetryAssessment,
+  buildOutlookGraphSearchTerms,
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
   extractCompanyBrainIdentifiers,
   extractCompanyBrainSignals,
+  mapOutlookGraphMessageToEvidence,
   normalizeCompanyBrainQuery,
   resolveCoolifyApiConfig,
   resolveN8nApiConfig,
+  resolveOutlookGraphConfig,
   type CompanyBrainAutomationRun,
   type CompanyBrainEvidence,
   type CompanyBrainFinding,
@@ -156,6 +159,106 @@ test("company brain accepts an n8n API URL that already includes api v1", () => 
     apiBaseUrl: "https://n8n.example.com/api/v1",
     apiKey: "secret-key",
   });
+});
+
+test("company brain resolves Outlook Graph config without exposing secrets", () => {
+  const config = resolveOutlookGraphConfig({
+    AZURE_TENANT_ID: "tenant-123",
+    MICROSOFT_GRAPH_CLIENT_ID: "client-123",
+    MICROSOFT_GRAPH_CLIENT_SECRET: "secret-123",
+    OUTLOOK_SHARED_MAILBOX: "support@neontrip.de",
+  });
+
+  assert.deepEqual(config, {
+    tenantId: "tenant-123",
+    clientId: "client-123",
+    clientSecret: "secret-123",
+    mailbox: "support@neontrip.de",
+  });
+  assert.equal(resolveOutlookGraphConfig({ AZURE_TENANT_ID: "tenant-123" }), null);
+});
+
+test("company brain builds bounded Outlook Graph search terms", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-123",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: null,
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-1",
+    offerNumber: "AN-4798",
+    documentReference: "AN-4798",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: null,
+    updatedAt: null,
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 0,
+    selectedItemCount: 1,
+    designEvidenceCount: 0,
+    productHints: [],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+
+  const terms = buildOutlookGraphSearchTerms({
+    query: "Bitte AN-4798 und max@example.com prüfen",
+    identifiers: extractCompanyBrainIdentifiers("Bitte AN-4798 und max@example.com prüfen"),
+    records,
+    offers,
+  });
+
+  assert.deepEqual(terms.slice(0, 4), ["max@example.com", "AN-4798", "REQ-123", "Bitte AN-4798 und max@example.com prüfen"]);
+  assert.ok(terms.length <= 4);
+});
+
+test("company brain maps Outlook Graph messages to read-only evidence", () => {
+  const outbound = mapOutlookGraphMessageToEvidence({
+    id: "message-1",
+    subject: "Ihr Angebot AN-4798",
+    bodyPreview: "Hallo Max, hier ist das Angebot.",
+    sentDateTime: "2026-07-07T09:00:00.000Z",
+    webLink: "https://outlook.office.com/mail/message-1",
+    from: { emailAddress: { address: "support@neontrip.de" } },
+    toRecipients: [{ emailAddress: { address: "max@example.com" } }],
+  }, "AN-4798");
+  const inbound = mapOutlookGraphMessageToEvidence({
+    id: "message-2",
+    subject: "Re: Angebot",
+    bodyPreview: "Bitte in blau.",
+    receivedDateTime: "2026-07-07T10:00:00.000Z",
+    from: { emailAddress: { address: "max@example.com" } },
+    toRecipients: [{ emailAddress: { address: "support@neontrip.de" } }],
+  }, "max@example.com");
+
+  assert.equal(outbound.source, "outlook_graph_live");
+  assert.equal(outbound.direction, "outbound");
+  assert.equal(outbound.occurredAt, "2026-07-07T09:00:00.000Z");
+  assert.equal(outbound.href, "https://outlook.office.com/mail/message-1");
+  assert.equal(inbound.direction, "inbound");
 });
 
 test("company brain cross checks flag offer color and design mismatches", () => {

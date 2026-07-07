@@ -59,6 +59,19 @@ The production n8n workflow currently writes three audit-only paths directly int
 - AI customer copy hard-blocked after retry: `ai_customer_copy_blocked`
 - hard n8n workflow/API/Outlook failures from the error trigger: `workflow_hard_error`
 
+## Live Outlook / Graph setup
+
+Company Brain already has a read-only Microsoft Graph search path. It stays disabled until all runtime variables are present:
+
+```txt
+MICROSOFT_GRAPH_TENANT_ID=
+MICROSOFT_GRAPH_CLIENT_ID=
+MICROSOFT_GRAPH_CLIENT_SECRET=
+MICROSOFT_GRAPH_MAILBOX=support@neontrip.de
+```
+
+Supported aliases are `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `OUTLOOK_SHARED_MAILBOX`, and `OUTLOOK_MAILBOX`. The Azure app needs Microsoft Graph application permission `Mail.Read` for the mailbox. Prefer an Exchange application access policy so the app can read only the operational mailbox. Company Brain only performs read-only message search and maps results into `outlook_graph_live` evidence; it does not send mail through this path.
+
 ## Important MCP limitation found
 
 The incremental update MCP can set `onError`, but one earlier tested `updateNode` path left the existing top-level `continueOnFail` property in place. Using both fields made workflow validation fail. The workflow was repaired by removing `onError` again on the affected nodes and leaving `continueOnFail: false`.
