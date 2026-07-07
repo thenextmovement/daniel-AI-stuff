@@ -6,7 +6,6 @@ import {
   buildCompanyBrainRetryAssessment,
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
-  classifyAutomationIssueText,
   extractCompanyBrainIdentifiers,
   extractCompanyBrainSignals,
   normalizeCompanyBrainQuery,
@@ -17,6 +16,7 @@ import {
   type CompanyBrainRecordSummary,
   type CompanyBrainTrelloFailureDiagnosis,
 } from "@/lib/ops/company-brain";
+import { classifyAutomationIssueText } from "@/lib/ops/automation-issues";
 import type { TrelloFailureContext } from "@/lib/quotes/trello";
 
 function retryDiagnosis(): CompanyBrainTrelloFailureDiagnosis {

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { classifyAutomationIssueText, type AutomationIssueKey } from "@/lib/ops/automation-issues";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -100,6 +101,22 @@ function compactMetadata(input: Record<string, unknown> | null | undefined) {
   return output;
 }
 
+function issueRetrySafety(key: AutomationIssueKey): WorkflowAuditRetrySafety {
+  if (key === "customer_email_missing" || key === "customer_email_invalid" || key === "delivery_failure" || key === "duplicate_guard") {
+    return "blocked";
+  }
+  return "unknown";
+}
+
+function metadataText(metadata: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+  }
+  return null;
+}
+
 function hashKey(value: string) {
   return createHash("sha256").update(value).digest("hex").slice(0, 40);
 }
@@ -138,10 +155,19 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
 
   const failedNode = nullableText(input.failedNode, 240);
   const errorMessage = nullableText(input.errorMessage, MAX_LONG_TEXT);
-  const retrySafety = normalizeRetrySafety(input.retrySafety);
-  const summary = nullableText(input.summary, 1000);
+  const explicitRetrySafety = normalizeRetrySafety(input.retrySafety);
+  const compactedMetadata = compactMetadata(input.metadata);
+  const rawSummary = nullableText(input.summary, 1000);
+  const issueHint = classifyAutomationIssueText([
+    errorMessage,
+    rawSummary,
+    metadataText(compactedMetadata, ["automation_issue_key", "issue_key", "error_code", "error_type"]),
+    metadataText(compactedMetadata, ["error_message", "error", "message", "raw_error", "last_error_message"]),
+  ].filter(Boolean).join(" "));
+  const retrySafety = explicitRetrySafety !== "unknown" ? explicitRetrySafety : issueRetrySafety(issueHint.key);
+  const summary = rawSummary || (issueHint.key !== "unknown" ? issueHint.rootCause : null);
   const metadata = {
-    ...compactMetadata(input.metadata),
+    ...compactedMetadata,
     request_id: requestId,
     trello_card_id: trelloCardId,
     offer_id: offerId,
@@ -155,6 +181,12 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
     failed_node: failedNode,
     retry_safety: retrySafety,
     summary,
+    automation_issue_key: issueHint.key !== "unknown" ? issueHint.key : null,
+    automation_issue_root_cause: issueHint.key !== "unknown" ? issueHint.rootCause : null,
+    automation_issue_recommended_fix: issueHint.key !== "unknown" ? issueHint.recommendedFix : null,
+    automation_issue_safe_fix: issueHint.key !== "unknown" ? issueHint.safeFix : null,
+    automation_issue_retry_safety: issueHint.key !== "unknown" ? issueHint.retrySafety : null,
+    automation_issue_contract_version: 1,
     audit_contract_version: 1,
   };
   const explicitKey = nullableText((input.metadata || {}).audit_event_key, 300);

@@ -29,8 +29,31 @@ test("workflow audit normalizes n8n offer failure events", () => {
   assert.equal(event.metadata.execution_id, "12345");
   assert.equal(event.metadata.failed_node, "Create Offer");
   assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.automation_issue_key, "customer_email_missing");
+  assert.match(String(event.metadata.automation_issue_root_cause), /keine belastbare Kunden-E-Mail-Adresse/);
+  assert.match(String(event.metadata.automation_issue_recommended_fix), /Kunden-E-Mail/);
   assert.equal(event.metadata.idempotency_key, "offer-send:trello:FYXcIQ9K:v1");
   assert.equal(event.metadata.audit_contract_version, 1);
+});
+
+test("workflow audit derives structured issue metadata from raw n8n invalid email errors", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflowName: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "failed",
+    trelloCardId: "BiP93WuG",
+    executionId: "2770420",
+    failedNode: "Offer Send",
+    errorMessage: "Offer send failed: invalid customer_email praxis@kurswechsel",
+  });
+
+  assert.equal(event.documentId, "trello:BiP93WuG");
+  assert.equal(event.metadata.automation_issue_key, "customer_email_invalid");
+  assert.match(String(event.metadata.automation_issue_root_cause), /praxis@kurswechsel/);
+  assert.match(String(event.metadata.automation_issue_recommended_fix), /Korrekte Kunden-E-Mail/);
+  assert.match(String(event.metadata.automation_issue_retry_safety), /Kein Retry/);
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.summary, event.metadata.automation_issue_root_cause);
 });
 
 test("workflow audit creates stable event keys for duplicate n8n callbacks", () => {
