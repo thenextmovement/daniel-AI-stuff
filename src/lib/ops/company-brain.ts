@@ -1118,6 +1118,8 @@ type WorkflowAuditLogRow = {
 type QuoteEmailLogEvidenceRow = {
   id?: string | number | null;
   unique_id?: string | null;
+  request_id?: string | null;
+  offer_id?: string | null;
   card_id?: string | null;
   card_url?: string | null;
   recipient_email?: string | null;
@@ -1127,6 +1129,8 @@ type QuoteEmailLogEvidenceRow = {
   status?: string | null;
   sent_at?: string | null;
   created_at?: string | null;
+  source_event_id?: string | null;
+  idempotency_key?: string | null;
 };
 
 type N8nExecutionResponse = {
@@ -1350,6 +1354,8 @@ async function fetchAutomationRuns(
 
 function mapQuoteEmailEvidence(row: QuoteEmailLogEvidenceRow): CompanyBrainEvidence {
   const offerNumber = cleanText(row.angebotsnummer);
+  const requestId = cleanText(row.request_id);
+  const offerId = cleanText(row.offer_id);
   const recipient = cleanText(row.recipient_email);
   const subject = cleanText(row.subject);
   const status = cleanText(row.status);
@@ -1361,6 +1367,8 @@ function mapQuoteEmailEvidence(row: QuoteEmailLogEvidenceRow): CompanyBrainEvide
     detail: [
       recipient ? `Empfänger: ${recipient}` : null,
       offerNumber ? `Angebot: ${offerNumber}` : null,
+      requestId ? `Request: ${requestId}` : null,
+      offerId ? `Offer-ID: ${offerId}` : null,
       status ? `Status: ${status}` : null,
     ].filter(Boolean).join(" · ") || null,
     occurredAt,
@@ -1376,27 +1384,54 @@ async function fetchQuoteEmailEvidence(
   extraTrelloCardIds: string[] = [],
 ): Promise<CompanyBrainEvidence[]> {
   const offerNumbers = uniqueStrings(offers.map((offer) => offer.offerNumber).filter(Boolean)).slice(0, 5);
+  const offerIds = uniqueStrings(offers.map((offer) => offer.offerId).filter(Boolean)).slice(0, 5);
+  const requestIds = uniqueStrings(records.map((record) => record.requestId).filter(Boolean)).slice(0, 5);
   const trelloCardIds = uniqueStrings([
     ...extraTrelloCardIds,
     ...records.map((record) => record.trelloCardId),
     ...offers.map((offer) => offer.trelloCardId),
   ]).slice(0, 5);
   const filters = [
+    ...requestIds.map((requestId) => `request_id.eq.${encodeURIComponent(requestId)}`),
+    ...offerIds.map((offerId) => `offer_id.eq.${encodeURIComponent(offerId)}`),
     ...offerNumbers.map((offerNumber) => `angebotsnummer.eq.${encodeURIComponent(offerNumber)}`),
     ...trelloCardIds.map((cardId) => `card_id.eq.${encodeURIComponent(cardId)}`),
   ];
   if (!filters.length) return [];
+  const query = {
+    or: `(${filters.join(",")})`,
+    order: "created_at.desc",
+    limit: 12,
+  };
   try {
     const rows = await supabaseRequest<QuoteEmailLogEvidenceRow[]>("quote_email_log", undefined, {
-      select: "id,unique_id,card_id,card_url,recipient_email,recipient_name,angebotsnummer,subject,status,sent_at,created_at",
-      or: `(${filters.join(",")})`,
-      order: "created_at.desc",
-      limit: 12,
+      select: "id,unique_id,request_id,offer_id,card_id,card_url,recipient_email,recipient_name,angebotsnummer,subject,status,sent_at,created_at,source_event_id,idempotency_key",
+      ...query,
     });
     return rows.map(mapQuoteEmailEvidence);
   } catch (error) {
-    console.warn("company brain quote_email_log evidence unavailable", error);
-    return [];
+    const errorText = `${error instanceof Error ? error.message : String(error)} ${error instanceof SupabaseRestError ? String(error.details || "") : ""}`;
+    if (!/(request_id|offer_id|source_event_id|idempotency_key)/i.test(errorText)) {
+      console.warn("company brain quote_email_log evidence unavailable", error);
+      return [];
+    }
+    try {
+      const legacyFilters = [
+        ...offerNumbers.map((offerNumber) => `angebotsnummer.eq.${encodeURIComponent(offerNumber)}`),
+        ...trelloCardIds.map((cardId) => `card_id.eq.${encodeURIComponent(cardId)}`),
+      ];
+      if (!legacyFilters.length) return [];
+      const rows = await supabaseRequest<QuoteEmailLogEvidenceRow[]>("quote_email_log", undefined, {
+        select: "id,unique_id,card_id,card_url,recipient_email,recipient_name,angebotsnummer,subject,status,sent_at,created_at",
+        or: `(${legacyFilters.join(",")})`,
+        order: "created_at.desc",
+        limit: 12,
+      });
+      return rows.map(mapQuoteEmailEvidence);
+    } catch (legacyError) {
+      console.warn("company brain quote_email_log evidence unavailable", legacyError);
+      return [];
+    }
   }
 }
 
