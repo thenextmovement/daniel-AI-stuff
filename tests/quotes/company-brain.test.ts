@@ -9,6 +9,7 @@ import {
   extractCompanyBrainIdentifiers,
   extractCompanyBrainSignals,
   normalizeCompanyBrainQuery,
+  resolveCoolifyApiConfig,
   type CompanyBrainAutomationRun,
   type CompanyBrainEvidence,
   type CompanyBrainFinding,
@@ -79,6 +80,30 @@ test("company brain classifies invalid automation recipient email", () => {
   assert.match(hint.rootCause, /praxis@kurswechsel/);
   assert.match(hint.recommendedFix, /Kunden-E-Mail/);
   assert.match(hint.retrySafety, /Kein Retry/);
+});
+
+test("company brain normalizes Coolify API config", () => {
+  const config = resolveCoolifyApiConfig({
+    COOLIFY_URL: "https://coolify.example.com/",
+    COOLIFY_API_TOKEN: "secret-token",
+    COOLIFY_APPLICATION_UUID: "app-123",
+  });
+
+  assert.deepEqual(config, {
+    apiBaseUrl: "https://coolify.example.com/api/v1",
+    apiToken: "secret-token",
+    applicationUuid: "app-123",
+  });
+});
+
+test("company brain accepts a Coolify API base URL that already includes api v1", () => {
+  const config = resolveCoolifyApiConfig({
+    COOLIFY_API_URL: "https://coolify.example.com/api/v1",
+    COOLIFY_API_TOKEN: "secret-token",
+  });
+
+  assert.equal(config?.apiBaseUrl, "https://coolify.example.com/api/v1");
+  assert.equal(config?.applicationUuid, null);
 });
 
 test("company brain cross checks flag offer color and design mismatches", () => {

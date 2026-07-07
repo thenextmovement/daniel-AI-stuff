@@ -110,7 +110,7 @@ export type CompanyBrainOfferSummary = {
 };
 
 export type CompanyBrainDiagnostic = {
-  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness" | "trello_live" | "outlook_live";
+  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness" | "trello_live" | "outlook_live" | "coolify_live";
   ok: boolean;
   label: string;
   detail: string | null;
@@ -1539,6 +1539,82 @@ function envValue(...names: string[]) {
   return "";
 }
 
+type CoolifyApiConfig = {
+  apiBaseUrl: string;
+  apiToken: string;
+  applicationUuid: string | null;
+};
+
+export function resolveCoolifyApiConfig(env: NodeJS.ProcessEnv = process.env): CoolifyApiConfig | null {
+  const rawBaseUrl = cleanText(env.COOLIFY_API_URL || env.COOLIFY_URL || "").replace(/\/+$/, "");
+  const apiToken = cleanText(env.COOLIFY_API_TOKEN || "");
+  if (!rawBaseUrl || !apiToken) return null;
+  const apiBaseUrl = /\/api\/v1$/i.test(rawBaseUrl) ? rawBaseUrl : `${rawBaseUrl}/api/v1`;
+  return {
+    apiBaseUrl,
+    apiToken,
+    applicationUuid: cleanText(env.COOLIFY_APPLICATION_UUID || env.COOLIFY_APP_UUID || env.COOLIFY_RESOURCE_UUID || "") || null,
+  };
+}
+
+async function fetchCoolifyJson(config: CoolifyApiConfig, path: string) {
+  const response = await fetch(`${config.apiBaseUrl}${path}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${config.apiToken}`,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) {
+    throw new Error(`Coolify API antwortete mit ${response.status}.`);
+  }
+  return response.json() as Promise<unknown>;
+}
+
+function arrayCount(value: unknown) {
+  if (Array.isArray(value)) return value.length;
+  if (value && typeof value === "object" && Array.isArray((value as { data?: unknown }).data)) return (value as { data: unknown[] }).data.length;
+  return value ? 1 : 0;
+}
+
+async function fetchCoolifyLiveDiagnostic(): Promise<CompanyBrainDiagnostic | null> {
+  const config = resolveCoolifyApiConfig();
+  if (!config) return null;
+  try {
+    const teams = await fetchCoolifyJson(config, "/teams");
+    let appChecked = false;
+    if (config.applicationUuid) {
+      try {
+        await fetchCoolifyJson(config, `/applications/${encodeURIComponent(config.applicationUuid)}`);
+        appChecked = true;
+      } catch {
+        appChecked = false;
+      }
+    }
+    return {
+      source: "coolify_live",
+      ok: true,
+      label: "Coolify Live",
+      detail: appChecked
+        ? "Coolify API read-only erreichbar; App-UUID wurde gefunden."
+        : config.applicationUuid
+          ? "Coolify API read-only erreichbar; App-UUID konnte nicht eindeutig gelesen werden."
+          : "Coolify API read-only erreichbar; keine App-UUID für Detailcheck gesetzt.",
+      count: arrayCount(teams),
+    };
+  } catch (error) {
+    return {
+      source: "coolify_live",
+      ok: false,
+      label: "Coolify Live",
+      detail: errorMessage(error),
+      count: 0,
+    };
+  }
+}
+
 function outlookGraphConfig(): OutlookGraphConfig | null {
   const tenantId = envValue("MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID");
   const clientId = envValue("MICROSOFT_GRAPH_CLIENT_ID", "AZURE_CLIENT_ID");
@@ -1734,7 +1810,7 @@ function buildIntegrationReadiness(): CompanyBrainIntegrationReadiness[] {
         : coolifyDeploy
           ? "Deploy-Webhook ist konfiguriert; Runtime-API-Health ist nicht vollständig erkannt."
           : "Kein Coolify Runtime-API-Zugriff im App-Env erkannt.",
-      detail: "GitHub Actions triggert Deploys über Secrets. Die App zeigt keine Secret-Werte und führt keine Deploy-Aktion aus.",
+      detail: "Read-only Diagnose braucht COOLIFY_URL/COOLIFY_API_URL plus COOLIFY_API_TOKEN; optional COOLIFY_APPLICATION_UUID für App-Details. Die App zeigt keine Secret-Werte und führt keine Deploy-Aktion aus.",
     },
   ];
 }
@@ -3577,6 +3653,8 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     detail: integrationReadiness.map((entry) => `${entry.label}: ${entry.status}`).join(" · "),
     count: integrationReadiness.filter((entry) => entry.status === "configured").length,
   });
+  const coolifyLive = await fetchCoolifyLiveDiagnostic();
+  if (coolifyLive) diagnostics.push(coolifyLive);
   const crossChecks = buildCompanyBrainCrossChecks({ records: recordSummaries, offers: offerSummaries, evidence, question });
   const conflicts = buildConflicts(crossChecks);
   const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
