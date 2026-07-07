@@ -53,6 +53,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /selectReferenceAssetForEdit/);
   assert.match(client, /selectedRecolorAttachmentIds/);
   assert.match(client, /selectedColorAttachmentIds/);
+  assert.match(client, /new Set\(\[\.\.\.explicit, \.\.\.bulk\]\)/);
   assert.match(client, /toggleRecolorSelection/);
   assert.match(client, /selectAttachmentForRecolor/);
   assert.match(client, /createPromptDraft/);
@@ -143,6 +144,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /https:\/\/api\.openai\.com\/v1\/images\/generations/);
   assert.match(service, /https:\/\/api\.openai\.com\/v1\/images\/edits/);
   assert.match(service, /input_fidelity/);
+  assert.match(service, /promptForImageEdit/);
+  assert.match(service, /referenceImageContentType/);
+  assert.match(service, /unterstütztes Bildformat fuer Image-Edit/);
   assert.match(service, /reference_attachments/);
   assert.match(service, /reference_assets/);
   assert.match(service, /referenceAssetsFromJob/);
@@ -162,7 +166,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /listDesignJobs/);
   assert.match(service, /listQueuedDesignJobsForWorker/);
   assert.match(service, /applyDesignWorkerCallback/);
-  assert.match(service, /Prompt basiert/);
+  assert.doesNotMatch(service, /Prompt basiert nur auf Trello-Daten/);
   assert.match(service, /removalEligible: true/);
   assert.match(service, /prepared_without_delete: true/);
   assert.match(service, /confirmText/);

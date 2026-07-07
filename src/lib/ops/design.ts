@@ -535,7 +535,6 @@ function buildReconstructedTrelloPrompt(record: CustomerSearchResult | null, pri
 function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: DesignCardSummary | null): DesignPromptPreview {
   const request = record?.request || null;
   const warnings: string[] = [];
-  if (!record) warnings.push("Kein Customer Record gefunden. Prompt basiert nur auf Trello-Daten.");
   if (!primaryCard) warnings.push("Keine Trello-Karte geladen. Prompt ist noch nicht generierbar.");
   if (primaryCard?.promptBlocks.imagePrompt) {
     if (!isQuoteReadyLikeList(primaryCard.listName)) {
@@ -553,7 +552,6 @@ function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: De
 
   const reconstructedPrompt = buildReconstructedTrelloPrompt(record, primaryCard);
   if (reconstructedPrompt) {
-    warnings.push("Kein originaler Quote-Ready KI-Prompt gefunden. Es wurde ein editierbarer Rekonstruktionsprompt aus Trello-Karte/Fallkontext erstellt.");
     return {
       title: request?.title || primaryCard?.cardName || "Design Mockup Prompt",
       prompt: reconstructedPrompt,
@@ -1719,6 +1717,16 @@ function referenceAssetsFromJob(job: DesignJobRow): DesignReferenceAsset[] {
 }
 
 function promptForImageEdit(promptText: string) {
+  const lightColorMatch = promptText.match(/Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ([^\n.]+)/i);
+  const lightColor = trimNullable(lightColorMatch?.[1]);
+  if (lightColor) {
+    return [
+      `Ändere in dem bereitgestellten Bild ausschließlich die sichtbare Leuchtfarbe des vorhandenen Schildes zu ${lightColor}.`,
+      "Erhalte exakt dasselbe Motiv: Text, Logo, Buchstabenform, Position, Perspektive, Hintergrund, Montage, Größe, Material, Bildausschnitt und Kamerawinkel unverändert.",
+      "Keine neue Szene, kein neues Schild, keine neuen Wörter, keine zusätzlichen Logos, keine Dekoration und keine Änderungen an Helligkeit oder Umgebung außer der Lichtfarbe.",
+    ].join("\n");
+  }
+
   return [
     "Bearbeite das bereitgestellte Ausgangsbild. Erhalte Layout, Perspektive, Hintergrund, Produktform, Text, Logo-/Schriftanmutung, Materialwirkung und Komposition so weit wie technisch möglich.",
     "Nimm nur die im Prompt beschriebene Änderung vor. Bei Leuchtfarbenänderungen darf ausschließlich die sichtbare Licht-/LED-Farbe verändert werden.",
@@ -1734,25 +1742,41 @@ function safeImageFilename(name: string, contentType: string) {
   return `${base}.${extension}`;
 }
 
+function referenceImageContentType(contentType: string | null | undefined, name: string) {
+  const normalized = String(contentType || "").split(";")[0]?.trim().toLowerCase();
+  if (/^image\/png$/i.test(normalized)) return "image/png";
+  if (/^image\/jpe?g$/i.test(normalized)) return "image/jpeg";
+  if (/^image\/webp$/i.test(normalized)) return "image/webp";
+  if (/\.png$/i.test(name)) return "image/png";
+  if (/\.jpe?g$/i.test(name)) return "image/jpeg";
+  if (/\.webp$/i.test(name)) return "image/webp";
+  return null;
+}
+
 async function downloadDesignReferenceAttachments(job: DesignJobRow) {
   const references = referenceAttachmentsFromJob(job);
   const files = [];
   for (const reference of references) {
     const attachment = await getTrelloAttachment(reference.cardId, reference.attachmentId);
     const file = await downloadTrelloAttachment(attachment);
-    if (!/^image\/(png|jpe?g|webp)$/i.test(file.contentType)) continue;
+    const contentType = referenceImageContentType(file.contentType, reference.name);
+    if (!contentType) {
+      throw new QuoteValidationError(`Referenzbild ${reference.name} ist kein unterstütztes Bildformat fuer Image-Edit.`);
+    }
     files.push({
       reference,
       body: file.body,
-      contentType: file.contentType,
-      filename: safeImageFilename(reference.name, file.contentType),
+      contentType,
+      filename: safeImageFilename(reference.name, contentType),
     });
   }
   for (const reference of referenceAssetsFromJob(job)) {
     const response = await fetch(reference.publicUrl, { cache: "no-store" });
     if (!response.ok) throw new QuoteValidationError(`Generiertes Referenzbild konnte nicht geladen werden (${response.status}).`);
-    const contentType = response.headers.get("content-type") || reference.mimeType || "image/png";
-    if (!/^image\/(png|jpe?g|webp)$/i.test(contentType)) continue;
+    const contentType = referenceImageContentType(response.headers.get("content-type") || reference.mimeType, reference.name);
+    if (!contentType) {
+      throw new QuoteValidationError(`Generiertes Referenzbild ${reference.name} ist kein unterstütztes Bildformat fuer Image-Edit.`);
+    }
     files.push({
       reference,
       body: Buffer.from(await response.arrayBuffer()),

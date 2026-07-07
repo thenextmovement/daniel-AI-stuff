@@ -336,8 +336,8 @@ export function DesignOpsClient({
   }, [workspace]);
   const selectedColorAttachmentIds = useMemo(() => {
     const explicit = selectedRecolorAttachmentIds.filter((attachmentId) => colorSelectableAttachmentIds.has(attachmentId));
-    if (explicit.length) return explicit;
-    return selectedAttachmentIds.filter((attachmentId) => colorSelectableAttachmentIds.has(attachmentId));
+    const bulk = selectedAttachmentIds.filter((attachmentId) => colorSelectableAttachmentIds.has(attachmentId));
+    return Array.from(new Set([...explicit, ...bulk]));
   }, [colorSelectableAttachmentIds, selectedAttachmentIds, selectedRecolorAttachmentIds]);
 
   function applyPromptControls(nextPreset: MockupPresetKey, nextLightColorPreset: LightColorPresetKey, nextCustomLightColor = customLightColor) {
