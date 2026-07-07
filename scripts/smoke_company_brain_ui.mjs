@@ -280,6 +280,11 @@ async function runViewport(browser, target, viewport, label) {
   await page.getByLabel(/Fall, E-Mail, Angebotsnummer, Trello-ID/).fill("https://trello.com/c/BiP93WuG/smoke");
   await page.getByRole("button", { name: "Suchen" }).click();
   await waitForBodyText(page, `${label}: decision summary`, [
+    "Sofortbild",
+    "Lösbar nach Freigabe",
+    "Ursache in Klartext",
+    "Erlaubter nächster Schritt",
+    "Direktaktion",
     "Entscheidung",
     "Kann nach Freigabe gelöst werden",
     "Guarded Fix",

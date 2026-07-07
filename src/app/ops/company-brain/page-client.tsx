@@ -431,6 +431,50 @@ function buildCaseRoute(result: CompanyBrainResolveResult) {
   ];
 }
 
+function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: CompanyBrainActionProposalView[]) {
+  const primaryAction = readyActions[0] || null;
+  const criticalConflict = result.conflicts.find((finding) => finding.severity === "critical") || null;
+  const firstGap = result.gaps.find((finding) => finding.severity !== "info") || null;
+  const firstBlocker = result.retryAssessment.blockers[0] || result.trelloFailureDiagnosis.blockedFixes[0] || criticalConflict?.detail || firstGap?.detail || null;
+  const sourceOfTruth = buildSourceOfTruthStatus(result);
+  const canSend = result.retryAssessment.canSendWithConfirmation;
+  const needsFix = result.retryAssessment.status === "needs_fix";
+  const blocked = result.retryAssessment.status === "blocked" || Boolean(criticalConflict);
+  const title = canSend
+    ? "Lösbar nach Freigabe"
+    : needsFix
+      ? "Datenfix nötig"
+      : blocked
+        ? "Nicht automatisch lösen"
+        : "Prüfung nötig";
+  const subtitle = canSend
+    ? "Company Brain hat genug Belege für eine guarded Aktion. Der Server prüft direkt vor Ausführung erneut."
+    : needsFix
+      ? "Der Fall ist erklärbar, aber ein Datenpunkt muss zuerst sauber korrigiert werden."
+      : blocked
+        ? "Es gibt harte Blocker. Keine Kundenmail und kein Retry aus Company Brain."
+        : "Die Diagnose ist noch nicht beweisfest genug für eine ausführende Aktion.";
+  const cause = result.trelloFailureDiagnosis.requested && result.trelloFailureDiagnosis.rootCauseKey !== "not_requested"
+    ? result.trelloFailureDiagnosis.rootCause
+    : result.problemResolution.rootCause;
+  const nextStep = primaryAction
+    ? primaryAction.label
+    : result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution || result.nextActions[0] || "Fall mit konkreter Frage neu prüfen";
+
+  return {
+    tone: canSend ? "success" as const : needsFix ? "warning" as const : blocked ? "danger" as const : "neutral" as const,
+    title,
+    subtitle,
+    cause,
+    nextStep,
+    firstBlocker,
+    primaryAction,
+    evidenceLine: `${result.evidenceScore.score}/100 · ${evidenceScoreLabel(result.evidenceScore.status)}`,
+    sourceLine: sourceOfTruth.title,
+    customerContactLine: canSend ? "Nur guarded nach Freigabe" : "Kein Kundenkontakt",
+  };
+}
+
 function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
   const hasRecord = result.records.length > 0;
   const hasOffer = result.offers.length > 0;
@@ -627,6 +671,7 @@ export function OpsCompanyBrainClient({
         fixHistory: [],
         automationHistory: [],
         decision: null,
+        brief: null,
         caseRoute: [],
         sourceOfTruth: null,
         primaryRun: null,
@@ -676,6 +721,7 @@ export function OpsCompanyBrainClient({
       fixHistory,
       automationHistory,
       decision: buildOperatorDecision(result),
+      brief: buildOperatorBrief(result, readyActions),
       caseRoute: buildCaseRoute(result),
       sourceOfTruth: buildSourceOfTruthStatus(result),
       primaryRun,
@@ -1077,6 +1123,74 @@ export function OpsCompanyBrainClient({
                   </div>
                 </div>
               </div>
+
+              {operatorView.brief ? (
+                <div className="border-b border-stone-200 bg-white px-5 py-5 md:px-6">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 max-w-3xl">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Sofortbild</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <h3 className="text-2xl font-semibold leading-tight text-stone-950">{operatorView.brief.title}</h3>
+                        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${operatorDecisionClass(operatorView.brief.tone)}`}>
+                          {operatorView.brief.customerContactLine}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-stone-600">{operatorView.brief.subtitle}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">
+                        {operatorView.brief.evidenceLine}
+                      </span>
+                      <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">
+                        {operatorView.brief.sourceLine}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(280px,0.82fr)]">
+                    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Ursache in Klartext</p>
+                      <p className="mt-2 text-sm font-medium leading-6 text-stone-900">{operatorView.brief.cause}</p>
+                    </div>
+                    <div className={`rounded-2xl border px-4 py-3 ${operatorDecisionClass(operatorView.brief.tone)}`}>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Erlaubter nächster Schritt</p>
+                      <p className="mt-2 text-sm font-semibold leading-6">{operatorView.brief.nextStep}</p>
+                      {operatorView.brief.firstBlocker ? (
+                        <p className="mt-2 text-xs leading-5 opacity-80">Blocker: {operatorView.brief.firstBlocker}</p>
+                      ) : null}
+                    </div>
+                    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Direktaktion</p>
+                      {operatorView.brief.primaryAction ? (
+                        <>
+                          <p className="mt-2 text-sm font-semibold leading-5 text-stone-950">{operatorView.brief.primaryAction.label}</p>
+                          <p className="mt-1 text-xs leading-5 text-stone-500">{shortText(operatorView.brief.primaryAction.summary, 120)}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void copyActionProposal(operatorView.brief?.primaryAction?.key || "")}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 text-[11px] font-semibold text-stone-700 transition hover:border-stone-950"
+                            >
+                              <ClipboardCopy className="h-3.5 w-3.5" />
+                              Paket
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => operatorView.brief?.primaryAction ? startActionProposal(operatorView.brief.primaryAction.key) : undefined}
+                              disabled={!operatorView.brief.primaryAction.enabled || actionLoadingKey === operatorView.brief.primaryAction.key}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-stone-950 px-2.5 text-[11px] font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                            >
+                              Freigeben
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-sm leading-6 text-stone-600">Keine ausführbare Aktion. Erst offene Quellen oder Blocker klären.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="border-b border-stone-200 bg-stone-50 px-5 py-5 md:px-6">
                 <div className="flex flex-wrap items-end justify-between gap-3">
