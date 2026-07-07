@@ -371,9 +371,24 @@ export function OpsCompanyBrainClient({
       "save_case_note",
       "prepare_email_correction",
       "correct_customer_email",
+      "post_trello_status_comment",
       "prepare_offer_retry",
       "guarded_offer_resend",
     ].includes(actionKey);
+  }
+
+  function buildTrelloStatusComment() {
+    if (!result) return null;
+    return [
+      "NEONTRIP Company Brain - interne Fallprüfung",
+      "",
+      `Status: ${result.retryAssessment.label}`,
+      `Ursache: ${result.trelloFailureDiagnosis.rootCause || result.problemResolution.rootCause}`,
+      `Nächster sicherer Schritt: ${result.retryAssessment.safeFixes[0] || result.trelloFailureDiagnosis.recommendedFix || result.problemResolution.recommendedResolution}`,
+      result.retryAssessment.blockers.length ? `Blocker: ${result.retryAssessment.blockers.slice(0, 3).join(" | ")}` : null,
+      "",
+      "Hinweis: Trello ist nur Projektion. Source of Truth bleibt Kundenakte/Angebot/Outlook/Audit. Kein Kundenkontakt durch diesen Kommentar.",
+    ].filter((line): line is string => Boolean(line)).join("\n");
   }
 
   async function executeActionProposal(actionKey: string) {
@@ -423,6 +438,7 @@ export function OpsCompanyBrainClient({
           subject: DEFAULT_OFFER_RETRY_SUBJECT,
           message: DEFAULT_OFFER_RETRY_MESSAGE,
           newCustomerEmail: newCustomerEmail?.trim() || null,
+          trelloCommentText: actionKey === "post_trello_status_comment" ? buildTrelloStatusComment() : null,
           confirmed: true,
           confirmationText: confirmation,
         }),
@@ -438,6 +454,7 @@ export function OpsCompanyBrainClient({
         duplicate?: boolean;
         blockers?: string[];
         changedTables?: Record<string, number>;
+        trelloComment?: { id?: string } | null;
       } | null;
       if (!response.ok || !payload?.ok) {
         setActionResultMessage(payload?.blockers?.length ? payload.blockers.join(" ") : formatApiError(payload));
@@ -446,6 +463,7 @@ export function OpsCompanyBrainClient({
       const created = [
         payload.sent ? (payload.duplicate ? "Versand bereits idempotent vorhanden" : "Angebot erneut gesendet") : null,
         payload.changedTables ? "Kunden-E-Mail aktualisiert" : null,
+        payload.trelloComment?.id ? "Trello-Kommentar geschrieben" : null,
         payload.task?.id ? `Aufgabe ${payload.task.id}` : null,
         payload.note?.id ? `Notiz ${payload.note.id}` : null,
         payload.specialCase ? "Problemfall-Audit" : null,

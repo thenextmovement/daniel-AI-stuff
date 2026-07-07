@@ -229,6 +229,7 @@ export type CompanyBrainActionProposal = {
     | "collect_design_assets"
     | "prepare_email_correction"
     | "correct_customer_email"
+    | "post_trello_status_comment"
     | "prepare_offer_retry"
     | "guarded_offer_resend";
   label: string;
@@ -2680,6 +2681,7 @@ function buildActionProposals(input: {
   integrationReadiness: CompanyBrainIntegrationReadiness[];
   assets: CompanyBrainAsset[];
   retryAssessment: CompanyBrainRetryAssessment;
+  trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
 }): CompanyBrainActionProposal[] {
   const primaryRecord = input.records[0] || null;
   const primaryOffer = input.offers[0] || null;
@@ -2687,6 +2689,7 @@ function buildActionProposals(input: {
   const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
+  const trelloCardId = input.trelloFailureDiagnosis.card?.id || primaryRecord?.trelloCardId || primaryOffer?.trelloCardId || null;
 
   const actions: CompanyBrainActionProposal[] = [
     {
@@ -2833,6 +2836,23 @@ function buildActionProposals(input: {
         `Empfänger: ${retry.recipientEmail || "unbekannt"}`,
         `Idempotency: ${retry.idempotencyKey || "noch nicht möglich"}`,
         ...retry.blockers.slice(0, 3).map((entry) => `Blocker: ${entry}`),
+      ],
+    },
+    {
+      key: "post_trello_status_comment",
+      label: "Trello-Status kommentieren",
+      type: "prepared_task",
+      riskLevel: "low",
+      approvalRequired: true,
+      enabled: Boolean(trelloCardId),
+      summary: "Schreibt eine kurze interne Diagnose auf die Trello-Karte. Trello bleibt Projektion, kein Versand und keine Datenkorrektur.",
+      confirmationText: "Nur Statuskommentar schreiben; keine Karte als Source of Truth verwenden.",
+      href: input.trelloFailureDiagnosis.card?.url || primaryRecord?.trelloCardUrl || null,
+      payloadPreview: [
+        `Karte: ${trelloCardId || "unbekannt"}`,
+        `Status: ${retry.label}`,
+        `Ursache: ${input.trelloFailureDiagnosis.rootCause || input.problemResolution.rootCause}`,
+        `Nächster Schritt: ${retry.safeFixes[0] || input.trelloFailureDiagnosis.recommendedFix}`,
       ],
     },
     {
@@ -3376,6 +3396,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     integrationReadiness,
     assets,
     retryAssessment,
+    trelloFailureDiagnosis,
   });
   const dossier = buildDossier({
     generatedAt,

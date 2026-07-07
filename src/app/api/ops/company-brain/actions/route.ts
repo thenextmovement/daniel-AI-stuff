@@ -22,6 +22,7 @@ import {
   type CompanyBrainProblemType,
 } from "@/lib/ops/company-brain";
 import { recordWorkflowAuditEvent } from "@/lib/ops/workflow-audit";
+import { addTrelloCardComment } from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -33,6 +34,7 @@ type CompanyBrainActionKey =
   | "save_case_note"
   | "prepare_email_correction"
   | "correct_customer_email"
+  | "post_trello_status_comment"
   | "prepare_offer_retry"
   | "guarded_offer_resend";
 
@@ -58,6 +60,7 @@ type CompanyBrainActionInput = {
   message?: string | null;
   idempotencyKey?: string | null;
   newCustomerEmail?: string | null;
+  trelloCommentText?: string | null;
 };
 
 type QuoteEmailGuardRow = {
@@ -135,6 +138,10 @@ function cleanText(value: unknown, maxLength = 1000) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error || "unknown_error");
+}
+
 function normalizeActionKey(value: unknown): CompanyBrainActionKey {
   if (
     value === "open_problem_case" ||
@@ -142,6 +149,7 @@ function normalizeActionKey(value: unknown): CompanyBrainActionKey {
     value === "save_case_note" ||
     value === "prepare_email_correction" ||
     value === "correct_customer_email" ||
+    value === "post_trello_status_comment" ||
     value === "prepare_offer_retry" ||
     value === "guarded_offer_resend"
   ) return value;
@@ -473,6 +481,59 @@ export async function POST(request: NextRequest) {
         requestId: record.requestId,
         record: updateResult.record,
         changedTables: updateResult.changedTables,
+        audit: retryAudit,
+        customerCommunicationSent: false,
+      });
+    }
+
+    if (actionKey === "post_trello_status_comment") {
+      if (!trelloCardId) {
+        throw new QuoteValidationError("Trello-Karte fehlt.", ["Ohne Trello-Card-ID wird kein Kommentar geschrieben."], 422);
+      }
+      const commentText = cleanText(body.trelloCommentText || description, 1800);
+      if (!commentText) {
+        throw new QuoteValidationError("Trello-Kommentar fehlt.", ["Der Statuskommentar darf nicht leer sein."], 422);
+      }
+      let trelloComment: Awaited<ReturnType<typeof addTrelloCardComment>>;
+      try {
+        trelloComment = await addTrelloCardComment({
+          cardId: trelloCardId,
+          text: commentText,
+        });
+      } catch (error) {
+        if (/Trello API-Konfiguration fehlt/i.test(errorMessage(error))) {
+          throw new QuoteValidationError(
+            "Trello ist nicht konfiguriert.",
+            ["TRELLO_API_KEY/TRELLO_TOKEN fehlen in der Runtime. Der Kommentar wurde nicht geschrieben."],
+            503,
+          );
+        }
+        throw error;
+      }
+      retryAudit = await recordWorkflowAuditEvent({
+        workflowName: "company_brain_fix_center",
+        action: "post_trello_status_comment",
+        status: "success",
+        requestId: record.requestId,
+        trelloCardId,
+        offerId,
+        offerNumber,
+        sourceEventId: trelloComment?.id || null,
+        idempotencyKey: `company-brain-trello-comment:${trelloCardId}:${sourceRef}`,
+        retrySafety: "safe_after_review",
+        metadata: {
+          operator_name: operatorName,
+          trello_comment_id: trelloComment?.id || null,
+          customer_communication_sent: false,
+          projection_only: true,
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        actionKey,
+        requestId: record.requestId,
+        trelloComment,
         audit: retryAudit,
         customerCommunicationSent: false,
       });
