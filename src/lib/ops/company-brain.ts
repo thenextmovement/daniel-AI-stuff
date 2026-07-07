@@ -109,7 +109,7 @@ export type CompanyBrainOfferSummary = {
 };
 
 export type CompanyBrainDiagnostic = {
-  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness" | "trello_live";
+  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness" | "trello_live" | "outlook_live";
   ok: boolean;
   label: string;
   detail: string | null;
@@ -1338,7 +1338,9 @@ function buildSourceHealth(
   const offerDiagnostic = diagnosticBySource.get("offers");
   const bridgeDiagnostics = diagnostics.filter((entry) => entry.source === "offer_bridge");
   const workflowDiagnostic = diagnosticBySource.get("workflow_audit");
-  const outlookEvidence = evidence.filter((entry) => entry.source === "customer_email_messages");
+  const outlookMirrorEvidence = evidence.filter((entry) => entry.source === "customer_email_messages");
+  const outlookLiveEvidence = evidence.filter((entry) => entry.source === "outlook_graph_live");
+  const outlookEvidence = [...outlookMirrorEvidence, ...outlookLiveEvidence];
   const shopifyLinked = records.filter((record) => record.latestOrderNumber);
   const trelloLinked = records.filter((record) => record.trelloCardId || record.trelloCardUrl);
   const liveTrelloCard = trelloFailureDiagnosis?.card || null;
@@ -1377,10 +1379,14 @@ function buildSourceHealth(
       key: "outlook_mirror",
       label: "Outlook-Spiegel",
       status: outlookEvidence.length ? "ok" : records.length ? "missing" : "partial",
-      summary: outlookEvidence.length ? `${outlookEvidence.length} Outlook-Mailbeleg(e) im Spiegel.` : "Kein Outlook-Spiegel-Beleg in diesem Ergebnis.",
+      summary: outlookEvidence.length
+        ? `${outlookMirrorEvidence.length} Spiegel-Mailbeleg(e), ${outlookLiveEvidence.length} Live-Outlook-Beleg(e).`
+        : "Kein Outlook-Beleg in diesem Ergebnis.",
       count: outlookEvidence.length,
       lastSeenAt: latestIso(outlookEvidence.map((entry) => entry.occurredAt)),
-      detail: "Quelle: customer_email_messages, nicht Live Outlook.",
+      detail: outlookLiveEvidence.length
+        ? "Quellen: customer_email_messages und Graph Live read-only."
+        : "Quelle: customer_email_messages; Live Outlook nur bei vollständiger Graph-Konfiguration.",
     },
     {
       key: "workflow_audit",
@@ -1429,6 +1435,189 @@ function buildSourceHealth(
 
 function hasEnv(...names: string[]) {
   return names.some((name) => Boolean(cleanText(process.env[name])));
+}
+
+type OutlookGraphConfig = {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  mailbox: string;
+};
+
+type OutlookGraphRecipient = {
+  emailAddress?: {
+    address?: string | null;
+    name?: string | null;
+  } | null;
+};
+
+type OutlookGraphMessage = {
+  id?: string | null;
+  subject?: string | null;
+  bodyPreview?: string | null;
+  receivedDateTime?: string | null;
+  sentDateTime?: string | null;
+  webLink?: string | null;
+  from?: OutlookGraphRecipient | null;
+  toRecipients?: OutlookGraphRecipient[] | null;
+  ccRecipients?: OutlookGraphRecipient[] | null;
+};
+
+function envValue(...names: string[]) {
+  for (const name of names) {
+    const value = cleanText(process.env[name]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function outlookGraphConfig(): OutlookGraphConfig | null {
+  const tenantId = envValue("MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID");
+  const clientId = envValue("MICROSOFT_GRAPH_CLIENT_ID", "AZURE_CLIENT_ID");
+  const clientSecret = envValue("MICROSOFT_GRAPH_CLIENT_SECRET", "AZURE_CLIENT_SECRET");
+  const mailbox = envValue("MICROSOFT_GRAPH_MAILBOX", "OUTLOOK_SHARED_MAILBOX", "OUTLOOK_MAILBOX");
+  if (!tenantId || !clientId || !clientSecret || !mailbox) return null;
+  return { tenantId, clientId, clientSecret, mailbox };
+}
+
+async function getOutlookGraphAccessToken(config: OutlookGraphConfig) {
+  const body = new URLSearchParams();
+  body.set("client_id", config.clientId);
+  body.set("client_secret", config.clientSecret);
+  body.set("scope", "https://graph.microsoft.com/.default");
+  body.set("grant_type", "client_credentials");
+  const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`, {
+    method: "POST",
+    body,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as { access_token?: string; error_description?: string; error?: string } | null;
+  if (!response.ok || !payload?.access_token) {
+    throw new Error(payload?.error_description || payload?.error || `Graph Token fehlgeschlagen: ${response.status}`);
+  }
+  return payload.access_token;
+}
+
+function graphSearchTerms(input: {
+  query: string;
+  identifiers: CompanyBrainIdentifier[];
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+}) {
+  const terms = [
+    ...input.identifiers.filter((identifier) => identifier.type === "offer_number" || identifier.type === "email").map((identifier) => identifier.value),
+    ...input.records.flatMap((record) => [record.email, record.requestId]),
+    ...input.offers.flatMap((offer) => [offer.offerNumber, offer.customerEmail]),
+    input.query.includes("@") || /\bA\/?N[-\s]?\d+/i.test(input.query) ? input.query : null,
+  ];
+  return uniqueStrings(terms.map((term) => cleanText(term).slice(0, 120)).filter(Boolean)).slice(0, 4);
+}
+
+function graphRecipients(recipients: OutlookGraphRecipient[] | null | undefined) {
+  return (recipients || [])
+    .map((recipient) => cleanText(recipient.emailAddress?.address || recipient.emailAddress?.name).slice(0, 120))
+    .filter(Boolean);
+}
+
+function mapGraphMessageToEvidence(message: OutlookGraphMessage, term: string): CompanyBrainEvidence {
+  const from = cleanText(message.from?.emailAddress?.address || message.from?.emailAddress?.name).slice(0, 120);
+  const to = graphRecipients(message.toRecipients);
+  const direction: CompanyBrainEvidence["direction"] =
+    from && /@neontrip\.(de|com)$/i.test(from)
+      ? "outbound"
+      : to.some((entry) => /@neontrip\.(de|com)$/i.test(entry))
+        ? "inbound"
+        : "internal";
+  const occurredAt = direction === "outbound"
+    ? message.sentDateTime || message.receivedDateTime || null
+    : message.receivedDateTime || message.sentDateTime || null;
+  return {
+    id: `outlook-graph:${message.id || `${term}:${message.subject || ""}:${occurredAt || ""}`}`,
+    source: "outlook_graph_live",
+    title: message.subject ? `Live-Outlook: ${message.subject}` : `Live-Outlook Treffer: ${term}`,
+    detail: [
+      from ? `Von: ${from}` : null,
+      to.length ? `An: ${to.slice(0, 3).join(", ")}` : null,
+      message.bodyPreview ? previewText(message.bodyPreview, 260) : null,
+    ].filter(Boolean).join(" · ") || null,
+    occurredAt,
+    direction,
+    href: message.webLink || null,
+    confidence: "medium",
+  };
+}
+
+async function fetchOutlookGraphEvidence(input: {
+  query: string;
+  identifiers: CompanyBrainIdentifier[];
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+}): Promise<{ evidence: CompanyBrainEvidence[]; diagnostic: CompanyBrainDiagnostic | null }> {
+  const config = outlookGraphConfig();
+  if (!config) return { evidence: [], diagnostic: null };
+  const terms = graphSearchTerms(input);
+  if (!terms.length) {
+    return {
+      evidence: [],
+      diagnostic: { source: "outlook_live", ok: true, label: "Live Outlook", detail: "Keine sinnvollen Suchbegriffe für Live-Outlook.", count: 0 },
+    };
+  }
+
+  try {
+    const token = await getOutlookGraphAccessToken(config);
+    const messages: CompanyBrainEvidence[] = [];
+    const seen = new Set<string>();
+    for (const term of terms) {
+      const params = new URLSearchParams({
+        $top: "8",
+        $select: "id,subject,bodyPreview,receivedDateTime,sentDateTime,webLink,from,toRecipients,ccRecipients",
+        $search: `"${term.replaceAll("\"", "")}"`,
+      });
+      const response = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(config.mailbox)}/messages?${params.toString()}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ConsistencyLevel: "eventual",
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => null)) as { value?: OutlookGraphMessage[]; error?: { message?: string } } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error?.message || `Graph Mail Search fehlgeschlagen: ${response.status}`);
+      }
+      for (const message of payload?.value || []) {
+        const key = cleanText(message.id) || `${term}:${message.subject}:${message.receivedDateTime || message.sentDateTime}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        messages.push(mapGraphMessageToEvidence(message, term));
+      }
+    }
+    return {
+      evidence: messages
+        .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
+        .slice(0, 12),
+      diagnostic: {
+        source: "outlook_live",
+        ok: true,
+        label: "Live Outlook",
+        detail: "Graph-Livezugriff read-only geladen. Outlook-Spiegel bleibt Fallback und Belegquelle.",
+        count: messages.length,
+      },
+    };
+  } catch (error) {
+    return {
+      evidence: [],
+      diagnostic: {
+        source: "outlook_live",
+        ok: false,
+        label: "Live Outlook",
+        detail: errorMessage(error),
+        count: 0,
+      },
+    };
+  }
 }
 
 function buildIntegrationReadiness(): CompanyBrainIntegrationReadiness[] {
@@ -3273,10 +3462,19 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   addRecordIdentifiers(identifiers, records);
   addOfferIdentifiers(identifiers, offerSummaries);
 
+  const liveOutlook = await fetchOutlookGraphEvidence({
+    query,
+    identifiers,
+    records: recordSummaries,
+    offers: offerSummaries,
+  });
+  if (liveOutlook.diagnostic) diagnostics.push(liveOutlook.diagnostic);
+
   const evidence = [
     ...records.flatMap(mapTimelineEvidence),
     ...offerSummaries.flatMap(mapOfferEvidence),
     ...mapTrelloEvidence(trelloContext),
+    ...liveOutlook.evidence,
   ]
     .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
     .slice(0, 30);
