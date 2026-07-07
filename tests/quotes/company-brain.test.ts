@@ -597,6 +597,8 @@ test("company brain answers with Trello-only diagnostics when source records are
 });
 
 test("company brain turns Trello execution failures into automation evidence", () => {
+  const originalBaseUrl = process.env.N8N_BASE_URL;
+  process.env.N8N_BASE_URL = "https://n8n.neontrip.de";
   const context: TrelloFailureContext = {
     card: {
       id: "6a4b53ee91f140e2ecd67e2f",
@@ -626,12 +628,18 @@ test("company brain turns Trello execution failures into automation evidence", (
     }],
   };
 
-  const runs = buildTrelloAutomationRuns(context);
+  try {
+    const runs = buildTrelloAutomationRuns(context);
 
-  assert.equal(runs.length, 1);
-  assert.equal(runs[0].executionId, "2770420");
-  assert.equal(runs[0].requestId, "b514ed9c-368d-4c37-9b33-f45534a0677e");
-  assert.match(runs[0].error || "", /Offer-Erstellung ist fehlgeschlagen/);
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0].executionId, "2770420");
+    assert.equal(runs[0].executionUrl, "https://n8n.neontrip.de/execution/2770420");
+    assert.equal(runs[0].requestId, "b514ed9c-368d-4c37-9b33-f45534a0677e");
+    assert.match(runs[0].error || "", /Offer-Erstellung ist fehlgeschlagen/);
+  } finally {
+    if (originalBaseUrl === undefined) delete process.env.N8N_BASE_URL;
+    else process.env.N8N_BASE_URL = originalBaseUrl;
+  }
 });
 
 test("company brain prioritizes automation failures over missing customer records", () => {
@@ -1230,6 +1238,47 @@ test("company brain action proposals block trello writes without source record",
   assert.equal(trelloComment?.enabled, false);
   assert.match(trelloComment?.summary || "", /Source of Truth/);
   assert.equal(internalTask?.enabled, false);
+});
+
+test("company brain action proposals link failed n8n executions read-only", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "blocked",
+    label: "Automation fehlgeschlagen",
+    summary: "Execution prüfen.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["n8n-Fehlerlauf vorhanden."],
+    safeFixes: ["n8n-Execution read-only prüfen."],
+  };
+  const actions = actionProposalFixture({
+    retry,
+    automationRuns: [{
+      id: "n8n-run",
+      workflowName: "NEONTRIP Quote Ready SIMPLE v1.1",
+      action: "offer_send",
+      status: "failed",
+      error: "Outlook Graph send failed.",
+      createdAt: "2026-07-07T11:20:00.000Z",
+      requestId: "REQ-ACTIONS",
+      executionId: "2770420",
+      executionUrl: "https://n8n.neontrip.de/execution/2770420",
+      correlationId: null,
+      sourceEventId: "trello-action",
+      targetRecordId: null,
+      failedNode: "Outlook: E-Mail senden",
+      idempotencyKey: "quote-ready-send:REQ-ACTIONS:offer-actions",
+      retrySafety: "blocked",
+      summary: "Outlook-Berechtigung fehlt.",
+    }],
+  });
+  const inspect = actions.find((action) => action.key === "inspect_n8n_run");
+
+  assert.equal(inspect?.enabled, true);
+  assert.equal(inspect?.href, "https://n8n.neontrip.de/execution/2770420");
+  assert.ok(inspect?.payloadPreview.some((line) => line.includes("Execution-Link: https://n8n.neontrip.de/execution/2770420")));
 });
 
 test("company brain action proposals block duplicate retry actions after guarded resend audit", () => {

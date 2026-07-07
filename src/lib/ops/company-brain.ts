@@ -293,6 +293,7 @@ export type CompanyBrainAutomationRun = {
   createdAt: string | null;
   requestId: string | null;
   executionId: string | null;
+  executionUrl?: string | null;
   correlationId: string | null;
   sourceEventId: string | null;
   targetRecordId: string | null;
@@ -664,6 +665,18 @@ function trelloActionFailureSummary(action: TrelloFailureContextAction) {
   return previewText(text.replace(/\\n/g, " "), 220) || "Trello-Historie meldet einen Automation-Fehler.";
 }
 
+function n8nExecutionUrl(executionId: string | null | undefined, explicitUrl?: string | null) {
+  const direct = cleanText(explicitUrl).slice(0, 500);
+  if (/^https?:\/\//i.test(direct)) return direct;
+  const id = cleanText(executionId).slice(0, 120);
+  if (!id) return null;
+  const rawBaseUrl = cleanText(process.env.N8N_BASE_URL || process.env.N8N_API_URL || "").slice(0, 500)
+    .replace(/\/api\/v1$/i, "")
+    .replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(rawBaseUrl)) return null;
+  return `${rawBaseUrl}/execution/${encodeURIComponent(id)}`;
+}
+
 export function buildTrelloAutomationRuns(context: TrelloFailureContext | null): CompanyBrainAutomationRun[] {
   if (!context) return [];
   const executionIds = extractTrelloAutomationExecutionIds(context);
@@ -679,6 +692,7 @@ export function buildTrelloAutomationRuns(context: TrelloFailureContext | null):
       createdAt: action.date,
       requestId,
       executionId: executionIds[index] || executionIds[0] || null,
+      executionUrl: n8nExecutionUrl(executionIds[index] || executionIds[0] || null),
       correlationId: context.card.id,
       sourceEventId: action.id,
       targetRecordId: null,
@@ -1265,6 +1279,7 @@ async function fetchN8nLiveRuns(
         createdAt: execution.stoppedAt || execution.startedAt || execution.createdAt || fallback?.createdAt || null,
         requestId: fallback?.requestId || null,
         executionId,
+        executionUrl: fallback?.executionUrl || n8nExecutionUrl(executionId),
         correlationId: fallback?.correlationId || null,
         sourceEventId: fallback?.sourceEventId || null,
         targetRecordId: fallback?.targetRecordId || null,
@@ -1341,6 +1356,10 @@ async function fetchAutomationRuns(
       createdAt: row.created_at || null,
       requestId: cleanText(row.document_id) || metadataText(row.metadata, ["request_id", "task_request_id"]),
       executionId: metadataText(row.metadata, ["execution_id", "n8n_execution_id", "workflow_execution_id"]),
+      executionUrl: n8nExecutionUrl(
+        metadataText(row.metadata, ["execution_id", "n8n_execution_id", "workflow_execution_id"]),
+        metadataText(row.metadata, ["n8n_execution_url", "execution_url", "workflow_execution_url"]),
+      ),
       correlationId: metadataText(row.metadata, ["correlation_id", "request_correlation_id", "idempotency_key"]),
       sourceEventId: metadataText(row.metadata, ["source_event_id", "event_id", "message_id", "offer_event_id"]),
       targetRecordId: metadataText(row.metadata, ["target_record_id", "task_id", "offer_id", "shopify_order_id"]),
@@ -2086,6 +2105,7 @@ function buildDossier(input: {
             run.status || "Status unbekannt",
             run.failedNode ? `Node: ${run.failedNode}` : null,
             run.executionId ? `Execution: ${run.executionId}` : null,
+            run.executionUrl ? `Execution-Link: ${run.executionUrl}` : null,
             run.retrySafety ? `Retry: ${run.retrySafety}` : null,
             run.error ? `Fehler: ${run.error}` : null,
           ].filter(Boolean).join(" · "))
@@ -2178,7 +2198,7 @@ function buildCaseEvents(evidence: CompanyBrainEvidence[], automationRuns: Compa
     occurredAt: run.createdAt,
     source: "workflow_audit_log",
     direction: "system" as const,
-    href: null,
+    href: run.executionUrl || null,
     confidence: "high" as const,
     evidenceIds: [],
   }));
@@ -3402,12 +3422,13 @@ export function buildActionProposals(input: {
       enabled: Boolean(failedAutomation),
       summary: failedAutomation ? "Ein fehlerhafter Automation-Beleg ist vorhanden." : "Kein fehlerhafter Automation-Run im Fall.",
       confirmationText: "Keinen Workflow ohne Backup, Diff und Rollback ändern.",
-      href: null,
+      href: failedAutomation?.executionUrl || null,
       payloadPreview: failedAutomation
         ? [
             `Workflow: ${failedAutomation.workflowName || "unbekannt"}`,
             `Action: ${failedAutomation.action || "unbekannt"}`,
             `Execution: ${failedAutomation.executionId || "unbekannt"}`,
+            failedAutomation.executionUrl ? `Execution-Link: ${failedAutomation.executionUrl}` : null,
             failedAutomation.failedNode ? `Node: ${failedAutomation.failedNode}` : null,
             failedAutomation.idempotencyKey ? `Idempotency: ${failedAutomation.idempotencyKey}` : null,
             failedAutomation.retrySafety ? `Retry-Sicherheit: ${failedAutomation.retrySafety}` : null,

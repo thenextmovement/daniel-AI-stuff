@@ -2159,6 +2159,11 @@ export function OpsCompanyBrainClient({
                           {run.idempotencyKey ? <span>Idempotency: {run.idempotencyKey}</span> : null}
                           {run.retrySafety ? <span>Retry-Sicherheit: {run.retrySafety}</span> : null}
                         </div>
+                        {run.executionUrl ? (
+                          <a href={run.executionUrl} className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-stone-800 hover:text-stone-950">
+                            Execution öffnen <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : null}
                       </div>
                     )) : (
                       <p className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">Keine n8n-/Workflow-Fehlerläufe für diesen Fall.</p>
