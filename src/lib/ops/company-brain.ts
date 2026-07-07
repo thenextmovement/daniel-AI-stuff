@@ -3182,6 +3182,7 @@ export function buildActionProposals(input: {
   const offerRetryPrepared = latestFixRun("prepare_offer_retry");
   const trelloStatusPosted = latestFixRun("post_trello_status_comment");
   const problemCaseOpened = latestFixRun("open_problem_case");
+  const internalTaskCreated = latestFixRun("create_internal_task");
   const guardedRetrySent = companyBrainFixRuns.find((run) =>
     run.action === "guarded_offer_resend" && /sent|duplicate|success/i.test(String(run.status || "")),
   ) || null;
@@ -3242,8 +3243,10 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: openWatcherTitles.length ? "medium" : "low",
       approvalRequired: true,
-      enabled: false,
-      summary: "Bereitet eine Aufgabenbeschreibung aus offenen Watchern vor. Es wird noch nichts in die DB geschrieben.",
+      enabled: Boolean(primaryRecord && !internalTaskCreated),
+      summary: internalTaskCreated
+        ? `Interne Aufgabe wurde bereits vorbereitet.${fixRunSuffix(internalTaskCreated)}`
+        : "Legt nach Freigabe eine interne Aufgabe aus offenen Watchern und Fallbelegen an. Kein Kundenkontakt.",
       confirmationText: "Vor dem Anlegen Assignee, Priorität und Fälligkeit prüfen.",
       href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
       payloadPreview: [
@@ -3353,9 +3356,11 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "low",
       approvalRequired: true,
-      enabled: Boolean(trelloCardId && !trelloStatusPosted),
+      enabled: Boolean(primaryRecord && trelloCardId && !trelloStatusPosted),
       summary: trelloStatusPosted
         ? `Trello-Status wurde bereits kommentiert.${fixRunSuffix(trelloStatusPosted)}`
+        : !primaryRecord
+          ? "Trello-Karte ist lesbar, aber ohne verknüpfte Kundenakte wird kein Statuskommentar geschrieben. Erst Request/Kundenakte als Source of Truth verknüpfen."
         : "Schreibt eine kurze interne Diagnose auf die Trello-Karte. Trello bleibt Projektion, kein Versand und keine Datenkorrektur.",
       confirmationText: "Nur Statuskommentar schreiben; keine Karte als Source of Truth verwenden.",
       href: input.trelloFailureDiagnosis.card?.url || primaryRecord?.trelloCardUrl || null,

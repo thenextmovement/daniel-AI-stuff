@@ -1032,6 +1032,7 @@ test("company brain retry assessment allows guarded resend when no hard blocker 
 function actionProposalFixture(options: {
   retry: ReturnType<typeof buildCompanyBrainRetryAssessment>;
   automationRuns?: CompanyBrainAutomationRun[];
+  withoutRecord?: boolean;
 }) {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-ACTIONS",
@@ -1079,7 +1080,7 @@ function actionProposalFixture(options: {
   }];
 
   return buildActionProposals({
-    records,
+    records: options.withoutRecord ? [] : records,
     offers,
     evidenceScore: { status: "medium", score: 70, summary: "teilweise belegt", safeToAnswerCustomer: false, reasons: [] },
     problemResolution: {
@@ -1162,6 +1163,73 @@ test("company brain action proposals do not duplicate prepared email correction 
   assert.match(prepareEmail?.summary || "", /bereits vorbereitet/);
   assert.equal(correctEmail?.enabled, true);
   assert.equal(inspectN8n?.enabled, false);
+});
+
+test("company brain action proposals enable internal tasks once per case", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "blocked",
+    label: "Retry blockiert",
+    summary: "Erst Belege prüfen.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["Kein eindeutiger Versandbeleg."],
+    safeFixes: ["Interne Aufgabe mit Belegen anlegen."],
+  };
+  const actions = actionProposalFixture({ retry });
+  const task = actions.find((action) => action.key === "create_internal_task");
+
+  assert.equal(task?.enabled, true);
+  assert.match(task?.summary || "", /interne Aufgabe/i);
+
+  const duplicateActions = actionProposalFixture({
+    retry,
+    automationRuns: [{
+      id: "task-created",
+      workflowName: "company_brain_fix_center",
+      action: "create_internal_task",
+      status: "prepared",
+      error: null,
+      createdAt: "2026-07-07T11:15:00.000Z",
+      requestId: "REQ-ACTIONS",
+      executionId: null,
+      correlationId: null,
+      sourceEventId: "task-2",
+      targetRecordId: "task-2",
+      failedNode: null,
+      idempotencyKey: "company-brain:create_internal_task:REQ-ACTIONS:offer_not_sent:v1",
+      retrySafety: "safe_after_review",
+      summary: "Interne Aufgabe vorbereitet.",
+    }],
+  });
+  const duplicateTask = duplicateActions.find((action) => action.key === "create_internal_task");
+
+  assert.equal(duplicateTask?.enabled, false);
+  assert.match(duplicateTask?.summary || "", /bereits vorbereitet/);
+});
+
+test("company brain action proposals block trello writes without source record", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "blocked",
+    label: "Source of Truth fehlt",
+    summary: "Trello allein reicht nicht.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["Keine Kundenakte als Source of Truth."],
+    safeFixes: ["Request/Kundenakte verknüpfen."],
+  };
+  const actions = actionProposalFixture({ retry, withoutRecord: true });
+  const trelloComment = actions.find((action) => action.key === "post_trello_status_comment");
+  const internalTask = actions.find((action) => action.key === "create_internal_task");
+
+  assert.equal(trelloComment?.enabled, false);
+  assert.match(trelloComment?.summary || "", /Source of Truth/);
+  assert.equal(internalTask?.enabled, false);
 });
 
 test("company brain action proposals block duplicate retry actions after guarded resend audit", () => {

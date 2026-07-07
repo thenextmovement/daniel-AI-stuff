@@ -431,6 +431,58 @@ function buildCaseRoute(result: CompanyBrainResolveResult) {
   ];
 }
 
+function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
+  const hasRecord = result.records.length > 0;
+  const hasOffer = result.offers.length > 0;
+  const hasTrello = Boolean(result.trelloFailureDiagnosis.card);
+  const offerRequestId = result.offers.find((offer) => offer.requestId)?.requestId || null;
+
+  if (hasRecord && hasOffer) {
+    return {
+      tone: "ok" as const,
+      title: "Fix-Kontext vollständig",
+      summary: "Kundenakte und Angebot sind geladen. Interne Fixes können nach Freigabe gegen die Kundenakte ausgeführt werden.",
+      detail: `Request: ${result.records[0]?.requestId || "unbekannt"} · Angebot: ${result.offers[0]?.offerNumber || result.offers[0]?.offerId || "unbekannt"}`,
+    };
+  }
+
+  if (hasOffer && !hasRecord) {
+    return {
+      tone: "warning" as const,
+      title: "Angebot gefunden, Kundenakte fehlt",
+      summary: "Company Brain kann Angebot und Trello-Belege erklären, aber keine Datenkorrektur oder interne Aufgabe sauber gegen die Kundenakte schreiben.",
+      detail: offerRequestId
+        ? `Request-ID laut Angebot: ${offerRequestId}. Kundenakte per Request-ID prüfen/verknüpfen.`
+        : "Im Angebot ist keine belastbare Request-ID sichtbar. Offer-Bridge oder Anfrage-Zuordnung prüfen.",
+    };
+  }
+
+  if (hasTrello && !hasRecord && !hasOffer) {
+    return {
+      tone: "blocked" as const,
+      title: "Nur Trello gelesen",
+      summary: "Trello reicht nicht als Source of Truth. Company Brain darf den Fehler erklären, aber keine Korrektur oder Versandaktion ausführen.",
+      detail: "Request-ID, Kundenakte oder Angebot verknüpfen und danach erneut prüfen.",
+    };
+  }
+
+  if (!hasRecord) {
+    return {
+      tone: "warning" as const,
+      title: "Kundenakte fehlt",
+      summary: "Ohne eindeutige Kundenakte bleiben schreibende Fixes gesperrt.",
+      detail: "Mit E-Mail, A/N, Request-ID oder Trello-ID erneut suchen.",
+    };
+  }
+
+  return {
+    tone: "warning" as const,
+    title: "Angebotskontext fehlt",
+    summary: "Kundenakte ist geladen, aber das passende Angebot ist nicht eindeutig gefunden.",
+    detail: "Angebotsnummer oder Trello-Link ergänzen, bevor Versandstatus oder Retry bewertet wird.",
+  };
+}
+
 function setupActionForIntegration(key: string, status: string) {
   if (status === "configured") return "Kein Setup-Blocker.";
   if (key === "live_outlook") return "Graph Tenant, Client, Secret und Mailbox in der Runtime setzen; danach Fall erneut laden.";
@@ -553,6 +605,7 @@ export function OpsCompanyBrainClient({
         automationHistory: [],
         decision: null,
         caseRoute: [],
+        sourceOfTruth: null,
         primaryRun: null,
       };
     }
@@ -601,6 +654,7 @@ export function OpsCompanyBrainClient({
       automationHistory,
       decision: buildOperatorDecision(result),
       caseRoute: buildCaseRoute(result),
+      sourceOfTruth: buildSourceOfTruthStatus(result),
       primaryRun,
     };
   }, [result]);
@@ -783,7 +837,11 @@ export function OpsCompanyBrainClient({
     const action = result?.actionProposals.find((entry) => entry.key === actionKey);
     const primaryRecord = result?.records[0] || null;
     const primaryOffer = result?.offers[0] || null;
-    if (!action || !result?.problemResolution || !primaryRecord) return;
+    if (!action || !result?.problemResolution) return;
+    if (!primaryRecord) {
+      setActionResultMessage("Aktion blockiert: keine Kundenakte/Request-ID als Source of Truth gefunden.");
+      return;
+    }
     const newCustomerEmail = actionKey === "correct_customer_email" ? pendingNewCustomerEmail.trim() : null;
     if (actionKey === "correct_customer_email" && !newCustomerEmail) {
       setActionResultMessage("Aktion abgebrochen: neue E-Mail fehlt.");
@@ -1145,7 +1203,25 @@ export function OpsCompanyBrainClient({
                 </div>
 
                 <aside className="p-5 md:p-6 xl:pr-28">
-                  <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                  {operatorView.sourceOfTruth ? (
+                    <div className={`rounded-2xl border px-4 py-3 ${routeStepClass(operatorView.sourceOfTruth.tone)}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Source of Truth</p>
+                          <h3 className="mt-2 text-sm font-semibold leading-5">{operatorView.sourceOfTruth.title}</h3>
+                          <p className="mt-1 text-xs leading-5 opacity-85">{operatorView.sourceOfTruth.summary}</p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold">
+                          {routeStepBadge(operatorView.sourceOfTruth.tone)}
+                        </span>
+                      </div>
+                      <p className="mt-3 rounded-xl border border-current/15 bg-white/45 px-3 py-2 text-xs leading-5">
+                        {operatorView.sourceOfTruth.detail}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-semibold text-stone-950">Jetzt möglich</p>
                       <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-500">
