@@ -36,6 +36,32 @@ type ResolveApiResponse = {
   issues?: string[];
 };
 
+type CompanyBrainActionProposalView = CompanyBrainResolveResult["actionProposals"][number];
+type CompanyBrainActionGroupKey = "internal" | "fix" | "customer" | "manual";
+
+const ACTION_GROUPS: Array<{ key: CompanyBrainActionGroupKey; title: string; detail: string }> = [
+  {
+    key: "internal",
+    title: "Intern sichern",
+    detail: "Notizen, Problemfälle und Aufgaben. Kein Kundenkontakt.",
+  },
+  {
+    key: "fix",
+    title: "Daten korrigieren",
+    detail: "Kundenakte, E-Mail und Trello-Projektion nur mit Freigabe.",
+  },
+  {
+    key: "customer",
+    title: "Kundenkontakt",
+    detail: "Versand nur nach serverseitigem Duplicate-, Bounce- und Empfängercheck.",
+  },
+  {
+    key: "manual",
+    title: "Manuell prüfen",
+    detail: "Links und Prüfschritte ohne direkte Änderung.",
+  },
+];
+
 function formatApiError(payload: { error?: string; issues?: string[] } | null) {
   if (!payload) return "Unbekannter Fehler.";
   if (payload.issues?.length) return payload.issues.join(" ");
@@ -214,6 +240,31 @@ function shortText(value: string | null | undefined, max = 180) {
   return value.length > max ? `${value.slice(0, max - 1)}...` : value;
 }
 
+function actionGroupKey(action: CompanyBrainActionProposalView): CompanyBrainActionGroupKey {
+  if (["open_problem_case", "save_case_note", "create_internal_task", "prepare_offer_retry"].includes(action.key)) return "internal";
+  if (["prepare_email_correction", "correct_customer_email", "post_trello_status_comment"].includes(action.key)) return "fix";
+  if (action.key === "guarded_offer_resend") return "customer";
+  return "manual";
+}
+
+function actionStateLabel(action: CompanyBrainActionProposalView) {
+  if (action.key === "copy_reply_draft") return "Kopieren";
+  if (action.href && !action.approvalRequired) return "Öffnen";
+  if (!action.enabled) return "Nicht bereit";
+  if (action.riskLevel === "high") return "Freigabe + Guard";
+  if (action.approvalRequired) return "Freigabe";
+  return "Bereit";
+}
+
+function actionButtonLabel(action: CompanyBrainActionProposalView) {
+  if (action.key === "guarded_offer_resend") return "Versand freigeben";
+  if (action.key === "correct_customer_email") return "E-Mail-Korrektur freigeben";
+  if (action.key === "post_trello_status_comment") return "Kommentar freigeben";
+  if (action.key === "save_case_note") return "Notiz speichern";
+  if (action.key === "open_problem_case") return "Problemfall anlegen";
+  return "Mit Freigabe ausführen";
+}
+
 export function OpsCompanyBrainClient({
   initialHasSession,
   opsEnabled,
@@ -237,6 +288,9 @@ export function OpsCompanyBrainClient({
   const [draftCopyMessage, setDraftCopyMessage] = useState<string | null>(null);
   const [actionCopyMessage, setActionCopyMessage] = useState<string | null>(null);
   const [actionResultMessage, setActionResultMessage] = useState<string | null>(null);
+  const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
+  const [pendingNewCustomerEmail, setPendingNewCustomerEmail] = useState("");
+  const [pendingConfirmationText, setPendingConfirmationText] = useState("");
   const sharedOperatorNameKey = "neontrip-ops-operator";
 
   useEffect(() => {
@@ -290,6 +344,13 @@ export function OpsCompanyBrainClient({
         .map((check) => ({ key: `cross-${check.key}`, label: check.label, summary: check.summary, status: check.status })),
     ].slice(0, 5);
     return { readyActions, blockedFixes, sourceWarnings, decisionItems };
+  }, [result]);
+  const actionGroups = useMemo(() => {
+    const proposals = result?.actionProposals || [];
+    return ACTION_GROUPS.map((group) => ({
+      ...group,
+      actions: proposals.filter((action) => actionGroupKey(action) === group.key),
+    })).filter((group) => group.actions.length);
   }, [result]);
 
   const quickQuestions = [
@@ -352,6 +413,9 @@ export function OpsCompanyBrainClient({
       setDraftCopyMessage(null);
       setActionCopyMessage(null);
       setActionResultMessage(null);
+      setPendingActionKey(null);
+      setPendingNewCustomerEmail("");
+      setPendingConfirmationText("");
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Fallprüfung konnte nicht geladen werden.");
     } finally {
@@ -424,20 +488,33 @@ export function OpsCompanyBrainClient({
     ].filter((line): line is string => Boolean(line)).join("\n");
   }
 
+  function startActionProposal(actionKey: string) {
+    setPendingActionKey(actionKey);
+    setPendingNewCustomerEmail("");
+    setPendingConfirmationText("");
+    setActionResultMessage(null);
+    window.setTimeout(() => {
+      document.getElementById("company-brain-fix-center")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
+  function cancelActionProposal() {
+    setPendingActionKey(null);
+    setPendingNewCustomerEmail("");
+    setPendingConfirmationText("");
+  }
+
   async function executeActionProposal(actionKey: string) {
     const action = result?.actionProposals.find((entry) => entry.key === actionKey);
     const primaryRecord = result?.records[0] || null;
     const primaryOffer = result?.offers[0] || null;
     if (!action || !result?.problemResolution || !primaryRecord) return;
-    const newCustomerEmail = actionKey === "correct_customer_email"
-      ? window.prompt("Neue Kunden-E-Mail eintragen. Es wird noch kein Angebot gesendet.")
-      : null;
-    if (actionKey === "correct_customer_email" && !newCustomerEmail?.trim()) {
+    const newCustomerEmail = actionKey === "correct_customer_email" ? pendingNewCustomerEmail.trim() : null;
+    if (actionKey === "correct_customer_email" && !newCustomerEmail) {
       setActionResultMessage("Aktion abgebrochen: neue E-Mail fehlt.");
       return;
     }
-    const confirmation = window.prompt(`"${action.label}" wirklich intern ausführen? Bitte Freigabe eingeben.`);
-    if (confirmation !== "Freigabe") {
+    if (pendingConfirmationText.trim() !== "Freigabe") {
       setActionResultMessage("Aktion abgebrochen: Bestätigungstext fehlt.");
       return;
     }
@@ -473,7 +550,7 @@ export function OpsCompanyBrainClient({
           newCustomerEmail: newCustomerEmail?.trim() || null,
           trelloCommentText: actionKey === "post_trello_status_comment" ? buildTrelloStatusComment() : null,
           confirmed: true,
-          confirmationText: confirmation,
+          confirmationText: pendingConfirmationText,
         }),
       });
       const payload = (await response.json().catch(() => null)) as {
@@ -502,6 +579,7 @@ export function OpsCompanyBrainClient({
         payload.specialCase ? "Problemfall-Audit" : null,
       ].filter(Boolean).join(", ");
       setActionResultMessage(created ? `Ausgeführt: ${created}.` : "Aktion ausgeführt.");
+      cancelActionProposal();
     } catch (executeError) {
       setActionResultMessage(executeError instanceof Error ? executeError.message : "Aktion konnte nicht ausgeführt werden.");
     } finally {
@@ -743,11 +821,11 @@ export function OpsCompanyBrainClient({
                             </button>
                             <button
                               type="button"
-                              onClick={() => void executeActionProposal(action.key)}
+                              onClick={() => startActionProposal(action.key)}
                               disabled={!action.enabled || actionLoadingKey === action.key}
                               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 bg-white/50 px-2.5 text-[11px] font-semibold transition hover:bg-white disabled:opacity-50"
                             >
-                              {actionLoadingKey === action.key ? "läuft..." : "Ausführen"}
+                              {actionLoadingKey === action.key ? "läuft..." : "Freigeben"}
                             </button>
                           </div>
                         </div>
@@ -807,6 +885,117 @@ export function OpsCompanyBrainClient({
                     </div>
                   </div>
                 </aside>
+              </div>
+            </section>
+
+            <section id="company-brain-fix-center" className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm md:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Fix Center</p>
+                  <h2 className="mt-2 text-xl font-semibold text-stone-950">Was kann jetzt wirklich ausgeführt werden?</h2>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">Interne Sicherung, Datenkorrektur und Kundenkontakt sind getrennt. Jede ausführende Aktion braucht die sichtbare Freigabe.</p>
+                </div>
+                <ClipboardList className="h-6 w-6 text-stone-500" />
+              </div>
+              {actionCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{actionCopyMessage}</p> : null}
+              {actionResultMessage ? <p className="mt-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs font-medium text-stone-700">{actionResultMessage}</p> : null}
+              <div className="mt-4 grid gap-4 xl:grid-cols-4">
+                {actionGroups.map((group) => (
+                  <div key={`visible-${group.key}`} className="rounded-2xl border border-stone-200 bg-stone-50/70 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-stone-950">{group.title}</h3>
+                        <p className="mt-1 text-xs leading-5 text-stone-500">{group.detail}</p>
+                      </div>
+                      <span className="rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] font-medium text-stone-500">{group.actions.length}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {group.actions.map((action) => {
+                        const pending = pendingActionKey === action.key;
+                        const highRiskCustomerContact = action.key === "guarded_offer_resend";
+                        return (
+                          <div key={`visible-${action.key}`} className={`rounded-xl border px-3 py-2 text-xs ${riskClass(action.riskLevel)}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold">{action.label}</p>
+                                <p className="mt-1 leading-5 opacity-80">{shortText(action.summary, 120)}</p>
+                              </div>
+                              <span className="shrink-0 rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-medium opacity-80">{actionStateLabel(action)}</span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void copyActionProposal(action.key)}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 px-2.5 font-semibold transition hover:bg-white/60"
+                              >
+                                <ClipboardCopy className="h-3.5 w-3.5" />
+                                Paket
+                              </button>
+                              {action.href ? (
+                                <a href={action.href} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 px-2.5 font-semibold transition hover:bg-white/60">
+                                  Öffnen <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              ) : null}
+                              {executableAction(action.key) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => startActionProposal(action.key)}
+                                  disabled={!action.enabled || actionLoadingKey === action.key}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 bg-white/50 px-2.5 font-semibold transition hover:bg-white disabled:opacity-50"
+                                >
+                                  {actionLoadingKey === action.key ? "läuft..." : actionButtonLabel(action)}
+                                </button>
+                              ) : null}
+                            </div>
+                            {pending ? (
+                              <div className="mt-3 rounded-xl border border-current/20 bg-white/70 p-3 leading-5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="font-semibold">Freigabe prüfen</p>
+                                  <button type="button" onClick={cancelActionProposal} className="rounded-lg border border-current/20 px-2 py-1 font-medium transition hover:bg-white">
+                                    Abbrechen
+                                  </button>
+                                </div>
+                                {highRiskCustomerContact ? (
+                                  <p className="mt-2 font-medium">Diese Aktion kann Kundenkontakt auslösen. Der Server prüft Empfänger, Duplicate-Belege und Bounces direkt vor dem Versand erneut.</p>
+                                ) : (
+                                  <p className="mt-2 opacity-80">Diese Aktion bleibt intern, sofern die Serverantwort nichts anderes meldet.</p>
+                                )}
+                                {action.key === "correct_customer_email" ? (
+                                  <label className="mt-3 grid gap-1">
+                                    <span className="font-medium">Neue Kunden-E-Mail</span>
+                                    <input
+                                      value={pendingNewCustomerEmail}
+                                      onChange={(event) => setPendingNewCustomerEmail(event.target.value)}
+                                      className="h-10 rounded-xl border border-current/20 bg-white px-3 text-sm text-stone-950 outline-none focus:border-stone-950"
+                                      placeholder="kunde@example.de"
+                                    />
+                                  </label>
+                                ) : null}
+                                <label className="mt-3 grid gap-1">
+                                  <span className="font-medium">Bestätigung</span>
+                                  <input
+                                    value={pendingConfirmationText}
+                                    onChange={(event) => setPendingConfirmationText(event.target.value)}
+                                    className="h-10 rounded-xl border border-current/20 bg-white px-3 text-sm text-stone-950 outline-none focus:border-stone-950"
+                                    placeholder="Freigabe"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => void executeActionProposal(action.key)}
+                                  disabled={actionLoadingKey === action.key}
+                                  className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-stone-950 px-4 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                                >
+                                  {actionLoadingKey === action.key ? "Führt aus..." : "Jetzt ausführen"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -1125,50 +1314,118 @@ export function OpsCompanyBrainClient({
                   </div>
                   {actionCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{actionCopyMessage}</p> : null}
                   {actionResultMessage ? <p className="mt-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs font-medium text-stone-700">{actionResultMessage}</p> : null}
-                  <div className="mt-4 grid gap-3">
-                    {result.actionProposals.map((action) => (
-                      <div key={action.key} className={`rounded-2xl border px-4 py-3 text-sm ${riskClass(action.riskLevel)}`}>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="mt-4 grid gap-4">
+                    {actionGroups.map((group) => (
+                      <section key={group.key} className="rounded-2xl border border-stone-200 bg-stone-50/70 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2 px-1">
                           <div>
-                            <p className="font-semibold">{action.label}</p>
-                            <p className="mt-1 leading-6 opacity-80">{action.summary}</p>
+                            <h3 className="text-sm font-semibold text-stone-950">{group.title}</h3>
+                            <p className="mt-1 text-xs leading-5 text-stone-500">{group.detail}</p>
                           </div>
-                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium opacity-80">
-                            {action.enabled ? "Bereit" : "Vorlage"}
+                          <span className="rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] font-medium text-stone-500">
+                            {group.actions.length}
                           </span>
                         </div>
-                        <p className="mt-2 text-xs leading-5 opacity-70">{action.confirmationText}</p>
-                        {action.payloadPreview.length ? (
-                          <div className="mt-3 rounded-xl border border-current/15 bg-white/40 p-3 text-xs leading-5">
-                            {action.payloadPreview.slice(0, 5).map((line) => <p key={line}>{line}</p>)}
-                          </div>
-                        ) : null}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void copyActionProposal(action.key)}
-                            className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 px-3 text-xs font-medium transition hover:bg-white/60"
-                          >
-                            <ClipboardCopy className="h-3.5 w-3.5" />
-                            Paket kopieren
-                          </button>
-                          {action.href ? (
-                            <a href={action.href} className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 px-3 text-xs font-medium transition hover:bg-white/60">
-                              Öffnen <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          ) : null}
-                          {executableAction(action.key) ? (
-                            <button
-                              type="button"
-                              onClick={() => void executeActionProposal(action.key)}
-                              disabled={!action.enabled || actionLoadingKey === action.key}
-                              className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 bg-white/50 px-3 text-xs font-semibold transition hover:bg-white disabled:opacity-50"
-                            >
-                              {actionLoadingKey === action.key ? "Führt aus..." : "Mit Freigabe ausführen"}
-                            </button>
-                          ) : null}
+                        <div className="mt-3 grid gap-3">
+                          {group.actions.map((action) => {
+                            const pending = pendingActionKey === action.key;
+                            const highRiskCustomerContact = action.key === "guarded_offer_resend";
+                            return (
+                              <div key={action.key} className={`rounded-2xl border px-4 py-3 text-sm ${riskClass(action.riskLevel)}`}>
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold">{action.label}</p>
+                                    <p className="mt-1 leading-6 opacity-80">{action.summary}</p>
+                                  </div>
+                                  <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium opacity-80">
+                                    {actionStateLabel(action)}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-xs leading-5 opacity-70">{action.confirmationText}</p>
+                                {action.payloadPreview.length ? (
+                                  <div className="mt-3 rounded-xl border border-current/15 bg-white/40 p-3 text-xs leading-5">
+                                    {action.payloadPreview.slice(0, 5).map((line) => <p key={line}>{line}</p>)}
+                                  </div>
+                                ) : null}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyActionProposal(action.key)}
+                                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 px-3 text-xs font-medium transition hover:bg-white/60"
+                                  >
+                                    <ClipboardCopy className="h-3.5 w-3.5" />
+                                    Paket kopieren
+                                  </button>
+                                  {action.href ? (
+                                    <a href={action.href} className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 px-3 text-xs font-medium transition hover:bg-white/60">
+                                      Öffnen <ExternalLink className="h-3.5 w-3.5" />
+                                    </a>
+                                  ) : null}
+                                  {executableAction(action.key) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => startActionProposal(action.key)}
+                                      disabled={!action.enabled || actionLoadingKey === action.key}
+                                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-current/20 bg-white/50 px-3 text-xs font-semibold transition hover:bg-white disabled:opacity-50"
+                                    >
+                                      {actionLoadingKey === action.key ? "Führt aus..." : actionButtonLabel(action)}
+                                    </button>
+                                  ) : null}
+                                </div>
+                                {pending ? (
+                                  <div className="mt-4 rounded-xl border border-current/20 bg-white/70 p-3 text-xs leading-5">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <p className="font-semibold">Freigabe prüfen</p>
+                                      <button
+                                        type="button"
+                                        onClick={cancelActionProposal}
+                                        className="rounded-lg border border-current/20 px-2 py-1 font-medium transition hover:bg-white"
+                                      >
+                                        Abbrechen
+                                      </button>
+                                    </div>
+                                    {highRiskCustomerContact ? (
+                                      <p className="mt-2 font-medium">
+                                        Diese Aktion kann Kundenkontakt auslösen. Der Server prüft Empfänger, Duplicate-Belege und Bounces direkt vor dem Versand erneut.
+                                      </p>
+                                    ) : (
+                                      <p className="mt-2 opacity-80">Diese Aktion bleibt intern, sofern die Serverantwort nichts anderes meldet.</p>
+                                    )}
+                                    {action.key === "correct_customer_email" ? (
+                                      <label className="mt-3 grid gap-1">
+                                        <span className="font-medium">Neue Kunden-E-Mail</span>
+                                        <input
+                                          value={pendingNewCustomerEmail}
+                                          onChange={(event) => setPendingNewCustomerEmail(event.target.value)}
+                                          className="h-10 rounded-xl border border-current/20 bg-white px-3 text-sm text-stone-950 outline-none focus:border-stone-950"
+                                          placeholder="kunde@example.de"
+                                        />
+                                      </label>
+                                    ) : null}
+                                    <label className="mt-3 grid gap-1">
+                                      <span className="font-medium">Bestätigung</span>
+                                      <input
+                                        value={pendingConfirmationText}
+                                        onChange={(event) => setPendingConfirmationText(event.target.value)}
+                                        className="h-10 rounded-xl border border-current/20 bg-white px-3 text-sm text-stone-950 outline-none focus:border-stone-950"
+                                        placeholder="Freigabe"
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => void executeActionProposal(action.key)}
+                                      disabled={actionLoadingKey === action.key}
+                                      className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-stone-950 px-4 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                                    >
+                                      {actionLoadingKey === action.key ? "Führt aus..." : "Jetzt ausführen"}
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
+                      </section>
                     ))}
                   </div>
                 </article>

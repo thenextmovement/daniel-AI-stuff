@@ -57,3 +57,15 @@ test("secondary ops entry points expose Company Brain", () => {
   assert.match(designSource, /OpsPageHeader active="design"/);
   assert.match(designSource, /\/ops\/company-brain/);
 });
+
+test("company brain fix center groups risky actions and avoids browser prompts", () => {
+  const source = readFileSync("src/app/ops/company-brain/page-client.tsx", "utf8");
+
+  assert.match(source, /Intern sichern/);
+  assert.match(source, /Daten korrigieren/);
+  assert.match(source, /Kundenkontakt/);
+  assert.match(source, /Freigabe prüfen/);
+  assert.match(source, /Diese Aktion kann Kundenkontakt auslösen/);
+  assert.match(source, /serverseitigem Duplicate-, Bounce- und Empfängercheck/);
+  assert.doesNotMatch(source, /window\.prompt/);
+});
