@@ -240,6 +240,82 @@ test("company brain treats quote email log rows as sent offer proof", () => {
   assert.match(sent?.summary || "", /Versand- oder Ausgangsbeleg/);
 });
 
+test("company brain blocks resend when a send proof already exists", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-SENT",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "card-sent",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-sent",
+    offerNumber: "AN-5001",
+    documentReference: "AN-5001",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-sent",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [{
+    id: "quote-email-log:sent",
+    source: "quote_email_log",
+    title: "Ihr NEONTRIP Angebot Nr. 5001",
+    detail: "Empfänger: max@example.com · Angebot: AN-5001 · Status: sent",
+    occurredAt: "2026-07-06T08:05:00.000Z",
+    direction: "outbound",
+    href: null,
+    confidence: "high",
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence,
+    question: "Warum wurde das Angebot nicht geschickt?",
+  });
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence,
+    crossChecks,
+    trelloFailureDiagnosis: retryDiagnosis(),
+  });
+
+  assert.equal(retry.status, "blocked");
+  assert.equal(retry.canSendWithConfirmation, false);
+  assert.ok(retry.blockers.some((blocker) => /Versand-\/Ausgangsbeleg/.test(blocker)));
+  assert.ok(retry.safeFixes.some((fix) => /keinen Resend/.test(fix)));
+});
+
 test("company brain treats Outlook delivery failures as failed offer sends", () => {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-BOUNCE",
@@ -524,6 +600,132 @@ test("company brain explains automation failures caused by invalid customer emai
   assert.match(diagnosis.recommendedFix, /Korrekte Kunden-E-Mail/);
   assert.ok(diagnosis.safeFixes.some((fix) => /Ungültige Kunden-E-Mail/.test(fix)));
   assert.ok(diagnosis.blockedFixes.some((fix) => /Kein Retry an die alte Adresse/.test(fix)));
+});
+
+test("company brain treats later send proof as resolved automation failure", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-RESOLVED",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "card-resolved",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-resolved",
+    offerNumber: "AN-5002",
+    documentReference: "AN-5002",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-resolved",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [{
+    id: "quote-email-log:resolved",
+    source: "quote_email_log",
+    title: "Ihr NEONTRIP Angebot Nr. 5002",
+    detail: "Empfänger: max@example.com · Angebot: AN-5002 · Status: sent",
+    occurredAt: "2026-07-06T08:05:00.000Z",
+    direction: "outbound",
+    href: null,
+    confidence: "high",
+  }];
+  const automationRuns: CompanyBrainAutomationRun[] = [{
+    id: "run-resolved",
+    workflowName: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "failed",
+    error: "Offer send failed: invalid customer_email max@example",
+    createdAt: "2026-07-06T08:00:00.000Z",
+    requestId: "REQ-RESOLVED",
+    executionId: "2770420",
+    correlationId: "card-resolved",
+    sourceEventId: "action-1",
+    targetRecordId: null,
+    failedNode: "Offer Send",
+    idempotencyKey: "offer-send:offer-resolved",
+    retrySafety: "Kein Retry ohne Duplicate-Check.",
+    summary: "Alter Fehler, später manuell versendet.",
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence,
+    question: "Warum wurde das Angebot nicht geschickt?",
+  });
+
+  const diagnosis = buildTrelloFailureDiagnosis({
+    requested: true,
+    context: {
+      card: {
+        id: "card-resolved",
+        shortLink: "resolved",
+        name: "FEHLER - LED Flex",
+        desc: "Request-ID: REQ-RESOLVED",
+        idBoard: null,
+        idList: null,
+        currentListName: "Quote Ready",
+        url: "https://trello.com/c/resolved",
+        shortUrl: "https://trello.com/c/resolved",
+        closed: false,
+        dateLastActivity: "2026-07-06T08:00:00.000Z",
+        createdAt: null,
+        customFields: {},
+        attachmentsCount: 0,
+      },
+      actions: [{
+        id: "action-1",
+        type: "updateCard",
+        date: "2026-07-06T08:00:00.000Z",
+        text: "FEHLER: Angebot nicht verschickt. Execution: 2770420",
+        fromListId: null,
+        fromListName: "Neue Angebote schicken + KI-Video",
+        toListId: null,
+        toListName: "Quote Ready",
+      }],
+    },
+    diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: null, count: 1 },
+    records,
+    offers,
+    crossChecks,
+    automationRuns,
+    question: "Warum wurde das Angebot nicht geschickt?",
+    problemType: "offer_not_sent",
+  });
+
+  assert.equal(diagnosis.rootCauseKey, "sent");
+  assert.equal(diagnosis.severity, "info");
+  assert.equal(diagnosis.duplicateRisk, "low");
+  assert.match(diagnosis.rootCause, /späterer Versand-\/Ausgangsbeleg/);
+  assert.match(diagnosis.recommendedFix, /Kein erneuter Versand/);
+  assert.ok(diagnosis.safeFixes.some((fix) => /keinen erneuten Versand/.test(fix)));
 });
 
 test("company brain retry assessment blocks resend after current recipient bounce", () => {

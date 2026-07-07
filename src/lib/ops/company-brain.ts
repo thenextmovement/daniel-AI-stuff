@@ -2144,6 +2144,24 @@ function isOfferDeliveryFailureEvidence(entry: CompanyBrainEvidence) {
   return /unzustellbar|nicht zugestellt|konnte nicht zugestellt|postfach ist nicht verfuegbar|postfach ist nicht verfügbar|recipient.*unknown|mail delivery|delivery status notification|undeliver/.test(text);
 }
 
+function timestampMs(value: string | null | undefined) {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isAutomationFailure(run: CompanyBrainAutomationRun | null | undefined) {
+  return Boolean(run && /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`));
+}
+
+function isAutomationFailureResolvedBySendProof(run: CompanyBrainAutomationRun | null | undefined, offerSentCheck: CompanyBrainCrossCheck | null | undefined) {
+  if (!isAutomationFailure(run) || offerSentCheck?.status !== "pass") return false;
+  const proofTime = timestampMs(offerSentCheck.actual);
+  const failureTime = timestampMs(run?.createdAt);
+  if (!proofTime) return true;
+  if (!failureTime) return true;
+  return proofTime >= failureTime;
+}
+
 function normalizeRetryEmail(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
 }
@@ -2205,7 +2223,8 @@ export function buildCompanyBrainRetryAssessment(input: {
     safeFixes.push("Kunden-E-Mail-Adresse/Postfach zuerst korrigieren oder verifizieren.");
   }
   if (offerSentCheck?.status === "pass") {
-    blockers.push("Es gibt bereits einen Versand-/Ausgangsbeleg; Duplicate-Risiko prüfen.");
+    blockers.push("Es gibt bereits einen Versand-/Ausgangsbeleg; keinen erneuten Versand auslösen.");
+    safeFixes.push("Status-/Trello-Projektion und Fallnotiz prüfen, aber keinen Resend starten.");
   }
 
   if (!safeFixes.length) {
@@ -2217,7 +2236,7 @@ export function buildCompanyBrainRetryAssessment(input: {
   const idempotencyKey = offer && recipientEmail
     ? `company-brain-offer-resend:${offer.offerId}:${recipientEmail}`
     : null;
-  const hardBlockers = blockers.filter((blocker) => !/Duplicate-Risiko/.test(blocker));
+  const hardBlockers = blockers;
   const canSendWithConfirmation = Boolean(record && offer && recipientEmail && !hardBlockers.length);
   const status: CompanyBrainRetryAssessment["status"] =
     canSendWithConfirmation
@@ -2461,8 +2480,9 @@ function buildWatchers(input: {
   const deliveryFailureEvidence = input.evidence.find(isOfferDeliveryFailureEvidence) || null;
   const latestInbound = input.evidence.find((entry) => entry.direction === "inbound" && !isOfferDeliveryFailureEvidence(entry)) || null;
   const openTasks = input.records.flatMap((record) => record.internalTasks || []).filter((task) => task.status === "open");
-  const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
   const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent");
+  const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
+  const automationResolvedBySendProof = isAutomationFailureResolvedBySendProof(failedAutomation, offerSentCheck);
   const colorCheck = input.crossChecks.find((check) => check.key === "color_match");
   const liveOutlook = input.integrationReadiness.find((entry) => entry.key === "live_outlook");
   const designAssets = input.assets.filter((asset) => asset.kind === "reference_image" || asset.kind === "mockup" || asset.kind === "offer_image");
@@ -2504,13 +2524,15 @@ function buildWatchers(input: {
 
   watchers.push({
     key: "automation_failed",
-    severity: failedAutomation ? "critical" : "info",
-    status: failedAutomation ? "open" : "ok",
-    title: "n8n-/Automation-Fehler",
-    detail: failedAutomation
-      ? `${failedAutomation.workflowName || "Workflow"} · ${failedAutomation.action || "Aktion"}${failedAutomation.failedNode ? ` · Node ${failedAutomation.failedNode}` : ""} · ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}`
+    severity: failedAutomation && !automationResolvedBySendProof ? "critical" : "info",
+    status: failedAutomation && !automationResolvedBySendProof ? "open" : "ok",
+    title: automationResolvedBySendProof ? "n8n-Fehler mit späterem Versandbeleg" : "n8n-/Automation-Fehler",
+    detail: automationResolvedBySendProof
+      ? `Alter Automation-Fehler vorhanden, aber ein späterer Versand-/Ausgangsbeleg ist geladen: ${offerSentCheck?.summary || offerSentCheck?.actual || "Versand belegt"}.`
+      : failedAutomation
+        ? `${failedAutomation.workflowName || "Workflow"} · ${failedAutomation.action || "Aktion"}${failedAutomation.failedNode ? ` · Node ${failedAutomation.failedNode}` : ""} · ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}`
       : "Keine fehlgeschlagenen Automation-Runs im geladenen Audit gefunden.",
-    actionKey: failedAutomation ? "inspect_n8n_run" : null,
+    actionKey: failedAutomation && !automationResolvedBySendProof ? "inspect_n8n_run" : null,
   });
 
   watchers.push({
@@ -2608,7 +2630,7 @@ export function buildTrelloFailureDiagnosis(input: {
   const expectedAction = expectedTrelloAction(input.question, input.problemType);
   const triggerMove = latestTrelloMove(input.context.actions);
   const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent");
-  const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
+  const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
   const failedAutomationHint = failedAutomation
     ? classifyAutomationIssueText([
         failedAutomation.error,
@@ -2621,13 +2643,19 @@ export function buildTrelloFailureDiagnosis(input: {
   const hasRecord = input.records.length > 0;
   const hasOffer = input.offers.length > 0;
   const offerSent = offerSentCheck?.status === "pass";
+  const automationResolvedBySendProof = isAutomationFailureResolvedBySendProof(failedAutomation, offerSentCheck);
   const offerIntentMove = trelloMoveMatchesOfferIntent(triggerMove);
   let rootCauseKey: CompanyBrainTrelloFailureDiagnosis["rootCauseKey"] = "undetermined";
   let rootCause = "Trello-Karte wurde geladen, aber die Ursache ist noch nicht eindeutig belegbar.";
   let recommendedFix = "Kartenbewegung, Source-of-Truth-Datensatz, Angebot, Versandbeleg und Workflow-Audit gemeinsam prüfen.";
   let severity: CompanyBrainTrelloFailureDiagnosis["severity"] = "warning";
 
-  if (failedAutomation) {
+  if (automationResolvedBySendProof) {
+    rootCauseKey = "sent";
+    rootCause = `${failedAutomation?.workflowName || "Workflow"} hatte einen Fehler, aber ein späterer Versand-/Ausgangsbeleg ist vorhanden. Der ursprüngliche Versandfehler wirkt damit fachlich erledigt; offen ist höchstens Rückschreibung/Projektion.`;
+    recommendedFix = "Kein erneuter Versand. Status-Rückschreibung, Trello-Kommentar und interne Fallnotiz prüfen; nur bei fehlendem Beleg erneut in Outlook/quote_email_log gegenprüfen.";
+    severity = "info";
+  } else if (failedAutomation) {
     rootCauseKey = "automation_failed";
     rootCause = failedAutomationHint && failedAutomationHint.key !== "unknown"
       ? `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen. ${failedAutomationHint.rootCause}`
@@ -2678,7 +2706,7 @@ export function buildTrelloFailureDiagnosis(input: {
   const duplicateRisk: CompanyBrainTrelloFailureDiagnosis["duplicateRisk"] =
     expectedAction === "offer_send" && !offerSent ? "high" : expectedAction === "unknown" ? "medium" : "low";
   const safeFixes = [
-    failedAutomationHint && failedAutomationHint.key !== "unknown" ? failedAutomationHint.safeFix : null,
+    !automationResolvedBySendProof && failedAutomationHint && failedAutomationHint.key !== "unknown" ? failedAutomationHint.safeFix : null,
     hasRecord ? "Interne Problemfall-Aufgabe mit Trello-Card-ID und Befund anlegen." : null,
     rootCauseKey === "no_source_record" ? "Karte manuell mit Request-ID/Kundenakte verknüpfen." : null,
     rootCauseKey === "sent" ? "Status-/Trello-Projektion nachziehen, keinen erneuten Versand auslösen." : null,
@@ -2687,7 +2715,7 @@ export function buildTrelloFailureDiagnosis(input: {
       : null,
   ].filter(Boolean) as string[];
   const blockedFixes = [
-    failedAutomationHint && ["customer_email_missing", "customer_email_invalid", "delivery_failure"].includes(failedAutomationHint.key)
+    !automationResolvedBySendProof && failedAutomationHint && ["customer_email_missing", "customer_email_invalid", "delivery_failure"].includes(failedAutomationHint.key)
       ? failedAutomationHint.retrySafety
       : null,
     expectedAction === "offer_send" && !offerSent ? "Kein automatischer Angebotsversand ohne Outlook-Duplicate-Check." : null,
@@ -3042,7 +3070,9 @@ function buildActionProposals(input: {
   const primaryRecord = input.records[0] || null;
   const primaryOffer = input.offers[0] || null;
   const liveOutlook = input.integrationReadiness.find((entry) => entry.key === "live_outlook");
-  const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
+  const failedAutomation = input.trelloFailureDiagnosis.rootCauseKey === "sent"
+    ? null
+    : input.automationRuns.find((run) => isAutomationFailure(run)) || null;
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
   const trelloCardId = input.trelloFailureDiagnosis.card?.id || primaryRecord?.trelloCardId || primaryOffer?.trelloCardId || null;
