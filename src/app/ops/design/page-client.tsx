@@ -91,15 +91,61 @@ function kindTone(kind: DesignAttachment["kind"]) {
 
 const DESIGN_CONSTRAINT_START = "[[NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
 const DESIGN_CONSTRAINT_END = "[[/NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
-const TABLETOP_DEVICE_CONSTRAINT = [
-  DESIGN_CONSTRAINT_START,
-  "Preset: Tischgerät / Standgerät",
-  "Nutze den bestehenden Kartenprompt als Basis, visualisiere das Produkt aber ausschließlich als freistehendes Tischgerät.",
-  "Das Schild steht auf einem Tisch, Tresen, Sideboard oder Schreibtisch und ist nicht an Wand, Fenster, Fassade oder Schaufenster montiert.",
-  "Zeige eine glaubwürdige Tischaufstellung mit stabilem Standfuß, Sockel oder freistehendem Acrylaufsteller.",
-  "Keine Wandmontage, keine Wandhalterung, keine Außenfassade, keine große Rauminstallation.",
-  DESIGN_CONSTRAINT_END,
-].join("\n");
+const MOCKUP_PRESETS = {
+  original: null,
+  wall: {
+    label: "Wand",
+    lines: [
+      "Preset: Wandmockup",
+      "Nutze den bestehenden Kartenprompt als Basis, visualisiere das Produkt aber ausschließlich als hochwertiges Wandmockup.",
+      "Das Schild ist realistisch an einer passenden Innenwand montiert, mit sauberer Perspektive, natürlichem Licht und realistischer LED-Wirkung.",
+      "Keine Tischaufstellung, kein Standfuß, keine Fassade, kein Schaufenster.",
+    ],
+  },
+  tabletop: {
+    label: "Tischgerät",
+    lines: [
+      "Preset: Tischgerät / Standgerät",
+      "Nutze den bestehenden Kartenprompt als Basis, visualisiere das Produkt aber ausschließlich als freistehendes Tischgerät.",
+      "Das Schild steht auf einem Tisch, Tresen, Sideboard oder Schreibtisch und ist nicht an Wand, Fenster, Fassade oder Schaufenster montiert.",
+      "Zeige eine glaubwürdige Tischaufstellung mit stabilem Standfuß, Sockel oder freistehendem Acrylaufsteller.",
+      "Keine Wandmontage, keine Wandhalterung, keine Außenfassade, keine große Rauminstallation.",
+    ],
+  },
+  counter: {
+    label: "Tresen",
+    lines: [
+      "Preset: Tresenmockup",
+      "Nutze den bestehenden Kartenprompt als Basis, visualisiere das Produkt aber ausschließlich auf einem Empfangstresen, Verkaufstresen oder Bartresen.",
+      "Das Schild steht nah am Betrachter auf der Tresenfläche, wirkt hochwertig und bleibt klar lesbar.",
+      "Keine Wandmontage, keine Außenfassade, keine Fensterbeklebung.",
+    ],
+  },
+  window: {
+    label: "Schaufenster",
+    lines: [
+      "Preset: Schaufenster",
+      "Nutze den bestehenden Kartenprompt als Basis, visualisiere das Produkt ausschließlich als hochwertiges Schaufenster- oder Glasfront-Mockup.",
+      "Das Schild wirkt realistisch im Ladenfenster oder direkt hinter Glas, mit kontrollierten Reflexionen und klar lesbarer Schrift.",
+      "Keine Tischaufstellung, keine Innenwandmontage, keine Außenfassade ohne Glasbezug.",
+    ],
+  },
+  outdoor: {
+    label: "Outdoor",
+    lines: [
+      "Preset: Outdoor / Fassade",
+      "Nutze den bestehenden Kartenprompt als Basis, visualisiere das Produkt ausschließlich in einem realistischen Außenbereich oder an einer hochwertigen Fassade.",
+      "Achte auf wetterfest wirkende Montage, glaubwürdige Tages- oder Abendlichtsituation und klare Lesbarkeit.",
+      "Keine Tischaufstellung, kein Innenraum, kein reines Produktfreisteller-Bild.",
+    ],
+  },
+} as const;
+type MockupPresetKey = keyof typeof MOCKUP_PRESETS;
+
+function mockupPresetLabel(presetKey: MockupPresetKey) {
+  if (presetKey === "original") return "Original";
+  return MOCKUP_PRESETS[presetKey].label;
+}
 
 function removeDesignConstraint(prompt: string) {
   const escapedStart = DESIGN_CONSTRAINT_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -107,9 +153,11 @@ function removeDesignConstraint(prompt: string) {
   return prompt.replace(new RegExp(`\\n*${escapedStart}[\\s\\S]*?${escapedEnd}\\n*`, "g"), "\n").trim();
 }
 
-function promptWithTabletopConstraint(prompt: string) {
+function promptWithMockupConstraint(prompt: string, presetKey: Exclude<MockupPresetKey, "original">) {
   const base = removeDesignConstraint(prompt);
-  return [base, TABLETOP_DEVICE_CONSTRAINT].filter(Boolean).join("\n\n");
+  const preset = MOCKUP_PRESETS[presetKey];
+  const constraint = [DESIGN_CONSTRAINT_START, ...preset.lines, DESIGN_CONSTRAINT_END].join("\n");
+  return [base, constraint].filter(Boolean).join("\n\n");
 }
 
 export function DesignOpsClient({
@@ -125,7 +173,7 @@ export function DesignOpsClient({
   const [query, setQuery] = useState("");
   const [workspace, setWorkspace] = useState<DesignWorkspace | null>(null);
   const [promptDraft, setPromptDraft] = useState("");
-  const [promptPreset, setPromptPreset] = useState<"original" | "tabletop">("original");
+  const [promptPreset, setPromptPreset] = useState<MockupPresetKey>("original");
   const [operatorName, setOperatorName] = useState("");
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [offer, setOffer] = useState<OpsOfferSnapshot | null>(null);
@@ -192,12 +240,12 @@ export function DesignOpsClient({
     setJob(null);
   }, [workspace]);
 
-  function applyPromptPreset(nextPreset: "original" | "tabletop") {
+  function applyPromptPreset(nextPreset: MockupPresetKey) {
     if (!workspace) return;
     setPromptPreset(nextPreset);
     setJob(null);
     const basePrompt = removeDesignConstraint(promptDraft || workspace.promptPreview.prompt || "");
-    setPromptDraft(nextPreset === "tabletop" ? promptWithTabletopConstraint(basePrompt) : basePrompt);
+    setPromptDraft(nextPreset === "original" ? basePrompt : promptWithMockupConstraint(basePrompt, nextPreset));
   }
 
   async function searchDesignWorkspace(nextQuery = query) {
@@ -590,7 +638,7 @@ export function DesignOpsClient({
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <div className="font-semibold">{card.cardName || card.cardId}</div>
-                              <div className="text-xs text-stone-500">{card.attachments.length} Anhänge · Board {card.boardId || "-"}</div>
+                              <div className="text-xs text-stone-500">{card.attachments.length} Anhänge · {card.listName || `Liste ${card.listId || "-"}`}</div>
                               {card.promptBlocks.hasMarkers ? (
                                 <div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
                                   Prompt Marker
@@ -717,6 +765,11 @@ export function DesignOpsClient({
                         {workspace.promptPreview.sourceLabel}
                       </div>
                     ) : null}
+                    {workspace?.primaryCard ? (
+                      <div className="mt-2 text-xs text-stone-500">
+                        Quelle: {workspace.primaryCard.cardName || workspace.primaryCard.cardId} · {workspace.primaryCard.listName || "Liste unbekannt"}
+                      </div>
+                    ) : null}
                   </div>
                   <button type="button" onClick={() => void copyPrompt()} disabled={!promptDraft} className="inline-flex items-center gap-2 rounded-[0.65rem] border border-[#ded8d0] px-3 py-2 text-xs font-semibold disabled:opacity-50">
                     <Copy className="h-4 w-4" />
@@ -742,21 +795,18 @@ export function DesignOpsClient({
                   </details>
                 ) : null}
                 {workspace ? (
-                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1">
-                    <button
-                      type="button"
-                      onClick={() => applyPromptPreset("original")}
-                      className={`h-9 rounded-[0.55rem] px-3 text-xs font-semibold ${promptPreset === "original" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
-                    >
-                      Original
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyPromptPreset("tabletop")}
-                      className={`h-9 rounded-[0.55rem] px-3 text-xs font-semibold ${promptPreset === "tabletop" ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
-                    >
-                      Tischgerät
-                    </button>
+                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1 sm:grid-cols-3">
+                    {(Object.keys(MOCKUP_PRESETS) as MockupPresetKey[]).map((presetKey) => (
+                      <button
+                        key={presetKey}
+                        type="button"
+                        onClick={() => applyPromptPreset(presetKey)}
+                        disabled={!workspace.promptPreview.prompt}
+                        className={`h-9 rounded-[0.55rem] px-3 text-xs font-semibold disabled:opacity-40 ${promptPreset === presetKey ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
+                      >
+                        {mockupPresetLabel(presetKey)}
+                      </button>
+                    ))}
                   </div>
                 ) : null}
                 <textarea

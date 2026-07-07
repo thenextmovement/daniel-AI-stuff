@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
-import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, getTrelloCard, searchTrelloCards } from "@/lib/quotes/trello";
+import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, getTrelloCard, getTrelloList, searchTrelloCards } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { getOfferById, patchOfferById, type OpsOfferPatchResult } from "@/lib/ops/offers";
@@ -34,6 +34,7 @@ export type DesignCardSummary = {
   cardUrl: string | null;
   boardId: string | null;
   listId: string | null;
+  listName: string | null;
   description: string | null;
   promptBlocks: DesignTrelloPromptBlocks;
   attachments: DesignAttachment[];
@@ -53,7 +54,7 @@ export type DesignOfferCandidate = {
 export type DesignPromptPreview = {
   title: string;
   prompt: string;
-  source: "trello_image_prompt" | "ops_generated";
+  source: "trello_image_prompt" | "missing_trello_prompt";
   sourceLabel: string;
   videoPrompt: string | null;
   warnings: string[];
@@ -383,6 +384,7 @@ function attachmentProxyUrl(cardId: string, attachmentId: string, kind: DesignAt
 
 async function loadDesignCard(cardId: string, cardUrl?: string | null): Promise<DesignCardSummary> {
   const card = await getTrelloCard(cardId);
+  const list = card.idList ? await getTrelloList(card.idList).catch(() => null) : null;
   const reference = selectReferenceTrelloAttachment(card.attachments || []);
   const description = trimNullable(card.desc);
   const attachments = (card.attachments || [])
@@ -411,6 +413,7 @@ async function loadDesignCard(cardId: string, cardUrl?: string | null): Promise<
     cardUrl: trimNullable(cardUrl) || `https://trello.com/c/${card.id}`,
     boardId: trimNullable(card.idBoard),
     listId: trimNullable(card.idList),
+    listName: trimNullable(list?.name),
     description,
     promptBlocks: extractTrelloMockupPromptBlocks(description),
     attachments,
@@ -446,9 +449,30 @@ function offerCandidates(record: CustomerSearchResult | null): DesignOfferCandid
   ];
 }
 
-function compactLine(label: string, value: unknown) {
-  const normalized = Array.isArray(value) ? value.filter(Boolean).join(", ") : trimNullable(value);
-  return normalized ? `${label}: ${normalized}` : null;
+function isQuoteReadyLikeList(listName: string | null | undefined) {
+  const normalized = String(listName || "").toLowerCase();
+  return /quote\s*ready|ready|ki\s*mockup|mockup\s*erstellen|mockup/.test(normalized);
+}
+
+function cardPromptPriority(card: DesignCardSummary) {
+  if (!card.promptBlocks.imagePrompt) return 0;
+  return isQuoteReadyLikeList(card.listName) ? 100 : 80;
+}
+
+function selectPrimaryDesignCard(cards: DesignCardSummary[]) {
+  return [...cards]
+    .sort((left, right) => {
+      const promptDiff = cardPromptPriority(right) - cardPromptPriority(left);
+      if (promptDiff) return promptDiff;
+      const mockupDiff =
+        right.attachments.filter((attachment) => attachment.kind === "mockup").length -
+        left.attachments.filter((attachment) => attachment.kind === "mockup").length;
+      if (mockupDiff) return mockupDiff;
+      const mediaDiff =
+        right.attachments.filter((attachment) => attachment.kind === "reference" || attachment.kind === "image").length -
+        left.attachments.filter((attachment) => attachment.kind === "reference" || attachment.kind === "image").length;
+      return mediaDiff;
+    })[0] || null;
 }
 
 function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: DesignCardSummary | null): DesignPromptPreview {
@@ -457,53 +481,26 @@ function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: De
   if (!record) warnings.push("Kein Customer Record gefunden. Prompt basiert nur auf Trello-Daten.");
   if (!primaryCard) warnings.push("Keine Trello-Karte geladen. Prompt ist noch nicht generierbar.");
   if (primaryCard?.promptBlocks.imagePrompt) {
+    if (!isQuoteReadyLikeList(primaryCard.listName)) {
+      warnings.push(`Prompt-Marker gefunden, aber Karte liegt in "${primaryCard.listName || "unbekannter Liste"}" statt Quote Ready/KI-Mockup. Bitte Quelle prüfen.`);
+    }
     return {
       title: request?.title || primaryCard.cardName || "Design Mockup Prompt",
       prompt: primaryCard.promptBlocks.imagePrompt,
       source: "trello_image_prompt",
-      sourceLabel: "KI-Mockup Prompt aus Trello (#startprompt)",
+      sourceLabel: `KI-Mockup Prompt aus ${primaryCard.listName || "Trello"} (#startprompt)`,
       videoPrompt: primaryCard.promptBlocks.videoPrompt,
       warnings,
     };
   }
 
-  if (primaryCard?.description && !primaryCard.promptBlocks.hasMarkers) {
-    warnings.push("Kein #startprompt/#endprompt in der Trello-Beschreibung gefunden. Fallback-Prompt wurde aus Ops-Kontext gebaut.");
-  }
-  if (record && !request?.description && !primaryCard?.description) warnings.push("Wenig Briefing-Text vorhanden. Vor Generierung manuell ergänzen.");
-
-  const lines = [
-    "Erstelle ein realistisches NEONTRIP Mockup fuer ein Kundenangebot.",
-    "",
-    "Ziel: Ein verkaufsfaehiges Produktbild, das Design, Groesse, Materialwirkung und Einsatzort klar zeigt.",
-    "",
-    compactLine("Kunde", record?.displayName || record?.company || record?.email),
-    compactLine("Request ID", record?.requestId),
-    compactLine("Projekt", request?.title || primaryCard?.cardName),
-    compactLine("Kategorie", request?.sKategorie || request?.segmentLabel || request?.segment),
-    compactLine("Groesse", request?.size),
-    compactLine("Farben", request?.colors),
-    compactLine("Anwendung", request?.application),
-    compactLine("Lieferzeit", request?.deliveryTime),
-    compactLine("Land", request?.country),
-    compactLine("Trello Karte", primaryCard?.cardUrl),
-    "",
-    "Briefing:",
-    request?.description || primaryCard?.description || "Bitte Briefing vor der Generierung ergaenzen.",
-    "",
-    "Ausgabeanforderungen:",
-    "- sauberer heller Hintergrund oder glaubwuerdiger Einsatzkontext",
-    "- Produkt muss klar im Fokus stehen",
-    "- keine falschen Logos oder lesbaren Marken erfinden",
-    "- keine Preisangaben oder Lieferzusagen im Bild",
-    "- Ergebnis als Mockup fuer interne Angebotspruefung behandeln",
-  ].filter((line): line is string => line !== null);
+  warnings.push("Kein echter Quote-Ready KI-Prompt gefunden. Erwartet wird ein #startprompt/#endprompt Block in der Trello-Beschreibung der Quote-Ready/KI-Mockup-Karte.");
 
   return {
     title: request?.title || primaryCard?.cardName || "Design Mockup Prompt",
-    prompt: lines.join("\n"),
-    source: "ops_generated",
-    sourceLabel: "Fallback-Prompt aus Ops-Kontext",
+    prompt: "",
+    source: "missing_trello_prompt",
+    sourceLabel: "Kein Quote-Ready Prompt gefunden",
     videoPrompt: primaryCard?.promptBlocks.videoPrompt || null,
     warnings,
   };
@@ -558,11 +555,7 @@ export async function loadDesignWorkspace(query: string): Promise<DesignWorkspac
     )
   ).filter((card): card is DesignCardSummary => Boolean(card));
 
-  const primaryCard =
-    cards.find((card) => card.attachments.some((attachment) => attachment.kind === "mockup")) ||
-    cards.find((card) => card.attachments.some((attachment) => attachment.kind === "reference" || attachment.kind === "image")) ||
-    cards[0] ||
-    null;
+  const primaryCard = selectPrimaryDesignCard(cards);
   const offers = offerCandidates(record);
   const totalAttachments = cards.reduce((sum, card) => sum + card.attachments.length, 0);
   const mockups = cards.reduce((sum, card) => sum + card.attachments.filter((attachment) => attachment.kind === "mockup").length, 0);
