@@ -17,6 +17,11 @@ import {
   type SupplierQuoteTrainingItemAnchorReviewDecision,
 } from "@/lib/ops/supplier-price-review";
 import type { UpdateActor } from "@/lib/ops/customer-records";
+import {
+  generateOfferSizeLadder,
+  type OfferSizeLadderAnchorInput,
+  type OfferSizeLadderProductModel,
+} from "@/lib/ops/offer-size-ladder";
 import { OpsOfferApiError } from "@/lib/ops/offers";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -144,6 +149,7 @@ export async function POST(request: NextRequest) {
           | "review_training_item_anchor"
           | "estimate_from_trello"
           | "apply_trello_estimate_to_offer"
+          | "generate_offer_size_ladder"
           | "import_trello_training_candidates";
         predictionId?: string;
         decision?: SupplierPricePredictionReviewDecision;
@@ -206,6 +212,30 @@ export async function POST(request: NextRequest) {
           dryRun?: boolean;
           revisionReason?: string | null;
           currency?: string | null;
+        };
+        sizeLadder?: {
+          trelloCardId?: string | null;
+          trelloCardUrl?: string | null;
+          offerId?: string | null;
+          offerItemId?: string | null;
+          designId?: string | null;
+          productModel?: string | null;
+          sourceText?: string | null;
+          stepCm?: number | string | null;
+          maxLongSideCm?: number | string | null;
+          customerFactor?: number | string | null;
+          persist?: boolean;
+          anchors?: Array<{
+            role?: string | null;
+            widthCm?: number | string | null;
+            heightCm?: number | string | null;
+            productionPrice?: number | string | null;
+            shippingPrice?: number | string | null;
+            currency?: string | null;
+            source?: "trello_ocr" | "manual" | "supplier_form" | "custom_fields";
+            confidence?: number | string | null;
+            rawText?: string | null;
+          }>;
         };
         trelloImport?: {
           trelloCards?: string | string[] | null;
@@ -311,6 +341,38 @@ export async function POST(request: NextRequest) {
         currency: trimNullable(body.offerApply?.currency),
       });
       return NextResponse.json({ ok: true, applyResult });
+    }
+
+    if (body?.action === "generate_offer_size_ladder") {
+      if (!opsActor) return forbidden();
+      const input = body.sizeLadder || {};
+      const anchors = (input.anchors || []).map((anchor) => ({
+        role: anchor.role,
+        widthCm: Number(anchor.widthCm),
+        heightCm: Number(anchor.heightCm),
+        productionPrice: Number(anchor.productionPrice),
+        shippingPrice: Number(anchor.shippingPrice),
+        currency: trimNullable(anchor.currency),
+        source: anchor.source || "manual",
+        confidence: anchor.confidence === null || anchor.confidence === undefined ? null : Number(anchor.confidence),
+        rawText: trimNullable(anchor.rawText),
+      })) as OfferSizeLadderAnchorInput[];
+      const sizeLadder = await generateOfferSizeLadder({
+        trelloCardId: String(input.trelloCardId || ""),
+        trelloCardUrl: trimNullable(input.trelloCardUrl),
+        offerId: trimNullable(input.offerId),
+        offerItemId: trimNullable(input.offerItemId),
+        designId: trimNullable(input.designId),
+        productModel: trimNullable(input.productModel) as OfferSizeLadderProductModel | null,
+        sourceText: trimNullable(input.sourceText),
+        stepCm: input.stepCm === null || input.stepCm === undefined ? undefined : Number(input.stepCm),
+        maxLongSideCm: input.maxLongSideCm === null || input.maxLongSideCm === undefined ? undefined : Number(input.maxLongSideCm),
+        customerFactor: input.customerFactor === null || input.customerFactor === undefined ? undefined : Number(input.customerFactor),
+        createdBy: actor.operatorName || actor.mode,
+        persist: input.persist === true,
+        anchors,
+      });
+      return NextResponse.json({ ok: true, sizeLadder });
     }
 
     if (body?.action === "import_trello_training_candidates") {

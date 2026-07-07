@@ -41,6 +41,24 @@ const checks = [
     label: "design_offer_asset_links core columns",
     migration: "supabase/migrations/20260706102534_create_design_ops_tables.sql",
   },
+  {
+    table: "offer_size_quote_anchor_sets",
+    select: "id,set_key,trello_card_id,product_model,customer_factor,status,confidence",
+    label: "offer_size_quote_anchor_sets core columns",
+    migration: "supabase/migrations/20260707131358_create_offer_size_ladder_quotes.sql",
+  },
+  {
+    table: "offer_size_quote_anchors",
+    select: "id,anchor_set_id,role,width_cm,height_cm,production_price,shipping_price",
+    label: "offer_size_quote_anchors core columns",
+    migration: "supabase/migrations/20260707131358_create_offer_size_ladder_quotes.sql",
+  },
+  {
+    table: "offer_size_options",
+    select: "id,anchor_set_id,size_label,customer_unit_price_net,review_status,is_default",
+    label: "offer_size_options core columns",
+    migration: "supabase/migrations/20260707131358_create_offer_size_ladder_quotes.sql",
+  },
 ];
 
 function requiredEnv(name) {

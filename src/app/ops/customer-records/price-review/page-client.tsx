@@ -16,6 +16,8 @@ import type {
 import { OpsPageHeader } from "../../ops-page-header";
 import { OpsPageIntro, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
 
+const OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT = 2.6;
+
 type ReviewResponse = {
   ok: boolean;
   items?: SupplierPricePredictionReviewItem[];
@@ -24,6 +26,7 @@ type ReviewResponse = {
   createdPredictionItems?: SupplierPricePredictionReviewItem[];
   estimate?: SupplierPriceTrelloEstimateResult;
   applyResult?: SupplierPriceOfferApplyResult;
+  sizeLadder?: OfferSizeLadderResultView;
   importResult?: SupplierQuoteTrelloImportResult;
   error?: string;
   issues?: string[];
@@ -36,6 +39,39 @@ type AnchorCorrectionDraft = {
   heightCm?: string;
   productionPrice?: string;
   shippingPrice?: string;
+};
+type SizeLadderAnchorRole = "minimum" | "requested" | "max_250";
+type SizeLadderAnchorDraft = {
+  widthCm: string;
+  heightCm: string;
+  productionPrice: string;
+  shippingPrice: string;
+};
+type OfferSizeLadderOptionView = {
+  sizeLabel: string;
+  widthCm: number;
+  heightCm: number;
+  longSideCm: number;
+  productionPriceEstimated: number;
+  shippingPriceEstimated: number;
+  supplierTotalEstimated: number;
+  customerFactor: number;
+  customerUnitPriceNet: number;
+  currency: string;
+  confidence: number;
+  reviewStatus: "auto_ok" | "needs_review" | "blocked";
+  reviewReason: string | null;
+  isDefault: boolean;
+};
+type OfferSizeLadderResultView = {
+  status: "draft" | "needs_review" | "approved" | "blocked" | "applied" | "superseded";
+  productModel: string;
+  confidence: number;
+  issues: string[];
+  warnings: string[];
+  customerFactor: number;
+  options: OfferSizeLadderOptionView[];
+  persisted?: { anchorSetId: string; optionCount: number } | null;
 };
 
 function formatApiError(payload: ReviewResponse | null) {
@@ -146,6 +182,12 @@ function confidenceLabel(level: string) {
   if (level === "medium") return "mittel";
   if (level === "blocked") return "blockiert";
   return "niedrig";
+}
+
+function sizeLadderStatusTone(status: string) {
+  if (status === "auto_ok" || status === "draft" || status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "blocked") return "border-rose-200 bg-rose-50 text-rose-800";
+  return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
 function estimateApplyKey(item: SupplierPriceTrelloEstimateItem) {
@@ -299,6 +341,78 @@ function TrelloEstimateResultCard({
         );
         })}
       </div>
+    </div>
+  );
+}
+
+function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView }) {
+  const visibleOptions = result.options.slice(0, 18);
+  const hiddenCount = Math.max(0, result.options.length - visibleOptions.length);
+  return (
+    <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold text-black">3-Anchor Size Ladder</div>
+            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${sizeLadderStatusTone(result.status)}`}>
+              {result.status} · {Math.round(result.confidence * 100)}%
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-black/50">
+            {result.productModel} · Faktor {result.customerFactor.toFixed(1)} · {result.options.length} Größenoptionen
+          </div>
+        </div>
+        {result.persisted ? (
+          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800">
+            Draft gespeichert
+          </div>
+        ) : null}
+      </div>
+
+      {result.issues.length || result.warnings.length ? (
+        <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${result.issues.length ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+          {[...result.issues, ...result.warnings].join(", ")}
+        </div>
+      ) : null}
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full text-left text-xs">
+          <thead className="border-b border-black/10 text-[10px] uppercase tracking-[0.14em] text-black/40">
+            <tr>
+              <th className="py-2 pr-3 font-medium">Größe</th>
+              <th className="py-2 pr-3 font-medium">Prod.</th>
+              <th className="py-2 pr-3 font-medium">Shipping</th>
+              <th className="py-2 pr-3 font-medium">Supplier</th>
+              <th className="py-2 pr-3 font-medium">Angebot netto</th>
+              <th className="py-2 pr-3 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleOptions.map((option) => (
+              <tr key={`${option.longSideCm}-${option.sizeLabel}`} className="border-b border-black/[0.06]">
+                <td className="py-2 pr-3 font-medium text-black">
+                  {option.sizeLabel}
+                  {option.isDefault ? <span className="ml-2 text-[10px] text-[#fa31a2]">Default</span> : null}
+                </td>
+                <td className="py-2 pr-3 text-black/65">{formatMoney(option.productionPriceEstimated, option.currency)}</td>
+                <td className="py-2 pr-3 text-black/65">{formatMoney(option.shippingPriceEstimated, option.currency)}</td>
+                <td className="py-2 pr-3 text-black/65">{formatMoney(option.supplierTotalEstimated, option.currency)}</td>
+                <td className="py-2 pr-3 font-semibold text-black">{formatMoney(option.customerUnitPriceNet, "EUR")}</td>
+                <td className="py-2 pr-3">
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] ${sizeLadderStatusTone(option.reviewStatus)}`}>
+                    {option.reviewStatus}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hiddenCount ? (
+        <div className="mt-3 text-xs text-black/45">
+          {hiddenCount} weitere Größen im gespeicherten Draft.
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -613,6 +727,18 @@ export function SupplierPriceReviewClient({
   const [offerApplyingKey, setOfferApplyingKey] = useState<string | null>(null);
   const [checkedOfferApplyKey, setCheckedOfferApplyKey] = useState<string | null>(null);
   const [offerApplyResult, setOfferApplyResult] = useState<SupplierPriceOfferApplyResult | null>(null);
+  const [sizeLadderTrelloCardId, setSizeLadderTrelloCardId] = useState("");
+  const [sizeLadderOfferId, setSizeLadderOfferId] = useState("");
+  const [sizeLadderOfferItemId, setSizeLadderOfferItemId] = useState("");
+  const [sizeLadderProductModel, setSizeLadderProductModel] = useState("neonflex");
+  const [sizeLadderSourceText, setSizeLadderSourceText] = useState("");
+  const [sizeLadderAnchors, setSizeLadderAnchors] = useState<Record<SizeLadderAnchorRole, SizeLadderAnchorDraft>>({
+    minimum: { widthCm: "", heightCm: "", productionPrice: "", shippingPrice: "" },
+    requested: { widthCm: "", heightCm: "", productionPrice: "", shippingPrice: "" },
+    max_250: { widthCm: "", heightCm: "", productionPrice: "", shippingPrice: "" },
+  });
+  const [sizeLadderResult, setSizeLadderResult] = useState<OfferSizeLadderResultView | null>(null);
+  const [sizeLadderRunning, setSizeLadderRunning] = useState(false);
   const [importListId, setImportListId] = useState("");
   const [importCards, setImportCards] = useState("");
   const [importTitleFilter, setImportTitleFilter] = useState("");
@@ -857,6 +983,67 @@ export function SupplierPriceReviewClient({
     }
   }
 
+  function updateSizeLadderAnchor(role: SizeLadderAnchorRole, patch: Partial<SizeLadderAnchorDraft>) {
+    setSizeLadderAnchors((current) => ({
+      ...current,
+      [role]: {
+        ...current[role],
+        ...patch,
+      },
+    }));
+  }
+
+  async function generateSizeLadder(persist: boolean) {
+    setSizeLadderRunning(true);
+    setError(null);
+    setMessage(null);
+    if (!persist) setSizeLadderResult(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/price-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_offer_size_ladder",
+          sizeLadder: {
+            trelloCardId: sizeLadderTrelloCardId,
+            trelloCardUrl: sizeLadderTrelloCardId.startsWith("http") ? sizeLadderTrelloCardId : null,
+            offerId: sizeLadderOfferId || null,
+            offerItemId: sizeLadderOfferItemId || null,
+            productModel: sizeLadderProductModel || null,
+            sourceText: sizeLadderSourceText || null,
+            stepCm: 10,
+            maxLongSideCm: 250,
+            customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
+            persist,
+            anchors: (["minimum", "requested", "max_250"] as const).map((role) => ({
+              role,
+              widthCm: sizeLadderAnchors[role].widthCm,
+              heightCm: sizeLadderAnchors[role].heightCm,
+              productionPrice: sizeLadderAnchors[role].productionPrice,
+              shippingPrice: sizeLadderAnchors[role].shippingPrice,
+              currency: "USD",
+              source: "manual",
+              confidence: 0.9,
+            })),
+          },
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
+      if (!response.ok || !payload?.ok || !payload.sizeLadder) {
+        setError(formatApiError(payload));
+        setSizeLadderRunning(false);
+        return;
+      }
+      setSizeLadderResult(payload.sizeLadder);
+      setMessage(persist ? "Size-Ladder Draft gespeichert." : "Size-Ladder berechnet.");
+      setSizeLadderRunning(false);
+    } catch {
+      setError("Size-Ladder konnte nicht berechnet werden.");
+      setSizeLadderRunning(false);
+    }
+  }
+
   async function importFromTrello() {
     setImporting(true);
     setError(null);
@@ -998,6 +1185,133 @@ export function SupplierPriceReviewClient({
                 onApplyToOffer={(item, dryRun) => void applyEstimateToOffer(item, dryRun)}
               />
             ) : null}
+          </section>
+        ) : null}
+
+        {canLoad ? (
+          <section className="rounded-lg border border-black/10 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-black">
+                  <ShieldCheck className="h-4 w-4 text-[#fa31a2]" />
+                  3-Anchor Größenleiter
+                </div>
+                <div className="mt-1 text-sm text-black/55">
+                  Supplier-Preise für Minimum, Kundenwunsch und 250cm eintragen. Daraus entstehen 10cm-Größenoptionen mit Faktor 2,6.
+                </div>
+              </div>
+              <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/50">
+                Draft + Review
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1.3fr_0.9fr_0.9fr_0.8fr]">
+              <input
+                type="text"
+                value={sizeLadderTrelloCardId}
+                onChange={(event) => setSizeLadderTrelloCardId(event.target.value)}
+                placeholder="Trello Card ID oder Link"
+                className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              />
+              <input
+                type="text"
+                value={sizeLadderOfferId}
+                onChange={(event) => setSizeLadderOfferId(event.target.value)}
+                placeholder="Offer ID optional"
+                className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              />
+              <input
+                type="text"
+                value={sizeLadderOfferItemId}
+                onChange={(event) => setSizeLadderOfferItemId(event.target.value)}
+                placeholder="Offer Item ID optional"
+                className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              />
+              <select
+                value={sizeLadderProductModel}
+                onChange={(event) => setSizeLadderProductModel(event.target.value)}
+                className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              >
+                <option value="neonflex">Neonflex</option>
+                <option value="uv_print">UV-Print</option>
+                <option value="outdoor">Outdoor</option>
+                <option value="three_d">3D</option>
+                <option value="full_glow">Full Glow</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              {([
+                ["minimum", "Minimum"],
+                ["requested", "Kundenwunsch"],
+                ["max_250", "250cm"],
+              ] as Array<[SizeLadderAnchorRole, string]>).map(([role, label]) => (
+                <div key={role} className="rounded-lg border border-black/10 bg-black/[0.02] p-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-black/45">{label}</div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      value={sizeLadderAnchors[role].widthCm}
+                      onChange={(event) => updateSizeLadderAnchor(role, { widthCm: event.target.value })}
+                      placeholder="Breite cm"
+                      className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#fa31a2]"
+                    />
+                    <input
+                      type="number"
+                      value={sizeLadderAnchors[role].heightCm}
+                      onChange={(event) => updateSizeLadderAnchor(role, { heightCm: event.target.value })}
+                      placeholder="Höhe cm"
+                      className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#fa31a2]"
+                    />
+                    <input
+                      type="number"
+                      value={sizeLadderAnchors[role].productionPrice}
+                      onChange={(event) => updateSizeLadderAnchor(role, { productionPrice: event.target.value })}
+                      placeholder="Production USD"
+                      className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#fa31a2]"
+                    />
+                    <input
+                      type="number"
+                      value={sizeLadderAnchors[role].shippingPrice}
+                      onChange={(event) => updateSizeLadderAnchor(role, { shippingPrice: event.target.value })}
+                      placeholder="Shipping USD"
+                      className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#fa31a2]"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <textarea
+              value={sizeLadderSourceText}
+              onChange={(event) => setSizeLadderSourceText(event.target.value)}
+              placeholder="Optional: Supplier-/Trello-Text für Modell-Erkennung, z.B. UV-Print, Full Glow, Outdoor"
+              className="mt-3 min-h-20 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+            />
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
+                onClick={() => void generateSizeLadder(false)}
+                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Calculator className="h-4 w-4" />
+                {sizeLadderRunning ? "Rechne..." : "Größenleiter berechnen"}
+              </button>
+              <button
+                type="button"
+                disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
+                onClick={() => void generateSizeLadder(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />
+                Berechnen & Draft speichern
+              </button>
+            </div>
+
+            {sizeLadderResult ? <SizeLadderResultCard result={sizeLadderResult} /> : null}
           </section>
         ) : null}
 
