@@ -905,6 +905,31 @@ export function OpsCompanyBrainClient({
     }
   }
 
+  async function copyIntegrationSetup(entry: {
+    label: string;
+    status: string;
+    summary: string;
+    nextStep: string;
+    setupItems: string[];
+  }) {
+    try {
+      await navigator.clipboard.writeText([
+        `Company Brain Setup: ${entry.label}`,
+        `Status: ${entry.status}`,
+        `Befund: ${entry.summary}`,
+        `Nächster Schritt: ${entry.nextStep}`,
+        "",
+        "Benötigte Runtime-Variablen / Checks:",
+        ...entry.setupItems.map((item) => `- ${item}`),
+        "",
+        "Hinweis: Nur Variablennamen/Checks, keine Secret-Werte im Chat oder Ticket posten.",
+      ].join("\n"));
+      setActionCopyMessage(`${entry.label} Setup-Paket kopiert.`);
+    } catch {
+      setActionCopyMessage("Kopieren nicht möglich.");
+    }
+  }
+
   function buildTrelloStatusComment() {
     if (!result) return null;
     return [
@@ -1480,6 +1505,16 @@ export function OpsCompanyBrainClient({
                                 ))}
                               </div>
                             </div>
+                          ) : null}
+                          {entry.setupItems.length ? (
+                            <button
+                              type="button"
+                              onClick={() => void copyIntegrationSetup(entry)}
+                              className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 bg-white/50 px-2.5 text-[11px] font-semibold transition hover:bg-white"
+                            >
+                              <ClipboardCopy className="h-3.5 w-3.5" />
+                              Setup-Paket kopieren
+                            </button>
                           ) : null}
                         </div>
                       )) : (

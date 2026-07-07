@@ -309,6 +309,7 @@ async function runViewport(browser, target, viewport, label) {
     "Benötigte Runtime-Variablen",
     "MICROSOFT_GRAPH_TENANT_ID",
     "OUTLOOK_SHARED_MAILBOX",
+    "Setup-Paket kopieren",
   ]);
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   await page.getByRole("button", { name: "Versand freigeben" }).click();

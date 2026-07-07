@@ -85,5 +85,7 @@ test("company brain fix center groups risky actions and avoids browser prompts",
   assert.match(source, /MICROSOFT_GRAPH_TENANT_ID/);
   assert.match(source, /N8N_API_KEY/);
   assert.match(source, /COOLIFY_API_TOKEN/);
+  assert.match(source, /Setup-Paket kopieren/);
+  assert.match(source, /keine Secret-Werte/);
   assert.doesNotMatch(source, /window\.prompt/);
 });
