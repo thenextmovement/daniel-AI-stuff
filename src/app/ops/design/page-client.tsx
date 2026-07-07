@@ -221,6 +221,7 @@ export function DesignOpsClient({
   const [selectedOfferImageId, setSelectedOfferImageId] = useState("");
   const [selectedOfferItemId, setSelectedOfferItemId] = useState("");
   const [selectedReferenceAttachmentId, setSelectedReferenceAttachmentId] = useState("");
+  const [selectedReferenceAssetId, setSelectedReferenceAssetId] = useState("");
   const [job, setJob] = useState<DesignJobDraft | null>(null);
   const [jobs, setJobs] = useState<DesignJobSummary[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState("");
@@ -284,14 +285,19 @@ export function DesignOpsClient({
       workspace?.primaryCard?.attachments.find((attachment) => attachment.kind === "reference" || attachment.kind === "image") ||
       null;
     setSelectedReferenceAttachmentId(defaultReference?.id || "");
+    setSelectedReferenceAssetId("");
     setSelectedAttachmentIds([]);
     setRemovalPlan(null);
     setJob(null);
   }, [workspace]);
 
   const selectedReferenceAttachment = useMemo(
-    () => workspace?.cards.flatMap((card) => card.attachments).find((attachment) => attachment.id === selectedReferenceAttachmentId) || null,
-    [workspace, selectedReferenceAttachmentId],
+    () => selectedReferenceAssetId ? null : workspace?.cards.flatMap((card) => card.attachments).find((attachment) => attachment.id === selectedReferenceAttachmentId) || null,
+    [workspace, selectedReferenceAssetId, selectedReferenceAttachmentId],
+  );
+  const selectedReferenceAsset = useMemo(
+    () => generatedAssets.find((asset) => asset.id === selectedReferenceAssetId) || null,
+    [generatedAssets, selectedReferenceAssetId],
   );
 
   function applyPromptControls(nextPreset: MockupPresetKey, nextLightColorPreset: LightColorPresetKey, nextCustomLightColor = customLightColor) {
@@ -359,7 +365,8 @@ export function DesignOpsClient({
           promptText: promptDraft,
           operatorName,
           offerId: selectedOfferId || null,
-          referenceAttachmentIds: selectedReferenceAttachmentId ? [selectedReferenceAttachmentId] : [],
+          referenceAttachmentIds: selectedReferenceAssetId ? [] : selectedReferenceAttachmentId ? [selectedReferenceAttachmentId] : [],
+          referenceAssetId: selectedReferenceAssetId || null,
         }),
       });
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
@@ -410,7 +417,11 @@ export function DesignOpsClient({
       });
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
       if (!response.ok || !payload?.ok || !payload.result) throw new Error(formatApiError(payload));
-      if (payload.result.asset?.id) setSelectedAssetId(payload.result.asset.id);
+      if (payload.result.asset?.id) {
+        setSelectedAssetId(payload.result.asset.id);
+        setSelectedReferenceAssetId(payload.result.asset.id);
+        setSelectedReferenceAttachmentId("");
+      }
       setMessage(`Mockup generiert${payload.result.asset?.name ? `: ${payload.result.asset.name}` : "."}`);
       void loadRecentJobs();
     } catch (generateError) {
@@ -814,6 +825,18 @@ export function DesignOpsClient({
                                 <button type="button" onClick={() => setSelectedAssetId(asset.id)} className="rounded-full border border-[#ded8d0] px-3 py-1.5 text-xs font-semibold text-stone-700">
                                   Für Offer wählen
                                 </button>
+                                {asset.publicUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedReferenceAssetId(asset.id);
+                                      setSelectedReferenceAttachmentId("");
+                                    }}
+                                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${selectedReferenceAssetId === asset.id ? "border-stone-950 bg-stone-950 text-white" : "border-[#ded8d0] text-stone-700"}`}
+                                  >
+                                    Als Vorlage
+                                  </button>
+                                ) : null}
                                 {asset.publicUrl && !asset.trelloAttachmentId ? (
                                   <button type="button" disabled={busy} onClick={() => void attachToTrello(item.id, asset.id)} className="inline-flex items-center gap-1 rounded-full bg-stone-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
                                     <UploadCloud className="h-3.5 w-3.5" />
@@ -878,7 +901,17 @@ export function DesignOpsClient({
                   <div className="mt-3 space-y-3">
                     <div className="rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-3">
                       <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Ausgangsbild</div>
-                      {selectedReferenceAttachment ? (
+                      {selectedReferenceAsset ? (
+                        <div className="mt-2 flex items-center gap-3">
+                          {selectedReferenceAsset.publicUrl ? (
+                            <img src={selectedReferenceAsset.publicUrl} alt={selectedReferenceAsset.name || "Generiertes Design Asset"} className="h-12 w-16 rounded-[8px] object-cover" />
+                          ) : null}
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-stone-900">{selectedReferenceAsset.name || selectedReferenceAsset.id.slice(0, 8)}</div>
+                            <div className="mt-0.5 text-xs text-stone-500">Generiertes KI-Mockup wird als Image-Edit-Vorlage genutzt.</div>
+                          </div>
+                        </div>
+                      ) : selectedReferenceAttachment ? (
                         <div className="mt-2 flex items-center gap-3">
                           {selectedReferenceAttachment.proxyUrl ? (
                             <img src={selectedReferenceAttachment.proxyUrl} alt={selectedReferenceAttachment.name} className="h-12 w-16 rounded-[8px] object-cover" />

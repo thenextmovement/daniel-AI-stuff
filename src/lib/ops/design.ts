@@ -297,6 +297,13 @@ type DesignReferenceAttachment = {
   kind: DesignAttachmentKind;
 };
 
+type DesignReferenceAsset = {
+  assetId: string;
+  publicUrl: string;
+  name: string;
+  mimeType: string | null;
+};
+
 const DESIGN_JOB_SELECT =
   "id,job_key,request_id,trello_card_id,trello_card_url,offer_id,source_query,status,prompt_version_id,selected_asset_id,operator_name,created_by,error_message,metadata,created_at,updated_at";
 const DESIGN_PROMPT_VERSION_SELECT = "id,job_id,version_number,prompt_title,prompt_text,prompt_hash,source,edited_by,created_at";
@@ -658,6 +665,7 @@ export async function createDesignJobDraft(input: {
   operatorName?: string | null;
   offerId?: string | null;
   referenceAttachmentIds?: string[] | null;
+  referenceAssetId?: string | null;
 }) {
   const idempotencyKey = trimNullable(input.idempotencyKey);
   const promptText = trimNullable(input.promptText);
@@ -700,6 +708,18 @@ export async function createDesignJobDraft(input: {
         kind: attachment.kind,
       })),
   );
+  const referenceAssetId = trimNullable(input.referenceAssetId);
+  const referenceAssets: DesignReferenceAsset[] = [];
+  if (referenceAssetId) {
+    const asset = await getDesignAsset(referenceAssetId);
+    if (!asset.public_url) throw new QuoteValidationError("Ausgewaehltes generiertes Asset hat keine oeffentliche Bild-URL.");
+    referenceAssets.push({
+      assetId: asset.id,
+      publicUrl: asset.public_url,
+      name: asset.name || asset.id,
+      mimeType: asset.mime_type,
+    });
+  }
 
   const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", {
     method: "POST",
@@ -718,6 +738,7 @@ export async function createDesignJobDraft(input: {
         attachment_count: workspace.stats.totalAttachments,
         mockup_count: workspace.stats.mockups,
         reference_attachments: referenceAttachments,
+        reference_assets: referenceAssets,
       },
     }),
     headers: { Prefer: "return=representation" },
@@ -739,6 +760,7 @@ export async function createDesignJobDraft(input: {
         source: "ops_design_ui",
         warnings: workspace.promptPreview.warnings,
         reference_attachment_count: referenceAttachments.length,
+        reference_asset_count: referenceAssets.length,
       },
     }),
     headers: { Prefer: "return=representation" },
@@ -1564,6 +1586,23 @@ function referenceAttachmentsFromJob(job: DesignJobRow): DesignReferenceAttachme
     .slice(0, 4);
 }
 
+function referenceAssetsFromJob(job: DesignJobRow): DesignReferenceAsset[] {
+  const raw = (job.metadata || {}).reference_assets;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const value = entry as Record<string, unknown>;
+      const assetId = trimNullable(value.assetId);
+      const publicUrl = trimNullable(value.publicUrl);
+      const name = trimNullable(value.name) || assetId || "generated-design-asset";
+      const mimeType = trimNullable(value.mimeType);
+      if (!assetId || !publicUrl) return null;
+      return { assetId, publicUrl, name, mimeType };
+    })
+    .filter((entry): entry is DesignReferenceAsset => Boolean(entry))
+    .slice(0, 4);
+}
+
 function promptForImageEdit(promptText: string) {
   return [
     "Bearbeite das bereitgestellte Ausgangsbild. Erhalte Layout, Perspektive, Hintergrund, Produktform, Text, Logo-/Schriftanmutung, Materialwirkung und Komposition so weit wie technisch möglich.",
@@ -1592,6 +1631,18 @@ async function downloadDesignReferenceAttachments(job: DesignJobRow) {
       body: file.body,
       contentType: file.contentType,
       filename: safeImageFilename(reference.name, file.contentType),
+    });
+  }
+  for (const reference of referenceAssetsFromJob(job)) {
+    const response = await fetch(reference.publicUrl, { cache: "no-store" });
+    if (!response.ok) throw new QuoteValidationError(`Generiertes Referenzbild konnte nicht geladen werden (${response.status}).`);
+    const contentType = response.headers.get("content-type") || reference.mimeType || "image/png";
+    if (!/^image\/(png|jpe?g|webp)$/i.test(contentType)) continue;
+    files.push({
+      reference,
+      body: Buffer.from(await response.arrayBuffer()),
+      contentType,
+      filename: safeImageFilename(reference.name, contentType),
     });
   }
   return files;

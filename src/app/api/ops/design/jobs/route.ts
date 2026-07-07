@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       operatorName?: string | null;
       offerId?: string | null;
       referenceAttachmentIds?: string[] | null;
+      referenceAssetId?: string | null;
     };
     const job = await createDesignJobDraft({
       idempotencyKey: String(body.idempotencyKey || ""),
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
       operatorName: body.operatorName || null,
       offerId: body.offerId || null,
       referenceAttachmentIds: Array.isArray(body.referenceAttachmentIds) ? body.referenceAttachmentIds.map(String) : [],
+      referenceAssetId: body.referenceAssetId || null,
     });
     return NextResponse.json({ ok: true, job });
   } catch (error) {

@@ -47,6 +47,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /RGB/);
   assert.match(client, /Ausgangsbild/);
   assert.match(client, /setSelectedReferenceAttachmentId/);
+  assert.match(client, /setSelectedReferenceAssetId/);
+  assert.match(client, /Als Vorlage/);
+  assert.match(client, /Generiertes KI-Mockup wird als Image-Edit-Vorlage genutzt/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
   assert.match(client, /Generierung freigeben/);
@@ -70,6 +73,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(jobsRoute, /listDesignJobs/);
   assert.match(jobsRoute, /idempotencyKey/);
   assert.match(jobsRoute, /referenceAttachmentIds/);
+  assert.match(jobsRoute, /referenceAssetId/);
 
   assert.match(queueRoute, /export async function POST/);
   assert.doesNotMatch(queueRoute, /export async function (GET|PATCH|DELETE)/);
@@ -123,6 +127,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /https:\/\/api\.openai\.com\/v1\/images\/edits/);
   assert.match(service, /input_fidelity/);
   assert.match(service, /reference_attachments/);
+  assert.match(service, /reference_assets/);
+  assert.match(service, /referenceAssetsFromJob/);
   assert.match(service, /downloadTrelloAttachment/);
   assert.match(service, /storage\/v1\/object/);
   assert.match(service, /prepareDesignRemovalPlan/);
