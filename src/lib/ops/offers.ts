@@ -36,6 +36,8 @@ export type OpsOfferImage = {
 
 export type OpsOfferSnapshot = {
   offerId: string;
+  requestId?: string | null;
+  request_id?: string | null;
   offerNumber: string;
   documentReference: string;
   trelloCardId: string | null;

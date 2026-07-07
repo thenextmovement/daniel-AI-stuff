@@ -1344,3 +1344,34 @@ test("company brain retry assessment blocks resend after hard n8n workflow error
   assert.ok(retry.blockers.some((blocker) => /n8n-Automation/.test(blocker)));
   assert.ok(retry.safeFixes.some((fix) => /n8n-Execution/.test(fix)));
 });
+
+test("company brain answer surfaces request id from offer snapshots", () => {
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-request-anchor",
+    requestId: "REQ-OFFER-ANCHOR",
+    offerNumber: "AN-6001",
+    documentReference: "AN-6001",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-offer-anchor",
+    updatedAt: "2026-07-07T09:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 0,
+    selectedItemCount: 1,
+    designEvidenceCount: 0,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+
+  const answer = buildCompanyBrainAnswer([], offers, [], [], [], "Was ist mit dem Angebot?");
+
+  assert.equal(answer.verdict, "found");
+  assert.match(answer.bullets.join("\n"), /Request-ID laut Angebot: REQ-OFFER-ANCHOR/);
+});

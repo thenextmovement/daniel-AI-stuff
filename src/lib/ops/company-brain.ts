@@ -77,6 +77,7 @@ export type CompanyBrainRecordSummary = {
 
 export type CompanyBrainOfferSummary = {
   offerId: string;
+  requestId?: string | null;
   offerNumber: string | null;
   documentReference: string;
   publicUrl: string | null;
@@ -862,6 +863,7 @@ function mapOfferSummary(offer: OpsOfferSnapshot): CompanyBrainOfferSummary {
 
   return {
     offerId: offer.offerId,
+    requestId: cleanText(offer.requestId || offer.request_id) || null,
     offerNumber: offer.offerNumber,
     documentReference: offer.documentReference,
     publicUrl: offer.publicUrl || null,
@@ -922,6 +924,7 @@ function mapOfferEvidence(offer: CompanyBrainOfferSummary): CompanyBrainEvidence
       title: `Angebot ${offer.offerNumber || offer.documentReference}`,
       detail: [
         offer.status ? `Status: ${offer.status}` : null,
+        offer.requestId ? `Request: ${offer.requestId}` : null,
         offer.itemCount ? `${offer.itemCount} Positionen` : null,
         offer.imageCount ? `${offer.imageCount} Designs/Bilder` : null,
       ].filter(Boolean).join(" · ") || null,
@@ -1062,6 +1065,7 @@ function addRecordIdentifiers(identifiers: CompanyBrainIdentifier[], records: Cu
 function addOfferIdentifiers(identifiers: CompanyBrainIdentifier[], offers: CompanyBrainOfferSummary[]) {
   for (const offer of offers) {
     pushIdentifier(identifiers, "offer_id", "Offer-ID", offer.offerId, "high", offer.publicUrl);
+    if (offer.requestId) pushIdentifier(identifiers, "request_id", "Request-ID", offer.requestId, "high", `/ops/customer-records?query=${encodeURIComponent(offer.requestId)}`);
     if (offer.offerNumber) pushIdentifier(identifiers, "offer_number", "Angebotsnummer", offer.offerNumber, "high", offer.publicUrl);
     if (offer.trelloCardId) pushIdentifier(identifiers, "trello_card_id", "Trello-ID", offer.trelloCardId, "medium", null);
   }
@@ -1385,7 +1389,10 @@ async function fetchQuoteEmailEvidence(
 ): Promise<CompanyBrainEvidence[]> {
   const offerNumbers = uniqueStrings(offers.map((offer) => offer.offerNumber).filter(Boolean)).slice(0, 5);
   const offerIds = uniqueStrings(offers.map((offer) => offer.offerId).filter(Boolean)).slice(0, 5);
-  const requestIds = uniqueStrings(records.map((record) => record.requestId).filter(Boolean)).slice(0, 5);
+  const requestIds = uniqueStrings([
+    ...records.map((record) => record.requestId),
+    ...offers.map((offer) => offer.requestId),
+  ].filter(Boolean)).slice(0, 5);
   const trelloCardIds = uniqueStrings([
     ...extraTrelloCardIds,
     ...records.map((record) => record.trelloCardId),
@@ -3560,6 +3567,7 @@ export function buildCompanyBrainAnswer(
   }
   if (latestOffer) {
     bullets.push(`Angebot: ${latestOffer.offerNumber || latestOffer.documentReference}, Status ${latestOffer.status}, ${latestOffer.itemCount} Positionen, ${latestOffer.imageCount} Bilder/Designs.`);
+    if (latestOffer.requestId) bullets.push(`Request-ID laut Angebot: ${latestOffer.requestId}.`);
     if (latestOffer.productHints.length) bullets.push(`Produkt-Hinweise im Angebot: ${latestOffer.productHints.join(", ")}.`);
     if (latestOffer.colorHints.length) bullets.push(`Farb-Hinweise im Angebot: ${latestOffer.colorHints.join(", ")}.`);
     if (latestOffer.selectedItems.length) bullets.push(`Ausgewählte Positionen: ${latestOffer.selectedItems.map((item) => item.title).slice(0, 3).join(", ")}.`);
