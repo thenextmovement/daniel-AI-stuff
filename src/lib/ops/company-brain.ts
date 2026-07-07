@@ -2269,6 +2269,8 @@ export function buildCompanyBrainRetryAssessment(input: {
   const record = input.records[0] || null;
   const offer = input.offers[0] || null;
   const recipientEmail = normalizeRetryEmail(record?.email || offer?.customerEmail || null) || null;
+  const recordRequestId = cleanText(record?.requestId || null);
+  const offerRequestId = cleanText(offer?.requestId || null);
   const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent") || null;
   const deliveryFailure = input.evidence.find(isOfferDeliveryFailureEvidence) || null;
   const deliveryFailureText = `${deliveryFailure?.title || ""} ${deliveryFailure?.detail || ""}`.toLowerCase();
@@ -2302,6 +2304,14 @@ export function buildCompanyBrainRetryAssessment(input: {
   if (!recipientEmail) blockers.push("Keine Empfängeradresse gefunden.");
   if (recipientEmail && !isRetryEmailValid(recipientEmail)) blockers.push("Empfängeradresse ist syntaktisch ungültig.");
   if (recipientEmail && isInternalRetryEmail(recipientEmail)) blockers.push("Empfängeradresse ist eine interne NEONTRIP-Adresse.");
+  if (recordRequestId && offerRequestId && recordRequestId !== offerRequestId) {
+    blockers.push(`Angebot ist mit Request ${offerRequestId} verknüpft, die Kundenakte mit Request ${recordRequestId}.`);
+    safeFixes.push("Offer-Bridge/Request-Verknüpfung korrigieren; keinen E-Mail-Fix oder Resend auslösen.");
+  }
+  if (record?.trelloCardId && offer?.trelloCardId && record.trelloCardId !== offer.trelloCardId) {
+    blockers.push(`Angebot ist mit Trello-Karte ${offer.trelloCardId} verknüpft, die Kundenakte mit ${record.trelloCardId}.`);
+    safeFixes.push("Trello-/Offer-Verknüpfung gegen Postgres prüfen; Trello nicht als Source of Truth verwenden.");
+  }
   if (offer?.customerEmail && recipientEmail && normalizeRetryEmail(offer.customerEmail) !== recipientEmail) {
     blockers.push(`Angebot gehört zu ${offer.customerEmail}, Kundenakte zu ${recipientEmail}.`);
   }
@@ -3210,6 +3220,9 @@ export function buildActionProposals(input: {
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
   const retryTaskAllowed = retry.status === "ready" || retry.status === "needs_fix";
+  const retryBlockerText = `${retry.summary} ${retry.blockers.join(" ")} ${retry.safeFixes.join(" ")}`;
+  const emailCorrectionAllowed = retry.status === "needs_fix" &&
+    /e-mail|email|empfänger|postfach|bounce|zustell|adresse|kunden-e-mail|ungültig|unvollständig/i.test(retryBlockerText);
   const trelloCardId = input.trelloFailureDiagnosis.card?.id || primaryRecord?.trelloCardId || primaryOffer?.trelloCardId || null;
   const latestFixRun = (actionKey: CompanyBrainActionProposal["key"]) =>
     companyBrainFixRuns.find((run) => run.action === actionKey) || null;
@@ -3345,7 +3358,7 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: retry.status === "needs_fix" ? "high" : "medium",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && retry.status === "needs_fix" && !emailCorrectionPrepared && !customerEmailCorrected),
+      enabled: Boolean(primaryRecord && emailCorrectionAllowed && !emailCorrectionPrepared && !customerEmailCorrected),
       summary: customerEmailCorrected
         ? `Kunden-E-Mail wurde bereits korrigiert.${fixRunSuffix(customerEmailCorrected)} Fall neu laden, bevor ein Retry bewertet wird.`
         : emailCorrectionPrepared
@@ -3366,7 +3379,7 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "high",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && retry.status === "needs_fix" && !customerEmailCorrected),
+      enabled: Boolean(primaryRecord && emailCorrectionAllowed && !customerEmailCorrected),
       summary: customerEmailCorrected
         ? `Kunden-E-Mail wurde bereits korrigiert.${fixRunSuffix(customerEmailCorrected)} Fall neu laden und Versandbelege prüfen.`
         : "Ändert nach Eingabe und Freigabe die E-Mail in der Kundenakte und synchronisiert abhängige Ops-Tabellen. Kein Angebotsversand.",

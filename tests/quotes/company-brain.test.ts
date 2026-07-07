@@ -1045,6 +1045,80 @@ test("company brain retry assessment treats n8n invalid customer email as data f
   assert.equal(guardedResend?.enabled, false);
 });
 
+test("company brain retry assessment blocks offer request mismatches before any email fix", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-CORRECT-CASE",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "card-correct-case",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-wrong-case",
+    requestId: "REQ-WRONG-CASE",
+    offerNumber: "AN-5001",
+    documentReference: "AN-5001",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-correct-case",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence: [],
+    question: "Trello-Karte gezogen, Angebot nicht raus: warum?",
+  });
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence: [],
+    crossChecks,
+    trelloFailureDiagnosis: retryDiagnosis(),
+  });
+  const actions = actionProposalFixture({ retry });
+  const emailCorrection = actions.find((action) => action.key === "correct_customer_email");
+  const prepareEmailCorrection = actions.find((action) => action.key === "prepare_email_correction");
+  const guardedResend = actions.find((action) => action.key === "guarded_offer_resend");
+
+  assert.equal(retry.status, "blocked");
+  assert.equal(retry.canSendWithConfirmation, false);
+  assert.ok(retry.blockers.some((blocker) => /REQ-WRONG-CASE/.test(blocker)));
+  assert.ok(retry.safeFixes.some((fix) => /Offer-Bridge\/Request-Verknüpfung/.test(fix)));
+  assert.equal(emailCorrection?.enabled, false);
+  assert.equal(prepareEmailCorrection?.enabled, false);
+  assert.equal(guardedResend?.enabled, false);
+});
+
 test("company brain retry assessment allows guarded resend when no hard blocker exists", () => {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-READY",
