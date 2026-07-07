@@ -36,10 +36,14 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /sourceLabel/);
   assert.match(client, /Video-Prompt aus Trello/);
   assert.match(client, /promptWithMockupConstraint/);
+  assert.match(client, /promptWithStudioConstraints/);
   assert.match(client, /NEONTRIP_DESIGN_STUDIO_CONSTRAINT/);
   assert.match(client, /Tischgerät/);
   assert.match(client, /Schaufenster/);
   assert.match(client, /Outdoor/);
+  assert.match(client, /Leuchtfarbe/);
+  assert.match(client, /Warmweiß/);
+  assert.match(client, /RGB/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
   assert.match(client, /Generierung freigeben/);
@@ -105,6 +109,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /#startprompt/);
   assert.match(service, /KI-Mockup Prompt aus/);
   assert.match(service, /Quote-Ready KI-Prompt gefunden/);
+  assert.match(service, /Rekonstruiert aus Trello-Karte/);
+  assert.match(service, /buildReconstructedTrelloPrompt/);
   assert.doesNotMatch(service, /Fallback-Prompt aus Ops-Kontext/);
   assert.match(service, /createDesignJobDraft/);
   assert.match(service, /queueDesignJob/);

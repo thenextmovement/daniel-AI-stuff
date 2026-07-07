@@ -54,7 +54,7 @@ export type DesignOfferCandidate = {
 export type DesignPromptPreview = {
   title: string;
   prompt: string;
-  source: "trello_image_prompt" | "missing_trello_prompt";
+  source: "trello_image_prompt" | "trello_reconstructed_prompt" | "missing_trello_prompt";
   sourceLabel: string;
   videoPrompt: string | null;
   warnings: string[];
@@ -475,6 +475,36 @@ function selectPrimaryDesignCard(cards: DesignCardSummary[]) {
     })[0] || null;
 }
 
+function buildReconstructedTrelloPrompt(record: CustomerSearchResult | null, primaryCard: DesignCardSummary | null) {
+  if (!primaryCard) return null;
+  const request = record?.request || null;
+  const hasVisualSource = primaryCard.attachments.some((attachment) => attachment.kind === "mockup" || attachment.kind === "reference" || attachment.kind === "image");
+  const cardTitle = trimNullable(primaryCard.cardName);
+  if (!hasVisualSource && !cardTitle && !request?.title && !request?.description) return null;
+
+  const lines = [
+    "Erstelle ein realistisches NEONTRIP Mockup fuer ein bestehendes Angebotsdesign.",
+    "",
+    "Quelle:",
+    cardTitle ? `- Trello-Karte: ${cardTitle}` : null,
+    request?.title ? `- Projekt: ${request.title}` : null,
+    request?.size ? `- Groesse: ${request.size}` : null,
+    request?.colors?.length ? `- Bestehende Farbangabe: ${request.colors.join(", ")}` : null,
+    request?.application ? `- Anwendung: ${request.application}` : null,
+    request?.sKategorie || request?.segmentLabel ? `- Kategorie: ${request.sKategorie || request.segmentLabel}` : null,
+    hasVisualSource ? `- Vorhandene Trello-Bilder: ${primaryCard.attachments.filter((attachment) => attachment.kind === "mockup" || attachment.kind === "reference" || attachment.kind === "image").length}` : null,
+    "",
+    "Rekonstruktionsregeln:",
+    "- Nutze Kartenname, Projektangaben und vorhandene Mockup-Logik als technische Basis.",
+    "- Bewahre Text, Logo-/Schriftanmutung, Produktart, Groesse, Perspektive und Montageart so weit wie moeglich.",
+    "- Keine neuen Woerter, Logos, Marken, Preisangaben oder Lieferzusagen erfinden.",
+    "- Wenn eine manuelle Aenderung gesetzt ist, nur diesen einen Aspekt sichtbar veraendern.",
+    "- Ergebnis ist ein internes Angebotsmockup und muss vor Kundenfreigabe geprueft werden.",
+  ].filter((line): line is string => line !== null);
+
+  return lines.join("\n");
+}
+
 function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: DesignCardSummary | null): DesignPromptPreview {
   const request = record?.request || null;
   const warnings: string[] = [];
@@ -490,6 +520,19 @@ function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: De
       source: "trello_image_prompt",
       sourceLabel: `KI-Mockup Prompt aus ${primaryCard.listName || "Trello"} (#startprompt)`,
       videoPrompt: primaryCard.promptBlocks.videoPrompt,
+      warnings,
+    };
+  }
+
+  const reconstructedPrompt = buildReconstructedTrelloPrompt(record, primaryCard);
+  if (reconstructedPrompt) {
+    warnings.push("Kein originaler Quote-Ready KI-Prompt gefunden. Es wurde ein editierbarer Rekonstruktionsprompt aus Trello-Karte/Fallkontext erstellt.");
+    return {
+      title: request?.title || primaryCard?.cardName || "Design Mockup Prompt",
+      prompt: reconstructedPrompt,
+      source: "trello_reconstructed_prompt",
+      sourceLabel: "Rekonstruiert aus Trello-Karte",
+      videoPrompt: primaryCard?.promptBlocks.videoPrompt || null,
       warnings,
     };
   }
@@ -517,7 +560,15 @@ async function findRecord(query: string) {
   }
 
   const records = await searchCustomerRecords(query);
-  return records[0] || null;
+  if (records[0]) return records[0];
+
+  const trelloCardId = parseTrelloCardIdentifier(query);
+  if (trelloCardId && trelloCardId !== query) {
+    const trelloRecords = await searchCustomerRecords(trelloCardId).catch(() => []);
+    if (trelloRecords[0]) return trelloRecords[0];
+  }
+
+  return null;
 }
 
 async function cardIdsFromQuery(query: string) {

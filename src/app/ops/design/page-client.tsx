@@ -91,6 +91,18 @@ function kindTone(kind: DesignAttachment["kind"]) {
 
 const DESIGN_CONSTRAINT_START = "[[NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
 const DESIGN_CONSTRAINT_END = "[[/NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
+const LIGHT_COLOR_PRESETS = {
+  original: { label: "Original", value: null, swatch: "linear-gradient(135deg,#f8fafc,#d6d3d1)" },
+  warm_white: { label: "Warmweiß", value: "warmweiß", swatch: "#ffe7a3" },
+  cool_white: { label: "Kaltweiß", value: "kaltweiß", swatch: "#dbeafe" },
+  red: { label: "Rot", value: "rot", swatch: "#ef4444" },
+  pink: { label: "Pink", value: "pink / magenta", swatch: "#ec4899" },
+  blue: { label: "Blau", value: "blau", swatch: "#3b82f6" },
+  green: { label: "Grün", value: "grün", swatch: "#22c55e" },
+  amber: { label: "Amber", value: "amber / orange", swatch: "#f59e0b" },
+  rgb: { label: "RGB", value: "RGB-Farbverlauf", swatch: "linear-gradient(135deg,#ef4444,#22c55e,#3b82f6)" },
+  custom: { label: "Eigene", value: null, swatch: "linear-gradient(135deg,#111827,#f8fafc)" },
+} as const;
 const MOCKUP_PRESETS = {
   original: null,
   wall: {
@@ -140,6 +152,7 @@ const MOCKUP_PRESETS = {
     ],
   },
 } as const;
+type LightColorPresetKey = keyof typeof LIGHT_COLOR_PRESETS;
 type MockupPresetKey = keyof typeof MOCKUP_PRESETS;
 
 function mockupPresetLabel(presetKey: MockupPresetKey) {
@@ -160,6 +173,31 @@ function promptWithMockupConstraint(prompt: string, presetKey: Exclude<MockupPre
   return [base, constraint].filter(Boolean).join("\n\n");
 }
 
+function selectedLightColor(presetKey: LightColorPresetKey, customLightColor: string) {
+  if (presetKey === "original") return null;
+  if (presetKey === "custom") return customLightColor.trim() || null;
+  return LIGHT_COLOR_PRESETS[presetKey].value;
+}
+
+function promptWithStudioConstraints(prompt: string, presetKey: MockupPresetKey, lightColorKey: LightColorPresetKey, customLightColor: string) {
+  const base = removeDesignConstraint(prompt);
+  const lightColor = selectedLightColor(lightColorKey, customLightColor);
+  if (presetKey !== "original" && !lightColor) return promptWithMockupConstraint(base, presetKey);
+  const lines: string[] = [];
+  if (presetKey !== "original") lines.push(...MOCKUP_PRESETS[presetKey].lines);
+  if (lightColor) {
+    lines.push(
+      "Leuchtfarbe ändern:",
+      `Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ${lightColor}.`,
+      "Text, Logo-/Schriftanmutung, Form, Größe, Material, Perspektive, Hintergrund und Montageart unverändert lassen.",
+      "Keine neuen Wörter, Logos, Designelemente, Preisangaben oder Lieferzusagen hinzufügen.",
+    );
+  }
+  if (!lines.length) return base;
+  const constraint = [DESIGN_CONSTRAINT_START, ...lines, DESIGN_CONSTRAINT_END].join("\n");
+  return [base, constraint].filter(Boolean).join("\n\n");
+}
+
 export function DesignOpsClient({
   initialHasSession,
   opsEnabled,
@@ -174,6 +212,8 @@ export function DesignOpsClient({
   const [workspace, setWorkspace] = useState<DesignWorkspace | null>(null);
   const [promptDraft, setPromptDraft] = useState("");
   const [promptPreset, setPromptPreset] = useState<MockupPresetKey>("original");
+  const [lightColorPreset, setLightColorPreset] = useState<LightColorPresetKey>("original");
+  const [customLightColor, setCustomLightColor] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [offer, setOffer] = useState<OpsOfferSnapshot | null>(null);
@@ -230,6 +270,8 @@ export function DesignOpsClient({
   useEffect(() => {
     setPromptDraft(workspace?.promptPreview.prompt || "");
     setPromptPreset("original");
+    setLightColorPreset("original");
+    setCustomLightColor("");
     const nextOfferId = workspace?.offerCandidates.find((candidate) => !candidate.locked)?.id || "";
     setSelectedOfferId(nextOfferId);
     setOffer(null);
@@ -240,12 +282,26 @@ export function DesignOpsClient({
     setJob(null);
   }, [workspace]);
 
-  function applyPromptPreset(nextPreset: MockupPresetKey) {
+  function applyPromptControls(nextPreset: MockupPresetKey, nextLightColorPreset: LightColorPresetKey, nextCustomLightColor = customLightColor) {
     if (!workspace) return;
     setPromptPreset(nextPreset);
+    setLightColorPreset(nextLightColorPreset);
     setJob(null);
     const basePrompt = removeDesignConstraint(promptDraft || workspace.promptPreview.prompt || "");
-    setPromptDraft(nextPreset === "original" ? basePrompt : promptWithMockupConstraint(basePrompt, nextPreset));
+    setPromptDraft(promptWithStudioConstraints(basePrompt, nextPreset, nextLightColorPreset, nextCustomLightColor));
+  }
+
+  function applyPromptPreset(nextPreset: MockupPresetKey) {
+    applyPromptControls(nextPreset, lightColorPreset);
+  }
+
+  function applyLightColorPreset(nextPreset: LightColorPresetKey) {
+    applyPromptControls(promptPreset, nextPreset);
+  }
+
+  function updateCustomLightColor(nextColor: string) {
+    setCustomLightColor(nextColor);
+    if (lightColorPreset === "custom") applyPromptControls(promptPreset, "custom", nextColor);
   }
 
   async function searchDesignWorkspace(nextQuery = query) {
@@ -795,18 +851,53 @@ export function DesignOpsClient({
                   </details>
                 ) : null}
                 {workspace ? (
-                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1 sm:grid-cols-3">
-                    {(Object.keys(MOCKUP_PRESETS) as MockupPresetKey[]).map((presetKey) => (
-                      <button
-                        key={presetKey}
-                        type="button"
-                        onClick={() => applyPromptPreset(presetKey)}
-                        disabled={!workspace.promptPreview.prompt}
-                        className={`h-9 rounded-[0.55rem] px-3 text-xs font-semibold disabled:opacity-40 ${promptPreset === presetKey ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
-                      >
-                        {mockupPresetLabel(presetKey)}
-                      </button>
-                    ))}
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <div className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Mockup-Art</div>
+                      <div className="grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1 sm:grid-cols-3">
+                        {(Object.keys(MOCKUP_PRESETS) as MockupPresetKey[]).map((presetKey) => (
+                          <button
+                            key={presetKey}
+                            type="button"
+                            onClick={() => applyPromptPreset(presetKey)}
+                            disabled={!workspace.promptPreview.prompt}
+                            className={`h-9 rounded-[0.55rem] px-3 text-xs font-semibold disabled:opacity-40 ${promptPreset === presetKey ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
+                          >
+                            {mockupPresetLabel(presetKey)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Leuchtfarbe</div>
+                      <div className="grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1 sm:grid-cols-3">
+                        {(Object.keys(LIGHT_COLOR_PRESETS) as LightColorPresetKey[]).map((presetKey) => (
+                          <button
+                            key={presetKey}
+                            type="button"
+                            onClick={() => applyLightColorPreset(presetKey)}
+                            disabled={!workspace.promptPreview.prompt}
+                            className={`flex h-9 items-center justify-center gap-2 rounded-[0.55rem] px-2 text-xs font-semibold disabled:opacity-40 ${lightColorPreset === presetKey ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
+                          >
+                            <span
+                              className="h-3.5 w-3.5 shrink-0 rounded-full border border-black/10"
+                              style={{ background: LIGHT_COLOR_PRESETS[presetKey].swatch }}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">{LIGHT_COLOR_PRESETS[presetKey].label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {lightColorPreset === "custom" ? (
+                        <input
+                          value={customLightColor}
+                          onChange={(event) => updateCustomLightColor(event.target.value)}
+                          placeholder="z. B. Lavendel, Eisblau, Neon-Gelb"
+                          className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none focus:border-stone-950"
+                        />
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
                 <textarea
