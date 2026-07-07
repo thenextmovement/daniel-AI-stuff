@@ -78,6 +78,10 @@ function compactList(values: string[]) {
   return values.length ? values.join(", ") : "Keine Angabe";
 }
 
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+}
+
 const DEFAULT_OFFER_RETRY_SUBJECT = "Ihr aktualisiertes NEONTRIP Angebot";
 const DEFAULT_OFFER_RETRY_MESSAGE = [
   "Hallo,",
@@ -184,6 +188,27 @@ function severityBadgeClass(severity: string) {
   return "border-emerald-200 bg-emerald-50 text-emerald-900";
 }
 
+function retryAssessmentClass(status: string) {
+  if (status === "ready") return "border-emerald-300 bg-emerald-50 text-emerald-950";
+  if (status === "needs_fix") return "border-amber-300 bg-amber-50 text-amber-950";
+  if (status === "blocked") return "border-rose-300 bg-rose-50 text-rose-950";
+  return "border-stone-200 bg-stone-50 text-stone-800";
+}
+
+function retryAssessmentLabel(status: string) {
+  if (status === "ready") return "Fix nach Freigabe möglich";
+  if (status === "needs_fix") return "Erst Daten korrigieren";
+  if (status === "blocked") return "Automatisch blockiert";
+  return "Nur prüfen";
+}
+
+function evidenceScoreLabel(status: string) {
+  if (status === "strong") return "stark belegt";
+  if (status === "medium") return "teilweise belegt";
+  if (status === "conflicting") return "widersprüchlich";
+  return "schwach belegt";
+}
+
 function shortText(value: string | null | undefined, max = 180) {
   if (!value) return "";
   return value.length > max ? `${value.slice(0, max - 1)}...` : value;
@@ -240,23 +265,31 @@ export function OpsCompanyBrainClient({
   const operatorView = useMemo(() => {
     if (!result) {
       return {
-        openWatchers: [],
-        failedChecks: [],
-        reviewChecks: [],
-        importantFindings: [],
-        primaryActions: [],
+        readyActions: [],
+        blockedFixes: [],
+        sourceWarnings: [],
+        decisionItems: [],
       };
     }
-    const openWatchers = result.watchers.filter((watcher) => watcher.status === "open");
-    const failedChecks = result.crossChecks.filter((check) => check.status === "fail");
-    const reviewChecks = result.crossChecks.filter((check) => check.status === "review");
-    const importantFindings = [...result.conflicts, ...result.gaps]
-      .filter((finding) => finding.severity !== "info")
-      .slice(0, 5);
-    const primaryActions = result.actionProposals
-      .filter((action) => action.enabled || action.riskLevel === "high" || action.approvalRequired)
+    const readyActions = result.actionProposals
+      .filter((action) => action.enabled && executableAction(action.key))
+      .slice(0, 3);
+    const blockedFixes = uniqueStrings([
+      ...result.retryAssessment.blockers,
+      ...result.trelloFailureDiagnosis.blockedFixes,
+    ]).slice(0, 5);
+    const sourceWarnings = result.sourceHealth
+      .filter((source) => source.status !== "ok")
       .slice(0, 4);
-    return { openWatchers, failedChecks, reviewChecks, importantFindings, primaryActions };
+    const decisionItems = [
+      ...result.checks
+        .filter((check) => check.status === "warning" || check.status === "missing")
+        .map((check) => ({ key: `check-${check.key}`, label: check.label, summary: check.summary, status: check.status })),
+      ...result.crossChecks
+        .filter((check) => check.status === "fail" || check.status === "review")
+        .map((check) => ({ key: `cross-${check.key}`, label: check.label, summary: check.summary, status: check.status })),
+    ].slice(0, 5);
+    return { readyActions, blockedFixes, sourceWarnings, decisionItems };
   }, [result]);
 
   const quickQuestions = [
@@ -589,139 +622,191 @@ export function OpsCompanyBrainClient({
               <OpsStatCard label="Watcher" value={stats.openWatchers} tone={stats.openWatchers ? "warning" : "success"} icon={<Bell className="h-5 w-5" />} />
             </section>
 
-            <section className="rounded-[2rem] border border-stone-200 bg-white shadow-sm">
-              <div className="border-b border-stone-200 px-5 py-4 md:px-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Fall-Kommandostand</p>
-                    <h2 className="mt-1 text-2xl font-semibold text-stone-950">Was ist los, was ist belegt, was ist der nächste Schritt?</h2>
+            <section className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-sm">
+              <div className="border-b border-stone-200 bg-stone-950 px-5 py-5 text-white md:px-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="max-w-4xl">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Fall-Kommandostand</p>
+                    <h2 className="mt-2 text-2xl font-semibold leading-tight">Was ist passiert und was darf jetzt sicher passieren?</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/70">{result.answer.headline}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${verdictClass(result.answer.verdict)}`}>
                       {result.answer.verdict === "found" ? "Belegt" : result.answer.verdict === "not_found" ? "Nicht gefunden" : "Prüfen"}
                     </span>
                     <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${evidenceScoreClass(result.evidenceScore.status)}`}>
-                      Beweis {result.evidenceScore.score}/100
+                      {result.evidenceScore.score}/100 · {evidenceScoreLabel(result.evidenceScore.status)}
                     </span>
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${severityBadgeClass(result.problemResolution.severity)}`}>
-                      {result.problemResolution.severity}
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${retryAssessmentClass(result.retryAssessment.status)}`}>
+                      {retryAssessmentLabel(result.retryAssessment.status)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="grid gap-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
-                <div className="border-b border-stone-200 p-5 md:p-6 lg:border-b-0 lg:border-r">
-                  <div className="flex items-start gap-3">
-                    {result.answer.verdict === "found" ? <CheckCircle2 className="mt-1 h-6 w-6 shrink-0 text-emerald-600" /> : <AlertTriangle className="mt-1 h-6 w-6 shrink-0 text-amber-600" />}
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-stone-500">Kurzfazit</p>
-                      <h3 className="mt-1 text-xl font-semibold leading-7 text-stone-950">{result.answer.headline}</h3>
-                      <div className="mt-4 grid gap-2">
-                        {result.answer.bullets.slice(0, 4).map((bullet) => (
-                          <p key={bullet} className="text-sm leading-6 text-stone-700">
-                            {bullet}
-                          </p>
-                        ))}
+              <div className="grid gap-0 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+                <div className="border-b border-stone-200 p-5 md:p-6 xl:border-b-0 xl:border-r">
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        {result.answer.verdict === "found" ? <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-emerald-600" /> : <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-amber-600" />}
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Kurzfazit</p>
+                          <div className="mt-2 grid gap-1.5">
+                            {result.answer.bullets.slice(0, 3).map((bullet) => (
+                              <p key={bullet} className="text-sm leading-6 text-stone-800">{bullet}</p>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {result.trelloFailureDiagnosis.requested ? (
+                      <div className={`rounded-2xl border px-4 py-3 text-sm ${trelloFailureClass(result.trelloFailureDiagnosis.severity)}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-70">Trello-/n8n-Fehler</p>
+                            <p className="mt-2 font-semibold leading-6">{result.trelloFailureDiagnosis.rootCause}</p>
+                            <p className="mt-1 leading-6 opacity-80">{result.trelloFailureDiagnosis.recommendedFix}</p>
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold">
+                            Duplicate: {result.trelloFailureDiagnosis.duplicateRisk}
+                          </span>
+                        </div>
+                        <dl className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+                          <div className="rounded-xl border border-current/15 bg-white/40 px-3 py-2">
+                            <dt className="opacity-65">Karte</dt>
+                            <dd className="mt-1 font-medium">{result.trelloFailureDiagnosis.card?.currentListName || "Liste unbekannt"} · {result.trelloFailureDiagnosis.card?.id || "keine ID"}</dd>
+                          </div>
+                          <div className="rounded-xl border border-current/15 bg-white/40 px-3 py-2">
+                            <dt className="opacity-65">Letzter Move</dt>
+                            <dd className="mt-1 font-medium">
+                              {result.trelloFailureDiagnosis.triggerMove
+                                ? `${result.trelloFailureDiagnosis.triggerMove.fromListName || "unbekannt"} -> ${result.trelloFailureDiagnosis.triggerMove.toListName || "unbekannt"}`
+                                : "nicht gefunden"}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ) : null}
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Ursache</p>
+                        <p className="mt-2 text-sm leading-6 text-stone-800">{result.problemResolution.rootCause}</p>
+                      </div>
+                      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Sicherer nächster Schritt</p>
+                        <p className="mt-2 text-sm leading-6 text-stone-800">{result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-5 md:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Ursache</p>
-                      <p className="mt-2 text-sm leading-6 text-stone-800">{result.problemResolution.rootCause}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Empfohlene Lösung</p>
-                      <p className="mt-2 text-sm leading-6 text-stone-800">{result.problemResolution.recommendedResolution}</p>
-                    </div>
-                  </div>
-
-                  <div className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
-                    result.retryAssessment.status === "ready"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                      : result.retryAssessment.status === "needs_fix"
-                        ? "border-amber-200 bg-amber-50 text-amber-950"
-                        : "border-stone-200 bg-stone-50 text-stone-800"
-                  }`}>
+                  <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${retryAssessmentClass(result.retryAssessment.status)}`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold">{result.retryAssessment.label}</p>
                         <p className="mt-1 leading-6 opacity-80">{result.retryAssessment.summary}</p>
                       </div>
                       <span className="rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold">
-                        {result.retryAssessment.canSendWithConfirmation ? "Retry nach Freigabe möglich" : "Kein sicherer Retry"}
+                        {result.retryAssessment.canSendWithConfirmation ? "Versand-Action guarded" : "Versand blockiert"}
                       </span>
                     </div>
                     <div className="mt-3 grid gap-2 md:grid-cols-2">
-                      <p className="rounded-xl border border-current/15 bg-white/40 px-3 py-2 text-xs">
-                        Empfänger: {result.retryAssessment.recipientEmail || "unbekannt"}
-                      </p>
-                      <p className="rounded-xl border border-current/15 bg-white/40 px-3 py-2 text-xs">
-                        Angebot: {result.retryAssessment.offerNumber || result.retryAssessment.offerId || "unbekannt"}
-                      </p>
+                      <p className="rounded-xl border border-current/15 bg-white/40 px-3 py-2 text-xs">Empfänger: {result.retryAssessment.recipientEmail || "unbekannt"}</p>
+                      <p className="rounded-xl border border-current/15 bg-white/40 px-3 py-2 text-xs">Angebot: {result.retryAssessment.offerNumber || result.retryAssessment.offerId || "unbekannt"}</p>
                     </div>
-                    {result.retryAssessment.blockers.length ? (
-                      <div className="mt-3 grid gap-1 text-xs leading-5">
-                        {result.retryAssessment.blockers.slice(0, 3).map((blocker) => <p key={blocker}>Blocker: {blocker}</p>)}
-                      </div>
-                    ) : null}
                   </div>
                 </div>
 
-                <div className="p-5 md:p-6">
-                  <div>
+                <aside className="p-5 md:p-6 xl:pr-28">
+                  <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-stone-950">Offen oder kritisch</p>
-                      <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-semibold text-stone-500">
-                        {operatorView.openWatchers.length + operatorView.failedChecks.length} offen
+                      <p className="text-sm font-semibold text-stone-950">Jetzt möglich</p>
+                      <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-500">
+                        {operatorView.readyActions.length} Aktion(en)
                       </span>
                     </div>
                     <div className="mt-3 grid gap-2">
-                      {operatorView.failedChecks.slice(0, 3).map((check) => (
-                        <div key={`failed-${check.key}`} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
-                          <p className="font-semibold">{check.label}</p>
-                          <p className="mt-1 leading-5 opacity-80">{shortText(check.summary, 170)}</p>
+                      {operatorView.readyActions.length ? operatorView.readyActions.map((action) => (
+                        <div key={`ready-${action.key}`} className={`rounded-xl border px-3 py-2 text-sm ${severityBadgeClass(action.riskLevel)}`}>
+                          <p className="font-semibold">{action.label}</p>
+                          <p className="mt-1 text-xs leading-5 opacity-80">{shortText(action.summary, 150)}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void copyActionProposal(action.key)}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 px-2.5 text-[11px] font-semibold transition hover:bg-white/60"
+                            >
+                              <ClipboardCopy className="h-3.5 w-3.5" />
+                              Paket
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void executeActionProposal(action.key)}
+                              disabled={!action.enabled || actionLoadingKey === action.key}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 bg-white/50 px-2.5 text-[11px] font-semibold transition hover:bg-white disabled:opacity-50"
+                            >
+                              {actionLoadingKey === action.key ? "läuft..." : "Ausführen"}
+                            </button>
+                          </div>
                         </div>
+                      )) : (
+                        <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm leading-6 text-stone-600">Kein direkter Fix freigegeben. Erst die Blocker unten klären.</p>
+                      )}
+                    </div>
+                    {actionCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{actionCopyMessage}</p> : null}
+                    {actionResultMessage ? <p className="mt-3 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700">{actionResultMessage}</p> : null}
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-950">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold">Nicht automatisch machen</p>
+                      <span className="rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold">{operatorView.blockedFixes.length}</span>
+                    </div>
+                    <div className="mt-3 grid gap-1.5">
+                      {(operatorView.blockedFixes.length ? operatorView.blockedFixes : ["Keine harten Blocker im geladenen Ergebnis."]).map((blocker) => (
+                        <p key={blocker} className="text-xs leading-5 opacity-85">{blocker}</p>
                       ))}
-                      {operatorView.openWatchers.slice(0, 4).map((watcher) => (
-                        <div key={`watcher-${watcher.key}`} className={`rounded-2xl border px-4 py-3 text-sm ${watcherClass(watcher.status, watcher.severity)}`}>
-                          <p className="font-semibold">{watcher.title}</p>
-                          <p className="mt-1 leading-5 opacity-80">{shortText(watcher.detail, 170)}</p>
-                        </div>
-                      ))}
-                      {!operatorView.failedChecks.length && !operatorView.openWatchers.length ? (
-                        <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">Keine offenen kritischen Wächter.</p>
-                      ) : null}
                     </div>
                   </div>
 
-                  <div className="mt-6">
-                    <p className="text-sm font-semibold text-stone-950">Nächste sichere Aktion</p>
-                    <div className="mt-3 grid gap-2">
-                      {result.nextActions.slice(0, 3).map((action) => (
-                        <p key={action} className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">{action}</p>
-                      ))}
-                    </div>
-                    {operatorView.primaryActions.length ? (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {operatorView.primaryActions.map((action) => (
-                          <button
-                            key={action.key}
-                            type="button"
-                            onClick={() => void copyActionProposal(action.key)}
-                            className={`inline-flex h-10 items-center gap-2 rounded-2xl border px-3 text-xs font-semibold transition hover:bg-white ${severityBadgeClass(action.riskLevel)}`}
-                          >
-                            <ClipboardCopy className="h-3.5 w-3.5" />
-                            {action.label}
-                          </button>
-                        ))}
+                  <div className="mt-4 grid gap-3">
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-stone-950">Offen zu prüfen</p>
+                        <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-semibold text-stone-500">{operatorView.decisionItems.length}</span>
                       </div>
-                    ) : null}
-                    {actionCopyMessage ? <p className="mt-3 text-xs font-medium text-stone-500">{actionCopyMessage}</p> : null}
+                      <div className="mt-2 grid gap-2">
+                        {operatorView.decisionItems.length ? operatorView.decisionItems.map((item) => (
+                          <div key={item.key} className={`rounded-xl border px-3 py-2 text-sm ${item.status === "fail" || item.status === "missing" ? "border-rose-200 bg-rose-50 text-rose-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                            <p className="font-semibold">{item.label}</p>
+                            <p className="mt-1 text-xs leading-5 opacity-80">{shortText(item.summary, 145)}</p>
+                          </div>
+                        )) : (
+                          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">Keine offenen Kernchecks.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-stone-950">Quellen-Ampel</p>
+                      <div className="mt-2 grid gap-2">
+                        {operatorView.sourceWarnings.length ? operatorView.sourceWarnings.map((source) => (
+                          <div key={`source-${source.key}`} className={`rounded-xl border px-3 py-2 text-sm ${sourceHealthClass(source.status)}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-semibold">{source.label}</p>
+                              <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium">{sourceHealthLabel(source.status)}</span>
+                            </div>
+                            <p className="mt-1 text-xs leading-5 opacity-80">{shortText(source.summary, 145)}</p>
+                          </div>
+                        )) : (
+                          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">Alle Kernquellen melden OK.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </aside>
               </div>
             </section>
 
