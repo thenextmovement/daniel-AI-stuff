@@ -109,6 +109,25 @@ test("workflow audit accepts direct snake-case n8n guard blocked payloads", () =
   assert.equal(event.metadata.automation_issue_key, "send_guard_unavailable");
 });
 
+test("workflow audit marks AI copy hard blocks as non-sendable", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "blocked",
+    reason: "ai_customer_copy_blocked: forbidden words after retry",
+    request_id: "REQ-AI-BLOCK",
+    card_id: "trello-card-ai-block",
+    failed_node: "Parse + Validate Retry",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.status, "blocked");
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.customer_communication_sent, false);
+  assert.equal(event.metadata.automation_issue_key, "ai_customer_copy_blocked");
+  assert.match(String(event.metadata.automation_issue_root_cause), /Inhaltsprüfung/);
+});
+
 test("workflow audit creates stable event keys for duplicate n8n callbacks", () => {
   const first = normalizeWorkflowAuditEvent({
     workflowName: "offer_from_trello",

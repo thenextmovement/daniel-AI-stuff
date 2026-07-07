@@ -3,6 +3,7 @@ export type AutomationIssueKey =
   | "customer_email_invalid"
   | "delivery_failure"
   | "send_guard_unavailable"
+  | "ai_customer_copy_blocked"
   | "duplicate_guard"
   | "unknown";
 
@@ -76,6 +77,17 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
       recommendedFix: "Keinen Angebotsversand wiederholen; Guard-/Supabase-Erreichbarkeit und bestehende Versandbelege prüfen, danach Fall erneut auswerten.",
       safeFix: "Guard-/Supabase-Fehler prüfen und Versandbelege konsolidieren.",
       retrySafety: "Retry blockiert, solange der Send-Guard keine eindeutige Freigabe liefert.",
+    };
+  }
+  if (
+    /ai_customer_copy_blocked|forbidden[_\s-]*word|verbotene?\s+w(?:o|ö)rter?|hard-?block|final[_\s-]*block|copy\s+blocked|e-?mail\s+blockiert/i.test(text)
+  ) {
+    return {
+      key: "ai_customer_copy_blocked",
+      rootCause: "Die Kunden-E-Mail wurde durch die Inhaltsprüfung blockiert, weil der KI-Text nach dem Retry weiterhin gesperrte Begriffe enthielt.",
+      recommendedFix: "Keine Kundenmail automatisch senden; Angebots-/Prompt-Kontext und gesperrte Begriffe prüfen, danach Text manuell freigeben oder Workflow-Prompt korrigieren.",
+      safeFix: "E-Mail-Text intern prüfen und erst nach fachlicher Freigabe manuell oder guarded erneut versenden.",
+      retrySafety: "Retry blockiert, bis der Textinhalt geprüft ist und der Duplicate-Mail-Check grün ist.",
     };
   }
   if (/(duplicate|doppelt).{0,40}(detected|gefunden|blocked|blockiert|send|sent|mail|versand)|already sent|bereits.*(gesendet|versendet)|idempotency.{0,30}(conflict|blocked|duplicate)/i.test(lower)) {

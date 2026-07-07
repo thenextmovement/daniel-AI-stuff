@@ -92,6 +92,15 @@ test("company brain classifies unavailable send guards as blocked automation iss
   assert.match(hint.retrySafety, /Retry blockiert/);
 });
 
+test("company brain classifies AI customer copy hard blocks", () => {
+  const hint = classifyAutomationIssueText("ai_customer_copy_blocked: forbidden words after retry. E-Mail wurde BLOCKIERT.");
+
+  assert.equal(hint.key, "ai_customer_copy_blocked");
+  assert.match(hint.rootCause, /Inhaltsprüfung/);
+  assert.match(hint.recommendedFix, /Keine Kundenmail automatisch senden/);
+  assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
 test("company brain normalizes Coolify API config", () => {
   const config = resolveCoolifyApiConfig({
     COOLIFY_URL: "https://coolify.example.com/",
