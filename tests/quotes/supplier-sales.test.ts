@@ -641,6 +641,7 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   assert.equal(board.counts.overdue, 1);
   assert.equal(board.counts.dueSoon, 2);
   assert.equal(board.counts.rushOrders, 1);
+  assert.equal(board.counts.missingPaymentLinks, 1);
   assert.equal(board.counts.quentinRecommended, 1);
   assert.equal(board.counts.syncIssues, 1);
   assert.equal(board.items.find((item) => item.id === "sale-payment")?.rushOrder, true);

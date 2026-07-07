@@ -122,6 +122,7 @@ type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "deadline" | "s
 type SupplierFilter = "all" | "quentin" | "said" | "special" | "manual_review";
 type PaymentFilter = "all" | "paid" | "unpaid" | "pending" | "authorized" | "partially_paid" | "unknown";
 type UrgencyFilter = "all" | "rush" | "standard";
+type QuickFilter = "all" | "paid_priority" | "missing_payment_link" | "sync_issue" | "deadline";
 
 const BOARD_PAGE_SIZE = 50;
 
@@ -216,6 +217,50 @@ function paidAssignmentPriority(sale: SupplierSale) {
   );
 }
 
+function missingPaymentLinkIssue(sale: SupplierSale) {
+  if (sale.shopifyPaymentStatus === "paid") return false;
+  if (["assigned", "in_production", "completed", "canceled"].includes(sale.assignmentStatus)) return false;
+  return !sale.paymentLink;
+}
+
+function paymentLinkLabel(sale: SupplierSale) {
+  if (sale.paymentLink) return "Bezahllink vorhanden";
+  if (sale.shopifyPaymentStatus === "paid") return "Bezahlt - Link nicht relevant";
+  if (sale.shopifyOrderId || sale.shopifyOrderName) return "Shopify verknuepft, Bezahllink fehlt";
+  return "Shopify-Match fehlt";
+}
+
+function paymentLinkTone(sale: SupplierSale) {
+  if (sale.paymentLink) return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (sale.shopifyPaymentStatus === "paid") return "border-stone-200 bg-stone-50 text-stone-700";
+  return "border-rose-200 bg-rose-50 text-rose-900";
+}
+
+function hasSyncIssue(sale: SupplierSale) {
+  return [sale.shopifyTagSyncStatus, sale.trelloProjectionStatus, sale.taskSyncStatus].includes("failed");
+}
+
+function isDeadlineRelevant(sale: SupplierSale) {
+  const dueDate = sale.supplierDueDate || sale.customerDueDate;
+  if (!dueDate || ["completed", "canceled"].includes(sale.assignmentStatus)) return false;
+  const dueSoon = new Date();
+  dueSoon.setUTCDate(dueSoon.getUTCDate() + 7);
+  return dueDate <= dueSoon.toISOString().slice(0, 10);
+}
+
+function syncHealthLabel(sale: SupplierSale) {
+  if (hasSyncIssue(sale)) return "Sync-Fehler";
+  if ([sale.shopifyTagSyncStatus, sale.trelloProjectionStatus, sale.taskSyncStatus].includes("pending")) return "Sync laeuft";
+  if ([sale.shopifyTagSyncStatus, sale.trelloProjectionStatus].includes("skipped")) return "Teil-Sync uebersprungen";
+  return "Sync OK";
+}
+
+function syncHealthTone(sale: SupplierSale) {
+  if (hasSyncIssue(sale)) return "border-rose-200 bg-rose-50 text-rose-900";
+  if ([sale.shopifyTagSyncStatus, sale.trelloProjectionStatus, sale.taskSyncStatus].includes("pending")) return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-emerald-200 bg-emerald-50 text-emerald-900";
+}
+
 function supplierTone(sale: SupplierSale) {
   if (sale.recommendedSupplier === "quentin") return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900";
   if (sale.recommendedSupplier === "said") return "border-sky-200 bg-sky-50 text-sky-900";
@@ -237,6 +282,12 @@ function syncSummary(sale: SupplierSale) {
     `Aufgabe ${sale.taskSyncStatus}`,
   ];
   return parts.join(" · ");
+}
+
+function assignmentBlockReason(sale: SupplierSale, deliveryDate: string, paymentDecision: SupplierSalePaymentDecision) {
+  if (!deliveryDate) return "Lieferdatum fehlt.";
+  if (sale.shopifyPaymentStatus !== "paid" && paymentDecision === "wait_for_payment") return "Zahlungsentscheidung steht auf Auf Zahlung warten.";
+  return null;
 }
 
 function formatPostOrderCountdown(ms: number) {
@@ -368,6 +419,31 @@ function StatFilterButton({
       aria-pressed={active}
       title={`${label} anzeigen`}
       className={`block w-full cursor-pointer rounded-[0.5rem] text-left transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-stone-950/30 ${active ? "ring-2 ring-stone-950/30" : ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function QuickFilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex min-h-9 items-center gap-2 rounded-[0.5rem] border px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-stone-950/25 ${
+        active
+          ? "border-stone-950 bg-stone-950 text-white"
+          : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+      }`}
     >
       {children}
     </button>
@@ -659,6 +735,12 @@ function SaleCard({
   const reviewWindowOpen = postOrderReviewWindowOpen(sale, reviewNow);
   const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
   const paidPriority = paidAssignmentPriority(sale);
+  const assignBlockReason = assignmentBlockReason(sale, deliveryDate, paymentDecision);
+  const reminderBlockReason = !sale.customerEmail
+    ? "Kunden-E-Mail fehlt."
+    : !reminderLink
+      ? "Bezahllink fehlt. Erst Sync laden oder Link manuell eintragen."
+      : null;
 
   return (
     <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : "border-stone-200"}`}>
@@ -690,6 +772,14 @@ function SaleCard({
             </span>
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusTone(sale)}`}>
               {sale.assignmentStatus}
+            </span>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${paymentLinkTone(sale)}`}>
+              <CreditCard className="h-3.5 w-3.5" />
+              {paymentLinkLabel(sale)}
+            </span>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${syncHealthTone(sale)}`}>
+              <RefreshCcw className="h-3.5 w-3.5" />
+              {syncHealthLabel(sale)}
             </span>
             {isOverdue ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-800">
@@ -739,7 +829,21 @@ function SaleCard({
               <ClipboardList className="h-4 w-4 text-stone-400" />
               {syncSummary(sale)}
             </div>
+            <div className="inline-flex items-center gap-2">
+              <RefreshCcw className="h-4 w-4 text-stone-400" />
+              Aktualisiert {formatDateTime(sale.updatedAt)}
+            </div>
+            <div className="inline-flex items-center gap-2">
+              <ShoppingCart className="h-4 w-4 text-stone-400" />
+              {sale.shopifyOrderName || sale.shopifyOrderId ? `Shopify ${sale.shopifyOrderName || sale.shopifyOrderId}` : "noch kein Shopify-Match"}
+            </div>
           </div>
+
+          {missingPaymentLinkIssue(sale) ? (
+            <div className="mt-3 rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-900">
+              Bezahllink fehlt. Der automatische Completed-Offers/Shopify-Sync laeuft alle 10 Minuten; wenn dieser Hinweis bleibt, ist die Shopify-Order wahrscheinlich nicht eindeutig gematcht.
+            </div>
+          ) : null}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <QuickLink href={sale.offerPublicUrl} label="Angebot" />
@@ -844,7 +948,8 @@ function SaleCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving || !deliveryDate || (needsManualPaymentRelease && paymentDecision === "wait_for_payment")}
+                disabled={saving || Boolean(assignBlockReason)}
+                title={assignBlockReason || "Sale vergeben"}
                 onClick={() => {
                   const selectedSupplier = supplierLabel(supplier, specialSupplierName);
                   const confirmationMessage =
@@ -889,6 +994,7 @@ function SaleCard({
               <button
                 type="button"
                 disabled={saving || !sale.customerEmail}
+                title={!sale.customerEmail ? "Kunden-E-Mail fehlt." : "Auftragsbestaetigung senden"}
                 onClick={() => {
                   const recipient = sale.customerEmail || "";
                   if (!confirmAction(`Auftragsbestaetigung als PDF per Outlook/n8n an ${recipient} senden? Der Versand wird protokolliert und bei gleichem PDF-Stand nicht doppelt ausgefuehrt.`)) return;
@@ -923,7 +1029,8 @@ function SaleCard({
               {needsManualPaymentRelease ? (
                 <button
                   type="button"
-                  disabled={saving}
+                  disabled={saving || Boolean(reminderBlockReason)}
+                  title={reminderBlockReason || "Zahlungserinnerung senden"}
                   onClick={() => {
                     if (!confirmAction("Sale auf Zahlung warten setzen und Vergabe vorerst stoppen?")) return;
                     void onAction({
@@ -969,11 +1076,16 @@ function SaleCard({
                       operatorName,
                     });
                   }}
-                  className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"
+                  className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
                 >
                   <Mail className="h-4 w-4" />
                   Erinnerung
                 </button>
+                {reminderBlockReason ? (
+                  <p className="rounded-[0.5rem] border border-amber-200 bg-white px-3 py-2 text-xs leading-5 text-amber-900">
+                    Erinnerung blockiert: {reminderBlockReason}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1001,6 +1113,7 @@ export function SupplierSalesClient({
   const [supplier, setSupplier] = useState<SupplierFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
   const [urgency, setUrgency] = useState<UrgencyFilter>("all");
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   const [visibleLimit, setVisibleLimit] = useState(BOARD_PAGE_SIZE);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1029,6 +1142,13 @@ export function SupplierSalesClient({
   }, [hasSession, localMode, scope, supplier, payment, urgency, visibleLimit]);
 
   const items = useMemo(() => board?.items || [], [board]);
+  const visibleItems = useMemo(() => {
+    if (quickFilter === "paid_priority") return items.filter(paidAssignmentPriority);
+    if (quickFilter === "missing_payment_link") return items.filter(missingPaymentLinkIssue);
+    if (quickFilter === "sync_issue") return items.filter(hasSyncIssue);
+    if (quickFilter === "deadline") return items.filter(isDeadlineRelevant);
+    return items;
+  }, [items, quickFilter]);
 
   async function login() {
     setError(null);
@@ -1161,21 +1281,25 @@ export function SupplierSalesClient({
 
   function selectScope(nextScope: ScopeFilter) {
     setVisibleLimit(BOARD_PAGE_SIZE);
+    setQuickFilter("all");
     setScope(nextScope);
   }
 
   function selectSupplier(nextSupplier: SupplierFilter) {
     setVisibleLimit(BOARD_PAGE_SIZE);
+    setQuickFilter("all");
     setSupplier(nextSupplier);
   }
 
   function selectPayment(nextPayment: PaymentFilter) {
     setVisibleLimit(BOARD_PAGE_SIZE);
+    setQuickFilter("all");
     setPayment(nextPayment);
   }
 
   function selectUrgency(nextUrgency: UrgencyFilter) {
     setVisibleLimit(BOARD_PAGE_SIZE);
+    setQuickFilter("all");
     setUrgency(nextUrgency);
   }
 
@@ -1228,7 +1352,7 @@ export function SupplierSalesClient({
           {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-8">
           <StatFilterButton
             active={scope === "active" && payment === "paid"}
             label="Bezahlte offene Sales"
@@ -1244,6 +1368,16 @@ export function SupplierSalesClient({
           </StatFilterButton>
           <StatFilterButton active={scope === "payment"} label="Offene Zahlungen" onClick={() => selectScope("payment")}>
             <OpsStatCard label="Zahlung" value={board?.counts.paymentOpen || 0} tone="warning" icon={<CreditCard className="h-5 w-5" />} detail="Offen oder Entscheidung fehlt." />
+          </StatFilterButton>
+          <StatFilterButton
+            active={quickFilter === "missing_payment_link"}
+            label="Fehlende Bezahllinks"
+            onClick={() => {
+              selectScope("active");
+              setQuickFilter("missing_payment_link");
+            }}
+          >
+            <OpsStatCard label="Link fehlt" value={board?.counts.missingPaymentLinks || 0} tone="danger" icon={<AlertTriangle className="h-5 w-5" />} detail="Shopify-Link fehlt." />
           </StatFilterButton>
           <StatFilterButton active={scope === "assigned"} label="Vergebene Sales" onClick={() => selectScope("assigned")}>
             <OpsStatCard label="Vergeben" value={board?.counts.assigned || 0} tone="success" icon={<Factory className="h-5 w-5" />} detail="Supplier gesetzt." />
@@ -1382,13 +1516,40 @@ export function SupplierSalesClient({
             {message ? <span className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">{message}</span> : null}
             {error ? <span className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</span> : null}
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-4">
+            <span className="mr-1 text-xs font-semibold uppercase text-stone-500">Schnellfilter</span>
+            <QuickFilterButton active={quickFilter === "all"} onClick={() => setQuickFilter("all")}>
+              Alle geladenen ({items.length})
+            </QuickFilterButton>
+            <QuickFilterButton active={quickFilter === "paid_priority"} onClick={() => setQuickFilter("paid_priority")}>
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Bezahlt sofort ({items.filter(paidAssignmentPriority).length})
+            </QuickFilterButton>
+            <QuickFilterButton active={quickFilter === "missing_payment_link"} onClick={() => setQuickFilter("missing_payment_link")}>
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Bezahllink fehlt ({items.filter(missingPaymentLinkIssue).length})
+            </QuickFilterButton>
+            <QuickFilterButton active={quickFilter === "deadline"} onClick={() => setQuickFilter("deadline")}>
+              <CalendarClock className="h-3.5 w-3.5" />
+              Deadline ({items.filter(isDeadlineRelevant).length})
+            </QuickFilterButton>
+            <QuickFilterButton active={quickFilter === "sync_issue"} onClick={() => setQuickFilter("sync_issue")}>
+              <RefreshCcw className="h-3.5 w-3.5" />
+              Sync-Problem ({items.filter(hasSyncIssue).length})
+            </QuickFilterButton>
+            {quickFilter !== "all" ? (
+              <span className="text-xs text-stone-500">
+                Zeigt {visibleItems.length} von {items.length} geladenen Treffern.
+              </span>
+            ) : null}
+          </div>
         </section>
 
         <LiveCheckPanel liveCheck={liveCheck} />
 
         <section className="grid gap-4">
-          {items.length ? (
-            items.map((sale) => (
+          {visibleItems.length ? (
+            visibleItems.map((sale) => (
               <SaleCard
                 key={sale.id}
                 sale={sale}
@@ -1400,7 +1561,11 @@ export function SupplierSalesClient({
           ) : (
             <div className="rounded-[0.5rem] border border-stone-200 bg-white p-8 text-center text-stone-500">
               <CheckCircle2 className="mx-auto h-7 w-7 text-emerald-600" />
-              <p className="mt-3">Keine Sales in dieser Ansicht.</p>
+              <p className="mt-3">
+                {items.length && quickFilter !== "all"
+                  ? "Keine geladenen Sales passen zu diesem Schnellfilter."
+                  : "Keine Sales in dieser Ansicht."}
+              </p>
             </div>
           )}
           {items.length >= visibleLimit ? (

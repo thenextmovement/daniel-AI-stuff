@@ -256,6 +256,7 @@ export type SupplierSaleBoard = {
     dueSoon: number;
     overdue: number;
     rushOrders: number;
+    missingPaymentLinks: number;
     quentinRecommended: number;
     saidRecommended: number;
     syncIssues: number;
@@ -1610,6 +1611,13 @@ function paidUnassignedPriority(row: SupplierSaleRow) {
   return !["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status);
 }
 
+function missingPaymentLinkPriority(row: SupplierSaleRow) {
+  if (row.shopify_payment_status === "paid") return false;
+  if (hasExternalSupplierAssignmentSignal(row) || hasCompletedShopifyFulfillmentSignal(row)) return false;
+  if (["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status)) return false;
+  return !paymentLinkFromSaleRow(row, null);
+}
+
 function dateTimeMs(value: unknown) {
   const text = nullableText(value, 80);
   if (!text) return null;
@@ -1659,6 +1667,7 @@ function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new 
       return Boolean(dueDate && dueDate < today && !["completed", "canceled"].includes(row.assignment_status));
     }).length,
     rushOrders: saleRows.filter((row) => supplierSaleHasRushSignal(row)).length,
+    missingPaymentLinks: activeRows.filter((row) => missingPaymentLinkPriority(row)).length,
     quentinRecommended: saleRows.filter((row) => row.recommended_supplier === "quentin").length,
     saidRecommended: saleRows.filter((row) => row.recommended_supplier === "said").length,
     syncIssues: saleRows.filter((row) => {

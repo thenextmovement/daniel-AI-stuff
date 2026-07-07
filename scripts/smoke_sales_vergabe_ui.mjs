@@ -159,6 +159,7 @@ const board = {
     dueSoon: 4,
     overdue: 0,
     rushOrders: 1,
+    missingPaymentLinks: 0,
     quentinRecommended: 1,
     saidRecommended: 3,
     syncIssues: 1,
@@ -370,8 +371,8 @@ async function main() {
   });
   await setupRoutes(page, posts);
 
-  await page.goto(`${target}/ops/sales-vergabe`, { waitUntil: "networkidle" });
-  await page.getByText("#QA-sale-unpaid").waitFor({ timeout: 10_000 });
+  await page.goto(`${target}/ops/sales-vergabe`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "#QA-sale-unpaid" }).waitFor({ timeout: 10_000 });
   await page.getByText("Bezahlt offen").waitFor({ timeout: 10_000 });
   await page.getByText("Bezahlt - sofort vergeben").first().waitFor({ timeout: 10_000 });
 
@@ -399,7 +400,7 @@ async function main() {
     }),
     page.getByRole("button", { name: "Eil- und Express-Auftraege anzeigen" }).click(),
   ]);
-  await page.getByText("#QA-sale-rush").waitFor({ timeout: 10_000 });
+  await page.getByRole("heading", { name: "#QA-sale-rush" }).waitFor({ timeout: 10_000 });
   await page.getByLabel("Dringlichkeit filtern").selectOption("all");
 
   await page.getByLabel("Sales suchen").fill("#QA-sale-paid");
@@ -407,7 +408,7 @@ async function main() {
   await page.getByLabel("Bereich filtern").selectOption("sync");
   await page.getByLabel("Supplier filtern").selectOption("quentin");
   await page.getByLabel("Zahlungsstatus filtern").selectOption("unpaid");
-  await page.getByText("#QA-sale-unpaid").waitFor({ timeout: 10_000 });
+  await page.getByRole("heading", { name: "#QA-sale-unpaid" }).waitFor({ timeout: 10_000 });
 
   const paidCard = page.locator("article").filter({ hasText: "#QA-sale-paid" });
   const unpaidCard = page.locator("article").filter({ hasText: "#QA-sale-unpaid" });
