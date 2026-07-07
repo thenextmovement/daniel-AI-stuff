@@ -72,6 +72,43 @@ test("workflow audit marks unavailable send guards as blocked", () => {
   assert.equal(event.metadata.retry_safety, "blocked");
 });
 
+test("workflow audit accepts direct snake-case n8n guard blocked payloads", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "blocked",
+    reason: "send_guard_unavailable: invalid_guard_response",
+    retry_safety: "blocked",
+    request_id: "REQ-GUARD",
+    card_id: "6a4b53ee91f140e2ecd67e2f",
+    card_url: "https://trello.com/c/BiP93WuG",
+    document_id: "REQ-GUARD",
+    failed_node: "Evaluate Guard",
+    idempotency_key: "quote-ready-guard-block:REQ-GUARD:doc-1",
+    correlation_id: "trello:6a4b53ee91f140e2ecd67e2f:quote-ready",
+    action_id: "trello-action-1",
+    customer_communication_sent: false,
+    metadata: {
+      raw_status: "blocked",
+    },
+  });
+
+  assert.equal(event.documentId, "REQ-GUARD");
+  assert.equal(event.workflowName, "NEONTRIP Quote Ready SIMPLE v1.1");
+  assert.equal(event.action, "offer_send");
+  assert.equal(event.status, "blocked");
+  assert.equal(event.errorMessage, "send_guard_unavailable: invalid_guard_response");
+  assert.equal(event.metadata.request_id, "REQ-GUARD");
+  assert.equal(event.metadata.trello_card_id, "6a4b53ee91f140e2ecd67e2f");
+  assert.equal(event.metadata.card_id, "6a4b53ee91f140e2ecd67e2f");
+  assert.equal(event.metadata.card_url, "https://trello.com/c/BiP93WuG");
+  assert.equal(event.metadata.source_event_id, "trello-action-1");
+  assert.equal(event.metadata.idempotency_key, "quote-ready-guard-block:REQ-GUARD:doc-1");
+  assert.equal(event.metadata.customer_communication_sent, false);
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.automation_issue_key, "send_guard_unavailable");
+});
+
 test("workflow audit creates stable event keys for duplicate n8n callbacks", () => {
   const first = normalizeWorkflowAuditEvent({
     workflowName: "offer_from_trello",

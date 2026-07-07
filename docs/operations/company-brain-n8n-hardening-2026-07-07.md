@@ -22,6 +22,33 @@ This note records the production n8n state for `NEONTRIP Quote Ready SIMPLE v1.1
 
 No offer retry, customer email, Trello resend, or workflow execution was manually triggered during these changes.
 
+## Workflow audit contract
+
+The internal endpoint `/api/internal/workflow-audit` accepts direct n8n guard-blocked payloads in snake_case as well as the app's camelCase shape. This lets n8n post the output from `Skip: Guard Blocked` without brittle field mapping.
+
+Minimum blocked-send payload:
+
+```json
+{
+  "workflow_name": "NEONTRIP Quote Ready SIMPLE v1.1",
+  "action": "offer_send",
+  "status": "blocked",
+  "reason": "send_guard_unavailable: invalid_guard_response",
+  "retry_safety": "blocked",
+  "request_id": "REQ-...",
+  "card_id": "trello-card-id",
+  "card_url": "https://trello.com/c/...",
+  "document_id": "REQ-...",
+  "failed_node": "Evaluate Guard",
+  "idempotency_key": "quote-ready-guard-block:...",
+  "correlation_id": "trello:...:quote-ready",
+  "action_id": "trello-action-id",
+  "customer_communication_sent": false
+}
+```
+
+The endpoint derives `automation_issue_key`, `automation_issue_root_cause`, retry safety, duplicate `audit_event_key`, and stores the event in `workflow_audit_log`. It returns `customerCommunicationSent: false`.
+
 ## Important MCP limitation found
 
 The incremental update MCP can set `onError`, but the tested `updateNode` path did not delete the existing top-level `continueOnFail` property. Using both fields made workflow validation fail. The workflow was repaired by removing `onError` again on the affected nodes and leaving `continueOnFail: false`.

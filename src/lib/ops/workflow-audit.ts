@@ -7,22 +7,43 @@ export type WorkflowAuditRetrySafety = "safe" | "safe_after_review" | "blocked" 
 
 export type WorkflowAuditEventInput = {
   workflowName?: string | null;
+  workflow_name?: string | null;
   action?: string | null;
   status?: string | null;
   requestId?: string | null;
+  request_id?: string | null;
   documentId?: string | null;
+  document_id?: string | null;
   trelloCardId?: string | null;
+  trello_card_id?: string | null;
+  card_id?: string | null;
+  card_url?: string | null;
   offerId?: string | null;
+  offer_id?: string | null;
   offerNumber?: string | null;
+  offer_number?: string | null;
   executionId?: string | number | null;
+  execution_id?: string | number | null;
+  n8n_execution_id?: string | number | null;
   correlationId?: string | null;
+  correlation_id?: string | null;
   sourceEventId?: string | null;
+  source_event_id?: string | null;
+  action_id?: string | null;
   targetRecordId?: string | null;
+  target_record_id?: string | null;
   idempotencyKey?: string | null;
+  idempotency_key?: string | null;
   failedNode?: string | null;
+  failed_node?: string | null;
   errorMessage?: string | null;
+  error_message?: string | null;
+  reason?: string | null;
+  error_code?: string | null;
   summary?: string | null;
   retrySafety?: WorkflowAuditRetrySafety | null;
+  retry_safety?: WorkflowAuditRetrySafety | null;
+  customer_communication_sent?: boolean | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -128,23 +149,23 @@ function hashKey(value: string) {
 }
 
 export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): WorkflowAuditEvent {
-  const workflowName = nullableText(input.workflowName, 180);
+  const workflowName = nullableText(input.workflowName || input.workflow_name, 180);
   const action = nullableText(input.action, 180);
   if (!workflowName) throw new QuoteValidationError("Workflow-Name fehlt.", ["workflowName ist erforderlich."], 422);
   if (!action) throw new QuoteValidationError("Workflow-Aktion fehlt.", ["action ist erforderlich."], 422);
 
   const status = normalizeStatus(input.status);
-  const requestId = nullableText(input.requestId, 180);
-  const trelloCardId = nullableText(input.trelloCardId, 180);
-  const offerId = nullableText(input.offerId, 180);
-  const offerNumber = nullableText(input.offerNumber, 80);
-  const executionId = nullableText(input.executionId, 180);
-  const correlationId = nullableText(input.correlationId, 240);
-  const sourceEventId = nullableText(input.sourceEventId, 240);
-  const targetRecordId = nullableText(input.targetRecordId, 240);
-  const idempotencyKey = nullableText(input.idempotencyKey, 300);
+  const requestId = nullableText(input.requestId || input.request_id, 180);
+  const trelloCardId = nullableText(input.trelloCardId || input.trello_card_id || input.card_id, 180);
+  const offerId = nullableText(input.offerId || input.offer_id, 180);
+  const offerNumber = nullableText(input.offerNumber || input.offer_number, 80);
+  const executionId = nullableText(input.executionId || input.execution_id || input.n8n_execution_id, 180);
+  const correlationId = nullableText(input.correlationId || input.correlation_id, 240);
+  const sourceEventId = nullableText(input.sourceEventId || input.source_event_id || input.action_id, 240);
+  const targetRecordId = nullableText(input.targetRecordId || input.target_record_id, 240);
+  const idempotencyKey = nullableText(input.idempotencyKey || input.idempotency_key, 300);
   const documentId =
-    nullableText(input.documentId, 180) ||
+    nullableText(input.documentId || input.document_id, 180) ||
     requestId ||
     offerId ||
     (trelloCardId ? `trello:${trelloCardId}` : null) ||
@@ -159,9 +180,9 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
     );
   }
 
-  const failedNode = nullableText(input.failedNode, 240);
-  const errorMessage = nullableText(input.errorMessage, MAX_LONG_TEXT);
-  const explicitRetrySafety = normalizeRetrySafety(input.retrySafety);
+  const failedNode = nullableText(input.failedNode || input.failed_node, 240);
+  const errorMessage = nullableText(input.errorMessage || input.error_message || input.reason || input.error_code, MAX_LONG_TEXT);
+  const explicitRetrySafety = normalizeRetrySafety(input.retrySafety || input.retry_safety);
   const compactedMetadata = compactMetadata(input.metadata);
   const rawSummary = nullableText(input.summary, 1000);
   const issueHint = classifyAutomationIssueText([
@@ -176,6 +197,8 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
     ...compactedMetadata,
     request_id: requestId,
     trello_card_id: trelloCardId,
+    card_id: trelloCardId,
+    card_url: nullableText(input.card_url, 500),
     offer_id: offerId,
     offer_number: offerNumber,
     execution_id: executionId,
@@ -186,6 +209,7 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
     idempotency_key: idempotencyKey,
     failed_node: failedNode,
     retry_safety: retrySafety,
+    customer_communication_sent: input.customer_communication_sent === true,
     summary,
     automation_issue_key: issueHint.key !== "unknown" ? issueHint.key : null,
     automation_issue_root_cause: issueHint.key !== "unknown" ? issueHint.rootCause : null,
