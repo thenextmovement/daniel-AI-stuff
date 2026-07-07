@@ -2305,6 +2305,18 @@ export function buildCompanyBrainRetryAssessment(input: {
   if (offer?.customerEmail && recipientEmail && normalizeRetryEmail(offer.customerEmail) !== recipientEmail) {
     blockers.push(`Angebot gehört zu ${offer.customerEmail}, Kundenakte zu ${recipientEmail}.`);
   }
+  if (automationIssueHint.key === "customer_email_missing") {
+    blockers.push("Die Automation hatte keine belastbare Kunden-E-Mail-Adresse.");
+    safeFixes.push("Kunden-E-Mail/Postfach belegen, in Kundenakte und Angebot synchronisieren, dann Fall neu laden.");
+  }
+  if (automationIssueHint.key === "customer_email_invalid") {
+    blockers.push("Die Automation hatte eine ungültige oder unvollständige Kunden-E-Mail-Adresse.");
+    safeFixes.push("Ungültige Kunden-E-Mail korrigieren oder verifizieren; kein Retry an die alte Adresse.");
+  }
+  if (automationIssueHint.key === "delivery_failure") {
+    blockers.push("Es gibt einen Zustell-/Empfängerfehler für den Angebotsversand.");
+    safeFixes.push("Bounce/Empfängerproblem klären und Adresse korrigieren oder bestätigen.");
+  }
   if (deliveryFailureForRecipient) {
     blockers.push("Outlook-Bounce liegt für die aktuelle Empfängeradresse vor.");
     safeFixes.push("Kunden-E-Mail-Adresse/Postfach zuerst korrigieren oder verifizieren.");
@@ -2352,11 +2364,14 @@ export function buildCompanyBrainRetryAssessment(input: {
     ? `company-brain-offer-resend:${offer.offerId}:${recipientEmail}`
     : null;
   const hardBlockers = blockers;
+  const needsDataFix = automationIssueHint.key === "customer_email_missing" ||
+    automationIssueHint.key === "customer_email_invalid" ||
+    automationIssueHint.key === "delivery_failure";
   const canSendWithConfirmation = Boolean(record && offer && recipientEmail && !hardBlockers.length);
   const status: CompanyBrainRetryAssessment["status"] =
     canSendWithConfirmation
       ? "ready"
-      : blockers.some((blocker) => /Bounce|ungültig|interne|gehört zu/.test(blocker))
+      : needsDataFix || blockers.some((blocker) => /Bounce|ungültig|unvollständig|interne|gehört zu|Empfängerfehler|Kunden-E-Mail/.test(blocker))
         ? "needs_fix"
         : blockers.length
           ? "blocked"
@@ -2373,8 +2388,8 @@ export function buildCompanyBrainRetryAssessment(input: {
     offerNumber: offerNumberLabel(offer),
     idempotencyKey,
     canSendWithConfirmation,
-    blockers,
-    safeFixes: safeFixes.length ? safeFixes : ["Serverseitigen Duplicate-Check ausführen und erst danach senden."],
+    blockers: uniqueStrings(blockers),
+    safeFixes: safeFixes.length ? uniqueStrings(safeFixes) : ["Serverseitigen Duplicate-Check ausführen und erst danach senden."],
   };
 }
 

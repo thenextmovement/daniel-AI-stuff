@@ -971,6 +971,80 @@ test("company brain retry assessment blocks resend after current recipient bounc
   assert.ok(retry.safeFixes.some((fix) => fix.includes("Kunden-E-Mail")));
 });
 
+test("company brain retry assessment treats n8n invalid customer email as data fix", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-INVALID-EMAIL",
+    displayName: "Kurswechsel",
+    company: null,
+    email: "praxis@kurswechsel.de",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "card-invalid-email",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-invalid-email",
+    offerNumber: "AN-14427",
+    documentReference: "AN-14427",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Kurswechsel",
+    customerEmail: "praxis@kurswechsel.de",
+    projectTitle: "LED Flex",
+    trelloCardId: "card-invalid-email",
+    updatedAt: "2026-07-06T07:39:11.809Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence: [],
+    question: "Wieso wurde das Angebot nicht rausgeschickt?",
+  });
+  const trelloFailureDiagnosis = retryDiagnosis();
+  trelloFailureDiagnosis.rootCause = "n8n-Execution fehlgeschlagen: invalid customer_email praxis@kurswechsel";
+  trelloFailureDiagnosis.recommendedFix = "Korrekte Kunden-E-Mail belegen und Fall neu laden.";
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence: [],
+    crossChecks,
+    trelloFailureDiagnosis,
+  });
+  const actions = actionProposalFixture({ retry });
+  const correctEmail = actions.find((action) => action.key === "correct_customer_email");
+  const guardedResend = actions.find((action) => action.key === "guarded_offer_resend");
+
+  assert.equal(retry.status, "needs_fix");
+  assert.equal(retry.canSendWithConfirmation, false);
+  assert.ok(retry.blockers.some((blocker) => /ungültige oder unvollständige Kunden-E-Mail/.test(blocker)));
+  assert.ok(retry.safeFixes.some((fix) => /kein Retry an die alte Adresse/i.test(fix)));
+  assert.equal(correctEmail?.enabled, true);
+  assert.equal(guardedResend?.enabled, false);
+});
+
 test("company brain retry assessment allows guarded resend when no hard blocker exists", () => {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-READY",
