@@ -6,7 +6,7 @@ import {
   type CustomerSpecialCaseKind,
   type CustomerTimelineEntry,
 } from "@/lib/ops/customer-records";
-import { classifyAutomationIssueText } from "@/lib/ops/automation-issues";
+import { classifyAutomationIssueText, isBlockingAutomationIssueKey } from "@/lib/ops/automation-issues";
 import {
   getOfferById,
   getOfferByTrelloCardId,
@@ -2248,6 +2248,18 @@ export function buildCompanyBrainRetryAssessment(input: {
     blockers.push("Die Kunden-E-Mail wurde durch die Inhaltsprüfung blockiert.");
     safeFixes.push("E-Mail-Text und gesperrte Begriffe intern prüfen; keinen automatischen Resend starten.");
   }
+  if (automationIssueHint.key === "outlook_auth_failed") {
+    blockers.push("Outlook/Graph-Zugriff ist fehlgeschlagen.");
+    safeFixes.push("Graph/Outlook-Konfiguration und Versandbelege prüfen; danach Fall erneut laden.");
+  }
+  if (automationIssueHint.key === "offer_api_failed") {
+    blockers.push("Angebotsanlage oder Offer-API ist fehlgeschlagen.");
+    safeFixes.push("Offer-Snapshot/Offer-Bridge reparieren; Versand erst danach neu bewerten.");
+  }
+  if (automationIssueHint.key === "asset_processing_failed") {
+    blockers.push("Design-/Anhang-Assets konnten nicht sicher verarbeitet werden.");
+    safeFixes.push("Relevante Assets sichern oder neu verknüpfen; Angebot danach erneut prüfen.");
+  }
   if (automationIssueHint.key === "workflow_hard_error") {
     blockers.push("Die n8n-Automation ist hart fehlgeschlagen.");
     safeFixes.push("n8n-Execution, betroffenen Node, Outlook/quote_email_log und Duplicate-Guard prüfen.");
@@ -2745,7 +2757,7 @@ export function buildTrelloFailureDiagnosis(input: {
       : null,
   ].filter(Boolean) as string[];
   const blockedFixes = [
-    !automationResolvedBySendProof && failedAutomationHint && ["customer_email_missing", "customer_email_invalid", "delivery_failure"].includes(failedAutomationHint.key)
+    !automationResolvedBySendProof && failedAutomationHint && isBlockingAutomationIssueKey(failedAutomationHint.key)
       ? failedAutomationHint.retrySafety
       : null,
     expectedAction === "offer_send" && !offerSent ? "Kein automatischer Angebotsversand ohne Outlook-Duplicate-Check." : null,

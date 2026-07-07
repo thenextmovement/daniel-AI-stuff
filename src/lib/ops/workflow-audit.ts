@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { classifyAutomationIssueText, type AutomationIssueKey } from "@/lib/ops/automation-issues";
+import { classifyAutomationIssueText, isBlockingAutomationIssueKey, type AutomationIssueKey } from "@/lib/ops/automation-issues";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -123,17 +123,7 @@ function compactMetadata(input: Record<string, unknown> | null | undefined) {
 }
 
 function issueRetrySafety(key: AutomationIssueKey): WorkflowAuditRetrySafety {
-  if (
-    key === "customer_email_missing" ||
-    key === "customer_email_invalid" ||
-    key === "delivery_failure" ||
-    key === "send_guard_unavailable" ||
-    key === "ai_customer_copy_blocked" ||
-    key === "workflow_hard_error" ||
-    key === "duplicate_guard"
-  ) {
-    return "blocked";
-  }
+  if (isBlockingAutomationIssueKey(key)) return "blocked";
   return "unknown";
 }
 

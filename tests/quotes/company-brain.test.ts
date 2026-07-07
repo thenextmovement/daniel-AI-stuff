@@ -105,6 +105,33 @@ test("company brain classifies AI customer copy hard blocks", () => {
   assert.match(hint.retrySafety, /Retry blockiert/);
 });
 
+test("company brain classifies Outlook Graph auth failures", () => {
+  const hint = classifyAutomationIssueText("Outlook Graph send failed: 403 Authorization_RequestDenied Mail.Send permission missing");
+
+  assert.equal(hint.key, "outlook_auth_failed");
+  assert.match(hint.rootCause, /Outlook\/Graph-Zugriff/);
+  assert.match(hint.recommendedFix, /Graph App/);
+  assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
+test("company brain classifies offer API failures before send", () => {
+  const hint = classifyAutomationIssueText("Offer API create snapshot failed with 500 validation schema error");
+
+  assert.equal(hint.key, "offer_api_failed");
+  assert.match(hint.rootCause, /Angebotsanlage/);
+  assert.match(hint.recommendedFix, /Offer-API/);
+  assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
+test("company brain classifies missing asset processing failures", () => {
+  const hint = classifyAutomationIssueText("attachment_download_failed: mockup image not found for offer asset");
+
+  assert.equal(hint.key, "asset_processing_failed");
+  assert.match(hint.rootCause, /Assets/);
+  assert.match(hint.recommendedFix, /Anhänge/);
+  assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
 test("company brain classifies n8n workflow hard errors", () => {
   const hint = classifyAutomationIssueText("workflow_hard_error: Outlook: E-Mail senden failed in execution 2770420");
 

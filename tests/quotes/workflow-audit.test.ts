@@ -147,6 +147,54 @@ test("workflow audit marks n8n workflow hard errors as blocked", () => {
   assert.match(String(event.metadata.automation_issue_recommended_fix), /n8n-Execution/);
 });
 
+test("workflow audit marks Outlook Graph auth failures as blocked", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "failed",
+    reason: "Outlook Graph send failed: 403 Authorization_RequestDenied Mail.Send permission missing",
+    request_id: "REQ-GRAPH-AUTH",
+    failed_node: "Outlook: E-Mail senden",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.automation_issue_key, "outlook_auth_failed");
+  assert.match(String(event.metadata.automation_issue_recommended_fix), /Graph App/);
+});
+
+test("workflow audit marks offer API failures as blocked", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "failed",
+    reason: "Offer API create snapshot failed with 500 validation schema error",
+    request_id: "REQ-OFFER-API",
+    failed_node: "Create Offer",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.automation_issue_key, "offer_api_failed");
+  assert.match(String(event.metadata.automation_issue_root_cause), /Offer-API|Angebotsanlage/);
+});
+
+test("workflow audit marks asset processing failures as blocked", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "failed",
+    reason: "attachment_download_failed: mockup image not found for offer asset",
+    request_id: "REQ-ASSET",
+    failed_node: "Download Attachments",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.automation_issue_key, "asset_processing_failed");
+  assert.match(String(event.metadata.automation_issue_recommended_fix), /Assets|Anhänge/);
+});
+
 test("workflow audit keeps company brain internal fixes observable without customer send", () => {
   const event = normalizeWorkflowAuditEvent({
     workflowName: "company_brain_fix_center",

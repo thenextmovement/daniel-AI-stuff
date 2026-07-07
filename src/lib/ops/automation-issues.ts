@@ -4,6 +4,9 @@ export type AutomationIssueKey =
   | "delivery_failure"
   | "send_guard_unavailable"
   | "ai_customer_copy_blocked"
+  | "outlook_auth_failed"
+  | "offer_api_failed"
+  | "asset_processing_failed"
   | "workflow_hard_error"
   | "duplicate_guard"
   | "unknown";
@@ -31,6 +34,10 @@ function malformedEmailTokens(text: string) {
       .map((token) => token.trim().replace(/[.:!?]+$/g, ""))
       .filter((token) => token.includes("@") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(token)),
   ).slice(0, 3);
+}
+
+export function isBlockingAutomationIssueKey(key: AutomationIssueKey) {
+  return key !== "unknown";
 }
 
 export function classifyAutomationIssueText(value: unknown): AutomationIssueHint {
@@ -89,6 +96,39 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
       recommendedFix: "Keine Kundenmail automatisch senden; Angebots-/Prompt-Kontext und gesperrte Begriffe prüfen, danach Text manuell freigeben oder Workflow-Prompt korrigieren.",
       safeFix: "E-Mail-Text intern prüfen und erst nach fachlicher Freigabe manuell oder guarded erneut versenden.",
       retrySafety: "Retry blockiert, bis der Textinhalt geprüft ist und der Duplicate-Mail-Check grün ist.",
+    };
+  }
+  if (
+    /(outlook|graph|microsoft|msgraph).{0,90}(401|403|unauthori[sz]ed|forbidden|invalid[_\s-]*client|invalid[_\s-]*grant|access denied|insufficient|permission|mail\.read|mail\.send|token|tenant|authentication|authentifizierung)|authorization_requestdenied|invalid_client|invalid_grant/i.test(text)
+  ) {
+    return {
+      key: "outlook_auth_failed",
+      rootCause: "Outlook/Graph-Zugriff ist an Authentifizierung, Berechtigung oder Tenant-Konfiguration gescheitert.",
+      recommendedFix: "Graph App, Mailbox, Berechtigungen und Application Access Policy prüfen; keinen Angebotsversand wiederholen, bis Outlook/quote_email_log eindeutig ist.",
+      safeFix: "Outlook-/Graph-Konfiguration und Versandbelege intern prüfen.",
+      retrySafety: "Retry blockiert, bis Graph/Outlook-Zugriff und bestehende Versandbelege geklärt sind.",
+    };
+  }
+  if (
+    /(offer|quote|angebot|angebote).{0,100}(api|endpoint|create|creation|erstell|snapshot|payload|validation|schema|http|500|timeout)|(?:api|endpoint|http|500|timeout).{0,80}(offer|quote|angebot).{0,80}(failed|error|timeout|500|schema|fehlgeschlagen|fehler)|offer_api_failed|quote_api_failed/i.test(text)
+  ) {
+    return {
+      key: "offer_api_failed",
+      rootCause: "Die Angebotsanlage oder Offer-API ist fehlgeschlagen, bevor ein belastbarer Versand bewertet werden kann.",
+      recommendedFix: "Offer-API-Response, Angebots-Snapshot, Offer-Bridge und Idempotency prüfen; erst danach Versandstatus oder Retry bewerten.",
+      safeFix: "Angebotsanlage/Offer-Bridge reparieren und Fall erneut laden.",
+      retrySafety: "Retry blockiert, bis ein eindeutiger Angebotssnapshot und fehlender Versandbeleg vorliegen.",
+    };
+  }
+  if (
+    /(asset|attachment|anhang|bild|image|mockup|design|download|upload|storage|s3|file|datei).{0,100}(missing|not found|404|unsupported|failed|error|timeout|fehlt|fehlgeschlagen|konnte nicht|ungueltig|ungültig)|asset_processing_failed|attachment_download_failed/i.test(text)
+  ) {
+    return {
+      key: "asset_processing_failed",
+      rootCause: "Design-/Anhang-Assets konnten nicht geladen oder verarbeitet werden.",
+      recommendedFix: "Trello-/Outlook-/Offer-Anhänge und Asset-URLs prüfen; keinen Kundenversand freigeben, solange relevante Designs fehlen.",
+      safeFix: "Fehlende Assets sichern oder neu verknüpfen und Angebot/Fall erneut prüfen.",
+      retrySafety: "Retry blockiert, bis die für das Angebot relevanten Assets vorhanden und geprüft sind.",
     };
   }
   if (
