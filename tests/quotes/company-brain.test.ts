@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCompanyBrainAnswer,
+  buildActionProposals,
   buildCompanyBrainCrossChecks,
   buildCompanyBrainRetryAssessment,
   buildOutlookGraphSearchTerms,
@@ -998,6 +999,184 @@ test("company brain retry assessment allows guarded resend when no hard blocker 
   assert.equal(retry.canSendWithConfirmation, true);
   assert.equal(retry.recipientEmail, "max@example.com");
   assert.equal(retry.idempotencyKey, "company-brain-offer-resend:offer-ready:max@example.com");
+});
+
+function actionProposalFixture(options: {
+  retry: ReturnType<typeof buildCompanyBrainRetryAssessment>;
+  automationRuns?: CompanyBrainAutomationRun[];
+}) {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-ACTIONS",
+    displayName: "Max Muster",
+    company: null,
+    email: options.retry.recipientEmail || "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "card-actions",
+    trelloCardUrl: "https://trello.com/c/actions",
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: options.retry.offerId || "offer-actions",
+    offerNumber: options.retry.offerNumber || "AN-5010",
+    documentReference: options.retry.offerNumber || "AN-5010",
+    publicUrl: "https://angebote.example/AN-5010",
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: options.retry.recipientEmail || "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-actions",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+
+  return buildActionProposals({
+    records,
+    offers,
+    evidenceScore: { status: "medium", score: 70, summary: "teilweise belegt", safeToAnswerCustomer: false, reasons: [] },
+    problemResolution: {
+      problemType: "offer_not_sent",
+      label: "Angebot nicht raus",
+      severity: "warning",
+      confidence: "medium",
+      specialCaseKind: "open_question",
+      rootCause: "Versand unklar.",
+      recommendedResolution: "Korrektur prüfen.",
+      internalTaskTitle: "Angebot prüfen",
+      internalTaskDescription: "Interne Prüfung.",
+      customerReplyPolicy: [],
+      escalationPath: [],
+      requiredEvidence: [],
+      missingEvidence: [],
+    },
+    replyDraft: {
+      title: "Antwort",
+      riskLevel: "medium",
+      approvalRequired: true,
+      canSendAutomatically: false,
+      subject: "Prüfung",
+      body: "Interner Entwurf",
+      blockers: [],
+      sourceEvidenceIds: [],
+    },
+    watchers: [],
+    automationRuns: options.automationRuns || [],
+    integrationReadiness: [
+      { key: "live_outlook", label: "Live Outlook", status: "missing", summary: "fehlt", detail: null },
+      { key: "n8n_live", label: "Live n8n", status: "configured", summary: "bereit", detail: null },
+      { key: "coolify", label: "Coolify", status: "configured", summary: "bereit", detail: null },
+    ],
+    assets: [],
+    retryAssessment: options.retry,
+    trelloFailureDiagnosis: retryDiagnosis(),
+  });
+}
+
+test("company brain action proposals do not duplicate prepared email correction tasks", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "needs_fix",
+    label: "Fix vor Retry nötig",
+    summary: "Empfängeradresse ist syntaktisch ungültig.",
+    recipientEmail: "praxis@kurswechsel",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["Empfängeradresse ist syntaktisch ungültig."],
+    safeFixes: ["Korrekte Kunden-E-Mail in der Kundenakte hinterlegen."],
+  };
+  const actions = actionProposalFixture({
+    retry,
+    automationRuns: [{
+      id: "fix-prepared",
+      workflowName: "company_brain_fix_center",
+      action: "prepare_email_correction",
+      status: "prepared",
+      error: null,
+      createdAt: "2026-07-07T10:45:00.000Z",
+      requestId: "REQ-ACTIONS",
+      executionId: null,
+      correlationId: null,
+      sourceEventId: "task-1",
+      targetRecordId: "task-1",
+      failedNode: null,
+      idempotencyKey: "company-brain:prepare_email_correction:REQ-ACTIONS:offer_not_sent:v1",
+      retrySafety: "safe_after_review",
+      summary: "E-Mail-Korrektur vorbereitet.",
+    }],
+  });
+
+  const prepareEmail = actions.find((action) => action.key === "prepare_email_correction");
+  const correctEmail = actions.find((action) => action.key === "correct_customer_email");
+  const inspectN8n = actions.find((action) => action.key === "inspect_n8n_run");
+
+  assert.equal(prepareEmail?.enabled, false);
+  assert.match(prepareEmail?.summary || "", /bereits vorbereitet/);
+  assert.equal(correctEmail?.enabled, true);
+  assert.equal(inspectN8n?.enabled, false);
+});
+
+test("company brain action proposals block duplicate retry actions after guarded resend audit", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "ready",
+    label: "Retry bereit",
+    summary: "Guarded Retry möglich.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: "company-brain-offer-resend:offer-actions:max@example.com",
+    canSendWithConfirmation: true,
+    blockers: [],
+    safeFixes: ["Serverseitigen Duplicate-Check ausführen."],
+  };
+  const actions = actionProposalFixture({
+    retry,
+    automationRuns: [{
+      id: "retry-sent",
+      workflowName: "company_brain_fix_center",
+      action: "guarded_offer_resend",
+      status: "sent",
+      error: null,
+      createdAt: "2026-07-07T11:00:00.000Z",
+      requestId: "REQ-ACTIONS",
+      executionId: null,
+      correlationId: null,
+      sourceEventId: "mail-event-1",
+      targetRecordId: null,
+      failedNode: null,
+      idempotencyKey: "company-brain-offer-resend:offer-actions:max@example.com",
+      retrySafety: "safe_after_review",
+      summary: "Angebot erneut gesendet.",
+    }],
+  });
+
+  const prepareRetry = actions.find((action) => action.key === "prepare_offer_retry");
+  const guardedResend = actions.find((action) => action.key === "guarded_offer_resend");
+
+  assert.equal(prepareRetry?.enabled, false);
+  assert.match(prepareRetry?.summary || "", /bereits protokolliert/);
+  assert.equal(guardedResend?.enabled, false);
+  assert.match(guardedResend?.summary || "", /Kein erneuter Versand/);
 });
 
 test("company brain retry assessment blocks resend when the send guard is unavailable", () => {

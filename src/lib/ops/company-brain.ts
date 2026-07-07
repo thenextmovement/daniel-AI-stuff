@@ -3084,7 +3084,7 @@ function buildProblemResolution(input: {
   };
 }
 
-function buildActionProposals(input: {
+export function buildActionProposals(input: {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
   evidenceScore: CompanyBrainEvidenceScore;
@@ -3100,12 +3100,28 @@ function buildActionProposals(input: {
   const primaryRecord = input.records[0] || null;
   const primaryOffer = input.offers[0] || null;
   const liveOutlook = input.integrationReadiness.find((entry) => entry.key === "live_outlook");
+  const companyBrainFixRuns = input.automationRuns
+    .filter((run) => run.workflowName === "company_brain_fix_center")
+    .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime());
+  const workflowAutomationRuns = input.automationRuns.filter((run) => run.workflowName !== "company_brain_fix_center");
   const failedAutomation = input.trelloFailureDiagnosis.rootCauseKey === "sent"
     ? null
-    : input.automationRuns.find((run) => isAutomationFailure(run)) || null;
+    : workflowAutomationRuns.find((run) => isAutomationFailure(run)) || null;
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
   const trelloCardId = input.trelloFailureDiagnosis.card?.id || primaryRecord?.trelloCardId || primaryOffer?.trelloCardId || null;
+  const latestFixRun = (actionKey: CompanyBrainActionProposal["key"]) =>
+    companyBrainFixRuns.find((run) => run.action === actionKey) || null;
+  const emailCorrectionPrepared = latestFixRun("prepare_email_correction");
+  const customerEmailCorrected = latestFixRun("correct_customer_email");
+  const offerRetryPrepared = latestFixRun("prepare_offer_retry");
+  const trelloStatusPosted = latestFixRun("post_trello_status_comment");
+  const problemCaseOpened = latestFixRun("open_problem_case");
+  const guardedRetrySent = companyBrainFixRuns.find((run) =>
+    run.action === "guarded_offer_resend" && /sent|duplicate|success/i.test(String(run.status || "")),
+  ) || null;
+  const fixRunSuffix = (run: CompanyBrainAutomationRun | null) =>
+    run?.createdAt ? ` Zuletzt: ${run.createdAt}.` : run ? " Bereits protokolliert." : "";
 
   const actions: CompanyBrainActionProposal[] = [
     {
@@ -3114,8 +3130,10 @@ function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: input.problemResolution.severity === "critical" ? "high" : input.problemResolution.severity === "warning" ? "medium" : "low",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord),
-      summary: "Legt nach Bestätigung einen Problemfall-Audit und eine interne Aufgabe an. Kein Kundenkontakt.",
+      enabled: Boolean(primaryRecord && !problemCaseOpened),
+      summary: problemCaseOpened
+        ? `Problemfall/Aufgabe wurde für diesen Fall bereits vorbereitet.${fixRunSuffix(problemCaseOpened)}`
+        : "Legt nach Bestätigung einen Problemfall-Audit und eine interne Aufgabe an. Kein Kundenkontakt.",
       confirmationText: "Problemfall nur anlegen, wenn die Fallprüfung fachlich plausibel ist.",
       href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
       payloadPreview: [
@@ -3208,8 +3226,12 @@ function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: retry.status === "needs_fix" ? "high" : "medium",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && retry.status === "needs_fix"),
-      summary: "Legt eine interne Aufgabe an, um Empfängeradresse/Postfach sauber zu prüfen. Kein Kundenkontakt.",
+      enabled: Boolean(primaryRecord && retry.status === "needs_fix" && !emailCorrectionPrepared && !customerEmailCorrected),
+      summary: customerEmailCorrected
+        ? `Kunden-E-Mail wurde bereits korrigiert.${fixRunSuffix(customerEmailCorrected)} Fall neu laden, bevor ein Retry bewertet wird.`
+        : emailCorrectionPrepared
+          ? `E-Mail-Korrektur wurde bereits vorbereitet.${fixRunSuffix(emailCorrectionPrepared)}`
+          : "Legt eine interne Aufgabe an, um Empfängeradresse/Postfach sauber zu prüfen. Kein Kundenkontakt.",
       confirmationText: "Nur interne Korrekturaufgabe anlegen; keine Mail senden.",
       href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
       payloadPreview: [
@@ -3225,8 +3247,10 @@ function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "high",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && retry.status === "needs_fix"),
-      summary: "Ändert nach Eingabe und Freigabe die E-Mail in der Kundenakte und synchronisiert abhängige Ops-Tabellen. Kein Angebotsversand.",
+      enabled: Boolean(primaryRecord && retry.status === "needs_fix" && !customerEmailCorrected),
+      summary: customerEmailCorrected
+        ? `Kunden-E-Mail wurde bereits korrigiert.${fixRunSuffix(customerEmailCorrected)} Fall neu laden und Versandbelege prüfen.`
+        : "Ändert nach Eingabe und Freigabe die E-Mail in der Kundenakte und synchronisiert abhängige Ops-Tabellen. Kein Angebotsversand.",
       confirmationText: "Nur ausführen, wenn die neue E-Mail-Adresse fachlich belegt ist. Danach erneut prüfen.",
       href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
       payloadPreview: [
@@ -3242,8 +3266,12 @@ function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "medium",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && primaryOffer && retry.status !== "not_applicable"),
-      summary: "Erstellt eine interne Retry-Aufgabe mit Belegen, Blockern und Guardrails. Es wird noch nichts gesendet.",
+      enabled: Boolean(primaryRecord && primaryOffer && retry.status !== "not_applicable" && !offerRetryPrepared && !guardedRetrySent),
+      summary: guardedRetrySent
+        ? `Guarded Retry wurde bereits protokolliert.${fixRunSuffix(guardedRetrySent)} Keinen zweiten Retry vorbereiten.`
+        : offerRetryPrepared
+          ? `Retry-Aufgabe wurde bereits vorbereitet.${fixRunSuffix(offerRetryPrepared)}`
+          : "Erstellt eine interne Retry-Aufgabe mit Belegen, Blockern und Guardrails. Es wird noch nichts gesendet.",
       confirmationText: "Retry nur vorbereiten; Versand bleibt separat freigabepflichtig.",
       href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
       payloadPreview: [
@@ -3260,8 +3288,10 @@ function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "low",
       approvalRequired: true,
-      enabled: Boolean(trelloCardId),
-      summary: "Schreibt eine kurze interne Diagnose auf die Trello-Karte. Trello bleibt Projektion, kein Versand und keine Datenkorrektur.",
+      enabled: Boolean(trelloCardId && !trelloStatusPosted),
+      summary: trelloStatusPosted
+        ? `Trello-Status wurde bereits kommentiert.${fixRunSuffix(trelloStatusPosted)}`
+        : "Schreibt eine kurze interne Diagnose auf die Trello-Karte. Trello bleibt Projektion, kein Versand und keine Datenkorrektur.",
       confirmationText: "Nur Statuskommentar schreiben; keine Karte als Source of Truth verwenden.",
       href: input.trelloFailureDiagnosis.card?.url || primaryRecord?.trelloCardUrl || null,
       payloadPreview: [
@@ -3277,8 +3307,10 @@ function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "high",
       approvalRequired: true,
-      enabled: retry.canSendWithConfirmation,
-      summary: retry.canSendWithConfirmation
+      enabled: retry.canSendWithConfirmation && !guardedRetrySent,
+      summary: guardedRetrySent
+        ? `Guarded Retry wurde bereits protokolliert.${fixRunSuffix(guardedRetrySent)} Kein erneuter Versand auslösen.`
+        : retry.canSendWithConfirmation
         ? "Sendet erst nach serverseitigem Duplicate-, Bounce- und Empfängercheck. Kundenkontakt nur nach Freigabe."
         : retry.summary,
       confirmationText: "Kundenkontakt: nur ausführen, wenn Empfänger, Duplicate-Check und Bounce-Check sauber sind.",
