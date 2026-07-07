@@ -322,6 +322,45 @@ async function recordCompanyBrainRetryAudit(input: {
   });
 }
 
+async function recordCompanyBrainInternalAudit(input: {
+  actionKey: CompanyBrainActionKey;
+  status: "prepared" | "success";
+  requestId: string;
+  trelloCardId: string | null;
+  offerId: string | null;
+  offerNumber: string | null;
+  sourceRef: string;
+  sourceEventId?: string | null;
+  operatorName: string | null;
+  taskId?: string | null;
+  noteId?: string | number | null;
+  specialCaseCreated?: boolean;
+  metadata?: Record<string, unknown>;
+}) {
+  return recordWorkflowAuditEvent({
+    workflowName: "company_brain_fix_center",
+    action: input.actionKey,
+    status: input.status,
+    requestId: input.requestId,
+    trelloCardId: input.trelloCardId,
+    offerId: input.offerId,
+    offerNumber: input.offerNumber,
+    sourceEventId: input.sourceEventId || input.taskId || (input.noteId ? String(input.noteId) : null),
+    idempotencyKey: input.sourceRef,
+    retrySafety: "safe_after_review",
+    customer_communication_sent: false,
+    metadata: {
+      operator_name: input.operatorName,
+      task_id: input.taskId || null,
+      note_id: input.noteId || null,
+      special_case_created: input.specialCaseCreated === true,
+      customer_communication_sent: false,
+      internal_only: true,
+      ...input.metadata,
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   const access = await authorize(request);
   if (!access.ok) return access.response;
@@ -352,6 +391,7 @@ export async function POST(request: NextRequest) {
     let savedNote = null;
     let sendResult: Awaited<ReturnType<typeof sendOfferUpdateMail>> | null = null;
     let retryAudit: Awaited<ReturnType<typeof recordWorkflowAuditEvent>> | null = null;
+    let actionAudit: Awaited<ReturnType<typeof recordWorkflowAuditEvent>> | null = null;
     let quoteEmailEvidence: { ok: boolean; error?: string; rowId?: string | number | null } | null = null;
 
     if (actionKey === "open_problem_case") {
@@ -388,9 +428,26 @@ export async function POST(request: NextRequest) {
             special_case_kind: specialCaseKind,
             company_brain_action: actionKey,
           },
-        },
+          },
         { operatorName },
       );
+      actionAudit = await recordCompanyBrainInternalAudit({
+        actionKey,
+        status: "success",
+        requestId: record.requestId,
+        trelloCardId,
+        offerId,
+        offerNumber,
+        sourceRef,
+        operatorName,
+        taskId: task?.id || null,
+        specialCaseCreated: Boolean(specialCase),
+        metadata: {
+          problem_type: problemType,
+          special_case_kind: specialCaseKind,
+          task_created: Boolean(task?.id),
+        },
+      });
     }
 
     if (
@@ -450,6 +507,22 @@ export async function POST(request: NextRequest) {
         },
         { operatorName },
       );
+      actionAudit = await recordCompanyBrainInternalAudit({
+        actionKey,
+        status: "prepared",
+        requestId: record.requestId,
+        trelloCardId,
+        offerId,
+        offerNumber,
+        sourceRef,
+        operatorName,
+        taskId: task?.id || null,
+        metadata: {
+          problem_type: problemType,
+          recipient_email: cleanText(body.recipientEmail, 240) || null,
+          idempotency_key: cleanText(body.idempotencyKey, 300) || null,
+        },
+      });
     }
 
     if (actionKey === "correct_customer_email") {
@@ -726,6 +799,21 @@ export async function POST(request: NextRequest) {
         },
         actor,
       );
+      actionAudit = await recordCompanyBrainInternalAudit({
+        actionKey,
+        status: "success",
+        requestId: record.requestId,
+        trelloCardId,
+        offerId,
+        offerNumber,
+        sourceRef: savedNote?.id ? `${sourceRef}:note:${savedNote.id}` : sourceRef,
+        operatorName,
+        noteId: savedNote?.id || null,
+        metadata: {
+          problem_type: problemType,
+          note_kind: "note",
+        },
+      });
     }
 
     return jsonResponse({
@@ -735,6 +823,7 @@ export async function POST(request: NextRequest) {
       task,
       note: savedNote,
       specialCase,
+      audit: actionAudit,
       idempotencyKey: sourceRef,
       customerCommunicationSent: false,
     });

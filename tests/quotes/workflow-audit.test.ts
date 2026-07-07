@@ -147,6 +147,42 @@ test("workflow audit marks n8n workflow hard errors as blocked", () => {
   assert.match(String(event.metadata.automation_issue_recommended_fix), /n8n-Execution/);
 });
 
+test("workflow audit keeps company brain internal fixes observable without customer send", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflowName: "company_brain_fix_center",
+    action: "prepare_email_correction",
+    status: "prepared",
+    requestId: "REQ-CB-1",
+    trelloCardId: "BiP93WuG",
+    offerNumber: "14427",
+    sourceEventId: "task-cb-1",
+    idempotencyKey: "company-brain:prepare_email_correction:REQ-CB-1:offer_not_sent:v1",
+    retrySafety: "safe_after_review",
+    customer_communication_sent: false,
+    metadata: {
+      internal_only: true,
+      task_id: "task-cb-1",
+      operator_name: "daniel",
+      recipient_email: "kunde@example.de",
+    },
+  });
+
+  assert.equal(event.documentId, "REQ-CB-1");
+  assert.equal(event.workflowName, "company_brain_fix_center");
+  assert.equal(event.action, "prepare_email_correction");
+  assert.equal(event.status, "prepared");
+  assert.equal(event.metadata.request_id, "REQ-CB-1");
+  assert.equal(event.metadata.trello_card_id, "BiP93WuG");
+  assert.equal(event.metadata.offer_number, "14427");
+  assert.equal(event.metadata.source_event_id, "task-cb-1");
+  assert.equal(event.metadata.idempotency_key, "company-brain:prepare_email_correction:REQ-CB-1:offer_not_sent:v1");
+  assert.equal(event.metadata.retry_safety, "safe_after_review");
+  assert.equal(event.metadata.customer_communication_sent, false);
+  assert.equal(event.metadata.internal_only, true);
+  assert.equal(event.metadata.task_id, "task-cb-1");
+  assert.equal(event.metadata.audit_contract_version, 1);
+});
+
 test("workflow audit creates stable event keys for duplicate n8n callbacks", () => {
   const first = normalizeWorkflowAuditEvent({
     workflowName: "offer_from_trello",
