@@ -4,6 +4,7 @@ export type AutomationIssueKey =
   | "delivery_failure"
   | "send_guard_unavailable"
   | "ai_customer_copy_blocked"
+  | "workflow_hard_error"
   | "duplicate_guard"
   | "unknown";
 
@@ -88,6 +89,17 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
       recommendedFix: "Keine Kundenmail automatisch senden; Angebots-/Prompt-Kontext und gesperrte Begriffe prüfen, danach Text manuell freigeben oder Workflow-Prompt korrigieren.",
       safeFix: "E-Mail-Text intern prüfen und erst nach fachlicher Freigabe manuell oder guarded erneut versenden.",
       retrySafety: "Retry blockiert, bis der Textinhalt geprüft ist und der Duplicate-Mail-Check grün ist.",
+    };
+  }
+  if (
+    /workflow_hard_error|n8n workflow hard error|workflow[-_\s]*fehler|execution.{0,80}(failed|error|fehlgeschlagen)|node.{0,80}(failed|error|fehlgeschlagen)|outlook.{0,80}(send|senden|failed|error|fehler)|graph\.microsoft\.com/i.test(text)
+  ) {
+    return {
+      key: "workflow_hard_error",
+      rootCause: "Die n8n-Automation ist hart fehlgeschlagen; der betroffene Node oder API-Call muss anhand der Execution geprüft werden.",
+      recommendedFix: "n8n-Execution, betroffenen Node, Outlook/quote_email_log und Duplicate-Guard prüfen; keinen Angebotsversand wiederholen, solange die Versandbeleglage unklar ist.",
+      safeFix: "Execution-Fehler intern analysieren und Versandbelege konsolidieren.",
+      retrySafety: "Retry blockiert, bis Ursache, Versandbeleglage und Idempotency geklärt sind.",
     };
   }
   if (/(duplicate|doppelt).{0,40}(detected|gefunden|blocked|blockiert|send|sent|mail|versand)|already sent|bereits.*(gesendet|versendet)|idempotency.{0,30}(conflict|blocked|duplicate)/i.test(lower)) {

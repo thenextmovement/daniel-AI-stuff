@@ -2236,6 +2236,14 @@ export function buildCompanyBrainRetryAssessment(input: {
     blockers.push("Versand-Guard hat keine eindeutige Freigabe geliefert.");
     safeFixes.push("Guard-/Supabase-Erreichbarkeit und Versandbelege prüfen; danach Fall erneut laden.");
   }
+  if (automationIssueHint.key === "ai_customer_copy_blocked") {
+    blockers.push("Die Kunden-E-Mail wurde durch die Inhaltsprüfung blockiert.");
+    safeFixes.push("E-Mail-Text und gesperrte Begriffe intern prüfen; keinen automatischen Resend starten.");
+  }
+  if (automationIssueHint.key === "workflow_hard_error") {
+    blockers.push("Die n8n-Automation ist hart fehlgeschlagen.");
+    safeFixes.push("n8n-Execution, betroffenen Node, Outlook/quote_email_log und Duplicate-Guard prüfen.");
+  }
   if (automationIssueHint.key === "duplicate_guard") {
     blockers.push("Duplicate-/Idempotency-Schutz meldet möglichen bestehenden Versand.");
     safeFixes.push("quote_email_log, Outlook und Offer-Status konsolidieren; keinen Resend starten.");

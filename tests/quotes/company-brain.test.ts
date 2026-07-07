@@ -101,6 +101,15 @@ test("company brain classifies AI customer copy hard blocks", () => {
   assert.match(hint.retrySafety, /Retry blockiert/);
 });
 
+test("company brain classifies n8n workflow hard errors", () => {
+  const hint = classifyAutomationIssueText("workflow_hard_error: Outlook: E-Mail senden failed in execution 2770420");
+
+  assert.equal(hint.key, "workflow_hard_error");
+  assert.match(hint.rootCause, /n8n-Automation/);
+  assert.match(hint.recommendedFix, /n8n-Execution/);
+  assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
 test("company brain normalizes Coolify API config", () => {
   const config = resolveCoolifyApiConfig({
     COOLIFY_URL: "https://coolify.example.com/",
@@ -956,4 +965,73 @@ test("company brain retry assessment blocks resend when the send guard is unavai
   assert.equal(retry.canSendWithConfirmation, false);
   assert.ok(retry.blockers.some((blocker) => /Versand-Guard/.test(blocker)));
   assert.ok(retry.safeFixes.some((fix) => /Guard-\/Supabase/.test(fix)));
+});
+
+test("company brain retry assessment blocks resend after hard n8n workflow errors", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-WORKFLOW-ERROR",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "64b7f9e2aabbccddeeff0011",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-workflow-error",
+    offerNumber: "AN-5004",
+    documentReference: "AN-5004",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "64b7f9e2aabbccddeeff0011",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence: [],
+    question: "Trello-Karte gezogen, Angebot nicht raus: warum?",
+  });
+  const trelloFailureDiagnosis = retryDiagnosis();
+  trelloFailureDiagnosis.rootCause = "workflow_hard_error: Outlook: E-Mail senden failed in execution 2770420";
+  trelloFailureDiagnosis.recommendedFix = "n8n-Execution und Versandbelege prüfen.";
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence: [],
+    crossChecks,
+    trelloFailureDiagnosis,
+  });
+
+  assert.equal(retry.status, "blocked");
+  assert.equal(retry.canSendWithConfirmation, false);
+  assert.ok(retry.blockers.some((blocker) => /n8n-Automation/.test(blocker)));
+  assert.ok(retry.safeFixes.some((fix) => /n8n-Execution/.test(fix)));
 });

@@ -7,8 +7,8 @@ This note records the production n8n state for `NEONTRIP Quote Ready SIMPLE v1.1
 - n8n workflow ID: `X5etVW0msgSzHMMG`
 - Runtime status: active
 - Validation after latest check: valid
-- Current validation summary: 67 nodes, 2 trigger nodes, 0 errors, 18 warnings
-- Latest version after audit write hardening: `504`
+- Current validation summary: 70 nodes, 2 trigger nodes, 0 errors, 18 warnings
+- Latest version after audit write hardening: `507`
 - Last known good pre-audit version: `502`
 
 ## Changes made
@@ -22,6 +22,7 @@ This note records the production n8n state for `NEONTRIP Quote Ready SIMPLE v1.1
 4. `Audit: Guard Blocked` was added after `Skip: Guard Blocked`. It writes an audit-only, idempotent row to `workflow_audit_log` through the existing Supabase credential. It does not send customer communication.
 5. `Build Audit: AI Copy Blocked` and `Audit: AI Copy Blocked` were added on the `Final Block? = true` path. If both AI mail-generation attempts still contain blocked words, the workflow writes a structured `ai_customer_copy_blocked` audit row before leaving the manual/Trello hard-block path.
 6. The two new audit HTTP nodes use `onError: "continueRegularOutput"` with `continueOnFail` removed, so they do not add deprecated-warning debt.
+7. `Build Audit: Workflow Error`, `Audit: Workflow Error`, and `Restore Workflow Error Context` were added behind the `On Error` trigger. Hard n8n failures now write a structured `workflow_hard_error` audit row by execution ID before the existing internal Outlook error alert is sent.
 
 No offer retry, customer email, Trello resend, or workflow execution was manually triggered during these changes.
 
@@ -52,10 +53,11 @@ Minimum blocked-send payload:
 
 The endpoint derives `automation_issue_key`, `automation_issue_root_cause`, retry safety, duplicate `audit_event_key`, and stores the event in `workflow_audit_log`. It returns `customerCommunicationSent: false`.
 
-The production n8n workflow currently writes two audit-only paths directly into `workflow_audit_log` with deterministic `id` values and `metadata.audit_event_key`:
+The production n8n workflow currently writes three audit-only paths directly into `workflow_audit_log` with deterministic `id` values and `metadata.audit_event_key`:
 
 - send guard blocked/unavailable: `send_guard_unavailable`
 - AI customer copy hard-blocked after retry: `ai_customer_copy_blocked`
+- hard n8n workflow/API/Outlook failures from the error trigger: `workflow_hard_error`
 
 ## Important MCP limitation found
 
@@ -68,7 +70,7 @@ For the two newly added audit nodes, the safe deletion path was verified: set `c
 - The workflow violates the NEONTRIP production shape rule: one trigger and max 30 nodes.
 - It still has 18 warnings, mostly deprecated `continueOnFail: true`.
 - Customer-visible paths still need a broader split into smaller sub-workflows.
-- Structured audit logging now covers guard-blocked and AI-copy hard-blocked paths, but not every possible failed send path.
+- Structured audit logging now covers guard-blocked, AI-copy hard-blocked, and hard workflow-error paths, but not every soft failed-send path.
 - Trello must remain projection only; it must not become the retry source of truth.
 
 ## Safe next steps
@@ -80,9 +82,9 @@ For the two newly added audit nodes, the safe deletion path was verified: set `c
    - offer email send
    - WhatsApp follow-up
    - error/audit logging
-3. Add durable workflow-audit writes for remaining send-failed paths, especially Outlook/Graph delivery failures and hard API errors.
+3. Add durable workflow-audit writes for remaining soft failed-send paths, especially delivery-status/bounce outcomes that happen after Graph accepted the send.
 4. Replace remaining `continueOnFail` only when each branch has an explicit error contract and validation proves no mixed `continueOnFail`/`onError` state.
 
 ## Rollback
 
-If the latest n8n change causes unexpected behavior, restore from n8n version history to version `502` in the n8n UI for the pre-audit-write state, or version `500` for the earlier pre-cleanup state. Reapply the full JSON backup captured before any follow-up structural split. The MCP rollback path previously returned `n8n API not configured`, so do not rely on MCP rollback as the only recovery path.
+If the latest n8n change causes unexpected behavior, restore from n8n version history to version `504` for the pre-workflow-error-audit state, version `502` for the pre-audit-write state, or version `500` for the earlier pre-cleanup state. Reapply the full JSON backup captured before any follow-up structural split. The MCP rollback path previously returned `n8n API not configured`, so do not rely on MCP rollback as the only recovery path.

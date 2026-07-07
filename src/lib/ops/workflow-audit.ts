@@ -129,6 +129,7 @@ function issueRetrySafety(key: AutomationIssueKey): WorkflowAuditRetrySafety {
     key === "delivery_failure" ||
     key === "send_guard_unavailable" ||
     key === "ai_customer_copy_blocked" ||
+    key === "workflow_hard_error" ||
     key === "duplicate_guard"
   ) {
     return "blocked";

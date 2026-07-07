@@ -128,6 +128,25 @@ test("workflow audit marks AI copy hard blocks as non-sendable", () => {
   assert.match(String(event.metadata.automation_issue_root_cause), /Inhaltsprüfung/);
 });
 
+test("workflow audit marks n8n workflow hard errors as blocked", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "failed",
+    reason: "workflow_hard_error: Outlook: E-Mail senden failed in execution 2770420",
+    execution_id: "2770420",
+    failed_node: "Outlook: E-Mail senden",
+    idempotency_key: "quote-ready-workflow-error:2770420",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.documentId, "execution:2770420");
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.execution_id, "2770420");
+  assert.equal(event.metadata.automation_issue_key, "workflow_hard_error");
+  assert.match(String(event.metadata.automation_issue_recommended_fix), /n8n-Execution/);
+});
+
 test("workflow audit creates stable event keys for duplicate n8n callbacks", () => {
   const first = normalizeWorkflowAuditEvent({
     workflowName: "offer_from_trello",
