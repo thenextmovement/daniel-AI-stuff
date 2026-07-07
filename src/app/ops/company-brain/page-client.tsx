@@ -189,6 +189,12 @@ function readinessClass(status: string) {
   return "border-stone-200 bg-stone-50 text-stone-700";
 }
 
+function readinessLabel(status: string) {
+  if (status === "configured") return "bereit";
+  if (status === "partial") return "teilweise";
+  return "fehlt";
+}
+
 function watcherClass(status: string, severity: string) {
   if (status === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-900";
   if (severity === "critical") return "border-rose-200 bg-rose-50 text-rose-900";
@@ -295,6 +301,14 @@ function buildOperatorDecision(result: CompanyBrainResolveResult) {
     summary: "Es ist keine sichere ausführbare Aktion aus den geladenen Belegen ableitbar.",
     steps: result.nextActions.slice(0, 3),
   };
+}
+
+function setupActionForIntegration(key: string, status: string) {
+  if (status === "configured") return "Kein Setup-Blocker.";
+  if (key === "live_outlook") return "Graph Tenant, Client, Secret und Mailbox in der Runtime setzen; danach Fall erneut laden.";
+  if (key === "n8n_live") return "N8N_API_URL oder N8N_BASE_URL plus N8N_API_KEY in der Runtime setzen.";
+  if (key === "coolify") return "COOLIFY_URL oder COOLIFY_API_URL plus COOLIFY_API_TOKEN setzen; App-UUID optional ergänzen.";
+  return "Runtime-Konfiguration vervollständigen und erneut prüfen.";
 }
 
 function evidenceScoreLabel(status: string) {
@@ -405,6 +419,7 @@ export function OpsCompanyBrainClient({
         blockedFixes: [],
         sourceWarnings: [],
         decisionItems: [],
+        setupBlockers: [],
         decision: null,
         primaryRun: null,
       };
@@ -419,6 +434,16 @@ export function OpsCompanyBrainClient({
     const sourceWarnings = result.sourceHealth
       .filter((source) => source.status !== "ok")
       .slice(0, 4);
+    const setupBlockers = result.integrationReadiness
+      .filter((entry) => entry.status !== "configured")
+      .map((entry) => ({
+        key: entry.key,
+        label: entry.label,
+        status: entry.status,
+        summary: entry.summary,
+        nextStep: setupActionForIntegration(entry.key, entry.status),
+      }))
+      .slice(0, 3);
     const decisionItems = [
       ...result.checks
         .filter((check) => check.status === "warning" || check.status === "missing")
@@ -434,6 +459,7 @@ export function OpsCompanyBrainClient({
       blockedFixes,
       sourceWarnings,
       decisionItems,
+      setupBlockers,
       decision: buildOperatorDecision(result),
       primaryRun,
     };
@@ -974,6 +1000,29 @@ export function OpsCompanyBrainClient({
                       {(operatorView.blockedFixes.length ? operatorView.blockedFixes : ["Keine harten Blocker im geladenen Ergebnis."]).map((blocker) => (
                         <p key={blocker} className="text-xs leading-5 opacity-85">{blocker}</p>
                       ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-stone-950">System-Blocker</p>
+                      <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-semibold text-stone-500">
+                        {operatorView.setupBlockers.length}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {operatorView.setupBlockers.length ? operatorView.setupBlockers.map((entry) => (
+                        <div key={`setup-${entry.key}`} className={`rounded-xl border px-3 py-2 text-sm ${readinessClass(entry.status)}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold">{entry.label}</p>
+                            <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium">{readinessLabel(entry.status)}</span>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 opacity-80">{shortText(entry.summary, 140)}</p>
+                          <p className="mt-2 rounded-lg border border-current/15 bg-white/50 px-2.5 py-1.5 text-xs leading-5">{entry.nextStep}</p>
+                        </div>
+                      )) : (
+                        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">Alle Live-Integrationen sind als konfiguriert erkannt.</p>
+                      )}
                     </div>
                   </div>
 

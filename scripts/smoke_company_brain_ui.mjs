@@ -268,6 +268,8 @@ async function runViewport(browser, target, viewport, label) {
     "Kann nach Freigabe gelöst werden",
     "Guarded Fix",
     "Empfänger und Angebot im Fix Center prüfen",
+    "System-Blocker",
+    "Live Outlook / Graph",
   ]);
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   await page.getByRole("button", { name: "Versand freigeben" }).click();
