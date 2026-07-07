@@ -226,7 +226,10 @@ export type CompanyBrainActionProposal = {
     | "verify_live_outlook"
     | "open_offer_admin"
     | "inspect_n8n_run"
-    | "collect_design_assets";
+    | "collect_design_assets"
+    | "prepare_email_correction"
+    | "prepare_offer_retry"
+    | "guarded_offer_resend";
   label: string;
   type: "copy" | "manual_check" | "prepared_task" | "open_link";
   riskLevel: "low" | "medium" | "high";
@@ -236,6 +239,19 @@ export type CompanyBrainActionProposal = {
   confirmationText: string;
   href: string | null;
   payloadPreview: string[];
+};
+
+export type CompanyBrainRetryAssessment = {
+  status: "ready" | "needs_fix" | "blocked" | "not_applicable";
+  label: string;
+  summary: string;
+  recipientEmail: string | null;
+  offerId: string | null;
+  offerNumber: string | null;
+  idempotencyKey: string | null;
+  canSendWithConfirmation: boolean;
+  blockers: string[];
+  safeFixes: string[];
 };
 
 export type CompanyBrainCheck = {
@@ -386,6 +402,7 @@ export type CompanyBrainResolveResult = {
   integrationReadiness: CompanyBrainIntegrationReadiness[];
   watchers: CompanyBrainWatcher[];
   actionProposals: CompanyBrainActionProposal[];
+  retryAssessment: CompanyBrainRetryAssessment;
   evidenceScore: CompanyBrainEvidenceScore;
   problemResolution: CompanyBrainProblemResolution;
   checks: CompanyBrainCheck[];
@@ -1425,6 +1442,7 @@ function buildDossier(input: {
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
   trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
+  retryAssessment: CompanyBrainRetryAssessment;
   replyDraft: CompanyBrainReplyDraft;
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
@@ -1480,6 +1498,17 @@ function buildDossier(input: {
         `Empfehlung: ${input.problemResolution.recommendedResolution}`,
         `Sicher an Kunden antworten: ${input.evidenceScore.safeToAnswerCustomer ? "ja" : "nein"}`,
         ...input.problemResolution.escalationPath.map((entry) => `Eskalation: ${entry}`),
+      ],
+    },
+    {
+      title: "Fix / Retry",
+      lines: [
+        `${input.retryAssessment.label}: ${input.retryAssessment.summary}`,
+        `Empfänger: ${input.retryAssessment.recipientEmail || "unbekannt"}`,
+        `Angebot: ${input.retryAssessment.offerNumber || input.retryAssessment.offerId || "unbekannt"}`,
+        `Retry mit Freigabe: ${input.retryAssessment.canSendWithConfirmation ? "ja" : "nein"}`,
+        ...input.retryAssessment.blockers.slice(0, 5).map((entry) => `Blocker: ${entry}`),
+        ...input.retryAssessment.safeFixes.slice(0, 5).map((entry) => `Sicherer Fix: ${entry}`),
       ],
     },
     {
@@ -1637,6 +1666,106 @@ function isOfferDeliveryFailureEvidence(entry: CompanyBrainEvidence) {
   if (entry.source !== "customer_email_messages" && !/outlook|mail/.test(text)) return false;
   if (!/angebot|quote|a\/n|nr\.?\s*\d+/.test(text)) return false;
   return /unzustellbar|nicht zugestellt|konnte nicht zugestellt|postfach ist nicht verfuegbar|postfach ist nicht verfügbar|recipient.*unknown|mail delivery|delivery status notification|undeliver/.test(text);
+}
+
+function normalizeRetryEmail(value: string | null | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isRetryEmailValid(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isInternalRetryEmail(email: string) {
+  return /@(neontrip\.de|neontrip\.com)$/i.test(email);
+}
+
+function offerNumberLabel(offer: CompanyBrainOfferSummary | null) {
+  return offer?.offerNumber || offer?.documentReference || null;
+}
+
+export function buildCompanyBrainRetryAssessment(input: {
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+  evidence: CompanyBrainEvidence[];
+  crossChecks: CompanyBrainCrossCheck[];
+  trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
+}): CompanyBrainRetryAssessment {
+  const record = input.records[0] || null;
+  const offer = input.offers[0] || null;
+  const recipientEmail = normalizeRetryEmail(record?.email || offer?.customerEmail || null) || null;
+  const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent") || null;
+  const deliveryFailure = input.evidence.find(isOfferDeliveryFailureEvidence) || null;
+  const deliveryFailureText = `${deliveryFailure?.title || ""} ${deliveryFailure?.detail || ""}`.toLowerCase();
+  const deliveryFailureForRecipient = Boolean(deliveryFailure && recipientEmail && deliveryFailureText.includes(recipientEmail));
+  const blockers: string[] = [];
+  const safeFixes: string[] = [];
+
+  if (input.trelloFailureDiagnosis.expectedAction !== "offer_send" && !/angebot|mail|e-mail|versand/i.test(`${offerSentCheck?.summary || ""} ${input.trelloFailureDiagnosis.rootCause}`)) {
+    return {
+      status: "not_applicable",
+      label: "Kein Angebots-Retry",
+      summary: "Der geladene Fall wirkt nicht wie ein Angebotsversand-Problem.",
+      recipientEmail,
+      offerId: offer?.offerId || null,
+      offerNumber: offerNumberLabel(offer),
+      idempotencyKey: null,
+      canSendWithConfirmation: false,
+      blockers: ["Kein offer_send-Kontext erkannt."],
+      safeFixes: ["Fall erst als Angebotsversand-Problem klassifizieren."],
+    };
+  }
+
+  if (!record) blockers.push("Keine Kundenakte als Source of Truth gefunden.");
+  if (!offer) blockers.push("Kein eindeutiger Angebotssnapshot gefunden.");
+  if (!recipientEmail) blockers.push("Keine Empfängeradresse gefunden.");
+  if (recipientEmail && !isRetryEmailValid(recipientEmail)) blockers.push("Empfängeradresse ist syntaktisch ungültig.");
+  if (recipientEmail && isInternalRetryEmail(recipientEmail)) blockers.push("Empfängeradresse ist eine interne NEONTRIP-Adresse.");
+  if (offer?.customerEmail && recipientEmail && normalizeRetryEmail(offer.customerEmail) !== recipientEmail) {
+    blockers.push(`Angebot gehört zu ${offer.customerEmail}, Kundenakte zu ${recipientEmail}.`);
+  }
+  if (deliveryFailureForRecipient) {
+    blockers.push("Outlook-Bounce liegt für die aktuelle Empfängeradresse vor.");
+    safeFixes.push("Kunden-E-Mail-Adresse/Postfach zuerst korrigieren oder verifizieren.");
+  }
+  if (offerSentCheck?.status === "pass") {
+    blockers.push("Es gibt bereits einen Versand-/Ausgangsbeleg; Duplicate-Risiko prüfen.");
+  }
+
+  if (!safeFixes.length) {
+    if (!record) safeFixes.push("Karte mit Request-ID/Kundenakte verknüpfen.");
+    if (!offer) safeFixes.push("Offer-Bridge oder Angebotsanlage prüfen.");
+    if (recipientEmail && !isRetryEmailValid(recipientEmail)) safeFixes.push("Korrekte Kunden-E-Mail in der Kundenakte hinterlegen.");
+  }
+
+  const idempotencyKey = offer && recipientEmail
+    ? `company-brain-offer-resend:${offer.offerId}:${recipientEmail}`
+    : null;
+  const hardBlockers = blockers.filter((blocker) => !/Duplicate-Risiko/.test(blocker));
+  const canSendWithConfirmation = Boolean(record && offer && recipientEmail && !hardBlockers.length);
+  const status: CompanyBrainRetryAssessment["status"] =
+    canSendWithConfirmation
+      ? "ready"
+      : blockers.some((blocker) => /Bounce|ungültig|interne|gehört zu/.test(blocker))
+        ? "needs_fix"
+        : blockers.length
+          ? "blocked"
+          : "not_applicable";
+
+  return {
+    status,
+    label: status === "ready" ? "Retry bereit" : status === "needs_fix" ? "Fix vor Retry nötig" : "Retry blockiert",
+    summary: status === "ready"
+      ? "Der Retry kann nach erneuter serverseitiger Duplicate-Prüfung und Freigabe ausgeführt werden."
+      : blockers[0] || "Kein sicherer Retry-Kontext erkannt.",
+    recipientEmail,
+    offerId: offer?.offerId || null,
+    offerNumber: offerNumberLabel(offer),
+    idempotencyKey,
+    canSendWithConfirmation,
+    blockers,
+    safeFixes: safeFixes.length ? safeFixes : ["Serverseitigen Duplicate-Check ausführen und erst danach senden."],
+  };
 }
 
 export function buildCompanyBrainCrossChecks(input: {
@@ -2415,12 +2544,14 @@ function buildActionProposals(input: {
   automationRuns: CompanyBrainAutomationRun[];
   integrationReadiness: CompanyBrainIntegrationReadiness[];
   assets: CompanyBrainAsset[];
+  retryAssessment: CompanyBrainRetryAssessment;
 }): CompanyBrainActionProposal[] {
   const primaryRecord = input.records[0] || null;
   const primaryOffer = input.offers[0] || null;
   const liveOutlook = input.integrationReadiness.find((entry) => entry.key === "live_outlook");
   const failedAutomation = input.automationRuns.find((run) => /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`)) || null;
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
+  const retry = input.retryAssessment;
 
   const actions: CompanyBrainActionProposal[] = [
     {
@@ -2515,6 +2646,61 @@ function buildActionProposals(input: {
       payloadPreview: [
         `Angebot: ${primaryOffer?.offerNumber || primaryOffer?.documentReference || "unbekannt"}`,
         `Assets: ${input.assets.length}`,
+      ],
+    },
+    {
+      key: "prepare_email_correction",
+      label: "E-Mail-Korrektur vorbereiten",
+      type: "prepared_task",
+      riskLevel: retry.status === "needs_fix" ? "high" : "medium",
+      approvalRequired: true,
+      enabled: Boolean(primaryRecord && retry.status === "needs_fix"),
+      summary: "Legt eine interne Aufgabe an, um Empfängeradresse/Postfach sauber zu prüfen. Kein Kundenkontakt.",
+      confirmationText: "Nur interne Korrekturaufgabe anlegen; keine Mail senden.",
+      href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
+      payloadPreview: [
+        `Empfänger: ${retry.recipientEmail || "unbekannt"}`,
+        `Angebot: ${retry.offerNumber || retry.offerId || "unbekannt"}`,
+        ...retry.blockers.slice(0, 4).map((entry) => `Blocker: ${entry}`),
+        ...retry.safeFixes.slice(0, 4).map((entry) => `Fix: ${entry}`),
+      ],
+    },
+    {
+      key: "prepare_offer_retry",
+      label: "Retry-Aufgabe vorbereiten",
+      type: "prepared_task",
+      riskLevel: "medium",
+      approvalRequired: true,
+      enabled: Boolean(primaryRecord && primaryOffer && retry.status !== "not_applicable"),
+      summary: "Erstellt eine interne Retry-Aufgabe mit Belegen, Blockern und Guardrails. Es wird noch nichts gesendet.",
+      confirmationText: "Retry nur vorbereiten; Versand bleibt separat freigabepflichtig.",
+      href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
+      payloadPreview: [
+        retry.label,
+        retry.summary,
+        `Empfänger: ${retry.recipientEmail || "unbekannt"}`,
+        `Idempotency: ${retry.idempotencyKey || "noch nicht möglich"}`,
+        ...retry.blockers.slice(0, 3).map((entry) => `Blocker: ${entry}`),
+      ],
+    },
+    {
+      key: "guarded_offer_resend",
+      label: "Angebot erneut senden",
+      type: "prepared_task",
+      riskLevel: "high",
+      approvalRequired: true,
+      enabled: retry.canSendWithConfirmation,
+      summary: retry.canSendWithConfirmation
+        ? "Sendet erst nach serverseitigem Duplicate-, Bounce- und Empfängercheck. Kundenkontakt nur nach Freigabe."
+        : retry.summary,
+      confirmationText: "Kundenkontakt: nur ausführen, wenn Empfänger, Duplicate-Check und Bounce-Check sauber sind.",
+      href: primaryOffer?.publicUrl || null,
+      payloadPreview: [
+        `Empfänger: ${retry.recipientEmail || "unbekannt"}`,
+        `Angebot: ${retry.offerNumber || retry.offerId || "unbekannt"}`,
+        `Idempotency: ${retry.idempotencyKey || "nicht verfügbar"}`,
+        ...retry.blockers.slice(0, 4).map((entry) => `Blocker: ${entry}`),
+        ...retry.safeFixes.slice(0, 3).map((entry) => `Guardrail: ${entry}`),
       ],
     },
     {
@@ -3011,6 +3197,13 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     evidenceScore,
     assets,
   });
+  const retryAssessment = buildCompanyBrainRetryAssessment({
+    records: recordSummaries,
+    offers: offerSummaries,
+    evidence,
+    crossChecks,
+    trelloFailureDiagnosis,
+  });
   const actionProposals = buildActionProposals({
     records: recordSummaries,
     offers: offerSummaries,
@@ -3021,6 +3214,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     automationRuns,
     integrationReadiness,
     assets,
+    retryAssessment,
   });
   const dossier = buildDossier({
     generatedAt,
@@ -3039,6 +3233,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     sourceHealth,
     automationRuns,
     trelloFailureDiagnosis,
+    retryAssessment,
     replyDraft,
     conflicts,
     gaps,
@@ -3061,6 +3256,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     integrationReadiness,
     watchers,
     actionProposals,
+    retryAssessment,
     evidenceScore,
     problemResolution,
     checks,

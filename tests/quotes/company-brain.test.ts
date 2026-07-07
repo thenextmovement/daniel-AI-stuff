@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildCompanyBrainAnswer,
   buildCompanyBrainCrossChecks,
+  buildCompanyBrainRetryAssessment,
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
   extractCompanyBrainIdentifiers,
@@ -16,6 +17,26 @@ import {
   type CompanyBrainTrelloFailureDiagnosis,
 } from "@/lib/ops/company-brain";
 import type { TrelloFailureContext } from "@/lib/quotes/trello";
+
+function retryDiagnosis(): CompanyBrainTrelloFailureDiagnosis {
+  return {
+    requested: true,
+    status: "loaded",
+    severity: "critical",
+    expectedAction: "offer_send",
+    card: null,
+    triggerMove: null,
+    rootCauseKey: "automation_failed",
+    rootCause: "Angebot wurde nicht rausgeschickt.",
+    recommendedFix: "Retry nur nach Duplicate-Check.",
+    evidenceStrength: "strong",
+    duplicateRisk: "medium",
+    safeFixes: [],
+    blockedFixes: [],
+    timeline: [],
+    diagnostics: [],
+  };
+}
 
 test("company brain extracts operational identifiers from a mixed support question", () => {
   const identifiers = extractCompanyBrainIdentifiers("Kunde max@example.com fragt zu AN-4798 und Trello 64b7f9e2aabbccddeeff0011");
@@ -337,4 +358,146 @@ test("company brain prioritizes automation failures over missing customer record
   assert.equal(diagnosis.severity, "critical");
   assert.match(diagnosis.rootCause, /Angebot wurde nicht rausgeschickt/);
   assert.match(diagnosis.recommendedFix, /2770420/);
+});
+
+test("company brain retry assessment blocks resend after current recipient bounce", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-BOUNCE",
+    displayName: "Grüll",
+    company: null,
+    email: "praxis@kurswechsel.de",
+    phone: null,
+    status: "open",
+    title: "Grüll",
+    requestedSize: "100 cm",
+    requestedColors: ["Wie im Logo"],
+    trelloCardId: "6a4b53ee91f140e2ecd67e2f",
+    trelloCardUrl: "https://trello.com/c/BiP93WuG",
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-14427",
+    offerNumber: "14427",
+    documentReference: "A/N 14427",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Grüll",
+    customerEmail: "praxis@kurswechsel.de",
+    projectTitle: "Leuchtschild",
+    trelloCardId: "6a4b53ee91f140e2ecd67e2f",
+    updatedAt: "2026-07-06T07:39:11.809Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 33,
+    imageCount: 6,
+    selectedItemCount: 5,
+    designEvidenceCount: 6,
+    productHints: ["LED", "Schild"],
+    colorHints: ["blau", "kaltweiß"],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [{
+    id: "bounce-1",
+    source: "customer_email_messages",
+    title: "Unzustellbar: Ihr NEONTRIP Angebot Nr. 14427",
+    detail: "Ihre Nachricht an praxis@kurswechsel.de konnte nicht zugestellt werden.",
+    occurredAt: "2026-07-06T08:39:05.000Z",
+    direction: "inbound",
+    href: null,
+    confidence: "high",
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence,
+    question: "Wieso wurde das Angebot nicht rausgeschickt?",
+  });
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence,
+    crossChecks,
+    trelloFailureDiagnosis: retryDiagnosis(),
+  });
+
+  assert.equal(retry.status, "needs_fix");
+  assert.equal(retry.canSendWithConfirmation, false);
+  assert.ok(retry.blockers.some((blocker) => blocker.includes("Outlook-Bounce")));
+  assert.ok(retry.safeFixes.some((fix) => fix.includes("Kunden-E-Mail")));
+});
+
+test("company brain retry assessment allows guarded resend when no hard blocker exists", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-READY",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "64b7f9e2aabbccddeeff0011",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-ready",
+    offerNumber: "AN-5000",
+    documentReference: "AN-5000",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "64b7f9e2aabbccddeeff0011",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence: [],
+    question: "Trello-Karte gezogen, Angebot nicht raus: warum?",
+  });
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence: [],
+    crossChecks,
+    trelloFailureDiagnosis: retryDiagnosis(),
+  });
+
+  assert.equal(retry.status, "ready");
+  assert.equal(retry.canSendWithConfirmation, true);
+  assert.equal(retry.recipientEmail, "max@example.com");
+  assert.equal(retry.idempotencyKey, "company-brain-offer-resend:offer-ready:max@example.com");
 });

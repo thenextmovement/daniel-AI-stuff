@@ -78,6 +78,16 @@ function compactList(values: string[]) {
   return values.length ? values.join(", ") : "Keine Angabe";
 }
 
+const DEFAULT_OFFER_RETRY_SUBJECT = "Ihr aktualisiertes NEONTRIP Angebot";
+const DEFAULT_OFFER_RETRY_MESSAGE = [
+  "Hallo,",
+  "",
+  "wie besprochen haben wir Ihr Angebot aktualisiert. Sie können es über den Angebotslink erneut öffnen.",
+  "",
+  "Viele Grüße",
+  "NEONTRIP",
+].join("\n");
+
 function checkClass(status: string) {
   if (status === "verified") return "border-emerald-200 bg-emerald-50 text-emerald-900";
   if (status === "warning") return "border-amber-300 bg-amber-50 text-amber-900";
@@ -355,12 +365,20 @@ export function OpsCompanyBrainClient({
   }
 
   function executableAction(actionKey: string) {
-    return actionKey === "open_problem_case" || actionKey === "create_internal_task" || actionKey === "save_case_note";
+    return [
+      "open_problem_case",
+      "create_internal_task",
+      "save_case_note",
+      "prepare_email_correction",
+      "prepare_offer_retry",
+      "guarded_offer_resend",
+    ].includes(actionKey);
   }
 
   async function executeActionProposal(actionKey: string) {
     const action = result?.actionProposals.find((entry) => entry.key === actionKey);
     const primaryRecord = result?.records[0] || null;
+    const primaryOffer = result?.offers[0] || null;
     if (!action || !result?.problemResolution || !primaryRecord) return;
     const confirmation = window.prompt(`"${action.label}" wirklich intern ausführen? Bitte Freigabe eingeben.`);
     if (confirmation !== "Freigabe") {
@@ -385,16 +403,38 @@ export function OpsCompanyBrainClient({
           operatorName,
           assigneeLabel: operatorName || null,
           urgent: result.problemResolution.severity === "critical",
+          offerId: result.retryAssessment.offerId || primaryOffer?.offerId || null,
+          offerNumber: result.retryAssessment.offerNumber || primaryOffer?.offerNumber || null,
+          recipientEmail: result.retryAssessment.recipientEmail || primaryRecord.email || primaryOffer?.customerEmail || null,
+          trelloCardId:
+            result.trelloFailureDiagnosis.card?.id ||
+            primaryRecord.trelloCardId ||
+            primaryOffer?.trelloCardId ||
+            null,
+          idempotencyKey: result.retryAssessment.idempotencyKey || null,
+          subject: DEFAULT_OFFER_RETRY_SUBJECT,
+          message: DEFAULT_OFFER_RETRY_MESSAGE,
           confirmed: true,
           confirmationText: confirmation,
         }),
       });
-      const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; issues?: string[]; task?: { id?: string }; note?: { id?: string }; specialCase?: unknown } | null;
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        issues?: string[];
+        task?: { id?: string };
+        note?: { id?: string };
+        specialCase?: unknown;
+        sent?: boolean;
+        duplicate?: boolean;
+        blockers?: string[];
+      } | null;
       if (!response.ok || !payload?.ok) {
-        setActionResultMessage(formatApiError(payload));
+        setActionResultMessage(payload?.blockers?.length ? payload.blockers.join(" ") : formatApiError(payload));
         return;
       }
       const created = [
+        payload.sent ? (payload.duplicate ? "Versand bereits idempotent vorhanden" : "Angebot erneut gesendet") : null,
         payload.task?.id ? `Aufgabe ${payload.task.id}` : null,
         payload.note?.id ? `Notiz ${payload.note.id}` : null,
         payload.specialCase ? "Problemfall-Audit" : null,
@@ -567,6 +607,37 @@ export function OpsCompanyBrainClient({
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Empfohlene Lösung</p>
                       <p className="mt-2 text-sm leading-6 text-stone-800">{result.problemResolution.recommendedResolution}</p>
                     </div>
+                  </div>
+
+                  <div className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
+                    result.retryAssessment.status === "ready"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                      : result.retryAssessment.status === "needs_fix"
+                        ? "border-amber-200 bg-amber-50 text-amber-950"
+                        : "border-stone-200 bg-stone-50 text-stone-800"
+                  }`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{result.retryAssessment.label}</p>
+                        <p className="mt-1 leading-6 opacity-80">{result.retryAssessment.summary}</p>
+                      </div>
+                      <span className="rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold">
+                        {result.retryAssessment.canSendWithConfirmation ? "Retry nach Freigabe möglich" : "Kein sicherer Retry"}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <p className="rounded-xl border border-current/15 bg-white/40 px-3 py-2 text-xs">
+                        Empfänger: {result.retryAssessment.recipientEmail || "unbekannt"}
+                      </p>
+                      <p className="rounded-xl border border-current/15 bg-white/40 px-3 py-2 text-xs">
+                        Angebot: {result.retryAssessment.offerNumber || result.retryAssessment.offerId || "unbekannt"}
+                      </p>
+                    </div>
+                    {result.retryAssessment.blockers.length ? (
+                      <div className="mt-3 grid gap-1 text-xs leading-5">
+                        {result.retryAssessment.blockers.slice(0, 3).map((blocker) => <p key={blocker}>Blocker: {blocker}</p>)}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
