@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckSquare,
   Copy,
+  Eye,
   ExternalLink,
   ImagePlus,
   Link2,
@@ -99,7 +100,7 @@ const LIGHT_COLOR_PRESETS = {
   pink: { label: "Pink", value: "pink / magenta", swatch: "#ec4899" },
   blue: { label: "Blau", value: "blau", swatch: "#3b82f6" },
   green: { label: "Grün", value: "grün", swatch: "#22c55e" },
-  amber: { label: "Amber", value: "amber / orange", swatch: "#f59e0b" },
+  amber: { label: "Orange", value: "orange", swatch: "#f97316" },
   rgb: { label: "RGB", value: "RGB-Farbverlauf", swatch: "linear-gradient(135deg,#ef4444,#22c55e,#3b82f6)" },
   custom: { label: "Eigene", value: null, swatch: "linear-gradient(135deg,#111827,#f8fafc)" },
 } as const;
@@ -219,6 +220,7 @@ export function DesignOpsClient({
   const [offer, setOffer] = useState<OpsOfferSnapshot | null>(null);
   const [selectedOfferImageId, setSelectedOfferImageId] = useState("");
   const [selectedOfferItemId, setSelectedOfferItemId] = useState("");
+  const [selectedReferenceAttachmentId, setSelectedReferenceAttachmentId] = useState("");
   const [job, setJob] = useState<DesignJobDraft | null>(null);
   const [jobs, setJobs] = useState<DesignJobSummary[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState("");
@@ -277,10 +279,20 @@ export function DesignOpsClient({
     setOffer(null);
     setSelectedOfferImageId("");
     setSelectedOfferItemId("");
+    const defaultReference =
+      workspace?.primaryCard?.attachments.find((attachment) => attachment.kind === "mockup") ||
+      workspace?.primaryCard?.attachments.find((attachment) => attachment.kind === "reference" || attachment.kind === "image") ||
+      null;
+    setSelectedReferenceAttachmentId(defaultReference?.id || "");
     setSelectedAttachmentIds([]);
     setRemovalPlan(null);
     setJob(null);
   }, [workspace]);
+
+  const selectedReferenceAttachment = useMemo(
+    () => workspace?.cards.flatMap((card) => card.attachments).find((attachment) => attachment.id === selectedReferenceAttachmentId) || null,
+    [workspace, selectedReferenceAttachmentId],
+  );
 
   function applyPromptControls(nextPreset: MockupPresetKey, nextLightColorPreset: LightColorPresetKey, nextCustomLightColor = customLightColor) {
     if (!workspace) return;
@@ -347,6 +359,7 @@ export function DesignOpsClient({
           promptText: promptDraft,
           operatorName,
           offerId: selectedOfferId || null,
+          referenceAttachmentIds: selectedReferenceAttachmentId ? [selectedReferenceAttachmentId] : [],
         }),
       });
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
@@ -711,14 +724,25 @@ export function DesignOpsClient({
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {card.attachments.map((asset) => (
                               <div key={asset.id} className="overflow-hidden rounded-[14px] border border-[#ded8d0] bg-white">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleAttachmentSelection(asset.id)}
-                                  className="flex w-full items-center justify-between gap-3 border-b border-[#ece6dc] bg-[#fffdf9] px-3 py-2 text-left text-xs font-semibold text-stone-700"
-                                >
-                                  <span>Bulk-Auswahl</span>
-                                  {selectedAttachmentIds.includes(asset.id) ? <CheckSquare className="h-4 w-4 text-rose-700" /> : <Square className="h-4 w-4 text-stone-400" />}
-                                </button>
+                                <div className="grid grid-cols-2 border-b border-[#ece6dc] bg-[#fffdf9] text-xs font-semibold text-stone-700">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleAttachmentSelection(asset.id)}
+                                    className="flex items-center justify-between gap-2 border-r border-[#ece6dc] px-3 py-2 text-left"
+                                  >
+                                    <span>Bulk</span>
+                                    {selectedAttachmentIds.includes(asset.id) ? <CheckSquare className="h-4 w-4 text-rose-700" /> : <Square className="h-4 w-4 text-stone-400" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedReferenceAttachmentId(asset.id)}
+                                    disabled={!["mockup", "reference", "image"].includes(asset.kind)}
+                                    className={`flex items-center justify-between gap-2 px-3 py-2 text-left disabled:opacity-40 ${selectedReferenceAttachmentId === asset.id ? "bg-stone-950 text-white" : ""}`}
+                                  >
+                                    <span>Vorlage</span>
+                                    <Eye className="h-4 w-4" />
+                                  </button>
+                                </div>
                                 {asset.proxyUrl && asset.kind !== "video" ? (
                                   <img src={asset.proxyUrl} alt={asset.name} className="aspect-[4/3] w-full object-cover" />
                                 ) : (
@@ -852,6 +876,23 @@ export function DesignOpsClient({
                 ) : null}
                 {workspace ? (
                   <div className="mt-3 space-y-3">
+                    <div className="rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-3">
+                      <div className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Ausgangsbild</div>
+                      {selectedReferenceAttachment ? (
+                        <div className="mt-2 flex items-center gap-3">
+                          {selectedReferenceAttachment.proxyUrl ? (
+                            <img src={selectedReferenceAttachment.proxyUrl} alt={selectedReferenceAttachment.name} className="h-12 w-16 rounded-[8px] object-cover" />
+                          ) : null}
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-stone-900">{selectedReferenceAttachment.name}</div>
+                            <div className="mt-0.5 text-xs text-stone-500">Wird als Vorlage für Image-Edit genutzt.</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-sm text-stone-600">Keine Vorlage gewählt. Ohne Vorlage wird neu generiert.</div>
+                      )}
+                    </div>
+
                     <div>
                       <div className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Mockup-Art</div>
                       <div className="grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1 sm:grid-cols-3">

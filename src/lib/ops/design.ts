@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
-import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, getTrelloCard, getTrelloList, searchTrelloCards } from "@/lib/quotes/trello";
+import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloList, searchTrelloCards } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { getOfferById, patchOfferById, type OpsOfferPatchResult } from "@/lib/ops/offers";
@@ -288,6 +288,13 @@ type DesignRemovalBackupRow = {
   metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+};
+
+type DesignReferenceAttachment = {
+  cardId: string;
+  attachmentId: string;
+  name: string;
+  kind: DesignAttachmentKind;
 };
 
 const DESIGN_JOB_SELECT =
@@ -650,6 +657,7 @@ export async function createDesignJobDraft(input: {
   promptText: string;
   operatorName?: string | null;
   offerId?: string | null;
+  referenceAttachmentIds?: string[] | null;
 }) {
   const idempotencyKey = trimNullable(input.idempotencyKey);
   const promptText = trimNullable(input.promptText);
@@ -681,6 +689,17 @@ export async function createDesignJobDraft(input: {
   const offerId = trimNullable(input.offerId);
   const promptTitle = trimNullable(input.promptTitle) || workspace.promptPreview.title;
   const promptHash = stableHash(promptText);
+  const referenceIds = uniqueValues(input.referenceAttachmentIds || []).slice(0, 4);
+  const referenceAttachments: DesignReferenceAttachment[] = workspace.cards.flatMap((card) =>
+    card.attachments
+      .filter((attachment) => referenceIds.includes(attachment.id) && ["mockup", "reference", "image"].includes(attachment.kind))
+      .map((attachment) => ({
+        cardId: card.cardId,
+        attachmentId: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+      })),
+  );
 
   const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", {
     method: "POST",
@@ -698,6 +717,7 @@ export async function createDesignJobDraft(input: {
         source: "ops_design_ui",
         attachment_count: workspace.stats.totalAttachments,
         mockup_count: workspace.stats.mockups,
+        reference_attachments: referenceAttachments,
       },
     }),
     headers: { Prefer: "return=representation" },
@@ -718,6 +738,7 @@ export async function createDesignJobDraft(input: {
       metadata: {
         source: "ops_design_ui",
         warnings: workspace.promptPreview.warnings,
+        reference_attachment_count: referenceAttachments.length,
       },
     }),
     headers: { Prefer: "return=representation" },
@@ -1526,6 +1547,122 @@ async function generateOpenAiDesignImage(promptText: string) {
   throw new QuoteValidationError("OpenAI Image API lieferte kein Bild.");
 }
 
+function referenceAttachmentsFromJob(job: DesignJobRow): DesignReferenceAttachment[] {
+  const raw = (job.metadata || {}).reference_attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const value = entry as Record<string, unknown>;
+      const cardId = trimNullable(value.cardId);
+      const attachmentId = trimNullable(value.attachmentId);
+      const name = trimNullable(value.name) || attachmentId || "reference-image";
+      const kind = trimNullable(value.kind) as DesignAttachmentKind | null;
+      if (!cardId || !attachmentId || !kind || !["mockup", "reference", "image"].includes(kind)) return null;
+      return { cardId, attachmentId, name, kind };
+    })
+    .filter((entry): entry is DesignReferenceAttachment => Boolean(entry))
+    .slice(0, 4);
+}
+
+function promptForImageEdit(promptText: string) {
+  return [
+    "Bearbeite das bereitgestellte Ausgangsbild. Erhalte Layout, Perspektive, Hintergrund, Produktform, Text, Logo-/Schriftanmutung, Materialwirkung und Komposition so weit wie technisch möglich.",
+    "Nimm nur die im Prompt beschriebene Änderung vor. Bei Leuchtfarbenänderungen darf ausschließlich die sichtbare Licht-/LED-Farbe verändert werden.",
+    "Keine neuen Wörter, Logos, Produkte, Räume, Preisangaben oder Designelemente hinzufügen.",
+    "",
+    promptText,
+  ].join("\n");
+}
+
+function safeImageFilename(name: string, contentType: string) {
+  const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png";
+  const base = slugPathPart(name.replace(/\.[a-z0-9]+$/i, ""), "reference");
+  return `${base}.${extension}`;
+}
+
+async function downloadDesignReferenceAttachments(job: DesignJobRow) {
+  const references = referenceAttachmentsFromJob(job);
+  const files = [];
+  for (const reference of references) {
+    const attachment = await getTrelloAttachment(reference.cardId, reference.attachmentId);
+    const file = await downloadTrelloAttachment(attachment);
+    if (!/^image\/(png|jpe?g|webp)$/i.test(file.contentType)) continue;
+    files.push({
+      reference,
+      body: file.body,
+      contentType: file.contentType,
+      filename: safeImageFilename(reference.name, file.contentType),
+    });
+  }
+  return files;
+}
+
+async function generateOpenAiDesignImageEdit(promptText: string, referenceFiles: Awaited<ReturnType<typeof downloadDesignReferenceAttachments>>) {
+  if (!referenceFiles.length) return generateOpenAiDesignImage(promptText);
+  const model = String(process.env.OPS_OPENAI_IMAGE_EDIT_MODEL || process.env.OPS_OPENAI_IMAGE_MODEL || "gpt-image-1.5").trim() || "gpt-image-1.5";
+  const outputFormat = String(process.env.OPS_OPENAI_IMAGE_FORMAT || "webp").trim().toLowerCase();
+  const imageFormat = outputFormat === "png" || outputFormat === "jpeg" ? outputFormat : "webp";
+  const form = new FormData();
+  form.append("model", model);
+  form.append("prompt", promptForImageEdit(promptText));
+  form.append("n", "1");
+  form.append("size", "1024x1024");
+  form.append("quality", "medium");
+  form.append("output_format", imageFormat);
+  if (!/^gpt-image-2/i.test(model) && !/mini/i.test(model)) form.append("input_fidelity", "high");
+  for (const file of referenceFiles) {
+    form.append("image[]", new Blob([file.body], { type: file.contentType }), file.filename);
+  }
+
+  const response = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiImageApiKey()}`,
+    },
+    body: form,
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    data?: Array<{ b64_json?: string; url?: string }>;
+    error?: { message?: string };
+  } | null;
+
+  if (!response.ok) {
+    throw new QuoteValidationError(
+      `OpenAI Image Edit API antwortete mit ${response.status}.`,
+      [payload?.error?.message || "Bitte Referenzbild, OPS_OPENAI_API_KEY, Organisation und Modellzugriff pruefen."],
+      response.status,
+    );
+  }
+
+  const image = payload?.data?.[0] || null;
+  if (image?.b64_json) {
+    return {
+      model,
+      bytes: Buffer.from(image.b64_json, "base64"),
+      contentType: imageFormat === "jpeg" ? "image/jpeg" : `image/${imageFormat}`,
+      extension: imageFormat === "jpeg" ? "jpg" : imageFormat,
+      remoteUrl: null as string | null,
+    };
+  }
+
+  if (image?.url) {
+    const imageResponse = await fetch(image.url, { cache: "no-store" });
+    if (!imageResponse.ok) throw new QuoteValidationError(`OpenAI Bild-URL konnte nicht geladen werden (${imageResponse.status}).`);
+    const contentType = imageResponse.headers.get("content-type") || "image/png";
+    const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png";
+    return {
+      model,
+      bytes: Buffer.from(await imageResponse.arrayBuffer()),
+      contentType,
+      extension,
+      remoteUrl: image.url,
+    };
+  }
+
+  throw new QuoteValidationError("OpenAI Image Edit API lieferte kein Bild.");
+}
+
 export async function generateDesignJobNow(input: {
   jobId: string;
   idempotencyKey: string;
@@ -1565,7 +1702,10 @@ export async function generateDesignJobNow(input: {
   );
 
   try {
-    const generated = await generateOpenAiDesignImage(promptVersion.prompt_text);
+    const referenceFiles = await downloadDesignReferenceAttachments(job);
+    const generated = referenceFiles.length
+      ? await generateOpenAiDesignImageEdit(promptVersion.prompt_text, referenceFiles)
+      : await generateOpenAiDesignImage(promptVersion.prompt_text);
     const stored = await uploadDesignAssetToStorage({
       job,
       promptVersion,

@@ -43,7 +43,10 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Outdoor/);
   assert.match(client, /Leuchtfarbe/);
   assert.match(client, /Warmweiß/);
+  assert.match(client, /Orange/);
   assert.match(client, /RGB/);
+  assert.match(client, /Ausgangsbild/);
+  assert.match(client, /setSelectedReferenceAttachmentId/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
   assert.match(client, /Generierung freigeben/);
@@ -66,6 +69,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(jobsRoute, /createDesignJobDraft/);
   assert.match(jobsRoute, /listDesignJobs/);
   assert.match(jobsRoute, /idempotencyKey/);
+  assert.match(jobsRoute, /referenceAttachmentIds/);
 
   assert.match(queueRoute, /export async function POST/);
   assert.doesNotMatch(queueRoute, /export async function (GET|PATCH|DELETE)/);
@@ -116,6 +120,10 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /queueDesignJob/);
   assert.match(service, /generateDesignJobNow/);
   assert.match(service, /https:\/\/api\.openai\.com\/v1\/images\/generations/);
+  assert.match(service, /https:\/\/api\.openai\.com\/v1\/images\/edits/);
+  assert.match(service, /input_fidelity/);
+  assert.match(service, /reference_attachments/);
+  assert.match(service, /downloadTrelloAttachment/);
   assert.match(service, /storage\/v1\/object/);
   assert.match(service, /prepareDesignRemovalPlan/);
   assert.match(service, /applyDesignRemovalPlan/);
