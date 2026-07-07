@@ -131,7 +131,7 @@ function failureResponse(error: unknown) {
     return jsonResponse({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
   }
   if (error instanceof SupabaseRestError) {
-    return jsonResponse({ ok: false, error: error.message, details: error.details }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, code: "supabase_error" }, { status: error.status });
   }
   console.error("ops company-brain action route failed", error);
   return jsonResponse({ ok: false, error: "internal_error" }, { status: 500 });

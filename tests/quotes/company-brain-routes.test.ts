@@ -84,6 +84,40 @@ test("company brain action route rejects missing request ids before any downstre
   });
 });
 
+test("company brain action route does not expose raw Supabase details to clients", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_URL = "https://supabase.example.com";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+  globalThis.fetch = (async () => new Response("internal secret sql detail", { status: 500 })) as typeof fetch;
+
+  try {
+    const response = await POST_ACTION(request("/api/ops/company-brain/actions", {
+      actionKey: "save_case_note",
+      requestId: "REQ-SUPABASE-FAIL",
+      confirmed: true,
+      confirmationText: "Freigabe",
+      note: "Interne Notiz",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 500);
+    assertNoStore(response);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.code, "supabase_error");
+    assert.equal("details" in payload, false);
+    assert.doesNotMatch(JSON.stringify(payload), /internal secret sql detail/);
+    assert.doesNotMatch(JSON.stringify(payload), /service-role-secret/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
+});
+
 test("company brain resolve route returns no-store validation errors", async () => {
   await withFetchTrap(async () => {
     const response = await POST_RESOLVE(request("/api/ops/company-brain/resolve", {
