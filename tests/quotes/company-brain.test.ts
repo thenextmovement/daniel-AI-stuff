@@ -1292,6 +1292,28 @@ test("company brain action proposals enable internal tasks once per case", () =>
   assert.match(duplicateTask?.summary || "", /bereits vorbereitet/);
 });
 
+test("company brain action proposals block retry preparation for hard blockers", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "blocked",
+    label: "Retry blockiert",
+    summary: "Ein Versandbeleg oder harter Automationsblocker verhindert den Retry.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["Versand-/Ausgangsbeleg gefunden; keinen Resend auslösen."],
+    safeFixes: ["Interne Aufgabe/Fallnotiz mit Belegen anlegen."],
+  };
+  const actions = actionProposalFixture({ retry });
+  const prepareRetry = actions.find((action) => action.key === "prepare_offer_retry");
+  const internalTask = actions.find((action) => action.key === "create_internal_task");
+
+  assert.equal(prepareRetry?.enabled, false);
+  assert.match(prepareRetry?.summary || "", /Retry bleibt blockiert/);
+  assert.equal(internalTask?.enabled, true);
+});
+
 test("company brain action proposals block trello writes without source record", () => {
   const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
     status: "blocked",

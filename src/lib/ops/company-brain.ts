@@ -3209,6 +3209,7 @@ export function buildActionProposals(input: {
     : workflowAutomationRuns.find((run) => isAutomationFailure(run)) || null;
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
+  const retryTaskAllowed = retry.status === "ready" || retry.status === "needs_fix";
   const trelloCardId = input.trelloFailureDiagnosis.card?.id || primaryRecord?.trelloCardId || primaryOffer?.trelloCardId || null;
   const latestFixRun = (actionKey: CompanyBrainActionProposal["key"]) =>
     companyBrainFixRuns.find((run) => run.action === actionKey) || null;
@@ -3223,6 +3224,21 @@ export function buildActionProposals(input: {
   ) || null;
   const fixRunSuffix = (run: CompanyBrainAutomationRun | null) =>
     run?.createdAt ? ` Zuletzt: ${run.createdAt}.` : run ? " Bereits protokolliert." : "";
+  const retryTaskSummary = () => {
+    if (guardedRetrySent) {
+      return `Guarded Retry wurde bereits protokolliert.${fixRunSuffix(guardedRetrySent)} Keinen zweiten Retry vorbereiten.`;
+    }
+    if (offerRetryPrepared) {
+      return `Retry-Aufgabe wurde bereits vorbereitet.${fixRunSuffix(offerRetryPrepared)}`;
+    }
+    if (retry.status === "blocked") {
+      return "Retry bleibt blockiert. Stattdessen interne Aufgabe/Fallnotiz mit Belegen anlegen; keinen Versand-Retry vorbereiten.";
+    }
+    if (retry.status === "not_applicable") {
+      return "Kein Angebotsversand-Retry-Kontext erkannt.";
+    }
+    return "Erstellt eine interne Retry-Aufgabe mit Belegen, Blockern und Guardrails. Es wird noch nichts gesendet.";
+  };
 
   const actions: CompanyBrainActionProposal[] = [
     {
@@ -3369,12 +3385,8 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "medium",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && primaryOffer && retry.status !== "not_applicable" && !offerRetryPrepared && !guardedRetrySent),
-      summary: guardedRetrySent
-        ? `Guarded Retry wurde bereits protokolliert.${fixRunSuffix(guardedRetrySent)} Keinen zweiten Retry vorbereiten.`
-        : offerRetryPrepared
-          ? `Retry-Aufgabe wurde bereits vorbereitet.${fixRunSuffix(offerRetryPrepared)}`
-          : "Erstellt eine interne Retry-Aufgabe mit Belegen, Blockern und Guardrails. Es wird noch nichts gesendet.",
+      enabled: Boolean(primaryRecord && primaryOffer && retryTaskAllowed && !offerRetryPrepared && !guardedRetrySent),
+      summary: retryTaskSummary(),
       confirmationText: "Retry nur vorbereiten; Versand bleibt separat freigabepflichtig.",
       href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
       payloadPreview: [
