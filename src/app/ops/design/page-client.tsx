@@ -61,6 +61,16 @@ type DesignApiResponse = {
   issues?: string[];
 };
 
+type BulkRecolorProgress = {
+  total: number;
+  current: number;
+  currentName: string | null;
+  stage: string;
+  generated: number;
+  replaced: number;
+  failures: number;
+};
+
 function formatApiError(payload: DesignApiResponse | null) {
   if (!payload) return "Anfrage fehlgeschlagen.";
   if (payload.issues?.length) return payload.issues.join(" ");
@@ -255,6 +265,7 @@ export function DesignOpsClient({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [bulkRecolorProgress, setBulkRecolorProgress] = useState<BulkRecolorProgress | null>(null);
   const [copied, setCopied] = useState(false);
 
   const generatedAssets = useMemo(
@@ -335,10 +346,12 @@ export function DesignOpsClient({
     );
   }, [workspace]);
   const selectedColorAttachmentIds = useMemo(() => {
-    const explicit = selectedRecolorAttachmentIds.filter((attachmentId) => colorSelectableAttachmentIds.has(attachmentId));
-    const bulk = selectedAttachmentIds.filter((attachmentId) => colorSelectableAttachmentIds.has(attachmentId));
-    return Array.from(new Set([...explicit, ...bulk]));
-  }, [colorSelectableAttachmentIds, selectedAttachmentIds, selectedRecolorAttachmentIds]);
+    const selected = new Set([...selectedAttachmentIds, ...selectedRecolorAttachmentIds]);
+    return (workspace?.cards || [])
+      .flatMap((card) => card.attachments)
+      .filter((attachment) => colorSelectableAttachmentIds.has(attachment.id) && selected.has(attachment.id))
+      .map((attachment) => attachment.id);
+  }, [colorSelectableAttachmentIds, selectedAttachmentIds, selectedRecolorAttachmentIds, workspace]);
 
   function applyPromptControls(nextPreset: MockupPresetKey, nextLightColorPreset: LightColorPresetKey, nextCustomLightColor = customLightColor) {
     if (!workspace) return;
@@ -374,15 +387,18 @@ export function DesignOpsClient({
     if (lightColorPreset === "custom") applyPromptControls(promptPreset, "custom", nextColor);
   }
 
-  async function searchDesignWorkspace(nextQuery = query) {
+  async function searchDesignWorkspace(nextQuery = query, options: { preserveStatus?: boolean } = {}) {
     const normalized = nextQuery.trim();
     if (!normalized) {
       setError("Bitte Trello-Link, Card-ID, Request-ID, Offer-Nummer oder Kundendaten eingeben.");
       return;
     }
     setLoading(true);
-    setError(null);
-    setMessage(null);
+    if (!options.preserveStatus) {
+      setError(null);
+      setMessage(null);
+      setBulkRecolorProgress(null);
+    }
     try {
       const response = await fetch(`/api/ops/design?query=${encodeURIComponent(normalized)}`);
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
@@ -497,7 +513,8 @@ export function DesignOpsClient({
 
   async function recolorSelectedAttachments(replaceTrelloAfterGenerate: boolean) {
     if (!workspace) return;
-    if (!selectedColorAttachmentIds.length) {
+    const attachmentIds = [...selectedColorAttachmentIds];
+    if (!attachmentIds.length) {
       setError("Bitte mindestens ein Mockup für Farbe auswählen.");
       return;
     }
@@ -513,14 +530,39 @@ export function DesignOpsClient({
 
     setBusy(true);
     setError(null);
-    setMessage(null);
+    setMessage(`${replaceTrelloAfterGenerate ? "Bulk-Farbänderung mit Trello-Ersetzung" : "Bulk-Farbänderung"} gestartet: 0 von ${attachmentIds.length}. Bitte warten.`);
+    const attachmentsById = new Map(
+      workspace.cards
+        .flatMap((card) => card.attachments)
+        .map((attachment) => [attachment.id, attachment] as const),
+    );
+    setBulkRecolorProgress({
+      total: attachmentIds.length,
+      current: 0,
+      currentName: null,
+      stage: "Wartet auf Start",
+      generated: 0,
+      replaced: 0,
+      failures: 0,
+    });
     let generatedCount = 0;
     let replacedCount = 0;
     const failures: string[] = [];
+    const failedAttachmentIds = new Set<string>();
     try {
       if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
-      for (const attachmentId of selectedColorAttachmentIds) {
+      for (const [index, attachmentId] of attachmentIds.entries()) {
+        const attachmentName = attachmentsById.get(attachmentId)?.name || attachmentId;
         try {
+          setBulkRecolorProgress({
+            total: attachmentIds.length,
+            current: index + 1,
+            currentName: attachmentName,
+            stage: "Generiere Farbvariante",
+            generated: generatedCount,
+            replaced: replacedCount,
+            failures: failures.length,
+          });
           const draftResponse = await fetch("/api/ops/design/jobs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -545,36 +587,78 @@ export function DesignOpsClient({
           });
           const generatePayload = (await generateResponse.json().catch(() => null)) as DesignApiResponse | null;
           if (!generateResponse.ok || !generatePayload?.ok || !generatePayload.result) throw new Error(formatApiError(generatePayload));
+          const generatedAssetId = generatePayload.result.asset?.id;
+          if (!generatedAssetId) throw new Error("OpenAI hat kein Design-Asset zurueckgegeben.");
           generatedCount += 1;
-          if (generatePayload.result.asset?.id) {
-            setSelectedAssetId(generatePayload.result.asset.id);
-            selectReferenceAssetForEdit(generatePayload.result.asset.id);
-          }
+          setSelectedAssetId(generatedAssetId);
 
-          if (replaceTrelloAfterGenerate && generatePayload.result.asset?.id) {
+          if (replaceTrelloAfterGenerate) {
+            setBulkRecolorProgress({
+              total: attachmentIds.length,
+              current: index + 1,
+              currentName: attachmentName,
+              stage: "Lade nach Trello hoch und benenne altes Mockup um",
+              generated: generatedCount,
+              replaced: replacedCount,
+              failures: failures.length,
+            });
             const attachResponse = await fetch(`/api/ops/design/jobs/${encodeURIComponent(draftPayload.job.id)}/trello`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ assetId: generatePayload.result.asset.id, operatorName, replacementAttachmentId: attachmentId }),
+              body: JSON.stringify({ assetId: generatedAssetId, operatorName, replacementAttachmentId: attachmentId }),
             });
             const attachPayload = (await attachResponse.json().catch(() => null)) as DesignApiResponse | null;
             if (!attachResponse.ok || !attachPayload?.ok) throw new Error(formatApiError(attachPayload));
+            if (!attachPayload.result?.trelloAttachmentId) throw new Error("Trello hat keinen neuen Attachment-Nachweis zurueckgegeben.");
             replacedCount += 1;
           }
+          setBulkRecolorProgress({
+            total: attachmentIds.length,
+            current: index + 1,
+            currentName: attachmentName,
+            stage: "Bild abgeschlossen",
+            generated: generatedCount,
+            replaced: replacedCount,
+            failures: failures.length,
+          });
         } catch (itemError) {
-          failures.push(itemError instanceof Error ? itemError.message : "Farbänderung fehlgeschlagen.");
+          failedAttachmentIds.add(attachmentId);
+          failures.push(`${attachmentName}: ${itemError instanceof Error ? itemError.message : "Farbänderung fehlgeschlagen."}`);
+          setBulkRecolorProgress({
+            total: attachmentIds.length,
+            current: index + 1,
+            currentName: attachmentName,
+            stage: "Fehler bei diesem Bild, naechstes Bild wird versucht",
+            generated: generatedCount,
+            replaced: replacedCount,
+            failures: failures.length,
+          });
         }
       }
 
+      void loadRecentJobs();
+      if (replaceTrelloAfterGenerate) await searchDesignWorkspace(workspace.query, { preserveStatus: true });
+      setBulkRecolorProgress({
+        total: attachmentIds.length,
+        current: attachmentIds.length,
+        currentName: null,
+        stage: failures.length ? "Mit Fehlern abgeschlossen" : "Abgeschlossen",
+        generated: generatedCount,
+        replaced: replacedCount,
+        failures: failures.length,
+      });
       setMessage(
         replaceTrelloAfterGenerate
-          ? `Farbänderung abgeschlossen: ${generatedCount} generiert, ${replacedCount} in Trello ersetzt${failures.length ? `, ${failures.length} Fehler` : ""}.`
-          : `Farbänderung abgeschlossen: ${generatedCount} generiert${failures.length ? `, ${failures.length} Fehler` : ""}.`,
+          ? `Bulk-Farbänderung abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert, ${replacedCount}/${attachmentIds.length} in Trello ersetzt${failures.length ? `, ${failures.length} Fehler` : ""}.`
+          : `Bulk-Farbänderung abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert${failures.length ? `, ${failures.length} Fehler` : ""}.`,
       );
-      setSelectedRecolorAttachmentIds([]);
-      setSelectedAttachmentIds([]);
-      void loadRecentJobs();
-      if (replaceTrelloAfterGenerate) void searchDesignWorkspace(workspace.query);
+      if (failures.length) {
+        setSelectedRecolorAttachmentIds((current) => current.filter((id) => failedAttachmentIds.has(id)));
+        setSelectedAttachmentIds((current) => current.filter((id) => failedAttachmentIds.has(id)));
+      } else {
+        setSelectedRecolorAttachmentIds([]);
+        setSelectedAttachmentIds([]);
+      }
       if (failures.length) setError(failures.slice(0, 2).join(" "));
     } finally {
       setBusy(false);
@@ -853,6 +937,29 @@ export function DesignOpsClient({
 
           {error ? <div className="rounded-[14px] border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">{error}</div> : null}
           {message ? <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">{message}</div> : null}
+          {bulkRecolorProgress ? (
+            <div className="rounded-[14px] border border-[#ded8d0] bg-white p-4 text-sm text-stone-800">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="font-semibold">
+                  Bulk-Farbänderung: {bulkRecolorProgress.current}/{bulkRecolorProgress.total}
+                </div>
+                <div className="text-xs font-semibold text-stone-500">
+                  {bulkRecolorProgress.generated} generiert · {bulkRecolorProgress.replaced} ersetzt · {bulkRecolorProgress.failures} Fehler
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-2 text-xs text-stone-600">
+                {busy ? <RefreshCcw className="h-3.5 w-3.5 animate-spin" /> : null}
+                <span>{bulkRecolorProgress.stage}</span>
+                {bulkRecolorProgress.currentName ? <span className="truncate font-medium text-stone-900">· {bulkRecolorProgress.currentName}</span> : null}
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-stone-100">
+                <div
+                  className="h-full rounded-full bg-stone-950 transition-all"
+                  style={{ width: `${bulkRecolorProgress.total ? Math.round((bulkRecolorProgress.current / bulkRecolorProgress.total) * 100) : 0}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_26rem]">
             <div className="space-y-5">
@@ -919,7 +1026,7 @@ export function DesignOpsClient({
                           disabled={busy || !selectedColorAttachmentIds.length}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >
-                          <Palette className="h-4 w-4" />
+                          {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
                           Farbe ändern
                         </button>
                         <button
@@ -928,7 +1035,7 @@ export function DesignOpsClient({
                           disabled={busy || !selectedColorAttachmentIds.length}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
-                          <UploadCloud className="h-4 w-4" />
+                          {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                           Farbe ändern + ersetzen
                         </button>
                         <button

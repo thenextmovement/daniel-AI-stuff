@@ -53,7 +53,11 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /selectReferenceAssetForEdit/);
   assert.match(client, /selectedRecolorAttachmentIds/);
   assert.match(client, /selectedColorAttachmentIds/);
-  assert.match(client, /new Set\(\[\.\.\.explicit, \.\.\.bulk\]\)/);
+  assert.match(client, /BulkRecolorProgress/);
+  assert.match(client, /workspace\?\.cards \|\| \[\]/);
+  assert.match(client, /preserveStatus/);
+  assert.match(client, /Bulk-Farbänderung/);
+  assert.match(client, /trelloAttachmentId/);
   assert.match(client, /toggleRecolorSelection/);
   assert.match(client, /selectAttachmentForRecolor/);
   assert.match(client, /createPromptDraft/);
