@@ -1052,6 +1052,17 @@ function dedupeOfferSnapshots(results: OpsOfferSnapshot[]) {
   return [...byId.values()];
 }
 
+export function findMissingOfferRequestIds(
+  records: Array<{ requestId: string | null | undefined }>,
+  offers: Array<{ requestId?: string | null }>,
+  limit = 3,
+) {
+  const existingRecordIds = new Set(records.map((record) => cleanText(record.requestId)).filter(Boolean));
+  return uniqueStrings(offers.map((offer) => cleanText(offer.requestId)).filter(Boolean))
+    .filter((requestId) => !existingRecordIds.has(requestId))
+    .slice(0, limit);
+}
+
 function addRecordIdentifiers(identifiers: CompanyBrainIdentifier[], records: CustomerSearchResult[]) {
   for (const record of records) {
     pushIdentifier(identifiers, "request_id", "Request-ID", record.requestId, "high", `/ops/customer-records?query=${encodeURIComponent(record.requestId)}`);
@@ -3740,7 +3751,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     }
   }
 
-  const records = dedupeRecords(customerRecords).slice(0, limit);
+  let records = dedupeRecords(customerRecords).slice(0, limit);
   const offerSnapshots: OpsOfferSnapshot[] = [];
   for (const offer of offerSearchResults.slice(0, Math.min(3, limit))) {
     try {
@@ -3773,6 +3784,29 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   }
 
   const offerSummaries = dedupeOfferSnapshots(offerSnapshots).map(mapOfferSummary);
+  const offerRequestIds = findMissingOfferRequestIds(records, offerSummaries);
+  let offerAnchoredRecordCount = 0;
+  for (const requestId of offerRequestIds) {
+    try {
+      customerRecords.push(await getCustomerRecordByRequestId(requestId, { includeTrello: false }));
+      offerAnchoredRecordCount += 1;
+    } catch {
+      // Offer remains useful evidence even when the customer record cannot be hydrated.
+    }
+  }
+  if (offerRequestIds.length) {
+    records = dedupeRecords(customerRecords).slice(0, limit);
+    recordSummaries = records.map(mapRecordSummary);
+    diagnostics.push({
+      source: "customer_records",
+      ok: true,
+      label: "Kundenakte per Offer-Request",
+      detail: offerAnchoredRecordCount
+        ? `${offerAnchoredRecordCount} Kundenakte(n) über Request-ID aus Angebot nachgeladen.`
+        : "Request-ID im Angebot gefunden, aber keine Kundenakte nachgeladen.",
+      count: offerAnchoredRecordCount,
+    });
+  }
   addRecordIdentifiers(identifiers, records);
   addOfferIdentifiers(identifiers, offerSummaries);
 

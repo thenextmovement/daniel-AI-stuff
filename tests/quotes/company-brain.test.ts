@@ -10,6 +10,7 @@ import {
   buildTrelloFailureDiagnosis,
   extractCompanyBrainIdentifiers,
   extractCompanyBrainSignals,
+  findMissingOfferRequestIds,
   mapOutlookGraphMessageToEvidence,
   normalizeCompanyBrainQuery,
   resolveCoolifyApiConfig,
@@ -1374,4 +1375,18 @@ test("company brain answer surfaces request id from offer snapshots", () => {
 
   assert.equal(answer.verdict, "found");
   assert.match(answer.bullets.join("\n"), /Request-ID laut Angebot: REQ-OFFER-ANCHOR/);
+});
+
+test("company brain finds customer records missing from offer request ids", () => {
+  const missing = findMissingOfferRequestIds(
+    [{ requestId: "REQ-EXISTING" }],
+    [
+      { requestId: "REQ-EXISTING" },
+      { requestId: "REQ-FROM-OFFER" },
+      { requestId: "REQ-FROM-OFFER" },
+      { requestId: "REQ-SECOND" },
+    ],
+  );
+
+  assert.deepEqual(missing, ["REQ-FROM-OFFER", "REQ-SECOND"]);
 });
