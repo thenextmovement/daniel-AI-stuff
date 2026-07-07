@@ -124,6 +124,15 @@ test("company brain classifies offer API failures before send", () => {
   assert.match(hint.retrySafety, /Retry blockiert/);
 });
 
+test("company brain classifies source mapping conflicts before retry", () => {
+  const hint = classifyAutomationIssueText("source_mapping_conflict: offer belongs to another request. request mismatch between offer_id and trello_card_id");
+
+  assert.equal(hint.key, "source_mapping_conflict");
+  assert.match(hint.rootCause, /Source-of-Truth/);
+  assert.match(hint.recommendedFix, /Offer-Bridge/);
+  assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
 test("company brain classifies missing asset processing failures", () => {
   const hint = classifyAutomationIssueText("attachment_download_failed: mockup image not found for offer asset");
 
@@ -1116,6 +1125,81 @@ test("company brain retry assessment blocks offer request mismatches before any 
   assert.ok(retry.safeFixes.some((fix) => /Offer-Bridge\/Request-Verknüpfung/.test(fix)));
   assert.equal(emailCorrection?.enabled, false);
   assert.equal(prepareEmailCorrection?.enabled, false);
+  assert.equal(guardedResend?.enabled, false);
+});
+
+test("company brain retry assessment blocks n8n source mapping conflicts", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-MAPPING",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "card-mapping",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-mapping",
+    requestId: "REQ-MAPPING",
+    offerNumber: "AN-5003",
+    documentReference: "AN-5003",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-mapping",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence: [],
+    question: "Wieso wurde das Angebot nicht rausgeschickt?",
+  });
+  const trelloFailureDiagnosis = retryDiagnosis();
+  trelloFailureDiagnosis.rootCause = "source_mapping_conflict: offer belongs to another request";
+  trelloFailureDiagnosis.recommendedFix = "Offer-Bridge und Request-ID prüfen.";
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence: [],
+    crossChecks,
+    trelloFailureDiagnosis,
+  });
+  const actions = actionProposalFixture({ retry });
+  const emailCorrection = actions.find((action) => action.key === "correct_customer_email");
+  const guardedResend = actions.find((action) => action.key === "guarded_offer_resend");
+
+  assert.equal(retry.status, "blocked");
+  assert.equal(retry.canSendWithConfirmation, false);
+  assert.ok(retry.blockers.some((blocker) => /Source-of-Truth/.test(blocker)));
+  assert.ok(retry.safeFixes.some((fix) => /Postgres/.test(fix)));
+  assert.equal(emailCorrection?.enabled, false);
   assert.equal(guardedResend?.enabled, false);
 });
 

@@ -227,6 +227,26 @@ test("workflow audit marks offer API failures as blocked", () => {
   assert.match(String(event.metadata.automation_issue_root_cause), /Offer-API|Angebotsanlage/);
 });
 
+test("workflow audit marks source mapping conflicts as blocked", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "blocked",
+    reason: "source_mapping_conflict: offer belongs to another request and trello_card_id mismatch",
+    request_id: "REQ-MAPPING",
+    offer_id: "offer-mapping",
+    card_id: "trello-card-mapping",
+    failed_node: "Resolve Source of Truth",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.customer_communication_sent, false);
+  assert.equal(event.metadata.automation_issue_key, "source_mapping_conflict");
+  assert.match(String(event.metadata.automation_issue_root_cause), /Source-of-Truth/);
+  assert.match(String(event.metadata.automation_issue_recommended_fix), /Offer-Bridge/);
+});
+
 test("workflow audit marks asset processing failures as blocked", () => {
   const event = normalizeWorkflowAuditEvent({
     workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",

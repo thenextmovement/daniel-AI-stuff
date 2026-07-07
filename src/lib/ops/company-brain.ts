@@ -2351,6 +2351,10 @@ export function buildCompanyBrainRetryAssessment(input: {
     blockers.push("Angebotsanlage oder Offer-API ist fehlgeschlagen.");
     safeFixes.push("Offer-Snapshot/Offer-Bridge reparieren; Versand erst danach neu bewerten.");
   }
+  if (automationIssueHint.key === "source_mapping_conflict") {
+    blockers.push("Angebot, Trello-Karte oder Kundenakte sind nicht eindeutig demselben Source-of-Truth-Fall zugeordnet.");
+    safeFixes.push("Offer-Bridge, Request-ID und Trello-Card-ID in Postgres prüfen; keinen E-Mail-Fix oder Resend auslösen.");
+  }
   if (automationIssueHint.key === "asset_processing_failed") {
     blockers.push("Design-/Anhang-Assets konnten nicht sicher verarbeitet werden.");
     safeFixes.push("Relevante Assets sichern oder neu verknüpfen; Angebot danach erneut prüfen.");

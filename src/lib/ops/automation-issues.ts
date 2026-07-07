@@ -6,6 +6,7 @@ export type AutomationIssueKey =
   | "ai_customer_copy_blocked"
   | "outlook_auth_failed"
   | "offer_api_failed"
+  | "source_mapping_conflict"
   | "asset_processing_failed"
   | "workflow_hard_error"
   | "duplicate_guard"
@@ -118,6 +119,17 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
       recommendedFix: "Offer-API-Response, Angebots-Snapshot, Offer-Bridge und Idempotency prüfen; erst danach Versandstatus oder Retry bewerten.",
       safeFix: "Angebotsanlage/Offer-Bridge reparieren und Fall erneut laden.",
       retrySafety: "Retry blockiert, bis ein eindeutiger Angebotssnapshot und fehlender Versandbeleg vorliegen.",
+    };
+  }
+  if (
+    /source[_\s-]*mapping[_\s-]*conflict|offer[_\s-]*request[_\s-]*mismatch|request[_\s-]*mismatch|card[_\s-]*mismatch|trello[_\s-]*card[_\s-]*mismatch|offer.{0,80}(belongs|geh[oö]rt|verkn[uü]pft).{0,80}(other|ander|falsch|request|card|trello)|(?:request|trello|card).{0,80}(mismatch|conflict|konflikt|passt nicht|abweich|ander)/i.test(text)
+  ) {
+    return {
+      key: "source_mapping_conflict",
+      rootCause: "Angebot, Trello-Karte oder Kundenakte sind nicht eindeutig auf denselben Source-of-Truth-Fall verknüpft.",
+      recommendedFix: "Offer-Bridge, Request-ID und Trello-Card-ID in Postgres prüfen und korrigieren; keinen E-Mail-Fix oder Angebots-Resend auslösen.",
+      safeFix: "Source-of-Truth-Verknüpfung in Postgres/Offer-Bridge reparieren und Fall neu laden.",
+      retrySafety: "Retry blockiert, bis Angebot, Kundenakte und Trello-Projektion eindeutig demselben Fall zugeordnet sind.",
     };
   }
   if (
