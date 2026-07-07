@@ -878,3 +878,73 @@ test("company brain retry assessment allows guarded resend when no hard blocker 
   assert.equal(retry.recipientEmail, "max@example.com");
   assert.equal(retry.idempotencyKey, "company-brain-offer-resend:offer-ready:max@example.com");
 });
+
+test("company brain retry assessment blocks resend when the send guard is unavailable", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-GUARD",
+    displayName: "Max Muster",
+    company: null,
+    email: "max@example.com",
+    phone: null,
+    status: "open",
+    title: "Schild",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "64b7f9e2aabbccddeeff0011",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-guard",
+    offerNumber: "AN-5003",
+    documentReference: "AN-5003",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "64b7f9e2aabbccddeeff0011",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence: [],
+    question: "Trello-Karte gezogen, Angebot nicht raus: warum?",
+  });
+  const trelloFailureDiagnosis = retryDiagnosis();
+  trelloFailureDiagnosis.rootCause = "NEONTRIP Quote Ready SIMPLE v1.1 ist bei Node \"Evaluate Guard\" fehlgeschlagen. send_guard_unavailable: invalid_guard_response";
+  trelloFailureDiagnosis.recommendedFix = "Keinen Angebotsversand wiederholen; Guard-/Supabase-Erreichbarkeit und bestehende Versandbelege prüfen.";
+  trelloFailureDiagnosis.blockedFixes = ["Retry blockiert, solange der Send-Guard keine eindeutige Freigabe liefert."];
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence: [],
+    crossChecks,
+    trelloFailureDiagnosis,
+  });
+
+  assert.equal(retry.status, "blocked");
+  assert.equal(retry.canSendWithConfirmation, false);
+  assert.ok(retry.blockers.some((blocker) => /Versand-Guard/.test(blocker)));
+  assert.ok(retry.safeFixes.some((fix) => /Guard-\/Supabase/.test(fix)));
+});

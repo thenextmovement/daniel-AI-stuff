@@ -245,14 +245,16 @@ async function setupRoutes(page) {
 }
 
 async function waitForBodyText(page, label, snippets) {
-  try {
-    await page.waitForFunction((expected) =>
-      expected.every((snippet) => document.body.innerText.includes(snippet)),
-    snippets);
-  } catch (error) {
-    const body = ((await page.textContent("body")) || "").replace(/\s+/g, " ").slice(0, 1400);
-    throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}. Body: ${body}`);
+  const deadline = Date.now() + 30000;
+  let body = "";
+  while (Date.now() < deadline) {
+    body = ((await page.textContent("body")) || "").replace(/\s+/g, " ");
+    const missing = snippets.filter((snippet) => !body.includes(snippet));
+    if (!missing.length) return;
+    await page.waitForTimeout(250);
   }
+  const missing = snippets.filter((snippet) => !body.includes(snippet));
+  throw new Error(`${label}: missing ${missing.join(", ")}. Body: ${body.slice(0, 1400)}`);
 }
 
 async function runViewport(browser, target, viewport, label) {
@@ -261,6 +263,12 @@ async function runViewport(browser, target, viewport, label) {
   await page.goto(`${target}/ops/company-brain`, { waitUntil: "networkidle" });
   await page.getByLabel(/Fall, E-Mail, Angebotsnummer, Trello-ID/).fill("https://trello.com/c/BiP93WuG/smoke");
   await page.getByRole("button", { name: "Suchen" }).click();
+  await waitForBodyText(page, `${label}: decision summary`, [
+    "Entscheidung",
+    "Kann nach Freigabe gelöst werden",
+    "Guarded Fix",
+    "Empfänger und Angebot im Fix Center prüfen",
+  ]);
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   await page.getByRole("button", { name: "Versand freigeben" }).click();
   await waitForBodyText(page, `${label}: confirmation panel`, ["Freigabe prüfen", "Diese Aktion kann Kundenkontakt auslösen"]);

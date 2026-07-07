@@ -228,6 +228,75 @@ function retryAssessmentLabel(status: string) {
   return "Nur prüfen";
 }
 
+function operatorDecisionClass(tone: "success" | "warning" | "danger" | "neutral") {
+  if (tone === "success") return "border-emerald-300 bg-emerald-50 text-emerald-950";
+  if (tone === "warning") return "border-amber-300 bg-amber-50 text-amber-950";
+  if (tone === "danger") return "border-rose-300 bg-rose-50 text-rose-950";
+  return "border-stone-200 bg-stone-50 text-stone-800";
+}
+
+function buildOperatorDecision(result: CompanyBrainResolveResult) {
+  const executableFixes = result.actionProposals.filter((action) => action.enabled && executableAction(action.key));
+  const dataFixAvailable = executableFixes.some((action) =>
+    ["correct_customer_email", "prepare_email_correction", "save_case_note", "create_internal_task"].includes(action.key),
+  );
+  const hasHardBlocker = result.retryAssessment.status === "blocked" || result.retryAssessment.blockers.length > 0;
+  const missingCoreSources = result.sourceHealth.filter((source) =>
+    ["customer_records", "outlook_mirror", "workflow_audit"].includes(source.key) && source.status !== "ok",
+  );
+
+  if (result.retryAssessment.canSendWithConfirmation) {
+    return {
+      tone: "success" as const,
+      title: "Kann nach Freigabe gelöst werden",
+      summary: "Der Fall hat genug Belege für einen guarded Fix. Der Server prüft Empfänger, Duplicate-Belege und Bounce-Signale direkt vor der Aktion erneut.",
+      steps: [
+        "Empfänger und Angebot im Fix Center prüfen.",
+        "Freigabe eingeben.",
+        "Guarded Action ausführen und danach Fall erneut laden.",
+      ],
+    };
+  }
+
+  if (dataFixAvailable && !hasHardBlocker) {
+    return {
+      tone: "warning" as const,
+      title: "Datenfix möglich, Versand noch nicht",
+      summary: "Company Brain kann interne Korrekturen oder Aufgaben vorbereiten. Kundenkontakt bleibt blockiert, bis die Kernchecks sauber sind.",
+      steps: [
+        "Belegte Datenkorrektur im Fix Center vorbereiten.",
+        "Fall danach neu prüfen.",
+        "Erst bei grünem Retry-Status senden.",
+      ],
+    };
+  }
+
+  if (hasHardBlocker) {
+    return {
+      tone: "danger" as const,
+      title: "Nicht automatisch lösen",
+      summary: "Es gibt harte Blocker. Company Brain darf den Fall erklären und intern sichern, aber keinen Kundenkontakt oder Retry auslösen.",
+      steps: result.retryAssessment.blockers.slice(0, 3),
+    };
+  }
+
+  if (missingCoreSources.length) {
+    return {
+      tone: "warning" as const,
+      title: "Erst Quellen vervollständigen",
+      summary: "Die Diagnose ist noch nicht beweisfest, weil mindestens eine Kernquelle fehlt oder nur teilweise verfügbar ist.",
+      steps: missingCoreSources.slice(0, 3).map((source) => `${source.label}: ${source.summary}`),
+    };
+  }
+
+  return {
+    tone: "neutral" as const,
+    title: "Nur Diagnose",
+    summary: "Es ist keine sichere ausführbare Aktion aus den geladenen Belegen ableitbar.",
+    steps: result.nextActions.slice(0, 3),
+  };
+}
+
 function evidenceScoreLabel(status: string) {
   if (status === "strong") return "stark belegt";
   if (status === "medium") return "teilweise belegt";
@@ -245,6 +314,19 @@ function actionGroupKey(action: CompanyBrainActionProposalView): CompanyBrainAct
   if (["prepare_email_correction", "correct_customer_email", "post_trello_status_comment"].includes(action.key)) return "fix";
   if (action.key === "guarded_offer_resend") return "customer";
   return "manual";
+}
+
+function executableAction(actionKey: string) {
+  return [
+    "open_problem_case",
+    "create_internal_task",
+    "save_case_note",
+    "prepare_email_correction",
+    "correct_customer_email",
+    "post_trello_status_comment",
+    "prepare_offer_retry",
+    "guarded_offer_resend",
+  ].includes(actionKey);
 }
 
 function actionStateLabel(action: CompanyBrainActionProposalView) {
@@ -323,6 +405,8 @@ export function OpsCompanyBrainClient({
         blockedFixes: [],
         sourceWarnings: [],
         decisionItems: [],
+        decision: null,
+        primaryRun: null,
       };
     }
     const readyActions = result.actionProposals
@@ -343,7 +427,16 @@ export function OpsCompanyBrainClient({
         .filter((check) => check.status === "fail" || check.status === "review")
         .map((check) => ({ key: `cross-${check.key}`, label: check.label, summary: check.summary, status: check.status })),
     ].slice(0, 5);
-    return { readyActions, blockedFixes, sourceWarnings, decisionItems };
+    const primaryRun = [...result.automationRuns]
+      .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
+    return {
+      readyActions,
+      blockedFixes,
+      sourceWarnings,
+      decisionItems,
+      decision: buildOperatorDecision(result),
+      primaryRun,
+    };
   }, [result]);
   const actionGroups = useMemo(() => {
     const proposals = result?.actionProposals || [];
@@ -459,19 +552,6 @@ export function OpsCompanyBrainClient({
     } catch {
       setActionCopyMessage("Kopieren nicht möglich.");
     }
-  }
-
-  function executableAction(actionKey: string) {
-    return [
-      "open_problem_case",
-      "create_internal_task",
-      "save_case_note",
-      "prepare_email_correction",
-      "correct_customer_email",
-      "post_trello_status_comment",
-      "prepare_offer_retry",
-      "guarded_offer_resend",
-    ].includes(actionKey);
   }
 
   function buildTrelloStatusComment() {
@@ -725,6 +805,28 @@ export function OpsCompanyBrainClient({
               <div className="grid gap-0 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
                 <div className="border-b border-stone-200 p-5 md:p-6 xl:border-b-0 xl:border-r">
                   <div className="grid gap-3">
+                    {operatorView.decision ? (
+                      <div className={`rounded-2xl border px-4 py-3 ${operatorDecisionClass(operatorView.decision.tone)}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Entscheidung</p>
+                            <h3 className="mt-2 text-lg font-semibold leading-6">{operatorView.decision.title}</h3>
+                            <p className="mt-2 text-sm leading-6 opacity-85">{operatorView.decision.summary}</p>
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold">
+                            {result.retryAssessment.canSendWithConfirmation ? "Guarded Fix" : result.retryAssessment.status}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-3">
+                          {(operatorView.decision.steps.length ? operatorView.decision.steps : ["Fall erneut mit konkreter Frage laden."]).slice(0, 3).map((step, index) => (
+                            <div key={`${index}-${step}`} className="rounded-xl border border-current/15 bg-white/45 px-3 py-2 text-xs leading-5">
+                              <span className="font-semibold">{index + 1}. </span>{step}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
                     <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
                       <div className="flex items-start gap-3">
                         {result.answer.verdict === "found" ? <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-emerald-600" /> : <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-amber-600" />}
@@ -776,6 +878,32 @@ export function OpsCompanyBrainClient({
                       <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Sicherer nächster Schritt</p>
                         <p className="mt-2 text-sm leading-6 text-stone-800">{result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Automation</p>
+                        <p className="mt-2 text-sm font-semibold text-stone-950">
+                          {operatorView.primaryRun?.status || result.trelloFailureDiagnosis.rootCauseKey || "unbekannt"}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-stone-500">
+                          {operatorView.primaryRun?.executionId ? `Execution ${operatorView.primaryRun.executionId}` : shortText(operatorView.primaryRun?.summary || result.trelloFailureDiagnosis.rootCause, 110)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Beweislage</p>
+                        <p className="mt-2 text-sm font-semibold text-stone-950">{result.evidenceScore.score}/100</p>
+                        <p className="mt-1 text-xs leading-5 text-stone-500">{result.evidenceScore.summary}</p>
+                      </div>
+                      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Kundenkontakt</p>
+                        <p className="mt-2 text-sm font-semibold text-stone-950">
+                          {result.retryAssessment.canSendWithConfirmation ? "nur guarded" : "gesperrt"}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-stone-500">
+                          {result.replyDraft.approvalRequired ? "Antwort/Versand bleibt freigabepflichtig." : "Kein Kundenkontakt vorbereitet."}
+                        </p>
                       </div>
                     </div>
                   </div>

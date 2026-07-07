@@ -2192,6 +2192,12 @@ export function buildCompanyBrainRetryAssessment(input: {
   const deliveryFailure = input.evidence.find(isOfferDeliveryFailureEvidence) || null;
   const deliveryFailureText = `${deliveryFailure?.title || ""} ${deliveryFailure?.detail || ""}`.toLowerCase();
   const deliveryFailureForRecipient = Boolean(deliveryFailure && recipientEmail && deliveryFailureText.includes(recipientEmail));
+  const automationIssueHint = classifyAutomationIssueText([
+    input.trelloFailureDiagnosis.rootCause,
+    input.trelloFailureDiagnosis.recommendedFix,
+    ...input.trelloFailureDiagnosis.blockedFixes,
+    ...input.trelloFailureDiagnosis.diagnostics,
+  ].join(" "));
   const blockers: string[] = [];
   const safeFixes: string[] = [];
 
@@ -2225,6 +2231,14 @@ export function buildCompanyBrainRetryAssessment(input: {
   if (offerSentCheck?.status === "pass") {
     blockers.push("Es gibt bereits einen Versand-/Ausgangsbeleg; keinen erneuten Versand auslösen.");
     safeFixes.push("Status-/Trello-Projektion und Fallnotiz prüfen, aber keinen Resend starten.");
+  }
+  if (automationIssueHint.key === "send_guard_unavailable") {
+    blockers.push("Versand-Guard hat keine eindeutige Freigabe geliefert.");
+    safeFixes.push("Guard-/Supabase-Erreichbarkeit und Versandbelege prüfen; danach Fall erneut laden.");
+  }
+  if (automationIssueHint.key === "duplicate_guard") {
+    blockers.push("Duplicate-/Idempotency-Schutz meldet möglichen bestehenden Versand.");
+    safeFixes.push("quote_email_log, Outlook und Offer-Status konsolidieren; keinen Resend starten.");
   }
 
   if (!safeFixes.length) {
