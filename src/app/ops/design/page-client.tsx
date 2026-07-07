@@ -311,6 +311,18 @@ export function DesignOpsClient({
     setPromptDraft(promptWithStudioConstraints(basePrompt, nextPreset, nextLightColorPreset, nextCustomLightColor));
   }
 
+  function selectReferenceAttachmentForEdit(attachmentId: string) {
+    setSelectedReferenceAttachmentId(attachmentId);
+    setSelectedReferenceAssetId("");
+    setJob(null);
+  }
+
+  function selectReferenceAssetForEdit(assetId: string) {
+    setSelectedReferenceAssetId(assetId);
+    setSelectedReferenceAttachmentId("");
+    setJob(null);
+  }
+
   function applyPromptPreset(nextPreset: MockupPresetKey) {
     applyPromptControls(nextPreset, lightColorPreset);
   }
@@ -346,36 +358,42 @@ export function DesignOpsClient({
     }
   }
 
-  async function savePromptDraft() {
+  async function createPromptDraft() {
     if (!workspace) return;
     if (promptDraft.trim().length < 40) {
       setError("Prompt ist zu kurz.");
       return;
     }
+    if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
+    const response = await fetch("/api/ops/design/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idempotencyKey: createClientActionId(),
+        query: workspace.query,
+        promptTitle: workspace.promptPreview.title,
+        promptText: promptDraft,
+        operatorName,
+        offerId: selectedOfferId || null,
+        referenceAttachmentIds: selectedReferenceAssetId ? [] : selectedReferenceAttachmentId ? [selectedReferenceAttachmentId] : [],
+        referenceAssetId: selectedReferenceAssetId || null,
+      }),
+    });
+    const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
+    if (!response.ok || !payload?.ok || !payload.job) throw new Error(formatApiError(payload));
+    setJob(payload.job);
+    void loadRecentJobs();
+    return payload.job;
+  }
+
+  async function savePromptDraft() {
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
-      const response = await fetch("/api/ops/design/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          idempotencyKey: createClientActionId(),
-          query: workspace.query,
-          promptTitle: workspace.promptPreview.title,
-          promptText: promptDraft,
-          operatorName,
-          offerId: selectedOfferId || null,
-          referenceAttachmentIds: selectedReferenceAssetId ? [] : selectedReferenceAttachmentId ? [selectedReferenceAttachmentId] : [],
-          referenceAssetId: selectedReferenceAssetId || null,
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
-      if (!response.ok || !payload?.ok || !payload.job) throw new Error(formatApiError(payload));
-      setJob(payload.job);
-      setMessage(`Draft gespeichert: ${payload.job.id.slice(0, 8)} · Prompt v${payload.job.promptVersion.versionNumber}`);
-      void loadRecentJobs();
+      const draft = await createPromptDraft();
+      if (!draft) return;
+      setMessage(`Draft gespeichert: ${draft.id.slice(0, 8)} · Prompt v${draft.promptVersion.versionNumber}`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Design-Draft konnte nicht gespeichert werden.");
     } finally {
@@ -407,12 +425,14 @@ export function DesignOpsClient({
   }
 
   async function generateSavedDraft() {
-    if (!job) return;
+    if (!workspace) return;
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/ops/design/jobs/${encodeURIComponent(job.id)}/generate`, {
+      const activeJob = job || (await createPromptDraft());
+      if (!activeJob) return;
+      const response = await fetch(`/api/ops/design/jobs/${encodeURIComponent(activeJob.id)}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idempotencyKey: createClientActionId(), operatorName }),
@@ -421,9 +441,9 @@ export function DesignOpsClient({
       if (!response.ok || !payload?.ok || !payload.result) throw new Error(formatApiError(payload));
       if (payload.result.asset?.id) {
         setSelectedAssetId(payload.result.asset.id);
-        setSelectedReferenceAssetId(payload.result.asset.id);
-        setSelectedReferenceAttachmentId("");
+        selectReferenceAssetForEdit(payload.result.asset.id);
       }
+      setJob(null);
       setMessage(`Mockup generiert${payload.result.asset?.name ? `: ${payload.result.asset.name}` : "."}`);
       void loadRecentJobs();
     } catch (generateError) {
@@ -486,8 +506,7 @@ export function DesignOpsClient({
           generatedCount += 1;
           if (generatePayload.result.asset?.id) {
             setSelectedAssetId(generatePayload.result.asset.id);
-            setSelectedReferenceAssetId(generatePayload.result.asset.id);
-            setSelectedReferenceAttachmentId("");
+            selectReferenceAssetForEdit(generatePayload.result.asset.id);
           }
 
           if (attachToTrelloAfterGenerate && generatePayload.result.asset?.id) {
@@ -860,10 +879,7 @@ export function DesignOpsClient({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setSelectedReferenceAttachmentId(asset.id);
-                                      setSelectedReferenceAssetId("");
-                                    }}
+                                    onClick={() => selectReferenceAttachmentForEdit(asset.id)}
                                     disabled={!["mockup", "reference", "image"].includes(asset.kind)}
                                     className={`flex items-center justify-between gap-2 border-r border-[#ece6dc] px-3 py-2 text-left disabled:opacity-40 ${selectedReferenceAttachmentId === asset.id ? "bg-stone-950 text-white" : ""}`}
                                   >
@@ -955,8 +971,7 @@ export function DesignOpsClient({
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setSelectedReferenceAssetId(asset.id);
-                                      setSelectedReferenceAttachmentId("");
+                                      selectReferenceAssetForEdit(asset.id);
                                     }}
                                     className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${selectedReferenceAssetId === asset.id ? "border-stone-950 bg-stone-950 text-white" : "border-[#ded8d0] text-stone-700"}`}
                                   >
@@ -1102,7 +1117,10 @@ export function DesignOpsClient({
                 ) : null}
                 <textarea
                   value={promptDraft}
-                  onChange={(event) => setPromptDraft(event.target.value)}
+                  onChange={(event) => {
+                    setPromptDraft(event.target.value);
+                    setJob(null);
+                  }}
                   placeholder="Prompt wird nach Suche geladen."
                   className="mt-4 min-h-[25rem] w-full resize-y rounded-[14px] border border-[#ded8d0] bg-[#fffdf9] p-3 font-mono text-xs leading-5 outline-none focus:border-stone-950"
                 />
@@ -1115,7 +1133,7 @@ export function DesignOpsClient({
                     <Send className="h-4 w-4" />
                     Generierung freigeben
                   </button>
-                  <button type="button" onClick={() => void generateSavedDraft()} disabled={busy || !job} className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-[#fffdf9] px-4 text-sm font-semibold text-stone-950 disabled:opacity-50">
+                  <button type="button" onClick={() => void generateSavedDraft()} disabled={busy || !workspace} className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-[#fffdf9] px-4 text-sm font-semibold text-stone-950 disabled:opacity-50">
                     <ImagePlus className="h-4 w-4" />
                     Jetzt generieren
                   </button>

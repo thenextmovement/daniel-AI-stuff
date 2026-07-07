@@ -48,8 +48,12 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Ausgangsbild/);
   assert.match(client, /setSelectedReferenceAttachmentId/);
   assert.match(client, /setSelectedReferenceAssetId/);
+  assert.match(client, /selectReferenceAttachmentForEdit/);
+  assert.match(client, /selectReferenceAssetForEdit/);
   assert.match(client, /selectedRecolorAttachmentIds/);
   assert.match(client, /toggleRecolorSelection/);
+  assert.match(client, /createPromptDraft/);
+  assert.match(client, /job \|\| \(await createPromptDraft\(\)\)/);
   assert.match(client, /Als Vorlage/);
   assert.match(client, /Farbe ändern \+ an Karte/);
   assert.match(client, /recolorSelectedAttachments/);
