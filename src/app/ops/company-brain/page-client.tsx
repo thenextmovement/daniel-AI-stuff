@@ -437,6 +437,9 @@ function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: Com
   const firstGap = result.gaps.find((finding) => finding.severity !== "info") || null;
   const firstBlocker = result.retryAssessment.blockers[0] || result.trelloFailureDiagnosis.blockedFixes[0] || criticalConflict?.detail || firstGap?.detail || null;
   const sourceOfTruth = buildSourceOfTruthStatus(result);
+  const primaryAutomationRun = result.automationRuns
+    .filter((run) => !isCompanyBrainFixRun(run))
+    .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
   const canSend = result.retryAssessment.canSendWithConfirmation;
   const needsFix = result.retryAssessment.status === "needs_fix";
   const blocked = result.retryAssessment.status === "blocked" || Boolean(criticalConflict);
@@ -457,9 +460,11 @@ function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: Com
   const cause = result.trelloFailureDiagnosis.requested && result.trelloFailureDiagnosis.rootCauseKey !== "not_requested"
     ? result.trelloFailureDiagnosis.rootCause
     : result.problemResolution.rootCause;
+  const auditSafeFix = primaryAutomationRun?.safeFix || result.retryAssessment.safeFixes[0] || null;
+  const auditRecommendedFix = primaryAutomationRun?.recommendedFix || result.trelloFailureDiagnosis.recommendedFix || null;
   const nextStep = primaryAction
     ? primaryAction.label
-    : result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution || result.nextActions[0] || "Fall mit konkreter Frage neu prüfen";
+    : auditSafeFix || auditRecommendedFix || result.problemResolution.recommendedResolution || result.nextActions[0] || "Fall mit konkreter Frage neu prüfen";
 
   return {
     tone: canSend ? "success" as const : needsFix ? "warning" as const : blocked ? "danger" as const : "neutral" as const,
@@ -472,6 +477,12 @@ function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: Com
     evidenceLine: `${result.evidenceScore.score}/100 · ${evidenceScoreLabel(result.evidenceScore.status)}`,
     sourceLine: sourceOfTruth.title,
     customerContactLine: canSend ? "Nur guarded nach Freigabe" : "Kein Kundenkontakt",
+    automationIssueKey: primaryAutomationRun?.issueKey || null,
+    automationExecutionLine: primaryAutomationRun?.executionId
+      ? `n8n Execution ${primaryAutomationRun.executionId}`
+      : primaryAutomationRun?.workflowName || null,
+    automationRecommendedFix: auditRecommendedFix,
+    automationSafeFix: auditSafeFix,
   };
 }
 
@@ -1262,6 +1273,26 @@ export function OpsCompanyBrainClient({
                       )}
                     </div>
                   </div>
+
+                  {(operatorView.brief.automationIssueKey || operatorView.brief.automationRecommendedFix || operatorView.brief.automationSafeFix) ? (
+                    <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                      <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Strukturierter Audit-Befund</p>
+                        <p className="mt-2 text-sm font-semibold leading-5 text-stone-950">{operatorView.brief.automationIssueKey || "Kein Issue-Code"}</p>
+                        {operatorView.brief.automationExecutionLine ? (
+                          <p className="mt-1 text-xs leading-5 text-stone-500">{operatorView.brief.automationExecutionLine}</p>
+                        ) : null}
+                      </div>
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Empfohlener Fix</p>
+                        <p className="mt-2 text-sm font-semibold leading-6">{operatorView.brief.automationRecommendedFix || "Kein strukturierter Fix im Audit."}</p>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Sicherer Fix</p>
+                        <p className="mt-2 text-sm font-semibold leading-6">{operatorView.brief.automationSafeFix || "Erst Belege vervollständigen."}</p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1354,6 +1385,22 @@ export function OpsCompanyBrainClient({
                             </dd>
                           </div>
                         </dl>
+                        {(operatorView.primaryRun?.issueKey || operatorView.primaryRun?.recommendedFix || operatorView.primaryRun?.safeFix) ? (
+                          <div className="mt-3 grid gap-2 text-xs md:grid-cols-3">
+                            <div className="rounded-xl border border-current/15 bg-white/40 px-3 py-2">
+                              <p className="opacity-65">Issue</p>
+                              <p className="mt-1 font-semibold">{operatorView.primaryRun?.issueKey || "unbekannt"}</p>
+                            </div>
+                            <div className="rounded-xl border border-current/15 bg-white/40 px-3 py-2">
+                              <p className="opacity-65">Empfohlener Fix</p>
+                              <p className="mt-1 font-semibold">{operatorView.primaryRun?.recommendedFix || result.trelloFailureDiagnosis.recommendedFix}</p>
+                            </div>
+                            <div className="rounded-xl border border-current/15 bg-white/40 px-3 py-2">
+                              <p className="opacity-65">Sicherer Fix</p>
+                              <p className="mt-1 font-semibold">{operatorView.primaryRun?.safeFix || result.retryAssessment.safeFixes[0] || "erst prüfen"}</p>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -2393,6 +2440,9 @@ export function OpsCompanyBrainClient({
                           {run.sourceEventId ? <span>Source Event: {run.sourceEventId}</span> : null}
                           {run.targetRecordId ? <span>Target: {run.targetRecordId}</span> : null}
                           {run.idempotencyKey ? <span>Idempotency: {run.idempotencyKey}</span> : null}
+                          {run.issueKey ? <span>Issue: {run.issueKey}</span> : null}
+                          {run.recommendedFix ? <span>Empfohlener Fix: {run.recommendedFix}</span> : null}
+                          {run.safeFix ? <span>Sicherer Fix: {run.safeFix}</span> : null}
                           {run.retrySafety ? <span>Retry-Sicherheit: {run.retrySafety}</span> : null}
                         </div>
                         {run.executionUrl ? (
