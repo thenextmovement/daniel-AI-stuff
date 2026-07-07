@@ -6,6 +6,7 @@ import {
   buildCompanyBrainRetryAssessment,
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
+  classifyAutomationIssueText,
   extractCompanyBrainIdentifiers,
   extractCompanyBrainSignals,
   normalizeCompanyBrainQuery,
@@ -69,6 +70,15 @@ test("company brain extracts color, 3d and design count signals from support que
   assert.equal(signals.designCount, 2);
   assert.equal(signals.mentions3d, true);
   assert.equal(signals.asksOfferSent, true);
+});
+
+test("company brain classifies invalid automation recipient email", () => {
+  const hint = classifyAutomationIssueText("Offer send failed: invalid customer_email praxis@kurswechsel");
+
+  assert.equal(hint.key, "customer_email_invalid");
+  assert.match(hint.rootCause, /praxis@kurswechsel/);
+  assert.match(hint.recommendedFix, /Kunden-E-Mail/);
+  assert.match(hint.retrySafety, /Kein Retry/);
 });
 
 test("company brain cross checks flag offer color and design mismatches", () => {
@@ -400,6 +410,70 @@ test("company brain prioritizes automation failures over missing customer record
   assert.equal(diagnosis.severity, "critical");
   assert.match(diagnosis.rootCause, /Angebot wurde nicht rausgeschickt/);
   assert.match(diagnosis.recommendedFix, /2770420/);
+});
+
+test("company brain explains automation failures caused by invalid customer email", () => {
+  const automationRuns: CompanyBrainAutomationRun[] = [{
+    id: "run-invalid-email",
+    workflowName: "Trello Triggerdiagnose",
+    action: "offer_send",
+    status: "failed",
+    error: "Offer send failed: invalid customer_email praxis@kurswechsel",
+    createdAt: "2026-07-06T07:41:13.408Z",
+    requestId: "REQ-1",
+    executionId: "2770420",
+    correlationId: "card-1",
+    sourceEventId: "action-1",
+    targetRecordId: null,
+    failedNode: "Offer Send",
+    idempotencyKey: null,
+    retrySafety: "Nur nach Duplicate-Check.",
+    summary: "Aus Trello rekonstruiert.",
+  }];
+  const diagnosis = buildTrelloFailureDiagnosis({
+    requested: true,
+    context: {
+      card: {
+        id: "card-1",
+        shortLink: "BiP93WuG",
+        name: "FEHLER - LED Flex",
+        desc: "Request-ID: REQ-1",
+        idBoard: null,
+        idList: null,
+        currentListName: "Quote Ready",
+        url: "https://trello.com/c/BiP93WuG",
+        shortUrl: "https://trello.com/c/BiP93WuG",
+        closed: false,
+        dateLastActivity: "2026-07-06T07:41:13.459Z",
+        createdAt: null,
+        customFields: {},
+        attachmentsCount: 0,
+      },
+      actions: [{
+        id: "action-1",
+        type: "updateCard",
+        date: "2026-07-06T07:41:13.408Z",
+        text: "FEHLER: Angebot nicht verschickt. Grund: invalid customer_email praxis@kurswechsel. Execution: 2770420",
+        fromListId: null,
+        fromListName: "Neue Angebote schicken + KI-Video",
+        toListId: null,
+        toListName: "Quote Ready",
+      }],
+    },
+    diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: null, count: 1 },
+    records: [],
+    offers: [],
+    crossChecks: [],
+    automationRuns,
+    question: "Warum wurde das Angebot nicht geschickt?",
+    problemType: "offer_not_sent",
+  });
+
+  assert.equal(diagnosis.rootCauseKey, "automation_failed");
+  assert.match(diagnosis.rootCause, /praxis@kurswechsel/);
+  assert.match(diagnosis.recommendedFix, /Korrekte Kunden-E-Mail/);
+  assert.ok(diagnosis.safeFixes.some((fix) => /Ungültige Kunden-E-Mail/.test(fix)));
+  assert.ok(diagnosis.blockedFixes.some((fix) => /Kein Retry an die alte Adresse/.test(fix)));
 });
 
 test("company brain retry assessment blocks resend after current recipient bounce", () => {
