@@ -7,26 +7,41 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+  "Vary": "Cookie, Cf-Access-Jwt-Assertion",
+};
+
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, {
+    ...init,
+    headers: {
+      ...NO_STORE_HEADERS,
+      ...(init?.headers || {}),
+    },
+  });
+}
+
 function unauthorized() {
-  return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  return jsonResponse({ ok: false, error: "unauthorized" }, { status: 401 });
 }
 
 function notConfigured() {
-  return NextResponse.json({ ok: false, error: "ops_not_configured" }, { status: 503 });
+  return jsonResponse({ ok: false, error: "ops_not_configured" }, { status: 503 });
 }
 
 function failureResponse(error: unknown) {
   if (error instanceof QuoteValidationError) {
-    return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
   }
   if (error instanceof SupabaseRestError) {
-    return NextResponse.json({ ok: false, error: error.message, details: error.details }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, details: error.details }, { status: error.status });
   }
   if (error instanceof OpsOfferApiError) {
-    return NextResponse.json({ ok: false, error: error.message, code: error.code, issues: error.issues }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, code: error.code, issues: error.issues }, { status: error.status });
   }
   console.error("ops company-brain route failed", error);
-  return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
+  return jsonResponse({ ok: false, error: "internal_error" }, { status: 500 });
 }
 
 function getOpsHost(request: NextRequest) {
@@ -49,7 +64,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as CompanyBrainResolveInput;
     const result = await resolveCompanyBrain(body);
-    return NextResponse.json({ ok: true, result });
+    return jsonResponse({ ok: true, result });
   } catch (error) {
     return failureResponse(error);
   }
@@ -65,7 +80,7 @@ export async function GET(request: NextRequest) {
       question: request.nextUrl.searchParams.get("question") || null,
       limit: Number(request.nextUrl.searchParams.get("limit") || 5),
     });
-    return NextResponse.json({ ok: true, result });
+    return jsonResponse({ ok: true, result });
   } catch (error) {
     return failureResponse(error);
   }

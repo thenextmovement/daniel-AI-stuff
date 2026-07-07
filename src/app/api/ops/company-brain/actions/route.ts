@@ -29,6 +29,21 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+  "Vary": "Cookie, Cf-Access-Jwt-Assertion",
+};
+
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, {
+    ...init,
+    headers: {
+      ...NO_STORE_HEADERS,
+      ...(init?.headers || {}),
+    },
+  });
+}
+
 type CompanyBrainActionKey =
   | "open_problem_case"
   | "create_internal_task"
@@ -98,28 +113,28 @@ const ALLOWED_SPECIAL_CASE_KINDS: CustomerSpecialCaseKind[] = [
 ];
 
 function unauthorized() {
-  return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  return jsonResponse({ ok: false, error: "unauthorized" }, { status: 401 });
 }
 
 function notConfigured() {
-  return NextResponse.json({ ok: false, error: "ops_not_configured" }, { status: 503 });
+  return jsonResponse({ ok: false, error: "ops_not_configured" }, { status: 503 });
 }
 
 function failureResponse(error: unknown) {
   if (error instanceof OpsOfferApiError) {
-    return NextResponse.json(
+    return jsonResponse(
       { ok: false, error: error.message, code: error.code, issues: error.issues },
       { status: error.status },
     );
   }
   if (error instanceof QuoteValidationError) {
-    return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
   }
   if (error instanceof SupabaseRestError) {
-    return NextResponse.json({ ok: false, error: error.message, details: error.details }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, details: error.details }, { status: error.status });
   }
   console.error("ops company-brain action route failed", error);
-  return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
+  return jsonResponse({ ok: false, error: "internal_error" }, { status: 500 });
 }
 
 function getOpsHost(request: NextRequest) {
@@ -477,7 +492,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({
+      return jsonResponse({
         ok: true,
         actionKey,
         requestId: record.requestId,
@@ -531,7 +546,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({
+      return jsonResponse({
         ok: true,
         actionKey,
         requestId: record.requestId,
@@ -603,7 +618,7 @@ export async function POST(request: NextRequest) {
           errorMessage: blockers.join(" "),
           blockers,
         });
-        return NextResponse.json(
+        return jsonResponse(
           {
             ok: false,
             actionKey,
@@ -687,7 +702,7 @@ export async function POST(request: NextRequest) {
         eventId: sendResult.eventId,
       });
 
-      return NextResponse.json({
+      return jsonResponse({
         ok: true,
         actionKey,
         requestId: record.requestId,
@@ -713,7 +728,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       ok: true,
       actionKey,
       requestId: record.requestId,
