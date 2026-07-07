@@ -48,14 +48,21 @@ test("secondary ops entry points expose Company Brain", () => {
   const loginSource = readFileSync("src/app/ops/ops-login-card.tsx", "utf8");
   const offersSource = readFileSync("src/app/ops/offers/page.tsx", "utf8");
   const designSource = readFileSync("src/app/ops/design/page-client.tsx", "utf8");
+  const companyBrainSource = readFileSync("src/app/ops/company-brain/page-client.tsx", "utf8");
 
   assert.match(managementSource, /\/ops\/company-brain/);
   assert.match(managementSource, /Fälle & Belege prüfen/);
   assert.match(loginSource, /Company Brain/);
   assert.match(offersSource, /OpsPageHeader active="offers"/);
   assert.match(offersSource, /\/ops\/company-brain/);
+  assert.match(offersSource, /name="query"/);
+  assert.match(offersSource, /name="auto" value="1"/);
+  assert.match(offersSource, /problemType" value="offer_not_sent"/);
   assert.match(designSource, /OpsPageHeader active="design"/);
   assert.match(designSource, /\/ops\/company-brain/);
+  assert.match(companyBrainSource, /new URLSearchParams\(window\.location\.search\)/);
+  assert.match(companyBrainSource, /params\.get\("query"\)/);
+  assert.match(companyBrainSource, /params\.get\("auto"\) === "1"/);
 });
 
 test("company brain fix center groups risky actions and avoids browser prompts", () => {

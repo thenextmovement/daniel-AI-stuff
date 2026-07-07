@@ -35,14 +35,33 @@ export default function OpsOffersPage() {
           </OpsPageIntro>
 
           <section className="grid gap-4 md:grid-cols-2">
-            <a
-              href="/ops/company-brain"
-              className="rounded-[18px] border border-stone-200 bg-white p-5 text-stone-950 shadow-[0_12px_34px_rgba(20,16,12,0.06)] transition hover:border-stone-300"
+            <form
+              action="/ops/company-brain"
+              method="get"
+              className="rounded-[18px] border border-stone-200 bg-white p-5 text-stone-950 shadow-[0_12px_34px_rgba(20,16,12,0.06)]"
             >
               <SearchCheck className="h-5 w-5 text-stone-500" />
               <h2 className="mt-4 text-base font-semibold">Company Brain</h2>
-              <p className="mt-2 text-sm leading-6 text-stone-600">Angebotsfall, Trello-Link, Kunde oder Problem prüfen.</p>
-            </a>
+              <p className="mt-2 text-sm leading-6 text-stone-600">Trello-Link, Angebotsnummer, Request-ID oder E-Mail direkt prüfen.</p>
+              <input type="hidden" name="question" value="Trello-Karte gezogen, aber Angebot nicht raus: warum?" />
+              <input type="hidden" name="problemType" value="offer_not_sent" />
+              <input type="hidden" name="auto" value="1" />
+              <label className="mt-4 grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Fallprüfung</span>
+                <input
+                  name="query"
+                  className="h-11 rounded-[0.65rem] border border-stone-300 px-3 text-sm outline-none focus:border-stone-950"
+                  placeholder="Trello-Link, AN-14427 oder Request-ID"
+                />
+              </label>
+              <button
+                type="submit"
+                className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800"
+              >
+                Fall prüfen
+                <ArrowUpRight className="h-4 w-4" />
+              </button>
+            </form>
 
             <a
               href={OFFERS_ADMIN_URL}

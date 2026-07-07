@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -117,6 +117,23 @@ const DEFAULT_OFFER_RETRY_MESSAGE = [
   "Viele Grüße",
   "NEONTRIP",
 ].join("\n");
+
+function normalizeInitialProblemType(value: string | null): CompanyBrainProblemType | "" {
+  if (
+    value === "color_dispute" ||
+    value === "damaged_sign" ||
+    value === "offer_not_sent" ||
+    value === "customer_waiting" ||
+    value === "design_unclear" ||
+    value === "delivery_problem" ||
+    value === "payment_order_unclear" ||
+    value === "automation_failed" ||
+    value === "other"
+  ) {
+    return value;
+  }
+  return "";
+}
 
 function checkClass(status: string) {
   if (status === "verified") return "border-emerald-200 bg-emerald-50 text-emerald-900";
@@ -499,6 +516,7 @@ export function OpsCompanyBrainClient({
   const [pendingNewCustomerEmail, setPendingNewCustomerEmail] = useState("");
   const [pendingConfirmationText, setPendingConfirmationText] = useState("");
   const sharedOperatorNameKey = "neontrip-ops-operator";
+  const initialUrlHandled = useRef(false);
 
   useEffect(() => {
     try {
@@ -630,15 +648,19 @@ export function OpsCompanyBrainClient({
     setToken("");
   }
 
-  async function resolve(event?: FormEvent) {
-    event?.preventDefault();
+  async function resolveWith(values: { query: string; question: string; problemType: CompanyBrainProblemType | "" }) {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/ops/company-brain/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, question, problemType: problemType || null, limit: 5 }),
+        body: JSON.stringify({
+          query: values.query,
+          question: values.question,
+          problemType: values.problemType || null,
+          limit: 5,
+        }),
       });
       const payload = (await response.json().catch(() => null)) as ResolveApiResponse | null;
       if (response.status === 401) {
@@ -663,6 +685,31 @@ export function OpsCompanyBrainClient({
       setLoading(false);
     }
   }
+
+  async function resolve(event?: FormEvent) {
+    event?.preventDefault();
+    await resolveWith({ query, question, problemType });
+  }
+
+  useEffect(() => {
+    if (initialUrlHandled.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const initialQuery = params.get("query") || params.get("q") || "";
+    const initialQuestion = params.get("question") || "";
+    const initialProblemType = normalizeInitialProblemType(params.get("problemType"));
+    const autoRun = params.get("auto") === "1";
+    if (initialQuery) setQuery(initialQuery);
+    if (initialQuestion) setQuestion(initialQuestion);
+    if (initialProblemType) setProblemType(initialProblemType);
+    if (!autoRun) {
+      initialUrlHandled.current = true;
+      return;
+    }
+    if (initialQuery.trim().length >= 2 && (hasSession || localMode || !opsEnabled)) {
+      initialUrlHandled.current = true;
+      void resolveWith({ query: initialQuery, question: initialQuestion, problemType: initialProblemType });
+    }
+  }, [hasSession, localMode, opsEnabled]);
 
   async function copyDossier() {
     if (!result?.dossier.copyText) return;
