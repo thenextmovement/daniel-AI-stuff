@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractTrelloMockupPromptBlocks } from "@/lib/ops/design";
+import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks } from "@/lib/ops/design";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -51,12 +51,15 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /selectReferenceAttachmentForEdit/);
   assert.match(client, /selectReferenceAssetForEdit/);
   assert.match(client, /selectedRecolorAttachmentIds/);
+  assert.match(client, /selectedColorAttachmentIds/);
   assert.match(client, /toggleRecolorSelection/);
+  assert.match(client, /selectAttachmentForRecolor/);
   assert.match(client, /createPromptDraft/);
   assert.match(client, /job \|\| \(await createPromptDraft\(\)\)/);
   assert.match(client, /Als Vorlage/);
-  assert.match(client, /Farbe ändern \+ an Karte/);
+  assert.match(client, /Farbe ändern \+ ersetzen/);
   assert.match(client, /recolorSelectedAttachments/);
+  assert.match(client, /replacementAttachmentId/);
   assert.match(client, /Generiertes KI-Mockup wird als Image-Edit-Vorlage genutzt/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
@@ -103,6 +106,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
 
   assert.match(trelloAttachRoute, /attachDesignAssetToTrello/);
   assert.match(trelloAttachRoute, /hasOpsSession/);
+  assert.match(trelloAttachRoute, /replacementAttachmentId/);
 
   assert.match(offerLinksRoute, /linkDesignAssetToOffer/);
   assert.match(offerLinksRoute, /OpsOfferApiError/);
@@ -143,6 +147,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /prepareDesignRemovalPlan/);
   assert.match(service, /applyDesignRemovalPlan/);
   assert.match(service, /attachDesignAssetToTrello/);
+  assert.match(service, /archiveMockupAttachmentName/);
+  assert.match(service, /renameTrelloCardAttachment/);
+  assert.match(service, /trello_replacement_archived_name/);
   assert.match(service, /linkDesignAssetToOffer/);
   assert.match(service, /crm_quote_version_images/);
   assert.match(service, /getOrCreateCrmQuoteVersionImage/);
@@ -171,6 +178,13 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(operationsDoc, /Offer-Link/);
   assert.match(workflowPlan, /max 30 nodes|Node Structure/);
   assert.match(workflowPlan, /No credential value belongs in workflow JSON/);
+});
+
+test("design ops archives replaced Trello mockup names outside mockup detection", () => {
+  assert.equal(archiveMockupAttachmentName("Mockup01.jpg"), "alte_Vorschaubilder01.jpg");
+  assert.equal(archiveMockupAttachmentName("Mockup 02.webp"), "alte_Vorschaubilder 02.webp");
+  assert.equal(archiveMockupAttachmentName("MOC AB 03.png"), "alte_Vorschaubilder 03.png");
+  assert.equal(archiveMockupAttachmentName("Referenz.jpg"), "alte_Vorschaubilder_Referenz.jpg");
 });
 
 test("design ops extracts the same Trello prompt markers used by quote-ready mockups", () => {

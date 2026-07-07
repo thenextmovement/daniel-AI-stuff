@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
-import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloList, searchTrelloCards } from "@/lib/quotes/trello";
+import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloList, renameTrelloCardAttachment, searchTrelloCards } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { getOfferById, patchOfferById, type OpsOfferPatchResult } from "@/lib/ops/offers";
@@ -142,6 +142,8 @@ export type DesignTrelloAttachResult = {
   asset: DesignAssetSummary;
   trelloAttachmentId: string;
   trelloAttachmentUrl: string | null;
+  replacedAttachmentId?: string | null;
+  archivedAttachmentName?: string | null;
 };
 
 export type DesignRemovalApplyResult = {
@@ -341,6 +343,17 @@ function stableHash(value: string) {
 
 function stableActionKey(prefix: string, parts: Array<string | null | undefined>) {
   return `${prefix}:${stableHash(parts.map((part) => trimNullable(part) || "-").join("|")).slice(0, 32)}`;
+}
+
+export function archiveMockupAttachmentName(name: string) {
+  const normalized = String(name || "").trim();
+  if (!normalized) return "alte_Vorschaubilder.png";
+  const archived = normalized
+    .replace(/^mockup/i, "alte_Vorschaubilder")
+    .replace(/^moc[\s_-]*ab/i, "alte_Vorschaubilder")
+    .replace(/^mocab/i, "alte_Vorschaubilder");
+  if (archived !== normalized) return archived;
+  return `alte_Vorschaubilder_${normalized}`;
 }
 
 function slugPathPart(value: unknown, fallback: string) {
@@ -1142,6 +1155,7 @@ export async function attachDesignAssetToTrello(input: {
   jobId: string;
   assetId?: string | null;
   operatorName?: string | null;
+  replacementAttachmentId?: string | null;
 }): Promise<DesignTrelloAttachResult> {
   const job = await getDesignJob(input.jobId);
   const asset = input.assetId ? await getDesignAsset(input.assetId) : await latestGeneratedAssetForJob(job.id);
@@ -1149,20 +1163,50 @@ export async function attachDesignAssetToTrello(input: {
   if (!job.trello_card_id) throw new QuoteValidationError("Design-Job hat keine Trello-Karte.");
   if (!asset.public_url) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer Trello.");
 
+  const replacementAttachmentId = trimNullable(input.replacementAttachmentId);
+  const replacementReference = replacementAttachmentId
+    ? referenceAttachmentsFromJob(job).find((reference) => reference.attachmentId === replacementAttachmentId) || null
+    : null;
+  if (replacementAttachmentId && !replacementReference) {
+    throw new QuoteValidationError("Der zu ersetzende Trello-Anhang gehoert nicht zu diesem Design-Job.");
+  }
+  const replacementAttachment = replacementReference
+    ? await getTrelloAttachment(replacementReference.cardId, replacementReference.attachmentId)
+    : null;
+  const replacementName = replacementAttachment ? attachmentName(replacementAttachment) || replacementReference?.name || replacementAttachment.id : null;
+  const archivedReplacementName = replacementName ? archiveMockupAttachmentName(replacementName) : null;
+
   if (asset.trello_attachment_id) {
+    if (replacementAttachment && archivedReplacementName) {
+      await renameTrelloCardAttachment({
+        cardId: replacementReference?.cardId || job.trello_card_id,
+        attachmentId: replacementAttachment.id,
+        name: archivedReplacementName,
+      });
+    }
     return {
       job: mapDesignJobSummary(job),
       asset: mapDesignAssetSummary(asset),
       trelloAttachmentId: asset.trello_attachment_id,
       trelloAttachmentUrl: null,
+      replacedAttachmentId: replacementAttachment?.id || null,
+      archivedAttachmentName: archivedReplacementName,
     };
   }
 
+  const attachmentNameForUpload = replacementName || asset.name || "NEONTRIP Design Mockup";
   const attachment = await addTrelloCardAttachment({
     cardId: job.trello_card_id,
     url: asset.public_url,
-    name: asset.name || "NEONTRIP Design Mockup",
+    name: attachmentNameForUpload,
   });
+  if (replacementAttachment && archivedReplacementName) {
+    await renameTrelloCardAttachment({
+      cardId: replacementReference?.cardId || job.trello_card_id,
+      attachmentId: replacementAttachment.id,
+      name: archivedReplacementName,
+    });
+  }
   const now = new Date().toISOString();
   const updatedAssets = await supabaseRequest<DesignAssetRow[]>(
     "design_assets",
@@ -1171,11 +1215,15 @@ export async function attachDesignAssetToTrello(input: {
       body: JSON.stringify({
         status: "attached_to_trello",
         trello_attachment_id: attachment.id,
+        name: attachmentNameForUpload,
         updated_at: now,
         metadata: {
           ...(asset.metadata || {}),
           trello_attached_by: trimNullable(input.operatorName),
           trello_attached_at: now,
+          trello_replacement_attachment_id: replacementAttachment?.id || null,
+          trello_replacement_original_name: replacementName,
+          trello_replacement_archived_name: archivedReplacementName,
         },
       }),
       headers: { Prefer: "return=representation" },
@@ -1195,6 +1243,9 @@ export async function attachDesignAssetToTrello(input: {
           ...(job.metadata || {}),
           trello_attachment_id: attachment.id,
           trello_attached_by: trimNullable(input.operatorName),
+          trello_replacement_attachment_id: replacementAttachment?.id || null,
+          trello_replacement_original_name: replacementName,
+          trello_replacement_archived_name: archivedReplacementName,
         },
       }),
       headers: { Prefer: "return=representation" },
@@ -1204,7 +1255,9 @@ export async function attachDesignAssetToTrello(input: {
 
   await addTrelloCardComment({
     cardId: job.trello_card_id,
-    text: `NEONTRIP Design-Ops: neues Mockup angehaengt (${updatedAssets[0]?.name || asset.name || asset.id}).`,
+    text: replacementAttachment && archivedReplacementName
+      ? `NEONTRIP Design-Ops: Mockup ersetzt. Neu: ${attachmentNameForUpload}. Alt umbenannt zu ${archivedReplacementName}.`
+      : `NEONTRIP Design-Ops: neues Mockup angehaengt (${updatedAssets[0]?.name || asset.name || asset.id}).`,
   }).catch((error) => console.warn("design trello comment skipped", { jobId: job.id, error }));
 
   return {
@@ -1212,6 +1265,8 @@ export async function attachDesignAssetToTrello(input: {
     asset: mapDesignAssetSummary(updatedAssets[0] || { ...asset, status: "attached_to_trello", trello_attachment_id: attachment.id }),
     trelloAttachmentId: attachment.id,
     trelloAttachmentUrl: trimNullable(attachment.url),
+    replacedAttachmentId: replacementAttachment?.id || null,
+    archivedAttachmentName: archivedReplacementName,
   };
 }
 

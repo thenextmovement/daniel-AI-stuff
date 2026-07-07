@@ -463,6 +463,34 @@ export async function deleteTrelloCardAttachment(input: {
   }
 }
 
+export async function renameTrelloCardAttachment(input: {
+  cardId: string;
+  attachmentId: string;
+  name: string;
+}) {
+  const { key, token } = trelloConfig();
+  const nextName = String(input.name || "").trim();
+  if (!nextName) throw new Error("Trello Attachment-Name fehlt.");
+
+  const url = new URL(
+    `https://api.trello.com/1/cards/${encodeURIComponent(input.cardId)}/attachments/${encodeURIComponent(input.attachmentId)}`,
+  );
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+  url.searchParams.set("name", nextName);
+
+  const response = await fetch(url.toString(), {
+    method: "PUT",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Attachment konnte nicht umbenannt werden: ${response.status}`);
+  }
+
+  return (await response.json()) as TrelloAttachment;
+}
+
 export async function addTrelloCardComment(input: {
   cardId: string;
   text: string;

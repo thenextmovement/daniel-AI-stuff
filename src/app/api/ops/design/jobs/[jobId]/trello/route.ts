@@ -44,11 +44,13 @@ export async function POST(
     const body = (await request.json().catch(() => ({}))) as {
       assetId?: string | null;
       operatorName?: string | null;
+      replacementAttachmentId?: string | null;
     };
     const result = await attachDesignAssetToTrello({
       jobId,
       assetId: body.assetId || null,
       operatorName: body.operatorName || null,
+      replacementAttachmentId: body.replacementAttachmentId || null,
     });
     return NextResponse.json({ ok: true, result });
   } catch (error) {

@@ -45,6 +45,8 @@ type DesignApiResponse = {
     asset?: DesignAssetSummary;
     job?: DesignJobSummary;
     trelloAttachmentId?: string;
+    replacedAttachmentId?: string | null;
+    archivedAttachmentName?: string | null;
     removalPlan?: DesignRemovalPlan;
     deleted?: number;
     failed?: Array<{ attachmentId: string; error: string }>;
@@ -301,6 +303,19 @@ export function DesignOpsClient({
     () => generatedAssets.find((asset) => asset.id === selectedReferenceAssetId) || null,
     [generatedAssets, selectedReferenceAssetId],
   );
+  const colorSelectableAttachmentIds = useMemo(() => {
+    return new Set(
+      (workspace?.cards || [])
+        .flatMap((card) => card.attachments)
+        .filter((attachment) => ["mockup", "reference", "image"].includes(attachment.kind))
+        .map((attachment) => attachment.id),
+    );
+  }, [workspace]);
+  const selectedColorAttachmentIds = useMemo(() => {
+    const explicit = selectedRecolorAttachmentIds.filter((attachmentId) => colorSelectableAttachmentIds.has(attachmentId));
+    if (explicit.length) return explicit;
+    return selectedAttachmentIds.filter((attachmentId) => colorSelectableAttachmentIds.has(attachmentId));
+  }, [colorSelectableAttachmentIds, selectedAttachmentIds, selectedRecolorAttachmentIds]);
 
   function applyPromptControls(nextPreset: MockupPresetKey, nextLightColorPreset: LightColorPresetKey, nextCustomLightColor = customLightColor) {
     if (!workspace) return;
@@ -453,9 +468,9 @@ export function DesignOpsClient({
     }
   }
 
-  async function recolorSelectedAttachments(attachToTrelloAfterGenerate: boolean) {
+  async function recolorSelectedAttachments(replaceTrelloAfterGenerate: boolean) {
     if (!workspace) return;
-    if (!selectedRecolorAttachmentIds.length) {
+    if (!selectedColorAttachmentIds.length) {
       setError("Bitte mindestens ein Mockup für Farbe auswählen.");
       return;
     }
@@ -473,11 +488,11 @@ export function DesignOpsClient({
     setError(null);
     setMessage(null);
     let generatedCount = 0;
-    let attachedCount = 0;
+    let replacedCount = 0;
     const failures: string[] = [];
     try {
       if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
-      for (const attachmentId of selectedRecolorAttachmentIds) {
+      for (const attachmentId of selectedColorAttachmentIds) {
         try {
           const draftResponse = await fetch("/api/ops/design/jobs", {
             method: "POST",
@@ -509,15 +524,15 @@ export function DesignOpsClient({
             selectReferenceAssetForEdit(generatePayload.result.asset.id);
           }
 
-          if (attachToTrelloAfterGenerate && generatePayload.result.asset?.id) {
+          if (replaceTrelloAfterGenerate && generatePayload.result.asset?.id) {
             const attachResponse = await fetch(`/api/ops/design/jobs/${encodeURIComponent(draftPayload.job.id)}/trello`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ assetId: generatePayload.result.asset.id, operatorName }),
+              body: JSON.stringify({ assetId: generatePayload.result.asset.id, operatorName, replacementAttachmentId: attachmentId }),
             });
             const attachPayload = (await attachResponse.json().catch(() => null)) as DesignApiResponse | null;
             if (!attachResponse.ok || !attachPayload?.ok) throw new Error(formatApiError(attachPayload));
-            attachedCount += 1;
+            replacedCount += 1;
           }
         } catch (itemError) {
           failures.push(itemError instanceof Error ? itemError.message : "Farbänderung fehlgeschlagen.");
@@ -525,13 +540,14 @@ export function DesignOpsClient({
       }
 
       setMessage(
-        attachToTrelloAfterGenerate
-          ? `Farbänderung abgeschlossen: ${generatedCount} generiert, ${attachedCount} an Trello angehängt${failures.length ? `, ${failures.length} Fehler` : ""}.`
+        replaceTrelloAfterGenerate
+          ? `Farbänderung abgeschlossen: ${generatedCount} generiert, ${replacedCount} in Trello ersetzt${failures.length ? `, ${failures.length} Fehler` : ""}.`
           : `Farbänderung abgeschlossen: ${generatedCount} generiert${failures.length ? `, ${failures.length} Fehler` : ""}.`,
       );
       setSelectedRecolorAttachmentIds([]);
+      setSelectedAttachmentIds([]);
       void loadRecentJobs();
-      if (attachToTrelloAfterGenerate) void searchDesignWorkspace(workspace.query);
+      if (replaceTrelloAfterGenerate) void searchDesignWorkspace(workspace.query);
       if (failures.length) setError(failures.slice(0, 2).join(" "));
     } finally {
       setBusy(false);
@@ -683,6 +699,11 @@ export function DesignOpsClient({
     );
   }
 
+  function selectAttachmentForRecolor(attachmentId: string) {
+    selectReferenceAttachmentForEdit(attachmentId);
+    toggleRecolorSelection(attachmentId);
+  }
+
   if (!opsEnabled) {
     return (
       <main className={opsPageShellClass}>
@@ -809,16 +830,23 @@ export function DesignOpsClient({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h2 className="text-lg font-semibold">Trello Assets</h2>
-                        <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
-                          <ShieldCheck className="h-3.5 w-3.5" />
-                          Backup vor Delete
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Backup vor Delete
+                          </span>
+                          {selectedColorAttachmentIds.length ? (
+                            <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                              {selectedColorAttachmentIds.length} für Farbe gewählt
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => void recolorSelectedAttachments(false)}
-                          disabled={busy || !selectedRecolorAttachmentIds.length}
+                          disabled={busy || !selectedColorAttachmentIds.length}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >
                           <Palette className="h-4 w-4" />
@@ -827,11 +855,11 @@ export function DesignOpsClient({
                         <button
                           type="button"
                           onClick={() => void recolorSelectedAttachments(true)}
-                          disabled={busy || !selectedRecolorAttachmentIds.length}
+                          disabled={busy || !selectedColorAttachmentIds.length}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           <UploadCloud className="h-4 w-4" />
-                          Farbe ändern + an Karte
+                          Farbe ändern + ersetzen
                         </button>
                         <button
                           type="button"
@@ -888,11 +916,12 @@ export function DesignOpsClient({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => toggleRecolorSelection(asset.id)}
+                                    onClick={() => selectAttachmentForRecolor(asset.id)}
                                     disabled={!["mockup", "reference", "image"].includes(asset.kind)}
+                                    title="Für Farbänderung markieren"
                                     className={`flex items-center justify-between gap-2 px-3 py-2 text-left disabled:opacity-40 ${selectedRecolorAttachmentIds.includes(asset.id) ? "bg-stone-950 text-white" : ""}`}
                                   >
-                                    <span>Farbe</span>
+                                    <span>{selectedRecolorAttachmentIds.includes(asset.id) ? "Gewählt" : "Farbe"}</span>
                                     {selectedRecolorAttachmentIds.includes(asset.id) ? <CheckSquare className="h-4 w-4" /> : <Palette className="h-4 w-4" />}
                                   </button>
                                 </div>
