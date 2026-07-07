@@ -1423,6 +1423,8 @@ test("company brain action proposals enable internal tasks once per case", () =>
 
   assert.equal(task?.enabled, true);
   assert.match(task?.summary || "", /interne Aufgabe/i);
+  assert.match(task?.payloadPreview.join("\n") || "", /Blocker: Kein eindeutiger Versandbeleg/);
+  assert.match(task?.payloadPreview.join("\n") || "", /Sicherer Fix: Interne Aufgabe mit Belegen/);
 
   const duplicateActions = actionProposalFixture({
     retry,

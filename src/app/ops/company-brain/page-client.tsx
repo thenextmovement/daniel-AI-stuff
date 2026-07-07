@@ -982,6 +982,14 @@ export function OpsCompanyBrainClient({
     setActionLoadingKey(actionKey);
     setActionResultMessage(null);
     try {
+      const actionDescription = [
+        result.problemResolution.internalTaskDescription,
+        "",
+        "Action Center:",
+        `Aktion: ${action.label}`,
+        action.summary,
+        ...action.payloadPreview,
+      ].filter(Boolean).join("\n");
       const response = await fetch("/api/ops/company-brain/actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -991,7 +999,7 @@ export function OpsCompanyBrainClient({
           problemType: result.problemResolution.problemType,
           specialCaseKind: result.problemResolution.specialCaseKind,
           title: result.problemResolution.internalTaskTitle,
-          description: result.problemResolution.internalTaskDescription,
+          description: actionDescription,
           note: result.dossier.copyText,
           operatorName,
           assigneeLabel: operatorName || null,

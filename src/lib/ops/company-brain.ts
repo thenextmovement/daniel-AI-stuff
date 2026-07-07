@@ -3227,6 +3227,11 @@ export function buildActionProposals(input: {
   const retryBlockerText = `${retry.summary} ${retry.blockers.join(" ")} ${retry.safeFixes.join(" ")}`;
   const emailCorrectionAllowed = retry.status === "needs_fix" &&
     /e-mail|email|empfänger|postfach|bounce|zustell|adresse|kunden-e-mail|ungültig|unvollständig/i.test(retryBlockerText);
+  const internalTaskPreview = uniqueStrings([
+    ...openWatcherTitles.map((title) => `Offen: ${title}`),
+    ...retry.blockers.slice(0, 4).map((entry) => `Blocker: ${entry}`),
+    ...retry.safeFixes.slice(0, 3).map((entry) => `Sicherer Fix: ${entry}`),
+  ]);
   const trelloCardId = input.trelloFailureDiagnosis.card?.id || primaryRecord?.trelloCardId || primaryOffer?.trelloCardId || null;
   const latestFixRun = (actionKey: CompanyBrainActionProposal["key"]) =>
     companyBrainFixRuns.find((run) => run.action === actionKey) || null;
@@ -3309,18 +3314,20 @@ export function buildActionProposals(input: {
       key: "create_internal_task",
       label: "Interne Aufgabe vorbereiten",
       type: "prepared_task",
-      riskLevel: openWatcherTitles.length ? "medium" : "low",
+      riskLevel: openWatcherTitles.length || retry.blockers.length ? "medium" : "low",
       approvalRequired: true,
       enabled: Boolean(primaryRecord && !internalTaskCreated),
       summary: internalTaskCreated
         ? `Interne Aufgabe wurde bereits vorbereitet.${fixRunSuffix(internalTaskCreated)}`
-        : "Legt nach Freigabe eine interne Aufgabe aus offenen Watchern und Fallbelegen an. Kein Kundenkontakt.",
+        : retry.blockers.length
+          ? "Legt nach Freigabe eine interne Aufgabe mit Retry-Blockern und sicheren Fix-Schritten an. Kein Kundenkontakt."
+          : "Legt nach Freigabe eine interne Aufgabe aus offenen Watchern und Fallbelegen an. Kein Kundenkontakt.",
       confirmationText: "Vor dem Anlegen Assignee, Priorität und Fälligkeit prüfen.",
       href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
       payloadPreview: [
         `Request: ${primaryRecord?.requestId || "unbekannt"}`,
         `Titel: Company-Brain-Prüfung ${primaryOffer?.offerNumber || primaryRecord?.requestId || ""}`.trim(),
-        ...openWatcherTitles.map((title) => `Offen: ${title}`),
+        ...internalTaskPreview,
       ],
     },
     {

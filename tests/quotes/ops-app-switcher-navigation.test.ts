@@ -81,6 +81,8 @@ test("company brain fix center groups risky actions and avoids browser prompts",
   assert.match(source, /Ursache in Klartext/);
   assert.match(source, /Erlaubter nächster Schritt/);
   assert.match(source, /Direktaktion/);
+  assert.match(source, /Action Center:/);
+  assert.match(source, /action\.payloadPreview/);
   assert.match(source, /Benötigte Runtime-Variablen/);
   assert.match(source, /MICROSOFT_GRAPH_TENANT_ID/);
   assert.match(source, /N8N_API_KEY/);
