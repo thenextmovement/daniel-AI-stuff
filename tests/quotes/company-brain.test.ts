@@ -10,6 +10,7 @@ import {
   extractCompanyBrainSignals,
   normalizeCompanyBrainQuery,
   resolveCoolifyApiConfig,
+  resolveN8nApiConfig,
   type CompanyBrainAutomationRun,
   type CompanyBrainEvidence,
   type CompanyBrainFinding,
@@ -104,6 +105,30 @@ test("company brain accepts a Coolify API base URL that already includes api v1"
 
   assert.equal(config?.apiBaseUrl, "https://coolify.example.com/api/v1");
   assert.equal(config?.applicationUuid, null);
+});
+
+test("company brain normalizes n8n base URL to the public API root", () => {
+  const config = resolveN8nApiConfig({
+    N8N_BASE_URL: "https://n8n.example.com/",
+    N8N_API_KEY: "secret-key",
+  });
+
+  assert.deepEqual(config, {
+    apiBaseUrl: "https://n8n.example.com/api/v1",
+    apiKey: "secret-key",
+  });
+});
+
+test("company brain accepts an n8n API URL that already includes api v1", () => {
+  const config = resolveN8nApiConfig({
+    N8N_API_URL: "https://n8n.example.com/api/v1",
+    N8N_API_KEY: "secret-key",
+  });
+
+  assert.deepEqual(config, {
+    apiBaseUrl: "https://n8n.example.com/api/v1",
+    apiKey: "secret-key",
+  });
 });
 
 test("company brain cross checks flag offer color and design mismatches", () => {

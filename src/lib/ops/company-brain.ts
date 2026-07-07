@@ -1157,11 +1157,17 @@ type N8nExecutionResponse = {
   } | null;
 };
 
-function n8nApiConfig() {
-  const baseUrl = cleanText(process.env.N8N_API_URL || process.env.N8N_BASE_URL || "").replace(/\/+$/, "");
-  const apiKey = cleanText(process.env.N8N_API_KEY || "");
-  if (!baseUrl || !apiKey) return null;
-  return { baseUrl, apiKey };
+type N8nApiConfig = {
+  apiBaseUrl: string;
+  apiKey: string;
+};
+
+export function resolveN8nApiConfig(env: Record<string, string | undefined> = process.env): N8nApiConfig | null {
+  const rawBaseUrl = cleanText(env.N8N_API_URL || env.N8N_BASE_URL || "").replace(/\/+$/, "");
+  const apiKey = cleanText(env.N8N_API_KEY || "");
+  if (!rawBaseUrl || !apiKey) return null;
+  const apiBaseUrl = /\/api\/v1$/i.test(rawBaseUrl) ? rawBaseUrl : `${rawBaseUrl}/api/v1`;
+  return { apiBaseUrl, apiKey };
 }
 
 function n8nExecutionStatus(execution: N8nExecutionResponse) {
@@ -1187,15 +1193,16 @@ function n8nWorkflowName(execution: N8nExecutionResponse) {
 }
 
 async function fetchN8nExecution(executionId: string): Promise<N8nExecutionResponse | null> {
-  const config = n8nApiConfig();
+  const config = resolveN8nApiConfig();
   if (!config) return null;
-  const response = await fetch(`${config.baseUrl}/api/v1/executions/${encodeURIComponent(executionId)}?includeData=true`, {
+  const response = await fetch(`${config.apiBaseUrl}/executions/${encodeURIComponent(executionId)}?includeData=true`, {
     method: "GET",
     headers: {
       "X-N8N-API-KEY": config.apiKey,
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(5000),
   });
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -1208,7 +1215,7 @@ async function fetchN8nLiveRuns(
   executionIds: string[],
   fallbackRuns: CompanyBrainAutomationRun[],
 ): Promise<{ runs: CompanyBrainAutomationRun[]; diagnostic: CompanyBrainDiagnostic | null }> {
-  const config = n8nApiConfig();
+  const config = resolveN8nApiConfig();
   const ids = uniqueStrings(executionIds).slice(0, 5);
   if (!ids.length || !config) return { runs: [], diagnostic: null };
   const fallbackByExecutionId = new Map(
