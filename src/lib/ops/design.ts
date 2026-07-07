@@ -54,7 +54,7 @@ export type DesignOfferCandidate = {
 export type DesignPromptPreview = {
   title: string;
   prompt: string;
-  source: "trello_image_prompt" | "trello_reconstructed_prompt" | "missing_trello_prompt";
+  source: "design_studio_edit_prompt" | "missing_trello_prompt";
   sourceLabel: string;
   videoPrompt: string | null;
   warnings: string[];
@@ -502,7 +502,7 @@ function selectPrimaryDesignCard(cards: DesignCardSummary[]) {
     })[0] || null;
 }
 
-function buildReconstructedTrelloPrompt(record: CustomerSearchResult | null, primaryCard: DesignCardSummary | null) {
+function buildDesignStudioEditPrompt(record: CustomerSearchResult | null, primaryCard: DesignCardSummary | null) {
   if (!primaryCard) return null;
   const request = record?.request || null;
   const hasVisualSource = primaryCard.attachments.some((attachment) => attachment.kind === "mockup" || attachment.kind === "reference" || attachment.kind === "image");
@@ -510,7 +510,7 @@ function buildReconstructedTrelloPrompt(record: CustomerSearchResult | null, pri
   if (!hasVisualSource && !cardTitle && !request?.title && !request?.description) return null;
 
   const lines = [
-    "Erstelle ein realistisches NEONTRIP Mockup fuer ein bestehendes Angebotsdesign.",
+    "Design-Studio Edit-Prompt fuer ein vorhandenes NEONTRIP Angebotsmockup.",
     "",
     "Quelle:",
     cardTitle ? `- Trello-Karte: ${cardTitle}` : null,
@@ -521,12 +521,13 @@ function buildReconstructedTrelloPrompt(record: CustomerSearchResult | null, pri
     request?.sKategorie || request?.segmentLabel ? `- Kategorie: ${request.sKategorie || request.segmentLabel}` : null,
     hasVisualSource ? `- Vorhandene Trello-Bilder: ${primaryCard.attachments.filter((attachment) => attachment.kind === "mockup" || attachment.kind === "reference" || attachment.kind === "image").length}` : null,
     "",
-    "Rekonstruktionsregeln:",
-    "- Nutze Kartenname, Projektangaben und vorhandene Mockup-Logik als technische Basis.",
-    "- Bewahre Text, Logo-/Schriftanmutung, Produktart, Groesse, Perspektive und Montageart so weit wie moeglich.",
+    "Edit-Regeln:",
+    "- Nutze immer das ausgewaehlte vorhandene Bild als visuelle Vorlage.",
+    "- Bewahre Text, Logo-/Schriftanmutung, Produktart, Groesse, Perspektive, Hintergrund, Bildausschnitt und Montageart so weit wie moeglich.",
     "- Keine neuen Woerter, Logos, Marken, Preisangaben oder Lieferzusagen erfinden.",
     "- Wenn eine manuelle Aenderung gesetzt ist, nur diesen einen Aspekt sichtbar veraendern.",
-    "- Ergebnis ist ein internes Angebotsmockup und muss vor Kundenfreigabe geprueft werden.",
+    "- Dieser Prompt ersetzt nicht den echten n8n Quote-Ready Produktionsprompt fuer komplette Neugenerierungen.",
+    "- Ergebnis ist ein internes Design-Studio-Mockup und muss vor Kundenfreigabe geprueft werden.",
   ].filter((line): line is string => line !== null);
 
   return lines.join("\n");
@@ -536,40 +537,33 @@ function buildPromptPreview(record: CustomerSearchResult | null, primaryCard: De
   const request = record?.request || null;
   const warnings: string[] = [];
   if (!primaryCard) warnings.push("Keine Trello-Karte geladen. Prompt ist noch nicht generierbar.");
-  if (primaryCard?.promptBlocks.imagePrompt) {
-    if (!isQuoteReadyLikeList(primaryCard.listName)) {
-      warnings.push(`Prompt-Marker gefunden, aber Karte liegt in "${primaryCard.listName || "unbekannter Liste"}" statt Quote Ready/KI-Mockup. Bitte Quelle prüfen.`);
+  if (primaryCard?.promptBlocks.imagePrompt || primaryCard?.promptBlocks.videoPrompt) {
+    warnings.push("Trello #startprompt/#endprompt wurde ignoriert: dieser Block ist nicht der echte n8n Quote-Ready Produktionsprompt.");
+    if (primaryCard.promptBlocks.imagePrompt && !isQuoteReadyLikeList(primaryCard.listName)) {
+      warnings.push(`Prompt-Marker gefunden, aber Karte liegt in "${primaryCard.listName || "unbekannter Liste"}" statt Quote Ready/KI-Mockup. Bitte Quelle pruefen.`);
     }
-    return {
-      title: request?.title || primaryCard.cardName || "Design Mockup Prompt",
-      prompt: primaryCard.promptBlocks.imagePrompt,
-      source: "trello_image_prompt",
-      sourceLabel: `KI-Mockup Prompt aus ${primaryCard.listName || "Trello"} (#startprompt)`,
-      videoPrompt: primaryCard.promptBlocks.videoPrompt,
-      warnings,
-    };
   }
 
-  const reconstructedPrompt = buildReconstructedTrelloPrompt(record, primaryCard);
-  if (reconstructedPrompt) {
+  const editPrompt = buildDesignStudioEditPrompt(record, primaryCard);
+  if (editPrompt) {
     return {
       title: request?.title || primaryCard?.cardName || "Design Mockup Prompt",
-      prompt: reconstructedPrompt,
-      source: "trello_reconstructed_prompt",
-      sourceLabel: "Rekonstruiert aus Trello-Karte",
-      videoPrompt: primaryCard?.promptBlocks.videoPrompt || null,
+      prompt: editPrompt,
+      source: "design_studio_edit_prompt",
+      sourceLabel: "Design-Studio Edit-Prompt",
+      videoPrompt: null,
       warnings,
     };
   }
 
-  warnings.push("Kein echter Quote-Ready KI-Prompt gefunden. Erwartet wird ein #startprompt/#endprompt Block in der Trello-Beschreibung der Quote-Ready/KI-Mockup-Karte.");
+  warnings.push("Kein Design-Studio Prompt generierbar. Bitte Karte mit vorhandenem Mockup, Referenzbild oder Angebotskontext laden.");
 
   return {
     title: request?.title || primaryCard?.cardName || "Design Mockup Prompt",
     prompt: "",
     source: "missing_trello_prompt",
-    sourceLabel: "Kein Quote-Ready Prompt gefunden",
-    videoPrompt: primaryCard?.promptBlocks.videoPrompt || null,
+    sourceLabel: "Kein Design-Studio Prompt gefunden",
+    videoPrompt: null,
     warnings,
   };
 }

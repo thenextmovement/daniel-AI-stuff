@@ -402,6 +402,10 @@ export function DesignOpsClient({
       setError("Prompt ist zu kurz.");
       return;
     }
+    if (!selectedReferenceAssetId && !selectedReferenceAttachmentId) {
+      setError("Bitte zuerst ein Ausgangsbild als Vorlage wählen. Ohne Vorlage wird im Design Studio nicht frei neu generiert.");
+      return;
+    }
     if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
     const response = await fetch("/api/ops/design/jobs", {
       method: "POST",
@@ -1158,7 +1162,7 @@ export function DesignOpsClient({
                           </div>
                         </div>
                       ) : (
-                        <div className="mt-2 text-sm text-stone-600">Keine Vorlage gewählt. Ohne Vorlage wird neu generiert.</div>
+                        <div className="mt-2 text-sm text-stone-600">Keine Vorlage gewählt. Bitte ein Ausgangsbild markieren.</div>
                       )}
                     </div>
 

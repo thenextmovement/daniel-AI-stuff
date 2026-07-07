@@ -133,10 +133,13 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /selectPrimaryDesignCard/);
   assert.match(service, /isQuoteReadyLikeList/);
   assert.match(service, /#startprompt/);
-  assert.match(service, /KI-Mockup Prompt aus/);
-  assert.match(service, /Quote-Ready KI-Prompt gefunden/);
-  assert.match(service, /Rekonstruiert aus Trello-Karte/);
-  assert.match(service, /buildReconstructedTrelloPrompt/);
+  assert.match(service, /Trello #startprompt\/#endprompt wurde ignoriert/);
+  assert.match(service, /Design-Studio Edit-Prompt/);
+  assert.match(service, /buildDesignStudioEditPrompt/);
+  assert.doesNotMatch(service, /KI-Mockup Prompt aus/);
+  assert.doesNotMatch(service, /Quote-Ready KI-Prompt gefunden/);
+  assert.doesNotMatch(service, /Rekonstruiert aus Trello-Karte/);
+  assert.doesNotMatch(service, /buildReconstructedTrelloPrompt/);
   assert.doesNotMatch(service, /Fallback-Prompt aus Ops-Kontext/);
   assert.match(service, /createDesignJobDraft/);
   assert.match(service, /queueDesignJob/);
