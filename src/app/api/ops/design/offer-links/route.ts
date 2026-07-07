@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       offerId?: string;
       offerImageId?: string | null;
       offerItemId?: string | null;
+      lightColorLabel?: string | null;
       expectedUpdatedAt?: string | null;
       operatorName?: string | null;
       dryRun?: boolean | null;
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       offerId: String(body.offerId || ""),
       offerImageId: body.offerImageId || null,
       offerItemId: body.offerItemId || null,
+      lightColorLabel: body.lightColorLabel || null,
       expectedUpdatedAt: body.expectedUpdatedAt || null,
       operatorName: body.operatorName || null,
       dryRun: Boolean(body.dryRun),

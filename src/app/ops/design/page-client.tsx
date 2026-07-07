@@ -44,6 +44,7 @@ type DesignApiResponse = {
     status?: string;
     asset?: DesignAssetSummary;
     job?: DesignJobSummary;
+    offerPatch?: { offer?: OpsOfferSnapshot; diff?: { changedKeys?: string[] } };
     trelloAttachmentId?: string;
     replacedAttachmentId?: string | null;
     archivedAttachmentName?: string | null;
@@ -52,6 +53,10 @@ type DesignApiResponse = {
     failed?: Array<{ attachmentId: string; error: string }>;
     dryRun?: boolean;
   };
+  sent?: boolean;
+  duplicate?: boolean;
+  eventId?: string;
+  opsSync?: { ok: boolean; error?: string; skipped?: boolean } | null;
   error?: string;
   issues?: string[];
 };
@@ -182,6 +187,12 @@ function selectedLightColor(presetKey: LightColorPresetKey, customLightColor: st
   return LIGHT_COLOR_PRESETS[presetKey].value;
 }
 
+function selectedLightColorLabel(presetKey: LightColorPresetKey, customLightColor: string) {
+  if (presetKey === "original") return null;
+  if (presetKey === "custom") return customLightColor.trim() || null;
+  return LIGHT_COLOR_PRESETS[presetKey].label;
+}
+
 function promptWithStudioConstraints(prompt: string, presetKey: MockupPresetKey, lightColorKey: LightColorPresetKey, customLightColor: string) {
   const base = removeDesignConstraint(prompt);
   const lightColor = selectedLightColor(lightColorKey, customLightColor);
@@ -222,6 +233,14 @@ export function DesignOpsClient({
   const [offer, setOffer] = useState<OpsOfferSnapshot | null>(null);
   const [selectedOfferImageId, setSelectedOfferImageId] = useState("");
   const [selectedOfferItemId, setSelectedOfferItemId] = useState("");
+  const [sendRecipient, setSendRecipient] = useState("");
+  const [sendCcOne, setSendCcOne] = useState("");
+  const [sendCcTwo, setSendCcTwo] = useState("");
+  const [sendSubject, setSendSubject] = useState("Ihr aktualisiertes NEONTRIP Angebot");
+  const [sendMessage, setSendMessage] = useState(
+    "Hallo,\n\nwir haben Ihr Angebot aktualisiert. Sie können es über den Angebotslink erneut öffnen.\n\nViele Grüße\nNEONTRIP",
+  );
+  const [sendingOffer, setSendingOffer] = useState(false);
   const [selectedReferenceAttachmentId, setSelectedReferenceAttachmentId] = useState("");
   const [selectedReferenceAssetId, setSelectedReferenceAssetId] = useState("");
   const [job, setJob] = useState<DesignJobDraft | null>(null);
@@ -283,6 +302,9 @@ export function DesignOpsClient({
     setOffer(null);
     setSelectedOfferImageId("");
     setSelectedOfferItemId("");
+    setSendRecipient(workspace?.record?.email || "");
+    setSendCcOne("");
+    setSendCcTwo("");
     const defaultReference =
       workspace?.primaryCard?.attachments.find((attachment) => attachment.kind === "mockup") ||
       workspace?.primaryCard?.attachments.find((attachment) => attachment.kind === "reference" || attachment.kind === "image") ||
@@ -303,6 +325,7 @@ export function DesignOpsClient({
     () => generatedAssets.find((asset) => asset.id === selectedReferenceAssetId) || null,
     [generatedAssets, selectedReferenceAssetId],
   );
+  const activeLightColorLabel = selectedLightColorLabel(lightColorPreset, customLightColor);
   const colorSelectableAttachmentIds = useMemo(() => {
     return new Set(
       (workspace?.cards || [])
@@ -566,6 +589,7 @@ export function DesignOpsClient({
       setOffer(payload.offer);
       setSelectedOfferImageId(payload.offer.images.find((image) => image.enabled)?.id || payload.offer.images[0]?.id || "");
       setSelectedOfferItemId(payload.offer.items.find((item) => item.selectedByDefault)?.id || payload.offer.items[0]?.id || "");
+      setSendRecipient(payload.offer.offer.customerEmail || workspace?.record?.email || "");
     } catch (offerError) {
       setOffer(null);
       setError(offerError instanceof Error ? offerError.message : "Angebot konnte nicht geladen werden.");
@@ -591,6 +615,7 @@ export function DesignOpsClient({
           offerId: selectedOfferId,
           offerImageId: selectedOfferImageId || null,
           offerItemId: selectedOfferItemId || null,
+          lightColorLabel: activeLightColorLabel,
           expectedUpdatedAt: offer?.updatedAt || null,
           operatorName,
           dryRun,
@@ -598,12 +623,53 @@ export function DesignOpsClient({
       });
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
-      setMessage(dryRun ? "Offer-Link geprüft. Du kannst ihn jetzt übernehmen." : "Design-Asset wurde mit Angebot und CRM-Bildkontext verknüpft.");
+      if (payload.result?.offerPatch?.offer) setOffer(payload.result.offerPatch.offer);
+      setMessage(
+        dryRun
+          ? "Offer-Link geprüft. Du kannst ihn jetzt übernehmen."
+          : activeLightColorLabel
+            ? `Angebot aktualisiert: Design-Bild und Leuchtfarbe ${activeLightColorLabel} übernommen.`
+            : "Design-Asset wurde mit Angebot und CRM-Bildkontext verknüpft.",
+      );
       void loadRecentJobs();
     } catch (linkError) {
       setError(linkError instanceof Error ? linkError.message : "Offer-Link konnte nicht erstellt werden.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function sendUpdatedOffer() {
+    if (!offer) return;
+    setSendingOffer(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const cc = [sendCcOne, sendCcTwo].map((entry) => entry.trim()).filter(Boolean);
+      const response = await fetch(`/api/ops/customer-records/offers/${encodeURIComponent(offer.offerId)}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientEmail: sendRecipient.trim(),
+          cc,
+          subject: sendSubject.trim(),
+          message: sendMessage.trim(),
+          actor: operatorName || "Ops Design",
+          reason: "Aktualisiertes Angebot aus Design Studio versendet.",
+          idempotencyKey: createClientActionId(),
+          recordEmail: workspace?.record?.email || null,
+          requestId: workspace?.record?.requestId || null,
+          trelloCardId: workspace?.primaryCard?.cardId || offer.trelloCardId || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
+      if (!response.ok || !payload?.ok || !payload.sent) throw new Error(formatApiError(payload));
+      const syncWarning = payload.opsSync && !payload.opsSync.ok ? " Call-Sync bitte prüfen." : "";
+      setMessage((payload.duplicate ? "Diese Angebotsmail wurde bereits gesendet." : "Aktualisiertes Angebot wurde gesendet.") + syncWarning);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Angebotsmail konnte nicht gesendet werden.");
+    } finally {
+      setSendingOffer(false);
     }
   }
 
@@ -1203,8 +1269,23 @@ export function DesignOpsClient({
 
                   {offer ? (
                     <div className="space-y-3 rounded-[14px] border border-[#ded8d0] bg-[#fffdf9] p-3">
-                      <div className="text-sm font-semibold">{offer.offerNumber} · {offer.status}</div>
-                      <div className="text-xs text-stone-500">{offer.lock.editable ? "editierbar" : "gesperrt"} · aktualisiert {formatDate(offer.updatedAt)}</div>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold">{offer.offerNumber} · {offer.status}</div>
+                          <div className="text-xs text-stone-500">{offer.lock.editable ? "editierbar" : "gesperrt"} · aktualisiert {formatDate(offer.updatedAt)}</div>
+                        </div>
+                        {offer.publicUrl ? (
+                          <a href={offer.publicUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-[#ded8d0] bg-white px-3 py-1.5 text-xs font-semibold text-stone-700">
+                            Prüfen
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null}
+                      </div>
+                      {activeLightColorLabel ? (
+                        <div className="rounded-[12px] border border-orange-200 bg-orange-50 p-2 text-xs font-semibold text-orange-900">
+                          Wird beim Übernehmen als Leuchtfarbe im Produkt gespeichert: {activeLightColorLabel}
+                        </div>
+                      ) : null}
                       <label className="block">
                         <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Produkt / Preisanker</span>
                         <select value={selectedOfferItemId} onChange={(event) => setSelectedOfferItemId(event.target.value)} className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none">
@@ -1245,6 +1326,40 @@ export function DesignOpsClient({
                       In Angebot übernehmen
                     </button>
                   </div>
+                  {offer ? (
+                    <div className="space-y-3 rounded-[14px] border border-[#ded8d0] bg-[#fffdf9] p-3">
+                      <div>
+                        <div className="text-sm font-semibold">Aktualisiertes Angebot senden</div>
+                        <div className="mt-1 text-xs leading-5 text-stone-500">Versendet denselben Angebotslink wie die Offer-Software. Interne oder fehlende Kundenadressen werden serverseitig blockiert.</div>
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Empfänger</span>
+                        <input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} type="email" className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none" />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Betreff</span>
+                        <input value={sendSubject} onChange={(event) => setSendSubject(event.target.value)} className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none" />
+                      </label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">CC 1</span>
+                          <input value={sendCcOne} onChange={(event) => setSendCcOne(event.target.value)} type="email" className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none" />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">CC 2</span>
+                          <input value={sendCcTwo} onChange={(event) => setSendCcTwo(event.target.value)} type="email" className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none" />
+                        </label>
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Nachricht</span>
+                        <textarea value={sendMessage} onChange={(event) => setSendMessage(event.target.value)} rows={5} className="mt-2 w-full resize-y rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 py-2 text-sm outline-none" />
+                      </label>
+                      <button type="button" disabled={sendingOffer || !sendRecipient.trim() || offer.lock.lockLevel === "hard"} onClick={() => void sendUpdatedOffer()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-4 text-sm font-semibold text-white disabled:opacity-50">
+                        <Send className="h-4 w-4" />
+                        {sendingOffer ? "Sendet..." : "Aktualisiertes Angebot senden"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </aside>

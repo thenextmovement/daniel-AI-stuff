@@ -42,6 +42,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Schaufenster/);
   assert.match(client, /Outdoor/);
   assert.match(client, /Leuchtfarbe/);
+  assert.match(client, /activeLightColorLabel/);
   assert.match(client, /Warmweiß/);
   assert.match(client, /Orange/);
   assert.match(client, /RGB/);
@@ -70,6 +71,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /ENTFERNEN/);
   assert.match(client, /An Trello/);
   assert.match(client, /In Angebot übernehmen/);
+  assert.match(client, /Aktualisiertes Angebot senden/);
+  assert.match(client, /sendUpdatedOffer/);
+  assert.match(client, /customer-records\/offers/);
   assert.match(client, /CRM-Bildkontext/);
 
   assert.match(route, /export async function GET/);
@@ -110,6 +114,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
 
   assert.match(offerLinksRoute, /linkDesignAssetToOffer/);
   assert.match(offerLinksRoute, /OpsOfferApiError/);
+  assert.match(offerLinksRoute, /lightColorLabel/);
   assert.match(offerLinksRoute, /dryRun/);
 
   assert.match(workerJobsRoute, /DESIGN_WORKER_API_KEY/);
@@ -165,6 +170,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /deleteTrelloCardAttachment/);
   assert.match(service, /addTrelloCardAttachment/);
   assert.match(service, /patchOfferById/);
+  assert.match(service, /upsertLightColorLine/);
+  assert.match(service, /ops_design_asset_and_light_color_link/);
   assert.match(service, /dryRun/);
   assert.match(service, /manual_design_link_requires_price_review/);
 

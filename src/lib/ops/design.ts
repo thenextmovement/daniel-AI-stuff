@@ -3,7 +3,7 @@ import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
 import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloList, renameTrelloCardAttachment, searchTrelloCards } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
-import { getOfferById, patchOfferById, type OpsOfferPatchResult } from "@/lib/ops/offers";
+import { getOfferById, patchOfferById, type OpsOfferItem, type OpsOfferPatchInput, type OpsOfferPatchResult } from "@/lib/ops/offers";
 import {
   getCustomerRecordByRequestId,
   listCustomerRecordsByRequestIds,
@@ -925,6 +925,40 @@ function mapCrmQuoteImageLink(row: CrmQuoteVersionImageRow): DesignCrmQuoteImage
   };
 }
 
+function offerItemPatch(item: OpsOfferItem): NonNullable<OpsOfferPatchInput["items"]>[number] {
+  return {
+    id: item.id,
+    section: item.section || "LED-Leuchtschild",
+    title: item.title,
+    description: item.description || null,
+    quantity: item.quantity,
+    unitPriceNet: item.unitPriceNet,
+    listPriceNet: item.listPriceNet,
+    discountLabel: item.discountLabel || null,
+    selectable: item.selectable,
+    selectedByDefault: item.selectedByDefault,
+    quantityEditable: item.quantityEditable,
+    minQuantity: item.minQuantity,
+    maxQuantity: item.maxQuantity,
+    sortOrder: item.sortOrder,
+  };
+}
+
+function upsertLightColorLine(description: string | null | undefined, lightColorLabel: string) {
+  const lines = String(description || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nextLine = `Leuchtfarbe: ${lightColorLabel}`;
+  const index = lines.findIndex((line) => /^leuchtfarbe\s*:/i.test(line) || /^farbe\s*:/i.test(line));
+  if (index >= 0) {
+    lines[index] = nextLine;
+  } else {
+    lines.unshift(nextLine);
+  }
+  return lines.join("\n");
+}
+
 async function latestCrmQuoteVersion(offerId: string) {
   const versions = await supabaseRequest<CrmQuoteVersionRow[]>("crm_quote_versions", undefined, {
     select: "id,quote_id,version_number,created_at",
@@ -1345,6 +1379,7 @@ export async function linkDesignAssetToOffer(input: {
   offerId: string;
   offerImageId?: string | null;
   offerItemId?: string | null;
+  lightColorLabel?: string | null;
   expectedUpdatedAt?: string | null;
   operatorName?: string | null;
   dryRun?: boolean | null;
@@ -1360,10 +1395,12 @@ export async function linkDesignAssetToOffer(input: {
 
   const offerImageId = trimNullable(input.offerImageId);
   const offerItemId = trimNullable(input.offerItemId);
+  const lightColorLabel = trimNullable(input.lightColorLabel);
   const offerImage = offerImageId ? offer.images.find((image) => image.id === offerImageId) : null;
   const offerItem = offerItemId ? offer.items.find((item) => item.id === offerItemId) : null;
   if (offerImageId && !offerImage) throw new QuoteValidationError("Ausgewaehlter Bildslot existiert nicht im Angebot.");
   if (offerItemId && !offerItem) throw new QuoteValidationError("Ausgewaehltes Produkt existiert nicht im Angebot.");
+  if (lightColorLabel && !offerItem) throw new QuoteValidationError("Bitte eine Angebotsposition wählen, wenn die Leuchtfarbe im Angebot aktualisiert werden soll.");
   if (!asset.public_url) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer die Angebotsanreicherung.");
 
   const link = await getOrCreateOfferAssetLink({
@@ -1375,21 +1412,38 @@ export async function linkDesignAssetToOffer(input: {
   });
 
   let offerPatch: OpsOfferPatchResult | null = null;
-  if (offerImage) {
-    offerPatch = await patchOfferById(
-      offer.offerId,
-      {
-        expectedUpdatedAt: trimNullable(input.expectedUpdatedAt) || offer.updatedAt,
-        actor: trimNullable(input.operatorName) || "Ops Design",
-        reason: "ops_design_asset_link",
-        images: [
+  if (offerImage || (offerItem && lightColorLabel)) {
+    const imagePatches = offerImage
+      ? [
           {
             id: offerImage.id,
             title: asset.name || offerImage.title || "Design Mockup",
             enabled: true,
             sortOrder: offerImage.sortOrder,
           },
-        ],
+        ]
+      : undefined;
+    const itemPatches = offerItem && lightColorLabel
+      ? offer.items.map((item) => {
+          const patch = offerItemPatch(item);
+          if (item.id !== offerItem.id) return patch;
+          return {
+            ...patch,
+            description: upsertLightColorLine(item.description, lightColorLabel),
+          };
+        })
+      : undefined;
+    offerPatch = await patchOfferById(
+      offer.offerId,
+      {
+        expectedUpdatedAt: trimNullable(input.expectedUpdatedAt) || offer.updatedAt,
+        actor: trimNullable(input.operatorName) || "Ops Design",
+        reason: lightColorLabel ? "ops_design_asset_and_light_color_link" : "ops_design_asset_link",
+        revisionReason: offer.lock.requiresRevisionReason
+          ? `Design-Mockup${lightColorLabel ? ` und Leuchtfarbe ${lightColorLabel}` : ""} aus Design Studio aktualisiert.`
+          : undefined,
+        images: imagePatches,
+        items: itemPatches,
       },
       Boolean(input.dryRun),
     );
@@ -1419,6 +1473,7 @@ export async function linkDesignAssetToOffer(input: {
             ...(link.metadata || {}),
             offer_image_id: offerImageId,
             offer_item_title: offerItem?.title || null,
+            light_color_label: lightColorLabel,
             asset_public_url: asset.public_url,
             crm_quote_image_id: crmQuoteImage.id,
             crm_quote_version_id: crmQuoteImage.versionId,
@@ -1443,6 +1498,7 @@ export async function linkDesignAssetToOffer(input: {
             offer_id: offerId,
             offer_item_id: offerItemId,
             offer_image_id: offerImageId,
+            light_color_label: lightColorLabel,
             crm_quote_image_id: crmQuoteImage.id,
             crm_quote_version_id: crmQuoteImage.versionId,
             crm_quote_item_index: crmQuoteImage.itemIndex,
