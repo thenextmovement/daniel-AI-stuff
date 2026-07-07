@@ -558,6 +558,33 @@ function setupActionForIntegration(key: string, status: string) {
   return "Runtime-Konfiguration vervollständigen und erneut prüfen.";
 }
 
+function setupChecklistForIntegration(key: string, status: string) {
+  if (status === "configured") return [];
+  if (key === "live_outlook") {
+    return [
+      "MICROSOFT_GRAPH_TENANT_ID oder AZURE_TENANT_ID",
+      "MICROSOFT_GRAPH_CLIENT_ID oder AZURE_CLIENT_ID",
+      "MICROSOFT_GRAPH_CLIENT_SECRET oder AZURE_CLIENT_SECRET",
+      "MICROSOFT_GRAPH_MAILBOX oder OUTLOOK_SHARED_MAILBOX",
+    ];
+  }
+  if (key === "n8n_live") {
+    return [
+      "N8N_API_URL oder N8N_BASE_URL",
+      "N8N_API_KEY",
+      "workflow_audit_log schreibt weiterhin als Fallback",
+    ];
+  }
+  if (key === "coolify") {
+    return [
+      "COOLIFY_URL oder COOLIFY_API_URL",
+      "COOLIFY_API_TOKEN",
+      "COOLIFY_APPLICATION_UUID optional für App-Details",
+    ];
+  }
+  return ["Runtime-Variablen prüfen und Fall neu laden"];
+}
+
 function evidenceScoreLabel(status: string) {
   if (status === "strong") return "stark belegt";
   if (status === "medium") return "teilweise belegt";
@@ -695,6 +722,7 @@ export function OpsCompanyBrainClient({
         status: entry.status,
         summary: entry.summary,
         nextStep: setupActionForIntegration(entry.key, entry.status),
+        setupItems: setupChecklistForIntegration(entry.key, entry.status),
       }))
       .slice(0, 3);
     const fixHistory = result.automationRuns
@@ -1443,6 +1471,16 @@ export function OpsCompanyBrainClient({
                           </div>
                           <p className="mt-1 text-xs leading-5 opacity-80">{shortText(entry.summary, 140)}</p>
                           <p className="mt-2 rounded-lg border border-current/15 bg-white/50 px-2.5 py-1.5 text-xs leading-5">{entry.nextStep}</p>
+                          {entry.setupItems.length ? (
+                            <div className="mt-2 rounded-lg border border-current/15 bg-white/50 px-2.5 py-1.5">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-60">Benötigte Runtime-Variablen</p>
+                              <div className="mt-1 grid gap-1">
+                                {entry.setupItems.map((item) => (
+                                  <p key={item} className="text-xs leading-5 opacity-80">{item}</p>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       )) : (
                         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">Alle Live-Integrationen sind als konfiguriert erkannt.</p>

@@ -306,6 +306,9 @@ async function runViewport(browser, target, viewport, label) {
     "Empfänger und Angebot im Fix Center prüfen",
     "System-Blocker",
     "Live Outlook / Graph",
+    "Benötigte Runtime-Variablen",
+    "MICROSOFT_GRAPH_TENANT_ID",
+    "OUTLOOK_SHARED_MAILBOX",
   ]);
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   await page.getByRole("button", { name: "Versand freigeben" }).click();
