@@ -301,6 +301,9 @@ export type CompanyBrainAutomationRun = {
   idempotencyKey: string | null;
   retrySafety: string | null;
   summary: string | null;
+  issueKey?: string | null;
+  recommendedFix?: string | null;
+  safeFix?: string | null;
 };
 
 export type CompanyBrainTrelloFailureDiagnosis = {
@@ -683,24 +686,30 @@ export function buildTrelloAutomationRuns(context: TrelloFailureContext | null):
   const requestId = requestIdFromTrelloContext(context);
   return context.actions
     .filter(trelloActionLooksFailed)
-    .map((action, index) => ({
-      id: `trello-action-${action.id}`,
-      workflowName: "Trello Triggerdiagnose",
-      action: "offer_send",
-      status: "failed",
-      error: trelloActionFailureSummary(action),
-      createdAt: action.date,
-      requestId,
-      executionId: executionIds[index] || executionIds[0] || null,
-      executionUrl: n8nExecutionUrl(executionIds[index] || executionIds[0] || null),
-      correlationId: context.card.id,
-      sourceEventId: action.id,
-      targetRecordId: null,
-      failedNode: null,
-      idempotencyKey: null,
-      retrySafety: classifyAutomationIssueText(action.text).retrySafety,
-      summary: "Aus Trello-Aktionshistorie rekonstruiert; workflow_audit_log hatte keinen passenden Eintrag.",
-    }));
+    .map((action, index) => {
+      const issueHint = classifyAutomationIssueText(action.text);
+      return {
+        id: `trello-action-${action.id}`,
+        workflowName: "Trello Triggerdiagnose",
+        action: "offer_send",
+        status: "failed",
+        error: trelloActionFailureSummary(action),
+        createdAt: action.date,
+        requestId,
+        executionId: executionIds[index] || executionIds[0] || null,
+        executionUrl: n8nExecutionUrl(executionIds[index] || executionIds[0] || null),
+        correlationId: context.card.id,
+        sourceEventId: action.id,
+        targetRecordId: null,
+        failedNode: null,
+        idempotencyKey: null,
+        retrySafety: issueHint.retrySafety,
+        summary: "Aus Trello-Aktionshistorie rekonstruiert; workflow_audit_log hatte keinen passenden Eintrag.",
+        issueKey: issueHint.key !== "unknown" ? issueHint.key : null,
+        recommendedFix: issueHint.key !== "unknown" ? issueHint.recommendedFix : null,
+        safeFix: issueHint.key !== "unknown" ? issueHint.safeFix : null,
+      };
+    });
 }
 
 function dedupeAutomationRuns(runs: CompanyBrainAutomationRun[]) {
@@ -1287,6 +1296,9 @@ async function fetchN8nLiveRuns(
         idempotencyKey: fallback?.idempotencyKey || null,
         retrySafety: issueHint.key !== "unknown" ? issueHint.retrySafety : fallback?.retrySafety || "Nur nach Duplicate-Mail-Check und idempotentem Retry freigeben.",
         summary: issueHint.key !== "unknown" ? issueHint.rootCause : "Read-only aus der n8n Live-API geladen.",
+        issueKey: issueHint.key !== "unknown" ? issueHint.key : fallback?.issueKey || null,
+        recommendedFix: issueHint.key !== "unknown" ? issueHint.recommendedFix : fallback?.recommendedFix || null,
+        safeFix: issueHint.key !== "unknown" ? issueHint.safeFix : fallback?.safeFix || null,
       });
     } catch (error) {
       errors.push(`${executionId}: ${errorMessage(error)}`);
@@ -1367,6 +1379,9 @@ async function fetchAutomationRuns(
       idempotencyKey: metadataText(row.metadata, ["idempotency_key", "idempotencyKey"]),
       retrySafety: metadataText(row.metadata, ["automation_issue_retry_safety", "retry_safety", "retrySafety"]),
       summary: metadataText(row.metadata, ["automation_issue_root_cause", "summary", "detail", "description"]),
+      issueKey: metadataText(row.metadata, ["automation_issue_key", "issue_key", "error_code", "error_type"]),
+      recommendedFix: metadataText(row.metadata, ["automation_issue_recommended_fix", "recommended_fix", "fix_recommendation"]),
+      safeFix: metadataText(row.metadata, ["automation_issue_safe_fix", "safe_fix"]),
     }));
     return {
       runs,
@@ -2106,7 +2121,9 @@ function buildDossier(input: {
             run.failedNode ? `Node: ${run.failedNode}` : null,
             run.executionId ? `Execution: ${run.executionId}` : null,
             run.executionUrl ? `Execution-Link: ${run.executionUrl}` : null,
+            run.issueKey ? `Issue: ${run.issueKey}` : null,
             run.retrySafety ? `Retry: ${run.retrySafety}` : null,
+            run.recommendedFix ? `Fix: ${run.recommendedFix}` : null,
             run.error ? `Fehler: ${run.error}` : null,
           ].filter(Boolean).join(" · "))
         : ["Keine Workflow-Audit-Einträge für diesen Fall."],
@@ -2777,8 +2794,11 @@ export function buildTrelloFailureDiagnosis(input: {
   const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
   const failedAutomationHint = failedAutomation
     ? classifyAutomationIssueText([
+        failedAutomation.issueKey,
         failedAutomation.error,
         failedAutomation.summary,
+        failedAutomation.recommendedFix,
+        failedAutomation.safeFix,
         input.context.card.desc,
         ...input.context.actions.slice(0, 6).map((action) => action.text),
       ].filter(Boolean).join(" "))
@@ -2804,11 +2824,11 @@ export function buildTrelloFailureDiagnosis(input: {
     rootCause = failedAutomationHint && failedAutomationHint.key !== "unknown"
       ? `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen. ${failedAutomationHint.rootCause}`
       : `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen: ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}.`;
-    recommendedFix = failedAutomationHint && failedAutomationHint.key !== "unknown"
+    recommendedFix = failedAutomation.recommendedFix || (failedAutomationHint && failedAutomationHint.key !== "unknown"
       ? failedAutomationHint.recommendedFix
       : failedAutomation.idempotencyKey
         ? `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "ohne ID"} prüfen. Retry nur mit Idempotency-Key ${failedAutomation.idempotencyKey} und nach Duplicate-Mail-Check freigeben.`
-        : `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "mit Correlation-ID"} prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.`;
+        : `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "mit Correlation-ID"} prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.`);
     severity = "critical";
   } else if (!triggerMove) {
     rootCauseKey = "no_trigger_move";
@@ -2850,6 +2870,7 @@ export function buildTrelloFailureDiagnosis(input: {
   const duplicateRisk: CompanyBrainTrelloFailureDiagnosis["duplicateRisk"] =
     expectedAction === "offer_send" && !offerSent ? "high" : expectedAction === "unknown" ? "medium" : "low";
   const safeFixes = [
+    !automationResolvedBySendProof && failedAutomation?.safeFix ? failedAutomation.safeFix : null,
     !automationResolvedBySendProof && failedAutomationHint && failedAutomationHint.key !== "unknown" ? failedAutomationHint.safeFix : null,
     hasRecord ? "Interne Problemfall-Aufgabe mit Trello-Card-ID und Befund anlegen." : null,
     rootCauseKey === "no_source_record" ? "Karte manuell mit Request-ID/Kundenakte verknüpfen." : null,
@@ -3481,8 +3502,10 @@ export function buildActionProposals(input: {
             `Execution: ${failedAutomation.executionId || "unbekannt"}`,
             failedAutomation.executionUrl ? `Execution-Link: ${failedAutomation.executionUrl}` : null,
             failedAutomation.failedNode ? `Node: ${failedAutomation.failedNode}` : null,
+            failedAutomation.issueKey ? `Issue: ${failedAutomation.issueKey}` : null,
             failedAutomation.idempotencyKey ? `Idempotency: ${failedAutomation.idempotencyKey}` : null,
             failedAutomation.retrySafety ? `Retry-Sicherheit: ${failedAutomation.retrySafety}` : null,
+            failedAutomation.recommendedFix ? `Empfohlener Fix: ${failedAutomation.recommendedFix}` : null,
           ]
             .filter(Boolean) as string[]
         : ["Kein Fehler-Run gefunden."],

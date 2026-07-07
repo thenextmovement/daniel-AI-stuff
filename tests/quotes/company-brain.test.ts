@@ -731,6 +731,9 @@ test("company brain explains automation failures caused by invalid customer emai
     idempotencyKey: null,
     retrySafety: "Nur nach Duplicate-Check.",
     summary: "Aus Trello rekonstruiert.",
+    issueKey: "customer_email_invalid",
+    recommendedFix: "Audit-Fix: Kundenadresse in Postgres und Offer-Snapshot synchronisieren.",
+    safeFix: "Audit-Safe-Fix: E-Mail belegen und Kundendatensatz korrigieren.",
   }];
   const diagnosis = buildTrelloFailureDiagnosis({
     requested: true,
@@ -773,8 +776,8 @@ test("company brain explains automation failures caused by invalid customer emai
 
   assert.equal(diagnosis.rootCauseKey, "automation_failed");
   assert.match(diagnosis.rootCause, /praxis@kurswechsel/);
-  assert.match(diagnosis.recommendedFix, /Korrekte Kunden-E-Mail/);
-  assert.ok(diagnosis.safeFixes.some((fix) => /Ungültige Kunden-E-Mail/.test(fix)));
+  assert.match(diagnosis.recommendedFix, /Audit-Fix: Kundenadresse/);
+  assert.ok(diagnosis.safeFixes.some((fix) => /Audit-Safe-Fix/.test(fix)));
   assert.ok(diagnosis.blockedFixes.some((fix) => /Kein Retry an die alte Adresse/.test(fix)));
 });
 
@@ -1528,6 +1531,9 @@ test("company brain action proposals link failed n8n executions read-only", () =
       idempotencyKey: "quote-ready-send:REQ-ACTIONS:offer-actions",
       retrySafety: "blocked",
       summary: "Outlook-Berechtigung fehlt.",
+      issueKey: "outlook_auth_failed",
+      recommendedFix: "Graph App und Mail.Send-Berechtigung prüfen.",
+      safeFix: "Outlook-/Graph-Konfiguration intern prüfen.",
     }],
   });
   const inspect = actions.find((action) => action.key === "inspect_n8n_run");
@@ -1535,6 +1541,8 @@ test("company brain action proposals link failed n8n executions read-only", () =
   assert.equal(inspect?.enabled, true);
   assert.equal(inspect?.href, "https://n8n.neontrip.de/execution/2770420");
   assert.ok(inspect?.payloadPreview.some((line) => line.includes("Execution-Link: https://n8n.neontrip.de/execution/2770420")));
+  assert.ok(inspect?.payloadPreview.some((line) => line.includes("Issue: outlook_auth_failed")));
+  assert.ok(inspect?.payloadPreview.some((line) => line.includes("Empfohlener Fix: Graph App und Mail.Send-Berechtigung prüfen.")));
 });
 
 test("company brain action proposals block duplicate retry actions after guarded resend audit", () => {
