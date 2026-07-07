@@ -138,6 +138,48 @@ test("company brain cross checks flag offer color and design mismatches", () => 
   assert.equal(checks.find((check) => check.key === "design_count")?.status, "fail");
 });
 
+test("company brain treats quote email log rows as sent offer proof", () => {
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-1",
+    offerNumber: "A/N 14427",
+    documentReference: "A/N 14427",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-1",
+    updatedAt: "2026-07-07T08:55:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: ["blau"],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [{
+    id: "quote-email-log:1",
+    source: "quote_email_log",
+    title: "Ihr NEONTRIP Angebot Nr. 14427",
+    detail: "Empfänger: max@example.com · Angebot: A/N 14427 · Status: sent",
+    occurredAt: "2026-07-07T09:00:00.000Z",
+    direction: "outbound",
+    href: null,
+    confidence: "high",
+  }];
+
+  const checks = buildCompanyBrainCrossChecks({ records: [], offers, evidence, question: "Ist das Angebot rausgegangen?" });
+  const sent = checks.find((check) => check.key === "offer_sent");
+
+  assert.equal(sent?.status, "pass");
+  assert.equal(sent?.actual, "2026-07-07T09:00:00.000Z");
+  assert.match(sent?.summary || "", /Versand- oder Ausgangsbeleg/);
+});
+
 test("company brain treats Outlook delivery failures as failed offer sends", () => {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-BOUNCE",

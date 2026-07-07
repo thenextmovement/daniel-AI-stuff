@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import { recordOfferSentForSalesCalls } from "@/lib/ops/customer-call-module";
+import { recordQuoteEmailSentEvidence } from "@/lib/ops/offer-send-evidence";
 import { getOfferById, OpsOfferApiError, sendOfferUpdateMail, type OpsOfferSendInput } from "@/lib/ops/offers";
 
 export const dynamic = "force-dynamic";
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     };
     const result = await sendOfferUpdateMail(decodedOfferId, sendInput);
     let opsSync: Awaited<ReturnType<typeof recordOfferSentForSalesCalls>> | { ok: boolean; error?: string; skipped?: boolean } | null = result.opsSync || null;
+    let quoteEmailEvidence: { ok: boolean; error?: string; rowId?: string | number | null } | null = null;
     if (!opsSync) {
       try {
         opsSync = await recordOfferSentForSalesCalls({
@@ -143,7 +145,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         opsSync = { ok: false, error: syncError instanceof Error ? syncError.message : "ops_sync_failed" };
       }
     }
-    return NextResponse.json({ ok: true, ...result, opsSync });
+    try {
+      const evidenceRows = await recordQuoteEmailSentEvidence({
+        offerId: offer.offerId,
+        offerNumber: offer.offerNumber,
+        requestId: body.requestId,
+        trelloCardId: body.trelloCardId || offer.trelloCardId,
+        recipientEmail: body.recipientEmail,
+        subject: body.subject,
+        status: result.duplicate ? "sent_duplicate" : "sent",
+        sentAt: new Date().toISOString(),
+        sourceEventId: result.eventId,
+        idempotencyKey: body.idempotencyKey,
+      });
+      quoteEmailEvidence = { ok: true, rowId: evidenceRows?.[0]?.id || null };
+    } catch (evidenceError) {
+      console.error("offer sent but quote_email_log evidence failed", evidenceError);
+      quoteEmailEvidence = { ok: false, error: evidenceError instanceof Error ? evidenceError.message : "quote_email_log_failed" };
+    }
+    return NextResponse.json({ ok: true, ...result, opsSync, quoteEmailEvidence });
   } catch (error) {
     return failureResponse(error);
   }

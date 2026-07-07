@@ -11,6 +11,7 @@ import {
 } from "@/lib/ops/customer-records";
 import { recordOfferSentForSalesCalls } from "@/lib/ops/customer-call-module";
 import { createOpsInternalTask } from "@/lib/ops/internal-tasks";
+import { recordQuoteEmailSentEvidence } from "@/lib/ops/offer-send-evidence";
 import {
   getOfferById,
   OpsOfferApiError,
@@ -336,6 +337,7 @@ export async function POST(request: NextRequest) {
     let savedNote = null;
     let sendResult: Awaited<ReturnType<typeof sendOfferUpdateMail>> | null = null;
     let retryAudit: Awaited<ReturnType<typeof recordWorkflowAuditEvent>> | null = null;
+    let quoteEmailEvidence: { ok: boolean; error?: string; rowId?: string | number | null } | null = null;
 
     if (actionKey === "open_problem_case") {
       if (record.specialCase.status !== "open") {
@@ -655,6 +657,24 @@ export async function POST(request: NextRequest) {
           opsSync = { ok: false, error: syncError instanceof Error ? syncError.message : "ops_sync_failed" };
         }
       }
+      try {
+        const evidenceRows = await recordQuoteEmailSentEvidence({
+          offerId: offer.offerId,
+          offerNumber: offer.offerNumber,
+          requestId: record.requestId,
+          trelloCardId: trelloCardId || offer.trelloCardId,
+          recipientEmail,
+          subject: sendInput.subject,
+          status: sendResult.duplicate ? "sent_duplicate" : "sent",
+          sentAt: new Date().toISOString(),
+          sourceEventId: sendResult.eventId,
+          idempotencyKey,
+        });
+        quoteEmailEvidence = { ok: true, rowId: evidenceRows?.[0]?.id || null };
+      } catch (evidenceError) {
+        console.error("company brain offer retry sent but quote_email_log evidence failed", evidenceError);
+        quoteEmailEvidence = { ok: false, error: errorMessage(evidenceError) };
+      }
       retryAudit = await recordCompanyBrainRetryAudit({
         status: sendResult.duplicate ? "duplicate" : "sent",
         requestId: record.requestId,
@@ -675,6 +695,7 @@ export async function POST(request: NextRequest) {
         duplicate: sendResult.duplicate,
         eventId: sendResult.eventId,
         opsSync,
+        quoteEmailEvidence,
         audit: retryAudit,
         customerCommunicationSent: true,
       });

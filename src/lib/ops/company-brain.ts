@@ -1114,6 +1114,20 @@ type WorkflowAuditLogRow = {
   created_at?: string | null;
 };
 
+type QuoteEmailLogEvidenceRow = {
+  id?: string | number | null;
+  unique_id?: string | null;
+  card_id?: string | null;
+  card_url?: string | null;
+  recipient_email?: string | null;
+  recipient_name?: string | null;
+  angebotsnummer?: string | null;
+  subject?: string | null;
+  status?: string | null;
+  sent_at?: string | null;
+  created_at?: string | null;
+};
+
 type N8nExecutionResponse = {
   id?: string | number | null;
   workflowId?: string | number | null;
@@ -1322,6 +1336,58 @@ async function fetchAutomationRuns(
         count: 0,
       },
     };
+  }
+}
+
+function mapQuoteEmailEvidence(row: QuoteEmailLogEvidenceRow): CompanyBrainEvidence {
+  const offerNumber = cleanText(row.angebotsnummer);
+  const recipient = cleanText(row.recipient_email);
+  const subject = cleanText(row.subject);
+  const status = cleanText(row.status);
+  const occurredAt = row.sent_at || row.created_at || null;
+  return {
+    id: `quote-email-log:${row.id || row.unique_id || `${offerNumber}:${recipient}:${occurredAt || ""}`}`,
+    source: "quote_email_log",
+    title: subject || (offerNumber ? `Angebots-E-Mail ${offerNumber}` : "Angebots-E-Mail versendet"),
+    detail: [
+      recipient ? `Empfänger: ${recipient}` : null,
+      offerNumber ? `Angebot: ${offerNumber}` : null,
+      status ? `Status: ${status}` : null,
+    ].filter(Boolean).join(" · ") || null,
+    occurredAt,
+    direction: "outbound",
+    href: cleanText(row.card_url) || null,
+    confidence: /sent|delivered|success|ok/i.test(status) || row.sent_at ? "high" : "medium",
+  };
+}
+
+async function fetchQuoteEmailEvidence(
+  records: CompanyBrainRecordSummary[],
+  offers: CompanyBrainOfferSummary[],
+  extraTrelloCardIds: string[] = [],
+): Promise<CompanyBrainEvidence[]> {
+  const offerNumbers = uniqueStrings(offers.map((offer) => offer.offerNumber).filter(Boolean)).slice(0, 5);
+  const trelloCardIds = uniqueStrings([
+    ...extraTrelloCardIds,
+    ...records.map((record) => record.trelloCardId),
+    ...offers.map((offer) => offer.trelloCardId),
+  ]).slice(0, 5);
+  const filters = [
+    ...offerNumbers.map((offerNumber) => `angebotsnummer.eq.${encodeURIComponent(offerNumber)}`),
+    ...trelloCardIds.map((cardId) => `card_id.eq.${encodeURIComponent(cardId)}`),
+  ];
+  if (!filters.length) return [];
+  try {
+    const rows = await supabaseRequest<QuoteEmailLogEvidenceRow[]>("quote_email_log", undefined, {
+      select: "id,unique_id,card_id,card_url,recipient_email,recipient_name,angebotsnummer,subject,status,sent_at,created_at",
+      or: `(${filters.join(",")})`,
+      order: "created_at.desc",
+      limit: 12,
+    });
+    return rows.map(mapQuoteEmailEvidence);
+  } catch (error) {
+    console.warn("company brain quote_email_log evidence unavailable", error);
+    return [];
   }
 }
 
@@ -3462,6 +3528,11 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   addRecordIdentifiers(identifiers, records);
   addOfferIdentifiers(identifiers, offerSummaries);
 
+  const quoteEmailEvidence = await fetchQuoteEmailEvidence(
+    recordSummaries,
+    offerSummaries,
+    trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink].filter(Boolean) as string[] : [],
+  );
   const liveOutlook = await fetchOutlookGraphEvidence({
     query,
     identifiers,
@@ -3474,6 +3545,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     ...records.flatMap(mapTimelineEvidence),
     ...offerSummaries.flatMap(mapOfferEvidence),
     ...mapTrelloEvidence(trelloContext),
+    ...quoteEmailEvidence,
     ...liveOutlook.evidence,
   ]
     .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
