@@ -2,6 +2,7 @@ export type AutomationIssueKey =
   | "customer_email_missing"
   | "customer_email_invalid"
   | "delivery_failure"
+  | "send_guard_unavailable"
   | "duplicate_guard"
   | "unknown";
 
@@ -66,6 +67,15 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
       recommendedFix: "Empfängeradresse mit Kunde/Quelle verifizieren, Bounce-Beleg prüfen, erst danach guarded resend freigeben.",
       safeFix: "Bounce/Empfängerproblem klären und Adresse korrigieren.",
       retrySafety: "Retry blockiert, solange ein aktueller Bounce für die Empfängeradresse vorliegt.",
+    };
+  }
+  if (/(send[_\s-]*guard|guardrail|guard).{0,60}(unavailable|nicht erreichbar|ungueltig|ungültig|invalid|timeout|failed|error)|send_guard_unavailable|invalid_guard_response/i.test(lower)) {
+    return {
+      key: "send_guard_unavailable",
+      rootCause: "Der Versand-Guard konnte keine eindeutige Freigabe liefern.",
+      recommendedFix: "Keinen Angebotsversand wiederholen; Guard-/Supabase-Erreichbarkeit und bestehende Versandbelege prüfen, danach Fall erneut auswerten.",
+      safeFix: "Guard-/Supabase-Fehler prüfen und Versandbelege konsolidieren.",
+      retrySafety: "Retry blockiert, solange der Send-Guard keine eindeutige Freigabe liefert.",
     };
   }
   if (/(duplicate|doppelt).{0,40}(detected|gefunden|blocked|blockiert|send|sent|mail|versand)|already sent|bereits.*(gesendet|versendet)|idempotency.{0,30}(conflict|blocked|duplicate)/i.test(lower)) {

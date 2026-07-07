@@ -83,6 +83,15 @@ test("company brain classifies invalid automation recipient email", () => {
   assert.match(hint.retrySafety, /Kein Retry/);
 });
 
+test("company brain classifies unavailable send guards as blocked automation issue", () => {
+  const hint = classifyAutomationIssueText("send_guard_unavailable: invalid_guard_response");
+
+  assert.equal(hint.key, "send_guard_unavailable");
+  assert.match(hint.rootCause, /Versand-Guard/);
+  assert.match(hint.recommendedFix, /Keinen Angebotsversand/);
+  assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
 test("company brain normalizes Coolify API config", () => {
   const config = resolveCoolifyApiConfig({
     COOLIFY_URL: "https://coolify.example.com/",

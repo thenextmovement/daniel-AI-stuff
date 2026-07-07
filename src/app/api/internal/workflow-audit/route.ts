@@ -6,6 +6,20 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+};
+
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, {
+    ...init,
+    headers: {
+      ...NO_STORE_HEADERS,
+      ...(init?.headers || {}),
+    },
+  });
+}
+
 function configuredInternalKeys() {
   return [
     process.env.OPS_INTERNAL_API_KEY,
@@ -36,30 +50,30 @@ function isAuthorized(request: NextRequest) {
 
 function failureResponse(error: unknown) {
   if (error instanceof QuoteValidationError) {
-    return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
   }
   if (error instanceof SupabaseRestError) {
-    return NextResponse.json({ ok: false, error: error.message, details: error.details }, { status: error.status });
+    return jsonResponse({ ok: false, error: error.message, code: "supabase_error" }, { status: error.status });
   }
   console.error("internal workflow audit route failed", error);
-  return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
+  return jsonResponse({ ok: false, error: "internal_error" }, { status: 500 });
 }
 
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    return jsonResponse({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
   let body: WorkflowAuditEventInput;
   try {
     body = (await request.json()) as WorkflowAuditEventInput;
   } catch {
-    return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+    return jsonResponse({ ok: false, error: "invalid_json" }, { status: 400 });
   }
 
   try {
     const result = await recordWorkflowAuditEvent(body);
-    return NextResponse.json({
+    return jsonResponse({
       ok: true,
       mode: "audit_only",
       customerCommunicationSent: false,

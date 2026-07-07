@@ -102,7 +102,13 @@ function compactMetadata(input: Record<string, unknown> | null | undefined) {
 }
 
 function issueRetrySafety(key: AutomationIssueKey): WorkflowAuditRetrySafety {
-  if (key === "customer_email_missing" || key === "customer_email_invalid" || key === "delivery_failure" || key === "duplicate_guard") {
+  if (
+    key === "customer_email_missing" ||
+    key === "customer_email_invalid" ||
+    key === "delivery_failure" ||
+    key === "send_guard_unavailable" ||
+    key === "duplicate_guard"
+  ) {
     return "blocked";
   }
   return "unknown";

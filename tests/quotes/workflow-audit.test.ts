@@ -56,6 +56,22 @@ test("workflow audit derives structured issue metadata from raw n8n invalid emai
   assert.equal(event.metadata.summary, event.metadata.automation_issue_root_cause);
 });
 
+test("workflow audit marks unavailable send guards as blocked", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflowName: "NEONTRIP Quote Ready SIMPLE v1.1",
+    action: "offer_send",
+    status: "blocked",
+    requestId: "REQ-GUARD",
+    failedNode: "Evaluate Guard",
+    errorMessage: "send_guard_unavailable: invalid_guard_response",
+  });
+
+  assert.equal(event.metadata.automation_issue_key, "send_guard_unavailable");
+  assert.match(String(event.metadata.automation_issue_root_cause), /Versand-Guard/);
+  assert.match(String(event.metadata.automation_issue_recommended_fix), /Keinen Angebotsversand/);
+  assert.equal(event.metadata.retry_safety, "blocked");
+});
+
 test("workflow audit creates stable event keys for duplicate n8n callbacks", () => {
   const first = normalizeWorkflowAuditEvent({
     workflowName: "offer_from_trello",
