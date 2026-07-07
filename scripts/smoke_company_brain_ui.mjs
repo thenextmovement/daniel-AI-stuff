@@ -255,6 +255,13 @@ async function setupRoutes(page) {
       body: JSON.stringify(companyBrainPayload()),
     });
   });
+  await page.route("**/api/ops/company-brain/actions**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, sent: true, duplicate: false }),
+    });
+  });
   await page.route("**/api/ops/session", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
@@ -303,6 +310,9 @@ async function runViewport(browser, target, viewport, label) {
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   await page.getByRole("button", { name: "Versand freigeben" }).click();
   await waitForBodyText(page, `${label}: confirmation panel`, ["Freigabe prüfen", "Diese Aktion kann Kundenkontakt auslösen"]);
+  await page.locator('input[placeholder="Freigabe"]:visible').first().fill("Freigabe");
+  await page.locator('button:visible', { hasText: "Jetzt ausführen" }).first().click();
+  await waitForBodyText(page, `${label}: action reload`, ["Ausgeführt: Angebot erneut gesendet. Fall neu geladen."]);
 
   const layout = await page.evaluate(() => ({
     noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,

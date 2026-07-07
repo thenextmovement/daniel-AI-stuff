@@ -771,7 +771,10 @@ export function OpsCompanyBrainClient({
     setToken("");
   }
 
-  async function resolveWith(values: { query: string; question: string; problemType: CompanyBrainProblemType | "" }) {
+  async function resolveWith(
+    values: { query: string; question: string; problemType: CompanyBrainProblemType | "" },
+    options?: { actionResultMessage?: string | null },
+  ) {
     setLoading(true);
     setError(null);
     try {
@@ -788,22 +791,24 @@ export function OpsCompanyBrainClient({
       const payload = (await response.json().catch(() => null)) as ResolveApiResponse | null;
       if (response.status === 401) {
         setHasSession(false);
-        return;
+        return false;
       }
       if (!response.ok || !payload?.ok || !payload.result) {
         setError(formatApiError(payload));
-        return;
+        return false;
       }
       setResult(payload.result);
       setCopyMessage(null);
       setDraftCopyMessage(null);
       setActionCopyMessage(null);
-      setActionResultMessage(null);
+      setActionResultMessage(options?.actionResultMessage || null);
       setPendingActionKey(null);
       setPendingNewCustomerEmail("");
       setPendingConfirmationText("");
+      return true;
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Fallprüfung konnte nicht geladen werden.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -980,8 +985,15 @@ export function OpsCompanyBrainClient({
         payload.note?.id ? `Notiz ${payload.note.id}` : null,
         payload.specialCase ? "Problemfall-Audit" : null,
       ].filter(Boolean).join(", ");
-      setActionResultMessage(created ? `Ausgeführt: ${created}.` : "Aktion ausgeführt.");
+      const successMessage = created ? `Ausgeführt: ${created}.` : "Aktion ausgeführt.";
       cancelActionProposal();
+      const refreshed = await resolveWith(
+        { query, question, problemType },
+        { actionResultMessage: `${successMessage} Fall neu geladen.` },
+      );
+      if (!refreshed) {
+        setActionResultMessage(`${successMessage} Fall konnte nicht automatisch neu geladen werden.`);
+      }
     } catch (executeError) {
       setActionResultMessage(executeError instanceof Error ? executeError.message : "Aktion konnte nicht ausgeführt werden.");
     } finally {
