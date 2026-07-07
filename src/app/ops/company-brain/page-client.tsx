@@ -436,6 +436,15 @@ function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
   const hasOffer = result.offers.length > 0;
   const hasTrello = Boolean(result.trelloFailureDiagnosis.card);
   const offerRequestId = result.offers.find((offer) => offer.requestId)?.requestId || null;
+  const requestIdentifier = result.identifiers.find((identifier) => identifier.type === "request_id") || null;
+  const trelloIdentifier = result.identifiers.find((identifier) => identifier.type === "trello_card_id") || null;
+  const requestId = result.records[0]?.requestId || offerRequestId || requestIdentifier?.value || null;
+  const trelloId = result.trelloFailureDiagnosis.card?.shortLink || result.trelloFailureDiagnosis.card?.id || trelloIdentifier?.value || null;
+  const customerLookupHref = requestId
+    ? `/ops/customer-records?query=${encodeURIComponent(requestId)}`
+    : trelloId
+      ? `/ops/customer-records?query=${encodeURIComponent(`trello:${trelloId}`)}`
+      : null;
 
   if (hasRecord && hasOffer) {
     return {
@@ -443,6 +452,8 @@ function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
       title: "Fix-Kontext vollständig",
       summary: "Kundenakte und Angebot sind geladen. Interne Fixes können nach Freigabe gegen die Kundenakte ausgeführt werden.",
       detail: `Request: ${result.records[0]?.requestId || "unbekannt"} · Angebot: ${result.offers[0]?.offerNumber || result.offers[0]?.offerId || "unbekannt"}`,
+      actionHref: `/ops/customer-records?query=${encodeURIComponent(result.records[0]?.requestId || "")}`,
+      actionLabel: "Kundenakte öffnen",
     };
   }
 
@@ -454,6 +465,8 @@ function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
       detail: offerRequestId
         ? `Request-ID laut Angebot: ${offerRequestId}. Kundenakte per Request-ID prüfen/verknüpfen.`
         : "Im Angebot ist keine belastbare Request-ID sichtbar. Offer-Bridge oder Anfrage-Zuordnung prüfen.",
+      actionHref: customerLookupHref,
+      actionLabel: offerRequestId ? "Kundenakte prüfen" : "Zuordnung prüfen",
     };
   }
 
@@ -462,7 +475,13 @@ function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
       tone: "blocked" as const,
       title: "Nur Trello gelesen",
       summary: "Trello reicht nicht als Source of Truth. Company Brain darf den Fehler erklären, aber keine Korrektur oder Versandaktion ausführen.",
-      detail: "Request-ID, Kundenakte oder Angebot verknüpfen und danach erneut prüfen.",
+      detail: [
+        requestId ? `Request-ID aus Trello/Identifier: ${requestId}.` : null,
+        trelloId ? `Trello: ${trelloId}.` : null,
+        "Kundenakte oder Angebot verknüpfen und danach erneut prüfen.",
+      ].filter(Boolean).join(" "),
+      actionHref: customerLookupHref,
+      actionLabel: requestId ? "Kundenakte prüfen" : "Mit Trello-ID suchen",
     };
   }
 
@@ -472,6 +491,8 @@ function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
       title: "Kundenakte fehlt",
       summary: "Ohne eindeutige Kundenakte bleiben schreibende Fixes gesperrt.",
       detail: "Mit E-Mail, A/N, Request-ID oder Trello-ID erneut suchen.",
+      actionHref: customerLookupHref,
+      actionLabel: requestId ? "Kundenakte prüfen" : trelloId ? "Mit Trello-ID suchen" : "Erneut suchen",
     };
   }
 
@@ -480,6 +501,8 @@ function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
     title: "Angebotskontext fehlt",
     summary: "Kundenakte ist geladen, aber das passende Angebot ist nicht eindeutig gefunden.",
     detail: "Angebotsnummer oder Trello-Link ergänzen, bevor Versandstatus oder Retry bewertet wird.",
+    actionHref: `/ops/company-brain?query=${encodeURIComponent(result.records[0]?.requestId || result.query)}&problemType=offer_not_sent`,
+    actionLabel: "Mit Request neu prüfen",
   };
 }
 
@@ -1218,6 +1241,12 @@ export function OpsCompanyBrainClient({
                       <p className="mt-3 rounded-xl border border-current/15 bg-white/45 px-3 py-2 text-xs leading-5">
                         {operatorView.sourceOfTruth.detail}
                       </p>
+                      {operatorView.sourceOfTruth.actionHref ? (
+                        <a href={operatorView.sourceOfTruth.actionHref} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 bg-white/45 px-2.5 text-xs font-semibold transition hover:bg-white/70">
+                          {operatorView.sourceOfTruth.actionLabel}
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
                     </div>
                   ) : null}
 
