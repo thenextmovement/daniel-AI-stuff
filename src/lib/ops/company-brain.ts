@@ -1545,7 +1545,7 @@ type CoolifyApiConfig = {
   applicationUuid: string | null;
 };
 
-export function resolveCoolifyApiConfig(env: NodeJS.ProcessEnv = process.env): CoolifyApiConfig | null {
+export function resolveCoolifyApiConfig(env: Record<string, string | undefined> = process.env): CoolifyApiConfig | null {
   const rawBaseUrl = cleanText(env.COOLIFY_API_URL || env.COOLIFY_URL || "").replace(/\/+$/, "");
   const apiToken = cleanText(env.COOLIFY_API_TOKEN || "");
   if (!rawBaseUrl || !apiToken) return null;
