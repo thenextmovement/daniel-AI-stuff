@@ -109,6 +109,54 @@ test("workflow audit accepts direct snake-case n8n guard blocked payloads", () =
   assert.equal(event.metadata.automation_issue_key, "send_guard_unavailable");
 });
 
+test("workflow audit accepts nested n8n error trigger payloads", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow: {
+      id: "workflow-quote-ready",
+      name: "NEONTRIP Quote Ready SIMPLE v1.1",
+    },
+    execution: {
+      id: 2770420,
+      url: "https://n8n.neontrip.de/execution/2770420",
+      mode: "trigger",
+      lastNodeExecuted: "Outlook: E-Mail senden",
+      error: {
+        message: "Outlook Graph send failed: 403 Authorization_RequestDenied Mail.Send permission missing",
+      },
+    },
+    node: {
+      name: "Outlook: E-Mail senden",
+      type: "n8n-nodes-base.microsoftOutlook",
+    },
+    status: "failed",
+    metadata: {
+      action: "offer_send",
+      request_id: "REQ-N8N-NESTED",
+      trello_card_id: "6a4b53ee91f140e2ecd67e2f",
+      offer_id: "offer-n8n-nested",
+      source_event_id: "trello-action-nested",
+      idempotency_key: "quote-ready-send:REQ-N8N-NESTED:offer-n8n-nested",
+    },
+  });
+
+  assert.equal(event.documentId, "REQ-N8N-NESTED");
+  assert.equal(event.workflowName, "NEONTRIP Quote Ready SIMPLE v1.1");
+  assert.equal(event.action, "offer_send");
+  assert.equal(event.errorMessage, "Outlook Graph send failed: 403 Authorization_RequestDenied Mail.Send permission missing");
+  assert.equal(event.metadata.execution_id, "2770420");
+  assert.equal(event.metadata.n8n_workflow_id, "workflow-quote-ready");
+  assert.equal(event.metadata.n8n_execution_url, "https://n8n.neontrip.de/execution/2770420");
+  assert.equal(event.metadata.failed_node, "Outlook: E-Mail senden");
+  assert.equal(event.metadata.n8n_node_type, "n8n-nodes-base.microsoftOutlook");
+  assert.equal(event.metadata.request_id, "REQ-N8N-NESTED");
+  assert.equal(event.metadata.trello_card_id, "6a4b53ee91f140e2ecd67e2f");
+  assert.equal(event.metadata.offer_id, "offer-n8n-nested");
+  assert.equal(event.metadata.source_event_id, "trello-action-nested");
+  assert.equal(event.metadata.idempotency_key, "quote-ready-send:REQ-N8N-NESTED:offer-n8n-nested");
+  assert.equal(event.metadata.retry_safety, "blocked");
+  assert.equal(event.metadata.automation_issue_key, "outlook_auth_failed");
+});
+
 test("workflow audit marks AI copy hard blocks as non-sendable", () => {
   const event = normalizeWorkflowAuditEvent({
     workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",
