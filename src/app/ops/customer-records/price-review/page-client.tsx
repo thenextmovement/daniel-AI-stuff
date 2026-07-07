@@ -65,6 +65,9 @@ type OfferSizeLadderOptionView = {
 };
 type OfferSizeLadderResultView = {
   status: "draft" | "needs_review" | "approved" | "blocked" | "applied" | "superseded";
+  trelloCardId: string;
+  offerId: string | null;
+  offerItemId: string | null;
   productModel: string;
   confidence: number;
   issues: string[];
@@ -348,6 +351,15 @@ function TrelloEstimateResultCard({
 function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView }) {
   const visibleOptions = result.options.slice(0, 18);
   const hiddenCount = Math.max(0, result.options.length - visibleOptions.length);
+  const defaultOption = result.options.find((option) => option.isDefault) || result.options[0] || null;
+  const [selectedLongSide, setSelectedLongSide] = useState(defaultOption?.longSideCm ?? 0);
+  const selectedOption =
+    result.options.find((option) => option.longSideCm === selectedLongSide) || defaultOption;
+
+  useEffect(() => {
+    setSelectedLongSide(defaultOption?.longSideCm ?? 0);
+  }, [defaultOption?.longSideCm]);
+
   return (
     <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -361,6 +373,9 @@ function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView })
           <div className="mt-1 text-xs text-black/50">
             {result.productModel} · Faktor {result.customerFactor.toFixed(1)} · {result.options.length} Größenoptionen
           </div>
+          <div className="mt-1 text-xs text-black/45">
+            {result.offerId ? `Interne Vorschau fuer Angebot ${result.offerId}` : "Interne Vorschau ohne Offer-ID"} · Karte {result.trelloCardId}
+          </div>
         </div>
         {result.persisted ? (
           <div className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800">
@@ -372,6 +387,61 @@ function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView })
       {result.issues.length || result.warnings.length ? (
         <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${result.issues.length ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
           {[...result.issues, ...result.warnings].join(", ")}
+        </div>
+      ) : null}
+
+      {selectedOption ? (
+        <div className="mt-4 rounded-lg border border-[#fa31a2]/25 bg-[#fa31a2]/[0.04] p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-[0.14em] text-[#fa31a2]">Interne Angebotsvorschau</div>
+              <div className="mt-1 text-sm font-semibold text-black">Dropdown-Test ohne Kundenangebot zu ändern</div>
+            </div>
+            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] ${sizeLadderStatusTone(selectedOption.reviewStatus)}`}>
+              {selectedOption.reviewStatus} · {Math.round(selectedOption.confidence * 100)}%
+            </span>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,260px)_1fr]">
+            <label className="text-sm font-medium text-black">
+              Größe im internen Dropdown
+              <select
+                value={selectedOption.longSideCm}
+                onChange={(event) => setSelectedLongSide(Number(event.target.value))}
+                className="mt-2 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              >
+                {result.options.map((option) => (
+                  <option key={`${option.longSideCm}-${option.sizeLabel}`} value={option.longSideCm}>
+                    {option.sizeLabel} - {formatMoney(option.customerUnitPriceNet, "EUR")} netto
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="grid gap-2 text-sm sm:grid-cols-4">
+              <div className="rounded-lg border border-black/10 bg-white px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Groesse</div>
+                <div className="mt-1 font-semibold text-black">{selectedOption.sizeLabel}</div>
+              </div>
+              <div className="rounded-lg border border-black/10 bg-white px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Supplier</div>
+                <div className="mt-1 font-semibold text-black">{formatMoney(selectedOption.supplierTotalEstimated, selectedOption.currency)}</div>
+                <div className="mt-0.5 text-xs text-black/45">
+                  Prod. {formatMoney(selectedOption.productionPriceEstimated, selectedOption.currency)} · Ship. {formatMoney(selectedOption.shippingPriceEstimated, selectedOption.currency)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-black/10 bg-white px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Angebot netto</div>
+                <div className="mt-1 font-semibold text-black">{formatMoney(selectedOption.customerUnitPriceNet, "EUR")}</div>
+                <div className="mt-0.5 text-xs text-black/45">Faktor {selectedOption.customerFactor.toFixed(1)}</div>
+              </div>
+              <div className="rounded-lg border border-black/10 bg-white px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Sicherheit</div>
+                <div className="mt-1 font-semibold text-black">{Math.round(selectedOption.confidence * 100)}%</div>
+                <div className="mt-0.5 text-xs text-black/45">{selectedOption.reviewReason || "keine Warnung"}</div>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 
