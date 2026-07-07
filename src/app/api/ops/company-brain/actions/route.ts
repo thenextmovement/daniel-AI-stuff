@@ -636,6 +636,7 @@ export async function POST(request: NextRequest) {
       const offer = await getOfferById(offerId);
       const recordEmail = normalizeEmail(record.email);
       const offerEmail = normalizeEmail(offer.offer.customerEmail);
+      const offerRequestId = cleanText(offer.requestId || offer.request_id, 180);
       const recipientEmail = normalizeEmail(body.recipientEmail || record.email || offer.offer.customerEmail);
       const blockers: string[] = [];
 
@@ -644,6 +645,12 @@ export async function POST(request: NextRequest) {
       }
       if (recipientEmail && isInternalNeontripEmail(recipientEmail)) {
         blockers.push("Empfängeradresse ist intern; Retry an NEONTRIP-Adresse blockiert.");
+      }
+      if (offerRequestId && offerRequestId !== record.requestId) {
+        blockers.push(`Angebot gehört zu Request ${offerRequestId}, Kundenakte zu ${record.requestId}.`);
+      }
+      if (offer.trelloCardId && trelloCardId && offer.trelloCardId !== trelloCardId) {
+        blockers.push(`Angebot gehört zu Trello-Karte ${offer.trelloCardId}, Fallprüfung zu ${trelloCardId}.`);
       }
       if (offerEmail && recordEmail && offerEmail !== recordEmail) {
         blockers.push(`Angebot gehört zu ${offer.offer.customerEmail}, Kundenakte zu ${record.email}.`);
