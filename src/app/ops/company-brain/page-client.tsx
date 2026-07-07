@@ -241,6 +241,27 @@ function operatorDecisionClass(tone: "success" | "warning" | "danger" | "neutral
   return "border-stone-200 bg-stone-50 text-stone-800";
 }
 
+function routeStepClass(tone: "ok" | "warning" | "blocked" | "neutral") {
+  if (tone === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-950";
+  if (tone === "blocked") return "border-rose-200 bg-rose-50 text-rose-950";
+  return "border-stone-200 bg-stone-50 text-stone-800";
+}
+
+function routeStepBadge(tone: "ok" | "warning" | "blocked" | "neutral") {
+  if (tone === "ok") return "OK";
+  if (tone === "warning") return "Prüfen";
+  if (tone === "blocked") return "Blockiert";
+  return "Unklar";
+}
+
+function routeStepToneFromSeverity(severity: string): "ok" | "warning" | "blocked" | "neutral" {
+  if (severity === "critical") return "blocked";
+  if (severity === "warning") return "warning";
+  if (severity === "info") return "ok";
+  return "neutral";
+}
+
 function buildOperatorDecision(result: CompanyBrainResolveResult) {
   const executableFixes = result.actionProposals.filter((action) => action.enabled && executableAction(action.key));
   const dataFixAvailable = executableFixes.some((action) =>
@@ -301,6 +322,72 @@ function buildOperatorDecision(result: CompanyBrainResolveResult) {
     summary: "Es ist keine sichere ausführbare Aktion aus den geladenen Belegen ableitbar.",
     steps: result.nextActions.slice(0, 3),
   };
+}
+
+function buildCaseRoute(result: CompanyBrainResolveResult) {
+  const dataFixPriority = ["correct_customer_email", "prepare_email_correction", "post_trello_status_comment", "create_internal_task", "save_case_note"];
+  const dataFix = dataFixPriority
+    .map((key) => result.actionProposals.find((action) => action.enabled && action.key === key))
+    .find((action): action is CompanyBrainActionProposalView => Boolean(action));
+  const customerAction = result.actionProposals.find((action) => action.key === "guarded_offer_resend");
+  const automationRun = [...result.automationRuns]
+    .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
+  const triggerTone: "ok" | "warning" | "blocked" | "neutral" = result.trelloFailureDiagnosis.requested
+    ? result.trelloFailureDiagnosis.status === "loaded" ? "ok" : routeStepToneFromSeverity(result.trelloFailureDiagnosis.severity)
+    : "neutral";
+  const causeTone: "ok" | "warning" | "blocked" | "neutral" =
+    result.evidenceScore.status === "strong"
+      ? "ok"
+      : result.evidenceScore.status === "conflicting"
+        ? "blocked"
+        : result.evidenceScore.status === "medium"
+          ? "warning"
+          : "neutral";
+  const dataTone: "ok" | "warning" | "blocked" | "neutral" = dataFix
+    ? dataFix.riskLevel === "high" ? "warning" : "ok"
+    : result.retryAssessment.blockers.length ? "blocked" : "neutral";
+  const sendTone: "ok" | "warning" | "blocked" | "neutral" = result.retryAssessment.canSendWithConfirmation
+    ? "ok"
+    : result.retryAssessment.status === "needs_fix"
+      ? "warning"
+      : result.retryAssessment.status === "blocked"
+        ? "blocked"
+        : "neutral";
+
+  return [
+    {
+      key: "trigger",
+      label: "1. Trigger",
+      title: result.trelloFailureDiagnosis.requested ? "Trello-Karte gelesen" : "Fall geladen",
+      detail: result.trelloFailureDiagnosis.requested
+        ? `${result.trelloFailureDiagnosis.card?.currentListName || "Liste unbekannt"} · ${result.trelloFailureDiagnosis.expectedAction}`
+        : result.identifiers[0]?.value || result.query,
+      tone: triggerTone,
+    },
+    {
+      key: "cause",
+      label: "2. Ursache",
+      title: result.trelloFailureDiagnosis.rootCauseKey === "not_requested" ? result.problemResolution.label : result.trelloFailureDiagnosis.rootCause,
+      detail: automationRun?.executionId
+        ? `n8n Execution ${automationRun.executionId} · ${automationRun.status || "Status unbekannt"}`
+        : result.evidenceScore.summary,
+      tone: causeTone,
+    },
+    {
+      key: "fix",
+      label: "3. Datenfix",
+      title: dataFix?.label || "Kein direkter Datenfix",
+      detail: dataFix ? shortText(dataFix.summary, 120) : (result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution),
+      tone: dataTone,
+    },
+    {
+      key: "send",
+      label: "4. Versand",
+      title: result.retryAssessment.canSendWithConfirmation ? "Guarded Retry möglich" : "Kundenkontakt gesperrt",
+      detail: customerAction?.summary || result.retryAssessment.summary,
+      tone: sendTone,
+    },
+  ];
 }
 
 function setupActionForIntegration(key: string, status: string) {
@@ -421,6 +508,7 @@ export function OpsCompanyBrainClient({
         decisionItems: [],
         setupBlockers: [],
         decision: null,
+        caseRoute: [],
         primaryRun: null,
       };
     }
@@ -461,6 +549,7 @@ export function OpsCompanyBrainClient({
       decisionItems,
       setupBlockers,
       decision: buildOperatorDecision(result),
+      caseRoute: buildCaseRoute(result),
       primaryRun,
     };
   }, [result]);
@@ -825,6 +914,30 @@ export function OpsCompanyBrainClient({
                       {retryAssessmentLabel(result.retryAssessment.status)}
                     </span>
                   </div>
+                </div>
+              </div>
+
+              <div className="border-b border-stone-200 bg-stone-50 px-5 py-5 md:px-6">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Fall-Route</p>
+                    <h3 className="mt-1 text-lg font-semibold text-stone-950">Vom Kartenfehler zur sicheren Aktion</h3>
+                  </div>
+                  <p className="max-w-2xl text-sm leading-6 text-stone-600">
+                    Diese vier Schritte trennen Beleglage, Datenkorrektur und Kundenkontakt. Trello bleibt nur Projektion; Fixes laufen erst nach Freigabe und Server-Guard.
+                  </p>
+                </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                  {operatorView.caseRoute.map((step) => (
+                    <div key={step.key} className={`rounded-2xl border px-4 py-3 ${routeStepClass(step.tone)}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-65">{step.label}</p>
+                        <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold">{routeStepBadge(step.tone)}</span>
+                      </div>
+                      <p className="mt-2 text-sm font-semibold leading-5">{step.title}</p>
+                      <p className="mt-1 text-xs leading-5 opacity-80">{step.detail}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
