@@ -1003,6 +1003,45 @@ function upsertLightColorLine(description: string | null | undefined, lightColor
   return lines.join("\n");
 }
 
+function upsertProductChangeLine(description: string | null | undefined, productChangeLabel: string) {
+  const lines = String(description || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nextLine = `Produktart: ${productChangeLabel}`;
+  const index = lines.findIndex((line) => /^produktart\s*:/i.test(line) || /^produkt\s*:/i.test(line) || /^schildtechnik\s*:/i.test(line));
+  if (index >= 0) {
+    lines[index] = nextLine;
+  } else {
+    lines.unshift(nextLine);
+  }
+  return lines.join("\n");
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function applyProductChangeToTitle(title: string, productChangeLabel: string) {
+  const normalized = trimNullable(productChangeLabel);
+  if (!normalized) return title;
+
+  let nextTitle = title;
+  if (/3d\s*frontlit/i.test(normalized)) {
+    nextTitle = nextTitle
+      .replace(/3D\s*Backlit/gi, "3D Frontlit")
+      .replace(/\bBacklit\b/gi, "Frontlit")
+      .replace(/\bnon[-\s]*lit\s+cut\s+to\s+board\s+black\b/gi, "3D Frontlit");
+  } else if (/3d\s*backlit/i.test(normalized)) {
+    nextTitle = nextTitle.replace(/3D\s*Frontlit/gi, "3D Backlit").replace(/\bFrontlit\b/gi, "Backlit");
+  }
+
+  if (nextTitle === title && !new RegExp(escapeRegExp(normalized), "i").test(title)) {
+    return `${normalized} · ${title}`;
+  }
+  return nextTitle;
+}
+
 async function latestCrmQuoteVersion(offerId: string) {
   const versions = await supabaseRequest<CrmQuoteVersionRow[]>("crm_quote_versions", undefined, {
     select: "id,quote_id,version_number,created_at",
@@ -1425,6 +1464,7 @@ export async function linkDesignAssetToOffer(input: {
   offerImageId?: string | null;
   offerItemId?: string | null;
   lightColorLabel?: string | null;
+  productChangeLabel?: string | null;
   expectedUpdatedAt?: string | null;
   operatorName?: string | null;
   dryRun?: boolean | null;
@@ -1441,11 +1481,13 @@ export async function linkDesignAssetToOffer(input: {
   const offerImageId = trimNullable(input.offerImageId);
   const offerItemId = trimNullable(input.offerItemId);
   const lightColorLabel = trimNullable(input.lightColorLabel);
+  const productChangeLabel = trimNullable(input.productChangeLabel);
   const offerImage = offerImageId ? offer.images.find((image) => image.id === offerImageId) : null;
   const offerItem = offerItemId ? offer.items.find((item) => item.id === offerItemId) : null;
   if (offerImageId && !offerImage) throw new QuoteValidationError("Ausgewaehlter Bildslot existiert nicht im Angebot.");
   if (offerItemId && !offerItem) throw new QuoteValidationError("Ausgewaehltes Produkt existiert nicht im Angebot.");
   if (lightColorLabel && !offerItem) throw new QuoteValidationError("Bitte eine Angebotsposition wählen, wenn die Leuchtfarbe im Angebot aktualisiert werden soll.");
+  if (productChangeLabel && !offerItem) throw new QuoteValidationError("Bitte eine Angebotsposition wählen, wenn die Produktänderung im Angebot aktualisiert werden soll.");
   if (!asset.public_url) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer die Angebotsanreicherung.");
 
   const link = await getOrCreateOfferAssetLink({
@@ -1457,7 +1499,8 @@ export async function linkDesignAssetToOffer(input: {
   });
 
   let offerPatch: OpsOfferPatchResult | null = null;
-  if (offerImage || (offerItem && lightColorLabel)) {
+  const shouldPatchItem = Boolean(offerItem && (lightColorLabel || productChangeLabel));
+  if (offerImage || shouldPatchItem) {
     const imagePatches = offerImage
       ? [
           {
@@ -1468,24 +1511,41 @@ export async function linkDesignAssetToOffer(input: {
           },
         ]
       : undefined;
-    const itemPatches = offerItem && lightColorLabel
+    const itemPatches = shouldPatchItem && offerItem
       ? offer.items.map((item) => {
           const patch = offerItemPatch(item);
           if (item.id !== offerItem.id) return patch;
+          let description = item.description || null;
+          if (lightColorLabel) description = upsertLightColorLine(description, lightColorLabel);
+          if (productChangeLabel) description = upsertProductChangeLine(description, productChangeLabel);
           return {
             ...patch,
-            description: upsertLightColorLine(item.description, lightColorLabel),
+            title: productChangeLabel ? applyProductChangeToTitle(item.title, productChangeLabel) : patch.title,
+            description,
           };
         })
       : undefined;
+    const revisionParts = [
+      "Design-Mockup",
+      lightColorLabel ? `Leuchtfarbe ${lightColorLabel}` : null,
+      productChangeLabel ? `Produktart ${productChangeLabel}` : null,
+    ].filter(Boolean);
+    const patchReason =
+      lightColorLabel && productChangeLabel
+        ? "ops_design_asset_and_light_color_and_product_change_link"
+        : lightColorLabel
+          ? "ops_design_asset_and_light_color_link"
+          : productChangeLabel
+            ? "ops_design_asset_and_product_change_link"
+            : "ops_design_asset_link";
     offerPatch = await patchOfferById(
       offer.offerId,
       {
         expectedUpdatedAt: trimNullable(input.expectedUpdatedAt) || offer.updatedAt,
         actor: trimNullable(input.operatorName) || "Ops Design",
-        reason: lightColorLabel ? "ops_design_asset_and_light_color_link" : "ops_design_asset_link",
+        reason: patchReason,
         revisionReason: offer.lock.requiresRevisionReason
-          ? `Design-Mockup${lightColorLabel ? ` und Leuchtfarbe ${lightColorLabel}` : ""} aus Design Studio aktualisiert.`
+          ? `${revisionParts.join(", ")} aus Design Studio aktualisiert.`
           : undefined,
         images: imagePatches,
         items: itemPatches,
@@ -1502,7 +1562,8 @@ export async function linkDesignAssetToOffer(input: {
       asset,
       itemIndex,
     });
-    const nextStatus = offerPatch ? "linked" : "needs_price_review";
+    const priceReviewRequired = Boolean(productChangeLabel);
+    const nextStatus = offerPatch && !priceReviewRequired ? "linked" : "needs_price_review";
     await supabaseRequest<DesignOfferAssetLinkRow[]>(
       "design_offer_asset_links",
       {
@@ -1519,6 +1580,9 @@ export async function linkDesignAssetToOffer(input: {
             offer_image_id: offerImageId,
             offer_item_title: offerItem?.title || null,
             light_color_label: lightColorLabel,
+            product_change_label: productChangeLabel,
+            price_review_required: priceReviewRequired,
+            price_review_reason: priceReviewRequired ? "product_change_requires_price_review" : null,
             asset_public_url: asset.public_url,
             crm_quote_image_id: crmQuoteImage.id,
             crm_quote_version_id: crmQuoteImage.versionId,
@@ -1544,6 +1608,9 @@ export async function linkDesignAssetToOffer(input: {
             offer_item_id: offerItemId,
             offer_image_id: offerImageId,
             light_color_label: lightColorLabel,
+            product_change_label: productChangeLabel,
+            price_review_required: priceReviewRequired,
+            price_review_reason: priceReviewRequired ? "product_change_requires_price_review" : null,
             crm_quote_image_id: crmQuoteImage.id,
             crm_quote_version_id: crmQuoteImage.versionId,
             crm_quote_item_index: crmQuoteImage.itemIndex,
@@ -1557,7 +1624,7 @@ export async function linkDesignAssetToOffer(input: {
   }
 
   return {
-    status: offerPatch ? (input.dryRun ? "dry_run_ok" : "linked") : "needs_price_review",
+    status: input.dryRun ? "dry_run_ok" : offerPatch && !productChangeLabel ? "linked" : "needs_price_review",
     offerId,
     assetId: asset.id,
     dryRun: Boolean(input.dryRun),
@@ -1771,6 +1838,22 @@ function promptForImageEdit(promptText: string) {
       `Ändere in dem bereitgestellten Bild ausschließlich die sichtbare Leuchtfarbe des vorhandenen Schildes zu ${lightColor}.`,
       "Erhalte exakt dasselbe Motiv: Text, Logo, Buchstabenform, Position, Perspektive, Hintergrund, Montage, Größe, Material, Bildausschnitt und Kamerawinkel unverändert.",
       "Keine neue Szene, kein neues Schild, keine neuen Wörter, keine zusätzlichen Logos, keine Dekoration und keine Änderungen an Helligkeit oder Umgebung außer der Lichtfarbe.",
+    ].join("\n");
+  }
+
+  const productChangeMatch = promptText.match(/Ändere ausschließlich die Schildtechnik zu ([^\n.]+)/i);
+  const productChange = trimNullable(productChangeMatch?.[1]);
+  if (productChange) {
+    const productInstruction = /3d\s*frontlit/i.test(productChange)
+      ? "Wandle vorhandene Backlit-, Rueckleuchter- oder non-lit-cut-to-board-Anmutung in ein glaubwuerdiges 3D-Frontlit-Schild mit nach vorne sichtbarer Lichtwirkung um."
+      : /3d\s*backlit/i.test(productChange)
+        ? "Wandle vorhandene Frontlit- oder unbeleuchtete Anmutung in ein glaubwuerdiges 3D-Backlit-Schild mit indirektem Halo-/Rueckleucht-Effekt um."
+        : `Wandle die vorhandene Schildtechnik in ${productChange} um.`;
+    return [
+      `Ändere in dem bereitgestellten Bild ausschließlich die Schildtechnik des vorhandenen Schildes zu ${productChange}.`,
+      productInstruction,
+      "Erhalte exakt dasselbe Motiv: Text, Logo, Buchstabenform, Konturen, Größe, Position, Perspektive, Hintergrund, Wand, Montage, Bildausschnitt und Kamerawinkel unverändert.",
+      "Keine neue Szene, kein neues Logo, keine neuen Wörter, keine andere Marke, keine Dekoration und keine Preis- oder Lieferangaben hinzufügen.",
     ].join("\n");
   }
 

@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       offerImageId?: string | null;
       offerItemId?: string | null;
       lightColorLabel?: string | null;
+      productChangeLabel?: string | null;
       expectedUpdatedAt?: string | null;
       operatorName?: string | null;
       dryRun?: boolean | null;
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
       offerImageId: body.offerImageId || null,
       offerItemId: body.offerItemId || null,
       lightColorLabel: body.lightColorLabel || null,
+      productChangeLabel: body.productChangeLabel || null,
       expectedUpdatedAt: body.expectedUpdatedAt || null,
       operatorName: body.operatorName || null,
       dryRun: Boolean(body.dryRun),

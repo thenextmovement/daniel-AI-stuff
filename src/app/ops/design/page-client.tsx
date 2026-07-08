@@ -121,6 +121,32 @@ const LIGHT_COLOR_PRESETS = {
   rgb: { label: "RGB", value: "RGB-Farbverlauf", swatch: "linear-gradient(135deg,#ef4444,#22c55e,#3b82f6)" },
   custom: { label: "Eigene", value: null, swatch: "linear-gradient(135deg,#111827,#f8fafc)" },
 } as const;
+const PRODUCT_CHANGE_PRESETS = {
+  original: null,
+  frontlit_3d: {
+    label: "3D Frontlit",
+    value: "3D Frontlit",
+    lines: [
+      "Produktart ändern:",
+      "Ändere ausschließlich die Schildtechnik zu 3D Frontlit.",
+      "Wenn das Ausgangsbild 3D Backlit, Rueckleuchter, non-lit cut to board black oder eine indirekte Rueckbeleuchtung zeigt, wandle es in ein glaubwuerdiges 3D-Frontlit-Schild um.",
+      "Zeige nach vorne leuchtende bzw. frontbeleuchtete 3D-Buchstaben mit passender Frontlichtwirkung.",
+      "Erhalte Text, Logo, Buchstabenform, Groesse, Perspektive, Wand/Hintergrund, Bildausschnitt und Montageposition unveraendert.",
+      "Keine neue Szene, kein neues Logo, keine neuen Woerter, keine andere Marke, keine Preis- oder Lieferangaben.",
+    ],
+  },
+  backlit_3d: {
+    label: "3D Backlit",
+    value: "3D Backlit",
+    lines: [
+      "Produktart ändern:",
+      "Ändere ausschließlich die Schildtechnik zu 3D Backlit.",
+      "Wandle das Ausgangsbild in ein glaubwuerdiges rueckleuchtendes 3D-Schild mit indirektem Halo-/Backlit-Effekt um.",
+      "Erhalte Text, Logo, Buchstabenform, Groesse, Perspektive, Wand/Hintergrund, Bildausschnitt und Montageposition unveraendert.",
+      "Keine neue Szene, kein neues Logo, keine neuen Woerter, keine andere Marke, keine Preis- oder Lieferangaben.",
+    ],
+  },
+} as const;
 const MOCKUP_PRESETS = {
   original: null,
   wall: {
@@ -171,6 +197,7 @@ const MOCKUP_PRESETS = {
   },
 } as const;
 type LightColorPresetKey = keyof typeof LIGHT_COLOR_PRESETS;
+type ProductChangePresetKey = keyof typeof PRODUCT_CHANGE_PRESETS;
 type MockupPresetKey = keyof typeof MOCKUP_PRESETS;
 
 function mockupPresetLabel(presetKey: MockupPresetKey) {
@@ -203,12 +230,23 @@ function selectedLightColorLabel(presetKey: LightColorPresetKey, customLightColo
   return LIGHT_COLOR_PRESETS[presetKey].label;
 }
 
-function promptWithStudioConstraints(prompt: string, presetKey: MockupPresetKey, lightColorKey: LightColorPresetKey, customLightColor: string) {
+function selectedProductChangeLabel(presetKey: ProductChangePresetKey) {
+  if (presetKey === "original") return null;
+  return PRODUCT_CHANGE_PRESETS[presetKey].label;
+}
+
+function promptWithStudioConstraints(
+  prompt: string,
+  presetKey: MockupPresetKey,
+  lightColorKey: LightColorPresetKey,
+  customLightColor: string,
+  productChangeKey: ProductChangePresetKey,
+) {
   const base = removeDesignConstraint(prompt);
   const lightColor = selectedLightColor(lightColorKey, customLightColor);
-  if (presetKey !== "original" && !lightColor) return promptWithMockupConstraint(base, presetKey);
   const lines: string[] = [];
   if (presetKey !== "original") lines.push(...MOCKUP_PRESETS[presetKey].lines);
+  if (productChangeKey !== "original") lines.push(...PRODUCT_CHANGE_PRESETS[productChangeKey].lines);
   if (lightColor) {
     lines.push(
       "Leuchtfarbe ändern:",
@@ -237,6 +275,7 @@ export function DesignOpsClient({
   const [promptDraft, setPromptDraft] = useState("");
   const [promptPreset, setPromptPreset] = useState<MockupPresetKey>("original");
   const [lightColorPreset, setLightColorPreset] = useState<LightColorPresetKey>("original");
+  const [productChangePreset, setProductChangePreset] = useState<ProductChangePresetKey>("original");
   const [customLightColor, setCustomLightColor] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [selectedOfferId, setSelectedOfferId] = useState("");
@@ -307,6 +346,7 @@ export function DesignOpsClient({
     setPromptDraft(workspace?.promptPreview.prompt || "");
     setPromptPreset("original");
     setLightColorPreset("original");
+    setProductChangePreset("original");
     setCustomLightColor("");
     const nextOfferId = workspace?.offerCandidates.find((candidate) => !candidate.locked)?.id || "";
     setSelectedOfferId(nextOfferId);
@@ -337,6 +377,7 @@ export function DesignOpsClient({
     [generatedAssets, selectedReferenceAssetId],
   );
   const activeLightColorLabel = selectedLightColorLabel(lightColorPreset, customLightColor);
+  const activeProductChangeLabel = selectedProductChangeLabel(productChangePreset);
   const colorSelectableAttachmentIds = useMemo(() => {
     return new Set(
       (workspace?.cards || [])
@@ -353,13 +394,19 @@ export function DesignOpsClient({
       .map((attachment) => attachment.id);
   }, [colorSelectableAttachmentIds, selectedAttachmentIds, selectedRecolorAttachmentIds, workspace]);
 
-  function applyPromptControls(nextPreset: MockupPresetKey, nextLightColorPreset: LightColorPresetKey, nextCustomLightColor = customLightColor) {
+  function applyPromptControls(
+    nextPreset: MockupPresetKey,
+    nextLightColorPreset: LightColorPresetKey,
+    nextCustomLightColor = customLightColor,
+    nextProductChangePreset: ProductChangePresetKey = productChangePreset,
+  ) {
     if (!workspace) return;
     setPromptPreset(nextPreset);
     setLightColorPreset(nextLightColorPreset);
+    setProductChangePreset(nextProductChangePreset);
     setJob(null);
     const basePrompt = removeDesignConstraint(promptDraft || workspace.promptPreview.prompt || "");
-    setPromptDraft(promptWithStudioConstraints(basePrompt, nextPreset, nextLightColorPreset, nextCustomLightColor));
+    setPromptDraft(promptWithStudioConstraints(basePrompt, nextPreset, nextLightColorPreset, nextCustomLightColor, nextProductChangePreset));
   }
 
   function selectReferenceAttachmentForEdit(attachmentId: string) {
@@ -379,12 +426,16 @@ export function DesignOpsClient({
   }
 
   function applyLightColorPreset(nextPreset: LightColorPresetKey) {
-    applyPromptControls(promptPreset, nextPreset);
+    applyPromptControls(promptPreset, nextPreset, customLightColor, nextPreset === "original" ? productChangePreset : "original");
+  }
+
+  function applyProductChangePreset(nextPreset: ProductChangePresetKey) {
+    applyPromptControls(promptPreset, nextPreset === "original" ? lightColorPreset : "original", customLightColor, nextPreset);
   }
 
   function updateCustomLightColor(nextColor: string) {
     setCustomLightColor(nextColor);
-    if (lightColorPreset === "custom") applyPromptControls(promptPreset, "custom", nextColor);
+    if (lightColorPreset === "custom") applyPromptControls(promptPreset, "custom", nextColor, "original");
   }
 
   async function searchDesignWorkspace(nextQuery = query, options: { preserveStatus?: boolean } = {}) {
@@ -511,15 +562,19 @@ export function DesignOpsClient({
     }
   }
 
-  async function recolorSelectedAttachments(replaceTrelloAfterGenerate: boolean) {
+  async function recolorSelectedAttachments(replaceTrelloAfterGenerate: boolean, actionKind: "color" | "product" = "color") {
     if (!workspace) return;
     const attachmentIds = [...selectedColorAttachmentIds];
     if (!attachmentIds.length) {
-      setError("Bitte mindestens ein Mockup für Farbe auswählen.");
+      setError("Bitte mindestens ein Mockup für die Design-Aktion auswählen.");
       return;
     }
-    if (!selectedLightColor(lightColorPreset, customLightColor)) {
+    if (actionKind === "color" && !selectedLightColor(lightColorPreset, customLightColor)) {
       setError("Bitte zuerst eine Leuchtfarbe wählen.");
+      return;
+    }
+    if (actionKind === "product" && !activeProductChangeLabel) {
+      setError("Bitte zuerst eine Produktänderung wählen.");
       return;
     }
     const basePrompt = promptDraft.trim();
@@ -527,10 +582,11 @@ export function DesignOpsClient({
       setError("Prompt ist zu kurz.");
       return;
     }
+    const actionLabel = actionKind === "product" ? `Produktänderung ${activeProductChangeLabel}` : "Bulk-Farbänderung";
 
     setBusy(true);
     setError(null);
-    setMessage(`${replaceTrelloAfterGenerate ? "Bulk-Farbänderung mit Trello-Ersetzung" : "Bulk-Farbänderung"} gestartet: 0 von ${attachmentIds.length}. Bitte warten.`);
+    setMessage(`${replaceTrelloAfterGenerate ? `${actionLabel} mit Trello-Ersetzung` : actionLabel} gestartet: 0 von ${attachmentIds.length}. Bitte warten.`);
     const attachmentsById = new Map(
       workspace.cards
         .flatMap((card) => card.attachments)
@@ -569,7 +625,7 @@ export function DesignOpsClient({
             body: JSON.stringify({
               idempotencyKey: createClientActionId(),
               query: workspace.query,
-              promptTitle: `${workspace.promptPreview.title} · Farbänderung`,
+              promptTitle: `${workspace.promptPreview.title} · ${actionKind === "product" ? activeProductChangeLabel : "Farbänderung"}`,
               promptText: basePrompt,
               operatorName,
               offerId: null,
@@ -649,8 +705,8 @@ export function DesignOpsClient({
       });
       setMessage(
         replaceTrelloAfterGenerate
-          ? `Bulk-Farbänderung abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert, ${replacedCount}/${attachmentIds.length} in Trello ersetzt${failures.length ? `, ${failures.length} Fehler` : ""}.`
-          : `Bulk-Farbänderung abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert${failures.length ? `, ${failures.length} Fehler` : ""}.`,
+          ? `${actionLabel} abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert, ${replacedCount}/${attachmentIds.length} in Trello ersetzt${failures.length ? `, ${failures.length} Fehler` : ""}.`
+          : `${actionLabel} abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert${failures.length ? `, ${failures.length} Fehler` : ""}.`,
       );
       if (failures.length) {
         setSelectedRecolorAttachmentIds((current) => current.filter((id) => failedAttachmentIds.has(id)));
@@ -704,6 +760,7 @@ export function DesignOpsClient({
           offerImageId: selectedOfferImageId || null,
           offerItemId: selectedOfferItemId || null,
           lightColorLabel: activeLightColorLabel,
+          productChangeLabel: activeProductChangeLabel,
           expectedUpdatedAt: offer?.updatedAt || null,
           operatorName,
           dryRun,
@@ -715,8 +772,8 @@ export function DesignOpsClient({
       setMessage(
         dryRun
           ? "Offer-Link geprüft. Du kannst ihn jetzt übernehmen."
-          : activeLightColorLabel
-            ? `Angebot aktualisiert: Design-Bild und Leuchtfarbe ${activeLightColorLabel} übernommen.`
+          : activeLightColorLabel || activeProductChangeLabel
+            ? `Angebot aktualisiert: Design-Bild${activeLightColorLabel ? `, Leuchtfarbe ${activeLightColorLabel}` : ""}${activeProductChangeLabel ? ` und Produkt ${activeProductChangeLabel}` : ""} übernommen.${activeProductChangeLabel ? " Preisprüfung bleibt erforderlich." : ""}`
             : "Design-Asset wurde mit Angebot und CRM-Bildkontext verknüpft.",
       );
       void loadRecentJobs();
@@ -1040,6 +1097,24 @@ export function DesignOpsClient({
                         </button>
                         <button
                           type="button"
+                          onClick={() => void recolorSelectedAttachments(false, "product")}
+                          disabled={busy || !selectedColorAttachmentIds.length || !activeProductChangeLabel}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
+                        >
+                          {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                          {busy && bulkRecolorProgress ? "Läuft..." : "Produkt ändern"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void recolorSelectedAttachments(true, "product")}
+                          disabled={busy || !selectedColorAttachmentIds.length || !activeProductChangeLabel}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                          {busy && bulkRecolorProgress ? "Läuft..." : "Produkt ändern + ersetzen"}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => void prepareRemovalPlan()}
                           disabled={busy || !selectedAttachmentIds.length}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800 disabled:opacity-50"
@@ -1348,6 +1423,23 @@ export function DesignOpsClient({
                         />
                       ) : null}
                     </div>
+
+                    <div>
+                      <div className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Produktänderung</div>
+                      <div className="grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1">
+                        {(Object.keys(PRODUCT_CHANGE_PRESETS) as ProductChangePresetKey[]).map((presetKey) => (
+                          <button
+                            key={presetKey}
+                            type="button"
+                            onClick={() => applyProductChangePreset(presetKey)}
+                            disabled={!workspace.promptPreview.prompt}
+                            className={`flex h-9 items-center justify-center rounded-[0.55rem] px-2 text-xs font-semibold disabled:opacity-40 ${productChangePreset === presetKey ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
+                          >
+                            {presetKey === "original" ? "Keine" : PRODUCT_CHANGE_PRESETS[presetKey].label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : null}
                 <textarea
@@ -1424,6 +1516,11 @@ export function DesignOpsClient({
                       {activeLightColorLabel ? (
                         <div className="rounded-[12px] border border-orange-200 bg-orange-50 p-2 text-xs font-semibold text-orange-900">
                           Wird beim Übernehmen als Leuchtfarbe im Produkt gespeichert: {activeLightColorLabel}
+                        </div>
+                      ) : null}
+                      {activeProductChangeLabel ? (
+                        <div className="rounded-[12px] border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+                          Wird beim Übernehmen als Produktänderung im Angebot gespeichert: {activeProductChangeLabel}. Preisprüfung bleibt erforderlich.
                         </div>
                       ) : null}
                       <label className="block">

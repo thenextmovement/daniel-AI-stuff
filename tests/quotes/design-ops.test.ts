@@ -46,6 +46,12 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Warmweiß/);
   assert.match(client, /Orange/);
   assert.match(client, /RGB/);
+  assert.match(client, /PRODUCT_CHANGE_PRESETS/);
+  assert.match(client, /Produktänderung/);
+  assert.match(client, /3D Frontlit/);
+  assert.match(client, /Produkt ändern \+ ersetzen/);
+  assert.match(client, /activeProductChangeLabel/);
+  assert.match(client, /Preisprüfung bleibt erforderlich/);
   assert.match(client, /Ausgangsbild/);
   assert.match(client, /setSelectedReferenceAttachmentId/);
   assert.match(client, /setSelectedReferenceAssetId/);
@@ -122,6 +128,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(offerLinksRoute, /linkDesignAssetToOffer/);
   assert.match(offerLinksRoute, /OpsOfferApiError/);
   assert.match(offerLinksRoute, /lightColorLabel/);
+  assert.match(offerLinksRoute, /productChangeLabel/);
   assert.match(offerLinksRoute, /dryRun/);
 
   assert.match(workerJobsRoute, /DESIGN_WORKER_API_KEY/);
@@ -185,7 +192,12 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /addTrelloCardAttachment/);
   assert.match(service, /patchOfferById/);
   assert.match(service, /upsertLightColorLine/);
+  assert.match(service, /upsertProductChangeLine/);
+  assert.match(service, /applyProductChangeToTitle/);
   assert.match(service, /ops_design_asset_and_light_color_link/);
+  assert.match(service, /product_change_label/);
+  assert.match(service, /product_change_requires_price_review/);
+  assert.match(service, /Ändere ausschließlich die Schildtechnik zu/);
   assert.match(service, /dryRun/);
   assert.match(service, /manual_design_link_requires_price_review/);
 
