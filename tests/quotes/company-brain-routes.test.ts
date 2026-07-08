@@ -3,12 +3,23 @@ import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import { POST as POST_ACTION } from "@/app/api/ops/company-brain/actions/route";
 import { POST as POST_RESOLVE } from "@/app/api/ops/company-brain/resolve/route";
+import {
+  GET as GET_TRELLO_ALIASES,
+  POST as POST_TRELLO_ALIASES,
+} from "@/app/api/ops/company-brain/trello-aliases/route";
 
 function request(path: string, body: unknown) {
   return new NextRequest(`http://127.0.0.1:3100${path}`, {
     method: "POST",
     headers: { "content-type": "application/json", host: "127.0.0.1:3100" },
     body: JSON.stringify(body),
+  });
+}
+
+function getRequest(path: string) {
+  return new NextRequest(`http://127.0.0.1:3100${path}`, {
+    method: "GET",
+    headers: { host: "127.0.0.1:3100" },
   });
 }
 
@@ -439,6 +450,221 @@ test("company brain action route does not expose raw Supabase details to clients
     assert.equal("details" in payload, false);
     assert.doesNotMatch(JSON.stringify(payload), /internal secret sql detail/);
     assert.doesNotMatch(JSON.stringify(payload), /service-role-secret/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
+});
+
+test("company brain trello alias inbox maps repair candidates", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const table = url.pathname.split("/").pop() || "";
+    if (table === "trello_card_aliases") {
+      return json([
+        {
+          id: "alias-1",
+          request_id: "REQ-ALIAS-1;REQ-OLD",
+          alias_trello_card_id: "G6Clgcsz",
+          alias_trello_card_url: "https://trello.com/c/G6Clgcsz/test",
+          canonical_trello_card_id: null,
+          alias_type: "copied_card",
+          source: "trello",
+          notes: null,
+          created_at: "2026-07-08T08:00:00.000Z",
+          updated_at: "2026-07-08T08:00:00.000Z",
+        },
+        {
+          id: "alias-2",
+          request_id: "",
+          alias_trello_card_id: "ZxDTnICQ",
+          alias_trello_card_url: "https://trello.com/c/ZxDTnICQ/test",
+          canonical_trello_card_id: null,
+          alias_type: "copied_card",
+          source: "trello",
+          notes: null,
+          created_at: "2026-07-08T08:00:00.000Z",
+          updated_at: "2026-07-08T08:00:00.000Z",
+        },
+      ]);
+    }
+    if (table === "master_requests") {
+      return json([{
+        id: "request-row-1",
+        request_id: "REQ-ALIAS-1",
+        trello_card_id: "canonical-card-1",
+        trello_card_url: "https://trello.com/c/canonical1/test",
+        title: "Lisa Padel Circle",
+        email: "customer@example.com",
+        created_at: "2026-07-08T07:00:00.000Z",
+        updated_at: "2026-07-08T07:00:00.000Z",
+      }]);
+    }
+    return json({ error: `unexpected ${table}` }, 500);
+  }) as typeof fetch;
+
+  try {
+    const response = await GET_TRELLO_ALIASES(getRequest("/api/ops/company-brain/trello-aliases?limit=10"));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.items.length, 2);
+    assert.equal(payload.items[0].issue, "multiple_request_ids");
+    assert.equal(payload.items[0].safeFixAvailable, true);
+    assert.equal(payload.items[0].candidates[0].requestId, "REQ-ALIAS-1");
+    assert.equal(payload.items[1].issue, "missing_request_id");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
+});
+
+test("company brain trello alias repair requires Freigabe before downstream calls", async () => {
+  await withFetchTrap(async () => {
+    const response = await POST_TRELLO_ALIASES(request("/api/ops/company-brain/trello-aliases", {
+      aliasTrelloCardId: "G6Clgcsz",
+      requestId: "REQ-ALIAS-1",
+      confirmed: false,
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 422);
+    assertNoStore(response);
+    assert.equal(payload.ok, false);
+    assert.match(payload.error, /Bestätigung erforderlich/);
+  });
+});
+
+test("company brain trello alias repair patches existing alias and writes audit", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const calls: Array<{ method: string; table: string; body: unknown }> = [];
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const method = String(init?.method || "GET").toUpperCase();
+    const table = url.pathname.split("/").pop() || "";
+    calls.push({ method, table, body: init?.body ? JSON.parse(String(init.body)) : null });
+
+    if (table === "master_requests") {
+      return json([{
+        id: "request-row-1",
+        request_id: "REQ-ALIAS-1",
+        trello_card_id: "canonical-card-1",
+        trello_card_url: "https://trello.com/c/canonical1/test",
+        title: "Alias Test",
+        created_at: "2026-07-08T07:00:00.000Z",
+        updated_at: "2026-07-08T07:00:00.000Z",
+      }]);
+    }
+    if (table === "trello_card_aliases" && method === "GET") {
+      return json([{
+        id: "alias-1",
+        request_id: "",
+        alias_trello_card_id: "G6Clgcsz",
+        alias_trello_card_url: "https://trello.com/c/G6Clgcsz/test",
+        canonical_trello_card_id: null,
+        alias_type: "copied_card",
+        source: "trello",
+        notes: null,
+        created_at: "2026-07-08T08:00:00.000Z",
+        updated_at: "2026-07-08T08:00:00.000Z",
+      }]);
+    }
+    if (table === "trello_card_aliases" && method === "PATCH") {
+      return json([{
+        id: "alias-1",
+        ...JSON.parse(String(init?.body || "{}")),
+      }]);
+    }
+    if (table === "workflow_audit_log") {
+      if (method === "GET") return json([]);
+      if (method === "POST") return json([{ id: "audit-alias-1" }]);
+    }
+    return json({ error: `unexpected ${method} ${table}` }, 500);
+  }) as typeof fetch;
+
+  try {
+    const response = await POST_TRELLO_ALIASES(request("/api/ops/company-brain/trello-aliases", {
+      aliasTrelloCardId: "G6Clgcsz",
+      requestId: "REQ-ALIAS-1",
+      operatorName: "Daniel",
+      confirmed: true,
+      confirmationText: "Freigabe",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(payload.repair.action, "updated");
+    assert.equal(calls.some((call) => call.table === "trello_card_aliases" && call.method === "PATCH"), true);
+    assert.equal(calls.some((call) => call.table === "workflow_audit_log" && call.method === "POST"), true);
+    const patch = calls.find((call) => call.table === "trello_card_aliases" && call.method === "PATCH")?.body as Record<string, unknown>;
+    assert.equal(patch.request_id, "REQ-ALIAS-1");
+    assert.equal(patch.canonical_trello_card_id, "canonical-card-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
+});
+
+test("company brain trello alias repair blocks when canonical card is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const table = url.pathname.split("/").pop() || "";
+    if (table === "master_requests") {
+      return json([{
+        id: "request-row-1",
+        request_id: "REQ-NO-CANONICAL",
+        trello_card_id: null,
+        trello_card_url: null,
+        title: "No Canonical",
+      }]);
+    }
+    return json({ error: `unexpected ${table}` }, 500);
+  }) as typeof fetch;
+
+  try {
+    const response = await POST_TRELLO_ALIASES(request("/api/ops/company-brain/trello-aliases", {
+      aliasTrelloCardId: "G6Clgcsz",
+      requestId: "REQ-NO-CANONICAL",
+      confirmed: true,
+      confirmationText: "Freigabe",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 422);
+    assertNoStore(response);
+    assert.equal(payload.ok, false);
+    assert.match(payload.error, /Canonical Trello-Karte fehlt/);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalUrl === undefined) delete process.env.SUPABASE_URL;

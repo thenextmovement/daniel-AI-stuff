@@ -25,6 +25,7 @@ import {
   Workflow,
 } from "lucide-react";
 import type { CompanyBrainProblemType, CompanyBrainResolveResult } from "@/lib/ops/company-brain";
+import type { CompanyBrainAliasRepairItem } from "@/lib/ops/company-brain-alias-repair";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -38,6 +39,14 @@ type ResolveApiResponse = {
 
 type CompanyBrainActionProposalView = CompanyBrainResolveResult["actionProposals"][number];
 type CompanyBrainActionGroupKey = "internal" | "fix" | "customer" | "manual";
+type AliasRepairApiResponse = {
+  ok?: boolean;
+  items?: CompanyBrainAliasRepairItem[];
+  repair?: { action?: "updated" | "created"; row?: { id?: string | null; alias_trello_card_id?: string | null; request_id?: string | null } };
+  error?: string;
+  issues?: string[];
+  customerCommunicationSent?: boolean;
+};
 
 const ACTION_GROUPS: Array<{ key: CompanyBrainActionGroupKey; title: string; detail: string }> = [
   {
@@ -752,6 +761,14 @@ export function OpsCompanyBrainClient({
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [pendingNewCustomerEmail, setPendingNewCustomerEmail] = useState("");
   const [pendingConfirmationText, setPendingConfirmationText] = useState("");
+  const [aliasRepairItems, setAliasRepairItems] = useState<CompanyBrainAliasRepairItem[]>([]);
+  const [aliasRepairLoading, setAliasRepairLoading] = useState(false);
+  const [aliasRepairLoadingId, setAliasRepairLoadingId] = useState<string | null>(null);
+  const [aliasRepairMessage, setAliasRepairMessage] = useState<string | null>(null);
+  const [aliasRepairConfirmation, setAliasRepairConfirmation] = useState("");
+  const [manualAliasTrello, setManualAliasTrello] = useState("");
+  const [manualAliasRequestId, setManualAliasRequestId] = useState("");
+  const [manualAliasCanonicalId, setManualAliasCanonicalId] = useState("");
   const sharedOperatorNameKey = "neontrip-ops-operator";
   const initialUrlHandled = useRef(false);
 
@@ -767,6 +784,10 @@ export function OpsCompanyBrainClient({
   useEffect(() => {
     if (operatorName) window.localStorage.setItem(sharedOperatorNameKey, operatorName);
   }, [operatorName]);
+
+  useEffect(() => {
+    if (hasSession || localMode || !opsEnabled) void loadAliasRepairInbox(false);
+  }, [hasSession, localMode, opsEnabled]);
 
   const stats = useMemo(() => ({
     records: result?.records.length || 0,
@@ -878,6 +899,118 @@ export function OpsCompanyBrainClient({
     { value: "automation_failed", label: "Automation Fehler" },
     { value: "other", label: "Sonstiges" },
   ];
+
+  async function loadAliasRepairInbox(showMessage = true) {
+    setAliasRepairLoading(true);
+    if (showMessage) setAliasRepairMessage(null);
+    try {
+      const response = await fetch("/api/ops/company-brain/trello-aliases?limit=50", { method: "GET" });
+      const payload = (await response.json().catch(() => null)) as AliasRepairApiResponse | null;
+      if (response.status === 401) {
+        setHasSession(false);
+        return;
+      }
+      if (!response.ok || !payload?.ok) {
+        setAliasRepairMessage(formatApiError(payload));
+        return;
+      }
+      setAliasRepairItems(payload.items || []);
+      if (showMessage) setAliasRepairMessage(`${payload.items?.length || 0} Alias-Prüfpunkt(e) geladen.`);
+    } catch (fetchError) {
+      setAliasRepairMessage(fetchError instanceof Error ? fetchError.message : "Alias-Prüfung konnte nicht geladen werden.");
+    } finally {
+      setAliasRepairLoading(false);
+    }
+  }
+
+  async function executeAliasRepair(item: CompanyBrainAliasRepairItem) {
+    const candidate = item.candidates[0] || null;
+    if (!candidate?.requestId) {
+      setAliasRepairMessage("Alias-Reparatur blockiert: keine eindeutige Request-ID gefunden.");
+      return;
+    }
+    if (!candidate.trelloCardId && !item.canonicalTrelloCardId) {
+      setAliasRepairMessage("Alias-Reparatur blockiert: Canonical Trello fehlt.");
+      return;
+    }
+    if (aliasRepairConfirmation.trim() !== "Freigabe") {
+      setAliasRepairMessage("Alias-Reparatur abgebrochen: Bestätigungstext fehlt.");
+      return;
+    }
+    setAliasRepairLoadingId(item.id);
+    setAliasRepairMessage(null);
+    try {
+      const response = await fetch("/api/ops/company-brain/trello-aliases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aliasId: item.aliasId,
+          aliasTrelloCardId: item.aliasTrelloCardId,
+          aliasTrelloCardUrl: item.aliasTrelloCardUrl,
+          requestId: candidate.requestId,
+          canonicalTrelloCardId: candidate.trelloCardId || item.canonicalTrelloCardId,
+          operatorName,
+          note: `Repair Center: ${item.issueLabel}`,
+          confirmed: true,
+          confirmationText: aliasRepairConfirmation,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as AliasRepairApiResponse | null;
+      if (!response.ok || !payload?.ok) {
+        setAliasRepairMessage(formatApiError(payload));
+        return;
+      }
+      setAliasRepairMessage(`Alias repariert: ${payload.repair?.row?.alias_trello_card_id || item.aliasTrelloCardId} -> ${candidate.requestId}.`);
+      await loadAliasRepairInbox(false);
+    } catch (repairError) {
+      setAliasRepairMessage(repairError instanceof Error ? repairError.message : "Alias-Reparatur konnte nicht ausgeführt werden.");
+    } finally {
+      setAliasRepairLoadingId(null);
+    }
+  }
+
+  async function executeManualAliasRepair() {
+    if (!manualAliasTrello.trim() || !manualAliasRequestId.trim()) {
+      setAliasRepairMessage("Manuelle Reparatur braucht Trello-ID/URL und Request-ID.");
+      return;
+    }
+    if (aliasRepairConfirmation.trim() !== "Freigabe") {
+      setAliasRepairMessage("Manuelle Reparatur abgebrochen: Bestätigungstext fehlt.");
+      return;
+    }
+    setAliasRepairLoadingId("manual");
+    setAliasRepairMessage(null);
+    try {
+      const response = await fetch("/api/ops/company-brain/trello-aliases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aliasTrelloCardId: manualAliasTrello.trim(),
+          aliasTrelloCardUrl: manualAliasTrello.trim().includes("trello.com") ? manualAliasTrello.trim() : null,
+          requestId: manualAliasRequestId.trim(),
+          canonicalTrelloCardId: manualAliasCanonicalId.trim() || null,
+          operatorName,
+          note: "Manuelle Alias-Reparatur im Company Brain",
+          confirmed: true,
+          confirmationText: aliasRepairConfirmation,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as AliasRepairApiResponse | null;
+      if (!response.ok || !payload?.ok) {
+        setAliasRepairMessage(formatApiError(payload));
+        return;
+      }
+      setManualAliasTrello("");
+      setManualAliasRequestId("");
+      setManualAliasCanonicalId("");
+      setAliasRepairMessage(`Alias ${payload.repair?.action === "created" ? "angelegt" : "repariert"}.`);
+      await loadAliasRepairInbox(false);
+    } catch (repairError) {
+      setAliasRepairMessage(repairError instanceof Error ? repairError.message : "Manuelle Alias-Reparatur konnte nicht ausgeführt werden.");
+    } finally {
+      setAliasRepairLoadingId(null);
+    }
+  }
 
   async function login() {
     setError(null);
@@ -1259,6 +1392,143 @@ export function OpsCompanyBrainClient({
             ))}
           </div>
         </form>
+
+        <section className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Repair Center</p>
+              <h2 className="mt-2 text-xl font-semibold text-stone-950">Trello-Aliasse reparieren</h2>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                Für kopierte Fehlerkarten: Alias mit Kundenakte verknüpfen, danach Fall erneut prüfen. Jede Korrektur schreibt einen Audit-Eintrag und sendet keine Mail.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void loadAliasRepairInbox()}
+                disabled={aliasRepairLoading}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 text-xs font-semibold text-stone-700 transition hover:border-stone-950 disabled:opacity-50"
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+                {aliasRepairLoading ? "Lädt..." : "Aktualisieren"}
+              </button>
+            </div>
+          </div>
+          {aliasRepairMessage ? (
+            <p className="mt-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-xs font-medium text-stone-700">{aliasRepairMessage}</p>
+          ) : null}
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-950">Alias-Inbox</h3>
+                  <p className="mt-1 text-xs leading-5 text-stone-500">{aliasRepairItems.length} offene Prüfpunkt(e)</p>
+                </div>
+                <Network className="h-5 w-5 text-stone-400" />
+              </div>
+              <div className="mt-3 grid gap-2">
+                {aliasRepairItems.length ? aliasRepairItems.slice(0, 6).map((item) => {
+                  const candidate = item.candidates[0] || null;
+                  return (
+                    <div key={item.id} className="rounded-xl border border-stone-200 bg-white px-3 py-3 text-xs text-stone-700">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-stone-950">{item.issueLabel}</p>
+                          <p className="mt-1 leading-5">
+                            Alias: {item.aliasTrelloCardId}
+                            {candidate ? ` -> ${candidate.requestId}` : " -> keine eindeutige Kundenakte"}
+                          </p>
+                          {candidate?.title ? <p className="mt-1 leading-5 text-stone-500">{candidate.title}</p> : null}
+                        </div>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                          item.safeFixAvailable ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"
+                        }`}>
+                          {item.safeFixAvailable ? "Fix möglich" : "Manuell"}
+                        </span>
+                      </div>
+                      <p className="mt-2 leading-5 text-stone-500">{item.recommendedFix}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {item.aliasTrelloCardUrl ? (
+                          <a href={item.aliasTrelloCardUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-stone-200 px-2.5 font-semibold text-stone-600 transition hover:border-stone-950">
+                            Karte <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void executeAliasRepair(item)}
+                          disabled={!item.safeFixAvailable || aliasRepairLoadingId === item.id}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-stone-950 px-2.5 font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                        >
+                          <GitBranch className="h-3.5 w-3.5" />
+                          {aliasRepairLoadingId === item.id ? "Repariert..." : "Alias fixen"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-medium text-emerald-900">Keine offenen Alias-Lücken in der Inbox.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-950">Manuell verknüpfen</h3>
+                  <p className="mt-1 text-xs leading-5 text-stone-500">Für Fälle ohne sicheren Inbox-Treffer.</p>
+                </div>
+                <ShieldCheck className="h-5 w-5 text-stone-400" />
+              </div>
+              <div className="mt-3 grid gap-3">
+                <label className="grid gap-1">
+                  <span className="text-xs font-medium text-stone-600">Trello Card-ID oder URL</span>
+                  <input
+                    value={manualAliasTrello}
+                    onChange={(event) => setManualAliasTrello(event.target.value)}
+                    className="h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm outline-none focus:border-stone-950"
+                    placeholder="G6Clgcsz oder https://trello.com/c/..."
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-medium text-stone-600">Request-ID</span>
+                  <input
+                    value={manualAliasRequestId}
+                    onChange={(event) => setManualAliasRequestId(event.target.value)}
+                    className="h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm outline-none focus:border-stone-950"
+                    placeholder="Nerdy-Forms ID / Request-ID"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-medium text-stone-600">Canonical Card-ID optional</span>
+                  <input
+                    value={manualAliasCanonicalId}
+                    onChange={(event) => setManualAliasCanonicalId(event.target.value)}
+                    className="h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm outline-none focus:border-stone-950"
+                    placeholder="leer = aus Kundenakte"
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-medium text-stone-600">Bestätigung</span>
+                  <input
+                    value={aliasRepairConfirmation}
+                    onChange={(event) => setAliasRepairConfirmation(event.target.value)}
+                    className="h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm outline-none focus:border-stone-950"
+                    placeholder="Freigabe"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void executeManualAliasRepair()}
+                  disabled={aliasRepairLoadingId === "manual"}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-stone-950 px-4 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                >
+                  <GitBranch className="h-3.5 w-3.5" />
+                  {aliasRepairLoadingId === "manual" ? "Speichert..." : "Alias speichern"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {result ? (
           <>
