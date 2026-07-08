@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   buildNeonflexAnchoredSizeLadder,
+  getNeonflexAnchoredShippingBucket,
   NEONFLEX_ANCHORED_SCALING_MODEL,
   predictNeonflexAnchoredSupplierPrice,
   type NeonflexAnchoredScalingPrediction,
@@ -661,6 +662,86 @@ function interpolateMoneyByArea(targetArea: number, lowerArea: number, lowerValu
   return Math.round((lowerValue + t * (upperValue - lowerValue)) * 100) / 100;
 }
 
+function interpolateMoneyByT(lowerValue: number, upperValue: number, t: number) {
+  const bounded = Math.max(0, Math.min(1, t));
+  return Math.round((lowerValue + bounded * (upperValue - lowerValue)) * 100) / 100;
+}
+
+function productionTrainingT(targetArea: number, lowerArea: number, upperArea: number) {
+  const exponent = NEONFLEX_ANCHORED_SCALING_MODEL.production.area_exponent;
+  if (Math.abs(upperArea - lowerArea) < 0.001) return 0;
+  const lowerPowered = lowerArea ** exponent;
+  const upperPowered = upperArea ** exponent;
+  const targetPowered = targetArea ** exponent;
+  if (Math.abs(upperPowered - lowerPowered) < 0.001) return (targetArea - lowerArea) / (upperArea - lowerArea);
+  return (targetPowered - lowerPowered) / (upperPowered - lowerPowered);
+}
+
+function shippingTrainingT(params: {
+  lower: SupplierPriceTrelloEstimateAnchor;
+  upper: SupplierPriceTrelloEstimateAnchor;
+  target: { widthCm: number; heightCm: number };
+}) {
+  const linearAreaT = (() => {
+    const lowerArea = params.lower.widthCm * params.lower.heightCm;
+    const upperArea = params.upper.widthCm * params.upper.heightCm;
+    const targetArea = params.target.widthCm * params.target.heightCm;
+    return Math.abs(upperArea - lowerArea) < 0.001 ? 0 : (targetArea - lowerArea) / (upperArea - lowerArea);
+  })();
+  try {
+    const targetPrediction = predictNeonflexAnchoredSupplierPrice({
+      base_width_cm: params.lower.widthCm,
+      base_height_cm: params.lower.heightCm,
+      base_production_price_usd: params.lower.productionPrice,
+      base_shipping_price_usd: params.lower.shippingPrice,
+      target_width_cm: params.target.widthCm,
+      target_height_cm: params.target.heightCm,
+    });
+    const upperPrediction = predictNeonflexAnchoredSupplierPrice({
+      base_width_cm: params.lower.widthCm,
+      base_height_cm: params.lower.heightCm,
+      base_production_price_usd: params.lower.productionPrice,
+      base_shipping_price_usd: params.lower.shippingPrice,
+      target_width_cm: params.upper.widthCm,
+      target_height_cm: params.upper.heightCm,
+    });
+    const targetDelta = targetPrediction.predicted_shipping_price_usd - params.lower.shippingPrice;
+    const upperDelta = upperPrediction.predicted_shipping_price_usd - params.lower.shippingPrice;
+    if (Math.abs(upperDelta) < 0.001) return linearAreaT;
+    return targetDelta / upperDelta;
+  } catch {
+    return linearAreaT;
+  }
+}
+
+function supplierAnchorBreakpointReason(lower: SupplierPriceTrelloEstimateAnchor, target: { widthCm: number; heightCm: number }, upper: SupplierPriceTrelloEstimateAnchor) {
+  const lowerBucket = getNeonflexAnchoredShippingBucket(lower.maxSideCm);
+  const targetBucket = getNeonflexAnchoredShippingBucket(Math.max(target.widthCm, target.heightCm));
+  const upperBucket = getNeonflexAnchoredShippingBucket(upper.maxSideCm);
+  if (lowerBucket !== upperBucket && targetBucket !== lowerBucket) {
+    return `shipping_bucket_transition_${lowerBucket}_to_${targetBucket}`;
+  }
+  return null;
+}
+
+function markMarginalPriceBreaks(estimates: SupplierPriceTrelloEstimateItem[]) {
+  return estimates.map((item, index) => {
+    if (index < 2) return item;
+    const previous = estimates[index - 1];
+    const beforePrevious = estimates[index - 2];
+    const previousDelta = previous.predictedTotalSupplierCost - beforePrevious.predictedTotalSupplierCost;
+    const currentDelta = item.predictedTotalSupplierCost - previous.predictedTotalSupplierCost;
+    if (previousDelta > 0 && currentDelta > Math.max(previousDelta * 1.6, previousDelta + 35)) {
+      return {
+        ...item,
+        reviewReason: item.reviewReason || "marginal_price_jump_detected",
+        shippingBucket: item.shippingBucket.includes("price_break") ? item.shippingBucket : `${item.shippingBucket}_price_break`,
+      };
+    }
+    return item;
+  });
+}
+
 export function estimateSupplierPriceFromAnchors(params: {
   target: { requestedInput: string; widthCm: number; heightCm: number };
   anchors: SupplierPriceTrelloEstimateAnchor[];
@@ -689,14 +770,19 @@ export function estimateSupplierPriceFromAnchors(params: {
     const lowerArea = lower.widthCm * lower.heightCm;
     const upperArea = upper.widthCm * upper.heightCm;
     if (targetArea >= lowerArea && targetArea <= upperArea) {
-      const score = params.modelFamily === "unsupported" ? 0 : Math.min(0.86, lower.confidence, upper.confidence);
+      const breakpointReason = supplierAnchorBreakpointReason(lower, params.target, upper);
+      const score = params.modelFamily === "unsupported"
+        ? 0
+        : Math.max(0.55, Math.min(0.86, lower.confidence, upper.confidence) - (breakpointReason ? 0.08 : 0));
+      const productionT = productionTrainingT(targetArea, lowerArea, upperArea);
+      const shippingT = shippingTrainingT({ lower, upper, target: params.target });
       return {
-        production: interpolateMoneyByArea(targetArea, lowerArea, lower.productionPrice, upperArea, upper.productionPrice),
-        shipping: interpolateMoneyByArea(targetArea, lowerArea, lower.shippingPrice, upperArea, upper.shippingPrice),
+        production: interpolateMoneyByT(lower.productionPrice, upper.productionPrice, productionT),
+        shipping: interpolateMoneyByT(lower.shippingPrice, upper.shippingPrice, shippingT),
         confidence: score,
-        reviewReason: params.modelFamily === "unsupported" ? "unsupported_model_family" : null,
-        shippingBucket: "supplier_anchor_piecewise",
-        shippingStrategy: "piecewise_supplier_anchor_interpolation",
+        reviewReason: params.modelFamily === "unsupported" ? "unsupported_model_family" : breakpointReason,
+        shippingBucket: breakpointReason ? "supplier_anchor_bucket_transition" : "supplier_anchor_piecewise",
+        shippingStrategy: "training_informed_supplier_anchor_interpolation",
         shippingTrainingRows: sorted.length,
       };
     }
@@ -952,7 +1038,7 @@ export async function estimateSupplierPricesFromTrello(input: {
   if (supplierAnchors.length >= 2) {
     warnings.push(`${supplierAnchors.length} Supplier-Anker erkannt. Preise innerhalb dieser Anker werden abschnittsweise interpoliert.`);
   }
-  const estimates = targets.map<SupplierPriceTrelloEstimateItem>((target) => {
+  const estimates = markMarginalPriceBreaks(targets.map<SupplierPriceTrelloEstimateItem>((target) => {
     const anchorEstimate = estimateSupplierPriceFromAnchors({
       target,
       anchors: supplierAnchors,
@@ -1080,7 +1166,7 @@ export async function estimateSupplierPricesFromTrello(input: {
       shippingStrategy: prediction.shipping_strategy,
       shippingTrainingRows: prediction.shipping_training_rows,
     };
-  });
+  }));
 
   return {
     card: {

@@ -141,9 +141,44 @@ test("estimateSupplierPriceFromAnchors interpolates between real supplier anchor
   });
 
   assert.ok(estimate);
-  assert.equal(estimate?.shippingStrategy, "piecewise_supplier_anchor_interpolation");
+  assert.equal(estimate?.shippingStrategy, "training_informed_supplier_anchor_interpolation");
   assert.ok(estimate!.production > 95 && estimate!.production < 145);
   assert.ok(estimate!.shipping > 105 && estimate!.shipping < 150);
+});
+
+test("estimateSupplierPriceFromAnchors marks training bucket transitions", () => {
+  const estimate = estimateSupplierPriceFromAnchors({
+    target: { requestedInput: "145cm", widthCm: 145, heightCm: 145 },
+    modelFamily: "neonflex",
+    anchors: [
+      {
+        widthCm: 120,
+        heightCm: 120,
+        maxSideCm: 120,
+        productionPrice: 110,
+        shippingPrice: 120,
+        totalSupplierCost: 230,
+        currency: "USD",
+        source: "ocr_multi_anchor",
+        confidence: 0.82,
+      },
+      {
+        widthCm: 150,
+        heightCm: 150,
+        maxSideCm: 150,
+        productionPrice: 145,
+        shippingPrice: 180,
+        totalSupplierCost: 325,
+        currency: "USD",
+        source: "ocr_multi_anchor",
+        confidence: 0.82,
+      },
+    ],
+  });
+
+  assert.ok(estimate);
+  assert.equal(estimate?.shippingBucket, "supplier_anchor_bucket_transition");
+  assert.match(String(estimate?.reviewReason), /shipping_bucket_transition/);
 });
 
 test("calculateSupplierEstimateOfferUnitPrice uses the Schildpreis offer factor 2.3", () => {

@@ -288,7 +288,7 @@ function TrelloEstimateResultCard({
                   {formatCm(item.widthCm)} x {formatCm(item.heightCm)}
                 </div>
                 <div className="mt-1 text-xs text-black/45">
-                  Eingabe: {item.requestedInput} · {item.shippingBucket} · {item.shippingTrainingRows} Trainings
+                  Eingabe: {item.requestedInput} · {item.shippingBucket} · {item.shippingStrategy} · {item.shippingTrainingRows} Trainings
                 </div>
               </div>
               <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${confidenceTone(item.confidenceLevel)}`}>
