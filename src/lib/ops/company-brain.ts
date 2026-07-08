@@ -741,9 +741,9 @@ function mergeTrelloAliasContexts(...contexts: CompanyBrainTrelloAliasContext[])
   );
   const requestIds = uniqueStrings([
     ...contexts.flatMap((context) => context.requestIds),
-    ...aliases.map((row) => row.request_id),
+    ...aliases.flatMap((row) => extractCompanyBrainLooseRequestIds(row.request_id)),
     ...masterRequests.map((row) => row.id),
-    ...masterRequests.map((row) => row.request_id),
+    ...masterRequests.flatMap((row) => extractCompanyBrainLooseRequestIds(row.request_id)),
   ]);
   const trelloCardIds = uniqueStrings([
     ...contexts.flatMap((context) => context.trelloCardIds),
@@ -798,9 +798,11 @@ function trelloAliasRequestIds(input: {
   values?: Array<string | null | undefined>;
 }) {
   return uniqueStrings([
-    input.context ? requestIdFromTrelloContext(input.context) : null,
-    ...(input.identifiers || []).filter((entry) => entry.type === "request_id").map((entry) => entry.value),
-    ...(input.values || []),
+    ...extractCompanyBrainLooseRequestIds(input.context ? requestIdFromTrelloContext(input.context) : null),
+    ...(input.identifiers || [])
+      .filter((entry) => entry.type === "request_id")
+      .flatMap((entry) => extractCompanyBrainLooseRequestIds(entry.value)),
+    ...(input.values || []).flatMap(extractCompanyBrainLooseRequestIds),
   ]);
 }
 
@@ -814,6 +816,15 @@ function postgrestIlike(column: string, value: string) {
 
 function looksLikeUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+export function extractCompanyBrainLooseRequestIds(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return [];
+  const uuidMatches = [...text.matchAll(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)]
+    .map((match) => match[0]);
+  if (uuidMatches.length) return uniqueStrings(uuidMatches);
+  return uniqueStrings(text.split(/[;,|]+/).map((part) => part.trim()));
 }
 
 async function fetchTrelloAliasRows(requestIds: string[], trelloLookupValues: string[]) {
@@ -924,20 +935,20 @@ function mapTrelloAliasEvidence(context: CompanyBrainTrelloAliasContext): Compan
   const aliasEvidence = context.aliases.slice(0, 10).map((row) => {
     const aliasId = cleanText(row.alias_trello_card_id || row.alias_trello_card_url);
     const canonicalId = cleanText(row.canonical_trello_card_id);
-    const requestId = cleanText(row.request_id);
+    const requestIds = extractCompanyBrainLooseRequestIds(row.request_id);
     return {
-      id: `trello-alias:${cleanText(row.id) || `${requestId}:${aliasId}:${canonicalId}`}`,
+      id: `trello-alias:${cleanText(row.id) || `${requestIds.join(":")}:${aliasId}:${canonicalId}`}`,
       source: "trello_aliases",
       title: aliasId ? `Trello-Alias: ${aliasId}` : "Trello-Alias",
       detail: [
-        requestId ? `Request: ${requestId}` : null,
+        requestIds.length ? `Request: ${requestIds.join(", ")}` : null,
         canonicalId ? `Canonical: ${canonicalId}` : null,
         cleanText(row.source) ? `Quelle: ${cleanText(row.source)}` : null,
       ].filter(Boolean).join(" · ") || null,
       occurredAt: row.updated_at || row.created_at || null,
       direction: "system",
       href: cleanText(row.alias_trello_card_url) || null,
-      confidence: requestId && (aliasId || canonicalId) ? "high" : "medium",
+      confidence: requestIds.length && (aliasId || canonicalId) ? "high" : "medium",
     } satisfies CompanyBrainEvidence;
   });
   return [...masterEvidence, ...aliasEvidence];

@@ -10,6 +10,7 @@ import {
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
   extractCompanyBrainIdentifiers,
+  extractCompanyBrainLooseRequestIds,
   extractCompanyBrainSignals,
   findMissingOfferRequestIds,
   mapOutlookGraphMessageToEvidence,
@@ -64,6 +65,15 @@ test("company brain extracts exact Trello lookup hints", () => {
   const identifiers = extractCompanyBrainIdentifiers("Bitte Trello 64b7f9e2aabbccddeeff0011 prüfen");
   assert.equal(identifiers[0]?.type, "trello_card_id");
   assert.equal(identifiers[0]?.value, "64b7f9e2aabbccddeeff0011");
+});
+
+test("company brain extracts multiple request ids from dirty alias fields", () => {
+  assert.deepEqual(
+    extractCompanyBrainLooseRequestIds("8d6e931f-92e0-4e1b-ba81-9d60b03ac382; f611a1cd-3bcb-4c58-811a-02bd7549eda4"),
+    ["8d6e931f-92e0-4e1b-ba81-9d60b03ac382", "f611a1cd-3bcb-4c58-811a-02bd7549eda4"],
+  );
+  assert.deepEqual(extractCompanyBrainLooseRequestIds("0441-25439-122457"), ["0441-25439-122457"]);
+  assert.deepEqual(extractCompanyBrainLooseRequestIds(""), []);
 });
 
 test("company brain keeps long pasted requests bounded", () => {
