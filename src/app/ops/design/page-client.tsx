@@ -24,6 +24,7 @@ import {
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, opsPageContainerClass, opsPageShellClass, OpsStatCard } from "../ops-design";
 import type { OpsOfferSnapshot } from "@/lib/ops/offers";
+import { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
 import type {
   DesignAssetSummary,
   DesignAttachment,
@@ -382,7 +383,7 @@ export function DesignOpsClient({
     return new Set(
       (workspace?.cards || [])
         .flatMap((card) => card.attachments)
-        .filter((attachment) => ["mockup", "reference", "image"].includes(attachment.kind))
+        .filter((attachment) => isEligibleAiMockupSourceName(attachment.name))
         .map((attachment) => attachment.id),
     );
   }, [workspace]);
@@ -1175,7 +1176,9 @@ export function DesignOpsClient({
                             ) : null}
                           </div>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                            {card.attachments.map((asset) => (
+                            {card.attachments.map((asset) => {
+                              const aiJpgSource = isEligibleAiMockupSourceName(asset.name);
+                              return (
                               <div key={asset.id} className="overflow-hidden rounded-[14px] border border-[#ded8d0] bg-white">
                                 <div className="grid grid-cols-3 border-b border-[#ece6dc] bg-[#fffdf9] text-xs font-semibold text-stone-700">
                                   <button
@@ -1198,11 +1201,11 @@ export function DesignOpsClient({
                                   <button
                                     type="button"
                                     onClick={() => selectAttachmentForRecolor(asset.id)}
-                                    disabled={!["mockup", "reference", "image"].includes(asset.kind)}
-                                    title="Für Farbänderung markieren"
+                                    disabled={!aiJpgSource}
+                                    title={aiJpgSource ? "Für Farb-/Produktänderung markieren" : "Nur JPG-Mockups mit Mockup und AI im Dateinamen"}
                                     className={`flex items-center justify-between gap-2 px-3 py-2 text-left disabled:opacity-40 ${selectedRecolorAttachmentIds.includes(asset.id) ? "bg-stone-950 text-white" : ""}`}
                                   >
-                                    <span>{selectedRecolorAttachmentIds.includes(asset.id) ? "Gewählt" : "Farbe"}</span>
+                                    <span>{selectedRecolorAttachmentIds.includes(asset.id) ? "Gewählt" : "Design"}</span>
                                     {selectedRecolorAttachmentIds.includes(asset.id) ? <CheckSquare className="h-4 w-4" /> : <Palette className="h-4 w-4" />}
                                   </button>
                                 </div>
@@ -1212,11 +1215,19 @@ export function DesignOpsClient({
                                   <div className="flex aspect-[4/3] items-center justify-center bg-stone-100 text-sm font-semibold text-stone-500">{kindLabel(asset.kind)}</div>
                                 )}
                                 <div className="space-y-2 p-3">
-                                  <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${kindTone(asset.kind)}`}>{kindLabel(asset.kind)}</span>
+                                  <div className="flex flex-wrap gap-2">
+                                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${kindTone(asset.kind)}`}>{kindLabel(asset.kind)}</span>
+                                    {aiJpgSource ? (
+                                      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
+                                        KI-JPG Quelle
+                                      </span>
+                                    ) : null}
+                                  </div>
                                   <div className="break-words text-sm font-semibold">{asset.name}</div>
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       ))}

@@ -64,6 +64,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /workspace\?\.cards \|\| \[\]/);
   assert.match(client, /preserveStatus/);
   assert.match(client, /Bulk-Farbänderung/);
+  assert.match(client, /isEligibleAiMockupSourceName/);
+  assert.match(client, /KI-JPG Quelle/);
+  assert.match(client, /Nur JPG-Mockups mit Mockup und AI im Dateinamen/);
   assert.match(client, /Bulk läuft/);
   assert.match(client, /diese Seite nicht neu laden/);
   assert.match(client, /trelloAttachmentId/);

@@ -13,7 +13,10 @@ import {
   type CustomerCrmQuoteSummary,
   type CustomerSearchResult,
 } from "@/lib/ops/customer-records";
+import { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+
+export { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
 
 export type DesignAttachmentKind = "mockup" | "reference" | "image" | "video" | "other";
 
@@ -433,15 +436,6 @@ function normalizeDesignVariantValue(variantType: QuoteImageVariantType, value: 
     .replace(/ß/g, "ss")
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "") || null;
-}
-
-export function isEligibleAiMockupSourceName(name: string | null | undefined) {
-  const normalized = String(name || "").trim();
-  if (!normalized) return false;
-  const lower = normalized.toLowerCase();
-  if (lower.includes("alte_") || lower.includes("vorschaubilder")) return false;
-  if (!/mockup/i.test(normalized) || !/\bai\b|_ai_|-ai-| ai |ai_/i.test(normalized)) return false;
-  return /\.jpe?g(?:$|[?#])/i.test(normalized);
 }
 
 function assertEligibleAiMockupSourceName(name: string | null | undefined) {
