@@ -356,6 +356,58 @@ export function archiveMockupAttachmentName(name: string) {
   return `alte_Vorschaubilder_${normalized}`;
 }
 
+function designColorActionLabel(value: string | null) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (/orange|amber/.test(normalized)) return "Orange";
+  if (/warmwei|warmweiss|warm white/.test(normalized)) return "Warmweiss";
+  if (/kaltwei|kaltweiss|cool white/.test(normalized)) return "Kaltweiss";
+  if (/rot|red/.test(normalized)) return "Rot";
+  if (/pink|magenta/.test(normalized)) return "Pink";
+  if (/blau|blue/.test(normalized)) return "Blau";
+  if (/gruen|grün|green/.test(normalized)) return "Gruen";
+  if (/rgb|farbverlauf/.test(normalized)) return "RGB";
+  return normalized
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/^./, (char) => char.toUpperCase()) || null;
+}
+
+function designActionLabelFromPrompt(promptText: string | null | undefined) {
+  const text = String(promptText || "");
+  const colorMatch =
+    text.match(/Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ([^\n.]+)/i) ||
+    text.match(/Leuchtfarbe\s*(?:ändern|aendern)?[\s\S]{0,180}?zu ([^\n.]+)/i);
+  const colorLabel = designColorActionLabel(trimNullable(colorMatch?.[1]));
+  if (colorLabel) return colorLabel;
+
+  const productMatch =
+    text.match(/\b3D\s*Frontlit\b/i) ||
+    text.match(/\b3D\s*Backlit\b/i) ||
+    text.match(/\bFrontlit\b/i) ||
+    text.match(/\bBacklit\b/i);
+  if (productMatch?.[0]) {
+    return productMatch[0].replace(/\s+/g, "_").replace(/^3Dfrontlit$/i, "3D_Frontlit").replace(/^3Dbacklit$/i, "3D_Backlit");
+  }
+  return null;
+}
+
+function stripExistingDesignActionPrefix(name: string) {
+  return name.replace(/^(?:Orange|Warmweiss|Kaltweiss|Rot|Pink|Blau|Gruen|RGB|3D_Frontlit|3D_Backlit|Frontlit|Backlit)_+/i, "");
+}
+
+export function designActionAttachmentName(promptText: string | null | undefined, sourceName: string | null | undefined, fallbackName: string | null | undefined) {
+  const baseName = trimNullable(sourceName) || trimNullable(fallbackName) || "NEONTRIP Design Mockup";
+  const actionLabel = designActionLabelFromPrompt(promptText);
+  if (!actionLabel) return baseName;
+  const strippedBase = stripExistingDesignActionPrefix(baseName);
+  return `${actionLabel}_${strippedBase}`;
+}
+
 function slugPathPart(value: unknown, fallback: string) {
   const normalized = String(value ?? "")
     .trim()
@@ -1188,6 +1240,7 @@ export async function attachDesignAssetToTrello(input: {
   if (!asset) throw new QuoteValidationError("Kein generiertes Asset fuer diesen Job gefunden.");
   if (!job.trello_card_id) throw new QuoteValidationError("Design-Job hat keine Trello-Karte.");
   if (!asset.public_url) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer Trello.");
+  const promptVersion = job.prompt_version_id ? await getPromptVersion(job.prompt_version_id).catch(() => null) : null;
 
   const replacementAttachmentId = trimNullable(input.replacementAttachmentId);
   const replacementReference = replacementAttachmentId
@@ -1220,7 +1273,7 @@ export async function attachDesignAssetToTrello(input: {
     };
   }
 
-  const attachmentNameForUpload = replacementName || asset.name || "NEONTRIP Design Mockup";
+  const attachmentNameForUpload = designActionAttachmentName(promptVersion?.prompt_text || null, replacementName, asset.name || "NEONTRIP Design Mockup");
   const attachment = await addTrelloCardAttachment({
     cardId: job.trello_card_id,
     url: asset.public_url,

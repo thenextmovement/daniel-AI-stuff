@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks } from "@/lib/ops/design";
+import { archiveMockupAttachmentName, designActionAttachmentName, extractTrelloMockupPromptBlocks } from "@/lib/ops/design";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -166,6 +166,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /applyDesignRemovalPlan/);
   assert.match(service, /attachDesignAssetToTrello/);
   assert.match(service, /archiveMockupAttachmentName/);
+  assert.match(service, /designActionAttachmentName/);
   assert.match(service, /renameTrelloCardAttachment/);
   assert.match(service, /trello_replacement_archived_name/);
   assert.match(service, /linkDesignAssetToOffer/);
@@ -205,6 +206,29 @@ test("design ops archives replaced Trello mockup names outside mockup detection"
   assert.equal(archiveMockupAttachmentName("Mockup 02.webp"), "alte_Vorschaubilder 02.webp");
   assert.equal(archiveMockupAttachmentName("MOC AB 03.png"), "alte_Vorschaubilder 03.png");
   assert.equal(archiveMockupAttachmentName("Referenz.jpg"), "alte_Vorschaubilder_Referenz.jpg");
+});
+
+test("design ops names replacement uploads from action and source mockup", () => {
+  assert.equal(
+    designActionAttachmentName(
+      "Leuchtfarbe ändern:\nÄndere ausschließlich die sichtbare Leuchtfarbe des Schildes zu orange.",
+      "Mockup4600_AI_1.jpeg",
+      "3D Backlit Brigitte Kries",
+    ),
+    "Orange_Mockup4600_AI_1.jpeg",
+  );
+  assert.equal(
+    designActionAttachmentName(
+      "Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu blau.",
+      "Orange_Mockup4600_AI_1.jpeg",
+      "3D Backlit Brigitte Kries",
+    ),
+    "Blau_Mockup4600_AI_1.jpeg",
+  );
+  assert.equal(
+    designActionAttachmentName("Bitte Schildtechnik auf 3D Frontlit ändern.", "Mockup4600_AI_1.jpeg", "Kartenname"),
+    "3D_Frontlit_Mockup4600_AI_1.jpeg",
+  );
 });
 
 test("design ops extracts the same Trello prompt markers used by quote-ready mockups", () => {
