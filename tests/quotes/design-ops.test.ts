@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { archiveMockupAttachmentName, designActionAttachmentName, extractTrelloMockupPromptBlocks, quoteImageVariantKey } from "@/lib/ops/design";
+import { archiveMockupAttachmentName, designActionAttachmentName, extractTrelloMockupPromptBlocks, isEligibleAiMockupSourceName, quoteImageVariantKey } from "@/lib/ops/design";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -192,6 +192,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /quote_image_variant_engine/);
   assert.match(service, /validated_source_image_url/);
   assert.match(service, /Source-Image-URL muss HTTPS sein/);
+  assert.match(service, /isEligibleAiMockupSourceName/);
+  assert.match(service, /Nur JPG-Mockups mit Mockup und AI im Dateinamen/);
   assert.match(service, /crm_quote_version_images/);
   assert.match(service, /getOrCreateCrmQuoteVersionImage/);
   assert.match(service, /crm_quote_image_id/);
@@ -261,6 +263,30 @@ test("design ops quote image variant cache keys normalize costly color variants"
       variantValue: "Kaltweiß",
     }),
   );
+});
+
+test("design ops accepts only AI JPG mockups as customer variant sources", () => {
+  for (const name of [
+    "Mockup4600_AI_1.jpg",
+    "Mockup4600_AI_1.jpeg",
+    "Blau_Mockup4600_AI_1.jpg",
+    "Orange-Mockup-4600-AI-2.JPG",
+  ]) {
+    assert.equal(isEligibleAiMockupSourceName(name), true, name);
+  }
+
+  for (const name of [
+    "Mockup4600_AI_1.png",
+    "Mockup4600_AI_1.webp",
+    "Mockup4600_1.jpg",
+    "AI_1.jpg",
+    "Mockup_1.jpg",
+    "alte_Vorschaubilder4600_AI_1.jpg",
+    "Vorschaubilder4600_AI_1.jpg",
+    "Raiffeisenbank Straubing.jpg",
+  ]) {
+    assert.equal(isEligibleAiMockupSourceName(name), false, name);
+  }
 });
 
 test("design ops archives replaced Trello mockup names outside mockup detection", () => {

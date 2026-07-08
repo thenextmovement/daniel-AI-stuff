@@ -435,6 +435,20 @@ function normalizeDesignVariantValue(variantType: QuoteImageVariantType, value: 
     .replace(/^_+|_+$/g, "") || null;
 }
 
+export function isEligibleAiMockupSourceName(name: string | null | undefined) {
+  const normalized = String(name || "").trim();
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  if (lower.includes("alte_") || lower.includes("vorschaubilder")) return false;
+  if (!/mockup/i.test(normalized) || !/\bai\b|_ai_|-ai-| ai |ai_/i.test(normalized)) return false;
+  return /\.jpe?g(?:$|[?#])/i.test(normalized);
+}
+
+function assertEligibleAiMockupSourceName(name: string | null | undefined) {
+  if (isEligibleAiMockupSourceName(name)) return;
+  throw new QuoteValidationError("Nur JPG-Mockups mit Mockup und AI im Dateinamen dürfen als Ausgangsbild genutzt werden.");
+}
+
 export function quoteImageVariantKey(input: {
   quoteId: string;
   quoteImageId: string;
@@ -1046,6 +1060,7 @@ async function getQuoteImageForVariant(quoteId: string, quoteImageId: string) {
   if (!image) throw new QuoteValidationError("Angebotsbild wurde nicht gefunden.", [], 404);
   const sourceImageUrl = trimNullable(image.storage_url) || trimNullable(image.source_url);
   if (!sourceImageUrl) throw new QuoteValidationError("Angebotsbild hat keine nutzbare Bild-URL.");
+  assertEligibleAiMockupSourceName(image.label);
   return { image, sourceImageUrl };
 }
 
@@ -1107,6 +1122,7 @@ export async function prepareQuoteImageVariantDraft(input: {
   if (directSourceImageUrl && !/^https:\/\//i.test(directSourceImageUrl)) {
     throw new QuoteValidationError("Source-Image-URL muss HTTPS sein.");
   }
+  if (directSourceImageUrl) assertEligibleAiMockupSourceName(directSourceImageLabel);
   const resolvedSource = directSourceImageUrl
     ? {
         sourceImageUrl: directSourceImageUrl,
