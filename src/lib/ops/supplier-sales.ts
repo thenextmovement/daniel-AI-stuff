@@ -423,6 +423,7 @@ export type SupplierCompletedOffersSyncResult = {
     completedOffers: { checked: number; upserted: number; failed: number };
     shopifyOrders: { checked: number; upserted: number; failed: number; skipped: boolean };
     activeShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
+    unlinkedActiveShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
   };
 };
 
@@ -2750,6 +2751,66 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
   };
 }
 
+async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
+  actor?: SupplierSaleActor | null,
+  options?: { limit?: number },
+) {
+  const config = shopifyConfig();
+  if (!config) {
+    return {
+      status: "skipped" as const,
+      checked: 0,
+      upserted: 0,
+      failed: 0,
+      errors: [] as Array<{ offerId: string | null; error: string }>,
+      warnings: ["Shopify Admin API ist nicht konfiguriert; unverknuepfte aktive Vergabezeilen wurden nicht abgeglichen."],
+    };
+  }
+
+  const limit = Math.min(Math.max(Number(options?.limit || 20), 1), 50);
+  const activeRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: "*",
+    assignment_status: "not.in.(assigned,in_production,completed,canceled)",
+    shopify_order_id: "is.null",
+    order: "updated_at.desc,created_at.desc",
+    limit,
+  });
+
+  const errors: Array<{ offerId: string | null; error: string }> = [];
+  const warnings: string[] = [];
+  let upserted = 0;
+  for (const row of activeRows) {
+    try {
+      const lookup = await findShopifyOrderGid(config, row);
+      if (!lookup.orderGid) {
+        if (warnings.length < 5) warnings.push(`${row.offer_number || row.document_reference || row.sale_key}: ${lookup.error || "Keine eindeutige Shopify Order gefunden."}`);
+        continue;
+      }
+      const fetched = await fetchShopifyOrderByGid(config, lookup.orderGid);
+      if (!fetched.order) {
+        if (fetched.error) errors.push({ offerId: row.offer_id || row.offer_number || row.sale_key, error: fetched.error });
+        continue;
+      }
+      await upsertSupplierSaleFromPayload(shopifyOrderPayloadFromGraphql(fetched.order, config.domain), actor);
+      upserted += 1;
+    } catch (error) {
+      errors.push({
+        offerId: row.offer_id || row.offer_number || row.sale_key,
+        error: error instanceof Error ? error.message : "Unverknuepfte aktive Vergabezeile konnte nicht mit Shopify abgeglichen werden.",
+      });
+    }
+  }
+
+  return {
+    status: errors.length ? "failed" as const : "synced" as const,
+    checked: activeRows.length,
+    upserted,
+    failed: errors.length,
+    errors,
+    warnings,
+  };
+}
+
 export async function syncSupplierSalesShopifyTags(
   actor?: SupplierSaleActor | null,
   options?: { limit?: number },
@@ -2814,15 +2875,27 @@ export async function syncCompletedOffersFromOffersApp(
   }));
   errors.push(...activeShopify.errors);
   warnings.push(...activeShopify.warnings);
-  const checked = completedChecked + shopify.checked + activeShopify.checked;
-  const upserted = completedUpserted + shopify.upserted + activeShopify.upserted;
-  const failed = completedFailed + shopify.failed + activeShopify.failed;
+
+  const unlinkedShopify = await syncUnlinkedActiveSupplierSalesFromShopifyAdmin(actor, { limit }).catch((error) => ({
+    status: "failed" as const,
+    checked: 0,
+    upserted: 0,
+    failed: 1,
+    errors: [{ offerId: null, error: error instanceof Error ? error.message : "Unverknuepfte aktive Vergabezeilen konnten nicht abgeglichen werden." }],
+    warnings: [] as string[],
+  }));
+  errors.push(...unlinkedShopify.errors);
+  warnings.push(...unlinkedShopify.warnings);
+  const checked = completedChecked + shopify.checked + activeShopify.checked + unlinkedShopify.checked;
+  const upserted = completedUpserted + shopify.upserted + activeShopify.upserted + unlinkedShopify.upserted;
+  const failed = completedFailed + shopify.failed + activeShopify.failed + unlinkedShopify.failed;
   const completedConfigured = feed.configured;
   const shopifySkipped = shopify.status === "skipped";
   const activeShopifySkipped = activeShopify.status === "skipped";
+  const unlinkedShopifySkipped = unlinkedShopify.status === "skipped";
   const status = failed
     ? (upserted > 0 || checked > failed ? "partial" : "failed")
-    : (!completedConfigured && shopifySkipped && activeShopifySkipped ? "skipped" : "synced");
+    : (!completedConfigured && shopifySkipped && activeShopifySkipped && unlinkedShopifySkipped ? "skipped" : "synced");
   return {
     status,
     checked,
@@ -2834,6 +2907,7 @@ export async function syncCompletedOffersFromOffersApp(
       completedOffers: { checked: completedChecked, upserted: completedUpserted, failed: completedFailed },
       shopifyOrders: { checked: shopify.checked, upserted: shopify.upserted, failed: shopify.failed, skipped: shopifySkipped },
       activeShopifyRows: { checked: activeShopify.checked, upserted: activeShopify.upserted, failed: activeShopify.failed, skipped: activeShopifySkipped },
+      unlinkedActiveShopifyRows: { checked: unlinkedShopify.checked, upserted: unlinkedShopify.upserted, failed: unlinkedShopify.failed, skipped: unlinkedShopifySkipped },
     },
   };
 }
