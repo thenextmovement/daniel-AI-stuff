@@ -2341,6 +2341,46 @@ export async function upsertSupplierSaleFromPayload(payload: unknown, actor?: Su
   return { sale, warnings: parsed.warnings };
 }
 
+async function mergeShopifyOrderIntoExistingSale(row: SupplierSaleRow, order: JsonRecord, domain: string, actor?: SupplierSaleActor | null) {
+  const parsed = buildSupplierSaleInputFromPayload(shopifyOrderPayloadFromGraphql(order, domain));
+  const input = parsed.sale;
+  const recommendation = deriveSupplierRecommendation(input.lineItems);
+  const payload = {
+    ...buildSalePayload(input, row),
+    sale_key: row.sale_key,
+    source: row.source || "neontrip-offers",
+    offer_id: row.offer_id,
+    offer_number: row.offer_number || input.offerNumber || null,
+    document_reference: row.document_reference || input.documentReference || null,
+  };
+  const rows = await supabaseRequest<SupplierSaleRow[]>(
+    "supplier_sales",
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${row.id}`, select: "*", limit: 1 },
+  );
+  const saleRow = rows[0];
+  if (!saleRow) throw new Error("Bestehende Vergabezeile konnte nicht mit Shopify-Daten aktualisiert werden.");
+  await replaceSaleItems(saleRow.id, recommendation.lineItems);
+  await insertEvent({
+    saleId: saleRow.id,
+    eventType: "sale_updated",
+    actor,
+    idempotencyKey: `supplier-sale:${saleRow.id}:merge-shopify:${input.shopifyOrderId || input.shopifyOrderName || hashPayload(order)}`,
+    payload: {
+      sale_key: saleRow.sale_key,
+      shopify_order_id: saleRow.shopify_order_id,
+      recommended_supplier: saleRow.recommended_supplier,
+      payment_status: saleRow.shopify_payment_status,
+      merge_source: "unlinked_active_shopify_reconciliation",
+    },
+  });
+  return { sale: await getSupplierSale(saleRow.id), warnings: parsed.warnings };
+}
+
 function shopifyOrderNumericId(gid: unknown) {
   const text = nullableText(gid, 260);
   return text?.match(/\/Order\/(\d+)$/)?.[1] || null;
@@ -2741,7 +2781,7 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
         if (fetched.error) errors.push({ offerId: row.offer_id || row.offer_number || row.sale_key, error: fetched.error });
         continue;
       }
-      await upsertSupplierSaleFromPayload(shopifyOrderPayloadFromGraphql(fetched.order, config.domain), actor);
+      await mergeShopifyOrderIntoExistingSale(row, fetched.order, config.domain, actor);
       upserted += 1;
     } catch (error) {
       errors.push({
@@ -2802,7 +2842,7 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
         if (fetched.error) errors.push({ offerId: row.offer_id || row.offer_number || row.sale_key, error: fetched.error });
         continue;
       }
-      await upsertSupplierSaleFromPayload(shopifyOrderPayloadFromGraphql(fetched.order, config.domain), actor);
+      await mergeShopifyOrderIntoExistingSale(row, fetched.order, config.domain, actor);
       upserted += 1;
     } catch (error) {
       errors.push({
