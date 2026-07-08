@@ -3363,19 +3363,22 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: openWatcherTitles.length || retry.blockers.length ? "medium" : "low",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && !internalTaskCreated),
+      enabled: Boolean((primaryRecord || trelloCardId) && !internalTaskCreated),
       summary: internalTaskCreated
         ? `Interne Aufgabe wurde bereits vorbereitet.${fixRunSuffix(internalTaskCreated)}`
+        : !primaryRecord && trelloCardId
+          ? "Legt nach Freigabe eine interne Automation-Fix-Aufgabe zur Trello-Karte an. Keine Kundenakte, kein Versand und keine Datenkorrektur."
         : retry.blockers.length
           ? "Legt nach Freigabe eine interne Aufgabe mit Retry-Blockern und sicheren Fix-Schritten an. Kein Kundenkontakt."
           : "Legt nach Freigabe eine interne Aufgabe aus offenen Watchern und Fallbelegen an. Kein Kundenkontakt.",
       confirmationText: "Vor dem Anlegen Assignee, Priorität und Fälligkeit prüfen.",
       href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
       payloadPreview: [
-        `Request: ${primaryRecord?.requestId || "unbekannt"}`,
+        `Request: ${primaryRecord?.requestId || "nicht verknüpft"}`,
+        trelloCardId ? `Trello: ${trelloCardId}` : null,
         `Titel: Company-Brain-Prüfung ${primaryOffer?.offerNumber || primaryRecord?.requestId || ""}`.trim(),
         ...internalTaskPreview,
-      ],
+      ].filter(Boolean) as string[],
     },
     {
       key: "verify_live_outlook",
@@ -3474,11 +3477,11 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "low",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && trelloCardId && !trelloStatusPosted),
+      enabled: Boolean(trelloCardId && !trelloStatusPosted),
       summary: trelloStatusPosted
         ? `Trello-Status wurde bereits kommentiert.${fixRunSuffix(trelloStatusPosted)}`
         : !primaryRecord
-          ? "Trello-Karte ist lesbar, aber ohne verknüpfte Kundenakte wird kein Statuskommentar geschrieben. Erst Request/Kundenakte als Source of Truth verknüpfen."
+          ? "Schreibt eine kurze interne Diagnose auf die Trello-Karte. Keine Kundenakte, kein Versand und keine Datenkorrektur; Trello bleibt Projektion."
         : "Schreibt eine kurze interne Diagnose auf die Trello-Karte. Trello bleibt Projektion, kein Versand und keine Datenkorrektur.",
       confirmationText: "Nur Statuskommentar schreiben; keine Karte als Source of Truth verwenden.",
       href: input.trelloFailureDiagnosis.card?.url || primaryRecord?.trelloCardUrl || null,

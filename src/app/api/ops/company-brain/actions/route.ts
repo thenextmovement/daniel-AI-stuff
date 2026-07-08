@@ -371,20 +371,143 @@ export async function POST(request: NextRequest) {
 
     const actionKey = normalizeActionKey(body.actionKey);
     const requestId = cleanText(body.requestId, 160);
-    if (!requestId) throw new QuoteValidationError("Request-ID fehlt.", ["Ohne Request-ID wird keine Aktion ausgeführt."], 422);
-
-    const record = await getCustomerRecordByRequestId(requestId);
     const problemType = normalizeCompanyBrainProblemType(body.problemType || null);
     const specialCaseKind = normalizeSpecialCaseKind(body.specialCaseKind);
     const operatorName = cleanText(body.operatorName, 120) || null;
     const actor = actorFor(access.host, request, operatorName);
+    const offerId = cleanText(body.offerId, 180) || null;
+    const offerNumber = normalizeOfferNumber(body.offerNumber) || null;
+    const trelloCardIdInput = cleanText(body.trelloCardId, 180) || null;
+
+    if (!requestId && (actionKey === "create_internal_task" || actionKey === "post_trello_status_comment")) {
+      if (!trelloCardIdInput) {
+        throw new QuoteValidationError("Trello-Karte fehlt.", ["Ohne Request-ID muss eine Trello-Card-ID vorhanden sein."], 422);
+      }
+
+      const sourceRef = sourceRefFor(actionKey, `trello:${trelloCardIdInput}`, problemType);
+      const title = cleanText(body.title, 160) || `${problemTypeLabel(problemType)}: Trello ${trelloCardIdInput}`;
+      const description = cleanText(body.description || body.note, 6000) || "Company-Brain-Aktion ohne Beschreibung.";
+
+      if (actionKey === "create_internal_task") {
+        const task = await createOpsInternalTask(
+          {
+            title,
+            description,
+            status: "open",
+            priority: body.urgent ? "urgent" : "high",
+            category: "problem",
+            assigneeLabel: cleanText(body.assigneeLabel, 120) || operatorName,
+            dueAt: cleanText(body.dueAt, 80) || null,
+            requestId: null,
+            customerName: null,
+            customerEmail: null,
+            trelloCardId: trelloCardIdInput,
+            sourceApp: "company_brain",
+            sourceRef,
+            metadata: {
+              problem_type: problemType,
+              company_brain_action: actionKey,
+              source_context: "trello_only",
+              offer_id: offerId,
+              offer_number: offerNumber,
+              recipient_email: cleanText(body.recipientEmail, 240) || null,
+              idempotency_key: cleanText(body.idempotencyKey, 300) || null,
+            },
+          },
+          { operatorName },
+        );
+        const audit = await recordWorkflowAuditEvent({
+          workflowName: "company_brain_fix_center",
+          action: actionKey,
+          status: "prepared",
+          documentId: `trello:${trelloCardIdInput}`,
+          trelloCardId: trelloCardIdInput,
+          offerId,
+          offerNumber,
+          sourceEventId: task?.id || null,
+          idempotencyKey: sourceRef,
+          retrySafety: "safe_after_review",
+          customer_communication_sent: false,
+          metadata: {
+            operator_name: operatorName,
+            task_id: task?.id || null,
+            problem_type: problemType,
+            internal_only: true,
+            source_context: "trello_only",
+            customer_communication_sent: false,
+          },
+        });
+
+        return jsonResponse({
+          ok: true,
+          actionKey,
+          requestId: null,
+          task,
+          audit,
+          idempotencyKey: sourceRef,
+          customerCommunicationSent: false,
+        });
+      }
+
+      const commentText = cleanText(body.trelloCommentText || description, 1800);
+      if (!commentText) {
+        throw new QuoteValidationError("Trello-Kommentar fehlt.", ["Der Statuskommentar darf nicht leer sein."], 422);
+      }
+      let trelloComment: Awaited<ReturnType<typeof addTrelloCardComment>>;
+      try {
+        trelloComment = await addTrelloCardComment({
+          cardId: trelloCardIdInput,
+          text: commentText,
+        });
+      } catch (error) {
+        if (/Trello API-Konfiguration fehlt/i.test(errorMessage(error))) {
+          throw new QuoteValidationError(
+            "Trello ist nicht konfiguriert.",
+            ["TRELLO_API_KEY/TRELLO_TOKEN fehlen in der Runtime. Der Kommentar wurde nicht geschrieben."],
+            503,
+          );
+        }
+        throw error;
+      }
+      const audit = await recordWorkflowAuditEvent({
+        workflowName: "company_brain_fix_center",
+        action: "post_trello_status_comment",
+        status: "success",
+        documentId: `trello:${trelloCardIdInput}`,
+        trelloCardId: trelloCardIdInput,
+        offerId,
+        offerNumber,
+        sourceEventId: trelloComment?.id || null,
+        idempotencyKey: `company-brain-trello-comment:${trelloCardIdInput}:${sourceRef}`,
+        retrySafety: "safe_after_review",
+        customer_communication_sent: false,
+        metadata: {
+          operator_name: operatorName,
+          trello_comment_id: trelloComment?.id || null,
+          projection_only: true,
+          source_context: "trello_only",
+          customer_communication_sent: false,
+        },
+      });
+
+      return jsonResponse({
+        ok: true,
+        actionKey,
+        requestId: null,
+        trelloComment,
+        audit,
+        customerCommunicationSent: false,
+      });
+    }
+
+    if (!requestId) throw new QuoteValidationError("Request-ID fehlt.", ["Ohne Request-ID wird keine Aktion ausgeführt."], 422);
+
+    const record = await getCustomerRecordByRequestId(requestId);
     const sourceRef = sourceRefFor(actionKey, record.requestId, problemType);
     const title = cleanText(body.title, 160) || `${problemTypeLabel(problemType)}: ${record.requestId}`;
     const description = cleanText(body.description || body.note, 6000) || "Company-Brain-Aktion ohne Beschreibung.";
     const note = cleanText(body.note || description, 6000);
-    const offerId = cleanText(body.offerId, 180) || null;
-    const offerNumber = normalizeOfferNumber(body.offerNumber) || null;
-    const trelloCardId = cleanText(body.trelloCardId || record.request?.trelloCardId, 180) || null;
+    const trelloCardId = cleanText(trelloCardIdInput || record.request?.trelloCardId, 180) || null;
 
     let task = null;
     let specialCase = null;

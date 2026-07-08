@@ -1502,7 +1502,7 @@ test("company brain action proposals block retry preparation for hard blockers",
   assert.equal(internalTask?.enabled, true);
 });
 
-test("company brain action proposals block trello writes without source record", () => {
+test("company brain action proposals allow internal handling for trello-only cases", () => {
   const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
     status: "blocked",
     label: "Source of Truth fehlt",
@@ -1519,9 +1519,14 @@ test("company brain action proposals block trello writes without source record",
   const trelloComment = actions.find((action) => action.key === "post_trello_status_comment");
   const internalTask = actions.find((action) => action.key === "create_internal_task");
 
-  assert.equal(trelloComment?.enabled, false);
-  assert.match(trelloComment?.summary || "", /Source of Truth/);
-  assert.equal(internalTask?.enabled, false);
+  assert.equal(internalTask?.enabled, true);
+  assert.match(internalTask?.summary || "", /Automation-Fix-Aufgabe/);
+  assert.match(internalTask?.summary || "", /Keine Kundenakte/);
+  assert.equal(internalTask?.payloadPreview.includes("Request: nicht verknüpft"), true);
+  assert.equal(internalTask?.payloadPreview.includes("Trello: card-actions"), true);
+  assert.equal(trelloComment?.enabled, true);
+  assert.match(trelloComment?.summary || "", /Trello bleibt Projektion/);
+  assert.match(trelloComment?.summary || "", /Keine Kundenakte/);
 });
 
 test("company brain action proposals link failed n8n executions read-only", () => {

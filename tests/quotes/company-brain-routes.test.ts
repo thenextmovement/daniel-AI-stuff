@@ -239,6 +239,108 @@ test("company brain action route rejects missing request ids before any downstre
   });
 });
 
+test("company brain action route creates trello-only internal fix tasks without customer lookup", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalTaskTable = process.env.OPS_INTERNAL_TASKS_USE_DEDICATED_TABLE;
+  const calls: string[] = [];
+
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
+  process.env.OPS_INTERNAL_TASKS_USE_DEDICATED_TABLE = "true";
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const method = String(init?.method || "GET").toUpperCase();
+    calls.push(`${method} ${url.toString()}`);
+
+    if (url.hostname !== "supabase.example.test") return json({ error: "unexpected host" }, 500);
+    const table = url.pathname.split("/").pop() || "";
+    if (table === "ops_internal_tasks" && method === "POST") {
+      return json([{
+        id: "task-trello-only-1",
+        title: "Automation fehlgeschlagen: Trello G6Clgcsz",
+        description: "Interne Fix-Aufgabe.",
+        status: "open",
+        priority: "high",
+        category: "problem",
+        assignee_label: "Daniel",
+        due_at: null,
+        request_id: null,
+        customer_name: null,
+        customer_email: null,
+        trello_card_id: "G6Clgcsz",
+        source_app: "company_brain",
+        source_ref: "company-brain:test",
+        created_by: "Daniel",
+        updated_by: "Daniel",
+        completed_by: null,
+        completed_at: null,
+        metadata: { source_context: "trello_only" },
+        created_at: "2026-07-08T10:00:00.000Z",
+        updated_at: "2026-07-08T10:00:00.000Z",
+      }]);
+    }
+    if (table === "workflow_audit_log") {
+      if (method === "GET") return json([]);
+      if (method === "POST") return json([{ id: "audit-trello-only-1" }]);
+    }
+    return json({ error: `unexpected ${method} ${table}` }, 500);
+  }) as typeof fetch;
+
+  try {
+    const response = await POST_ACTION(request("/api/ops/company-brain/actions", {
+      actionKey: "create_internal_task",
+      trelloCardId: "G6Clgcsz",
+      problemType: "automation_failed",
+      title: "Automation fehlgeschlagen: Trello G6Clgcsz",
+      description: "Interne Fix-Aufgabe.",
+      operatorName: "Daniel",
+      confirmed: true,
+      confirmationText: "Freigabe",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.requestId, null);
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(payload.task.trelloCardId, "G6Clgcsz");
+    assert.equal(calls.some((call) => call.includes("/rest/v1/master_customers")), false);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/master_requests")), false);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/")), false);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/ops_internal_tasks") && call.startsWith("POST ")), true);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalSupabaseUrl;
+    if (originalSupabaseKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalSupabaseKey;
+    if (originalTaskTable === undefined) delete process.env.OPS_INTERNAL_TASKS_USE_DEDICATED_TABLE;
+    else process.env.OPS_INTERNAL_TASKS_USE_DEDICATED_TABLE = originalTaskTable;
+  }
+});
+
+test("company brain action route still blocks customer-facing actions without request ids", async () => {
+  await withFetchTrap(async () => {
+    const response = await POST_ACTION(request("/api/ops/company-brain/actions", {
+      actionKey: "guarded_offer_resend",
+      trelloCardId: "G6Clgcsz",
+      confirmed: true,
+      confirmationText: "Freigabe",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 422);
+    assertNoStore(response);
+    assert.equal(payload.ok, false);
+    assert.match(payload.error, /Request-ID fehlt/);
+  });
+});
+
 test("company brain guarded resend blocks duplicate quote email evidence before sending", async () => {
   await withGuardedRetryFetchMock({
     quoteEmailGuardRows: [{
