@@ -2375,7 +2375,24 @@ async function mergeShopifyOrderIntoExistingSale(row: SupplierSaleRow, order: Js
     offer_id: row.offer_id,
     offer_number: row.offer_number || input.offerNumber || null,
     document_reference: row.document_reference || input.documentReference || null,
-  };
+  } as Omit<ReturnType<typeof buildSalePayload>, "metadata"> & { metadata: JsonRecord };
+  const shopifyOrderId = nullableText(payload.shopify_order_id, 180);
+  if (shopifyOrderId) {
+    const duplicateRows = await supabaseRequest<Array<{ id: string; shopify_order_id: string | null }>>("supplier_sales", undefined, {
+      select: "id,shopify_order_id",
+      shopify_order_id: `eq.${shopifyOrderId}`,
+      limit: 2,
+    });
+    const duplicate = duplicateRows.find((candidate) => candidate.id !== row.id);
+    if (duplicate) {
+      payload.shopify_order_id = row.shopify_order_id || null;
+      payload.metadata = {
+        ...jsonRecord(payload.metadata),
+        merged_shopify_order_id: shopifyOrderId,
+        merged_shopify_sale_id: duplicate.id,
+      };
+    }
+  }
   const rows = await supabaseRequest<SupplierSaleRow[]>(
     "supplier_sales",
     {
