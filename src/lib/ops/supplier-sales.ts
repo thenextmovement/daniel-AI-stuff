@@ -570,6 +570,29 @@ function hashPayload(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 16);
 }
 
+function compactErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof SupabaseRestError) {
+    const detail = typeof error.details === "string" ? error.details : JSON.stringify(error.details || "");
+    const parsed = (() => {
+      try {
+        return jsonRecord(JSON.parse(detail));
+      } catch {
+        return {};
+      }
+    })();
+    const parts = [
+      error.message,
+      `HTTP ${error.status}`,
+      recordString(parsed, ["code"], 80),
+      recordString(parsed, ["message"], 240),
+      recordString(parsed, ["details"], 240),
+      recordString(parsed, ["hint"], 240),
+    ].filter(Boolean);
+    return cleanText(parts.join(" | "), 900) || error.message;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 function normalizedTag(value: unknown) {
   return cleanText(value, 120)
     .toLowerCase()
@@ -2786,7 +2809,7 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
     } catch (error) {
       errors.push({
         offerId: row.offer_id || row.offer_number || row.sale_key,
-        error: error instanceof Error ? error.message : "Aktive Vergabe konnte nicht mit Shopify abgeglichen werden.",
+        error: compactErrorMessage(error, "Aktive Vergabe konnte nicht mit Shopify abgeglichen werden."),
       });
     }
   }
@@ -2847,7 +2870,7 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
     } catch (error) {
       errors.push({
         offerId: row.offer_id || row.offer_number || row.sale_key,
-        error: error instanceof Error ? error.message : "Unverknuepfte aktive Vergabezeile konnte nicht mit Shopify abgeglichen werden.",
+        error: compactErrorMessage(error, "Unverknuepfte aktive Vergabezeile konnte nicht mit Shopify abgeglichen werden."),
       });
     }
   }
