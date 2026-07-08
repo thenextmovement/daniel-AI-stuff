@@ -57,6 +57,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /workspace\?\.cards \|\| \[\]/);
   assert.match(client, /preserveStatus/);
   assert.match(client, /Bulk-Farbänderung/);
+  assert.match(client, /Bulk läuft/);
+  assert.match(client, /diese Seite nicht neu laden/);
   assert.match(client, /trelloAttachmentId/);
   assert.match(client, /toggleRecolorSelection/);
   assert.match(client, /selectAttachmentForRecolor/);

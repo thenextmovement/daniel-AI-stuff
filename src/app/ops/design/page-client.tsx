@@ -1027,7 +1027,7 @@ export function DesignOpsClient({
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
-                          Farbe ändern
+                          {busy && bulkRecolorProgress ? "Läuft..." : "Farbe ändern"}
                         </button>
                         <button
                           type="button"
@@ -1036,7 +1036,7 @@ export function DesignOpsClient({
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                          Farbe ändern + ersetzen
+                          {busy && bulkRecolorProgress ? "Läuft..." : "Farbe ändern + ersetzen"}
                         </button>
                         <button
                           type="button"
@@ -1049,6 +1049,35 @@ export function DesignOpsClient({
                         </button>
                       </div>
                     </div>
+
+                    {bulkRecolorProgress ? (
+                      <div className="mt-4 rounded-[14px] border border-[#ded8d0] bg-white p-4 text-sm text-stone-800">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="font-semibold">
+                            Bulk läuft: {bulkRecolorProgress.current}/{bulkRecolorProgress.total}
+                          </div>
+                          <div className="text-xs font-semibold text-stone-500">
+                            {bulkRecolorProgress.generated} generiert · {bulkRecolorProgress.replaced} ersetzt · {bulkRecolorProgress.failures} Fehler
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2 text-xs text-stone-600">
+                          {busy ? <RefreshCcw className="h-3.5 w-3.5 animate-spin" /> : null}
+                          <span>{bulkRecolorProgress.stage}</span>
+                          {bulkRecolorProgress.currentName ? <span className="truncate font-medium text-stone-900">· {bulkRecolorProgress.currentName}</span> : null}
+                        </div>
+                        {busy ? (
+                          <div className="mt-2 text-xs font-medium text-amber-800">
+                            Bitte warten und diese Seite nicht neu laden, bis der Bulk abgeschlossen ist.
+                          </div>
+                        ) : null}
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-stone-100">
+                          <div
+                            className="h-full rounded-full bg-stone-950 transition-all"
+                            style={{ width: `${bulkRecolorProgress.total ? Math.round((bulkRecolorProgress.current / bulkRecolorProgress.total) * 100) : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 space-y-4">
                       {workspace.cards.map((card) => (
