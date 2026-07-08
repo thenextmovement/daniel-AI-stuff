@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { archiveMockupAttachmentName, designActionAttachmentName, extractTrelloMockupPromptBlocks } from "@/lib/ops/design";
+import { archiveMockupAttachmentName, designActionAttachmentName, extractTrelloMockupPromptBlocks, quoteImageVariantKey } from "@/lib/ops/design";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -15,6 +15,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   const removalApplyRoute = readFileSync("src/app/api/ops/design/removal-plans/[planId]/apply/route.ts", "utf8");
   const trelloAttachRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/trello/route.ts", "utf8");
   const offerLinksRoute = readFileSync("src/app/api/ops/design/offer-links/route.ts", "utf8");
+  const quoteImageVariantsRoute = readFileSync("src/app/api/ops/design/quote-image-variants/route.ts", "utf8");
   const workerJobsRoute = readFileSync("src/app/api/ops/design/worker/jobs/route.ts", "utf8");
   const workerCallbackRoute = readFileSync("src/app/api/ops/design/worker/callback/route.ts", "utf8");
   const service = readFileSync("src/lib/ops/design.ts", "utf8");
@@ -131,6 +132,13 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(offerLinksRoute, /productChangeLabel/);
   assert.match(offerLinksRoute, /dryRun/);
 
+  assert.match(quoteImageVariantsRoute, /prepareQuoteImageVariantDraft/);
+  assert.match(quoteImageVariantsRoute, /hasOpsSession/);
+  assert.match(quoteImageVariantsRoute, /variantType/);
+  assert.match(quoteImageVariantsRoute, /variantValue/);
+  assert.match(quoteImageVariantsRoute, /sourceImageUrl/);
+  assert.doesNotMatch(quoteImageVariantsRoute, /export async function (GET|PATCH|DELETE)/);
+
   assert.match(workerJobsRoute, /DESIGN_WORKER_API_KEY/);
   assert.match(workerJobsRoute, /listQueuedDesignJobsForWorker/);
   assert.match(workerJobsRoute, /markDesignJobGenerating/);
@@ -177,6 +185,13 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /renameTrelloCardAttachment/);
   assert.match(service, /trello_replacement_archived_name/);
   assert.match(service, /linkDesignAssetToOffer/);
+  assert.match(service, /prepareQuoteImageVariantDraft/);
+  assert.match(service, /quoteImageVariantKey/);
+  assert.match(service, /quote_image_variants/);
+  assert.match(service, /markQuoteImageVariantReady/);
+  assert.match(service, /quote_image_variant_engine/);
+  assert.match(service, /validated_source_image_url/);
+  assert.match(service, /Source-Image-URL muss HTTPS sein/);
   assert.match(service, /crm_quote_version_images/);
   assert.match(service, /getOrCreateCrmQuoteVersionImage/);
   assert.match(service, /crm_quote_image_id/);
@@ -211,6 +226,41 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(operationsDoc, /Offer-Link/);
   assert.match(workflowPlan, /max 30 nodes|Node Structure/);
   assert.match(workflowPlan, /No credential value belongs in workflow JSON/);
+});
+
+test("design ops quote image variant cache keys normalize costly color variants", () => {
+  const quoteId = "11111111-1111-4111-8111-111111111111";
+  const quoteImageId = "22222222-2222-4222-8222-222222222222";
+
+  assert.equal(
+    quoteImageVariantKey({
+      quoteId,
+      quoteImageId,
+      variantType: "light_color",
+      variantValue: "Blau",
+    }),
+    quoteImageVariantKey({
+      quoteId,
+      quoteImageId,
+      variantType: "light_color",
+      variantValue: "blue",
+    }),
+  );
+
+  assert.notEqual(
+    quoteImageVariantKey({
+      quoteId,
+      quoteImageId,
+      variantType: "light_color",
+      variantValue: "Blau",
+    }),
+    quoteImageVariantKey({
+      quoteId,
+      quoteImageId,
+      variantType: "light_color",
+      variantValue: "Kaltweiß",
+    }),
+  );
 });
 
 test("design ops archives replaced Trello mockup names outside mockup detection", () => {
@@ -279,6 +329,8 @@ test("design ops reports missing Trello prompt markers", () => {
 test("design ops schema has source-of-truth tables, RLS and rollback", () => {
   const migration = readFileSync("supabase/migrations/20260706102534_create_design_ops_tables.sql", "utf8");
   const rollback = readFileSync("supabase/rollbacks/20260706102534_create_design_ops_tables_rollback.sql", "utf8");
+  const variantMigration = readFileSync("supabase/migrations/20260708103749_create_quote_image_variants.sql", "utf8");
+  const variantRollback = readFileSync("supabase/rollbacks/20260708103749_create_quote_image_variants_rollback.sql", "utf8");
 
   for (const table of [
     "design_jobs",
@@ -303,4 +355,17 @@ test("design ops schema has source-of-truth tables, RLS and rollback", () => {
   assert.match(migration, /linked_to_offer/);
   assert.doesNotMatch(migration, /grant .* to anon/i);
   assert.doesNotMatch(migration, /grant .* to authenticated/i);
+
+  assert.match(variantMigration, /create table if not exists public\.quote_image_variants/);
+  assert.match(variantMigration, /variant_key text not null unique/);
+  assert.match(variantMigration, /quote_id text not null/);
+  assert.match(variantMigration, /quote_image_id text not null/);
+  assert.match(variantMigration, /quote_item_id text null/);
+  assert.match(variantMigration, /design_job_id uuid null references public\.design_jobs/);
+  assert.match(variantMigration, /constraint quote_image_variants_status_check/);
+  assert.match(variantMigration, /alter table public\.quote_image_variants enable row level security/);
+  assert.match(variantMigration, /grant select, insert, update on public\.quote_image_variants to service_role/);
+  assert.doesNotMatch(variantMigration, /grant .* to anon/i);
+  assert.doesNotMatch(variantMigration, /grant .* to authenticated/i);
+  assert.match(variantRollback, /drop table if exists public\.quote_image_variants/);
 });

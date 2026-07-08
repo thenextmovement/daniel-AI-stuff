@@ -186,6 +186,39 @@ export type DesignWorkerJob = DesignJobSummary & {
   };
 };
 
+export type QuoteImageVariantType = "light_color" | "product_change";
+
+export type QuoteImageVariantSummary = {
+  id: string;
+  variantKey: string;
+  quoteId: string;
+  quoteImageId: string;
+  quoteItemId: string | null;
+  sourceDesignAssetId: string | null;
+  designJobId: string | null;
+  designPromptVersionId: string | null;
+  variantType: QuoteImageVariantType;
+  variantValue: string;
+  variantValueNormalized: string;
+  status: string;
+  sourceImageUrl: string;
+  publicUrl: string | null;
+  storageBucket: string | null;
+  storagePath: string | null;
+  mimeType: string | null;
+  promptHash: string | null;
+  errorMessage: string | null;
+  generatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type QuoteImageVariantPrepareResult = {
+  variant: QuoteImageVariantSummary;
+  job: DesignJobDraft | null;
+  cached: boolean;
+};
+
 type DesignJobRow = {
   id: string;
   job_key: string;
@@ -237,6 +270,42 @@ type DesignAssetRow = {
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+};
+
+type QuoteImageVariantRow = {
+  id: string;
+  variant_key: string;
+  quote_id: string;
+  quote_image_id: string;
+  quote_item_id: string | null;
+  source_design_asset_id: string | null;
+  design_job_id: string | null;
+  design_prompt_version_id: string | null;
+  variant_type: QuoteImageVariantType;
+  variant_value: string;
+  variant_value_normalized: string;
+  status: string;
+  source_image_url: string;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  public_url: string | null;
+  mime_type: string | null;
+  prompt_hash: string | null;
+  error_message: string | null;
+  generated_at: string | null;
+  expires_at: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type QuoteImageVariantImageRow = {
+  id: string;
+  quote_id: string;
+  source_url?: string | null;
+  storage_url: string;
+  label?: string | null;
+  sort_order?: number | null;
 };
 
 type DesignOfferAssetLinkRow = {
@@ -311,6 +380,8 @@ const DESIGN_JOB_SELECT =
 const DESIGN_PROMPT_VERSION_SELECT = "id,job_id,version_number,prompt_title,prompt_text,prompt_hash,source,edited_by,created_at";
 const DESIGN_ASSET_SELECT =
   "id,asset_key,job_id,prompt_version_id,request_id,trello_card_id,source,status,storage_bucket,storage_path,public_url,trello_attachment_id,name,mime_type,width,height,metadata,created_at,updated_at";
+const QUOTE_IMAGE_VARIANT_SELECT =
+  "id,variant_key,quote_id,quote_image_id,quote_item_id,source_design_asset_id,design_job_id,design_prompt_version_id,variant_type,variant_value,variant_value_normalized,status,source_image_url,storage_bucket,storage_path,public_url,mime_type,prompt_hash,error_message,generated_at,expires_at,metadata,created_at,updated_at";
 
 function trimNullable(value: unknown) {
   const normalized = String(value ?? "").trim();
@@ -343,6 +414,44 @@ function stableHash(value: string) {
 
 function stableActionKey(prefix: string, parts: Array<string | null | undefined>) {
   return `${prefix}:${stableHash(parts.map((part) => trimNullable(part) || "-").join("|")).slice(0, 32)}`;
+}
+
+function isSafeVariantReference(value: string | null | undefined) {
+  return Boolean(value && /^[A-Za-z0-9][A-Za-z0-9:_-]{2,160}$/.test(value));
+}
+
+function normalizeDesignVariantValue(variantType: QuoteImageVariantType, value: string) {
+  const normalized = trimNullable(value);
+  if (!normalized) return null;
+  const label = variantType === "light_color" ? designColorActionLabel(normalized) || normalized : normalized;
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || null;
+}
+
+export function quoteImageVariantKey(input: {
+  quoteId: string;
+  quoteImageId: string;
+  quoteItemId?: string | null;
+  variantType: QuoteImageVariantType;
+  variantValue: string;
+}) {
+  const normalizedValue = normalizeDesignVariantValue(input.variantType, input.variantValue);
+  if (!normalizedValue) throw new QuoteValidationError("Variant-Wert ist erforderlich.");
+  return stableActionKey("quote-image-variant", [
+    input.quoteId,
+    input.quoteImageId,
+    input.quoteItemId || null,
+    input.variantType,
+    normalizedValue,
+    "v1",
+  ]);
 }
 
 export function archiveMockupAttachmentName(name: string) {
@@ -901,6 +1010,231 @@ async function getOrCreateDraftAsset(job: DesignJobRow, promptVersion: DesignPro
   const asset = rows[0];
   if (!asset) throw new QuoteValidationError("Design-Asset konnte nicht vorbereitet werden.");
   return asset;
+}
+
+function quoteImageVariantPrompt(input: {
+  variantType: QuoteImageVariantType;
+  variantValue: string;
+}) {
+  if (input.variantType === "light_color") {
+    return [
+      "Leuchtfarbe ändern:",
+      `Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ${input.variantValue}.`,
+      "Nutze das bereitgestellte Angebots-Mockup als Vorlage.",
+      "Erhalte Text, Logo, Buchstabenform, Position, Perspektive, Hintergrund, Montage, Größe, Material, Bildausschnitt und Kamerawinkel unverändert.",
+      "Keine neue Szene, kein neues Schild, keine neuen Wörter, keine zusätzlichen Logos und keine Änderungen außer der sichtbaren Licht-/LED-Farbe.",
+    ].join("\n");
+  }
+
+  return [
+    "Produktart ändern:",
+    `Ändere ausschließlich die Schildtechnik zu ${input.variantValue}.`,
+    "Nutze das bereitgestellte Angebots-Mockup als Vorlage.",
+    "Erhalte Text, Logo, Buchstabenform, Konturen, Größe, Position, Perspektive, Hintergrund, Wand, Montage, Bildausschnitt und Kamerawinkel unverändert.",
+    "Keine neue Szene, kein neues Logo, keine neuen Wörter, keine andere Marke, keine Dekoration und keine Preis- oder Lieferangaben.",
+  ].join("\n");
+}
+
+async function getQuoteImageForVariant(quoteId: string, quoteImageId: string) {
+  const images = await supabaseRequest<QuoteImageVariantImageRow[]>("quote_images", undefined, {
+    select: "id,quote_id,source_url,storage_url,label,sort_order",
+    id: `eq.${quoteImageId}`,
+    quote_id: `eq.${quoteId}`,
+    limit: 1,
+  });
+  const image = images[0] || null;
+  if (!image) throw new QuoteValidationError("Angebotsbild wurde nicht gefunden.", [], 404);
+  const sourceImageUrl = trimNullable(image.storage_url) || trimNullable(image.source_url);
+  if (!sourceImageUrl) throw new QuoteValidationError("Angebotsbild hat keine nutzbare Bild-URL.");
+  return { image, sourceImageUrl };
+}
+
+async function getQuoteImageVariantByKey(variantKey: string) {
+  const rows = await supabaseRequest<QuoteImageVariantRow[]>("quote_image_variants", undefined, {
+    select: QUOTE_IMAGE_VARIANT_SELECT,
+    variant_key: `eq.${variantKey}`,
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+async function getDraftJobForVariant(row: QuoteImageVariantRow) {
+  if (!row.design_job_id || !row.design_prompt_version_id) return null;
+  const [job, promptVersion] = await Promise.all([
+    getDesignJob(row.design_job_id).catch(() => null),
+    getPromptVersion(row.design_prompt_version_id).catch(() => null),
+  ]);
+  if (!job || !promptVersion) return null;
+  return mapDesignJobDraft(job, promptVersion);
+}
+
+export async function prepareQuoteImageVariantDraft(input: {
+  quoteId: string;
+  quoteImageId: string;
+  quoteItemId?: string | null;
+  variantType: QuoteImageVariantType;
+  variantValue: string;
+  sourceImageUrl?: string | null;
+  sourceImageLabel?: string | null;
+  operatorName?: string | null;
+  idempotencyKey?: string | null;
+}): Promise<QuoteImageVariantPrepareResult> {
+  const quoteId = trimNullable(input.quoteId);
+  const quoteImageId = trimNullable(input.quoteImageId);
+  const quoteItemId = trimNullable(input.quoteItemId);
+  const variantValue = trimNullable(input.variantValue);
+  const variantType = input.variantType;
+  if (!quoteId || !isSafeVariantReference(quoteId)) throw new QuoteValidationError("Quote-ID ist erforderlich.");
+  if (!quoteImageId || !isSafeVariantReference(quoteImageId)) throw new QuoteValidationError("Quote-Image-ID ist erforderlich.");
+  if (quoteItemId && !isSafeVariantReference(quoteItemId)) throw new QuoteValidationError("Quote-Item-ID ist ungueltig.");
+  if (variantType !== "light_color" && variantType !== "product_change") throw new QuoteValidationError("Variant-Typ ist ungueltig.");
+  if (!variantValue) throw new QuoteValidationError("Variant-Wert ist erforderlich.");
+  const variantValueNormalized = normalizeDesignVariantValue(variantType, variantValue);
+  if (!variantValueNormalized) throw new QuoteValidationError("Variant-Wert ist ungueltig.");
+
+  const variantKey = quoteImageVariantKey({ quoteId, quoteImageId, quoteItemId, variantType, variantValue });
+  const existing = await getQuoteImageVariantByKey(variantKey);
+  if (existing) {
+    return {
+      variant: mapQuoteImageVariantSummary(existing),
+      job: await getDraftJobForVariant(existing),
+      cached: existing.status === "ready",
+    };
+  }
+
+  const directSourceImageUrl = trimNullable(input.sourceImageUrl);
+  const directSourceImageLabel = trimNullable(input.sourceImageLabel);
+  if (directSourceImageUrl && !/^https:\/\//i.test(directSourceImageUrl)) {
+    throw new QuoteValidationError("Source-Image-URL muss HTTPS sein.");
+  }
+  const resolvedSource = directSourceImageUrl
+    ? {
+        sourceImageUrl: directSourceImageUrl,
+        imageLabel: directSourceImageLabel,
+      }
+    : await getQuoteImageForVariant(quoteId, quoteImageId).then(({ image, sourceImageUrl }) => ({
+        sourceImageUrl,
+        imageLabel: trimNullable(image.label),
+      }));
+  const { sourceImageUrl, imageLabel } = resolvedSource;
+  const promptText = quoteImageVariantPrompt({
+    variantType,
+    variantValue,
+  });
+  const promptHash = stableHash(promptText);
+  const jobKey = trimNullable(input.idempotencyKey) || stableActionKey("quote-image-variant-job", [variantKey]);
+  const operatorName = trimNullable(input.operatorName);
+  const now = new Date().toISOString();
+
+  const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      job_key: jobKey,
+      request_id: null,
+      trello_card_id: null,
+      trello_card_url: null,
+      offer_id: quoteId,
+      source_query: `quote:${quoteId}/image:${quoteImageId}/${variantType}:${variantValueNormalized}`,
+      status: "draft",
+      operator_name: operatorName,
+      created_by: operatorName,
+      metadata: {
+        source: "quote_image_variant_engine",
+        quote_id: quoteId,
+        quote_image_id: quoteImageId,
+        quote_item_id: quoteItemId,
+        quote_image_variant_key: variantKey,
+        variant_type: variantType,
+        variant_value: variantValue,
+        variant_value_normalized: variantValueNormalized,
+        reference_assets: [
+          {
+            assetId: `quote-image:${quoteImageId}`,
+            publicUrl: sourceImageUrl,
+            name: imageLabel || `quote-image-${quoteImageId}`,
+            mimeType: null,
+            source: directSourceImageUrl ? "validated_source_image_url" : "quote_image",
+          },
+        ],
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const job = jobs[0];
+  if (!job) throw new QuoteValidationError("Variant-Design-Job konnte nicht erstellt werden.");
+
+  const promptVersions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", {
+    method: "POST",
+    body: JSON.stringify({
+      job_id: job.id,
+      version_number: 1,
+      prompt_title: `${variantType === "light_color" ? "Leuchtfarbe" : "Produktart"} ${variantValue} · ${imageLabel || "Angebots-Mockup"}`,
+      prompt_text: promptText,
+      prompt_hash: promptHash,
+      source: "manual",
+      edited_by: operatorName,
+      metadata: {
+        source: "quote_image_variant_engine",
+        quote_image_variant_key: variantKey,
+        quote_id: quoteId,
+        quote_image_id: quoteImageId,
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const promptVersion = promptVersions[0];
+  if (!promptVersion) throw new QuoteValidationError("Variant-Prompt konnte nicht erstellt werden.");
+
+  const updatedJobs = await supabaseRequest<DesignJobRow[]>(
+    "design_jobs",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        prompt_version_id: promptVersion.id,
+        updated_at: now,
+        metadata: {
+          ...(job.metadata || {}),
+          quote_image_variant_key: variantKey,
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${job.id}` },
+  );
+  const updatedJob = updatedJobs[0] || { ...job, prompt_version_id: promptVersion.id };
+
+  const variantRows = await supabaseRequest<QuoteImageVariantRow[]>("quote_image_variants", {
+    method: "POST",
+    body: JSON.stringify({
+      variant_key: variantKey,
+      quote_id: quoteId,
+      quote_image_id: quoteImageId,
+      quote_item_id: quoteItemId,
+      design_job_id: updatedJob.id,
+      design_prompt_version_id: promptVersion.id,
+      variant_type: variantType,
+      variant_value: variantValue,
+      variant_value_normalized: variantValueNormalized,
+      status: "pending",
+      source_image_url: sourceImageUrl,
+      prompt_hash: promptHash,
+      metadata: {
+        source: "quote_image_variant_engine",
+        created_by: operatorName,
+        source_quote_image_label: imageLabel,
+        source_image_url_mode: directSourceImageUrl ? "provided" : "quote_images_lookup",
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const variant = variantRows[0] || (await getQuoteImageVariantByKey(variantKey));
+  if (!variant) throw new QuoteValidationError("Quote-Image-Variante konnte nicht reserviert werden.");
+
+  return {
+    variant: mapQuoteImageVariantSummary(variant),
+    job: mapDesignJobDraft(updatedJob, promptVersion),
+    cached: false,
+  };
 }
 
 async function getOrCreateOfferAssetLink(input: {
@@ -1677,6 +2011,7 @@ export async function markDesignJobGenerating(input: {
         status: "generating",
         updated_at: new Date().toISOString(),
         metadata: {
+          ...(job.metadata || {}),
           source: "design_worker",
           worker_run_id: trimNullable(input.workerRunId),
         },
@@ -1685,7 +2020,88 @@ export async function markDesignJobGenerating(input: {
     },
     { id: `eq.${job.id}` },
   );
-  return mapDesignJobSummary(updated[0] || { ...job, status: "generating" });
+  const nextJob = updated[0] || { ...job, status: "generating" };
+  await markQuoteImageVariantGenerating(nextJob, trimNullable(input.workerRunId));
+  return mapDesignJobSummary(nextJob);
+}
+
+function quoteImageVariantKeyFromJob(job: DesignJobRow) {
+  return trimNullable((job.metadata || {}).quote_image_variant_key);
+}
+
+async function patchQuoteImageVariantForJob(job: DesignJobRow, body: Record<string, unknown>) {
+  const variantKey = quoteImageVariantKeyFromJob(job);
+  if (variantKey) {
+    await supabaseRequest<QuoteImageVariantRow[]>(
+      "quote_image_variants",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ ...body, updated_at: new Date().toISOString() }),
+        headers: { Prefer: "return=representation" },
+      },
+      { variant_key: `eq.${variantKey}` },
+    ).catch((error) => {
+      console.error("quote image variant patch by key failed", { variantKey, error });
+    });
+    return;
+  }
+
+  await supabaseRequest<QuoteImageVariantRow[]>(
+    "quote_image_variants",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ ...body, updated_at: new Date().toISOString() }),
+      headers: { Prefer: "return=representation" },
+    },
+    { design_job_id: `eq.${job.id}` },
+  ).catch((error) => {
+    console.error("quote image variant patch by job failed", { jobId: job.id, error });
+  });
+}
+
+async function markQuoteImageVariantGenerating(job: DesignJobRow, workerRunId: string | null) {
+  await patchQuoteImageVariantForJob(job, {
+    status: "generating",
+    design_job_id: job.id,
+    error_message: null,
+    metadata: {
+      ...(job.metadata || {}),
+      source: "design_worker",
+      worker_run_id: workerRunId,
+    },
+  });
+}
+
+async function markQuoteImageVariantReady(job: DesignJobRow, asset: DesignAssetRow, promptVersion: DesignPromptVersionRow) {
+  await patchQuoteImageVariantForJob(job, {
+    status: "ready",
+    source_design_asset_id: asset.id,
+    design_job_id: job.id,
+    design_prompt_version_id: promptVersion.id,
+    storage_bucket: asset.storage_bucket,
+    storage_path: asset.storage_path,
+    public_url: asset.public_url,
+    mime_type: asset.mime_type,
+    prompt_hash: promptVersion.prompt_hash,
+    error_message: null,
+    generated_at: new Date().toISOString(),
+    metadata: {
+      ...(job.metadata || {}),
+      source: "design_worker",
+      design_asset_key: asset.asset_key,
+    },
+  });
+}
+
+async function markQuoteImageVariantFailed(job: DesignJobRow, errorMessage: string | null) {
+  await patchQuoteImageVariantForJob(job, {
+    status: "failed",
+    error_message: errorMessage || "Design-Generierung fehlgeschlagen.",
+    metadata: {
+      ...(job.metadata || {}),
+      source: "design_worker",
+    },
+  });
 }
 
 async function uploadDesignAssetToStorage(input: {
@@ -2020,6 +2436,7 @@ export async function generateDesignJobNow(input: {
     },
     { id: `eq.${job.id}` },
   );
+  await markQuoteImageVariantGenerating(job, stableActionKey("direct-openai", [job.id, idempotencyKey]));
 
   try {
     const referenceFiles = await downloadDesignReferenceAttachments(job);
@@ -2091,6 +2508,7 @@ export async function applyDesignWorkerCallback(input: {
   if (!idempotencyKey) throw new QuoteValidationError("idempotencyKey ist erforderlich.");
 
   if (input.status === "failed") {
+    await markQuoteImageVariantFailed(job, trimNullable(input.errorMessage) || "Worker meldete einen Fehler.");
     const updated = await supabaseRequest<DesignJobRow[]>(
       "design_jobs",
       {
@@ -2100,6 +2518,7 @@ export async function applyDesignWorkerCallback(input: {
           error_message: trimNullable(input.errorMessage) || "Worker meldete einen Fehler.",
           updated_at: new Date().toISOString(),
           metadata: {
+            ...(job.metadata || {}),
             source: "design_worker",
             worker_run_id: trimNullable(input.workerRunId),
             idempotency_key: idempotencyKey,
@@ -2160,6 +2579,7 @@ export async function applyDesignWorkerCallback(input: {
       });
   const asset = assetRows[0] || existing[0];
   if (!asset) throw new QuoteValidationError("Worker-Asset konnte nicht gespeichert werden.");
+  await markQuoteImageVariantReady(job, asset, promptVersion);
 
   const updated = await supabaseRequest<DesignJobRow[]>(
     "design_jobs",
@@ -2171,6 +2591,7 @@ export async function applyDesignWorkerCallback(input: {
         error_message: null,
         updated_at: new Date().toISOString(),
         metadata: {
+          ...(job.metadata || {}),
           source: "design_worker",
           worker_run_id: trimNullable(input.workerRunId),
           idempotency_key: idempotencyKey,
@@ -2229,6 +2650,33 @@ function mapDesignAssetSummary(asset: DesignAssetRow): DesignAssetSummary {
     height: asset.height,
     createdAt: asset.created_at,
     updatedAt: asset.updated_at,
+  };
+}
+
+function mapQuoteImageVariantSummary(row: QuoteImageVariantRow): QuoteImageVariantSummary {
+  return {
+    id: row.id,
+    variantKey: row.variant_key,
+    quoteId: row.quote_id,
+    quoteImageId: row.quote_image_id,
+    quoteItemId: row.quote_item_id,
+    sourceDesignAssetId: row.source_design_asset_id,
+    designJobId: row.design_job_id,
+    designPromptVersionId: row.design_prompt_version_id,
+    variantType: row.variant_type,
+    variantValue: row.variant_value,
+    variantValueNormalized: row.variant_value_normalized,
+    status: row.status,
+    sourceImageUrl: row.source_image_url,
+    publicUrl: row.public_url,
+    storageBucket: row.storage_bucket,
+    storagePath: row.storage_path,
+    mimeType: row.mime_type,
+    promptHash: row.prompt_hash,
+    errorMessage: row.error_message,
+    generatedAt: row.generated_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
