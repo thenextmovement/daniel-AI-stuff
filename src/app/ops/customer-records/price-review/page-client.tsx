@@ -188,6 +188,58 @@ function confidenceLabel(level: string) {
   return "niedrig";
 }
 
+function estimateStrategyLabel(strategy: string) {
+  switch (strategy) {
+    case "exact_supplier_anchor":
+      return "Supplier-Preis";
+    case "training_informed_supplier_anchor_interpolation":
+      return "Trainingskurve zwischen Ankern";
+    case "piecewise_supplier_anchor_interpolation":
+      return "Zwischen echten Preisen";
+    case "downscale_extrapolation":
+      return "Downscale grob";
+    case "anchored_regression":
+      return "Training ab Anker";
+    default:
+      return strategy.replaceAll("_", " ");
+  }
+}
+
+function estimateBucketLabel(bucket: string) {
+  if (bucket.includes("price_break")) return "10cm-Preissprung erkannt";
+  switch (bucket) {
+    case "supplier_anchor":
+      return "exakter Anker";
+    case "supplier_anchor_piecewise":
+      return "zwischen Supplier-Ankern";
+    case "supplier_anchor_bucket_transition":
+      return "Preisrubrik-Wechsel";
+    case "below_anchor":
+      return "unter Anker";
+    default:
+      return bucket.replaceAll("_", " ");
+  }
+}
+
+function estimateReviewReasonLabel(reason: string | null) {
+  if (!reason) return null;
+  if (reason.startsWith("shipping_bucket_transition")) return "Shipping-Rubrik gewechselt";
+  switch (reason) {
+    case "marginal_price_jump_detected":
+      return "ungewöhnlicher Preissprung";
+    case "target_size_requires_supplier_request":
+      return "über Auto-Grenze";
+    case "target_outside_supplier_anchor_range_extrapolation":
+      return "außerhalb echter Anker";
+    case "target_smaller_than_anchor_downscale_extrapolation":
+      return "kleiner als Anker";
+    case "unsupported_model_family":
+      return "kein Neonflex";
+    default:
+      return reason.replaceAll("_", " ");
+  }
+}
+
 function sizeLadderStatusTone(status: string) {
   if (status === "auto_ok" || status === "draft" || status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "blocked") return "border-rose-200 bg-rose-50 text-rose-800";
@@ -280,6 +332,7 @@ function TrelloEstimateResultCard({
           const checking = applyingKey === `${key}:dry`;
           const saving = applyingKey === `${key}:save`;
           const checked = checkedApplyKey === key;
+          const reviewReasonLabel = estimateReviewReasonLabel(item.reviewReason);
           return (
           <div key={key} className="rounded-lg border border-black/10 bg-black/[0.02] p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -288,7 +341,7 @@ function TrelloEstimateResultCard({
                   {formatCm(item.widthCm)} x {formatCm(item.heightCm)}
                 </div>
                 <div className="mt-1 text-xs text-black/45">
-                  Eingabe: {item.requestedInput} · {item.shippingBucket} · {item.shippingStrategy} · {item.shippingTrainingRows} Trainings
+                  Eingabe: {item.requestedInput} · {item.shippingTrainingRows} Trainingspunkte
                 </div>
               </div>
               <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${confidenceTone(item.confidenceLevel)}`}>
@@ -322,6 +375,17 @@ function TrelloEstimateResultCard({
               <span className={`rounded-full border px-2.5 py-1 ${item.needsSupplierCheck ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
                 {item.needsSupplierCheck ? "lieber Supplier pruefen" : "intern plausibel"}
               </span>
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-800">
+                {estimateStrategyLabel(item.shippingStrategy)}
+              </span>
+              <span className={`rounded-full border px-2.5 py-1 ${item.shippingBucket.includes("price_break") || item.shippingBucket === "supplier_anchor_bucket_transition" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-black/10 bg-white text-black/55"}`}>
+                {estimateBucketLabel(item.shippingBucket)}
+              </span>
+              {reviewReasonLabel ? (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
+                  Prüfen: {reviewReasonLabel}
+                </span>
+              ) : null}
               {!item.customerAutoQuoteEligible ? (
                 <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-black/50">ueber 200cm</span>
               ) : null}
