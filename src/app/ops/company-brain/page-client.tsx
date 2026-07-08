@@ -646,6 +646,21 @@ function actionButtonLabel(action: CompanyBrainActionProposalView) {
   return "Mit Freigabe ausführen";
 }
 
+function operatorActionPriority(action: CompanyBrainActionProposalView, retryStatus?: string) {
+  const priorityByKey: Record<string, number> = {
+    guarded_offer_resend: retryStatus === "ready" ? 0 : 6,
+    correct_customer_email: 1,
+    prepare_email_correction: 2,
+    prepare_offer_retry: 3,
+    post_trello_status_comment: 4,
+    create_internal_task: 5,
+    open_problem_case: 6,
+    save_case_note: 7,
+  };
+  const riskOffset = action.riskLevel === "low" ? 0.01 : action.riskLevel === "medium" ? 0.02 : 0.03;
+  return (priorityByKey[action.key] ?? 20) + riskOffset;
+}
+
 export function OpsCompanyBrainClient({
   initialHasSession,
   opsEnabled,
@@ -717,6 +732,9 @@ export function OpsCompanyBrainClient({
     }
     const readyActions = result.actionProposals
       .filter((action) => action.enabled && executableAction(action.key))
+      .sort((left, right) =>
+        operatorActionPriority(left, result.retryAssessment.status) - operatorActionPriority(right, result.retryAssessment.status),
+      )
       .slice(0, 3);
     const blockedFixes = uniqueStrings([
       ...result.retryAssessment.blockers,
