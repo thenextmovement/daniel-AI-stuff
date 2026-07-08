@@ -1297,6 +1297,73 @@ test("company brain retry assessment allows guarded resend when no hard blocker 
   assert.equal(retry.idempotencyKey, "company-brain-offer-resend:offer-ready:max@example.com");
 });
 
+test("company brain retry assessment accepts different Trello cards when alias group proves the same request", () => {
+  const records: CompanyBrainRecordSummary[] = [{
+    requestId: "REQ-ALIAS",
+    displayName: "Lisa",
+    company: null,
+    email: "lisa@example.com",
+    phone: null,
+    status: "open",
+    title: "LED Flex",
+    requestedSize: null,
+    requestedColors: [],
+    trelloCardId: "6a4cbfae6410de928e0f00fc",
+    trelloCardUrl: null,
+    latestOfferSentAt: null,
+    latestOfferViewedAt: null,
+    latestOfferSignedAt: null,
+    latestOrderNumber: null,
+    latestOrderStatus: null,
+    latestOutboundAt: null,
+    latestInboundAt: null,
+    communicationsCount: 0,
+    timelineCount: 0,
+  }];
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-alias",
+    offerNumber: "AN-14474",
+    documentReference: "AN-14474",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Lisa",
+    customerEmail: "lisa@example.com",
+    projectTitle: "LED Flex",
+    trelloCardId: "6a4df2a72573e6bdc1c654fb",
+    updatedAt: "2026-07-08T08:20:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["LED"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const crossChecks = buildCompanyBrainCrossChecks({
+    records,
+    offers,
+    evidence: [],
+    question: "Trello-Karte gezogen, Angebot nicht raus: warum?",
+  });
+
+  const retry = buildCompanyBrainRetryAssessment({
+    records,
+    offers,
+    evidence: [],
+    crossChecks,
+    trelloFailureDiagnosis: retryDiagnosis(),
+    relatedTrelloCardIds: ["6a4cbfae6410de928e0f00fc", "6a4df2a72573e6bdc1c654fb"],
+  });
+
+  assert.equal(retry.status, "ready");
+  assert.equal(retry.canSendWithConfirmation, true);
+  assert.ok(!retry.blockers.some((blocker) => /Trello-Karte/.test(blocker)));
+  assert.ok(retry.safeFixes.some((fix) => /Aliasgruppe/.test(fix)));
+});
+
 function actionProposalFixture(options: {
   retry: ReturnType<typeof buildCompanyBrainRetryAssessment>;
   automationRuns?: CompanyBrainAutomationRun[];

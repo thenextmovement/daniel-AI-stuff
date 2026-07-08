@@ -111,7 +111,16 @@ export type CompanyBrainOfferSummary = {
 };
 
 export type CompanyBrainDiagnostic = {
-  source: "customer_records" | "offers" | "offer_bridge" | "workflow_audit" | "integration_readiness" | "trello_live" | "outlook_live" | "coolify_live";
+  source:
+    | "customer_records"
+    | "offers"
+    | "offer_bridge"
+    | "workflow_audit"
+    | "integration_readiness"
+    | "trello_live"
+    | "trello_aliases"
+    | "outlook_live"
+    | "coolify_live";
   ok: boolean;
   label: string;
   detail: string | null;
@@ -275,6 +284,7 @@ export type CompanyBrainSourceHealth = {
     | "workflow_audit"
     | "shopify"
     | "trello"
+    | "trello_aliases"
     | "evidence";
   label: string;
   status: "ok" | "partial" | "missing" | "error";
@@ -654,6 +664,283 @@ function requestIdFromTrelloContext(context: TrelloFailureContext) {
     if (direct) return direct;
   }
   return null;
+}
+
+type TrelloCardAliasRow = {
+  id?: string | null;
+  request_id?: string | null;
+  alias_trello_card_id?: string | null;
+  alias_trello_card_url?: string | null;
+  canonical_trello_card_id?: string | null;
+  alias_type?: string | null;
+  source?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type MasterRequestAliasRow = {
+  id?: string | null;
+  request_id?: string | null;
+  trello_card_id?: string | null;
+  trello_card_url?: string | null;
+  title?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type CompanyBrainTrelloAliasContext = {
+  requestIds: string[];
+  trelloCardIds: string[];
+  trelloCardUrls: string[];
+  aliases: TrelloCardAliasRow[];
+  masterRequests: MasterRequestAliasRow[];
+  diagnostic: CompanyBrainDiagnostic;
+};
+
+function emptyTrelloAliasContext(detail = "Kein Trello-Alias-Lookup ausgeführt."): CompanyBrainTrelloAliasContext {
+  return {
+    requestIds: [],
+    trelloCardIds: [],
+    trelloCardUrls: [],
+    aliases: [],
+    masterRequests: [],
+    diagnostic: { source: "trello_aliases", ok: true, label: "Trello-Aliasse", detail, count: 0 },
+  };
+}
+
+function dedupeRowsByKey<T>(rows: T[], keyFn: (row: T) => string) {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const row of rows) {
+    const key = keyFn(row);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(row);
+  }
+  return result;
+}
+
+function mergeTrelloAliasContexts(...contexts: CompanyBrainTrelloAliasContext[]): CompanyBrainTrelloAliasContext {
+  const aliases = dedupeRowsByKey(
+    contexts.flatMap((context) => context.aliases),
+    (row) => cleanText(row.id) || [
+      row.request_id,
+      row.alias_trello_card_id,
+      row.alias_trello_card_url,
+      row.canonical_trello_card_id,
+    ].map(cleanText).join(":"),
+  );
+  const masterRequests = dedupeRowsByKey(
+    contexts.flatMap((context) => context.masterRequests),
+    (row) => cleanText(row.id) || [
+      row.request_id,
+      row.trello_card_id,
+      row.trello_card_url,
+    ].map(cleanText).join(":"),
+  );
+  const requestIds = uniqueStrings([
+    ...contexts.flatMap((context) => context.requestIds),
+    ...aliases.map((row) => row.request_id),
+    ...masterRequests.map((row) => row.id),
+    ...masterRequests.map((row) => row.request_id),
+  ]);
+  const trelloCardIds = uniqueStrings([
+    ...contexts.flatMap((context) => context.trelloCardIds),
+    ...aliases.map((row) => row.alias_trello_card_id),
+    ...aliases.map((row) => row.canonical_trello_card_id),
+    ...masterRequests.map((row) => row.trello_card_id),
+  ]);
+  const trelloCardUrls = uniqueStrings([
+    ...contexts.flatMap((context) => context.trelloCardUrls),
+    ...aliases.map((row) => row.alias_trello_card_url),
+    ...masterRequests.map((row) => row.trello_card_url),
+  ]);
+  const ok = contexts.every((context) => context.diagnostic.ok);
+  return {
+    requestIds,
+    trelloCardIds,
+    trelloCardUrls,
+    aliases,
+    masterRequests,
+    diagnostic: {
+      source: "trello_aliases",
+      ok,
+      label: "Trello-Aliasse",
+      detail: aliases.length || masterRequests.length
+        ? `${aliases.length} Alias-Zeile(n), ${masterRequests.length} Source-Request(s), ${trelloCardIds.length} Karten-ID(s).`
+        : contexts.find((context) => context.diagnostic.detail)?.diagnostic.detail || "Keine Aliasgruppe gefunden.",
+      count: aliases.length + masterRequests.length,
+    },
+  };
+}
+
+function trelloAliasLookupValues(input: {
+  context?: TrelloFailureContext | null;
+  identifiers?: CompanyBrainIdentifier[];
+  values?: Array<string | null | undefined>;
+}) {
+  return uniqueStrings([
+    input.context?.card.id,
+    input.context?.card.shortLink,
+    input.context?.card.url,
+    input.context?.card.shortUrl,
+    ...(input.identifiers || [])
+      .filter((entry) => entry.type === "trello_card_id")
+      .flatMap((entry) => [entry.value, entry.href]),
+    ...(input.values || []),
+  ]).flatMap((value) => uniqueStrings([value, trelloCardLookupFromValue(value)]));
+}
+
+function trelloAliasRequestIds(input: {
+  context?: TrelloFailureContext | null;
+  identifiers?: CompanyBrainIdentifier[];
+  values?: Array<string | null | undefined>;
+}) {
+  return uniqueStrings([
+    input.context ? requestIdFromTrelloContext(input.context) : null,
+    ...(input.identifiers || []).filter((entry) => entry.type === "request_id").map((entry) => entry.value),
+    ...(input.values || []),
+  ]);
+}
+
+function postgrestEq(column: string, value: string) {
+  return `${column}.eq.${encodeURIComponent(value)}`;
+}
+
+function postgrestIlike(column: string, value: string) {
+  return `${column}.ilike.*${encodeURIComponent(value)}*`;
+}
+
+function looksLikeUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function fetchTrelloAliasRows(requestIds: string[], trelloLookupValues: string[]) {
+  const filters = uniqueStrings([
+    ...requestIds.map((requestId) => postgrestEq("request_id", requestId)),
+    ...trelloLookupValues.map((lookup) => postgrestEq("alias_trello_card_id", lookup)),
+    ...trelloLookupValues.map((lookup) => postgrestEq("canonical_trello_card_id", lookup)),
+    ...trelloLookupValues.map((lookup) => postgrestIlike("alias_trello_card_url", lookup)),
+  ]);
+  if (!filters.length) return [];
+  return supabaseRequest<TrelloCardAliasRow[]>("trello_card_aliases", undefined, {
+    select: "id,request_id,alias_trello_card_id,alias_trello_card_url,canonical_trello_card_id,alias_type,source,notes,created_at,updated_at",
+    or: `(${filters.join(",")})`,
+    order: "updated_at.desc",
+    limit: 50,
+  });
+}
+
+async function fetchMasterRequestAliasRows(requestIds: string[], trelloLookupValues: string[]) {
+  const filters = uniqueStrings([
+    ...requestIds.filter(looksLikeUuid).map((requestId) => postgrestEq("id", requestId)),
+    ...requestIds.map((requestId) => postgrestEq("request_id", requestId)),
+    ...trelloLookupValues.map((lookup) => postgrestEq("trello_card_id", lookup)),
+    ...trelloLookupValues.map((lookup) => postgrestIlike("trello_card_url", lookup)),
+  ]);
+  if (!filters.length) return [];
+  return supabaseRequest<MasterRequestAliasRow[]>("master_requests", undefined, {
+    select: "id,request_id,trello_card_id,trello_card_url,title,created_at,updated_at",
+    or: `(${filters.join(",")})`,
+    order: "updated_at.desc",
+    limit: 50,
+  });
+}
+
+async function fetchTrelloAliasContext(input: {
+  context?: TrelloFailureContext | null;
+  identifiers?: CompanyBrainIdentifier[];
+  requestIds?: Array<string | null | undefined>;
+  trelloLookupValues?: Array<string | null | undefined>;
+}): Promise<CompanyBrainTrelloAliasContext> {
+  const initialRequestIds = trelloAliasRequestIds({
+    context: input.context,
+    identifiers: input.identifiers,
+    values: input.requestIds,
+  });
+  const initialTrelloLookups = trelloAliasLookupValues({
+    context: input.context,
+    identifiers: input.identifiers,
+    values: input.trelloLookupValues,
+  });
+  if (!initialRequestIds.length && !initialTrelloLookups.length) return emptyTrelloAliasContext();
+
+  try {
+    const firstAliases = await fetchTrelloAliasRows(initialRequestIds, initialTrelloLookups);
+    const firstContext = mergeTrelloAliasContexts({
+      ...emptyTrelloAliasContext(),
+      requestIds: initialRequestIds,
+      trelloCardIds: initialTrelloLookups,
+      aliases: firstAliases,
+    });
+    const firstMasters = await fetchMasterRequestAliasRows(firstContext.requestIds, firstContext.trelloCardIds);
+    const secondContext = mergeTrelloAliasContexts(firstContext, {
+      ...emptyTrelloAliasContext(),
+      masterRequests: firstMasters,
+    });
+    const secondAliases = await fetchTrelloAliasRows(secondContext.requestIds, secondContext.trelloCardIds);
+    const secondMasters = await fetchMasterRequestAliasRows(secondContext.requestIds, secondContext.trelloCardIds);
+    return mergeTrelloAliasContexts(secondContext, {
+      ...emptyTrelloAliasContext(),
+      aliases: secondAliases,
+      masterRequests: secondMasters,
+    });
+  } catch (error) {
+    return {
+      ...emptyTrelloAliasContext(errorMessage(error)),
+      requestIds: initialRequestIds,
+      trelloCardIds: initialTrelloLookups,
+      diagnostic: {
+        source: "trello_aliases",
+        ok: false,
+        label: "Trello-Aliasse",
+        detail: error instanceof SupabaseRestError ? error.message : errorMessage(error),
+        count: 0,
+      },
+    };
+  }
+}
+
+function mapTrelloAliasEvidence(context: CompanyBrainTrelloAliasContext): CompanyBrainEvidence[] {
+  const masterEvidence = context.masterRequests.slice(0, 8).map((row) => {
+    const requestId = cleanText(row.request_id || row.id);
+    const cardId = cleanText(row.trello_card_id);
+    const title = cleanText(row.title);
+    return {
+      id: `trello-alias-master:${cleanText(row.id) || requestId || cardId}`,
+      source: "trello_aliases",
+      title: title ? `Source-of-Truth-Request: ${title}` : "Source-of-Truth-Request",
+      detail: [
+        requestId ? `Request: ${requestId}` : null,
+        cardId ? `Canonical Trello: ${cardId}` : null,
+      ].filter(Boolean).join(" · ") || null,
+      occurredAt: row.updated_at || row.created_at || null,
+      direction: "system",
+      href: cleanText(row.trello_card_url) || null,
+      confidence: "high",
+    } satisfies CompanyBrainEvidence;
+  });
+  const aliasEvidence = context.aliases.slice(0, 10).map((row) => {
+    const aliasId = cleanText(row.alias_trello_card_id || row.alias_trello_card_url);
+    const canonicalId = cleanText(row.canonical_trello_card_id);
+    const requestId = cleanText(row.request_id);
+    return {
+      id: `trello-alias:${cleanText(row.id) || `${requestId}:${aliasId}:${canonicalId}`}`,
+      source: "trello_aliases",
+      title: aliasId ? `Trello-Alias: ${aliasId}` : "Trello-Alias",
+      detail: [
+        requestId ? `Request: ${requestId}` : null,
+        canonicalId ? `Canonical: ${canonicalId}` : null,
+        cleanText(row.source) ? `Quelle: ${cleanText(row.source)}` : null,
+      ].filter(Boolean).join(" · ") || null,
+      occurredAt: row.updated_at || row.created_at || null,
+      direction: "system",
+      href: cleanText(row.alias_trello_card_url) || null,
+      confidence: requestId && (aliasId || canonicalId) ? "high" : "medium",
+    } satisfies CompanyBrainEvidence;
+  });
+  return [...masterEvidence, ...aliasEvidence];
 }
 
 function trelloActionLooksFailed(action: TrelloFailureContextAction) {
@@ -1500,6 +1787,8 @@ function buildSourceHealth(
   const offerDiagnostic = diagnosticBySource.get("offers");
   const bridgeDiagnostics = diagnostics.filter((entry) => entry.source === "offer_bridge");
   const workflowDiagnostic = diagnosticBySource.get("workflow_audit");
+  const trelloAliasDiagnostic = diagnosticBySource.get("trello_aliases");
+  const trelloAliasEvidence = evidence.filter((entry) => entry.source === "trello_aliases");
   const outlookMirrorEvidence = evidence.filter((entry) => entry.source === "customer_email_messages");
   const outlookLiveEvidence = evidence.filter((entry) => entry.source === "outlook_graph_live");
   const outlookEvidence = [...outlookMirrorEvidence, ...outlookLiveEvidence];
@@ -1582,6 +1871,19 @@ function buildSourceHealth(
       detail: liveTrelloCard
         ? "Live-Trello wurde gelesen; Source of Truth bleibt Postgres/Offer/Audit."
         : "Trello bleibt Projektion, nicht Source of Truth.",
+    },
+    {
+      key: "trello_aliases",
+      label: "Trello-Aliasse",
+      status: trelloAliasDiagnostic?.ok
+        ? trelloAliasEvidence.length || trelloAliasDiagnostic.count ? "ok" : "missing"
+        : trelloAliasDiagnostic ? "error" : "partial",
+      summary: trelloAliasEvidence.length || trelloAliasDiagnostic?.count
+        ? `${trelloAliasEvidence.length || trelloAliasDiagnostic?.count || 0} Alias-/Source-of-Truth-Beleg(e).`
+        : "Keine Aliasgruppe geladen.",
+      count: trelloAliasEvidence.length || trelloAliasDiagnostic?.count || 0,
+      lastSeenAt: latestIso(trelloAliasEvidence.map((entry) => entry.occurredAt)),
+      detail: trelloAliasDiagnostic?.detail || "Verknüpft kopierte Trello-Karten über Request-ID und Canonical Card.",
     },
     {
       key: "evidence",
@@ -2308,6 +2610,7 @@ export function buildCompanyBrainRetryAssessment(input: {
   evidence: CompanyBrainEvidence[];
   crossChecks: CompanyBrainCrossCheck[];
   trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
+  relatedTrelloCardIds?: string[];
 }): CompanyBrainRetryAssessment {
   const record = input.records[0] || null;
   const offer = input.offers[0] || null;
@@ -2326,6 +2629,7 @@ export function buildCompanyBrainRetryAssessment(input: {
   ].join(" "));
   const blockers: string[] = [];
   const safeFixes: string[] = [];
+  const relatedTrelloCardIds = new Set(uniqueStrings(input.relatedTrelloCardIds || []).map((value) => value.toLowerCase()));
 
   if (input.trelloFailureDiagnosis.expectedAction !== "offer_send" && !/angebot|mail|e-mail|versand/i.test(`${offerSentCheck?.summary || ""} ${input.trelloFailureDiagnosis.rootCause}`)) {
     return {
@@ -2352,8 +2656,14 @@ export function buildCompanyBrainRetryAssessment(input: {
     safeFixes.push("Offer-Bridge/Request-Verknüpfung korrigieren; keinen E-Mail-Fix oder Resend auslösen.");
   }
   if (record?.trelloCardId && offer?.trelloCardId && record.trelloCardId !== offer.trelloCardId) {
+    const recordCardRelated = relatedTrelloCardIds.has(record.trelloCardId.toLowerCase());
+    const offerCardRelated = relatedTrelloCardIds.has(offer.trelloCardId.toLowerCase());
+    if (recordCardRelated && offerCardRelated) {
+      safeFixes.push("Kundenakte und Angebot nutzen unterschiedliche Trello-Karten, sind aber über die Aliasgruppe derselben Request-ID belegt.");
+    } else {
     blockers.push(`Angebot ist mit Trello-Karte ${offer.trelloCardId} verknüpft, die Kundenakte mit ${record.trelloCardId}.`);
     safeFixes.push("Trello-/Offer-Verknüpfung gegen Postgres prüfen; Trello nicht als Source of Truth verwenden.");
+    }
   }
   if (offer?.customerEmail && recipientEmail && normalizeRetryEmail(offer.customerEmail) !== recipientEmail) {
     blockers.push(`Angebot gehört zu ${offer.customerEmail}, Kundenakte zu ${recipientEmail}.`);
@@ -3788,6 +4098,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   let trelloLookup = primaryTrelloLookup({ query, identifiers });
   let trelloContext: TrelloFailureContext | null = null;
   let trelloDiagnostic: CompanyBrainDiagnostic | null = null;
+  let trelloAliasContext = emptyTrelloAliasContext();
 
   if (trelloLookup) {
     const trelloLive = await fetchTrelloFailureContextForLookup(trelloLookup);
@@ -3806,6 +4117,17 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     diagnostics.push(trelloDiagnostic);
   }
 
+  if (trelloRequested || trelloContext || identifiers.some((entry) => entry.type === "trello_card_id" || entry.type === "request_id")) {
+    trelloAliasContext = await fetchTrelloAliasContext({ context: trelloContext, identifiers });
+    diagnostics.push(trelloAliasContext.diagnostic);
+    for (const requestId of trelloAliasContext.requestIds) {
+      pushIdentifier(identifiers, "request_id", "Request-ID", requestId, "high", `/ops/customer-records?query=${encodeURIComponent(requestId)}`);
+    }
+    for (const cardId of trelloAliasContext.trelloCardIds) {
+      pushIdentifier(identifiers, "trello_card_id", "Trello Alias", cardId, "medium", null);
+    }
+  }
+
   try {
     customerRecords.push(...await searchCustomerRecords(query));
     diagnostics.push({ source: "customer_records", ok: true, label: "Kundenakte", detail: null, count: customerRecords.length });
@@ -3813,7 +4135,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     diagnostics.push({ source: "customer_records", ok: false, label: "Kundenakte", detail: errorMessage(error), count: 0 });
   }
 
-  for (const identifier of identifiers.filter((entry) => entry.type === "request_id").slice(0, 2)) {
+  for (const identifier of identifiers.filter((entry) => entry.type === "request_id").slice(0, 6)) {
     try {
       customerRecords.push(await getCustomerRecordByRequestId(identifier.value));
     } catch {
@@ -3821,7 +4143,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     }
   }
 
-  for (const identifier of identifiers.filter((entry) => entry.type === "trello_card_id").slice(0, 2)) {
+  for (const identifier of identifiers.filter((entry) => entry.type === "trello_card_id").slice(0, 8)) {
     try {
       customerRecords.push(...await searchCustomerRecords(`trello:${identifier.value}`));
     } catch {
@@ -3903,16 +4225,69 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
       }
     }
   }
-  if (trelloContext && !offerSnapshots.some((offer) => offer.trelloCardId === trelloContext?.card.id)) {
+
+  const recordAliasRefresh = await fetchTrelloAliasContext({
+    context: trelloContext,
+    identifiers,
+    requestIds: [
+      ...recordSummaries.map((record) => record.requestId),
+      ...trelloAliasContext.requestIds,
+    ],
+    trelloLookupValues: [
+      ...recordSummaries.map((record) => record.trelloCardId),
+      ...recordSummaries.map((record) => record.trelloCardUrl),
+      ...trelloAliasContext.trelloCardIds,
+      ...trelloAliasContext.trelloCardUrls,
+    ],
+  });
+  trelloAliasContext = mergeTrelloAliasContexts(trelloAliasContext, recordAliasRefresh);
+  diagnostics.push(trelloAliasContext.diagnostic);
+  for (const requestId of trelloAliasContext.requestIds.slice(0, 8)) {
+    if (!recordSummaries.some((record) => record.requestId === requestId)) {
+      try {
+        customerRecords.push(await getCustomerRecordByRequestId(requestId, { includeTrello: false }));
+      } catch {
+        // Alias context remains visible even when the customer projection cannot hydrate.
+      }
+    }
+  }
+  records = dedupeRecords(customerRecords).slice(0, limit);
+  recordSummaries = records.map(mapRecordSummary);
+
+  const trelloOfferLookups = uniqueStrings([
+    trelloContext?.card.id,
+    trelloContext?.card.shortLink,
+    ...trelloAliasContext.trelloCardIds,
+  ]);
+  for (const cardId of trelloOfferLookups.slice(0, 8)) {
+    if (offerSnapshots.some((offer) => offer.trelloCardId === cardId)) continue;
     try {
-      offerSnapshots.push(await getOfferByTrelloCardId(trelloContext.card.id));
-      diagnostics.push({ source: "offer_bridge", ok: true, label: `Angebot per Trello ${trelloContext.card.id}`, detail: null, count: 1 });
+      offerSnapshots.push(await getOfferByTrelloCardId(cardId));
+      diagnostics.push({ source: "offer_bridge", ok: true, label: `Angebot per Trello/Alias ${cardId}`, detail: null, count: 1 });
     } catch (error) {
-      diagnostics.push({ source: "offer_bridge", ok: false, label: `Angebot per Trello ${trelloContext.card.id}`, detail: errorMessage(error), count: 0 });
+      diagnostics.push({ source: "offer_bridge", ok: false, label: `Angebot per Trello/Alias ${cardId}`, detail: errorMessage(error), count: 0 });
     }
   }
 
-  const offerSummaries = dedupeOfferSnapshots(offerSnapshots).map(mapOfferSummary);
+  let offerSummaries = dedupeOfferSnapshots(offerSnapshots).map(mapOfferSummary);
+  const offerAliasRefresh = await fetchTrelloAliasContext({
+    context: trelloContext,
+    identifiers,
+    requestIds: [
+      ...recordSummaries.map((record) => record.requestId),
+      ...offerSummaries.map((offer) => offer.requestId),
+      ...trelloAliasContext.requestIds,
+    ],
+    trelloLookupValues: [
+      ...recordSummaries.map((record) => record.trelloCardId),
+      ...recordSummaries.map((record) => record.trelloCardUrl),
+      ...offerSummaries.map((offer) => offer.trelloCardId),
+      ...trelloAliasContext.trelloCardIds,
+      ...trelloAliasContext.trelloCardUrls,
+    ],
+  });
+  trelloAliasContext = mergeTrelloAliasContexts(trelloAliasContext, offerAliasRefresh);
+  diagnostics.push(trelloAliasContext.diagnostic);
   const offerRequestIds = findMissingOfferRequestIds(records, offerSummaries);
   let offerAnchoredRecordCount = 0;
   for (const requestId of offerRequestIds) {
@@ -3936,13 +4311,21 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
       count: offerAnchoredRecordCount,
     });
   }
+  offerSummaries = dedupeOfferSnapshots(offerSnapshots).map(mapOfferSummary);
   addRecordIdentifiers(identifiers, records);
   addOfferIdentifiers(identifiers, offerSummaries);
 
+  const relatedTrelloCardIds = uniqueStrings([
+    trelloContext?.card.id,
+    trelloContext?.card.shortLink,
+    ...trelloAliasContext.trelloCardIds,
+    ...recordSummaries.map((record) => record.trelloCardId),
+    ...offerSummaries.map((offer) => offer.trelloCardId),
+  ]);
   const quoteEmailEvidence = await fetchQuoteEmailEvidence(
     recordSummaries,
     offerSummaries,
-    trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink].filter(Boolean) as string[] : [],
+    relatedTrelloCardIds,
   );
   const liveOutlook = await fetchOutlookGraphEvidence({
     query,
@@ -3956,6 +4339,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     ...records.flatMap(mapTimelineEvidence),
     ...offerSummaries.flatMap(mapOfferEvidence),
     ...mapTrelloEvidence(trelloContext),
+    ...mapTrelloAliasEvidence(trelloAliasContext),
     ...quoteEmailEvidence,
     ...liveOutlook.evidence,
   ]
@@ -3980,7 +4364,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   const automation = await fetchAutomationRuns(
     recordSummaries,
     offerSummaries,
-    trelloContext ? [trelloContext.card.id, trelloContext.card.shortLink || ""] : [],
+    relatedTrelloCardIds,
     extractTrelloAutomationExecutionIds(trelloContext),
   );
   const n8nLive = await fetchN8nLiveRuns(
@@ -4067,6 +4451,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     evidence,
     crossChecks,
     trelloFailureDiagnosis,
+    relatedTrelloCardIds,
   });
   const actionProposals = buildActionProposals({
     records: recordSummaries,
