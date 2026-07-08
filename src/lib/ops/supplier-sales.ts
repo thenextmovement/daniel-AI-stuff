@@ -56,6 +56,16 @@ type MasterRequestTrelloRow = {
   updated_at?: string | null;
 };
 
+type ShopifyOrderMatchRow = {
+  shopify_order_id?: string | null;
+  name?: string | null;
+  email?: string | null;
+  kunde_email?: string | null;
+  total_price?: number | string | null;
+  match_text?: string | null;
+  created_at?: string | null;
+};
+
 export type SupplierSaleRow = {
   id: string;
   sale_key: string;
@@ -2781,7 +2791,8 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
   let upserted = 0;
   for (const row of activeRows) {
     try {
-      const lookup = await findShopifyOrderGid(config, row);
+      const localLookup = await findLocalShopifyOrderGid(row);
+      const lookup = localLookup.orderGid ? localLookup : await findShopifyOrderGid(config, row);
       if (!lookup.orderGid) {
         if (warnings.length < 5) warnings.push(`${row.offer_number || row.document_reference || row.sale_key}: ${lookup.error || "Keine eindeutige Shopify Order gefunden."}`);
         continue;
@@ -3203,6 +3214,73 @@ function shopifyOrderGid(row: SupplierSaleRow) {
 
 function shopifySearchTerm(value: unknown) {
   return nullableText(value, 180)?.replace(/["\\]/g, " ").trim() || null;
+}
+
+function shopifyOrderGidFromId(value: unknown) {
+  const id = nullableText(value, 260);
+  if (!id) return null;
+  if (id.startsWith("gid://shopify/Order/")) return id;
+  if (/^\d+$/.test(id)) return `gid://shopify/Order/${id}`;
+  return null;
+}
+
+function shopifyLocalSearchTerm(value: unknown) {
+  return nullableText(value, 160)
+    ?.toLowerCase()
+    .replace(/["\\(),*]/g, " ")
+    .replace(/\s+/g, "-")
+    .trim() || null;
+}
+
+function isStrongLocalShopifyMatch(row: SupplierSaleRow, order: ShopifyOrderMatchRow) {
+  const rowTotal = numericValue(row.total_price);
+  const orderTotal = numericValue(order.total_price);
+  const totalMatches = rowTotal !== null && orderTotal !== null && Math.abs(rowTotal - orderTotal) < 0.05;
+  const rowEmail = lowerNullable(row.customer_email, 260);
+  const orderEmails = [lowerNullable(order.email, 260), lowerNullable(order.kunde_email, 260)].filter(Boolean);
+  const emailMatches = Boolean(rowEmail && orderEmails.includes(rowEmail));
+  return totalMatches || emailMatches;
+}
+
+async function findLocalShopifyOrderGid(row: SupplierSaleRow) {
+  const directTerms = [
+    shopifyLocalSearchTerm(row.document_reference),
+    shopifyLocalSearchTerm(row.offer_number),
+  ].filter((value): value is string => Boolean(value && value.length >= 5));
+
+  for (const term of directTerms) {
+    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("shopify_orders", undefined, {
+      select: "shopify_order_id,name,email,kunde_email,total_price,match_text,created_at",
+      match_text: `ilike.*${encodeFilterValue(term)}*`,
+      order: "created_at.desc",
+      limit: 4,
+    });
+    const strong = rows.filter((order) => isStrongLocalShopifyMatch(row, order));
+    if (strong.length === 1) {
+      const gid = shopifyOrderGidFromId(strong[0].shopify_order_id);
+      if (gid) return { orderGid: gid, error: null as string | null };
+    }
+    if (strong.length > 1) return { orderGid: null, error: `Lokale Shopify Order-Suche ist nicht eindeutig fuer ${term}.` };
+  }
+
+  const customerEmail = lowerNullable(row.customer_email, 260);
+  const totalPrice = numericValue(row.total_price);
+  if (customerEmail && totalPrice !== null) {
+    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("shopify_orders", undefined, {
+      select: "shopify_order_id,name,email,kunde_email,total_price,match_text,created_at",
+      total_price: `eq.${totalPrice}`,
+      or: `(email.eq.${encodeFilterValue(customerEmail)},kunde_email.eq.${encodeFilterValue(customerEmail)})`,
+      order: "created_at.desc",
+      limit: 3,
+    });
+    if (rows.length === 1) {
+      const gid = shopifyOrderGidFromId(rows[0].shopify_order_id);
+      if (gid) return { orderGid: gid, error: null as string | null };
+    }
+    if (rows.length > 1) return { orderGid: null, error: `Lokale Shopify Order-Suche ist nicht eindeutig fuer ${customerEmail}/${totalPrice}.` };
+  }
+
+  return { orderGid: null, error: null as string | null };
 }
 
 async function findShopifyOrderGid(config: NonNullable<ReturnType<typeof shopifyConfig>>, row: SupplierSaleRow) {

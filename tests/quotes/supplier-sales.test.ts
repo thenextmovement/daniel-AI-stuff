@@ -1910,17 +1910,9 @@ test("completed offers sync resolves old unlinked active offer sales by Shopify 
       }
       if (String(body.query || "").includes("SupplierSalesOrderLookup")) {
         shopifySearchCount += 1;
-        const query = String(body.variables.query || "");
         return Response.json({
           data: {
-            orders: {
-              nodes: query === "A/N 14045" ? [{
-                id: "gid://shopify/Order/8302046970123",
-                name: "#NEONT4454",
-                email: "denis.rybalchenko@harness.io",
-                tags: ["Quentin (noch bezahlen)"],
-              }] : [],
-            },
+            orders: { nodes: [] },
           },
         });
       }
@@ -1951,6 +1943,18 @@ test("completed offers sync resolves old unlinked active offer sales by Shopify 
     }
 
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/shopify_orders") && method === "GET") {
+      assert.equal(url.searchParams.get("match_text"), "ilike.*a-n-14045-ee79e7e5bc*");
+      return Response.json([{
+        shopify_order_id: "8302046970123",
+        name: "#NEONT4454",
+        email: "denis.rybalchenko@harness.io",
+        kunde_email: "denis.rybalchenko@harness.io",
+        total_price: "580.72",
+        match_text: "angebot: a-n-14045-ee79e7e5bc",
+        created_at: "2026-06-17T11:45:53Z",
+      }]);
+    }
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       if (url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" && url.searchParams.get("shopify_order_id") === "not.is.null") return Response.json([]);
       if (url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" && url.searchParams.get("shopify_order_id") === "is.null") {
@@ -2000,7 +2004,7 @@ test("completed offers sync resolves old unlinked active offer sales by Shopify 
   });
 
   assert.equal(unlinkedRowsLookupCount, 1);
-  assert.equal(shopifySearchCount, 2);
+  assert.equal(shopifySearchCount, 0);
   assert.equal(shopifyNodeLookupCount, 1);
   assert.equal(salePatchCount, 1);
 });
