@@ -9,6 +9,7 @@ This note records the production n8n state for `NEONTRIP Quote Ready SIMPLE v1.1
 - Validation after latest check: valid
 - Current validation summary: 70 nodes, 2 trigger nodes, 0 errors, 18 warnings
 - Latest version after audit write hardening: `507`
+- Latest version after quote email evidence hardening: `509`
 - Last known good pre-audit version: `502`
 
 ## Changes made
@@ -23,6 +24,7 @@ This note records the production n8n state for `NEONTRIP Quote Ready SIMPLE v1.1
 5. `Build Audit: AI Copy Blocked` and `Audit: AI Copy Blocked` were added on the `Final Block? = true` path. If both AI mail-generation attempts still contain blocked words, the workflow writes a structured `ai_customer_copy_blocked` audit row before leaving the manual/Trello hard-block path.
 6. The two new audit HTTP nodes use `onError: "continueRegularOutput"` with `continueOnFail` removed, so they do not add deprecated-warning debt.
 7. `Build Audit: Workflow Error`, `Audit: Workflow Error`, and `Restore Workflow Error Context` were added behind the `On Error` trigger. Hard n8n failures now write a structured `workflow_hard_error` audit row by execution ID before the existing internal Outlook error alert is sent.
+8. `Log Quote Email` was updated to upsert into `quote_email_log` with `on_conflict=unique_id` and `Prefer: resolution=merge-duplicates,return=minimal`. The payload now includes `request_id`, `offer_id`, `source_event_id`, and `idempotency_key` when the send path reaches that node.
 
 No offer retry, customer email, Trello resend, or workflow execution was manually triggered during these changes.
 
@@ -72,6 +74,29 @@ MICROSOFT_GRAPH_MAILBOX=support@neontrip.de
 
 Supported aliases are `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `OUTLOOK_SHARED_MAILBOX`, and `OUTLOOK_MAILBOX`. The Azure app needs Microsoft Graph application permission `Mail.Read` for the mailbox. Prefer an Exchange application access policy so the app can read only the operational mailbox. Company Brain only performs read-only message search and maps results into `outlook_graph_live` evidence; it does not send mail through this path.
 
+## Live n8n / Coolify setup
+
+Company Brain reads n8n and Coolify only for diagnostics. It does not change workflows, trigger deploys, or send customer communication through these readiness paths.
+
+```txt
+N8N_API_URL=
+# or N8N_BASE_URL=
+N8N_API_KEY=
+
+COOLIFY_API_URL=
+# or COOLIFY_URL=
+COOLIFY_API_TOKEN=
+COOLIFY_APPLICATION_UUID=
+```
+
+`N8N_API_URL` / `COOLIFY_API_URL` may include `/api/v1`; otherwise Company Brain appends it automatically. `COOLIFY_APPLICATION_UUID` is optional and only lets the read-only check confirm the concrete app resource. The UI shows missing variable names but never secret values.
+
+## Supabase security note
+
+Company Brain depends on Supabase/PostgREST source-of-truth tables such as `workflow_audit_log`, `quote_email_log`, customer records, and offer bridge data. Supabase's 2026 platform direction makes explicit Data API grants more important for new `public` tables, while RLS remains a separate row-level protection layer.
+
+Do not blindly enable RLS on legacy tables from an advisor warning. For each table, first classify the access model, add explicit grants if it must be reachable via PostgREST, add matching RLS policies, verify with service-role and non-service-role checks, and keep rollback SQL. Enabling RLS without policies can break production reads/writes.
+
 ## Important MCP limitation found
 
 The incremental update MCP can set `onError`, but one earlier tested `updateNode` path left the existing top-level `continueOnFail` property in place. Using both fields made workflow validation fail. The workflow was repaired by removing `onError` again on the affected nodes and leaving `continueOnFail: false`.
@@ -84,6 +109,7 @@ For the two newly added audit nodes, the safe deletion path was verified: set `c
 - It still has 18 warnings, mostly deprecated `continueOnFail: true`.
 - Customer-visible paths still need a broader split into smaller sub-workflows.
 - Structured audit logging now covers guard-blocked, AI-copy hard-blocked, and hard workflow-error paths, but not every soft failed-send path.
+- The `quote_email_log` hardening is saved and validated, but it still needs runtime proof from the next real send-path execution that reaches `Log Quote Email`.
 - Trello must remain projection only; it must not become the retry source of truth.
 
 ## Safe next steps

@@ -1595,10 +1595,6 @@ function buildSourceHealth(
   ];
 }
 
-function hasEnv(...names: string[]) {
-  return names.some((name) => Boolean(cleanText(process.env[name])));
-}
-
 export type OutlookGraphConfig = {
   tenantId: string;
   clientId: string;
@@ -1639,6 +1635,18 @@ function envValueFrom(env: Record<string, string | undefined>, ...names: string[
     if (value) return value;
   }
   return "";
+}
+
+function hasEnvFrom(env: Record<string, string | undefined>, ...names: string[]) {
+  return names.some((name) => Boolean(cleanText(env[name])));
+}
+
+function runtimeGroupLabel(names: string[]) {
+  return names.join(" oder ");
+}
+
+function missingRuntimeGroups(env: Record<string, string | undefined>, groups: string[][]) {
+  return groups.filter((group) => !hasEnvFrom(env, ...group)).map(runtimeGroupLabel);
 }
 
 type CoolifyApiConfig = {
@@ -1866,53 +1874,71 @@ async function fetchOutlookGraphEvidence(input: {
   }
 }
 
-function buildIntegrationReadiness(): CompanyBrainIntegrationReadiness[] {
-  const graphTenant = hasEnv("MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID");
-  const graphClient = hasEnv("MICROSOFT_GRAPH_CLIENT_ID", "AZURE_CLIENT_ID");
-  const graphSecret = hasEnv("MICROSOFT_GRAPH_CLIENT_SECRET", "AZURE_CLIENT_SECRET");
-  const graphMailbox = hasEnv("MICROSOFT_GRAPH_MAILBOX", "OUTLOOK_SHARED_MAILBOX", "OUTLOOK_MAILBOX");
-  const n8nApi = hasEnv("N8N_API_URL", "N8N_BASE_URL") && hasEnv("N8N_API_KEY");
-  const n8nWebhooks = hasEnv(
+export function buildIntegrationReadiness(env: Record<string, string | undefined> = process.env): CompanyBrainIntegrationReadiness[] {
+  const graphGroups = [
+    ["MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID"],
+    ["MICROSOFT_GRAPH_CLIENT_ID", "AZURE_CLIENT_ID"],
+    ["MICROSOFT_GRAPH_CLIENT_SECRET", "AZURE_CLIENT_SECRET"],
+    ["MICROSOFT_GRAPH_MAILBOX", "OUTLOOK_SHARED_MAILBOX", "OUTLOOK_MAILBOX"],
+  ];
+  const graphMissing = missingRuntimeGroups(env, graphGroups);
+  const graphConfigured = graphMissing.length === 0;
+  const graphPartial = graphMissing.length > 0 && graphMissing.length < graphGroups.length;
+  const n8nApiGroups = [["N8N_API_URL", "N8N_BASE_URL"], ["N8N_API_KEY"]];
+  const n8nMissing = missingRuntimeGroups(env, n8nApiGroups);
+  const n8nApi = n8nMissing.length === 0;
+  const n8nApiPartial = n8nMissing.length > 0 && n8nMissing.length < n8nApiGroups.length;
+  const n8nWebhooks = hasEnvFrom(
+    env,
     "OPS_VISUAL_REQUEST_WEBHOOK_URL",
     "SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL",
     "N8N_SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL",
     "SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
     "N8N_SUPPLIER_PAYMENT_REMINDER_WEBHOOK_URL",
   );
-  const coolifyRuntime = hasEnv("COOLIFY_API_URL", "COOLIFY_URL") && hasEnv("COOLIFY_API_TOKEN");
-  const coolifyDeploy = hasEnv("COOLIFY_DEPLOY_WEBHOOK");
+  const coolifyGroups = [["COOLIFY_API_URL", "COOLIFY_URL"], ["COOLIFY_API_TOKEN"]];
+  const coolifyMissing = missingRuntimeGroups(env, coolifyGroups);
+  const coolifyRuntime = coolifyMissing.length === 0;
+  const coolifyRuntimePartial = coolifyMissing.length > 0 && coolifyMissing.length < coolifyGroups.length;
+  const coolifyDeploy = hasEnvFrom(env, "COOLIFY_DEPLOY_WEBHOOK");
 
   return [
     {
       key: "live_outlook",
       label: "Live Outlook / Graph",
-      status: graphTenant && graphClient && graphSecret && graphMailbox ? "configured" : graphTenant || graphClient || graphSecret || graphMailbox ? "partial" : "missing",
-      summary: graphTenant && graphClient && graphSecret && graphMailbox
+      status: graphConfigured ? "configured" : graphPartial ? "partial" : "missing",
+      summary: graphConfigured
         ? "Graph-Livezugriff scheint im Runtime-Env konfiguriert."
         : "Kein vollständiger Graph-Livezugriff im Runtime-Env erkannt; Company Brain nutzt den Outlook-Spiegel.",
-      detail: "Erwartete Bausteine: Tenant, Client, Secret und Mailbox. Secrets werden nicht angezeigt.",
+      detail: graphConfigured
+        ? "Erwartete Bausteine erkannt: Tenant, Client, Secret und Mailbox. Secret-Werte werden nicht angezeigt."
+        : `Fehlt: ${graphMissing.join("; ")}. Secret-Werte werden nicht angezeigt.`,
     },
     {
       key: "n8n_live",
       label: "Live n8n",
-      status: n8nApi ? "configured" : n8nWebhooks ? "partial" : "missing",
+      status: n8nApi ? "configured" : n8nApiPartial || n8nWebhooks ? "partial" : "missing",
       summary: n8nApi
         ? "n8n API-Zugriff scheint konfiguriert."
         : n8nWebhooks
           ? "n8n Webhooks sind teilweise konfiguriert; Live-Workflow-API ist nicht vollständig erkannt."
           : "Kein Live-n8n-API-Zugriff im Runtime-Env erkannt.",
-      detail: "Read-only Live-Workflowdiagnose braucht N8N_API_URL/N8N_BASE_URL plus N8N_API_KEY. Aktuell bleiben workflow_audit_log und Webhook-Readiness die sichere Quelle.",
+      detail: n8nApi
+        ? "Read-only Live-Workflowdiagnose ist konfiguriert; workflow_audit_log bleibt Fallback."
+        : `Fehlt: ${n8nMissing.join("; ")}. Bis dahin bleiben workflow_audit_log und Webhook-Readiness die sichere Quelle.`,
     },
     {
       key: "coolify",
       label: "Coolify",
-      status: coolifyRuntime ? "configured" : coolifyDeploy ? "partial" : "missing",
+      status: coolifyRuntime ? "configured" : coolifyRuntimePartial || coolifyDeploy ? "partial" : "missing",
       summary: coolifyRuntime
         ? "Coolify API-Zugriff scheint konfiguriert."
         : coolifyDeploy
           ? "Deploy-Webhook ist konfiguriert; Runtime-API-Health ist nicht vollständig erkannt."
           : "Kein Coolify Runtime-API-Zugriff im App-Env erkannt.",
-      detail: "Read-only Diagnose braucht COOLIFY_URL/COOLIFY_API_URL plus COOLIFY_API_TOKEN; optional COOLIFY_APPLICATION_UUID für App-Details. Die App zeigt keine Secret-Werte und führt keine Deploy-Aktion aus.",
+      detail: coolifyRuntime
+        ? "Read-only Diagnose ist konfiguriert; COOLIFY_APPLICATION_UUID bleibt optional für App-Details. Die App führt keine Deploy-Aktion aus."
+        : `Fehlt: ${coolifyMissing.join("; ")}. Optional COOLIFY_APPLICATION_UUID für App-Details. Secret-Werte werden nicht angezeigt und es wird keine Deploy-Aktion ausgeführt.`,
     },
   ];
 }

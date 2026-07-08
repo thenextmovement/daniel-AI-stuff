@@ -4,6 +4,7 @@ import {
   buildCompanyBrainAnswer,
   buildActionProposals,
   buildCompanyBrainCrossChecks,
+  buildIntegrationReadiness,
   buildCompanyBrainRetryAssessment,
   buildOutlookGraphSearchTerms,
   buildTrelloAutomationRuns,
@@ -214,6 +215,30 @@ test("company brain resolves Outlook Graph config without exposing secrets", () 
     mailbox: "support@neontrip.de",
   });
   assert.equal(resolveOutlookGraphConfig({ AZURE_TENANT_ID: "tenant-123" }), null);
+});
+
+test("company brain integration readiness names missing runtime groups without secret values", () => {
+  const readiness = buildIntegrationReadiness({
+    MICROSOFT_GRAPH_TENANT_ID: "tenant-123",
+    N8N_BASE_URL: "https://n8n.example.com",
+    COOLIFY_DEPLOY_WEBHOOK: "https://coolify.example.com/webhook/secret",
+  });
+
+  const outlook = readiness.find((entry) => entry.key === "live_outlook");
+  const n8n = readiness.find((entry) => entry.key === "n8n_live");
+  const coolify = readiness.find((entry) => entry.key === "coolify");
+
+  assert.equal(outlook?.status, "partial");
+  assert.match(outlook?.detail || "", /MICROSOFT_GRAPH_CLIENT_ID oder AZURE_CLIENT_ID/);
+  assert.match(outlook?.detail || "", /MICROSOFT_GRAPH_CLIENT_SECRET oder AZURE_CLIENT_SECRET/);
+  assert.doesNotMatch(outlook?.detail || "", /tenant-123/);
+  assert.equal(n8n?.status, "partial");
+  assert.match(n8n?.detail || "", /N8N_API_KEY/);
+  assert.doesNotMatch(n8n?.detail || "", /n8n\.example/);
+  assert.equal(coolify?.status, "partial");
+  assert.match(coolify?.detail || "", /COOLIFY_API_URL oder COOLIFY_URL/);
+  assert.match(coolify?.detail || "", /COOLIFY_API_TOKEN/);
+  assert.doesNotMatch(coolify?.detail || "", /webhook\/secret/);
 });
 
 test("company brain builds bounded Outlook Graph search terms", () => {
