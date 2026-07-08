@@ -19,6 +19,7 @@ import {
 import type { UpdateActor } from "@/lib/ops/customer-records";
 import {
   generateOfferSizeLadder,
+  listOfferSizeLadderDrafts,
   type OfferSizeLadderAnchorInput,
   type OfferSizeLadderProductModel,
 } from "@/lib/ops/offer-size-ladder";
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
           | "estimate_from_trello"
           | "apply_trello_estimate_to_offer"
           | "generate_offer_size_ladder"
+          | "list_offer_size_ladder_drafts"
           | "import_trello_training_candidates";
         predictionId?: string;
         decision?: SupplierPricePredictionReviewDecision;
@@ -236,6 +238,12 @@ export async function POST(request: NextRequest) {
             confidence?: number | string | null;
             rawText?: string | null;
           }>;
+        };
+        sizeLadderLookup?: {
+          trelloCardId?: string | null;
+          offerId?: string | null;
+          offerItemId?: string | null;
+          limit?: number | string | null;
         };
         trelloImport?: {
           trelloCards?: string | string[] | null;
@@ -373,6 +381,18 @@ export async function POST(request: NextRequest) {
         anchors,
       });
       return NextResponse.json({ ok: true, sizeLadder });
+    }
+
+    if (body?.action === "list_offer_size_ladder_drafts") {
+      if (!opsActor) return forbidden();
+      const lookup = body.sizeLadderLookup || {};
+      const sizeLadderDrafts = await listOfferSizeLadderDrafts({
+        trelloCardId: trimNullable(lookup.trelloCardId),
+        offerId: trimNullable(lookup.offerId),
+        offerItemId: trimNullable(lookup.offerItemId),
+        limit: lookup.limit,
+      });
+      return NextResponse.json({ ok: true, sizeLadderDrafts });
     }
 
     if (body?.action === "import_trello_training_candidates") {

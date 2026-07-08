@@ -27,6 +27,7 @@ type ReviewResponse = {
   estimate?: SupplierPriceTrelloEstimateResult;
   applyResult?: SupplierPriceOfferApplyResult;
   sizeLadder?: OfferSizeLadderResultView;
+  sizeLadderDrafts?: OfferSizeLadderResultView[];
   importResult?: SupplierQuoteTrelloImportResult;
   error?: string;
   issues?: string[];
@@ -809,6 +810,7 @@ export function SupplierPriceReviewClient({
   });
   const [sizeLadderResult, setSizeLadderResult] = useState<OfferSizeLadderResultView | null>(null);
   const [sizeLadderRunning, setSizeLadderRunning] = useState(false);
+  const [sizeLadderLoadingDraft, setSizeLadderLoadingDraft] = useState(false);
   const [importListId, setImportListId] = useState("");
   const [importCards, setImportCards] = useState("");
   const [importTitleFilter, setImportTitleFilter] = useState("");
@@ -1114,6 +1116,46 @@ export function SupplierPriceReviewClient({
     }
   }
 
+  async function loadSizeLadderDraft() {
+    setSizeLadderLoadingDraft(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/price-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "list_offer_size_ladder_drafts",
+          sizeLadderLookup: {
+            trelloCardId: sizeLadderTrelloCardId || null,
+            offerId: sizeLadderOfferId || null,
+            offerItemId: sizeLadderOfferItemId || null,
+            limit: 1,
+          },
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
+      if (!response.ok || !payload?.ok || !payload.sizeLadderDrafts) {
+        setError(formatApiError(payload));
+        setSizeLadderLoadingDraft(false);
+        return;
+      }
+      const draft = payload.sizeLadderDrafts[0] || null;
+      if (!draft) {
+        setError("Kein gespeicherter interner Draft für diese Offer-/Trello-Kombination gefunden.");
+        setSizeLadderLoadingDraft(false);
+        return;
+      }
+      setSizeLadderResult(draft);
+      setMessage("Interner Size-Ladder Draft geladen. Das Kundenangebot wurde nicht verändert.");
+      setSizeLadderLoadingDraft(false);
+    } catch {
+      setError("Interner Size-Ladder Draft konnte nicht geladen werden.");
+      setSizeLadderLoadingDraft(false);
+    }
+  }
+
   async function importFromTrello() {
     setImporting(true);
     setError(null);
@@ -1361,6 +1403,15 @@ export function SupplierPriceReviewClient({
             />
 
             <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={sizeLadderLoadingDraft || (!sizeLadderTrelloCardId.trim() && !sizeLadderOfferId.trim())}
+                onClick={() => void loadSizeLadderDraft()}
+                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${sizeLadderLoadingDraft ? "animate-spin" : ""}`} />
+                {sizeLadderLoadingDraft ? "Lade..." : "Gespeicherten Draft laden"}
+              </button>
               <button
                 type="button"
                 disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   generateOfferSizeLadder,
+  listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
 } from "../../src/lib/ops/offer-size-ladder";
 
@@ -80,4 +81,85 @@ test("offer size ladder routes UV print to manual review", async () => {
   assert.equal(result.productModel, "uv_print");
   assert.equal(result.status, "needs_review");
   assert.equal(result.options[0]?.reviewStatus, "needs_review");
+});
+
+test("offer size ladder loads internal offer drafts without touching offers api", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const calledUrls: string[] = [];
+
+  process.env.SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    calledUrls.push(url);
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets")) {
+      return new Response(JSON.stringify([{
+        id: "set-1",
+        set_key: "offer-size-ladder:cardDraft1:abc",
+        trello_card_id: "cardDraft1",
+        trello_card_url: "https://trello.com/c/cardDraft1/test",
+        offer_id: "offer_123",
+        offer_item_id: "item_1",
+        design_id: null,
+        product_model: "neonflex",
+        pricing_basis: "new_supplier_direct_2_6",
+        customer_factor: "2.6",
+        status: "draft",
+        confidence: "0.88",
+        issues: [],
+        warnings: [],
+        metadata: {},
+        created_by: "ops",
+        created_at: "2026-07-08T08:00:00.000Z",
+        updated_at: "2026-07-08T08:01:00.000Z",
+      }]), { status: 200 });
+    }
+    if (url.includes("/rest/v1/offer_size_options")) {
+      return new Response(JSON.stringify([{
+        id: "option-1",
+        anchor_set_id: "set-1",
+        offer_id: "offer_123",
+        offer_item_id: "item_1",
+        size_label: "100 x 50cm",
+        width_cm: "100",
+        height_cm: "50",
+        long_side_cm: "100",
+        area_cm2: "5000",
+        production_price_estimated: "100",
+        shipping_price_estimated: "120",
+        supplier_total_estimated: "220",
+        customer_factor: "2.6",
+        customer_unit_price_net: "570",
+        currency: "USD",
+        customer_currency: "EUR",
+        model_key: "anchored_offer_size_ladder",
+        model_version: "anchored_offer_size_ladder_v1",
+        confidence: "0.88",
+        review_status: "auto_ok",
+        review_reason: null,
+        issues: [],
+        is_default: true,
+        sort_order: 0,
+        metadata: {},
+      }]), { status: 200 });
+    }
+    return new Response("unexpected url", { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const drafts = await listOfferSizeLadderDrafts({ offerId: "offer_123", trelloCardId: "https://trello.com/c/cardDraft1/test" });
+    assert.equal(drafts.length, 1);
+    assert.equal(drafts[0]?.offerId, "offer_123");
+    assert.equal(drafts[0]?.trelloCardId, "cardDraft1");
+    assert.equal(drafts[0]?.options[0]?.customerUnitPriceNet, 570);
+    assert.ok(calledUrls.every((url) => url.includes("/rest/v1/offer_size_")));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
 });

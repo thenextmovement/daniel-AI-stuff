@@ -110,6 +110,66 @@ export type OfferSizeLadderResult = {
 
 type OfferSizeLadderAnchorSetRow = {
   id: string;
+  set_key?: string;
+  trello_card_id?: string;
+  trello_card_url?: string | null;
+  offer_id?: string | null;
+  offer_item_id?: string | null;
+  design_id?: string | null;
+  product_model?: OfferSizeLadderProductModel;
+  pricing_basis?: "new_supplier_direct_2_6" | "legacy_supplier_2_3" | "manual";
+  customer_factor?: number | string;
+  status?: OfferSizeLadderSetStatus;
+  confidence?: number | string | null;
+  issues?: string[] | null;
+  warnings?: string[] | null;
+  metadata?: Record<string, unknown> | null;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type OfferSizeLadderOptionRow = {
+  id: string;
+  anchor_set_id: string;
+  offer_id: string | null;
+  offer_item_id: string | null;
+  size_label: string;
+  width_cm: number | string;
+  height_cm: number | string;
+  long_side_cm: number | string;
+  area_cm2: number | string;
+  production_price_estimated: number | string;
+  shipping_price_estimated: number | string;
+  supplier_total_estimated: number | string;
+  customer_factor: number | string;
+  customer_unit_price_net: number | string;
+  currency: string;
+  customer_currency: "EUR";
+  model_key: typeof OFFER_SIZE_LADDER_MODEL_KEY;
+  model_version: typeof OFFER_SIZE_LADDER_MODEL_VERSION;
+  confidence: number | string;
+  review_status: OfferSizeLadderReviewStatus;
+  review_reason: string | null;
+  issues: string[] | null;
+  is_default: boolean;
+  sort_order: number;
+  metadata: Record<string, unknown> | null;
+};
+
+export type OfferSizeLadderDraft = Omit<OfferSizeLadderResult, "anchors" | "persisted" | "pricingBasis"> & {
+  anchorSetId: string;
+  pricingBasis: "new_supplier_direct_2_6" | "legacy_supplier_2_3" | "manual";
+  createdBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type OfferSizeLadderDraftLookupInput = {
+  trelloCardId?: string | null;
+  offerId?: string | null;
+  offerItemId?: string | null;
+  limit?: number | string | null;
 };
 
 function trimNullable(value: unknown) {
@@ -154,6 +214,15 @@ function roundDimension(value: number) {
 
 function roundConfidence(value: number) {
   return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+}
+
+function numberFromRow(value: number | string | null | undefined, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function stringArrayFromRow(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item)) : [];
 }
 
 function defaultSizeLabel(widthCm: number, heightCm: number) {
@@ -431,6 +500,96 @@ async function persistOfferSizeLadder(input: OfferSizeLadderGenerateInput, resul
   });
 
   return { anchorSetId, optionCount: result.options.length };
+}
+
+function optionFromRow(row: OfferSizeLadderOptionRow): OfferSizeLadderOption {
+  return {
+    sizeLabel: row.size_label,
+    widthCm: numberFromRow(row.width_cm),
+    heightCm: numberFromRow(row.height_cm),
+    longSideCm: numberFromRow(row.long_side_cm),
+    areaCm2: numberFromRow(row.area_cm2),
+    productionPriceEstimated: numberFromRow(row.production_price_estimated),
+    shippingPriceEstimated: numberFromRow(row.shipping_price_estimated),
+    supplierTotalEstimated: numberFromRow(row.supplier_total_estimated),
+    customerFactor: numberFromRow(row.customer_factor, OFFER_SIZE_LADDER_CUSTOMER_FACTOR),
+    customerUnitPriceNet: numberFromRow(row.customer_unit_price_net),
+    currency: row.currency || "USD",
+    customerCurrency: "EUR",
+    modelKey: row.model_key || OFFER_SIZE_LADDER_MODEL_KEY,
+    modelVersion: row.model_version || OFFER_SIZE_LADDER_MODEL_VERSION,
+    confidence: numberFromRow(row.confidence),
+    reviewStatus: row.review_status,
+    reviewReason: row.review_reason,
+    issues: stringArrayFromRow(row.issues),
+    isDefault: row.is_default,
+    sortOrder: Number(row.sort_order || 0),
+    metadata: row.metadata || {},
+  };
+}
+
+export async function listOfferSizeLadderDrafts(input: OfferSizeLadderDraftLookupInput): Promise<OfferSizeLadderDraft[]> {
+  const trelloCardId = input.trelloCardId ? normalizeTrelloCardIdentifier(input.trelloCardId) : null;
+  const offerId = trimNullable(input.offerId);
+  const offerItemId = trimNullable(input.offerItemId);
+  const limit = Math.min(Math.max(Number(input.limit || 5) || 5, 1), 20);
+
+  if (!trelloCardId && !offerId) {
+    throw new QuoteValidationError("Offer ID oder Trello Card ID fehlt.");
+  }
+
+  const query: Record<string, string | number | boolean | null> = {
+    select: "id,set_key,trello_card_id,trello_card_url,offer_id,offer_item_id,design_id,product_model,pricing_basis,customer_factor,status,confidence,issues,warnings,metadata,created_by,created_at,updated_at",
+    order: "updated_at.desc",
+    limit,
+    status: "neq.superseded",
+  };
+  if (trelloCardId) query.trello_card_id = `eq.${trelloCardId}`;
+  if (offerId) query.offer_id = `eq.${offerId}`;
+  if (offerItemId) query.offer_item_id = `eq.${offerItemId}`;
+
+  const sets = await supabaseRequest<OfferSizeLadderAnchorSetRow[]>("offer_size_quote_anchor_sets", undefined, query);
+  if (!sets.length) return [];
+
+  const setIds = sets.map((set) => set.id).filter(Boolean);
+  const optionRows = await supabaseRequest<OfferSizeLadderOptionRow[]>("offer_size_options", undefined, {
+    select: "id,anchor_set_id,offer_id,offer_item_id,size_label,width_cm,height_cm,long_side_cm,area_cm2,production_price_estimated,shipping_price_estimated,supplier_total_estimated,customer_factor,customer_unit_price_net,currency,customer_currency,model_key,model_version,confidence,review_status,review_reason,issues,is_default,sort_order,metadata",
+    anchor_set_id: `in.(${setIds.join(",")})`,
+    order: "sort_order.asc",
+  });
+
+  const optionsBySet = new Map<string, OfferSizeLadderOption[]>();
+  for (const row of optionRows) {
+    const current = optionsBySet.get(row.anchor_set_id) || [];
+    current.push(optionFromRow(row));
+    optionsBySet.set(row.anchor_set_id, current);
+  }
+
+  return sets.map((set) => {
+    const options = optionsBySet.get(set.id) || [];
+    return {
+      anchorSetId: set.id,
+      setKey: String(set.set_key || ""),
+      trelloCardId: String(set.trello_card_id || ""),
+      trelloCardUrl: set.trello_card_url || null,
+      offerId: set.offer_id || null,
+      offerItemId: set.offer_item_id || null,
+      designId: set.design_id || null,
+      productModel: set.product_model || "unknown",
+      pricingBasis: set.pricing_basis === "legacy_supplier_2_3" || set.pricing_basis === "manual"
+        ? set.pricing_basis
+        : "new_supplier_direct_2_6",
+      customerFactor: numberFromRow(set.customer_factor, OFFER_SIZE_LADDER_CUSTOMER_FACTOR),
+      status: set.status || "draft",
+      confidence: numberFromRow(set.confidence),
+      issues: stringArrayFromRow(set.issues),
+      warnings: stringArrayFromRow(set.warnings),
+      options,
+      createdBy: set.created_by || null,
+      createdAt: set.created_at || null,
+      updatedAt: set.updated_at || null,
+    };
+  });
 }
 
 export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInput): Promise<OfferSizeLadderResult> {
