@@ -561,6 +561,71 @@ function buildSourceOfTruthStatus(result: CompanyBrainResolveResult) {
   };
 }
 
+function buildFailedCardCapability(result: CompanyBrainResolveResult, readyActions: CompanyBrainActionProposalView[]) {
+  const failedAutomation = result.automationRuns.find((run) => !isCompanyBrainFixRun(run) && /failed|error|blocked|unsafe/i.test(`${run.status || ""} ${run.retrySafety || ""}`)) ||
+    result.automationRuns.find((run) => !isCompanyBrainFixRun(run)) ||
+    null;
+  const dataFixAction = readyActions.find((action) =>
+    ["correct_customer_email", "prepare_email_correction", "post_trello_status_comment", "create_internal_task"].includes(action.key),
+  ) || null;
+  const customerAction = result.actionProposals.find((action) => action.key === "guarded_offer_resend");
+  const hasLiveExecution = Boolean(failedAutomation?.executionId && (failedAutomation.issueKey || failedAutomation.failedNode || failedAutomation.error));
+  const hasTrelloFailure = result.trelloFailureDiagnosis.requested && result.trelloFailureDiagnosis.status === "loaded";
+  const hasSourceOfTruth = result.records.length > 0 || result.offers.length > 0;
+  const missingCoreSources = result.sourceHealth
+    .filter((source) => ["customer_records", "outlook_mirror", "workflow_audit"].includes(source.key) && source.status !== "ok")
+    .map((source) => `${source.label}: ${source.summary}`);
+
+  return {
+    enabled: result.trelloFailureDiagnosis.requested,
+    cards: [
+      {
+        key: "card",
+        label: "1. Karte verstehen",
+        status: hasTrelloFailure ? "ok" as const : "warning" as const,
+        title: hasTrelloFailure ? "Trello-Karte gelesen" : "Trello nicht vollständig geladen",
+        detail: hasTrelloFailure
+          ? `${result.trelloFailureDiagnosis.card?.currentListName || "Liste unbekannt"} · ${result.trelloFailureDiagnosis.expectedAction}`
+          : "Link, Shortlink oder Card-ID erneut einfügen.",
+      },
+      {
+        key: "cause",
+        label: "2. Ursache finden",
+        status: hasLiveExecution || result.trelloFailureDiagnosis.rootCauseKey !== "not_requested" ? "ok" as const : "warning" as const,
+        title: hasLiveExecution
+          ? failedAutomation?.issueKey || failedAutomation?.failedNode || "n8n-Livefehler gefunden"
+          : result.trelloFailureDiagnosis.rootCause,
+        detail: failedAutomation?.executionId
+          ? `Execution ${failedAutomation.executionId}${failedAutomation.failedNode ? ` · Node: ${failedAutomation.failedNode}` : ""}`
+          : result.trelloFailureDiagnosis.recommendedFix,
+      },
+      {
+        key: "fix",
+        label: "3. Fehler beheben",
+        status: dataFixAction ? "ok" as const : hasSourceOfTruth ? "warning" as const : "blocked" as const,
+        title: dataFixAction ? dataFixAction.label : hasSourceOfTruth ? "Manuelle Prüfung nötig" : "Source of Truth fehlt",
+        detail: dataFixAction
+          ? shortText(dataFixAction.summary, 150)
+          : hasSourceOfTruth
+            ? (result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution)
+            : "Ohne Kundenakte/Angebot keine Datenkorrektur und kein Retry.",
+      },
+      {
+        key: "send",
+        label: "4. Versand klären",
+        status: result.retryAssessment.canSendWithConfirmation ? "ok" as const : result.retryAssessment.status === "needs_fix" ? "warning" as const : "blocked" as const,
+        title: result.retryAssessment.canSendWithConfirmation ? "Guarded Retry möglich" : "Nicht senden",
+        detail: customerAction?.summary || result.retryAssessment.summary,
+      },
+    ],
+    missing: uniqueStrings([
+      ...result.retryAssessment.blockers,
+      ...result.trelloFailureDiagnosis.blockedFixes,
+      ...missingCoreSources,
+    ]).slice(0, 4),
+  };
+}
+
 function setupActionForIntegration(key: string, status: string) {
   if (status === "configured") return "Kein Setup-Blocker.";
   if (key === "live_outlook") return "Graph Tenant, Client, Secret und Mailbox in der Runtime setzen; danach Fall erneut laden.";
@@ -726,6 +791,7 @@ export function OpsCompanyBrainClient({
         decision: null,
         brief: null,
         caseRoute: [],
+        failedCardCheck: null,
         sourceOfTruth: null,
         primaryRun: null,
       };
@@ -780,6 +846,7 @@ export function OpsCompanyBrainClient({
       decision: buildOperatorDecision(result),
       brief: buildOperatorBrief(result, readyActions),
       caseRoute: buildCaseRoute(result),
+      failedCardCheck: buildFailedCardCapability(result, readyActions),
       sourceOfTruth: buildSourceOfTruthStatus(result),
       primaryRun,
     };
@@ -1308,6 +1375,51 @@ export function OpsCompanyBrainClient({
                       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Sicherer Fix</p>
                         <p className="mt-2 text-sm font-semibold leading-6">{operatorView.brief.automationSafeFix || "Erst Belege vervollständigen."}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {operatorView.failedCardCheck?.enabled ? (
+                <div className="border-b border-stone-200 bg-[#fbfaf7] px-5 py-5 md:px-6">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="max-w-3xl">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Fehlerkarte-Check</p>
+                      <h3 className="mt-2 text-xl font-semibold leading-tight text-stone-950">Kann Company Brain diesen Trello-Fehler erklären und lösen?</h3>
+                      <p className="mt-2 text-sm leading-6 text-stone-600">
+                        Diese Ansicht ist die Kurzantwort für den Alltag: Karte rein, Ursache sehen, Fixbarkeit prüfen, Versand nur guarded freigeben.
+                      </p>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      result.retryAssessment.canSendWithConfirmation
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                        : operatorView.failedCardCheck.missing.length
+                          ? "border-amber-200 bg-amber-50 text-amber-900"
+                          : "border-stone-200 bg-white text-stone-600"
+                    }`}>
+                      {result.retryAssessment.canSendWithConfirmation ? "Lösbar nach Freigabe" : operatorView.failedCardCheck.missing.length ? "Fix erst nach Blocker-Klärung" : "Diagnose bereit"}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                    {operatorView.failedCardCheck.cards.map((card) => (
+                      <div key={card.key} className={`rounded-2xl border px-4 py-3 ${routeStepClass(card.status)}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-65">{card.label}</p>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold">{routeStepBadge(card.status)}</span>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold leading-5">{card.title}</p>
+                        <p className="mt-1 text-xs leading-5 opacity-80">{card.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {operatorView.failedCardCheck.missing.length ? (
+                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Was noch fehlt</p>
+                      <div className="mt-2 grid gap-1.5 md:grid-cols-2">
+                        {operatorView.failedCardCheck.missing.map((entry) => (
+                          <p key={entry} className="text-xs leading-5">{entry}</p>
+                        ))}
                       </div>
                     </div>
                   ) : null}

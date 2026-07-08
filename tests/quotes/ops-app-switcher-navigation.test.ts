@@ -87,6 +87,13 @@ test("company brain fix center groups risky actions and avoids browser prompts",
   assert.match(source, /run\.recommendedFix/);
   assert.match(source, /run\.safeFix/);
   assert.match(source, /Direktaktion/);
+  assert.match(source, /Fehlerkarte-Check/);
+  assert.match(source, /Kann Company Brain diesen Trello-Fehler erklären und lösen/);
+  assert.match(source, /Karte verstehen/);
+  assert.match(source, /Ursache finden/);
+  assert.match(source, /Fehler beheben/);
+  assert.match(source, /Versand klären/);
+  assert.match(source, /Was noch fehlt/);
   assert.match(source, /Action Center:/);
   assert.match(source, /action\.payloadPreview/);
   assert.match(source, /Benötigte Runtime-Variablen/);

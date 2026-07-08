@@ -310,6 +310,12 @@ async function runViewport(browser, target, viewport, label) {
     "MICROSOFT_GRAPH_TENANT_ID",
     "OUTLOOK_SHARED_MAILBOX",
     "Setup-Paket kopieren",
+    "Fehlerkarte-Check",
+    "Kann Company Brain diesen Trello-Fehler erklären und lösen?",
+    "Karte verstehen",
+    "Ursache finden",
+    "Fehler beheben",
+    "Versand klären",
   ]);
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   await page.getByRole("button", { name: "Versand freigeben" }).click();
