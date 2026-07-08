@@ -121,6 +121,7 @@ async function withMockedAssignmentFetch<T>(
     "SUPABASE_SERVICE_ROLE_KEY",
     "TRELLO_API_KEY",
     "TRELLO_TOKEN",
+    "SUPPLIER_TRELLO_PROJECTION_ENABLED",
     "SUPPLIER_TRELLO_SAID_LIST_ID",
     "SHOPIFY_ADMIN_API_ACCESS_TOKEN",
     "SHOPIFY_ADMIN_TOKEN",
@@ -886,6 +887,7 @@ test("supplier assignment finds Shopify order by offer reference before tagging"
 
 test("supplier assignment is allowed while post-order review window is open", async () => {
   let attemptPostCount = 0;
+  let trelloPostCount = 0;
   let currentRow = saleRow({
     id: "sale-open-post-order-review",
     source: "neontrip-offers",
@@ -903,6 +905,7 @@ test("supplier assignment is allowed while post-order review window is open", as
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     if (url.hostname === "api.trello.com") {
+      trelloPostCount += 1;
       return Response.json({ id: "trello-open-review", url: "https://trello.test/c/open-review" });
     }
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
@@ -930,10 +933,13 @@ test("supplier assignment is allowed while post-order review window is open", as
 
     assert.equal(sale.assignmentStatus, "assigned");
     assert.equal(sale.assignedSupplier, "said");
+    assert.equal(sale.trelloProjectionStatus, "skipped");
+    assert.equal(sale.supplierTrelloCardId, null);
     assert.equal(sale.postOrderReview.status, "open");
   });
 
   assert.equal(attemptPostCount, 1);
+  assert.equal(trelloPostCount, 0);
 });
 
 test("supplier assignment task cleanup archives only supplier sale projections", async () => {
@@ -2602,6 +2608,7 @@ test("supplier sales diagnostics expose missing and configured production links"
     "SUPPLIER_TAG_SPECIAL",
     "TRELLO_API_KEY",
     "TRELLO_TOKEN",
+    "SUPPLIER_TRELLO_PROJECTION_ENABLED",
     "SUPPLIER_TRELLO_QUENTIN_LIST_ID",
     "SUPPLIER_TRELLO_SAID_LIST_ID",
     "SUPPLIER_TRELLO_SPECIAL_LIST_ID",
@@ -2635,7 +2642,7 @@ test("supplier sales diagnostics expose missing and configured production links"
     assert.equal(ready.items.find((item) => item.key === "shopify_admin_api")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "shopify_supplier_tags")?.status, "ok");
     assert.equal(ready.items.find((item) => item.key === "trello_api_key")?.status, "ok");
-    assert.equal(ready.items.find((item) => item.key === "supplier_trello_projection")?.status, "warning");
+    assert.equal(ready.items.find((item) => item.key === "supplier_trello_projection")?.status, "ok");
   } finally {
     for (const key of keys) {
       const value = previous.get(key);

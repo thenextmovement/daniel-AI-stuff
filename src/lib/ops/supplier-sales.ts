@@ -956,13 +956,16 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
   const quentinListReady = Boolean(supplierTrelloListId("quentin"));
   const saidListReady = Boolean(supplierTrelloListId("said"));
   const specialListReady = Boolean(supplierTrelloListId("special"));
+  const supplierTrelloEnabled = supplierTrelloProjectionEnabled();
   items.push(diagnostic(
     "supplier_trello_projection",
-    trelloAuthReady && quentinListReady && saidListReady ? "ok" : "warning",
+    !supplierTrelloEnabled || (trelloAuthReady && quentinListReady && saidListReady) ? "ok" : "warning",
     "Supplier-Trello",
-    trelloAuthReady && quentinListReady && saidListReady
-      ? `Quentin/Saeid Listen sind konfiguriert${specialListReady ? ", Sonder-Supplier ebenfalls." : "."}`
-      : "Trello-Projektion wird uebersprungen, bis TRELLO_API_KEY/TRELLO_TOKEN und die Supplier-Listen-IDs gesetzt sind.",
+    !supplierTrelloEnabled
+      ? "Supplier-Trello-Projektion ist deaktiviert; bei Vergaben werden keine Supplier-Karten erstellt."
+      : trelloAuthReady && quentinListReady && saidListReady
+        ? `Quentin/Saeid Listen sind konfiguriert${specialListReady ? ", Sonder-Supplier ebenfalls." : "."}`
+        : "Trello-Projektion wird uebersprungen, bis TRELLO_API_KEY/TRELLO_TOKEN und die Supplier-Listen-IDs gesetzt sind.",
   ));
 
   const reminderWebhookReady = Boolean(paymentReminderWebhookUrl());
@@ -3096,6 +3099,12 @@ function supplierTrelloListId(supplier: SupplierSaleSupplier) {
   return nullableText(values[supplier], 180);
 }
 
+function supplierTrelloProjectionEnabled() {
+  return String(process.env.SUPPLIER_TRELLO_PROJECTION_ENABLED || "")
+    .trim()
+    .toLowerCase() === "true";
+}
+
 function supplierAssignmentTasksEnabled() {
   return String(process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED || "")
     .trim()
@@ -3237,6 +3246,14 @@ function assignmentDescription(row: SupplierSaleRow, supplier: SupplierSaleSuppl
 }
 
 async function projectSupplierTrelloCard(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, note?: string | null) {
+  if (!supplierTrelloProjectionEnabled()) {
+    return {
+      status: "skipped" as const,
+      cardId: null,
+      cardUrl: null,
+      error: "Supplier-Trello-Projektion ist deaktiviert; es wird keine Supplier-Karte erstellt.",
+    };
+  }
   const listId = supplierTrelloListId(supplier);
   if (!listId) return { status: "skipped" as const, cardId: null, cardUrl: null, error: "Supplier-Trello-Liste ist nicht konfiguriert." };
   const card = await createTrelloCard({
@@ -4275,6 +4292,8 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
   const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
   const assignmentNote = nullableText(input.assignmentNote, 1000);
   const specialSupplierName = supplier === "special" ? nullableText(input.specialSupplierName, 120) : null;
+  const trelloProjectionEnabled = supplierTrelloProjectionEnabled();
+  const trelloListId = supplierTrelloListId(supplier);
   const reserved = await reserveSupplierAssignmentAttempt({
     saleId: sale.id,
     attemptKey,
@@ -4303,8 +4322,10 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     shopify_tag_value: tagValue,
     shopify_tag_sync_status: tagValue ? "pending" : "skipped",
     shopify_tag_error: tagValue ? null : "Supplier-Tag ist nicht konfiguriert.",
-    trello_projection_status: supplierTrelloListId(supplier) ? "pending" : "skipped",
-    trello_projection_error: supplierTrelloListId(supplier) ? null : "Supplier-Trello-Liste ist nicht konfiguriert.",
+    trello_projection_status: trelloProjectionEnabled && trelloListId ? "pending" : "skipped",
+    trello_projection_error: trelloProjectionEnabled
+      ? trelloListId ? null : "Supplier-Trello-Liste ist nicht konfiguriert."
+      : "Supplier-Trello-Projektion ist deaktiviert; es wird keine Supplier-Karte erstellt.",
     task_sync_status: supplierAssignmentTasksEnabled() ? "pending" : "skipped",
     task_sync_error: null,
   };
