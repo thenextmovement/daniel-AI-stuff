@@ -239,7 +239,7 @@ function TrelloEstimateResultCard({
         <div className="min-w-0">
           <div className="text-sm font-semibold text-black">{estimate.card.name || estimate.card.id}</div>
           <div className="mt-1 text-xs text-black/50">
-            Anchor {formatCm(estimate.anchor.widthCm)} x {formatCm(estimate.anchor.heightCm)} · Production {formatMoney(estimate.anchor.productionPrice, estimate.anchor.currency)} · Shipping {formatMoney(estimate.anchor.shippingPrice, estimate.anchor.currency)}
+            Anchor {formatCm(estimate.anchor.widthCm)} x {formatCm(estimate.anchor.heightCm)} · {estimate.estimates.length} Größen · Production {formatMoney(estimate.anchor.productionPrice, estimate.anchor.currency)} · Shipping {formatMoney(estimate.anchor.shippingPrice, estimate.anchor.currency)}
           </div>
         </div>
         {estimate.card.shortUrl ? (
@@ -792,7 +792,7 @@ export function SupplierPriceReviewClient({
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [anchorCorrections, setAnchorCorrections] = useState<Record<string, AnchorCorrectionDraft>>({});
   const [estimateTrelloCard, setEstimateTrelloCard] = useState("");
-  const [estimateTargetSizes, setEstimateTargetSizes] = useState("100");
+  const [estimateTargetSizes, setEstimateTargetSizes] = useState("");
   const [estimateResult, setEstimateResult] = useState<SupplierPriceTrelloEstimateResult | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [offerApplyingKey, setOfferApplyingKey] = useState<string | null>(null);
@@ -1272,12 +1272,12 @@ export function SupplierPriceReviewClient({
                 type="text"
                 value={estimateTargetSizes}
                 onChange={(event) => setEstimateTargetSizes(event.target.value)}
-                placeholder="100 oder 50x75"
+                placeholder="leer = alle Größen"
                 className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
               />
               <button
                 type="button"
-                disabled={estimating || !estimateTrelloCard.trim() || !estimateTargetSizes.trim()}
+                disabled={estimating || !estimateTrelloCard.trim()}
                 onClick={() => void estimateFromTrello()}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1286,7 +1286,7 @@ export function SupplierPriceReviewClient({
               </button>
             </div>
             <div className="mt-2 text-xs text-black/45">
-              Mehrere Zielgrößen mit Komma trennen. <code>100</code> skaliert proportional auf 100cm Breite/Langseite, <code>50x75</code> setzt Breite und Höhe explizit.
+              Leer lassen für alle 10cm-Schritte vom erkannten Anker bis 250cm. Extra-Zielgrößen mit Komma trennen; <code>100</code> skaliert proportional, <code>50x75</code> setzt Breite und Höhe explizit.
             </div>
             {estimateResult ? (
               <TrelloEstimateResultCard

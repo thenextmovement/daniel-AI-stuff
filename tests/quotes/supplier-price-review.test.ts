@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSupplierPricePredictionReviewDraftsFromAnchor,
+  buildSupplierEstimateTargetSizes,
   calculateSupplierEstimateOfferUnitPrice,
   checkSupplierEstimatePlausibility,
   isSupplierPricePredictionAutomationAction,
@@ -66,6 +67,29 @@ test("supplier price review automation scope can only enqueue training-item pred
   assert.equal(isSupplierPricePredictionAutomationAction("import_trello_training_candidates"), false);
   assert.equal(isSupplierPricePredictionAutomationAction("review"), false);
   assert.equal(isSupplierPricePredictionAutomationAction(undefined), false);
+});
+
+test("buildSupplierEstimateTargetSizes creates an automatic 10cm ladder to 250cm", () => {
+  const targets = buildSupplierEstimateTargetSizes("", { widthCm: 80, heightCm: 40 });
+
+  assert.equal(targets[0]?.requestedInput, "80cm");
+  assert.equal(targets[0]?.widthCm, 80);
+  assert.equal(targets[0]?.heightCm, 40);
+  assert.equal(targets.at(-1)?.requestedInput, "250cm");
+  assert.equal(targets.at(-1)?.widthCm, 250);
+  assert.equal(targets.at(-1)?.heightCm, 125);
+  assert.deepEqual(targets.map((target) => target.requestedInput).slice(0, 4), ["80cm", "90cm", "100cm", "110cm"]);
+});
+
+test("buildSupplierEstimateTargetSizes keeps explicit extra sizes and dedupes automatic sizes", () => {
+  const targets = buildSupplierEstimateTargetSizes("75x50,100", { widthCm: 80, heightCm: 40 });
+  const explicit = targets.find((target) => target.requestedInput === "75x50");
+  const hundredTargets = targets.filter((target) => Math.max(target.widthCm, target.heightCm) === 100);
+
+  assert.ok(explicit);
+  assert.equal(explicit?.widthCm, 75);
+  assert.equal(explicit?.heightCm, 50);
+  assert.equal(hundredTargets.length, 1);
 });
 
 test("calculateSupplierEstimateOfferUnitPrice uses the Schildpreis offer factor 2.3", () => {

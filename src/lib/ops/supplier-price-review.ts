@@ -503,6 +503,40 @@ function parseTargetSizes(input: string, anchor: { widthCm: number; heightCm: nu
   }));
 }
 
+function targetSizeKey(target: { widthCm: number; heightCm: number }) {
+  return `${Math.round(target.widthCm * 10) / 10}x${Math.round(target.heightCm * 10) / 10}`;
+}
+
+function automaticTargetSizeInputs(anchor: { widthCm: number; heightCm: number }, stepCm = 10, maxLongSideCm = 250) {
+  const anchorLongSide = Math.max(anchor.widthCm, anchor.heightCm);
+  const values = new Set<number>([Math.round(anchorLongSide * 10) / 10]);
+  const firstStep = Math.ceil(anchorLongSide / stepCm) * stepCm;
+  for (let value = firstStep; value <= maxLongSideCm + 0.001; value += stepCm) {
+    if (value >= anchorLongSide - 0.001) values.add(Math.round(value * 10) / 10);
+  }
+  return Array.from(values)
+    .sort((left, right) => left - right)
+    .map((value) => `${formatCmValue(value)}cm`);
+}
+
+export function buildSupplierEstimateTargetSizes(
+  input: string | null | undefined,
+  anchor: { widthCm: number; heightCm: number },
+) {
+  const explicitTargets = String(input || "").trim() ? parseTargetSizes(String(input), anchor) : [];
+  const automaticTargets = parseTargetSizes(automaticTargetSizeInputs(anchor).join(","), anchor);
+  const targets = [...explicitTargets, ...automaticTargets];
+  const bySize = new Map<string, (typeof targets)[number]>();
+  for (const target of targets) {
+    bySize.set(targetSizeKey(target), target);
+  }
+  return Array.from(bySize.values()).sort((left, right) => {
+    const leftMax = Math.max(left.widthCm, left.heightCm);
+    const rightMax = Math.max(right.widthCm, right.heightCm);
+    return leftMax - rightMax || left.widthCm - right.widthCm || left.heightCm - right.heightCm;
+  });
+}
+
 function quoteTextMatch(text: string, patterns: RegExp[]) {
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -729,7 +763,7 @@ export async function estimateSupplierPricesFromTrello(input: {
   }
   totalSupplierCost = totalSupplierCost || productionPrice + shippingPrice;
 
-  const targets = parseTargetSizes(input.targetSizes, anchorSize);
+  const targets = buildSupplierEstimateTargetSizes(input.targetSizes, anchorSize);
   if (targets.some((target) => target.widthCm * target.heightCm < anchorSize.widthCm * anchorSize.heightCm)) {
     warnings.push("Mindestens eine Zielgroesse ist kleiner als der erkannte Anker. Das ist nur eine grobe Downscale-Extrapolation und sollte vom Supplier geprueft werden.");
   }
