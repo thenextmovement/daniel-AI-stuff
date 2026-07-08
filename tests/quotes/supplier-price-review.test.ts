@@ -5,6 +5,8 @@ import {
   buildSupplierEstimateTargetSizes,
   calculateSupplierEstimateOfferUnitPrice,
   checkSupplierEstimatePlausibility,
+  estimateSupplierPriceFromAnchors,
+  extractSupplierQuoteMultiAnchors,
   isSupplierPricePredictionAutomationAction,
 } from "../../src/lib/ops/supplier-price-review";
 import { SUPPLIER_PRICE_TO_OFFER_FACTOR } from "../../src/lib/ops/supplier-price-review-constants";
@@ -90,6 +92,58 @@ test("buildSupplierEstimateTargetSizes keeps explicit extra sizes and dedupes au
   assert.equal(explicit?.widthCm, 75);
   assert.equal(explicit?.heightCm, 50);
   assert.equal(hundredTargets.length, 1);
+});
+
+test("extractSupplierQuoteMultiAnchors reads column supplier prices from OCR text", () => {
+  const anchors = extractSupplierQuoteMultiAnchors(
+    [
+      "Size 75/100/120/150cm",
+      "Production price 70 95 118 145",
+      "Shipping cost 90 105 126 150",
+    ].join("\n"),
+    { widthCm: 75, heightCm: 75 },
+  );
+
+  assert.equal(anchors.length, 4);
+  assert.deepEqual(anchors.map((anchor) => anchor.maxSideCm), [75, 100, 120, 150]);
+  assert.equal(anchors[1]?.productionPrice, 95);
+  assert.equal(anchors[3]?.shippingPrice, 150);
+});
+
+test("estimateSupplierPriceFromAnchors interpolates between real supplier anchors", () => {
+  const estimate = estimateSupplierPriceFromAnchors({
+    target: { requestedInput: "110cm", widthCm: 110, heightCm: 110 },
+    modelFamily: "neonflex",
+    anchors: [
+      {
+        widthCm: 100,
+        heightCm: 100,
+        maxSideCm: 100,
+        productionPrice: 95,
+        shippingPrice: 105,
+        totalSupplierCost: 200,
+        currency: "USD",
+        source: "ocr_multi_anchor",
+        confidence: 0.82,
+      },
+      {
+        widthCm: 150,
+        heightCm: 150,
+        maxSideCm: 150,
+        productionPrice: 145,
+        shippingPrice: 150,
+        totalSupplierCost: 295,
+        currency: "USD",
+        source: "ocr_multi_anchor",
+        confidence: 0.82,
+      },
+    ],
+  });
+
+  assert.ok(estimate);
+  assert.equal(estimate?.shippingStrategy, "piecewise_supplier_anchor_interpolation");
+  assert.ok(estimate!.production > 95 && estimate!.production < 145);
+  assert.ok(estimate!.shipping > 105 && estimate!.shipping < 150);
 });
 
 test("calculateSupplierEstimateOfferUnitPrice uses the Schildpreis offer factor 2.3", () => {

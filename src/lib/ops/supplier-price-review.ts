@@ -195,6 +195,18 @@ export type SupplierPriceTrelloEstimateItem = {
   shippingTrainingRows: number;
 };
 
+export type SupplierPriceTrelloEstimateAnchor = {
+  widthCm: number;
+  heightCm: number;
+  maxSideCm: number;
+  productionPrice: number;
+  shippingPrice: number;
+  totalSupplierCost: number;
+  currency: string;
+  source: "ocr_multi_anchor" | "custom_fields" | "ocr_image" | "mixed" | "estimated_split";
+  confidence: number;
+};
+
 export type SupplierPriceTrelloEstimateResult = {
   card: {
     id: string;
@@ -213,6 +225,7 @@ export type SupplierPriceTrelloEstimateResult = {
     modelFamily: "neonflex" | "unsupported" | "unknown";
     confidence: number;
   };
+  supplierAnchors?: SupplierPriceTrelloEstimateAnchor[];
   estimates: SupplierPriceTrelloEstimateItem[];
   warnings: string[];
   evidence: {
@@ -432,6 +445,12 @@ function parseSupplierQuoteNumber(value: string | null | undefined) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseNumericTokens(value: string) {
+  return Array.from(value.matchAll(/\d+(?:[.,]\d+)?/g))
+    .map((match) => Number(normalizeNumericText(match[0])))
+    .filter((number) => Number.isFinite(number) && number > 0);
+}
+
 function parseSizeText(value: string | null | undefined) {
   const normalized = String(value || "").replace(",", ".").trim();
   if (!normalized) return null;
@@ -441,6 +460,19 @@ function parseSizeText(value: string | null | undefined) {
   const heightCm = Number(match[2]);
   if (!Number.isFinite(widthCm) || !Number.isFinite(heightCm) || widthCm <= 0 || heightCm <= 0) return null;
   return { widthCm, heightCm, raw: match[0] };
+}
+
+function parseLongSideList(value: string) {
+  const normalized = value.replace(",", ".").trim();
+  if (!normalized) return [];
+  const explicit = Array.from(normalized.matchAll(/(\d+(?:\.\d+)?)\s*(?:cm)?\s*(?:[|/]\s*)/gi)).map((match) => Number(match[1]));
+  const trailing = normalized.match(/(?:[|/]\s*)(\d+(?:\.\d+)?)\s*cm\b/i);
+  const slashList = trailing ? [...explicit, Number(trailing[1])] : [];
+  if (slashList.length >= 2 && slashList.every((number) => Number.isFinite(number) && number > 0)) return slashList;
+
+  return Array.from(normalized.matchAll(/(\d+(?:\.\d+)?)\s*cm\b/gi))
+    .map((match) => Number(match[1]))
+    .filter((number) => Number.isFinite(number) && number > 0);
 }
 
 function parseTargetSizes(input: string, anchor: { widthCm: number; heightCm: number }) {
@@ -535,6 +567,142 @@ export function buildSupplierEstimateTargetSizes(
     const rightMax = Math.max(right.widthCm, right.heightCm);
     return leftMax - rightMax || left.widthCm - right.widthCm || left.heightCm - right.heightCm;
   });
+}
+
+function dimensionsForLongSide(anchor: { widthCm: number; heightCm: number }, longSideCm: number) {
+  const ratio = anchor.widthCm / anchor.heightCm;
+  const widthDominant = anchor.widthCm >= anchor.heightCm;
+  return {
+    widthCm: Math.round((widthDominant ? longSideCm : longSideCm * ratio) * 10) / 10,
+    heightCm: Math.round((widthDominant ? longSideCm / ratio : longSideCm) * 10) / 10,
+  };
+}
+
+function normalizeSupplierAnchors(anchors: SupplierPriceTrelloEstimateAnchor[]) {
+  const bySize = new Map<string, SupplierPriceTrelloEstimateAnchor>();
+  for (const anchor of anchors) {
+    if (anchor.productionPrice <= 0 || anchor.shippingPrice <= 0) continue;
+    bySize.set(targetSizeKey(anchor), {
+      ...anchor,
+      maxSideCm: Math.max(anchor.widthCm, anchor.heightCm),
+      totalSupplierCost: Math.round((anchor.productionPrice + anchor.shippingPrice) * 100) / 100,
+    });
+  }
+  return Array.from(bySize.values()).sort((left, right) => left.maxSideCm - right.maxSideCm);
+}
+
+export function extractSupplierQuoteMultiAnchors(
+  text: string,
+  baseSize: { widthCm: number; heightCm: number } | null,
+  currency = "USD",
+): SupplierPriceTrelloEstimateAnchor[] {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const anchors: SupplierPriceTrelloEstimateAnchor[] = [];
+
+  for (const line of lines) {
+    const listedLongSides = parseLongSideList(line);
+    if (listedLongSides.length >= 2) continue;
+    const explicitSize = parseSizeText(line);
+    const longSides = explicitSize ? [Math.max(explicitSize.widthCm, explicitSize.heightCm)] : listedLongSides;
+    if (!longSides.length) continue;
+    const numbers = parseNumericTokens(line);
+    const priceNumbers = numbers.filter((number) => !longSides.some((side) => Math.abs(side - number) < 0.001));
+    if (longSides.length === 1 && priceNumbers.length >= 2) {
+      const dimensions = explicitSize || (baseSize ? dimensionsForLongSide(baseSize, longSides[0]) : null);
+      if (!dimensions) continue;
+      anchors.push({
+        widthCm: dimensions.widthCm,
+        heightCm: dimensions.heightCm,
+        maxSideCm: Math.max(dimensions.widthCm, dimensions.heightCm),
+        productionPrice: priceNumbers[0],
+        shippingPrice: priceNumbers[1],
+        totalSupplierCost: priceNumbers[0] + priceNumbers[1],
+        currency,
+        source: "ocr_multi_anchor",
+        confidence: 0.72,
+      });
+    }
+  }
+
+  const sizeLine = lines.find((line) => /size|groesse|größe|cm/i.test(line) && parseLongSideList(line).length >= 2);
+  const productionLine = lines.find((line) => /production|prod\.?|price|preis/i.test(line) && !/shipping|total/i.test(line));
+  const shippingLine = lines.find((line) => /shipping|ship\.?|versand|fracht/i.test(line));
+  if (sizeLine && productionLine && shippingLine && baseSize) {
+    const longSides = parseLongSideList(sizeLine);
+    const productionValues = parseNumericTokens(productionLine).slice(-longSides.length);
+    const shippingValues = parseNumericTokens(shippingLine).slice(-longSides.length);
+    if (longSides.length >= 2 && productionValues.length === longSides.length && shippingValues.length === longSides.length) {
+      longSides.forEach((longSideCm, index) => {
+        const dimensions = dimensionsForLongSide(baseSize, longSideCm);
+        anchors.push({
+          widthCm: dimensions.widthCm,
+          heightCm: dimensions.heightCm,
+          maxSideCm: Math.max(dimensions.widthCm, dimensions.heightCm),
+          productionPrice: productionValues[index],
+          shippingPrice: shippingValues[index],
+          totalSupplierCost: productionValues[index] + shippingValues[index],
+          currency,
+          source: "ocr_multi_anchor",
+          confidence: 0.82,
+        });
+      });
+    }
+  }
+
+  return normalizeSupplierAnchors(anchors);
+}
+
+function interpolateMoneyByArea(targetArea: number, lowerArea: number, lowerValue: number, upperArea: number, upperValue: number) {
+  if (Math.abs(upperArea - lowerArea) < 0.001) return Math.round(lowerValue * 100) / 100;
+  const t = Math.max(0, Math.min(1, (targetArea - lowerArea) / (upperArea - lowerArea)));
+  return Math.round((lowerValue + t * (upperValue - lowerValue)) * 100) / 100;
+}
+
+export function estimateSupplierPriceFromAnchors(params: {
+  target: { requestedInput: string; widthCm: number; heightCm: number };
+  anchors: SupplierPriceTrelloEstimateAnchor[];
+  modelFamily: "neonflex" | "unsupported" | "unknown";
+}) {
+  const sorted = normalizeSupplierAnchors(params.anchors);
+  if (sorted.length < 2) return null;
+  const targetArea = params.target.widthCm * params.target.heightCm;
+  const exact = sorted.find((anchor) => Math.abs(anchor.maxSideCm - Math.max(params.target.widthCm, params.target.heightCm)) < 0.5);
+  if (exact) {
+    const score = params.modelFamily === "unsupported" ? 0 : Math.min(0.92, exact.confidence);
+    return {
+      production: exact.productionPrice,
+      shipping: exact.shippingPrice,
+      confidence: score,
+      reviewReason: params.modelFamily === "unsupported" ? "unsupported_model_family" : null,
+      shippingBucket: "supplier_anchor",
+      shippingStrategy: "exact_supplier_anchor",
+      shippingTrainingRows: sorted.length,
+    };
+  }
+
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const lower = sorted[index];
+    const upper = sorted[index + 1];
+    const lowerArea = lower.widthCm * lower.heightCm;
+    const upperArea = upper.widthCm * upper.heightCm;
+    if (targetArea >= lowerArea && targetArea <= upperArea) {
+      const score = params.modelFamily === "unsupported" ? 0 : Math.min(0.86, lower.confidence, upper.confidence);
+      return {
+        production: interpolateMoneyByArea(targetArea, lowerArea, lower.productionPrice, upperArea, upper.productionPrice),
+        shipping: interpolateMoneyByArea(targetArea, lowerArea, lower.shippingPrice, upperArea, upper.shippingPrice),
+        confidence: score,
+        reviewReason: params.modelFamily === "unsupported" ? "unsupported_model_family" : null,
+        shippingBucket: "supplier_anchor_piecewise",
+        shippingStrategy: "piecewise_supplier_anchor_interpolation",
+        shippingTrainingRows: sorted.length,
+      };
+    }
+  }
+
+  return null;
 }
 
 function quoteTextMatch(text: string, patterns: RegExp[]) {
@@ -762,18 +930,85 @@ export async function estimateSupplierPricesFromTrello(input: {
     throw new QuoteValidationError("Production Price und Shipping cost konnten nicht aus Trello/Image gelesen werden.");
   }
   totalSupplierCost = totalSupplierCost || productionPrice + shippingPrice;
+  const supplierAnchors = normalizeSupplierAnchors([
+    {
+      widthCm: anchorSize.widthCm,
+      heightCm: anchorSize.heightCm,
+      maxSideCm: Math.max(anchorSize.widthCm, anchorSize.heightCm),
+      productionPrice,
+      shippingPrice,
+      totalSupplierCost,
+      currency,
+      source,
+      confidence: anchorConfidence,
+    },
+    ...extractSupplierQuoteMultiAnchors([card.name, ocrText].filter(Boolean).join("\n"), anchorSize, currency),
+  ]);
 
   const targets = buildSupplierEstimateTargetSizes(input.targetSizes, anchorSize);
   if (targets.some((target) => target.widthCm * target.heightCm < anchorSize.widthCm * anchorSize.heightCm)) {
     warnings.push("Mindestens eine Zielgroesse ist kleiner als der erkannte Anker. Das ist nur eine grobe Downscale-Extrapolation und sollte vom Supplier geprueft werden.");
   }
+  if (supplierAnchors.length >= 2) {
+    warnings.push(`${supplierAnchors.length} Supplier-Anker erkannt. Preise innerhalb dieser Anker werden abschnittsweise interpoliert.`);
+  }
   const estimates = targets.map<SupplierPriceTrelloEstimateItem>((target) => {
+    const anchorEstimate = estimateSupplierPriceFromAnchors({
+      target,
+      anchors: supplierAnchors,
+      modelFamily,
+    });
+    if (anchorEstimate) {
+      const total = Math.round((anchorEstimate.production + anchorEstimate.shipping) * 100) / 100;
+      const customerAutoQuoteEligible = !requiresNeonflexCustomerSizeRequest({
+        width_cm: target.widthCm,
+        height_cm: target.heightCm,
+      });
+      return {
+        requestedInput: target.requestedInput,
+        widthCm: target.widthCm,
+        heightCm: target.heightCm,
+        maxSideCm: Math.max(target.widthCm, target.heightCm),
+        predictedProductionPrice: anchorEstimate.production,
+        predictedShippingPrice: anchorEstimate.shipping,
+        predictedTotalSupplierCost: total,
+        currency,
+        confidence: anchorEstimate.confidence,
+        confidenceLevel: confidenceLevel(anchorEstimate.confidence),
+        customerAutoQuoteEligible,
+        needsSupplierCheck: modelFamily === "unsupported" || !customerAutoQuoteEligible || anchorEstimate.confidence < 0.55,
+        reviewReason:
+          modelFamily === "unsupported"
+            ? "unsupported_model_family"
+            : !customerAutoQuoteEligible
+              ? "target_size_requires_supplier_request"
+              : anchorEstimate.reviewReason,
+        modelKey: NEONFLEX_ANCHORED_SCALING_MODEL.model_key,
+        modelVersion: NEONFLEX_ANCHORED_SCALING_MODEL.version,
+        shippingBucket: anchorEstimate.shippingBucket,
+        shippingStrategy: anchorEstimate.shippingStrategy,
+        shippingTrainingRows: anchorEstimate.shippingTrainingRows,
+      };
+    }
+
+    const extrapolationAnchor = supplierAnchors.length >= 2
+      ? [...supplierAnchors].sort((left, right) => {
+        const targetArea = target.widthCm * target.heightCm;
+        const leftArea = left.widthCm * left.heightCm;
+        const rightArea = right.widthCm * right.heightCm;
+        return Math.abs(targetArea - leftArea) - Math.abs(targetArea - rightArea);
+      })[0]
+      : null;
+    const baseWidth = extrapolationAnchor?.widthCm || anchorSize.widthCm;
+    const baseHeight = extrapolationAnchor?.heightCm || anchorSize.heightCm;
+    const baseProductionPrice = extrapolationAnchor?.productionPrice || productionPrice;
+    const baseShippingPrice = extrapolationAnchor?.shippingPrice || shippingPrice;
+    const baseArea = baseWidth * baseHeight;
     const targetArea = target.widthCm * target.heightCm;
-    const anchorArea = anchorSize.widthCm * anchorSize.heightCm;
-    if (targetArea < anchorArea) {
-      const areaRatio = targetArea / anchorArea;
-      const production = Math.round(productionPrice * areaRatio ** NEONFLEX_ANCHORED_SCALING_MODEL.production.area_exponent);
-      const shipping = Math.round(Math.max(20, shippingPrice * Math.sqrt(areaRatio)));
+    if (targetArea < baseArea) {
+      const areaRatio = targetArea / baseArea;
+      const production = Math.round(baseProductionPrice * areaRatio ** NEONFLEX_ANCHORED_SCALING_MODEL.production.area_exponent);
+      const shipping = Math.round(Math.max(20, baseShippingPrice * Math.sqrt(areaRatio)));
       const total = production + shipping;
       const score = modelFamily === "unsupported" ? 0 : 0.25;
       return {
@@ -792,7 +1027,9 @@ export async function estimateSupplierPricesFromTrello(input: {
         reviewReason:
           modelFamily === "unsupported"
             ? "unsupported_model_family"
-            : "target_smaller_than_anchor_downscale_extrapolation",
+            : supplierAnchors.length >= 2
+              ? "target_outside_supplier_anchor_range_extrapolation"
+              : "target_smaller_than_anchor_downscale_extrapolation",
         modelKey: NEONFLEX_ANCHORED_SCALING_MODEL.model_key,
         modelVersion: NEONFLEX_ANCHORED_SCALING_MODEL.version,
         shippingBucket: "below_anchor",
@@ -802,10 +1039,10 @@ export async function estimateSupplierPricesFromTrello(input: {
     }
 
     const prediction = predictNeonflexAnchoredSupplierPrice({
-      base_width_cm: anchorSize.widthCm,
-      base_height_cm: anchorSize.heightCm,
-      base_production_price_usd: productionPrice,
-      base_shipping_price_usd: shippingPrice,
+      base_width_cm: baseWidth,
+      base_height_cm: baseHeight,
+      base_production_price_usd: baseProductionPrice,
+      base_shipping_price_usd: baseShippingPrice,
       target_width_cm: target.widthCm,
       target_height_cm: target.heightCm,
     });
@@ -813,7 +1050,9 @@ export async function estimateSupplierPricesFromTrello(input: {
       width_cm: prediction.target_width_cm,
       height_cm: prediction.target_height_cm,
     });
-    const score = modelFamily === "unsupported" ? 0 : estimateConfidence({ anchorConfidence, prediction, modelFamily });
+    const rawScore = modelFamily === "unsupported" ? 0 : estimateConfidence({ anchorConfidence, prediction, modelFamily });
+    const outsideSupplierAnchorRange = Boolean(supplierAnchors.length >= 2 && extrapolationAnchor);
+    const score = outsideSupplierAnchorRange ? Math.max(0.1, Math.min(0.48, rawScore - 0.25)) : rawScore;
     return {
       requestedInput: target.requestedInput,
       widthCm: prediction.target_width_cm,
@@ -826,13 +1065,15 @@ export async function estimateSupplierPricesFromTrello(input: {
       confidence: score,
       confidenceLevel: confidenceLevel(score),
       customerAutoQuoteEligible,
-      needsSupplierCheck: modelFamily === "unsupported" || !customerAutoQuoteEligible || prediction.shipping_requires_review || score < 0.55,
+      needsSupplierCheck: modelFamily === "unsupported" || !customerAutoQuoteEligible || prediction.shipping_requires_review || score < 0.55 || outsideSupplierAnchorRange,
       reviewReason:
         modelFamily === "unsupported"
           ? "unsupported_model_family"
           : !customerAutoQuoteEligible
             ? "target_size_requires_supplier_request"
-            : prediction.review_reason,
+            : outsideSupplierAnchorRange
+              ? "target_outside_supplier_anchor_range_extrapolation"
+              : prediction.review_reason,
       modelKey: prediction.model_key,
       modelVersion: prediction.model_version,
       shippingBucket: prediction.shipping_bucket,
@@ -859,6 +1100,7 @@ export async function estimateSupplierPricesFromTrello(input: {
       modelFamily,
       confidence: anchorConfidence,
     },
+    supplierAnchors,
     estimates,
     warnings,
     evidence: {

@@ -241,6 +241,11 @@ function TrelloEstimateResultCard({
           <div className="mt-1 text-xs text-black/50">
             Anchor {formatCm(estimate.anchor.widthCm)} x {formatCm(estimate.anchor.heightCm)} · {estimate.estimates.length} Größen · Production {formatMoney(estimate.anchor.productionPrice, estimate.anchor.currency)} · Shipping {formatMoney(estimate.anchor.shippingPrice, estimate.anchor.currency)}
           </div>
+          {estimate.supplierAnchors?.length ? (
+            <div className="mt-1 text-xs text-black/45">
+              {estimate.supplierAnchors.length} erkannte Supplier-Anker · {estimate.supplierAnchors.length >= 2 ? "Piecewise zwischen echten Preisen" : "Single-Anchor-Schätzung"}
+            </div>
+          ) : null}
         </div>
         {estimate.card.shortUrl ? (
           <a
