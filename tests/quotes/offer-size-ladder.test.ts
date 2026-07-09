@@ -1132,6 +1132,129 @@ test("offer size ladder offer apply can use visible UI anchors without reloading
   }
 });
 
+test("offer size ladder dry-run sends only public descriptions for existing and new offer items", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;
+  const originalOffersKey = process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  process.env.NEONTRIP_OFFERS_BASE_URL = "https://offers.test";
+  process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "offers-key";
+
+  let patchedItems: Array<Record<string, unknown>> | null = null;
+  const makeItem = (id: string, size: string, price: number, sortOrder: number) => ({
+    id,
+    section: "LED-Leuchtschild",
+    title: "Leuchtschild Design",
+    description: [
+      `Größe: ${size}`,
+      "Leuchtfarbe: Wie Logo",
+      "Trello: interne Kartenbeschreibung",
+      "Request-ID: 00000000-0000-4000-8000-000000000001",
+      "Workflow n8n Prüfung",
+      "Einsatzort: Innenbereich",
+    ].join("\n"),
+    quantity: 1,
+    unitPriceNet: price,
+    listPriceNet: null,
+    discountLabel: null,
+    selectable: true,
+    selectedByDefault: sortOrder === 0,
+    selectedFinal: null,
+    quantityEditable: false,
+    minQuantity: 1,
+    maxQuantity: null,
+    sortOrder,
+  });
+  const offer = {
+    offerId: "offer_public_description_guard",
+    offerNumber: "A/N Public Guard",
+    documentReference: "A/N Public Guard",
+    trelloCardId: "6a4f3ae8fa1d99955edebf3f",
+    publicUrl: "https://angebote.neontrip.de/offer/public-guard",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T10:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [
+      makeItem("cmrdfc45q003rqt39kbmb8guh", "75 x 45cm", 460, 0),
+      makeItem("cmrdfc45q003sqt39o4wmfxzu", "100 x 60cm", 590, 1),
+      makeItem("cmrdfc45q003tqt39b3f0dxwc", "120 x 72cm", 690, 2),
+    ],
+    images: [],
+    totals: {},
+  };
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+
+    if (url === "https://offers.test/api/internal/offers/by-trello/6a4f3ae8fa1d99955edebf3f" && method === "GET") {
+      return new Response(JSON.stringify({ ok: true, offer }), { status: 200 });
+    }
+    if (url === "https://offers.test/api/internal/offers/by-trello/6a4f3ae8fa1d99955edebf3f?dryRun=true" && method === "PATCH") {
+      const body = JSON.parse(String(init?.body || "{}"));
+      const items = Array.isArray(body.items) ? body.items : [];
+      const unsafe = items.find((item: Record<string, unknown>) => /trello|request-id|workflow|n8n/i.test(String(item.description || "")));
+      assert.equal(unsafe, undefined);
+      patchedItems = items;
+      return new Response(JSON.stringify({
+        ok: true,
+        dryRun: true,
+        offer: { ...offer, items },
+        diff: { changedKeys: items.map((item: Record<string, unknown>) => `items.${item.id}`) },
+      }), { status: 200 });
+    }
+
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await applyOfferSizeLadderToOffer({
+      trelloCard: "6a4f3ae8fa1d99955edebf3f",
+      dryRun: true,
+      createdBy: "Daniel",
+      productModel: "neonflex",
+      stepCm: 10,
+      maxLongSideCm: 250,
+      customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+      anchors: [
+        { role: "minimum", widthCm: 75, heightCm: 45, productionPrice: 100, shippingPrice: 100 },
+        { role: "requested", widthCm: 150, heightCm: 90, productionPrice: 190, shippingPrice: 210 },
+        { role: "max_250", widthCm: 250, heightCm: 150, productionPrice: 480, shippingPrice: 520 },
+      ],
+    });
+
+    assert.equal(result.dryRun, true);
+    assert.ok(patchedItems);
+    const items = patchedItems as Array<Record<string, unknown>>;
+    assert.ok(items.length > 3);
+    assert.ok(items.every((item) => /Größe:/.test(String(item.description || ""))));
+    assert.ok(items.every((item) => /Leuchtfarbe: Wie Logo/.test(String(item.description || ""))));
+    assert.ok(items.every((item) => /Einsatzort: Innenbereich/.test(String(item.description || ""))));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalOffersBaseUrl === undefined) delete process.env.NEONTRIP_OFFERS_BASE_URL;
+    else process.env.NEONTRIP_OFFERS_BASE_URL = originalOffersBaseUrl;
+    if (originalOffersKey === undefined) delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+    else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = originalOffersKey;
+  }
+});
+
 test("offer size ladder normalizes nested Offers API errors during dry-run", async () => {
   const originalFetch = globalThis.fetch;
   const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;

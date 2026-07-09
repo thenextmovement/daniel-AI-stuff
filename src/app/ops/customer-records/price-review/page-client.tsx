@@ -227,6 +227,19 @@ function numberFromDraft(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function formatSizeLadderOfferDiffSummary(result: OfferSizeLadderOfferApplyView) {
+  const changedCount = result.diff?.changedKeys?.length || 0;
+  if (!changedCount) {
+    return result.dryRun
+      ? "Prüfung erfolgreich: Das Angebot ist bereits auf diesem Stand."
+      : "Gespeichert: Das Angebot war bereits auf diesem Stand.";
+  }
+  const optionLabel = result.applied.optionCount === 1 ? "Größenoption" : "Größenoptionen";
+  return result.dryRun
+    ? `Prüfung erfolgreich: ${result.applied.optionCount} ${optionLabel} würden im Angebot aktualisiert.`
+    : `Gespeichert: ${result.applied.optionCount} ${optionLabel} wurden ins Angebot übernommen.`;
+}
+
 function statusLabel(item: SupplierPricePredictionReviewItem) {
   switch (item.decisionStatus) {
     case "approved_for_quote":
@@ -820,12 +833,9 @@ function SizeLadderOfferApplyCard({ result }: { result: OfferSizeLadderOfferAppl
           <ExternalLink className="h-3 w-3" />
         </a>
       </div>
-      {result.diff?.changedKeys?.length ? (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Geänderte Felder: {result.diff.changedKeys.slice(0, 12).join(", ")}
-          {result.diff.changedKeys.length > 12 ? ` +${result.diff.changedKeys.length - 12}` : ""}
-        </div>
-      ) : null}
+      <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+        {formatSizeLadderOfferDiffSummary(result)}
+      </div>
     </div>
   );
 }
