@@ -381,17 +381,47 @@ function sizeLabelFromDescription(value: string | null | undefined) {
   return null;
 }
 
+function normalizedOfferItemTitle(value: string | null | undefined) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isSameTitleSignItem(item: OpsOfferItem, normalizedTitle: string) {
+  return isLikelySignOfferItem(item) && normalizedOfferItemTitle(item.title) === normalizedTitle;
+}
+
+function hasCompatibleVariantDescription(item: OpsOfferItem, targetSpec: string) {
+  const itemSpec = normalizedDescriptionWithoutSize(item.description);
+  if (itemSpec === targetSpec) return true;
+  if (!sizeLabelFromDescription(item.description)) return false;
+  if (!itemSpec || !targetSpec) return true;
+  return itemSpec.includes(targetSpec) || targetSpec.includes(itemSpec);
+}
+
 function sameDesignSizeVariantItems(offer: OpsOfferSnapshot, targetItem: OpsOfferItem) {
-  const targetTitle = targetItem.title.trim().toLowerCase();
+  const targetTitle = normalizedOfferItemTitle(targetItem.title);
   const targetSpec = normalizedDescriptionWithoutSize(targetItem.description);
-  return offer.items
+  const exactOrCompatible = offer.items
     .filter((item) => {
       if (item.id === targetItem.id) return true;
-      if (!isLikelySignOfferItem(item)) return false;
-      if (item.title.trim().toLowerCase() !== targetTitle) return false;
-      return normalizedDescriptionWithoutSize(item.description) === targetSpec;
+      if (!isSameTitleSignItem(item, targetTitle)) return false;
+      return hasCompatibleVariantDescription(item, targetSpec);
     })
     .sort((left, right) => left.sortOrder - right.sortOrder);
+  const variantsById = new Map(exactOrCompatible.map((item) => [item.id, item]));
+  const targetIndex = offer.items.findIndex((item) => item.id === targetItem.id);
+
+  for (let index = targetIndex - 1; index >= 0; index -= 1) {
+    const item = offer.items[index];
+    if (!item || !isSameTitleSignItem(item, targetTitle) || !sizeLabelFromDescription(item.description)) break;
+    variantsById.set(item.id, item);
+  }
+  for (let index = targetIndex + 1; index < offer.items.length; index += 1) {
+    const item = offer.items[index];
+    if (!item || !isSameTitleSignItem(item, targetTitle) || !sizeLabelFromDescription(item.description)) break;
+    variantsById.set(item.id, item);
+  }
+
+  return Array.from(variantsById.values()).sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
 function readCustomFieldValue(customFields: CustomFieldMap, names: string[]) {
@@ -1481,7 +1511,15 @@ export function buildOfferSizeLadderOfferPatch(input: {
     sortOrder: index,
   }));
   if (nextItems.length > 50) {
-    throw new QuoteValidationError("Das Angebot hat zu viele Positionen für eine automatische Größenleiter.", [], 409);
+    throw new QuoteValidationError(
+      `Das Angebot hat nach der Größenleiter ${nextItems.length} Positionen, erlaubt sind maximal 50.`,
+      [
+        `${candidateOptions.length} Größenoptionen`,
+        `${before.length + after.length} andere Angebotspositionen bleiben erhalten`,
+        `${existingVariants.length} alte Größenvarianten werden ersetzt`,
+      ],
+      409,
+    );
   }
 
   const actor = trimNullable(input.operatorName);

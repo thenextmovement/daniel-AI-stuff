@@ -303,6 +303,98 @@ test("offer size ladder uses the selected default item when multiple sign items 
   assert.equal(patch.items?.find((item) => item.id === "item_table")?.title, "Acryl LED Tischgerät");
 });
 
+test("offer size ladder replaces existing adjacent same-title variants before enforcing the item limit", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardManyVariants1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+  });
+  const oldVariantItems = Array.from({ length: 35 }, (_, index) => {
+    const longSide = 80 + index * 5;
+    return {
+      id: `old_variant_${index}`,
+      section: "LED-Leuchtschild",
+      title: "Leuchtschild Design",
+      description: index === 0
+        ? "Größe: 80x40cm\nLeuchtfarbe: Wie Logo"
+        : `Größe: ${longSide}x${Math.round(longSide / 2)}cm`,
+      quantity: 1,
+      unitPriceNet: 520 + index,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: index === 0,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: index,
+    };
+  });
+  const accessoryItems = Array.from({ length: 20 }, (_, index) => ({
+    id: `accessory_${index}`,
+    section: "Zubehör",
+    title: `Montage Zubehör ${index + 1}`,
+    description: null,
+    quantity: 1,
+    unitPriceNet: 10 + index,
+    listPriceNet: null,
+    discountLabel: null,
+    selectable: true,
+    selectedByDefault: false,
+    selectedFinal: null,
+    quantityEditable: false,
+    minQuantity: 1,
+    maxQuantity: null,
+    sortOrder: oldVariantItems.length + index,
+  }));
+  const offer = {
+    offerId: "offer_many_variants",
+    offerNumber: "A/N Many Variants",
+    documentReference: "A/N Many Variants",
+    trelloCardId: "cardManyVariants1",
+    publicUrl: "https://angebote.neontrip.de/offer/many-variants",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [...oldVariantItems, ...accessoryItems],
+    images: [],
+    totals: {},
+  };
+
+  const { patch } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder,
+    operatorName: "Daniel",
+  });
+
+  assert.equal(patch.items?.length, sizeLadder.options.length + accessoryItems.length);
+  assert.equal(patch.items?.filter((item) => item.title === "Leuchtschild Design").length, sizeLadder.options.length);
+  assert.equal(patch.items?.filter((item) => item.section === "Zubehör").length, accessoryItems.length);
+  assert.ok((patch.items?.length || 0) <= 50);
+});
+
 test("offer size ladder blocks offer apply without a reviewer name", async () => {
   const sizeLadder = await generateOfferSizeLadder({
     trelloCardId: "cardMissingReviewer1",
