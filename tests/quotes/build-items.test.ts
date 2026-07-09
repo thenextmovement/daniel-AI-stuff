@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildAddonItems, buildProductItems, buildShippingItems } from "../../src/lib/quotes/build-items";
+import { buildQuoteProductItemsFromSizeLadderDraft } from "../../src/lib/quotes/create-quote-from-trello";
+import { assertQuoteCreationInput, QuoteValidationError } from "../../src/lib/quotes/validation";
 
 test("buildProductItems creates up to four product variants and ignores Price_5", () => {
   const fields = {
@@ -41,4 +43,116 @@ test("buildShippingItems hides express options for Type 3D", () => {
   const threeD = buildShippingItems({ Price_1: 282, Price_2: 300, Type: "3D" }, { factor: 2.3, taxRate: 19 });
   assert.equal(regular.length, 3);
   assert.equal(threeD.length, 1);
+});
+
+test("buildQuoteProductItemsFromSizeLadderDraft creates single-select size options", () => {
+  const draft = {
+    anchorSetId: "set-1",
+    setKey: "set-key",
+    trelloCardId: "card-1",
+    trelloCardUrl: null,
+    offerId: null,
+    offerItemId: null,
+    designId: null,
+    productModel: "neonflex" as const,
+    pricingBasis: "new_supplier_direct_2_6" as const,
+    customerFactor: 2.6,
+    status: "draft" as const,
+    confidence: 0.88,
+    issues: [],
+    warnings: [],
+    options: [
+      {
+        sizeLabel: "80 x 40cm",
+        widthCm: 80,
+        heightCm: 40,
+        longSideCm: 80,
+        areaCm2: 3200,
+        productionPriceEstimated: 100,
+        shippingPriceEstimated: 100,
+        supplierTotalEstimated: 200,
+        customerFactor: 2.6,
+        customerUnitPriceNet: 520,
+        currency: "USD",
+        customerCurrency: "EUR" as const,
+        modelKey: "anchored_offer_size_ladder" as const,
+        modelVersion: "anchored_offer_size_ladder_v1" as const,
+        confidence: 0.88,
+        reviewStatus: "auto_ok" as const,
+        reviewReason: null,
+        issues: [],
+        isDefault: true,
+        sortOrder: 0,
+        metadata: {},
+      },
+      {
+        sizeLabel: "90 x 45cm",
+        widthCm: 90,
+        heightCm: 45,
+        longSideCm: 90,
+        areaCm2: 4050,
+        productionPriceEstimated: 120,
+        shippingPriceEstimated: 120,
+        supplierTotalEstimated: 240,
+        customerFactor: 2.6,
+        customerUnitPriceNet: 620,
+        currency: "USD",
+        customerCurrency: "EUR" as const,
+        modelKey: "anchored_offer_size_ladder" as const,
+        modelVersion: "anchored_offer_size_ladder_v1" as const,
+        confidence: 0.86,
+        reviewStatus: "needs_review" as const,
+        reviewReason: "long_side_over_200cm_requires_review",
+        issues: ["long_side_over_200cm_requires_review"],
+        isDefault: false,
+        sortOrder: 1,
+        metadata: {},
+      },
+    ],
+    createdBy: "Ops",
+    createdAt: "2026-07-09T08:00:00.000Z",
+    updatedAt: "2026-07-09T08:01:00.000Z",
+  };
+
+  const items = buildQuoteProductItemsFromSizeLadderDraft({
+    draft,
+    taxRate: 19,
+    baseProduct: {
+      section: "products",
+      name: "LED-Leuchtschild",
+      description: "Größe: 80x40cm\nLeuchtfarbe: Warmweiß",
+      quantity: 1,
+      unit_price: 500,
+      tax_rate: 19,
+      optional: true,
+      selected_default: true,
+      quantity_editable: true,
+      sort_order: 10,
+    },
+  });
+
+  assert.equal(items.length, 2);
+  assert.equal(items[0]?.selected_default, true);
+  assert.equal(items[1]?.selected_default, false);
+  assert.equal(items[0]?.unit_price, 520);
+  assert.equal(items[0]?.quantity_editable, false);
+  assert.equal(items[0]?.metadata?.selection_mode, "single");
+  assert.equal(items[0]?.metadata?.selection_group, "size_ladder");
+  assert.match(items[0]?.description || "", /Größe: 80 x 40cm/);
+  assert.match(items[0]?.description || "", /Leuchtfarbe: Warmweiß/);
+});
+
+test("quote creation validation allows many products only for size ladder mode", () => {
+  assert.throws(
+    () => assertQuoteCreationInput({ requestId: "REQ-1", email: "kunde@example.com", productCount: 8 }),
+    QuoteValidationError,
+  );
+  assert.doesNotThrow(() =>
+    assertQuoteCreationInput({
+      requestId: "REQ-1",
+      email: "kunde@example.com",
+      productCount: 8,
+      allowManyProducts: true,
+    }),
+  );
 });

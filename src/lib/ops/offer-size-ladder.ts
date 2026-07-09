@@ -186,6 +186,7 @@ export type OfferSizeLadderDraftLookupInput = {
 
 export type OfferSizeLadderTrelloGenerateInput = Omit<OfferSizeLadderGenerateInput, "anchors" | "trelloCardId" | "trelloCardUrl"> & {
   trelloCard: string;
+  optionOverrides?: OfferSizeLadderOptionOverrideInput[];
 };
 
 export type OfferSizeLadderOptionOverrideInput = {
@@ -206,7 +207,6 @@ export type OfferSizeLadderTrelloAnchorExtraction = {
 export type OfferSizeLadderOfferApplyInput = OfferSizeLadderTrelloGenerateInput & {
   dryRun?: boolean;
   revisionReason?: string | null;
-  optionOverrides?: OfferSizeLadderOptionOverrideInput[];
 };
 
 export type OfferSizeLadderOfferApplyResult = {
@@ -1181,8 +1181,9 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
     extraction.warnings.length ? `Warnings: ${extraction.warnings.join(", ")}` : null,
   ].filter(Boolean).join("\n");
 
-  return generateOfferSizeLadder({
+  const generateInput = {
     ...input,
+    persist: false,
     trelloCardId,
     trelloCardUrl: String(input.trelloCard || "").includes("trello.com/c/")
       ? String(input.trelloCard)
@@ -1190,7 +1191,15 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
     productModel: input.productModel || detectOfferSizeLadderProductModel(sourceText),
     sourceText,
     anchors: extraction.anchors,
-  });
+  };
+  const generated = await generateOfferSizeLadder(generateInput);
+  const result = applyOfferSizeLadderOptionOverrides(generated, input.optionOverrides);
+
+  if (input.persist) {
+    result.persisted = await persistOfferSizeLadder(generateInput, result);
+  }
+
+  return result;
 }
 
 export function buildOfferSizeLadderOfferPatch(input: {

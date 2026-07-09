@@ -19,9 +19,10 @@ export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) return unauthorized();
 
   try {
-    const body = (await request.json()) as { cardId?: string; force_new?: boolean };
+    const body = (await request.json()) as { cardId?: string; force_new?: boolean; size_ladder_mode?: string | null };
     const result = await createQuoteFromTrello(String(body.cardId || ""), {
       forceNew: body.force_new === true,
+      sizeLadderMode: body.size_ladder_mode,
     });
 
     return NextResponse.json({
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
       quote_url: result.quote_url,
       share_token: result.quote.share_token,
       reused_existing: result.reused_existing,
+      size_ladder: result.size_ladder,
     });
   } catch (error) {
     if (error instanceof QuoteValidationError) {

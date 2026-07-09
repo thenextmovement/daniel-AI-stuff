@@ -1357,6 +1357,7 @@ export function SupplierPriceReviewClient({
             stepCm: 10,
             maxLongSideCm: 250,
             customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
+            optionOverrides: persist ? sizeLadderOptionOverrides() : [],
             persist,
           },
           operatorName: operatorName || null,
@@ -1728,6 +1729,15 @@ export function SupplierPriceReviewClient({
               >
                 <Check className="h-4 w-4" />
                 Trello laden & Draft speichern
+              </button>
+              <button
+                type="button"
+                disabled={sizeLadderRunning || !sizeLadderResult || !sizeLadderTrelloCardId.trim()}
+                onClick={() => void generateSizeLadderFromTrello(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2]/35 bg-white px-4 py-2 text-sm font-medium text-[#b51270] transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />
+                Tabellenpreise als Draft speichern
               </button>
               <button
                 type="button"

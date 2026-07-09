@@ -41,6 +41,13 @@ function hasRelevantSelection(items: QuoteItemRecord[], selections: QuoteSelecti
   });
 }
 
+function singleSelectGroup(item: QuoteItemRecord) {
+  if (item.section === "shipping") return "shipping";
+  return typeof item.metadata?.selection_group === "string" && item.metadata?.selection_mode === "single"
+    ? item.metadata.selection_group
+    : null;
+}
+
 export function QuotePage({ quote }: { quote: PublicQuote }) {
   const [state, setState] = useState<ItemUiState>(() => initialState(quote.items));
   const [deliveryAddress, setDeliveryAddress] = useState<AddressInput>(() => emptyAddress(quote.country));
@@ -68,7 +75,8 @@ export function QuotePage({ quote }: { quote: PublicQuote }) {
 
   function toggleItem(item: QuoteItemRecord, selected: boolean) {
     setState((current) => {
-      if (item.section !== "shipping") {
+      const group = singleSelectGroup(item);
+      if (!group) {
         return { ...current, [item.id]: { ...(current[item.id] || {}), selected } };
       }
 
@@ -77,7 +85,7 @@ export function QuotePage({ quote }: { quote: PublicQuote }) {
           candidate.id,
           {
             selected:
-              candidate.section === "shipping"
+              singleSelectGroup(candidate) === group
                 ? candidate.id === item.id
                 : current[candidate.id]?.selected ?? candidate.selected_default,
             quantity: current[candidate.id]?.quantity ?? Number(candidate.quantity),

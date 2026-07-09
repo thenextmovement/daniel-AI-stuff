@@ -16,12 +16,13 @@ export function assertQuoteCreationInput(input: {
   requestId?: string | null;
   email?: string | null;
   productCount: number;
+  allowManyProducts?: boolean;
 }) {
   const issues: string[] = [];
   if (!input.requestId) issues.push("request_id fehlt.");
   if (!input.email || !isValidEmail(input.email)) issues.push("Gueltige Kunden-E-Mail fehlt.");
   if (input.productCount < 1) issues.push("Mindestens ein Produktpreis muss vorhanden sein.");
-  if (input.productCount > 4) issues.push("Maximal vier Produktvarianten sind erlaubt.");
+  if (input.productCount > 4 && !input.allowManyProducts) issues.push("Maximal vier Produktvarianten sind erlaubt.");
   if (issues.length) throw new QuoteValidationError("Quote kann nicht erstellt werden.", issues);
 }
 

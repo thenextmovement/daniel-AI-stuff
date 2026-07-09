@@ -51,7 +51,13 @@ export function QuoteItemSection({
             selected: item.selected_default,
             quantity: Number(item.quantity),
           };
-          const inputType = isShipping ? "radio" : "checkbox";
+          const isSingleSelect = isShipping || item.metadata?.selection_mode === "single";
+          const inputType = isSingleSelect ? "radio" : "checkbox";
+          const inputName = isShipping
+            ? "shipping"
+            : typeof item.metadata?.selection_group === "string"
+              ? item.metadata.selection_group
+              : item.section;
 
           return (
             <article
@@ -66,7 +72,7 @@ export function QuoteItemSection({
                 <label className="flex min-w-0 cursor-pointer gap-4">
                   <input
                     type={inputType}
-                    name={isShipping ? "shipping" : item.section}
+                    name={inputName}
                     checked={itemState.selected}
                     onChange={(event) => onToggle(item, event.target.checked)}
                     className="mt-1 h-5 w-5 shrink-0 accent-[#fa31a2]"

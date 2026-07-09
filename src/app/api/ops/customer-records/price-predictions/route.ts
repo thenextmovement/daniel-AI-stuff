@@ -254,6 +254,14 @@ export async function POST(request: NextRequest) {
           maxLongSideCm?: number | string | null;
           customerFactor?: number | string | null;
           persist?: boolean;
+          optionOverrides?: Array<{
+            optionKey?: string | null;
+            sizeLabel?: string | null;
+            widthCm?: number | string | null;
+            heightCm?: number | string | null;
+            longSideCm?: number | string | null;
+            customerUnitPriceNet?: number | string | null;
+          }>;
         };
         sizeLadderOfferApply?: {
           trelloCard?: string | null;
@@ -432,6 +440,7 @@ export async function POST(request: NextRequest) {
         stepCm: input.stepCm === null || input.stepCm === undefined ? undefined : Number(input.stepCm),
         maxLongSideCm: input.maxLongSideCm === null || input.maxLongSideCm === undefined ? undefined : Number(input.maxLongSideCm),
         customerFactor: input.customerFactor === null || input.customerFactor === undefined ? undefined : Number(input.customerFactor),
+        optionOverrides: input.optionOverrides || [],
         createdBy: actor.operatorName || actor.mode,
         persist: input.persist === true,
       });
