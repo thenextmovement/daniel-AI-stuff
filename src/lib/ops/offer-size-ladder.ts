@@ -212,6 +212,9 @@ export type OfferSizeLadderTrelloAnchorExtraction = {
 };
 
 export type OfferSizeLadderOfferApplyInput = OfferSizeLadderTrelloGenerateInput & {
+  anchors?: OfferSizeLadderAnchorInput[];
+  trelloCardId?: string | null;
+  trelloCardUrl?: string | null;
   dryRun?: boolean;
   revisionReason?: string | null;
 };
@@ -1421,10 +1424,28 @@ export function buildOfferSizeLadderOfferPatch(input: {
 }
 
 export async function applyOfferSizeLadderToOffer(input: OfferSizeLadderOfferApplyInput): Promise<OfferSizeLadderOfferApplyResult> {
-  const generatedSizeLadder = await generateOfferSizeLadderFromTrello({
-    ...input,
-    persist: false,
-  });
+  const directAnchors = Array.isArray(input.anchors) ? input.anchors : [];
+  const hasDirectAnchors = new Set(directAnchors.map((anchor) => anchor.role)).size >= 3;
+  const generatedSizeLadder = hasDirectAnchors
+    ? await generateOfferSizeLadder({
+        trelloCardId: input.trelloCardId || input.trelloCard,
+        trelloCardUrl: input.trelloCardUrl || (String(input.trelloCard || "").startsWith("http") ? input.trelloCard : null),
+        offerId: input.offerId,
+        offerItemId: input.offerItemId,
+        designId: input.designId,
+        productModel: input.productModel,
+        sourceText: input.sourceText,
+        stepCm: input.stepCm,
+        maxLongSideCm: input.maxLongSideCm,
+        customerFactor: input.customerFactor,
+        createdBy: input.createdBy,
+        persist: false,
+        anchors: directAnchors,
+      })
+    : await generateOfferSizeLadderFromTrello({
+        ...input,
+        persist: false,
+      });
   const sizeLadder = applyOfferSizeLadderOptionOverrides(generatedSizeLadder, input.optionOverrides);
   const offerId = trimNullable(input.offerId);
   const offer = offerId ? await getOfferById(offerId) : await getOfferByTrelloCardId(sizeLadder.trelloCardId);

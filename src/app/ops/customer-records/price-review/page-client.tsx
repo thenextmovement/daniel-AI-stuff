@@ -494,10 +494,16 @@ function SizeLadderResultCard({
   result,
   priceDrafts,
   onPriceDraftChange,
+  offerApplying,
+  canSaveToOffer,
+  onApplyToOffer,
 }: {
   result: OfferSizeLadderResultView;
   priceDrafts: Record<string, string>;
   onPriceDraftChange: (optionKey: string, value: string) => void;
+  offerApplying?: "dry" | "save" | null;
+  canSaveToOffer?: boolean;
+  onApplyToOffer?: (dryRun: boolean) => void;
 }) {
   const defaultOption = result.options.find((option) => option.isDefault) || result.options[0] || null;
   const [selectedLongSide, setSelectedLongSide] = useState(defaultOption?.longSideCm ?? 0);
@@ -545,6 +551,39 @@ function SizeLadderResultCard({
       {result.issues.length || result.warnings.length ? (
         <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${result.issues.length ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
           {[...result.issues, ...result.warnings].join(", ")}
+        </div>
+      ) : null}
+
+      {onApplyToOffer ? (
+        <div className="mt-4 rounded-lg border border-black/10 bg-black/[0.02] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-black">Diese Tabelle ins Angebot übernehmen</div>
+              <div className="mt-1 text-xs text-black/45">
+                Nutzt die sichtbaren Größen und manuell geänderten Angebotspreise. Das Angebot wird nicht automatisch versendet.
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={Boolean(offerApplying)}
+                onClick={() => onApplyToOffer(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {offerApplying === "dry" ? "Prüfe..." : "Angebot prüfen"}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(offerApplying) || !canSaveToOffer}
+                onClick={() => onApplyToOffer(false)}
+                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2] bg-[#fa31a2] px-3 py-2 text-xs font-medium text-white transition hover:bg-[#d91f88] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" />
+                {offerApplying === "save" ? "Speichere..." : canSaveToOffer ? "Ins Angebot speichern" : "Erst prüfen"}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -1409,6 +1448,22 @@ export function SupplierPriceReviewClient({
     }
   }
 
+  function currentSizeLadderAnchorPayload() {
+    return (["minimum", "requested", "max_250"] as const).map((role) => {
+      const synced = sizeLadderResult?.anchors?.[role];
+      return {
+        role,
+        widthCm: synced?.widthCm ?? sizeLadderAnchors[role].widthCm,
+        heightCm: synced?.heightCm ?? sizeLadderAnchors[role].heightCm,
+        productionPrice: synced?.productionPrice ?? sizeLadderAnchors[role].productionPrice,
+        shippingPrice: synced?.shippingPrice ?? sizeLadderAnchors[role].shippingPrice,
+        currency: "USD",
+        source: synced ? "custom_fields" : "manual",
+        confidence: synced ? 0.9 : 0.85,
+      };
+    });
+  }
+
   async function applySizeLadderToOffer(dryRun: boolean) {
     setSizeLadderOfferApplying(dryRun ? "dry" : "save");
     setError(null);
@@ -1422,6 +1477,8 @@ export function SupplierPriceReviewClient({
           action: "apply_offer_size_ladder_to_offer",
           sizeLadderOfferApply: {
             trelloCard: sizeLadderTrelloCardId,
+            trelloCardId: sizeLadderResult?.trelloCardId || sizeLadderTrelloCardId,
+            trelloCardUrl: sizeLadderTrelloCardId.startsWith("http") ? sizeLadderTrelloCardId : null,
             offerId: sizeLadderOfferId || null,
             offerItemId: sizeLadderOfferItemId || null,
             productModel: sizeLadderProductModel || null,
@@ -1429,6 +1486,7 @@ export function SupplierPriceReviewClient({
             stepCm: 10,
             maxLongSideCm: 250,
             customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
+            anchors: currentSizeLadderAnchorPayload(),
             optionOverrides: sizeLadderOptionOverrides(),
             dryRun,
           },
@@ -1794,31 +1852,9 @@ export function SupplierPriceReviewClient({
                 <Check className="h-4 w-4" />
                 Berechnen & Draft speichern
               </button>
-              <button
-                type="button"
-                disabled={Boolean(sizeLadderOfferApplying) || !sizeLadderTrelloCardId.trim()}
-                onClick={() => void applySizeLadderToOffer(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                {sizeLadderOfferApplying === "dry" ? "Prüfe..." : "Angebot prüfen"}
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(sizeLadderOfferApplying) || !sizeLadderTrelloCardId.trim() || !canSaveSizeLadderToOffer}
-                onClick={() => void applySizeLadderToOffer(false)}
-                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2] bg-[#fa31a2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#d91f88] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Check className="h-4 w-4" />
-                {sizeLadderOfferApplying === "save"
-                  ? "Speichere..."
-                  : canSaveSizeLadderToOffer
-                    ? "Ins Angebot speichern"
-                    : "Erst Angebot prüfen"}
-              </button>
             </div>
             <div className="mt-2 text-xs text-black/45">
-              Ohne Offer-ID wird das Angebot über die Trello-Karte gesucht. Existiert noch kein Angebot, muss es zuerst aus Trello erstellt werden. Speichern wird erst nach einer erfolgreichen Prüfung aktiv.
+              Ohne Offer-ID wird das Angebot über die Trello-Karte gesucht. Existiert noch kein Angebot, muss es zuerst aus Trello erstellt werden. Das direkte Einfügen ins Angebot findest du in der Ergebnis-Tabelle.
             </div>
 
             {sizeLadderOfferApplyResult ? <SizeLadderOfferApplyCard result={sizeLadderOfferApplyResult} /> : null}
@@ -1827,6 +1863,9 @@ export function SupplierPriceReviewClient({
                 result={sizeLadderResult}
                 priceDrafts={sizeLadderOptionPriceDrafts}
                 onPriceDraftChange={updateSizeLadderOptionPriceDraft}
+                offerApplying={sizeLadderOfferApplying}
+                canSaveToOffer={canSaveSizeLadderToOffer}
+                onApplyToOffer={(dryRun) => void applySizeLadderToOffer(dryRun)}
               />
             ) : null}
           </section>

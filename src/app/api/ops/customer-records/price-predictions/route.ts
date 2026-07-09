@@ -265,8 +265,11 @@ export async function POST(request: NextRequest) {
         };
         sizeLadderOfferApply?: {
           trelloCard?: string | null;
+          trelloCardId?: string | null;
+          trelloCardUrl?: string | null;
           offerId?: string | null;
           offerItemId?: string | null;
+          designId?: string | null;
           productModel?: string | null;
           sourceText?: string | null;
           stepCm?: number | string | null;
@@ -274,6 +277,17 @@ export async function POST(request: NextRequest) {
           customerFactor?: number | string | null;
           dryRun?: boolean;
           revisionReason?: string | null;
+          anchors?: Array<{
+            role?: string | null;
+            widthCm?: number | string | null;
+            heightCm?: number | string | null;
+            productionPrice?: number | string | null;
+            shippingPrice?: number | string | null;
+            currency?: string | null;
+            source?: "trello_ocr" | "manual" | "supplier_form" | "custom_fields";
+            confidence?: number | string | null;
+            rawText?: string | null;
+          }>;
           optionOverrides?: Array<{
             optionKey?: string | null;
             sizeLabel?: string | null;
@@ -452,8 +466,11 @@ export async function POST(request: NextRequest) {
       const input = body.sizeLadderOfferApply || {};
       const sizeLadderOfferApply = await applyOfferSizeLadderToOffer({
         trelloCard: String(input.trelloCard || ""),
+        trelloCardId: trimNullable(input.trelloCardId),
+        trelloCardUrl: trimNullable(input.trelloCardUrl),
         offerId: trimNullable(input.offerId),
         offerItemId: trimNullable(input.offerItemId),
+        designId: trimNullable(input.designId),
         productModel: trimNullable(input.productModel) as OfferSizeLadderProductModel | null,
         sourceText: trimNullable(input.sourceText),
         stepCm: input.stepCm === null || input.stepCm === undefined ? undefined : Number(input.stepCm),
@@ -461,6 +478,17 @@ export async function POST(request: NextRequest) {
         customerFactor: input.customerFactor === null || input.customerFactor === undefined ? undefined : Number(input.customerFactor),
         dryRun: input.dryRun === true,
         revisionReason: trimNullable(input.revisionReason),
+        anchors: (input.anchors || []).map((anchor) => ({
+          role: anchor.role,
+          widthCm: Number(anchor.widthCm),
+          heightCm: Number(anchor.heightCm),
+          productionPrice: Number(anchor.productionPrice),
+          shippingPrice: Number(anchor.shippingPrice),
+          currency: trimNullable(anchor.currency),
+          source: anchor.source || "manual",
+          confidence: anchor.confidence === null || anchor.confidence === undefined ? null : Number(anchor.confidence),
+          rawText: trimNullable(anchor.rawText),
+        })) as OfferSizeLadderAnchorInput[],
         optionOverrides: input.optionOverrides || [],
         createdBy: actor.operatorName || actor.mode,
         persist: false,
