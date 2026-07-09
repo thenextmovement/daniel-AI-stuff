@@ -82,7 +82,16 @@ type OfferSizeLadderResultView = {
     shippingPrice: number;
   }>;
   options: OfferSizeLadderOptionView[];
-  persisted?: { anchorSetId: string; optionCount: number } | null;
+  persisted?: {
+    anchorSetId: string;
+    optionCount: number;
+    trelloProjection?: {
+      written: boolean;
+      fieldName: string;
+      optionCount: number;
+      error?: string;
+    };
+  } | null;
 };
 type OfferSizeLadderOfferApplyView = {
   dryRun: boolean;
@@ -518,8 +527,12 @@ function SizeLadderResultCard({
           </div>
         </div>
         {result.persisted ? (
-          <div className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800">
-            Draft gespeichert
+          <div className={`rounded-full border px-2.5 py-1 text-xs ${
+            result.persisted.trelloProjection?.written === false
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+          }`}>
+            {result.persisted.trelloProjection?.written === false ? "Draft gespeichert · Trello fehlt" : "Draft + Trello gespeichert"}
           </div>
         ) : null}
       </div>
@@ -1373,7 +1386,14 @@ export function SupplierPriceReviewClient({
       if (syncedAnchors) setSizeLadderAnchors(syncedAnchors);
       setSizeLadderProductModel(payload.sizeLadder.productModel || sizeLadderProductModel);
       updateSizeLadderResult(payload.sizeLadder);
-      setMessage(persist ? "Trello-Anker geladen und Size-Ladder Draft gespeichert." : "Trello-Anker geladen und Size-Ladder berechnet.");
+      const projection = payload.sizeLadder.persisted?.trelloProjection;
+      setMessage(
+        persist
+          ? projection?.written === false
+            ? `Draft gespeichert, aber Trello-Projektion fehlt: ${projection.error || "offer_items_json nicht geschrieben"}`
+            : "Trello-Anker geladen, Draft gespeichert und offer_items_json fuer das Angebot vorbereitet."
+          : "Trello-Anker geladen und Size-Ladder berechnet.",
+      );
       setSizeLadderRunning(false);
     } catch {
       setError("Trello-Anker konnten nicht geladen werden.");

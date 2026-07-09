@@ -5,6 +5,7 @@ import {
   buildOfferSizeLadderOfferPatch,
   extractOfferSizeLadderAnchorsFromTrelloFields,
   generateOfferSizeLadder,
+  generateOfferSizeLadderFromTrello,
   listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
 } from "../../src/lib/ops/offer-size-ladder";
@@ -372,5 +373,110 @@ test("offer size ladder loads internal offer drafts without touching offers api"
     else process.env.SUPABASE_URL = originalUrl;
     if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
+});
+
+test("offer size ladder projects persisted Trello drafts into offer_items_json", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  process.env.SUPABASE_URL = "https://supabase.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+
+  let projectedItems: Array<Record<string, unknown>> | null = null;
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+
+    if (url.startsWith("https://api.trello.com/1/cards/cardTrelloProjection")) {
+      if (method === "PUT") {
+        const body = JSON.parse(String(init?.body || "{}"));
+        projectedItems = JSON.parse(body.value.text);
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        id: "cardTrelloProjection",
+        idBoard: "board-1",
+        name: "LED Flex Lisa 75/100/150cm Color as Logo",
+        desc: "Neon Flex",
+        customFieldItems: [
+          { idCustomField: "size-1", value: { text: "75x45cm" } },
+          { idCustomField: "prod-1", value: { text: "100" } },
+          { idCustomField: "ship-1", value: { text: "100" } },
+          { idCustomField: "size-2", value: { text: "150x90cm" } },
+          { idCustomField: "prod-2", value: { text: "190" } },
+          { idCustomField: "ship-2", value: { text: "210" } },
+          { idCustomField: "size-3", value: { text: "250x150cm" } },
+          { idCustomField: "prod-3", value: { text: "480" } },
+          { idCustomField: "ship-3", value: { text: "520" } },
+          { idCustomField: "color-1", value: { text: "Wie im Logo" } },
+          { idCustomField: "backboard-1", value: { text: "Formzuschnitt" } },
+          { idCustomField: "items", value: { text: "[]" } },
+        ],
+        attachments: [],
+        actions: [],
+      }), { status: 200 });
+    }
+
+    if (url.startsWith("https://api.trello.com/1/boards/board-1/customFields")) {
+      return new Response(JSON.stringify([
+        { id: "size-1", name: "Size_1", type: "text" },
+        { id: "prod-1", name: "Production_1", type: "text" },
+        { id: "ship-1", name: "Shipping_1", type: "text" },
+        { id: "size-2", name: "Size_2", type: "text" },
+        { id: "prod-2", name: "Production_2", type: "text" },
+        { id: "ship-2", name: "Shipping_2", type: "text" },
+        { id: "size-3", name: "Size_3", type: "text" },
+        { id: "prod-3", name: "Production_3", type: "text" },
+        { id: "ship-3", name: "Shipping_3", type: "text" },
+        { id: "color-1", name: "Color_1", type: "text" },
+        { id: "backboard-1", name: "Backboard_1", type: "text" },
+        { id: "items", name: "offer_items_json", type: "text" },
+      ]), { status: 200 });
+    }
+
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "GET") {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "POST") {
+      return new Response(JSON.stringify([{ id: "set-projection-1" }]), { status: 201 });
+    }
+    if (url.includes("/rest/v1/offer_size_") && ["POST", "DELETE", "PATCH"].includes(method)) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await generateOfferSizeLadderFromTrello({
+      trelloCard: "cardTrelloProjection",
+      persist: true,
+      stepCm: 10,
+      maxLongSideCm: 250,
+    });
+
+    assert.equal(result.persisted?.trelloProjection?.written, true);
+    assert.ok(projectedItems);
+    const items = projectedItems as Array<Record<string, unknown>>;
+    assert.ok(items.length > 3);
+    assert.equal(items[0]?.customerUnitPriceNet, result.options[0]?.customerUnitPriceNet);
+    assert.equal(items[0]?.selectedByDefault, true);
+    assert.match(String(items[0]?.description), /Größe:/);
+    assert.match(String(items[0]?.description), /Leuchtfarbe: Wie im Logo/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
   }
 });

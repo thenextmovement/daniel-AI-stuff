@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { getTrelloCard } from "@/lib/quotes/trello";
-import type { CustomFieldMap } from "@/lib/quotes/types";
+import { getTrelloCard, updateTrelloCustomField } from "@/lib/quotes/trello";
+import type { CustomFieldMap, TrelloCardData, TrelloEditableCustomField } from "@/lib/quotes/types";
 import { roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -117,6 +117,12 @@ export type OfferSizeLadderResult = {
   persisted?: {
     anchorSetId: string;
     optionCount: number;
+    trelloProjection?: {
+      written: boolean;
+      fieldName: string;
+      optionCount: number;
+      error?: string;
+    };
   } | null;
 };
 
@@ -250,6 +256,10 @@ function normalizeFieldName(value: unknown) {
     .replace(/\s+/g, " ");
 }
 
+function compactFieldName(value: unknown) {
+  return normalizeFieldName(value).replace(/[^a-z0-9]/g, "");
+}
+
 function customFieldEntries(customFields: CustomFieldMap) {
   return Object.entries(customFields || {})
     .map(([key, value]) => ({
@@ -258,6 +268,15 @@ function customFieldEntries(customFields: CustomFieldMap) {
       value: String(value || "").trim(),
     }))
     .filter((entry) => entry.value);
+}
+
+function findEditableCustomField(fields: TrelloEditableCustomField[] | undefined, names: string[]) {
+  const wanted = new Set(names.map(normalizeFieldName));
+  const compactWanted = new Set(names.map(compactFieldName));
+  return (fields || []).find((field) => {
+    const name = field.name || "";
+    return wanted.has(normalizeFieldName(name)) || compactWanted.has(compactFieldName(name));
+  }) || null;
 }
 
 function formatCmValue(value: number) {
@@ -678,6 +697,77 @@ export function applyOfferSizeLadderOptionOverrides(
       ? result.warnings
       : [...result.warnings, "manual_offer_price_overrides"],
     options,
+  };
+}
+
+function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSizeLadderResult) {
+  const options = result.options
+    .filter((option) => option.reviewStatus !== "blocked")
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.longSideCm - b.longSideCm);
+  if (!options.length) {
+    throw new QuoteValidationError("Keine freigegebenen Größenoptionen für Trello offer_items_json vorhanden.", [], 409);
+  }
+  if (options.length > 45) {
+    throw new QuoteValidationError("Zu viele Größenoptionen für Trello offer_items_json.", [], 409);
+  }
+
+  const customFields = card.customFields || {};
+  const color = readCustomFieldValue(customFields, ["Color_1", "Color", "Farbe_1", "Farbe", "Light_Color_1", "Leuchtfarbe_1"]);
+  const backboard = readCustomFieldValue(customFields, ["Backboard_1", "Backboard", "Rueckplatte_1", "Rückplatte_1", "Rueckplatte", "Rückplatte"]);
+  const usage = readCustomFieldValue(customFields, ["Usage_1", "Usage", "Einsatzort_1", "Einsatzort", "Einsatzbereich"]);
+  const defaultOption = options.find((option) => option.isDefault) || options[0]!;
+
+  return JSON.stringify(options.map((option) => ({
+    section: "LED-Leuchtschild",
+    title: "Leuchtschild Design",
+    description: [
+      `Größe: ${option.sizeLabel}`,
+      color ? `Leuchtfarbe: ${color}` : null,
+      backboard ? `Rückplatte: ${backboard}` : null,
+      usage ? `Einsatzort: ${usage}` : null,
+    ].filter(Boolean).join("\n"),
+    quantity: 1,
+    customerUnitPriceNet: option.customerUnitPriceNet,
+    selectable: true,
+    selectedByDefault: option === defaultOption,
+    quantityEditable: false,
+    minQuantity: 1,
+    maxQuantity: 1,
+    sizeLadder: {
+      source: "ops_price_review",
+      modelKey: option.modelKey,
+      modelVersion: option.modelVersion,
+      confidence: option.confidence,
+      reviewStatus: option.reviewStatus,
+      widthCm: option.widthCm,
+      heightCm: option.heightCm,
+      longSideCm: option.longSideCm,
+    },
+  })));
+}
+
+async function projectOfferSizeLadderToTrello(card: TrelloCardData, result: OfferSizeLadderResult) {
+  const field = findEditableCustomField(card.editableFields, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  if (!field) {
+    return {
+      written: false,
+      fieldName: "offer_items_json",
+      optionCount: result.options.filter((option) => option.reviewStatus !== "blocked").length,
+      error: "trello_offer_items_json_field_missing",
+    };
+  }
+
+  const value = offerItemsJsonForTrelloProjection(card, result);
+  await updateTrelloCustomField({
+    cardId: card.id,
+    fieldId: field.id,
+    type: field.type || "text",
+    value,
+  });
+  return {
+    written: true,
+    fieldName: field.name,
+    optionCount: JSON.parse(value).length,
   };
 }
 
@@ -1197,6 +1287,21 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
 
   if (input.persist) {
     result.persisted = await persistOfferSizeLadder(generateInput, result);
+    try {
+      result.persisted.trelloProjection = await projectOfferSizeLadderToTrello(card, result);
+      if (!result.persisted.trelloProjection.written && !result.warnings.includes(result.persisted.trelloProjection.error || "")) {
+        result.warnings = [...result.warnings, result.persisted.trelloProjection.error || "trello_offer_items_json_projection_skipped"];
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Trello offer_items_json Projektion fehlgeschlagen.";
+      result.persisted.trelloProjection = {
+        written: false,
+        fieldName: "offer_items_json",
+        optionCount: result.options.filter((option) => option.reviewStatus !== "blocked").length,
+        error: message,
+      };
+      result.warnings = [...result.warnings, "trello_offer_items_json_projection_failed"];
+    }
   }
 
   return result;
