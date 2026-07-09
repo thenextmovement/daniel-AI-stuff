@@ -4,7 +4,8 @@ export const DEFAULT_PRICE_FACTOR = 2.3;
 
 export function roundDownToFive(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 0;
-  return Math.floor(value / 5) * 5;
+  const centsRounded = Math.round(value * 100) / 100;
+  return Math.floor(centsRounded / 5) * 5;
 }
 
 export function parsePrice(value: unknown) {

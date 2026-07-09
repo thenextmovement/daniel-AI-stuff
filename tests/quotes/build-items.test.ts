@@ -55,8 +55,8 @@ test("buildQuoteProductItemsFromSizeLadderDraft creates single-select size optio
     offerItemId: null,
     designId: null,
     productModel: "neonflex" as const,
-    pricingBasis: "new_supplier_direct_2_6" as const,
-    customerFactor: 2.6,
+    pricingBasis: "legacy_supplier_2_3" as const,
+    customerFactor: 2.3,
     status: "draft" as const,
     confidence: 0.88,
     issues: [],
@@ -71,8 +71,8 @@ test("buildQuoteProductItemsFromSizeLadderDraft creates single-select size optio
         productionPriceEstimated: 100,
         shippingPriceEstimated: 100,
         supplierTotalEstimated: 200,
-        customerFactor: 2.6,
-        customerUnitPriceNet: 520,
+        customerFactor: 2.3,
+        customerUnitPriceNet: 460,
         currency: "USD",
         customerCurrency: "EUR" as const,
         modelKey: "anchored_offer_size_ladder" as const,
@@ -94,8 +94,8 @@ test("buildQuoteProductItemsFromSizeLadderDraft creates single-select size optio
         productionPriceEstimated: 120,
         shippingPriceEstimated: 120,
         supplierTotalEstimated: 240,
-        customerFactor: 2.6,
-        customerUnitPriceNet: 620,
+        customerFactor: 2.3,
+        customerUnitPriceNet: 550,
         currency: "USD",
         customerCurrency: "EUR" as const,
         modelKey: "anchored_offer_size_ladder" as const,
@@ -134,7 +134,7 @@ test("buildQuoteProductItemsFromSizeLadderDraft creates single-select size optio
   assert.equal(items.length, 2);
   assert.equal(items[0]?.selected_default, true);
   assert.equal(items[1]?.selected_default, false);
-  assert.equal(items[0]?.unit_price, 520);
+  assert.equal(items[0]?.unit_price, 460);
   assert.equal(items[0]?.quantity_editable, false);
   assert.equal(items[0]?.metadata?.selection_mode, "single");
   assert.equal(items[0]?.metadata?.selection_group, "size_ladder");

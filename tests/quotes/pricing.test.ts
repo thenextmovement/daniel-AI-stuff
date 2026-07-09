@@ -7,6 +7,7 @@ test("roundDownToFive rounds down to five euro steps", () => {
   assert.equal(roundDownToFive(648.6), 645);
   assert.equal(roundDownToFive(650), 650);
   assert.equal(roundDownToFive(654.99), 650);
+  assert.equal(roundDownToFive(200 * 2.3), 460);
 });
 
 test("getFactor uses NT-Number or fallback", () => {

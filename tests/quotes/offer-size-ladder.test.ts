@@ -47,7 +47,7 @@ test("offer size ladder extracts anchors from combined Trello custom fields", ()
   assert.equal(extraction.anchors[2]?.shippingPrice, 590);
 });
 
-test("offer size ladder uses the new 2.6 customer factor", async () => {
+test("offer size ladder uses the 2.3 customer factor", async () => {
   const result = await generateOfferSizeLadder({
     trelloCardId: "https://trello.com/c/cardFactor1/example",
     productModel: "neonflex",
@@ -60,9 +60,9 @@ test("offer size ladder uses the new 2.6 customer factor", async () => {
 
   assert.equal(result.trelloCardId, "cardFactor1");
   const minimum = result.options.find((option) => option.isDefault);
-  assert.equal(OFFER_SIZE_LADDER_CUSTOMER_FACTOR, 2.6);
+  assert.equal(OFFER_SIZE_LADDER_CUSTOMER_FACTOR, 2.3);
   assert.equal(minimum?.supplierTotalEstimated, 200);
-  assert.equal(minimum?.customerUnitPriceNet, 520);
+  assert.equal(minimum?.customerUnitPriceNet, 460);
 });
 
 test("offer size ladder reflects design area, not only one dimension", async () => {

@@ -15,7 +15,7 @@ import {
   type OpsOfferSnapshot,
 } from "@/lib/ops/offers";
 
-export const OFFER_SIZE_LADDER_CUSTOMER_FACTOR = 2.6;
+export const OFFER_SIZE_LADDER_CUSTOMER_FACTOR = 2.3;
 export const OFFER_SIZE_LADDER_MODEL_KEY = "anchored_offer_size_ladder";
 export const OFFER_SIZE_LADDER_MODEL_VERSION = "anchored_offer_size_ladder_v1";
 
@@ -1174,7 +1174,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   const warnings: string[] = [];
 
   if (Math.abs(customerFactor - OFFER_SIZE_LADDER_CUSTOMER_FACTOR) > 0.001) {
-    warnings.push("customer_factor_differs_from_current_2_6_policy");
+    warnings.push("customer_factor_differs_from_current_2_3_policy");
   }
   if (anchors.minimum.longSideCm > anchors.requested.longSideCm + 0.5) issues.push("minimum_anchor_larger_than_requested_anchor");
   if (anchors.requested.longSideCm > anchors.max_250.longSideCm + 0.5) issues.push("requested_anchor_larger_than_max_anchor");

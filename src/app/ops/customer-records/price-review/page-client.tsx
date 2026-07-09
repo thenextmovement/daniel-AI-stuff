@@ -16,7 +16,7 @@ import type {
 import { OpsPageHeader } from "../../ops-page-header";
 import { OpsPageIntro, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
 
-const OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT = 2.6;
+const OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT = 2.3;
 
 type ReviewResponse = {
   ok: boolean;
@@ -1704,7 +1704,7 @@ export function SupplierPriceReviewClient({
                   3-Anchor Größenleiter
                 </div>
                 <div className="mt-1 text-sm text-black/55">
-                  Supplier-Preise für Minimum, Kundenwunsch und 250cm eintragen. Daraus entstehen 10cm-Größenoptionen mit Faktor 2,6.
+                  Supplier-Preise für Minimum, Kundenwunsch und 250cm eintragen. Daraus entstehen 10cm-Größenoptionen mit Faktor 2,3.
                 </div>
               </div>
               <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/50">
