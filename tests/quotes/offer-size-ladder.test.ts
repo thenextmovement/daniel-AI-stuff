@@ -199,6 +199,110 @@ test("offer size ladder builds an offer patch with minimum size selected by defa
   assert.ok(patch.items?.slice(1).every((item) => item.selectedByDefault === false));
 });
 
+test("offer size ladder uses the selected default item when multiple sign items exist", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardMultiDefault1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 75, heightCm: 45, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 150, heightCm: 90, productionPrice: 190, shippingPrice: 210 },
+      { role: "max_250", widthCm: 250, heightCm: 150, productionPrice: 480, shippingPrice: 520 },
+    ],
+  });
+  const offer = {
+    offerId: "offer_multi_default",
+    offerNumber: "A/N Multi",
+    documentReference: "A/N Multi",
+    trelloCardId: "cardMultiDefault1",
+    publicUrl: "https://angebote.neontrip.de/offer/multi",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [
+      {
+        id: "item_75",
+        section: "LED-Leuchtschild",
+        title: "Leuchtschild Design",
+        description: "Größe: 75x45cm",
+        quantity: 1,
+        unitPriceNet: 460,
+        listPriceNet: null,
+        discountLabel: null,
+        selectable: true,
+        selectedByDefault: true,
+        selectedFinal: null,
+        quantityEditable: false,
+        minQuantity: 1,
+        maxQuantity: null,
+        sortOrder: 0,
+      },
+      {
+        id: "item_150",
+        section: "LED-Leuchtschild",
+        title: "Leuchtschild Design",
+        description: "Größe: 150x90cm",
+        quantity: 1,
+        unitPriceNet: 920,
+        listPriceNet: null,
+        discountLabel: null,
+        selectable: true,
+        selectedByDefault: false,
+        selectedFinal: null,
+        quantityEditable: false,
+        minQuantity: 1,
+        maxQuantity: null,
+        sortOrder: 1,
+      },
+      {
+        id: "item_table",
+        section: "Zubehör",
+        title: "Acryl LED Tischgerät",
+        description: null,
+        quantity: 1,
+        unitPriceNet: 99,
+        listPriceNet: null,
+        discountLabel: null,
+        selectable: true,
+        selectedByDefault: false,
+        selectedFinal: null,
+        quantityEditable: false,
+        minQuantity: 1,
+        maxQuantity: null,
+        sortOrder: 2,
+      },
+    ],
+    images: [],
+    totals: {},
+  };
+
+  const { targetItem, patch } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder,
+    operatorName: "Daniel",
+  });
+
+  assert.equal(targetItem.id, "item_75");
+  assert.ok(patch.items?.some((item) => item.id === "item_table"));
+  assert.equal(patch.items?.find((item) => item.id === "item_table")?.title, "Acryl LED Tischgerät");
+});
+
 test("offer size ladder blocks offer apply without a reviewer name", async () => {
   const sizeLadder = await generateOfferSizeLadder({
     trelloCardId: "cardMissingReviewer1",

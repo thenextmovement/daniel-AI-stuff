@@ -117,6 +117,11 @@ type OfferSizeLadderOfferApplyView = {
     skippedBlockedOptions: number;
   };
 };
+type OfferItemCandidateView = {
+  id: string;
+  title: string;
+  detail: string;
+};
 
 function formatIssueText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -166,6 +171,24 @@ function formatApiError(payload: ReviewResponse | null) {
   if (issueText) return `${base}: ${issueText}`;
   if (detailText) return `${base}: ${detailText}`;
   return base;
+}
+
+function parseOfferItemCandidates(payload: ReviewResponse | null): OfferItemCandidateView[] {
+  const errorText = formatIssueText(payload?.error).toLowerCase();
+  if (!errorText.includes("mehrere moegliche schildpositionen") && !errorText.includes("mehrere mögliche schildpositionen")) {
+    return [];
+  }
+  return (payload?.issues || []).flatMap((issue) => {
+    const text = formatIssueText(issue);
+    const match = text.match(/^([^:\s]+):\s*(.+)$/);
+    if (!match?.[1] || !match[2]) return [];
+    const [title, ...details] = match[2].split(" · ").map((part) => part.trim()).filter(Boolean);
+    return [{
+      id: match[1],
+      title: title || match[1],
+      detail: details.join(" · "),
+    }];
+  });
 }
 
 function formatMoney(value: number, currency = "USD") {
@@ -541,6 +564,9 @@ function SizeLadderResultCard({
   onPriceDraftChange,
   offerApplying,
   canSaveToOffer,
+  targetCandidates = [],
+  selectedOfferItemId,
+  onSelectTargetCandidate,
   onApplyToOffer,
 }: {
   result: OfferSizeLadderResultView;
@@ -548,6 +574,9 @@ function SizeLadderResultCard({
   onPriceDraftChange: (optionKey: string, value: string) => void;
   offerApplying?: "dry" | "save" | null;
   canSaveToOffer?: boolean;
+  targetCandidates?: OfferItemCandidateView[];
+  selectedOfferItemId?: string | null;
+  onSelectTargetCandidate?: (candidate: OfferItemCandidateView) => void;
   onApplyToOffer?: (dryRun: boolean) => void;
 }) {
   const defaultOption = result.options.find((option) => option.isDefault) || result.options[0] || null;
@@ -601,6 +630,28 @@ function SizeLadderResultCard({
 
       {onApplyToOffer ? (
         <div className="mt-4 rounded-lg border border-black/10 bg-black/[0.02] p-3">
+          {targetCandidates.length ? (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">Zielposition wählen</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {targetCandidates.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    onClick={() => onSelectTargetCandidate?.(candidate)}
+                    className={`rounded-lg border px-3 py-2 text-left text-xs transition ${
+                      selectedOfferItemId === candidate.id
+                        ? "border-[#fa31a2] bg-white text-black"
+                        : "border-amber-200 bg-white/70 text-amber-950 hover:border-[#fa31a2] hover:text-black"
+                    }`}
+                  >
+                    <span className="block font-semibold">{candidate.title}</span>
+                    <span className="mt-0.5 block text-[10px] text-black/45">{candidate.detail || candidate.id}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-black">Diese Tabelle ins Angebot übernehmen</div>
@@ -1103,6 +1154,7 @@ export function SupplierPriceReviewClient({
   const [sizeLadderResult, setSizeLadderResult] = useState<OfferSizeLadderResultView | null>(null);
   const [sizeLadderOptionPriceDrafts, setSizeLadderOptionPriceDrafts] = useState<Record<string, string>>({});
   const [sizeLadderOfferApplyResult, setSizeLadderOfferApplyResult] = useState<OfferSizeLadderOfferApplyView | null>(null);
+  const [sizeLadderTargetCandidates, setSizeLadderTargetCandidates] = useState<OfferItemCandidateView[]>([]);
   const [sizeLadderRunning, setSizeLadderRunning] = useState(false);
   const [sizeLadderOfferApplying, setSizeLadderOfferApplying] = useState<"dry" | "save" | null>(null);
   const [sizeLadderLoadingDraft, setSizeLadderLoadingDraft] = useState(false);
@@ -1394,6 +1446,7 @@ export function SupplierPriceReviewClient({
     setError(null);
     setMessage(null);
     setSizeLadderOfferApplyResult(null);
+    setSizeLadderTargetCandidates([]);
     if (!persist) updateSizeLadderResult(null);
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
@@ -1446,6 +1499,7 @@ export function SupplierPriceReviewClient({
     setError(null);
     setMessage(null);
     setSizeLadderOfferApplyResult(null);
+    setSizeLadderTargetCandidates([]);
     if (!persist) updateSizeLadderResult(null);
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
@@ -1511,7 +1565,7 @@ export function SupplierPriceReviewClient({
     });
   }
 
-  async function applySizeLadderToOffer(dryRun: boolean) {
+  async function applySizeLadderToOffer(dryRun: boolean, offerItemIdOverride?: string | null) {
     const reviewer = operatorName.trim();
     if (!reviewer) {
       setError("Bitte deinen Namen im Feld Reviewer eintragen, bevor du die Größenleiter am Angebot prüfst oder speicherst.");
@@ -1522,7 +1576,9 @@ export function SupplierPriceReviewClient({
     setSizeLadderOfferApplying(dryRun ? "dry" : "save");
     setError(null);
     setMessage(null);
+    setSizeLadderTargetCandidates([]);
     if (dryRun) setSizeLadderOfferApplyResult(null);
+    const targetOfferItemId = offerItemIdOverride || sizeLadderOfferItemId;
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
         method: "POST",
@@ -1534,7 +1590,7 @@ export function SupplierPriceReviewClient({
             trelloCardId: sizeLadderResult?.trelloCardId || sizeLadderTrelloCardId,
             trelloCardUrl: sizeLadderTrelloCardId.startsWith("http") ? sizeLadderTrelloCardId : null,
             offerId: sizeLadderOfferId || null,
-            offerItemId: sizeLadderOfferItemId || null,
+            offerItemId: targetOfferItemId || null,
             productModel: sizeLadderProductModel || null,
             sourceText: sizeLadderSourceText || null,
             stepCm: 10,
@@ -1549,6 +1605,7 @@ export function SupplierPriceReviewClient({
       });
       const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
       if (!response.ok || !payload?.ok || !payload.sizeLadderOfferApply) {
+        setSizeLadderTargetCandidates(parseOfferItemCandidates(payload));
         setError(formatApiError(payload));
         setSizeLadderOfferApplying(null);
         return;
@@ -1557,6 +1614,7 @@ export function SupplierPriceReviewClient({
       if (syncedAnchors) setSizeLadderAnchors(syncedAnchors);
       updateSizeLadderResult(payload.sizeLadderOfferApply.sizeLadder);
       setSizeLadderOfferApplyResult(payload.sizeLadderOfferApply);
+      setSizeLadderTargetCandidates([]);
       setMessage(dryRun ? "Angebotsänderung geprüft. Du kannst sie jetzt speichern." : "Größenleiter wurde ins Angebot übernommen. Das Angebot wurde nicht automatisch versendet.");
       setSizeLadderOfferApplying(null);
     } catch {
@@ -1924,6 +1982,12 @@ export function SupplierPriceReviewClient({
                 onPriceDraftChange={updateSizeLadderOptionPriceDraft}
                 offerApplying={sizeLadderOfferApplying}
                 canSaveToOffer={canSaveSizeLadderToOffer}
+                targetCandidates={sizeLadderTargetCandidates}
+                selectedOfferItemId={sizeLadderOfferItemId}
+                onSelectTargetCandidate={(candidate) => {
+                  setSizeLadderOfferItemId(candidate.id);
+                  void applySizeLadderToOffer(true, candidate.id);
+                }}
                 onApplyToOffer={(dryRun) => void applySizeLadderToOffer(dryRun)}
               />
             ) : null}

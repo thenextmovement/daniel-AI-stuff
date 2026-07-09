@@ -309,7 +309,19 @@ function offerItemPatch(item: OpsOfferItem): NonNullable<OpsOfferPatchInput["ite
 
 function isLikelySignOfferItem(item: OpsOfferItem) {
   const haystack = `${item.section || ""}\n${item.title || ""}`.toLowerCase();
+  if (/\b(tischgeraet|tischgerät|tabletop|aufsteller|fernbedienung|dimmer|netzteil|trafo|montage|versand|shipping|express)\b/i.test(haystack)) {
+    return false;
+  }
   return /\b(led|neon|leucht|schild|logo|wandschild)\b/i.test(haystack);
+}
+
+function offerItemCandidateLabel(item: OpsOfferItem) {
+  const size = sizeLabelFromDescription(item.description);
+  return [
+    `${item.id}: ${item.title}`,
+    size ? size : null,
+    Number.isFinite(item.unitPriceNet) ? `${item.unitPriceNet} EUR netto` : null,
+  ].filter(Boolean).join(" · ");
 }
 
 function resolveOfferTargetItem(offer: OpsOfferSnapshot, itemId?: string | null) {
@@ -324,9 +336,13 @@ function resolveOfferTargetItem(offer: OpsOfferSnapshot, itemId?: string | null)
   if (candidates.length === 1) return candidates[0];
   if (candidates.length === 0 && offer.items.length === 1) return offer.items[0];
   if (candidates.length > 1) {
+    const selectedCandidates = candidates.filter((item) => item.selectedByDefault === true);
+    if (selectedCandidates.length === 1) return selectedCandidates[0];
+  }
+  if (candidates.length > 1) {
     throw new QuoteValidationError(
       "Mehrere moegliche Schildpositionen im Angebot gefunden. Bitte zuerst die Offer Item ID der Zielposition eintragen.",
-      candidates.map((item) => `${item.id}: ${item.title}`),
+      candidates.map(offerItemCandidateLabel),
       409,
     );
   }
