@@ -1422,9 +1422,14 @@ export function buildOfferSizeLadderOfferPatch(input: {
     throw new QuoteValidationError("Das Angebot hat zu viele Positionen für eine automatische Größenleiter.", [], 409);
   }
 
+  const actor = trimNullable(input.operatorName);
+  if (!actor || ["ops", "ops_session", "local_bypass"].includes(actor.toLowerCase())) {
+    throw new QuoteValidationError("Reviewer-Name fehlt. Bitte deinen Namen im Feld Reviewer eintragen.", [], 422);
+  }
+
   const patch: OpsOfferPatchInput = {
     expectedUpdatedAt: offer.updatedAt,
-    actor: trimNullable(input.operatorName) || "Ops",
+    actor,
     reason: "offer_size_ladder_apply",
     revisionReason: offer.lock.requiresRevisionReason
       ? trimNullable(input.revisionReason) || "Größenleiter aus Schildpreis-Kalkulator übernommen."

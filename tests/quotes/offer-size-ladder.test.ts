@@ -199,6 +199,76 @@ test("offer size ladder builds an offer patch with minimum size selected by defa
   assert.ok(patch.items?.slice(1).every((item) => item.selectedByDefault === false));
 });
 
+test("offer size ladder blocks offer apply without a reviewer name", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardMissingReviewer1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+    stepCm: 10,
+    maxLongSideCm: 250,
+    customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+  });
+  const offer = {
+    offerId: "offer_missing_reviewer",
+    offerNumber: "A/N Missing",
+    documentReference: "A/N Missing",
+    trelloCardId: "cardMissingReviewer1",
+    publicUrl: "https://angebote.neontrip.de/offer/missing-reviewer",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [{
+      id: "item_1",
+      section: "LED-Leuchtschild",
+      title: "LED Logo Wandschild",
+      description: "Größe: 80x40cm",
+      quantity: 1,
+      unitPriceNet: 520,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: 0,
+    }],
+    images: [],
+    totals: {},
+  };
+
+  assert.throws(
+    () => buildOfferSizeLadderOfferPatch({ offer, sizeLadder, offerItemId: "item_1" }),
+    /Reviewer-Name fehlt/,
+  );
+  assert.throws(
+    () => buildOfferSizeLadderOfferPatch({ offer, sizeLadder, offerItemId: "item_1", operatorName: "ops_session" }),
+    /Reviewer-Name fehlt/,
+  );
+});
+
 test("offer size ladder offer patch uses manual option price overrides", async () => {
   const sizeLadder = await generateOfferSizeLadder({
     trelloCardId: "cardManualOverride1",
@@ -378,6 +448,7 @@ test("offer size ladder offer apply can use visible UI anchors without reloading
     const result = await applyOfferSizeLadderToOffer({
       trelloCard: "cardDirectApply1",
       dryRun: true,
+      createdBy: "Daniel",
       productModel: "neonflex",
       stepCm: 10,
       maxLongSideCm: 250,
@@ -486,6 +557,7 @@ test("offer size ladder normalizes nested Offers API errors during dry-run", asy
       () => applyOfferSizeLadderToOffer({
         trelloCard: "cardDirectError",
         dryRun: true,
+        createdBy: "Daniel",
         productModel: "neonflex",
         stepCm: 10,
         maxLongSideCm: 250,

@@ -1073,6 +1073,7 @@ export function SupplierPriceReviewClient({
   opsEnabled: boolean;
   localMode: boolean;
 }) {
+  const sharedOperatorNameKey = "neontrip-ops-operator";
   const operatorNameKey = "neontrip-customer-records-operator";
   const [hasSession, setHasSession] = useState(initialHasSession);
   const [token, setToken] = useState("");
@@ -1154,7 +1155,7 @@ export function SupplierPriceReviewClient({
 
   useEffect(() => {
     try {
-      setOperatorName(window.localStorage.getItem(operatorNameKey) || "");
+      setOperatorName(window.localStorage.getItem(sharedOperatorNameKey) || window.localStorage.getItem(operatorNameKey) || "");
     } catch {
       // ignore local storage
     }
@@ -1162,6 +1163,7 @@ export function SupplierPriceReviewClient({
 
   useEffect(() => {
     try {
+      window.localStorage.setItem(sharedOperatorNameKey, operatorName);
       window.localStorage.setItem(operatorNameKey, operatorName);
     } catch {
       // ignore local storage
@@ -1510,6 +1512,13 @@ export function SupplierPriceReviewClient({
   }
 
   async function applySizeLadderToOffer(dryRun: boolean) {
+    const reviewer = operatorName.trim();
+    if (!reviewer) {
+      setError("Bitte deinen Namen im Feld Reviewer eintragen, bevor du die Größenleiter am Angebot prüfst oder speicherst.");
+      setMessage(null);
+      setSizeLadderOfferApplyResult(null);
+      return;
+    }
     setSizeLadderOfferApplying(dryRun ? "dry" : "save");
     setError(null);
     setMessage(null);
@@ -1535,7 +1544,7 @@ export function SupplierPriceReviewClient({
             optionOverrides: sizeLadderOptionOverrides(),
             dryRun,
           },
-          operatorName: operatorName || null,
+          operatorName: reviewer,
         }),
       });
       const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
@@ -1757,7 +1766,7 @@ export function SupplierPriceReviewClient({
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 lg:grid-cols-[1.3fr_0.9fr_0.9fr_0.8fr]">
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1.3fr_0.9fr_0.9fr_0.8fr_0.8fr]">
               <input
                 type="text"
                 value={sizeLadderTrelloCardId}
@@ -1791,6 +1800,13 @@ export function SupplierPriceReviewClient({
                 <option value="full_glow">Full Glow</option>
                 <option value="unknown">Unknown</option>
               </select>
+              <input
+                type="text"
+                value={operatorName}
+                onChange={(event) => setOperatorName(event.target.value)}
+                placeholder="Reviewer"
+                className="min-w-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
+              />
             </div>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
