@@ -363,6 +363,35 @@ function upsertSizeLine(description: string | null | undefined, sizeLabel: strin
   return lines.join("\n");
 }
 
+const internalOfferLinePattern =
+  /(^|\b)(request[-_\s]?id|nerdy[-_\s]?forms[-_\s]?id|activecampaign|trello|kartenbeschreibung|karten[-_\s]?titel|board|list|workflow|n8n|internal|intern|interne notiz|öffentliche notiz|oeffentliche notiz|designgruppe\s*:\s*single-design|check\s*info|mockup\s*(prüfen|pruefen)|fehler|support@neontrip\.de)\b/i;
+const internalOfferTitlePattern =
+  /(^|\b)(request[-_\s]?id|activecampaign|trello|kartenbeschreibung|karten[-_\s]?titel|workflow|n8n|check\s*info|mockup\s*(prüfen|pruefen)|fehler)\b/i;
+
+function sanitizeSizeLadderOfferLine(value: string | null | undefined) {
+  const cleaned = String(value || "")
+    .replace(/[\uFE0E\uFE0F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || internalOfferLinePattern.test(cleaned)) return null;
+  return cleaned;
+}
+
+function sanitizeSizeLadderOfferDescription(value: string | null | undefined) {
+  const lines = String(value || "")
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .map((line) => sanitizeSizeLadderOfferLine(line))
+    .filter((line): line is string => Boolean(line));
+  return lines.length ? lines.join("\n") : null;
+}
+
+function sanitizeSizeLadderOfferTitle(value: string | null | undefined) {
+  const cleaned = titleWithoutSizeFragments(value);
+  if (!cleaned || internalOfferTitlePattern.test(cleaned)) return "Leuchtschild Design";
+  return cleaned;
+}
+
 function normalizedDescriptionWithoutSize(value: string | null | undefined) {
   return String(value || "")
     .replace(/\\n/g, "\n")
@@ -1511,7 +1540,8 @@ export function buildOfferSizeLadderOfferPatch(input: {
   );
   const usedExistingIds = new Set<string>();
   const newItemPrefix = `new-item-size-ladder-${sizeLadder.trelloCardId}-${createHash("sha1").update(sizeLadder.setKey).digest("hex").slice(0, 8)}`;
-  const targetTitle = titleWithoutSizeFragments(targetItem.title) || targetItem.title;
+  const targetTitle = sanitizeSizeLadderOfferTitle(targetItem.title);
+  const targetDescription = sanitizeSizeLadderOfferDescription(targetItem.description);
 
   const desiredVariants = candidateOptions.map((option, index) => {
     const sizeLabel = option.sizeLabel || `${formatCmValue(option.widthCm)} x ${formatCmValue(option.heightCm)}cm`;
@@ -1525,7 +1555,7 @@ export function buildOfferSizeLadderOfferPatch(input: {
       id: itemId,
       section: targetItem.section || baseItem.section || "LED-Leuchtschild",
       title: targetTitle,
-      description: upsertSizeLine(targetItem.description, sizeLabel),
+      description: upsertSizeLine(targetDescription, sizeLabel),
       quantity: 1,
       unitPriceNet: option.customerUnitPriceNet,
       listPriceNet: null,

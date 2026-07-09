@@ -199,6 +199,84 @@ test("offer size ladder builds an offer patch with minimum size selected by defa
   assert.ok(patch.items?.slice(1).every((item) => item.selectedByDefault === false));
 });
 
+test("offer size ladder removes internal Trello workflow lines from offer item descriptions", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardUnsafeDescription1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+  });
+  const offer = {
+    offerId: "offer_unsafe_description",
+    offerNumber: "A/N Unsafe",
+    documentReference: "A/N Unsafe",
+    trelloCardId: "cardUnsafeDescription1",
+    publicUrl: "https://angebote.neontrip.de/offer/unsafe",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [{
+      id: "item_unsafe",
+      section: "LED-Leuchtschild",
+      title: "LED Logo Wandschild 80cm",
+      description: [
+        "Größe: 80x40cm",
+        "Leuchtfarbe: Wie Logo",
+        "Trello: interne Kartenbeschreibung",
+        "Request-ID: 00000000-0000-4000-8000-000000000001",
+        "Workflow n8n Prüfung",
+        "Einsatzort: Innenbereich",
+      ].join("\n"),
+      quantity: 1,
+      unitPriceNet: 520,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: 0,
+    }],
+    images: [],
+    totals: {},
+  };
+
+  const { patch } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder,
+    offerItemId: "item_unsafe",
+    operatorName: "Daniel",
+  });
+
+  const descriptions = patch.items?.map((item) => item.description || "") || [];
+  assert.ok(descriptions.every((description) => /Größe:/.test(description)));
+  assert.ok(descriptions.every((description) => /Leuchtfarbe: Wie Logo/.test(description)));
+  assert.ok(descriptions.every((description) => /Einsatzort: Innenbereich/.test(description)));
+  assert.ok(descriptions.every((description) => !/trello|request-id|workflow|n8n/i.test(description)));
+});
+
 test("offer size ladder uses the selected default item when multiple sign items exist", async () => {
   const sizeLadder = await generateOfferSizeLadder({
     trelloCardId: "cardMultiDefault1",
