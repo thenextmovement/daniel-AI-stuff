@@ -19,6 +19,7 @@ import {
 import type { UpdateActor } from "@/lib/ops/customer-records";
 import {
   generateOfferSizeLadder,
+  generateOfferSizeLadderFromTrello,
   listOfferSizeLadderDrafts,
   type OfferSizeLadderAnchorInput,
   type OfferSizeLadderProductModel,
@@ -151,6 +152,7 @@ export async function POST(request: NextRequest) {
           | "estimate_from_trello"
           | "apply_trello_estimate_to_offer"
           | "generate_offer_size_ladder"
+          | "generate_offer_size_ladder_from_trello"
           | "list_offer_size_ladder_drafts"
           | "import_trello_training_candidates";
         predictionId?: string;
@@ -238,6 +240,18 @@ export async function POST(request: NextRequest) {
             confidence?: number | string | null;
             rawText?: string | null;
           }>;
+        };
+        sizeLadderFromTrello?: {
+          trelloCard?: string | null;
+          offerId?: string | null;
+          offerItemId?: string | null;
+          designId?: string | null;
+          productModel?: string | null;
+          sourceText?: string | null;
+          stepCm?: number | string | null;
+          maxLongSideCm?: number | string | null;
+          customerFactor?: number | string | null;
+          persist?: boolean;
         };
         sizeLadderLookup?: {
           trelloCardId?: string | null;
@@ -379,6 +393,25 @@ export async function POST(request: NextRequest) {
         createdBy: actor.operatorName || actor.mode,
         persist: input.persist === true,
         anchors,
+      });
+      return NextResponse.json({ ok: true, sizeLadder });
+    }
+
+    if (body?.action === "generate_offer_size_ladder_from_trello") {
+      if (!opsActor) return forbidden();
+      const input = body.sizeLadderFromTrello || {};
+      const sizeLadder = await generateOfferSizeLadderFromTrello({
+        trelloCard: String(input.trelloCard || ""),
+        offerId: trimNullable(input.offerId),
+        offerItemId: trimNullable(input.offerItemId),
+        designId: trimNullable(input.designId),
+        productModel: trimNullable(input.productModel) as OfferSizeLadderProductModel | null,
+        sourceText: trimNullable(input.sourceText),
+        stepCm: input.stepCm === null || input.stepCm === undefined ? undefined : Number(input.stepCm),
+        maxLongSideCm: input.maxLongSideCm === null || input.maxLongSideCm === undefined ? undefined : Number(input.maxLongSideCm),
+        customerFactor: input.customerFactor === null || input.customerFactor === undefined ? undefined : Number(input.customerFactor),
+        createdBy: actor.operatorName || actor.mode,
+        persist: input.persist === true,
       });
       return NextResponse.json({ ok: true, sizeLadder });
     }

@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { getTrelloCard } from "@/lib/quotes/trello";
+import type { CustomFieldMap } from "@/lib/quotes/types";
 import { roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -172,6 +174,16 @@ export type OfferSizeLadderDraftLookupInput = {
   limit?: number | string | null;
 };
 
+export type OfferSizeLadderTrelloGenerateInput = Omit<OfferSizeLadderGenerateInput, "anchors" | "trelloCardId" | "trelloCardUrl"> & {
+  trelloCard: string;
+};
+
+export type OfferSizeLadderTrelloAnchorExtraction = {
+  anchors: OfferSizeLadderAnchorInput[];
+  sourceText: string;
+  warnings: string[];
+};
+
 function trimNullable(value: unknown) {
   const trimmed = String(value || "").trim();
   return trimmed || null;
@@ -186,6 +198,237 @@ function normalizeTrelloCardIdentifier(value: unknown) {
   if (prefixed?.[1]) return prefixed[1];
   if (/^[A-Za-z0-9]{6,32}$/.test(normalized)) return normalized;
   return null;
+}
+
+function normalizeFieldName(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function customFieldEntries(customFields: CustomFieldMap) {
+  return Object.entries(customFields || {})
+    .map(([key, value]) => ({
+      key,
+      normalizedKey: normalizeFieldName(key),
+      value: String(value || "").trim(),
+    }))
+    .filter((entry) => entry.value);
+}
+
+function readCustomFieldValue(customFields: CustomFieldMap, names: string[]) {
+  const entries = customFieldEntries(customFields);
+  const wanted = new Set(names.map(normalizeFieldName));
+  return entries.find((entry) => wanted.has(entry.normalizedKey))?.value || null;
+}
+
+function readCustomFieldByPattern(customFields: CustomFieldMap, patterns: RegExp[]) {
+  return customFieldEntries(customFields).find((entry) => patterns.some((pattern) => pattern.test(entry.normalizedKey)))?.value || null;
+}
+
+function numericText(value: string) {
+  return Number(String(value || "").replace(",", "."));
+}
+
+function parseSizeText(value: string | null | undefined) {
+  const match = String(value || "").match(/(\d+(?:[.,]\d+)?)\s*(?:x|\*|×|\/)\s*(\d+(?:[.,]\d+)?)\s*(?:cm)?/i);
+  if (!match) return null;
+  const widthCm = numericText(match[1] || "");
+  const heightCm = numericText(match[2] || "");
+  if (!Number.isFinite(widthCm) || !Number.isFinite(heightCm) || widthCm <= 0 || heightCm <= 0) return null;
+  return { widthCm, heightCm, raw: match[0] };
+}
+
+function parseMoneyNumber(value: string | null | undefined) {
+  const match = String(value || "").match(/(?:us\$|\$|usd|eur)?\s*(\d+(?:[.,]\d+)?)/i);
+  if (!match) return null;
+  const parsed = numericText(match[1] || "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parsePriceAfterLabels(text: string, labels: string[]) {
+  for (const label of labels) {
+    const pattern = new RegExp(`${label}\\s*(?:price|cost|preis)?\\s*:?\\s*(?:us\\$|\\$|usd|eur)?\\s*(\\d+(?:[.,]\\d+)?)`, "i");
+    const match = text.match(pattern);
+    if (match?.[1]) return numericText(match[1]);
+  }
+  return null;
+}
+
+function moneyNumbersAfterSize(text: string, sizeRaw?: string | null) {
+  const withoutSize = sizeRaw ? text.replace(sizeRaw, " ") : text;
+  return Array.from(withoutSize.matchAll(/(?:us\$|\$|usd|eur)?\s*(\d+(?:[.,]\d+)?)/gi))
+    .map((match) => numericText(match[1] || ""))
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function splitTotalSupplierPrice(total: number) {
+  const productionPrice = round2(total * 0.45);
+  return {
+    productionPrice,
+    shippingPrice: round2(total - productionPrice),
+  };
+}
+
+const ROLE_ALIASES: Record<OfferSizeLadderAnchorRole, { index: number; names: string[] }> = {
+  minimum: {
+    index: 1,
+    names: ["minimum", "min", "kleinst", "kleinstmoeglich", "kleinstmoglich", "smallest", "custom field 1", "field 1", "anker 1", "anchor 1"],
+  },
+  requested: {
+    index: 2,
+    names: ["kundenwunsch", "kunde", "requested", "customer request", "angefragt", "anfrage", "custom field 2", "field 2", "anker 2", "anchor 2"],
+  },
+  max_250: {
+    index: 3,
+    names: ["250", "250cm", "250 cm", "max 250", "maximum", "custom field 3", "field 3", "anker 3", "anchor 3"],
+  },
+};
+
+function roleFieldNames(role: OfferSizeLadderAnchorRole, kind: "size" | "production" | "shipping" | "total") {
+  const { index, names } = ROLE_ALIASES[role];
+  const suffixNames = (() => {
+    if (kind === "size") return [`Size_${index}`, `Size ${index}`, `Größe ${index}`, `Groesse ${index}`, `Mass ${index}`, `Maß ${index}`];
+    if (kind === "production") return [`Production_${index}`, `Production ${index}`, `Production Price_${index}`, `Production Price ${index}`, `Prod_${index}`, `Prod ${index}`];
+    if (kind === "shipping") return [`Shipping_${index}`, `Shipping ${index}`, `Shipping Cost_${index}`, `Shipping Cost ${index}`, `Ship_${index}`, `Ship ${index}`];
+    return [`Price_${index}`, `Price ${index}`, `Preis ${index}`, `Total_${index}`, `Total ${index}`, `Supplier Total ${index}`];
+  })();
+  const roleNames = names.flatMap((name) => {
+    if (kind === "size") return [`${name} size`, `${name} groesse`, `${name} größe`, `${name} mass`, `${name} maß`];
+    if (kind === "production") return [`${name} production`, `${name} production price`, `${name} prod`];
+    if (kind === "shipping") return [`${name} shipping`, `${name} shipping cost`, `${name} ship`];
+    return [`${name} price`, `${name} preis`, `${name} total`, `${name} supplier total`];
+  });
+  return [...suffixNames, ...roleNames];
+}
+
+function combinedRoleFieldValues(customFields: CustomFieldMap, role: OfferSizeLadderAnchorRole) {
+  const aliases = ROLE_ALIASES[role].names.map(normalizeFieldName);
+  return customFieldEntries(customFields)
+    .filter((entry) => aliases.some((alias) => entry.normalizedKey === alias || entry.normalizedKey.includes(alias)))
+    .map((entry) => `${entry.key}: ${entry.value}`);
+}
+
+function parseAnchorFromText(role: OfferSizeLadderAnchorRole, text: string, warnings: string[]) {
+  const size = parseSizeText(text);
+  const productionPrice =
+    parsePriceAfterLabels(text, ["production", "prod", "herstellung"]) ??
+    null;
+  const shippingPrice =
+    parsePriceAfterLabels(text, ["shipping", "ship", "versand", "fracht"]) ??
+    null;
+  if (size && productionPrice !== null && shippingPrice !== null) {
+    return {
+      role,
+      widthCm: size.widthCm,
+      heightCm: size.heightCm,
+      productionPrice,
+      shippingPrice,
+      currency: "USD",
+      source: "custom_fields" as const,
+      confidence: 0.9,
+      rawText: text,
+    };
+  }
+
+  const numbers = moneyNumbersAfterSize(text, size?.raw);
+  if (size && numbers.length >= 2) {
+    return {
+      role,
+      widthCm: size.widthCm,
+      heightCm: size.heightCm,
+      productionPrice: numbers[0]!,
+      shippingPrice: numbers[1]!,
+      currency: "USD",
+      source: "custom_fields" as const,
+      confidence: 0.72,
+      rawText: text,
+    };
+  }
+
+  if (size && numbers.length === 1) {
+    warnings.push(`${role}_total_only_estimated_split`);
+    return {
+      role,
+      widthCm: size.widthCm,
+      heightCm: size.heightCm,
+      ...splitTotalSupplierPrice(numbers[0]!),
+      currency: "USD",
+      source: "custom_fields" as const,
+      confidence: 0.48,
+      rawText: text,
+    };
+  }
+  return null;
+}
+
+export function extractOfferSizeLadderAnchorsFromTrelloFields(customFields: CustomFieldMap): OfferSizeLadderTrelloAnchorExtraction {
+  const anchors: OfferSizeLadderAnchorInput[] = [];
+  const warnings: string[] = [];
+  const sourceText = customFieldEntries(customFields).map((entry) => `${entry.key}: ${entry.value}`).join("\n");
+
+  for (const role of ["minimum", "requested", "max_250"] as const) {
+    const sizeText =
+      readCustomFieldValue(customFields, roleFieldNames(role, "size")) ||
+      readCustomFieldByPattern(customFields, [
+        new RegExp(`(?:^| )size ${ROLE_ALIASES[role].index}(?:$| )`),
+        new RegExp(`(?:^| )groesse ${ROLE_ALIASES[role].index}(?:$| )`),
+      ]);
+    const productionText = readCustomFieldValue(customFields, roleFieldNames(role, "production"));
+    const shippingText = readCustomFieldValue(customFields, roleFieldNames(role, "shipping"));
+    const totalText = readCustomFieldValue(customFields, roleFieldNames(role, "total"));
+    const size = parseSizeText(sizeText);
+    const productionPrice = parseMoneyNumber(productionText);
+    const shippingPrice = parseMoneyNumber(shippingText);
+
+    if (size && productionPrice !== null && shippingPrice !== null) {
+      anchors.push({
+        role,
+        widthCm: size.widthCm,
+        heightCm: size.heightCm,
+        productionPrice,
+        shippingPrice,
+        currency: "USD",
+        source: "custom_fields",
+        confidence: 0.9,
+        rawText: [sizeText, productionText, shippingText].filter(Boolean).join(" | "),
+      });
+      continue;
+    }
+
+    const totalPrice = parseMoneyNumber(totalText);
+    if (size && totalPrice !== null) {
+      warnings.push(`${role}_total_only_estimated_split`);
+      anchors.push({
+        role,
+        widthCm: size.widthCm,
+        heightCm: size.heightCm,
+        ...splitTotalSupplierPrice(totalPrice),
+        currency: "USD",
+        source: "custom_fields",
+        confidence: 0.48,
+        rawText: [sizeText, totalText].filter(Boolean).join(" | "),
+      });
+      continue;
+    }
+
+    const combinedText = combinedRoleFieldValues(customFields, role).join("\n");
+    const combinedAnchor = combinedText ? parseAnchorFromText(role, combinedText, warnings) : null;
+    if (combinedAnchor) anchors.push(combinedAnchor);
+  }
+
+  if (anchors.length !== 3) {
+    const present = new Set(anchors.map((anchor) => anchor.role));
+    for (const role of ["minimum", "requested", "max_250"] as const) {
+      if (!present.has(role)) warnings.push(`${role}_custom_field_anchor_missing`);
+    }
+  }
+
+  return { anchors, sourceText, warnings };
 }
 
 function requiredPositiveNumber(name: string, value: unknown) {
@@ -707,4 +950,38 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   }
 
   return result;
+}
+
+export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTrelloGenerateInput): Promise<OfferSizeLadderResult> {
+  const trelloCardId = normalizeTrelloCardIdentifier(input.trelloCard);
+  if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
+
+  const card = await getTrelloCard(trelloCardId);
+  const extraction = extractOfferSizeLadderAnchorsFromTrelloFields(card.customFields || {});
+  if (extraction.anchors.length !== 3) {
+    throw new QuoteValidationError(
+      "Die drei Trello-Anker konnten nicht vollständig gelesen werden.",
+      extraction.warnings,
+      422,
+    );
+  }
+
+  const sourceText = [
+    card.name,
+    card.desc,
+    input.sourceText,
+    extraction.sourceText,
+    extraction.warnings.length ? `Warnings: ${extraction.warnings.join(", ")}` : null,
+  ].filter(Boolean).join("\n");
+
+  return generateOfferSizeLadder({
+    ...input,
+    trelloCardId,
+    trelloCardUrl: String(input.trelloCard || "").includes("trello.com/c/")
+      ? String(input.trelloCard)
+      : `https://trello.com/c/${trelloCardId}`,
+    productModel: input.productModel || detectOfferSizeLadderProductModel(sourceText),
+    sourceText,
+    anchors: extraction.anchors,
+  });
 }

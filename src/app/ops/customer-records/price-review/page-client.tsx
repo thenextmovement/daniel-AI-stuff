@@ -74,6 +74,12 @@ type OfferSizeLadderResultView = {
   issues: string[];
   warnings: string[];
   customerFactor: number;
+  anchors?: Record<SizeLadderAnchorRole, {
+    widthCm: number;
+    heightCm: number;
+    productionPrice: number;
+    shippingPrice: number;
+  }>;
   options: OfferSizeLadderOptionView[];
   persisted?: { anchorSetId: string; optionCount: number } | null;
 };
@@ -248,6 +254,20 @@ function sizeLadderStatusTone(status: string) {
 
 function estimateApplyKey(item: SupplierPriceTrelloEstimateItem) {
   return `${item.requestedInput}-${item.widthCm}-${item.heightCm}`;
+}
+
+function syncAnchorsFromSizeLadder(result: OfferSizeLadderResultView) {
+  if (!result.anchors) return null;
+  return (["minimum", "requested", "max_250"] as const).reduce((next, role) => {
+    const anchor = result.anchors?.[role];
+    next[role] = {
+      widthCm: anchor?.widthCm === undefined ? "" : String(anchor.widthCm),
+      heightCm: anchor?.heightCm === undefined ? "" : String(anchor.heightCm),
+      productionPrice: anchor?.productionPrice === undefined ? "" : String(anchor.productionPrice),
+      shippingPrice: anchor?.shippingPrice === undefined ? "" : String(anchor.shippingPrice),
+    };
+    return next;
+  }, {} as Record<SizeLadderAnchorRole, SizeLadderAnchorDraft>);
 }
 
 function AnchorInput({
@@ -1185,6 +1205,49 @@ export function SupplierPriceReviewClient({
     }
   }
 
+  async function generateSizeLadderFromTrello(persist: boolean) {
+    setSizeLadderRunning(true);
+    setError(null);
+    setMessage(null);
+    if (!persist) setSizeLadderResult(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/price-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_offer_size_ladder_from_trello",
+          sizeLadderFromTrello: {
+            trelloCard: sizeLadderTrelloCardId,
+            offerId: sizeLadderOfferId || null,
+            offerItemId: sizeLadderOfferItemId || null,
+            productModel: sizeLadderProductModel || null,
+            sourceText: sizeLadderSourceText || null,
+            stepCm: 10,
+            maxLongSideCm: 250,
+            customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
+            persist,
+          },
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
+      if (!response.ok || !payload?.ok || !payload.sizeLadder) {
+        setError(formatApiError(payload));
+        setSizeLadderRunning(false);
+        return;
+      }
+      const syncedAnchors = syncAnchorsFromSizeLadder(payload.sizeLadder);
+      if (syncedAnchors) setSizeLadderAnchors(syncedAnchors);
+      setSizeLadderProductModel(payload.sizeLadder.productModel || sizeLadderProductModel);
+      setSizeLadderResult(payload.sizeLadder);
+      setMessage(persist ? "Trello-Anker geladen und Size-Ladder Draft gespeichert." : "Trello-Anker geladen und Size-Ladder berechnet.");
+      setSizeLadderRunning(false);
+    } catch {
+      setError("Trello-Anker konnten nicht geladen werden.");
+      setSizeLadderRunning(false);
+    }
+  }
+
   async function loadSizeLadderDraft() {
     setSizeLadderLoadingDraft(true);
     setError(null);
@@ -1472,6 +1535,24 @@ export function SupplierPriceReviewClient({
             />
 
             <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
+                onClick={() => void generateSizeLadderFromTrello(false)}
+                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2]/30 bg-[#fff2fa] px-4 py-2 text-sm font-medium text-[#9f1768] transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Calculator className="h-4 w-4" />
+                {sizeLadderRunning ? "Lade..." : "Aus Trello laden & berechnen"}
+              </button>
+              <button
+                type="button"
+                disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
+                onClick={() => void generateSizeLadderFromTrello(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2] bg-[#fa31a2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#d91f88] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />
+                Trello laden & Draft speichern
+              </button>
               <button
                 type="button"
                 disabled={sizeLadderLoadingDraft || (!sizeLadderTrelloCardId.trim() && !sizeLadderOfferId.trim())}

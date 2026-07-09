@@ -72,6 +72,8 @@ async function main() {
   });
 
   await page.goto(`${target}/ops/customer-records/price-review`, { waitUntil: "networkidle" });
+  const expandReview = page.locator("summary").filter({ hasText: "Modelltraining & Review" });
+  if (await expandReview.count()) await expandReview.first().click();
   await page.getByText("QA Preisanker").waitFor({ timeout: 10_000 });
 
   const approveButton = page.getByRole("button", { name: "Freigeben" });

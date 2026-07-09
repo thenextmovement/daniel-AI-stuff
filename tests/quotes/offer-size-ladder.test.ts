@@ -1,10 +1,47 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  extractOfferSizeLadderAnchorsFromTrelloFields,
   generateOfferSizeLadder,
   listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
 } from "../../src/lib/ops/offer-size-ladder";
+
+test("offer size ladder extracts three anchors from Trello Size Production Shipping fields", () => {
+  const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
+    Size_1: "75x45cm",
+    Production_1: "100",
+    Shipping_1: "120",
+    Size_2: "120x72cm",
+    Production_2: "190",
+    Shipping_2: "210",
+    Size_3: "250x150cm",
+    Production_3: "520",
+    Shipping_3: "610",
+  });
+
+  assert.equal(extraction.anchors.length, 3);
+  assert.equal(extraction.anchors[0]?.role, "minimum");
+  assert.equal(extraction.anchors[0]?.widthCm, 75);
+  assert.equal(extraction.anchors[1]?.role, "requested");
+  assert.equal(extraction.anchors[1]?.productionPrice, 190);
+  assert.equal(extraction.anchors[2]?.role, "max_250");
+  assert.equal(extraction.anchors[2]?.shippingPrice, 610);
+  assert.deepEqual(extraction.warnings, []);
+});
+
+test("offer size ladder extracts anchors from combined Trello custom fields", () => {
+  const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
+    Minimum: "80x40cm Production price: $110 Shipping cost: $95",
+    Kundenwunsch: "140x70cm Production 220 Shipping 180",
+    "250cm": "250x125cm prod 520 ship 590",
+  });
+
+  assert.equal(extraction.anchors.length, 3);
+  assert.equal(extraction.anchors[0]?.heightCm, 40);
+  assert.equal(extraction.anchors[1]?.productionPrice, 220);
+  assert.equal(extraction.anchors[2]?.shippingPrice, 590);
+});
 
 test("offer size ladder uses the new 2.6 customer factor", async () => {
   const result = await generateOfferSizeLadder({
