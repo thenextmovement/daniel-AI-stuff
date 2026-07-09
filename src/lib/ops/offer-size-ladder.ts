@@ -19,6 +19,8 @@ import {
 export const OFFER_SIZE_LADDER_CUSTOMER_FACTOR = 2.3;
 export const OFFER_SIZE_LADDER_MODEL_KEY = "anchored_offer_size_ladder";
 export const OFFER_SIZE_LADDER_MODEL_VERSION = "anchored_offer_size_ladder_v1";
+export const OFFER_SIZE_LADDER_MAX_OFFER_ITEMS = 80;
+export const OFFER_SIZE_LADDER_MAX_OPTIONS = 70;
 
 export type OfferSizeLadderAnchorRole = "minimum" | "requested" | "max_250";
 export type OfferSizeLadderProductModel =
@@ -1492,7 +1494,13 @@ export function buildOfferSizeLadderOfferPatch(input: {
   const targetItem = resolveOfferTargetItem(offer, input.offerItemId || sizeLadder.offerItemId);
   const candidateOptions = sizeLadder.options.filter((option) => option.reviewStatus !== "blocked");
   if (!candidateOptions.length) throw new QuoteValidationError("Keine freigegebenen Größenoptionen vorhanden.", [], 409);
-  if (candidateOptions.length > 45) throw new QuoteValidationError("Zu viele Größenoptionen für ein Angebot.", [], 409);
+  if (candidateOptions.length > OFFER_SIZE_LADDER_MAX_OPTIONS) {
+    throw new QuoteValidationError(
+      `Zu viele Größenoptionen für ein Angebot. Erlaubt sind maximal ${OFFER_SIZE_LADDER_MAX_OPTIONS}.`,
+      [],
+      409,
+    );
+  }
 
   const defaultOption = candidateOptions.find((option) => option.isDefault) || candidateOptions[0]!;
   const existingVariants = sameDesignSizeVariantItems(offer, targetItem);
@@ -1538,9 +1546,9 @@ export function buildOfferSizeLadderOfferPatch(input: {
     ...item,
     sortOrder: index,
   }));
-  if (nextItems.length > 50) {
+  if (nextItems.length > OFFER_SIZE_LADDER_MAX_OFFER_ITEMS) {
     throw new QuoteValidationError(
-      `Das Angebot hat nach der Größenleiter ${nextItems.length} Positionen, erlaubt sind maximal 50.`,
+      `Das Angebot hat nach der Größenleiter ${nextItems.length} Positionen, erlaubt sind maximal ${OFFER_SIZE_LADDER_MAX_OFFER_ITEMS}.`,
       [
         `${candidateOptions.length} Größenoptionen`,
         `${before.length + after.length} andere Angebotspositionen bleiben erhalten`,

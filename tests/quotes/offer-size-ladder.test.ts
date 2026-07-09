@@ -486,6 +486,93 @@ test("offer size ladder replaces adjacent variants when the size is only in the 
   assert.ok((patch.items?.length || 0) <= 50);
 });
 
+test("offer size ladder allows more than fifty offer items for large option ladders", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardFiftyFourItems1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 30, heightCm: 15, productionPrice: 60, shippingPrice: 60 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+  });
+  const existingVariants = [30, 120, 250].map((longSide, index) => ({
+    id: `existing_variant_${index}`,
+    section: "LED-Leuchtschild",
+    title: `Leuchtschild Design ${longSide}cm`,
+    description: null,
+    quantity: 1,
+    unitPriceNet: 300 + index,
+    listPriceNet: null,
+    discountLabel: null,
+    selectable: true,
+    selectedByDefault: index === 0,
+    selectedFinal: null,
+    quantityEditable: false,
+    minQuantity: 1,
+    maxQuantity: null,
+    sortOrder: index,
+  }));
+  const otherItems = Array.from({ length: 31 }, (_, index) => ({
+    id: `other_item_${index}`,
+    section: "Zusatzoptionen",
+    title: `Zusatzoption ${index + 1}`,
+    description: null,
+    quantity: 1,
+    unitPriceNet: 10 + index,
+    listPriceNet: null,
+    discountLabel: null,
+    selectable: true,
+    selectedByDefault: false,
+    selectedFinal: null,
+    quantityEditable: false,
+    minQuantity: 1,
+    maxQuantity: null,
+    sortOrder: existingVariants.length + index,
+  }));
+  const offer = {
+    offerId: "offer_fifty_four_items",
+    offerNumber: "A/N 54",
+    documentReference: "A/N 54",
+    trelloCardId: "cardFiftyFourItems1",
+    publicUrl: "https://angebote.neontrip.de/offer/fifty-four",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [...existingVariants, ...otherItems],
+    images: [],
+    totals: {},
+  };
+
+  const { patch, appliedOptions } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder,
+    operatorName: "Daniel",
+  });
+
+  assert.equal(appliedOptions.length, 23);
+  assert.equal(patch.items?.length, 54);
+  assert.equal(patch.items?.filter((item) => item.title === "Leuchtschild Design").length, 23);
+  assert.equal(patch.items?.filter((item) => item.section === "Zusatzoptionen").length, 31);
+});
+
 test("offer size ladder blocks offer apply without a reviewer name", async () => {
   const sizeLadder = await generateOfferSizeLadder({
     trelloCardId: "cardMissingReviewer1",
