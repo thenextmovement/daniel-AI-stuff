@@ -89,6 +89,7 @@ type OfferSizeLadderResultView = {
       written: boolean;
       fieldName: string;
       optionCount: number;
+      createdField?: boolean;
       error?: string;
     };
   } | null;
@@ -532,7 +533,11 @@ function SizeLadderResultCard({
               ? "border-amber-200 bg-amber-50 text-amber-900"
               : "border-emerald-200 bg-emerald-50 text-emerald-800"
           }`}>
-            {result.persisted.trelloProjection?.written === false ? "Draft gespeichert · Trello fehlt" : "Draft + Trello gespeichert"}
+            {result.persisted.trelloProjection?.written === false
+              ? "Draft gespeichert · Trello fehlt"
+              : result.persisted.trelloProjection?.createdField
+                ? "Draft + Trello-Feld gespeichert"
+                : "Draft + Trello gespeichert"}
           </div>
         ) : null}
       </div>
@@ -1028,6 +1033,7 @@ export function SupplierPriceReviewClient({
   const [message, setMessage] = useState<string | null>(null);
 
   const canLoad = !opsEnabled || hasSession || localMode;
+  const canSaveSizeLadderToOffer = sizeLadderOfferApplyResult?.dryRun === true;
   const groups = useMemo(() => groupItems(items), [items]);
 
   const loadItems = useCallback(async (nextFilter: ReviewFilter = filter) => {
@@ -1391,7 +1397,9 @@ export function SupplierPriceReviewClient({
         persist
           ? projection?.written === false
             ? `Draft gespeichert, aber Trello-Projektion fehlt: ${projection.error || "offer_items_json nicht geschrieben"}`
-            : "Trello-Anker geladen, Draft gespeichert und offer_items_json fuer das Angebot vorbereitet."
+            : projection?.createdField
+              ? "Trello-Anker geladen, Draft gespeichert, offer_items_json angelegt und fuer das Angebot vorbereitet."
+              : "Trello-Anker geladen, Draft gespeichert und offer_items_json fuer das Angebot vorbereitet."
           : "Trello-Anker geladen und Size-Ladder berechnet.",
       );
       setSizeLadderRunning(false);
@@ -1797,16 +1805,20 @@ export function SupplierPriceReviewClient({
               </button>
               <button
                 type="button"
-                disabled={Boolean(sizeLadderOfferApplying) || !sizeLadderTrelloCardId.trim() || sizeLadderOfferApplyResult?.dryRun !== true}
+                disabled={Boolean(sizeLadderOfferApplying) || !sizeLadderTrelloCardId.trim() || !canSaveSizeLadderToOffer}
                 onClick={() => void applySizeLadderToOffer(false)}
                 className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2] bg-[#fa31a2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#d91f88] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Check className="h-4 w-4" />
-                {sizeLadderOfferApplying === "save" ? "Speichere..." : "Ins Angebot speichern"}
+                {sizeLadderOfferApplying === "save"
+                  ? "Speichere..."
+                  : canSaveSizeLadderToOffer
+                    ? "Ins Angebot speichern"
+                    : "Erst Angebot prüfen"}
               </button>
             </div>
             <div className="mt-2 text-xs text-black/45">
-              Ohne Offer-ID wird das Angebot über die Trello-Karte gesucht. Existiert noch kein Angebot, muss es zuerst aus Trello erstellt werden.
+              Ohne Offer-ID wird das Angebot über die Trello-Karte gesucht. Existiert noch kein Angebot, muss es zuerst aus Trello erstellt werden. Speichern wird erst nach einer erfolgreichen Prüfung aktiv.
             </div>
 
             {sizeLadderOfferApplyResult ? <SizeLadderOfferApplyCard result={sizeLadderOfferApplyResult} /> : null}

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getTrelloCard, updateTrelloCustomField } from "@/lib/quotes/trello";
+import { createTrelloBoardCustomField, getTrelloCard, updateTrelloCustomField } from "@/lib/quotes/trello";
 import type { CustomFieldMap, TrelloCardData, TrelloEditableCustomField } from "@/lib/quotes/types";
 import { roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
@@ -121,6 +121,7 @@ export type OfferSizeLadderResult = {
       written: boolean;
       fieldName: string;
       optionCount: number;
+      createdField?: boolean;
       error?: string;
     };
   } | null;
@@ -747,14 +748,35 @@ function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSi
 }
 
 async function projectOfferSizeLadderToTrello(card: TrelloCardData, result: OfferSizeLadderResult) {
-  const field = findEditableCustomField(card.editableFields, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  let field = findEditableCustomField(card.editableFields, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  let createdField = false;
+
   if (!field) {
-    return {
-      written: false,
-      fieldName: "offer_items_json",
-      optionCount: result.options.filter((option) => option.reviewStatus !== "blocked").length,
-      error: "trello_offer_items_json_field_missing",
+    if (!card.idBoard) {
+      return {
+        written: false,
+        fieldName: "offer_items_json",
+        optionCount: result.options.filter((option) => option.reviewStatus !== "blocked").length,
+        error: "trello_offer_items_json_board_missing",
+      };
+    }
+
+    const created = await createTrelloBoardCustomField({
+      boardId: card.idBoard,
+      name: "offer_items_json",
+      type: "text",
+      pos: "bottom",
+      displayCardFront: false,
+    });
+    field = {
+      id: created.id,
+      name: created.name || "offer_items_json",
+      type: created.type || "text",
+      value: null,
+      displayValue: null,
+      options: [],
     };
+    createdField = true;
   }
 
   const value = offerItemsJsonForTrelloProjection(card, result);
@@ -768,6 +790,7 @@ async function projectOfferSizeLadderToTrello(card: TrelloCardData, result: Offe
     written: true,
     fieldName: field.name,
     optionCount: JSON.parse(value).length,
+    createdField,
   };
 }
 

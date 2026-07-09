@@ -480,3 +480,117 @@ test("offer size ladder projects persisted Trello drafts into offer_items_json",
     else process.env.TRELLO_TOKEN = originalTrelloToken;
   }
 });
+
+test("offer size ladder creates missing Trello offer_items_json field before projection", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  process.env.SUPABASE_URL = "https://supabase.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+
+  let createdFieldBody: Record<string, unknown> | null = null;
+  let projectedItems: Array<Record<string, unknown>> | null = null;
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+
+    if (url.startsWith("https://api.trello.com/1/cards/cardTrelloProjectionCreateField")) {
+      if (method === "PUT") {
+        const body = JSON.parse(String(init?.body || "{}"));
+        projectedItems = JSON.parse(body.value.text);
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        id: "cardTrelloProjectionCreateField",
+        idBoard: "board-1",
+        name: "LED Flex Lisa 75/100/150cm Color as Logo",
+        desc: "Neon Flex",
+        customFieldItems: [
+          { idCustomField: "size-1", value: { text: "75x45cm" } },
+          { idCustomField: "prod-1", value: { text: "100" } },
+          { idCustomField: "ship-1", value: { text: "100" } },
+          { idCustomField: "size-2", value: { text: "150x90cm" } },
+          { idCustomField: "prod-2", value: { text: "190" } },
+          { idCustomField: "ship-2", value: { text: "210" } },
+          { idCustomField: "size-3", value: { text: "250x150cm" } },
+          { idCustomField: "prod-3", value: { text: "480" } },
+          { idCustomField: "ship-3", value: { text: "520" } },
+        ],
+        attachments: [],
+        actions: [],
+      }), { status: 200 });
+    }
+
+    if (url.startsWith("https://api.trello.com/1/boards/board-1/customFields")) {
+      return new Response(JSON.stringify([
+        { id: "size-1", name: "Size_1", type: "text" },
+        { id: "prod-1", name: "Production_1", type: "text" },
+        { id: "ship-1", name: "Shipping_1", type: "text" },
+        { id: "size-2", name: "Size_2", type: "text" },
+        { id: "prod-2", name: "Production_2", type: "text" },
+        { id: "ship-2", name: "Shipping_2", type: "text" },
+        { id: "size-3", name: "Size_3", type: "text" },
+        { id: "prod-3", name: "Production_3", type: "text" },
+        { id: "ship-3", name: "Shipping_3", type: "text" },
+      ]), { status: 200 });
+    }
+
+    if (url.startsWith("https://api.trello.com/1/customFields") && method === "POST") {
+      createdFieldBody = JSON.parse(String(init?.body || "{}"));
+      return new Response(JSON.stringify({
+        id: "created-items",
+        name: "offer_items_json",
+        type: "text",
+      }), { status: 200 });
+    }
+
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "GET") {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "POST") {
+      return new Response(JSON.stringify([{ id: "set-projection-create-field-1" }]), { status: 201 });
+    }
+    if (url.includes("/rest/v1/offer_size_") && ["POST", "DELETE", "PATCH"].includes(method)) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await generateOfferSizeLadderFromTrello({
+      trelloCard: "cardTrelloProjectionCreateField",
+      persist: true,
+      stepCm: 10,
+      maxLongSideCm: 250,
+    });
+
+    assert.equal(result.persisted?.trelloProjection?.written, true);
+    assert.equal(result.persisted?.trelloProjection?.createdField, true);
+    assert.deepEqual(createdFieldBody, {
+      idModel: "board-1",
+      modelType: "board",
+      name: "offer_items_json",
+      type: "text",
+      pos: "bottom",
+      display_cardFront: false,
+    });
+    assert.ok(projectedItems);
+    const items = projectedItems as Array<Record<string, unknown>>;
+    assert.ok(items.length > 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+  }
+});

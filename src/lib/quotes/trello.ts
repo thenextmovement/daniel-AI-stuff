@@ -390,6 +390,41 @@ export async function updateTrelloCustomField(params: {
   }
 }
 
+export async function createTrelloBoardCustomField(input: {
+  boardId: string;
+  name: string;
+  type: "text" | "number" | "checkbox" | "date" | "list";
+  pos?: string | number;
+  displayCardFront?: boolean;
+}) {
+  const { key, token } = trelloConfig();
+  const url = new URL("https://api.trello.com/1/customFields");
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      idModel: input.boardId,
+      modelType: "board",
+      name: input.name,
+      type: input.type,
+      pos: input.pos ?? "bottom",
+      display_cardFront: input.displayCardFront ?? false,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Custom Field konnte nicht erstellt werden: ${response.status}`);
+  }
+
+  return (await response.json()) as TrelloCustomField;
+}
+
 export async function createTrelloCard(input: {
   listId: string;
   name: string;
