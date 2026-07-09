@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildOfferSizeLadderOfferPatch,
   extractOfferSizeLadderAnchorsFromTrelloFields,
   generateOfferSizeLadder,
   listOfferSizeLadderDrafts,
@@ -118,6 +119,80 @@ test("offer size ladder routes UV print to manual review", async () => {
   assert.equal(result.productModel, "uv_print");
   assert.equal(result.status, "needs_review");
   assert.equal(result.options[0]?.reviewStatus, "needs_review");
+});
+
+test("offer size ladder builds an offer patch with minimum size selected by default", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardOfferApply1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+  });
+  const offer = {
+    offerId: "offer_1",
+    offerNumber: "A/N 1",
+    documentReference: "A/N 1",
+    trelloCardId: "cardOfferApply1",
+    publicUrl: "https://angebote.neontrip.de/offer/token",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [{
+      id: "item_1",
+      section: "LED-Leuchtschild",
+      title: "LED Logo Wandschild",
+      description: "Größe: 80x40cm\nLeuchtfarbe: Wie Logo",
+      quantity: 1,
+      unitPriceNet: 520,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: 0,
+    }],
+    images: [],
+    totals: {},
+  };
+
+  const { patch, defaultOption, appliedOptions } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder,
+    offerItemId: "item_1",
+    operatorName: "Test",
+  });
+
+  assert.equal(patch.items?.length, sizeLadder.options.length);
+  assert.equal(patch.items?.[0]?.id, "item_1");
+  assert.equal(patch.items?.[0]?.selectedByDefault, true);
+  assert.match(patch.items?.[0]?.description || "", /Größe: 80 x 40cm/);
+  assert.equal(patch.items?.[0]?.unitPriceNet, defaultOption.customerUnitPriceNet);
+  assert.equal(appliedOptions[0]?.isDefault, true);
+  assert.ok(patch.items?.slice(1).every((item) => item.id.startsWith("new-item-size-ladder-")));
+  assert.ok(patch.items?.slice(1).every((item) => item.selectedByDefault === false));
 });
 
 test("offer size ladder loads internal offer drafts without touching offers api", async () => {

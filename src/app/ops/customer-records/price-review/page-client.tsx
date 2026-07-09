@@ -28,6 +28,7 @@ type ReviewResponse = {
   applyResult?: SupplierPriceOfferApplyResult;
   sizeLadder?: OfferSizeLadderResultView;
   sizeLadderDrafts?: OfferSizeLadderResultView[];
+  sizeLadderOfferApply?: OfferSizeLadderOfferApplyView;
   importResult?: SupplierQuoteTrelloImportResult;
   error?: string;
   issues?: string[];
@@ -82,6 +83,28 @@ type OfferSizeLadderResultView = {
   }>;
   options: OfferSizeLadderOptionView[];
   persisted?: { anchorSetId: string; optionCount: number } | null;
+};
+type OfferSizeLadderOfferApplyView = {
+  dryRun: boolean;
+  offer: {
+    offerId: string;
+    offerNumber: string | null;
+    documentReference: string;
+    publicUrl: string;
+    updatedAt: string;
+  };
+  diff?: {
+    changedKeys: string[];
+  };
+  sizeLadder: OfferSizeLadderResultView;
+  applied: {
+    targetItemId: string;
+    targetItemTitle: string;
+    optionCount: number;
+    defaultSizeLabel: string;
+    defaultUnitPriceNet: number;
+    skippedBlockedOptions: number;
+  };
 };
 
 function formatApiError(payload: ReviewResponse | null) {
@@ -577,6 +600,42 @@ function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView })
   );
 }
 
+function SizeLadderOfferApplyCard({ result }: { result: OfferSizeLadderOfferApplyView }) {
+  return (
+    <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-black">
+            {result.dryRun ? "Angebotsänderung geprüft" : "Größenleiter ins Angebot gespeichert"}
+          </div>
+          <div className="mt-1 text-xs text-black/50">
+            {result.offer.offerNumber || result.offer.documentReference || result.offer.offerId} · {result.applied.optionCount} Größen · Standard {result.applied.defaultSizeLabel} für {formatMoney(result.applied.defaultUnitPriceNet, "EUR")} netto
+          </div>
+          <div className="mt-1 text-xs text-black/45">
+            Zielposition: {result.applied.targetItemTitle}
+            {result.applied.skippedBlockedOptions ? ` · ${result.applied.skippedBlockedOptions} blockierte Option(en) ausgelassen` : ""}
+          </div>
+        </div>
+        <a
+          href={result.offer.publicUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs text-black/55 transition hover:border-[#fa31a2] hover:text-black"
+        >
+          Angebot öffnen
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      </div>
+      {result.diff?.changedKeys?.length ? (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Geänderte Felder: {result.diff.changedKeys.slice(0, 12).join(", ")}
+          {result.diff.changedKeys.length > 12 ? ` +${result.diff.changedKeys.length - 12}` : ""}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TrelloImportResultCard({ result }: { result: SupplierQuoteTrelloImportResult }) {
   return (
     <div className="mt-4 rounded-lg border border-black/10 bg-white p-4">
@@ -898,7 +957,9 @@ export function SupplierPriceReviewClient({
     max_250: { widthCm: "", heightCm: "", productionPrice: "", shippingPrice: "" },
   });
   const [sizeLadderResult, setSizeLadderResult] = useState<OfferSizeLadderResultView | null>(null);
+  const [sizeLadderOfferApplyResult, setSizeLadderOfferApplyResult] = useState<OfferSizeLadderOfferApplyView | null>(null);
   const [sizeLadderRunning, setSizeLadderRunning] = useState(false);
+  const [sizeLadderOfferApplying, setSizeLadderOfferApplying] = useState<"dry" | "save" | null>(null);
   const [sizeLadderLoadingDraft, setSizeLadderLoadingDraft] = useState(false);
   const [importListId, setImportListId] = useState("");
   const [importCards, setImportCards] = useState("");
@@ -1158,6 +1219,7 @@ export function SupplierPriceReviewClient({
     setSizeLadderRunning(true);
     setError(null);
     setMessage(null);
+    setSizeLadderOfferApplyResult(null);
     if (!persist) setSizeLadderResult(null);
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
@@ -1209,6 +1271,7 @@ export function SupplierPriceReviewClient({
     setSizeLadderRunning(true);
     setError(null);
     setMessage(null);
+    setSizeLadderOfferApplyResult(null);
     if (!persist) setSizeLadderResult(null);
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
@@ -1245,6 +1308,49 @@ export function SupplierPriceReviewClient({
     } catch {
       setError("Trello-Anker konnten nicht geladen werden.");
       setSizeLadderRunning(false);
+    }
+  }
+
+  async function applySizeLadderToOffer(dryRun: boolean) {
+    setSizeLadderOfferApplying(dryRun ? "dry" : "save");
+    setError(null);
+    setMessage(null);
+    if (dryRun) setSizeLadderOfferApplyResult(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/price-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "apply_offer_size_ladder_to_offer",
+          sizeLadderOfferApply: {
+            trelloCard: sizeLadderTrelloCardId,
+            offerId: sizeLadderOfferId || null,
+            offerItemId: sizeLadderOfferItemId || null,
+            productModel: sizeLadderProductModel || null,
+            sourceText: sizeLadderSourceText || null,
+            stepCm: 10,
+            maxLongSideCm: 250,
+            customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
+            dryRun,
+          },
+          operatorName: operatorName || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
+      if (!response.ok || !payload?.ok || !payload.sizeLadderOfferApply) {
+        setError(formatApiError(payload));
+        setSizeLadderOfferApplying(null);
+        return;
+      }
+      const syncedAnchors = syncAnchorsFromSizeLadder(payload.sizeLadderOfferApply.sizeLadder);
+      if (syncedAnchors) setSizeLadderAnchors(syncedAnchors);
+      setSizeLadderResult(payload.sizeLadderOfferApply.sizeLadder);
+      setSizeLadderOfferApplyResult(payload.sizeLadderOfferApply);
+      setMessage(dryRun ? "Angebotsänderung geprüft. Du kannst sie jetzt speichern." : "Größenleiter wurde ins Angebot übernommen. Das Angebot wurde nicht automatisch versendet.");
+      setSizeLadderOfferApplying(null);
+    } catch {
+      setError("Größenleiter konnte nicht ins Angebot übernommen werden.");
+      setSizeLadderOfferApplying(null);
     }
   }
 
@@ -1580,8 +1686,30 @@ export function SupplierPriceReviewClient({
                 <Check className="h-4 w-4" />
                 Berechnen & Draft speichern
               </button>
+              <button
+                type="button"
+                disabled={Boolean(sizeLadderOfferApplying) || !sizeLadderTrelloCardId.trim()}
+                onClick={() => void applySizeLadderToOffer(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {sizeLadderOfferApplying === "dry" ? "Prüfe..." : "Angebot prüfen"}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(sizeLadderOfferApplying) || !sizeLadderTrelloCardId.trim() || sizeLadderOfferApplyResult?.dryRun !== true}
+                onClick={() => void applySizeLadderToOffer(false)}
+                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2] bg-[#fa31a2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#d91f88] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />
+                {sizeLadderOfferApplying === "save" ? "Speichere..." : "Ins Angebot speichern"}
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-black/45">
+              Ohne Offer-ID wird das Angebot über die Trello-Karte gesucht. Existiert noch kein Angebot, muss es zuerst aus Trello erstellt werden.
             </div>
 
+            {sizeLadderOfferApplyResult ? <SizeLadderOfferApplyCard result={sizeLadderOfferApplyResult} /> : null}
             {sizeLadderResult ? <SizeLadderResultCard result={sizeLadderResult} /> : null}
           </section>
         ) : null}

@@ -4,6 +4,16 @@ import type { CustomFieldMap } from "@/lib/quotes/types";
 import { roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import {
+  getOfferById,
+  getOfferByTrelloCardId,
+  patchOfferById,
+  patchOfferByTrelloCardId,
+  type OpsOfferItem,
+  type OpsOfferPatchInput,
+  type OpsOfferPatchResult,
+  type OpsOfferSnapshot,
+} from "@/lib/ops/offers";
 
 export const OFFER_SIZE_LADDER_CUSTOMER_FACTOR = 2.6;
 export const OFFER_SIZE_LADDER_MODEL_KEY = "anchored_offer_size_ladder";
@@ -184,6 +194,26 @@ export type OfferSizeLadderTrelloAnchorExtraction = {
   warnings: string[];
 };
 
+export type OfferSizeLadderOfferApplyInput = OfferSizeLadderTrelloGenerateInput & {
+  dryRun?: boolean;
+  revisionReason?: string | null;
+};
+
+export type OfferSizeLadderOfferApplyResult = {
+  dryRun: boolean;
+  offer: OpsOfferSnapshot;
+  diff: OpsOfferPatchResult["diff"];
+  sizeLadder: OfferSizeLadderResult;
+  applied: {
+    targetItemId: string;
+    targetItemTitle: string;
+    optionCount: number;
+    defaultSizeLabel: string;
+    defaultUnitPriceNet: number;
+    skippedBlockedOptions: number;
+  };
+};
+
 function trimNullable(value: unknown) {
   const trimmed = String(value || "").trim();
   return trimmed || null;
@@ -218,6 +248,100 @@ function customFieldEntries(customFields: CustomFieldMap) {
       value: String(value || "").trim(),
     }))
     .filter((entry) => entry.value);
+}
+
+function formatCmValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function offerItemPatch(item: OpsOfferItem): NonNullable<OpsOfferPatchInput["items"]>[number] {
+  return {
+    id: item.id,
+    section: item.section || "LED-Leuchtschild",
+    title: item.title,
+    description: item.description || null,
+    quantity: item.quantity,
+    unitPriceNet: item.unitPriceNet,
+    listPriceNet: item.listPriceNet,
+    discountLabel: item.discountLabel || null,
+    selectable: item.selectable,
+    selectedByDefault: item.selectedByDefault,
+    quantityEditable: item.quantityEditable,
+    minQuantity: item.minQuantity,
+    maxQuantity: item.maxQuantity,
+    sortOrder: item.sortOrder,
+  };
+}
+
+function isLikelySignOfferItem(item: OpsOfferItem) {
+  const haystack = `${item.section || ""}\n${item.title || ""}`.toLowerCase();
+  return /\b(led|neon|leucht|schild|logo|wandschild)\b/i.test(haystack);
+}
+
+function resolveOfferTargetItem(offer: OpsOfferSnapshot, itemId?: string | null) {
+  const explicitItemId = trimNullable(itemId);
+  if (explicitItemId) {
+    const item = offer.items.find((entry) => entry.id === explicitItemId);
+    if (!item) throw new QuoteValidationError("Ausgewaehlte Angebotsposition wurde nicht gefunden.", [], 404);
+    return item;
+  }
+
+  const candidates = offer.items.filter(isLikelySignOfferItem);
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length === 0 && offer.items.length === 1) return offer.items[0];
+  if (candidates.length > 1) {
+    throw new QuoteValidationError(
+      "Mehrere moegliche Schildpositionen im Angebot gefunden. Bitte zuerst die Offer Item ID der Zielposition eintragen.",
+      candidates.map((item) => `${item.id}: ${item.title}`),
+      409,
+    );
+  }
+  throw new QuoteValidationError("Keine passende Schildposition im Angebot gefunden.", [], 409);
+}
+
+function upsertSizeLine(description: string | null | undefined, sizeLabel: string) {
+  const lines = String(description || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nextLine = `Größe: ${sizeLabel}`;
+  const index = lines.findIndex((line) => /^gr(?:ö|oe|o)ße\s*:/i.test(line));
+  if (index >= 0) lines[index] = nextLine;
+  else lines.unshift(nextLine);
+  return lines.join("\n");
+}
+
+function normalizedDescriptionWithoutSize(value: string | null | undefined) {
+  return String(value || "")
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim().toLowerCase().replace(/\s+/g, " "))
+    .filter(Boolean)
+    .filter((line) => !/^(größe|groesse|grösse|size|maße|masse|abmessung|abmessungen|breite|höhe|hoehe|width|height)\s*:/i.test(line))
+    .join("|");
+}
+
+function sizeLabelFromDescription(value: string | null | undefined) {
+  const explicit = String(value || "")
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => /^gr(?:ö|oe|o)ße\s*:/i.test(line));
+  if (explicit) return explicit.replace(/^gr(?:ö|oe|o)ße\s*:\s*/i, "").trim();
+  return null;
+}
+
+function sameDesignSizeVariantItems(offer: OpsOfferSnapshot, targetItem: OpsOfferItem) {
+  const targetTitle = targetItem.title.trim().toLowerCase();
+  const targetSpec = normalizedDescriptionWithoutSize(targetItem.description);
+  return offer.items
+    .filter((item) => {
+      if (item.id === targetItem.id) return true;
+      if (!isLikelySignOfferItem(item)) return false;
+      if (item.title.trim().toLowerCase() !== targetTitle) return false;
+      return normalizedDescriptionWithoutSize(item.description) === targetSpec;
+    })
+    .sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
 function readCustomFieldValue(customFields: CustomFieldMap, names: string[]) {
@@ -984,4 +1108,132 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
     sourceText,
     anchors: extraction.anchors,
   });
+}
+
+export function buildOfferSizeLadderOfferPatch(input: {
+  offer: OpsOfferSnapshot;
+  sizeLadder: OfferSizeLadderResult;
+  offerItemId?: string | null;
+  operatorName?: string | null;
+  revisionReason?: string | null;
+}) {
+  const { offer, sizeLadder } = input;
+  if (sizeLadder.status === "blocked") {
+    throw new QuoteValidationError(
+      "Diese Größenleiter ist blockiert und darf nicht ins Angebot übernommen werden.",
+      sizeLadder.issues,
+      409,
+    );
+  }
+  if (!offer.lock.editable || offer.lock.lockLevel === "hard") {
+    throw new QuoteValidationError(offer.lock.lockReason || "Dieses Angebot ist gesperrt und kann nicht aktualisiert werden.", [], 409);
+  }
+
+  const targetItem = resolveOfferTargetItem(offer, input.offerItemId || sizeLadder.offerItemId);
+  const candidateOptions = sizeLadder.options.filter((option) => option.reviewStatus !== "blocked");
+  if (!candidateOptions.length) throw new QuoteValidationError("Keine freigegebenen Größenoptionen vorhanden.", [], 409);
+  if (candidateOptions.length > 45) throw new QuoteValidationError("Zu viele Größenoptionen für ein Angebot.", [], 409);
+
+  const defaultOption = candidateOptions.find((option) => option.isDefault) || candidateOptions[0]!;
+  const existingVariants = sameDesignSizeVariantItems(offer, targetItem);
+  const existingBySize = new Map(
+    existingVariants
+      .map((item) => [sizeLabelFromDescription(item.description), item] as const)
+      .filter((entry): entry is [string, OpsOfferItem] => Boolean(entry[0])),
+  );
+  const usedExistingIds = new Set<string>();
+  const newItemPrefix = `new-item-size-ladder-${sizeLadder.trelloCardId}-${createHash("sha1").update(sizeLadder.setKey).digest("hex").slice(0, 8)}`;
+
+  const desiredVariants = candidateOptions.map((option, index) => {
+    const sizeLabel = option.sizeLabel || `${formatCmValue(option.widthCm)} x ${formatCmValue(option.heightCm)}cm`;
+    const existingByExactSize = existingBySize.get(sizeLabel) || null;
+    const fallbackExisting = existingVariants.find((item) => !usedExistingIds.has(item.id)) || null;
+    const baseItem = existingByExactSize || fallbackExisting || targetItem;
+    if (existingByExactSize || fallbackExisting) usedExistingIds.add(baseItem.id);
+    const itemId = existingByExactSize || fallbackExisting ? baseItem.id : `${newItemPrefix}-${index}`;
+    return {
+      ...offerItemPatch(baseItem),
+      id: itemId,
+      section: targetItem.section || baseItem.section || "LED-Leuchtschild",
+      title: targetItem.title,
+      description: upsertSizeLine(targetItem.description, sizeLabel),
+      quantity: 1,
+      unitPriceNet: option.customerUnitPriceNet,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: option.sizeLabel === defaultOption.sizeLabel,
+      quantityEditable: true,
+      minQuantity: 1,
+      maxQuantity: targetItem.maxQuantity,
+    };
+  });
+
+  const existingVariantIds = new Set(existingVariants.map((item) => item.id));
+  const targetIndex = offer.items.findIndex((item) => item.id === targetItem.id);
+  const before = offer.items.slice(0, Math.max(targetIndex, 0)).filter((item) => !existingVariantIds.has(item.id));
+  const after = offer.items.slice(Math.max(targetIndex, 0) + 1).filter((item) => !existingVariantIds.has(item.id));
+  const nextItems = [...before, ...desiredVariants, ...after].map((item, index) => ({
+    ...item,
+    sortOrder: index,
+  }));
+  if (nextItems.length > 50) {
+    throw new QuoteValidationError("Das Angebot hat zu viele Positionen für eine automatische Größenleiter.", [], 409);
+  }
+
+  const patch: OpsOfferPatchInput = {
+    expectedUpdatedAt: offer.updatedAt,
+    actor: trimNullable(input.operatorName) || "Ops",
+    reason: "offer_size_ladder_apply",
+    revisionReason: offer.lock.requiresRevisionReason
+      ? trimNullable(input.revisionReason) || "Größenleiter aus Schildpreis-Kalkulator übernommen."
+      : undefined,
+    items: nextItems,
+  };
+
+  return {
+    patch,
+    targetItem,
+    defaultOption,
+    appliedOptions: candidateOptions,
+    skippedBlockedOptions: sizeLadder.options.length - candidateOptions.length,
+  };
+}
+
+export async function applyOfferSizeLadderToOffer(input: OfferSizeLadderOfferApplyInput): Promise<OfferSizeLadderOfferApplyResult> {
+  const sizeLadder = await generateOfferSizeLadderFromTrello({
+    ...input,
+    persist: false,
+  });
+  const offerId = trimNullable(input.offerId);
+  const offer = offerId ? await getOfferById(offerId) : await getOfferByTrelloCardId(sizeLadder.trelloCardId);
+  const { patch, targetItem, defaultOption, appliedOptions, skippedBlockedOptions } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder: {
+      ...sizeLadder,
+      offerId: offerId || sizeLadder.offerId,
+      offerItemId: trimNullable(input.offerItemId) || sizeLadder.offerItemId,
+    },
+    offerItemId: input.offerItemId,
+    operatorName: input.createdBy,
+    revisionReason: input.revisionReason,
+  });
+  const patchResult = offerId
+    ? await patchOfferById(offerId, patch, input.dryRun === true)
+    : await patchOfferByTrelloCardId(sizeLadder.trelloCardId, patch, input.dryRun === true);
+
+  return {
+    dryRun: patchResult.dryRun === true,
+    offer: patchResult.offer,
+    diff: patchResult.diff,
+    sizeLadder,
+    applied: {
+      targetItemId: targetItem.id,
+      targetItemTitle: targetItem.title,
+      optionCount: appliedOptions.length,
+      defaultSizeLabel: defaultOption.sizeLabel,
+      defaultUnitPriceNet: defaultOption.customerUnitPriceNet,
+      skippedBlockedOptions,
+    },
+  };
 }
