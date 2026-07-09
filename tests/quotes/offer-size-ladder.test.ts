@@ -10,6 +10,7 @@ import {
   listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
 } from "../../src/lib/ops/offer-size-ladder";
+import { OpsOfferApiError } from "../../src/lib/ops/offers";
 
 test("offer size ladder extracts three anchors from Trello Size Production Shipping fields", () => {
   const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
@@ -398,6 +399,111 @@ test("offer size ladder offer apply can use visible UI anchors without reloading
     const items = patchedItems as Array<Record<string, unknown>>;
     const item120 = items.find((item) => String(item.description || "").includes("120 x 60cm"));
     assert.equal(item120?.unitPriceNet, 999);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalOffersBaseUrl === undefined) delete process.env.NEONTRIP_OFFERS_BASE_URL;
+    else process.env.NEONTRIP_OFFERS_BASE_URL = originalOffersBaseUrl;
+    if (originalOffersKey === undefined) delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+    else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = originalOffersKey;
+  }
+});
+
+test("offer size ladder normalizes nested Offers API errors during dry-run", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;
+  const originalOffersKey = process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  process.env.NEONTRIP_OFFERS_BASE_URL = "https://offers.test";
+  process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "offers-key";
+
+  const offer = {
+    offerId: "offer_direct_error",
+    offerNumber: "A/N Error",
+    documentReference: "A/N Error",
+    trelloCardId: "cardDirectError",
+    publicUrl: "https://angebote.neontrip.de/offer/error",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T10:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [{
+      id: "item_1",
+      section: "LED-Leuchtschild",
+      title: "LED Logo Wandschild",
+      description: "Größe: 80x40cm",
+      quantity: 1,
+      unitPriceNet: 520,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: 0,
+    }],
+    images: [],
+    totals: {},
+  };
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+
+    if (url === "https://offers.test/api/internal/offers/by-trello/cardDirectError" && method === "GET") {
+      return new Response(JSON.stringify({ ok: true, offer }), { status: 200 });
+    }
+    if (url === "https://offers.test/api/internal/offers/by-trello/cardDirectError?dryRun=true" && method === "PATCH") {
+      return new Response(JSON.stringify({
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "Dieses Angebot kann nicht automatisch aktualisiert werden.",
+        },
+      }), { status: 422 });
+    }
+
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => applyOfferSizeLadderToOffer({
+        trelloCard: "cardDirectError",
+        dryRun: true,
+        productModel: "neonflex",
+        stepCm: 10,
+        maxLongSideCm: 250,
+        customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+        anchors: [
+          { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+          { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+          { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+        ],
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof OpsOfferApiError);
+        assert.equal(error.message, "Dieses Angebot kann nicht automatisch aktualisiert werden.");
+        assert.equal(error.code, "VALIDATION_FAILED");
+        assert.equal(error.status, 422);
+        return true;
+      },
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (originalOffersBaseUrl === undefined) delete process.env.NEONTRIP_OFFERS_BASE_URL;

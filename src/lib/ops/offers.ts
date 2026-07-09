@@ -145,6 +145,47 @@ export class OpsOfferApiError extends Error {
   }
 }
 
+function normalizeOfferApiText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed && trimmed !== "[object Object]" ? trimmed : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const normalized = value.map(normalizeOfferApiText).filter(Boolean);
+    return normalized.length ? normalized.join(", ") : null;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const preferred =
+      normalizeOfferApiText(record.message) ||
+      normalizeOfferApiText(record.error) ||
+      normalizeOfferApiText(record.details) ||
+      normalizeOfferApiText(record.reason) ||
+      normalizeOfferApiText(record.hint) ||
+      normalizeOfferApiText(record.code);
+    if (preferred) return preferred;
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return null;
+    }
+  }
+  return String(value);
+}
+
+function normalizeOfferApiCode(value: unknown) {
+  const code = normalizeOfferApiText(value);
+  return code || "offer_api_error";
+}
+
+function normalizeOfferApiIssues(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const issues = value.map(normalizeOfferApiText).filter((issue): issue is string => Boolean(issue));
+  return issues.length ? issues : undefined;
+}
+
 function getOffersBaseUrl() {
   const baseUrl = String(process.env.NEONTRIP_OFFERS_BASE_URL || "").trim().replace(/\/+$/, "");
   if (!baseUrl) throw new OpsOfferApiError("NEONTRIP_OFFERS_BASE_URL fehlt.", 503, "offers_not_configured");
@@ -161,10 +202,10 @@ async function parseOfferResponse(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
     ok?: boolean;
     offer?: OpsOfferSnapshot;
-    error?: string;
-    message?: string;
-    code?: string;
-    issues?: string[];
+    error?: unknown;
+    message?: unknown;
+    code?: unknown;
+    issues?: unknown;
     sent?: boolean;
     duplicate?: boolean;
     eventId?: string;
@@ -174,11 +215,17 @@ async function parseOfferResponse(response: Response) {
   } | null;
 
   if (!response.ok) {
+    const errorRecord = typeof payload?.error === "object" && payload.error !== null
+      ? payload.error as Record<string, unknown>
+      : null;
     throw new OpsOfferApiError(
-      payload?.error || payload?.message || `Offers API antwortete mit ${response.status}.`,
+      normalizeOfferApiText(payload?.error) ||
+        normalizeOfferApiText(payload?.message) ||
+        normalizeOfferApiText(errorRecord?.message) ||
+        `Offers API antwortete mit ${response.status}.`,
       response.status,
-      payload?.code || "offer_api_error",
-      payload?.issues,
+      normalizeOfferApiCode(payload?.code || errorRecord?.code),
+      normalizeOfferApiIssues(payload?.issues),
     );
   }
   return payload || {};
