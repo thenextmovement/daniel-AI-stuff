@@ -19,8 +19,8 @@ import {
 export const OFFER_SIZE_LADDER_CUSTOMER_FACTOR = 2.3;
 export const OFFER_SIZE_LADDER_MODEL_KEY = "anchored_offer_size_ladder";
 export const OFFER_SIZE_LADDER_MODEL_VERSION = "anchored_offer_size_ladder_v1";
-export const OFFER_SIZE_LADDER_MAX_OFFER_ITEMS = 80;
-export const OFFER_SIZE_LADDER_MAX_OPTIONS = 70;
+export const OFFER_SIZE_LADDER_MAX_OFFER_ITEMS = 300;
+export const OFFER_SIZE_LADDER_MAX_OPTIONS = 300;
 
 export type OfferSizeLadderAnchorRole = "minimum" | "requested" | "max_250";
 export type OfferSizeLadderProductModel =
