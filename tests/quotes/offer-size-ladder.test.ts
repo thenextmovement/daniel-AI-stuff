@@ -395,6 +395,97 @@ test("offer size ladder replaces existing adjacent same-title variants before en
   assert.ok((patch.items?.length || 0) <= 50);
 });
 
+test("offer size ladder replaces adjacent variants when the size is only in the item title", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardTitleVariants1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+  });
+  const oldVariantItems = Array.from({ length: 34 }, (_, index) => {
+    const longSide = 80 + index * 5;
+    return {
+      id: `title_variant_${index}`,
+      section: "LED-Leuchtschild",
+      title: `Leuchtschild Design ${longSide}cm`,
+      description: null,
+      quantity: 1,
+      unitPriceNet: 520 + index,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: index === 0,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: index,
+    };
+  });
+  const accessoryItems = Array.from({ length: 20 }, (_, index) => ({
+    id: `title_accessory_${index}`,
+    section: "Zubehör",
+    title: `Zubehör ${index + 1}`,
+    description: null,
+    quantity: 1,
+    unitPriceNet: 10 + index,
+    listPriceNet: null,
+    discountLabel: null,
+    selectable: true,
+    selectedByDefault: false,
+    selectedFinal: null,
+    quantityEditable: false,
+    minQuantity: 1,
+    maxQuantity: null,
+    sortOrder: oldVariantItems.length + index,
+  }));
+  const offer = {
+    offerId: "offer_title_variants",
+    offerNumber: "A/N Title Variants",
+    documentReference: "A/N Title Variants",
+    trelloCardId: "cardTitleVariants1",
+    publicUrl: "https://angebote.neontrip.de/offer/title-variants",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [...oldVariantItems, ...accessoryItems],
+    images: [],
+    totals: {},
+  };
+
+  const { patch } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder,
+    operatorName: "Daniel",
+  });
+
+  assert.equal(patch.items?.length, sizeLadder.options.length + accessoryItems.length);
+  assert.equal(patch.items?.filter((item) => item.title === "Leuchtschild Design 80cm").length, 0);
+  assert.equal(patch.items?.filter((item) => item.title === "Leuchtschild Design").length, sizeLadder.options.length);
+  assert.equal(patch.items?.filter((item) => item.section === "Zubehör").length, accessoryItems.length);
+  assert.ok((patch.items?.length || 0) <= 50);
+});
+
 test("offer size ladder blocks offer apply without a reviewer name", async () => {
   const sizeLadder = await generateOfferSizeLadder({
     trelloCardId: "cardMissingReviewer1",

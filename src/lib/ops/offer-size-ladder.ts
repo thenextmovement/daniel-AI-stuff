@@ -316,7 +316,7 @@ function isLikelySignOfferItem(item: OpsOfferItem) {
 }
 
 function offerItemCandidateLabel(item: OpsOfferItem) {
-  const size = sizeLabelFromDescription(item.description);
+  const size = sizeLabelFromOfferItem(item);
   return [
     `${item.id}: ${item.title}`,
     size ? size : null,
@@ -381,8 +381,35 @@ function sizeLabelFromDescription(value: string | null | undefined) {
   return null;
 }
 
+function hasSizeSignal(value: string | null | undefined) {
+  const text = String(value || "");
+  return /(\d+(?:[.,]\d+)?)\s*(?:x|\*|×|\/)\s*(\d+(?:[.,]\d+)?)\s*(?:cm)?/i.test(text) ||
+    /\b\d+(?:[.,]\d+)?\s*cm\b/i.test(text);
+}
+
+function sizeLabelFromOfferItem(item: OpsOfferItem) {
+  const explicit = sizeLabelFromDescription(item.description);
+  if (explicit) return explicit;
+  const parsed = parseSizeText(`${item.title}\n${item.description || ""}`);
+  if (parsed) return `${formatCmValue(parsed.widthCm)} x ${formatCmValue(parsed.heightCm)}cm`;
+  return null;
+}
+
+function titleWithoutSizeFragments(value: string | null | undefined) {
+  const cleaned = String(value || "")
+    .replace(/\b(?:\d+(?:[.,]\d+)?\s*\/\s*)+\d+(?:[.,]\d+)?\s*cm\b/gi, " ")
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:x|\*|×|\/)\s*\d+(?:[.,]\d+)?\s*(?:cm)?\b/gi, " ")
+    .replace(/\b\d+(?:[.,]\d+)?\s*cm\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || String(value || "").trim();
+}
+
 function normalizedOfferItemTitle(value: string | null | undefined) {
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return titleWithoutSizeFragments(value)
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isSameTitleSignItem(item: OpsOfferItem, normalizedTitle: string) {
@@ -392,8 +419,8 @@ function isSameTitleSignItem(item: OpsOfferItem, normalizedTitle: string) {
 function hasCompatibleVariantDescription(item: OpsOfferItem, targetSpec: string) {
   const itemSpec = normalizedDescriptionWithoutSize(item.description);
   if (itemSpec === targetSpec) return true;
-  if (!sizeLabelFromDescription(item.description)) return false;
-  if (!itemSpec || !targetSpec) return true;
+  if (!targetSpec || !hasSizeSignal(`${item.title}\n${item.description || ""}`)) return false;
+  if (!itemSpec) return true;
   return itemSpec.includes(targetSpec) || targetSpec.includes(itemSpec);
 }
 
@@ -412,12 +439,12 @@ function sameDesignSizeVariantItems(offer: OpsOfferSnapshot, targetItem: OpsOffe
 
   for (let index = targetIndex - 1; index >= 0; index -= 1) {
     const item = offer.items[index];
-    if (!item || !isSameTitleSignItem(item, targetTitle) || !sizeLabelFromDescription(item.description)) break;
+    if (!item || !isSameTitleSignItem(item, targetTitle) || !hasSizeSignal(`${item.title}\n${item.description || ""}`)) break;
     variantsById.set(item.id, item);
   }
   for (let index = targetIndex + 1; index < offer.items.length; index += 1) {
     const item = offer.items[index];
-    if (!item || !isSameTitleSignItem(item, targetTitle) || !sizeLabelFromDescription(item.description)) break;
+    if (!item || !isSameTitleSignItem(item, targetTitle) || !hasSizeSignal(`${item.title}\n${item.description || ""}`)) break;
     variantsById.set(item.id, item);
   }
 
@@ -1471,11 +1498,12 @@ export function buildOfferSizeLadderOfferPatch(input: {
   const existingVariants = sameDesignSizeVariantItems(offer, targetItem);
   const existingBySize = new Map(
     existingVariants
-      .map((item) => [sizeLabelFromDescription(item.description), item] as const)
+      .map((item) => [sizeLabelFromOfferItem(item), item] as const)
       .filter((entry): entry is [string, OpsOfferItem] => Boolean(entry[0])),
   );
   const usedExistingIds = new Set<string>();
   const newItemPrefix = `new-item-size-ladder-${sizeLadder.trelloCardId}-${createHash("sha1").update(sizeLadder.setKey).digest("hex").slice(0, 8)}`;
+  const targetTitle = titleWithoutSizeFragments(targetItem.title) || targetItem.title;
 
   const desiredVariants = candidateOptions.map((option, index) => {
     const sizeLabel = option.sizeLabel || `${formatCmValue(option.widthCm)} x ${formatCmValue(option.heightCm)}cm`;
@@ -1488,7 +1516,7 @@ export function buildOfferSizeLadderOfferPatch(input: {
       ...offerItemPatch(baseItem),
       id: itemId,
       section: targetItem.section || baseItem.section || "LED-Leuchtschild",
-      title: targetItem.title,
+      title: targetTitle,
       description: upsertSizeLine(targetItem.description, sizeLabel),
       quantity: 1,
       unitPriceNet: option.customerUnitPriceNet,
