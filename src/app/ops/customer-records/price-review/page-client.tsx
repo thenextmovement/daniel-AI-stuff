@@ -130,6 +130,25 @@ function roundDownToFiveClient(value: number) {
   return Math.floor(value / 5) * 5;
 }
 
+function sizeLadderOptionKey(option: OfferSizeLadderOptionView) {
+  return `${option.longSideCm}:${option.widthCm}:${option.heightCm}:${option.sizeLabel}`;
+}
+
+function buildSizeLadderOptionPriceDrafts(result: OfferSizeLadderResultView) {
+  return Object.fromEntries(
+    result.options.map((option) => [
+      sizeLadderOptionKey(option),
+      Number.isFinite(option.customerUnitPriceNet) ? String(option.customerUnitPriceNet) : "",
+    ]),
+  );
+}
+
+function numberFromDraft(value: string) {
+  const normalized = value.replace(",", ".").trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function statusLabel(item: SupplierPricePredictionReviewItem) {
   switch (item.decisionStatus) {
     case "approved_for_quote":
@@ -461,13 +480,21 @@ function TrelloEstimateResultCard({
   );
 }
 
-function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView }) {
-  const visibleOptions = result.options.slice(0, 18);
-  const hiddenCount = Math.max(0, result.options.length - visibleOptions.length);
+function SizeLadderResultCard({
+  result,
+  priceDrafts,
+  onPriceDraftChange,
+}: {
+  result: OfferSizeLadderResultView;
+  priceDrafts: Record<string, string>;
+  onPriceDraftChange: (optionKey: string, value: string) => void;
+}) {
   const defaultOption = result.options.find((option) => option.isDefault) || result.options[0] || null;
   const [selectedLongSide, setSelectedLongSide] = useState(defaultOption?.longSideCm ?? 0);
   const selectedOption =
     result.options.find((option) => option.longSideCm === selectedLongSide) || defaultOption;
+  const selectedOptionDraft = selectedOption ? priceDrafts[sizeLadderOptionKey(selectedOption)] : "";
+  const selectedOptionPrice = numberFromDraft(selectedOptionDraft || "") ?? selectedOption?.customerUnitPriceNet ?? 0;
 
   useEffect(() => {
     setSelectedLongSide(defaultOption?.longSideCm ?? 0);
@@ -525,7 +552,7 @@ function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView })
               >
                 {result.options.map((option) => (
                   <option key={`${option.longSideCm}-${option.sizeLabel}`} value={option.longSideCm}>
-                    {option.sizeLabel} - {formatMoney(option.customerUnitPriceNet, "EUR")} netto
+                    {option.sizeLabel} - {formatMoney(numberFromDraft(priceDrafts[sizeLadderOptionKey(option)] || "") ?? option.customerUnitPriceNet, "EUR")} netto
                   </option>
                 ))}
               </select>
@@ -545,7 +572,7 @@ function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView })
               </div>
               <div className="rounded-lg border border-black/10 bg-white px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.14em] text-black/40">Angebot netto</div>
-                <div className="mt-1 font-semibold text-black">{formatMoney(selectedOption.customerUnitPriceNet, "EUR")}</div>
+                <div className="mt-1 font-semibold text-black">{formatMoney(selectedOptionPrice, "EUR")}</div>
                 <div className="mt-0.5 text-xs text-black/45">Faktor {selectedOption.customerFactor.toFixed(1)}</div>
               </div>
               <div className="rounded-lg border border-black/10 bg-white px-3 py-2">
@@ -571,8 +598,13 @@ function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView })
             </tr>
           </thead>
           <tbody>
-            {visibleOptions.map((option) => (
-              <tr key={`${option.longSideCm}-${option.sizeLabel}`} className="border-b border-black/[0.06]">
+            {result.options.map((option) => {
+              const optionKey = sizeLadderOptionKey(option);
+              const draftValue = priceDrafts[optionKey] ?? "";
+              const draftNumber = numberFromDraft(draftValue);
+              const hasManualChange = draftNumber !== null && Math.abs(draftNumber - option.customerUnitPriceNet) >= 0.01;
+              return (
+              <tr key={optionKey} className="border-b border-black/[0.06]">
                 <td className="py-2 pr-3 font-medium text-black">
                   {option.sizeLabel}
                   {option.isDefault ? <span className="ml-2 text-[10px] text-[#fa31a2]">Default</span> : null}
@@ -580,22 +612,31 @@ function SizeLadderResultCard({ result }: { result: OfferSizeLadderResultView })
                 <td className="py-2 pr-3 text-black/65">{formatMoney(option.productionPriceEstimated, option.currency)}</td>
                 <td className="py-2 pr-3 text-black/65">{formatMoney(option.shippingPriceEstimated, option.currency)}</td>
                 <td className="py-2 pr-3 text-black/65">{formatMoney(option.supplierTotalEstimated, option.currency)}</td>
-                <td className="py-2 pr-3 font-semibold text-black">{formatMoney(option.customerUnitPriceNet, "EUR")}</td>
+                <td className="min-w-[150px] py-2 pr-3">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={draftValue}
+                    onChange={(event) => onPriceDraftChange(optionKey, event.target.value)}
+                    className="w-28 rounded-lg border border-black/10 bg-white px-2 py-1.5 text-right text-xs font-semibold text-black outline-none transition focus:border-[#fa31a2]"
+                    aria-label={`Angebot netto ${option.sizeLabel}`}
+                  />
+                  <div className="mt-1 text-[10px] text-black/40">
+                    {hasManualChange ? `berechnet ${formatMoney(option.customerUnitPriceNet, "EUR")}` : "berechnet"}
+                  </div>
+                </td>
                 <td className="py-2 pr-3">
                   <span className={`rounded-full border px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] ${sizeLadderStatusTone(option.reviewStatus)}`}>
                     {option.reviewStatus}
                   </span>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
-      {hiddenCount ? (
-        <div className="mt-3 text-xs text-black/45">
-          {hiddenCount} weitere Größen im gespeicherten Draft.
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -957,6 +998,7 @@ export function SupplierPriceReviewClient({
     max_250: { widthCm: "", heightCm: "", productionPrice: "", shippingPrice: "" },
   });
   const [sizeLadderResult, setSizeLadderResult] = useState<OfferSizeLadderResultView | null>(null);
+  const [sizeLadderOptionPriceDrafts, setSizeLadderOptionPriceDrafts] = useState<Record<string, string>>({});
   const [sizeLadderOfferApplyResult, setSizeLadderOfferApplyResult] = useState<OfferSizeLadderOfferApplyView | null>(null);
   const [sizeLadderRunning, setSizeLadderRunning] = useState(false);
   const [sizeLadderOfferApplying, setSizeLadderOfferApplying] = useState<"dry" | "save" | null>(null);
@@ -1215,12 +1257,39 @@ export function SupplierPriceReviewClient({
     }));
   }
 
+  function updateSizeLadderResult(result: OfferSizeLadderResultView | null) {
+    setSizeLadderResult(result);
+    setSizeLadderOptionPriceDrafts(result ? buildSizeLadderOptionPriceDrafts(result) : {});
+  }
+
+  function updateSizeLadderOptionPriceDraft(optionKey: string, value: string) {
+    setSizeLadderOptionPriceDrafts((current) => ({ ...current, [optionKey]: value }));
+    setSizeLadderOfferApplyResult(null);
+  }
+
+  function sizeLadderOptionOverrides() {
+    if (!sizeLadderResult) return [];
+    return sizeLadderResult.options.flatMap((option) => {
+      const optionKey = sizeLadderOptionKey(option);
+      const value = numberFromDraft(sizeLadderOptionPriceDrafts[optionKey] || "");
+      if (value === null) return [];
+      return [{
+        optionKey,
+        sizeLabel: option.sizeLabel,
+        widthCm: option.widthCm,
+        heightCm: option.heightCm,
+        longSideCm: option.longSideCm,
+        customerUnitPriceNet: value,
+      }];
+    });
+  }
+
   async function generateSizeLadder(persist: boolean) {
     setSizeLadderRunning(true);
     setError(null);
     setMessage(null);
     setSizeLadderOfferApplyResult(null);
-    if (!persist) setSizeLadderResult(null);
+    if (!persist) updateSizeLadderResult(null);
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
         method: "POST",
@@ -1258,7 +1327,7 @@ export function SupplierPriceReviewClient({
         setSizeLadderRunning(false);
         return;
       }
-      setSizeLadderResult(payload.sizeLadder);
+      updateSizeLadderResult(payload.sizeLadder);
       setMessage(persist ? "Size-Ladder Draft gespeichert." : "Size-Ladder berechnet.");
       setSizeLadderRunning(false);
     } catch {
@@ -1272,7 +1341,7 @@ export function SupplierPriceReviewClient({
     setError(null);
     setMessage(null);
     setSizeLadderOfferApplyResult(null);
-    if (!persist) setSizeLadderResult(null);
+    if (!persist) updateSizeLadderResult(null);
     try {
       const response = await fetch("/api/ops/customer-records/price-predictions", {
         method: "POST",
@@ -1302,7 +1371,7 @@ export function SupplierPriceReviewClient({
       const syncedAnchors = syncAnchorsFromSizeLadder(payload.sizeLadder);
       if (syncedAnchors) setSizeLadderAnchors(syncedAnchors);
       setSizeLadderProductModel(payload.sizeLadder.productModel || sizeLadderProductModel);
-      setSizeLadderResult(payload.sizeLadder);
+      updateSizeLadderResult(payload.sizeLadder);
       setMessage(persist ? "Trello-Anker geladen und Size-Ladder Draft gespeichert." : "Trello-Anker geladen und Size-Ladder berechnet.");
       setSizeLadderRunning(false);
     } catch {
@@ -1331,6 +1400,7 @@ export function SupplierPriceReviewClient({
             stepCm: 10,
             maxLongSideCm: 250,
             customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
+            optionOverrides: sizeLadderOptionOverrides(),
             dryRun,
           },
           operatorName: operatorName || null,
@@ -1344,7 +1414,7 @@ export function SupplierPriceReviewClient({
       }
       const syncedAnchors = syncAnchorsFromSizeLadder(payload.sizeLadderOfferApply.sizeLadder);
       if (syncedAnchors) setSizeLadderAnchors(syncedAnchors);
-      setSizeLadderResult(payload.sizeLadderOfferApply.sizeLadder);
+      updateSizeLadderResult(payload.sizeLadderOfferApply.sizeLadder);
       setSizeLadderOfferApplyResult(payload.sizeLadderOfferApply);
       setMessage(dryRun ? "Angebotsänderung geprüft. Du kannst sie jetzt speichern." : "Größenleiter wurde ins Angebot übernommen. Das Angebot wurde nicht automatisch versendet.");
       setSizeLadderOfferApplying(null);
@@ -1385,7 +1455,7 @@ export function SupplierPriceReviewClient({
         setSizeLadderLoadingDraft(false);
         return;
       }
-      setSizeLadderResult(draft);
+      updateSizeLadderResult(draft);
       setMessage("Interner Size-Ladder Draft geladen. Das Kundenangebot wurde nicht verändert.");
       setSizeLadderLoadingDraft(false);
     } catch {
@@ -1710,7 +1780,13 @@ export function SupplierPriceReviewClient({
             </div>
 
             {sizeLadderOfferApplyResult ? <SizeLadderOfferApplyCard result={sizeLadderOfferApplyResult} /> : null}
-            {sizeLadderResult ? <SizeLadderResultCard result={sizeLadderResult} /> : null}
+            {sizeLadderResult ? (
+              <SizeLadderResultCard
+                result={sizeLadderResult}
+                priceDrafts={sizeLadderOptionPriceDrafts}
+                onPriceDraftChange={updateSizeLadderOptionPriceDraft}
+              />
+            ) : null}
           </section>
         ) : null}
 

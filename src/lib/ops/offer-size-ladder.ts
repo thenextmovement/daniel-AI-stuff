@@ -188,6 +188,15 @@ export type OfferSizeLadderTrelloGenerateInput = Omit<OfferSizeLadderGenerateInp
   trelloCard: string;
 };
 
+export type OfferSizeLadderOptionOverrideInput = {
+  optionKey?: string | null;
+  sizeLabel?: string | null;
+  widthCm?: number | string | null;
+  heightCm?: number | string | null;
+  longSideCm?: number | string | null;
+  customerUnitPriceNet?: number | string | null;
+};
+
 export type OfferSizeLadderTrelloAnchorExtraction = {
   anchors: OfferSizeLadderAnchorInput[];
   sourceText: string;
@@ -197,6 +206,7 @@ export type OfferSizeLadderTrelloAnchorExtraction = {
 export type OfferSizeLadderOfferApplyInput = OfferSizeLadderTrelloGenerateInput & {
   dryRun?: boolean;
   revisionReason?: string | null;
+  optionOverrides?: OfferSizeLadderOptionOverrideInput[];
 };
 
 export type OfferSizeLadderOfferApplyResult = {
@@ -596,6 +606,79 @@ function defaultSizeLabel(widthCm: number, heightCm: number) {
   const width = Number.isInteger(widthCm) ? String(widthCm) : widthCm.toFixed(1);
   const height = Number.isInteger(heightCm) ? String(heightCm) : heightCm.toFixed(1);
   return `${width} x ${height}cm`;
+}
+
+function optionOverrideKey(option: Pick<OfferSizeLadderOption, "longSideCm" | "widthCm" | "heightCm" | "sizeLabel">) {
+  return `${option.longSideCm}:${option.widthCm}:${option.heightCm}:${option.sizeLabel}`;
+}
+
+function optionOverrideInputKey(input: OfferSizeLadderOptionOverrideInput) {
+  const explicit = trimNullable(input.optionKey);
+  if (explicit) return explicit;
+  const sizeLabel = trimNullable(input.sizeLabel);
+  if (
+    sizeLabel &&
+    input.longSideCm !== null &&
+    input.longSideCm !== undefined &&
+    input.widthCm !== null &&
+    input.widthCm !== undefined &&
+    input.heightCm !== null &&
+    input.heightCm !== undefined
+  ) {
+    return `${Number(input.longSideCm)}:${Number(input.widthCm)}:${Number(input.heightCm)}:${sizeLabel}`;
+  }
+  return null;
+}
+
+export function applyOfferSizeLadderOptionOverrides(
+  result: OfferSizeLadderResult,
+  overrides: OfferSizeLadderOptionOverrideInput[] | null | undefined,
+) {
+  if (!overrides?.length) return result;
+  const overrideByKey = new Map<string, number>();
+  for (const override of overrides) {
+    const key = optionOverrideInputKey(override);
+    if (!key) continue;
+    const price = nonNegativeNumber("Manueller Angebotspreis", override.customerUnitPriceNet);
+    if (price > 1_000_000) {
+      throw new QuoteValidationError("Manueller Angebotspreis ist unplausibel hoch.", [key], 400);
+    }
+    overrideByKey.set(key, round2(price));
+  }
+  if (!overrideByKey.size) return result;
+
+  let changedCount = 0;
+  const options = result.options.map((option) => {
+    const overridePrice = overrideByKey.get(optionOverrideKey(option));
+    if (overridePrice === undefined) return option;
+    const changed = Math.abs(overridePrice - option.customerUnitPriceNet) >= 0.01;
+    if (!changed) return option;
+    changedCount += 1;
+    return {
+      ...option,
+      customerUnitPriceNet: overridePrice,
+      reviewStatus: option.reviewStatus === "auto_ok" ? ("needs_review" as const) : option.reviewStatus,
+      reviewReason: option.reviewReason || "manual_offer_price_override",
+      issues: !option.issues.includes("manual_offer_price_override")
+        ? [...option.issues, "manual_offer_price_override"]
+        : option.issues,
+      metadata: {
+        ...option.metadata,
+        manual_offer_price_override: true,
+        calculated_customer_unit_price_net: option.customerUnitPriceNet,
+      },
+    };
+  });
+  if (!changedCount) return result;
+
+  return {
+    ...result,
+    status: result.status === "draft" ? "needs_review" : result.status,
+    warnings: result.warnings.includes("manual_offer_price_overrides")
+      ? result.warnings
+      : [...result.warnings, "manual_offer_price_overrides"],
+    options,
+  };
 }
 
 export function detectOfferSizeLadderProductModel(text: string): OfferSizeLadderProductModel {
@@ -1201,19 +1284,21 @@ export function buildOfferSizeLadderOfferPatch(input: {
 }
 
 export async function applyOfferSizeLadderToOffer(input: OfferSizeLadderOfferApplyInput): Promise<OfferSizeLadderOfferApplyResult> {
-  const sizeLadder = await generateOfferSizeLadderFromTrello({
+  const generatedSizeLadder = await generateOfferSizeLadderFromTrello({
     ...input,
     persist: false,
   });
+  const sizeLadder = applyOfferSizeLadderOptionOverrides(generatedSizeLadder, input.optionOverrides);
   const offerId = trimNullable(input.offerId);
   const offer = offerId ? await getOfferById(offerId) : await getOfferByTrelloCardId(sizeLadder.trelloCardId);
+  const sizeLadderForOffer = {
+    ...sizeLadder,
+    offerId: offerId || sizeLadder.offerId,
+    offerItemId: trimNullable(input.offerItemId) || sizeLadder.offerItemId,
+  };
   const { patch, targetItem, defaultOption, appliedOptions, skippedBlockedOptions } = buildOfferSizeLadderOfferPatch({
     offer,
-    sizeLadder: {
-      ...sizeLadder,
-      offerId: offerId || sizeLadder.offerId,
-      offerItemId: trimNullable(input.offerItemId) || sizeLadder.offerItemId,
-    },
+    sizeLadder: sizeLadderForOffer,
     offerItemId: input.offerItemId,
     operatorName: input.createdBy,
     revisionReason: input.revisionReason,
@@ -1226,7 +1311,7 @@ export async function applyOfferSizeLadderToOffer(input: OfferSizeLadderOfferApp
     dryRun: patchResult.dryRun === true,
     offer: patchResult.offer,
     diff: patchResult.diff,
-    sizeLadder,
+    sizeLadder: sizeLadderForOffer,
     applied: {
       targetItemId: targetItem.id,
       targetItemTitle: targetItem.title,

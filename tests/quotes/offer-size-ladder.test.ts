@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyOfferSizeLadderOptionOverrides,
   buildOfferSizeLadderOfferPatch,
   extractOfferSizeLadderAnchorsFromTrelloFields,
   generateOfferSizeLadder,
@@ -193,6 +194,104 @@ test("offer size ladder builds an offer patch with minimum size selected by defa
   assert.equal(appliedOptions[0]?.isDefault, true);
   assert.ok(patch.items?.slice(1).every((item) => item.id.startsWith("new-item-size-ladder-")));
   assert.ok(patch.items?.slice(1).every((item) => item.selectedByDefault === false));
+});
+
+test("offer size ladder offer patch uses manual option price overrides", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardManualOverride1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+  });
+  const optionToOverride = sizeLadder.options.find((option) => option.longSideCm === 120);
+  assert.ok(optionToOverride);
+  const optionKey = `${optionToOverride!.longSideCm}:${optionToOverride!.widthCm}:${optionToOverride!.heightCm}:${optionToOverride!.sizeLabel}`;
+  const overridden = applyOfferSizeLadderOptionOverrides(sizeLadder, [{
+    optionKey,
+    customerUnitPriceNet: 999,
+  }]);
+
+  const offer = {
+    offerId: "offer_override_1",
+    offerNumber: "A/N Override",
+    documentReference: "A/N Override",
+    trelloCardId: "cardManualOverride1",
+    publicUrl: "https://angebote.neontrip.de/offer/token",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T08:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [{
+      id: "item_1",
+      section: "LED-Leuchtschild",
+      title: "LED Logo Wandschild",
+      description: "Größe: 80x40cm\nLeuchtfarbe: Wie Logo",
+      quantity: 1,
+      unitPriceNet: 520,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: 0,
+    }],
+    images: [],
+    totals: {},
+  };
+
+  const { patch } = buildOfferSizeLadderOfferPatch({
+    offer,
+    sizeLadder: overridden,
+    offerItemId: "item_1",
+    operatorName: "Test",
+  });
+
+  const overriddenItem = patch.items?.find((item) => item.description?.includes(optionToOverride!.sizeLabel));
+  assert.equal(overriddenItem?.unitPriceNet, 999);
+  assert.ok(overridden.warnings.includes("manual_offer_price_overrides"));
+});
+
+test("offer size ladder ignores unchanged option price overrides", async () => {
+  const sizeLadder = await generateOfferSizeLadder({
+    trelloCardId: "cardUnchangedOverride1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 160, shippingPrice: 150 },
+      { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 500, shippingPrice: 520 },
+    ],
+  });
+  const overrides = sizeLadder.options.map((option) => ({
+    optionKey: `${option.longSideCm}:${option.widthCm}:${option.heightCm}:${option.sizeLabel}`,
+    customerUnitPriceNet: option.customerUnitPriceNet,
+  }));
+
+  const unchanged = applyOfferSizeLadderOptionOverrides(sizeLadder, overrides);
+
+  assert.equal(unchanged, sizeLadder);
+  assert.equal(unchanged.warnings.includes("manual_offer_price_overrides"), false);
 });
 
 test("offer size ladder loads internal offer drafts without touching offers api", async () => {
