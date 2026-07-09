@@ -367,6 +367,207 @@ test("offer size ladder ignores unchanged option price overrides", async () => {
   assert.equal(unchanged.warnings.includes("manual_offer_price_overrides"), false);
 });
 
+test("offer size ladder from Trello uses the canonical card id for offer lookup", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+
+    if (url.startsWith("https://api.trello.com/1/cards/shortLisa1")) {
+      assert.equal(method, "GET");
+      return new Response(JSON.stringify({
+        id: "65f000000000000000000123",
+        idBoard: "board-1",
+        name: "LED Flex Lisa 75/100/120/150cm",
+        desc: "Neon Flex",
+        customFieldItems: [
+          { idCustomField: "size-1", value: { text: "75x45cm" } },
+          { idCustomField: "prod-1", value: { text: "100" } },
+          { idCustomField: "ship-1", value: { text: "100" } },
+          { idCustomField: "size-2", value: { text: "150x90cm" } },
+          { idCustomField: "prod-2", value: { text: "190" } },
+          { idCustomField: "ship-2", value: { text: "210" } },
+          { idCustomField: "size-3", value: { text: "250x150cm" } },
+          { idCustomField: "prod-3", value: { text: "480" } },
+          { idCustomField: "ship-3", value: { text: "520" } },
+        ],
+        attachments: [],
+        actions: [],
+      }), { status: 200 });
+    }
+
+    if (url.startsWith("https://api.trello.com/1/boards/board-1/customFields")) {
+      return new Response(JSON.stringify([
+        { id: "size-1", name: "Size_1", type: "text" },
+        { id: "prod-1", name: "Production_1", type: "text" },
+        { id: "ship-1", name: "Shipping_1", type: "text" },
+        { id: "size-2", name: "Size_2", type: "text" },
+        { id: "prod-2", name: "Production_2", type: "text" },
+        { id: "ship-2", name: "Shipping_2", type: "text" },
+        { id: "size-3", name: "Size_3", type: "text" },
+        { id: "prod-3", name: "Production_3", type: "text" },
+        { id: "ship-3", name: "Shipping_3", type: "text" },
+      ]), { status: 200 });
+    }
+
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await generateOfferSizeLadderFromTrello({
+      trelloCard: "https://trello.com/c/shortLisa1/32831-led-flex-lisa",
+      persist: false,
+      stepCm: 10,
+      maxLongSideCm: 250,
+    });
+
+    assert.equal(result.trelloCardId, "65f000000000000000000123");
+    assert.equal(result.trelloCardUrl, "https://trello.com/c/shortLisa1/32831-led-flex-lisa");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+  }
+});
+
+test("offer size ladder offer apply retries short Trello links with canonical card id", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;
+  const originalOffersKey = process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  process.env.NEONTRIP_OFFERS_BASE_URL = "https://offers.test";
+  process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "offers-key";
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+
+  const offer = {
+    offerId: "offer_canonical_1",
+    offerNumber: "A/N Canonical",
+    documentReference: "A/N Canonical",
+    trelloCardId: "65f000000000000000000abc",
+    publicUrl: "https://angebote.neontrip.de/offer/canonical",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T10:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [{
+      id: "item_1",
+      section: "LED-Leuchtschild",
+      title: "LED Logo Wandschild",
+      description: "Größe: 75x45cm",
+      quantity: 1,
+      unitPriceNet: 460,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: 0,
+    }],
+    images: [],
+    totals: {},
+  };
+
+  const calledUrls: string[] = [];
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    calledUrls.push(`${method} ${url}`);
+
+    if (url === "https://offers.test/api/internal/offers/by-trello/shortApply1" && method === "GET") {
+      return new Response(JSON.stringify({ ok: false, error: "Offer not found.", code: "NOT_FOUND" }), { status: 404 });
+    }
+    if (url.startsWith("https://api.trello.com/1/cards/shortApply1")) {
+      return new Response(JSON.stringify({
+        id: "65f000000000000000000abc",
+        idBoard: "board-1",
+        name: "LED Flex Canonical",
+        desc: "",
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      }), { status: 200 });
+    }
+    if (url.startsWith("https://api.trello.com/1/boards/board-1/customFields")) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (url === "https://offers.test/api/internal/offers/by-trello/65f000000000000000000abc" && method === "GET") {
+      return new Response(JSON.stringify({ ok: true, offer }), { status: 200 });
+    }
+    if (url === "https://offers.test/api/internal/offers/by-trello/65f000000000000000000abc?dryRun=true" && method === "PATCH") {
+      const body = JSON.parse(String(init?.body || "{}"));
+      return new Response(JSON.stringify({
+        ok: true,
+        dryRun: true,
+        offer: { ...offer, items: body.items },
+        diff: { changedKeys: ["items"] },
+      }), { status: 200 });
+    }
+
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await applyOfferSizeLadderToOffer({
+      trelloCard: "https://trello.com/c/shortApply1/example",
+      dryRun: true,
+      createdBy: "Daniel",
+      productModel: "neonflex",
+      stepCm: 10,
+      maxLongSideCm: 250,
+      customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+      anchors: [
+        { role: "minimum", widthCm: 75, heightCm: 45, productionPrice: 100, shippingPrice: 100 },
+        { role: "requested", widthCm: 150, heightCm: 90, productionPrice: 190, shippingPrice: 210 },
+        { role: "max_250", widthCm: 250, heightCm: 150, productionPrice: 480, shippingPrice: 520 },
+      ],
+    });
+
+    assert.equal(result.dryRun, true);
+    assert.equal(result.sizeLadder.trelloCardId, "65f000000000000000000abc");
+    assert.ok(calledUrls.includes("GET https://offers.test/api/internal/offers/by-trello/shortApply1"));
+    assert.ok(calledUrls.includes("GET https://offers.test/api/internal/offers/by-trello/65f000000000000000000abc"));
+    assert.ok(calledUrls.includes("PATCH https://offers.test/api/internal/offers/by-trello/65f000000000000000000abc?dryRun=true"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalOffersBaseUrl === undefined) delete process.env.NEONTRIP_OFFERS_BASE_URL;
+    else process.env.NEONTRIP_OFFERS_BASE_URL = originalOffersBaseUrl;
+    if (originalOffersKey === undefined) delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+    else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = originalOffersKey;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+  }
+});
+
 test("offer size ladder offer apply can use visible UI anchors without reloading Trello", async () => {
   const originalFetch = globalThis.fetch;
   const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;

@@ -1858,7 +1858,7 @@ export function SupplierPriceReviewClient({
               className="mt-3 min-h-20 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-[#fa31a2]"
             />
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
@@ -1866,56 +1866,54 @@ export function SupplierPriceReviewClient({
                 className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2]/30 bg-[#fff2fa] px-4 py-2 text-sm font-medium text-[#9f1768] transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Calculator className="h-4 w-4" />
-                {sizeLadderRunning ? "Lade..." : "Aus Trello laden & berechnen"}
-              </button>
-              <button
-                type="button"
-                disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
-                onClick={() => void generateSizeLadderFromTrello(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2] bg-[#fa31a2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#d91f88] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Check className="h-4 w-4" />
-                Trello laden & Draft speichern
+                {sizeLadderRunning ? "Lade..." : "Trello laden & Tabelle berechnen"}
               </button>
               <button
                 type="button"
                 disabled={sizeLadderRunning || !sizeLadderResult || !sizeLadderTrelloCardId.trim()}
                 onClick={() => void generateSizeLadderFromTrello(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2]/35 bg-white px-4 py-2 text-sm font-medium text-[#b51270] transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-full border border-[#fa31a2] bg-[#fa31a2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#d91f88] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Check className="h-4 w-4" />
-                Tabellenpreise als Draft speichern
-              </button>
-              <button
-                type="button"
-                disabled={sizeLadderLoadingDraft || (!sizeLadderTrelloCardId.trim() && !sizeLadderOfferId.trim())}
-                onClick={() => void loadSizeLadderDraft()}
-                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${sizeLadderLoadingDraft ? "animate-spin" : ""}`} />
-                {sizeLadderLoadingDraft ? "Lade..." : "Gespeicherten Draft laden"}
-              </button>
-              <button
-                type="button"
-                disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
-                onClick={() => void generateSizeLadder(false)}
-                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Calculator className="h-4 w-4" />
-                {sizeLadderRunning ? "Rechne..." : "Größenleiter berechnen"}
-              </button>
-              <button
-                type="button"
-                disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
-                onClick={() => void generateSizeLadder(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Check className="h-4 w-4" />
-                Berechnen & Draft speichern
+                Tabelle als Draft speichern
               </button>
             </div>
+            <details className="mt-3 rounded-lg border border-black/10 bg-white">
+              <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-black/60 transition hover:text-black">
+                Weitere Aktionen
+              </summary>
+              <div className="flex flex-wrap gap-2 border-t border-black/10 p-3">
+                <button
+                  type="button"
+                  disabled={sizeLadderLoadingDraft || (!sizeLadderTrelloCardId.trim() && !sizeLadderOfferId.trim())}
+                  onClick={() => void loadSizeLadderDraft()}
+                  className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${sizeLadderLoadingDraft ? "animate-spin" : ""}`} />
+                  {sizeLadderLoadingDraft ? "Lade..." : "Gespeicherten Draft laden"}
+                </button>
+                <button
+                  type="button"
+                  disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
+                  onClick={() => void generateSizeLadder(false)}
+                  className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Calculator className="h-4 w-4" />
+                  {sizeLadderRunning ? "Rechne..." : "Manuell berechnen"}
+                </button>
+                <button
+                  type="button"
+                  disabled={sizeLadderRunning || !sizeLadderTrelloCardId.trim()}
+                  onClick={() => void generateSizeLadder(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Check className="h-4 w-4" />
+                  Manuell als Draft speichern
+                </button>
+              </div>
+            </details>
             <div className="mt-2 text-xs text-black/45">
-              Ohne Offer-ID wird das Angebot über die Trello-Karte gesucht. Existiert noch kein Angebot, muss es zuerst aus Trello erstellt werden. Das direkte Einfügen ins Angebot findest du in der Ergebnis-Tabelle.
+              Angebotszuordnung über Trello-ID oder interne Offer-ID.
             </div>
 
             {sizeLadderOfferApplyResult ? <SizeLadderOfferApplyCard result={sizeLadderOfferApplyResult} /> : null}

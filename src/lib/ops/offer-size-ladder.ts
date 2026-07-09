@@ -7,6 +7,7 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 import {
   getOfferById,
   getOfferByTrelloCardId,
+  OpsOfferApiError,
   patchOfferById,
   patchOfferByTrelloCardId,
   type OpsOfferItem,
@@ -1298,6 +1299,7 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
   if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
 
   const card = await getTrelloCard(trelloCardId);
+  const canonicalTrelloCardId = card.id || trelloCardId;
   const extraction = extractOfferSizeLadderAnchorsFromTrelloFields(card.customFields || {});
   if (extraction.anchors.length !== 3) {
     throw new QuoteValidationError(
@@ -1318,7 +1320,7 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
   const generateInput = {
     ...input,
     persist: false,
-    trelloCardId,
+    trelloCardId: canonicalTrelloCardId,
     trelloCardUrl: String(input.trelloCard || "").includes("trello.com/c/")
       ? String(input.trelloCard)
       : `https://trello.com/c/${trelloCardId}`,
@@ -1349,6 +1351,50 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
   }
 
   return result;
+}
+
+async function resolveOfferForSizeLadder(input: OfferSizeLadderOfferApplyInput, sizeLadder: OfferSizeLadderResult) {
+  const offerId = trimNullable(input.offerId);
+  if (offerId) {
+    return {
+      offer: await getOfferById(offerId),
+      offerId,
+      trelloCardId: sizeLadder.trelloCardId,
+    };
+  }
+
+  const firstLookupId = sizeLadder.trelloCardId;
+  try {
+    return {
+      offer: await getOfferByTrelloCardId(firstLookupId),
+      offerId: null,
+      trelloCardId: firstLookupId,
+    };
+  } catch (error) {
+    if (!(error instanceof OpsOfferApiError) || error.status !== 404) throw error;
+
+    const fallbackIdentifier = normalizeTrelloCardIdentifier(input.trelloCard || input.trelloCardId || input.trelloCardUrl);
+    if (fallbackIdentifier) {
+      const card = await getTrelloCard(fallbackIdentifier).catch(() => null);
+      if (card?.id && card.id !== firstLookupId) {
+        try {
+          return {
+            offer: await getOfferByTrelloCardId(card.id),
+            offerId: null,
+            trelloCardId: card.id,
+          };
+        } catch (fallbackError) {
+          if (!(fallbackError instanceof OpsOfferApiError) || fallbackError.status !== 404) throw fallbackError;
+        }
+      }
+    }
+
+    throw new QuoteValidationError(
+      "Kein Angebot zu dieser Trello-Karte gefunden. Falls das Angebot schon existiert, bitte Trello neu laden oder die interne Offer-ID eintragen.",
+      [],
+      404,
+    );
+  }
 }
 
 export function buildOfferSizeLadderOfferPatch(input: {
@@ -1470,23 +1516,23 @@ export async function applyOfferSizeLadderToOffer(input: OfferSizeLadderOfferApp
         persist: false,
       });
   const sizeLadder = applyOfferSizeLadderOptionOverrides(generatedSizeLadder, input.optionOverrides);
-  const offerId = trimNullable(input.offerId);
-  const offer = offerId ? await getOfferById(offerId) : await getOfferByTrelloCardId(sizeLadder.trelloCardId);
+  const resolvedOffer = await resolveOfferForSizeLadder(input, sizeLadder);
   const sizeLadderForOffer = {
     ...sizeLadder,
-    offerId: offerId || sizeLadder.offerId,
+    trelloCardId: resolvedOffer.trelloCardId || sizeLadder.trelloCardId,
+    offerId: resolvedOffer.offerId || sizeLadder.offerId,
     offerItemId: trimNullable(input.offerItemId) || sizeLadder.offerItemId,
   };
   const { patch, targetItem, defaultOption, appliedOptions, skippedBlockedOptions } = buildOfferSizeLadderOfferPatch({
-    offer,
+    offer: resolvedOffer.offer,
     sizeLadder: sizeLadderForOffer,
     offerItemId: input.offerItemId,
     operatorName: input.createdBy,
     revisionReason: input.revisionReason,
   });
-  const patchResult = offerId
-    ? await patchOfferById(offerId, patch, input.dryRun === true)
-    : await patchOfferByTrelloCardId(sizeLadder.trelloCardId, patch, input.dryRun === true);
+  const patchResult = resolvedOffer.offerId
+    ? await patchOfferById(resolvedOffer.offerId, patch, input.dryRun === true)
+    : await patchOfferByTrelloCardId(resolvedOffer.trelloCardId, patch, input.dryRun === true);
 
   return {
     dryRun: patchResult.dryRun === true,
