@@ -433,7 +433,7 @@ test("offer size ladder loads internal offer drafts without touching offers api"
         status: "draft",
         confidence: "0.88",
         issues: [],
-        warnings: [],
+        warnings: [{ code: "trello_projection_failed", message: "Trello-Projektion fehlgeschlagen" }],
         metadata: {},
         created_by: "ops",
         created_at: "2026-07-08T08:00:00.000Z",
@@ -478,6 +478,7 @@ test("offer size ladder loads internal offer drafts without touching offers api"
     assert.equal(drafts[0]?.offerId, "offer_123");
     assert.equal(drafts[0]?.trelloCardId, "cardDraft1");
     assert.equal(drafts[0]?.options[0]?.customerUnitPriceNet, 570);
+    assert.deepEqual(drafts[0]?.warnings, ["Trello-Projektion fehlgeschlagen"]);
     assert.ok(calledUrls.every((url) => url.includes("/rest/v1/offer_size_")));
   } finally {
     globalThis.fetch = originalFetch;

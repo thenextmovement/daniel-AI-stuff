@@ -31,7 +31,8 @@ type ReviewResponse = {
   sizeLadderOfferApply?: OfferSizeLadderOfferApplyView;
   importResult?: SupplierQuoteTrelloImportResult;
   error?: string;
-  issues?: string[];
+  issues?: unknown[];
+  details?: unknown;
 };
 
 type ReviewFilter = "pending" | "reviewed" | "all";
@@ -117,10 +118,54 @@ type OfferSizeLadderOfferApplyView = {
   };
 };
 
+function formatIssueText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+      try {
+        return formatIssueText(JSON.parse(trimmed));
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(formatIssueText).filter(Boolean).join(", ");
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const preferred =
+      record.message ||
+      record.error ||
+      record.code ||
+      record.details ||
+      record.hint ||
+      record.reason ||
+      record.text;
+    if (preferred) return formatIssueText(preferred);
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return "Unlesbarer Fehler";
+    }
+  }
+  return String(value);
+}
+
+function formatIssueList(values: unknown[]) {
+  return values.map(formatIssueText).filter(Boolean).join(", ");
+}
+
 function formatApiError(payload: ReviewResponse | null) {
   if (!payload) return "Anfrage fehlgeschlagen.";
-  if (payload.issues?.length) return `${payload.error || "Fehler"}: ${payload.issues.join(", ")}`;
-  return payload.error || "Anfrage fehlgeschlagen.";
+  const issueText = payload.issues?.length ? formatIssueList(payload.issues) : "";
+  const detailText = payload.details ? formatIssueText(payload.details) : "";
+  const base = formatIssueText(payload.error) || "Anfrage fehlgeschlagen.";
+  if (issueText) return `${base}: ${issueText}`;
+  if (detailText) return `${base}: ${detailText}`;
+  return base;
 }
 
 function formatMoney(value: number, currency = "USD") {
@@ -386,7 +431,7 @@ function TrelloEstimateResultCard({
 
       {estimate.warnings.length ? (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          {estimate.warnings.join(" ")}
+          {formatIssueList(estimate.warnings)}
         </div>
       ) : null}
 
@@ -550,7 +595,7 @@ function SizeLadderResultCard({
 
       {result.issues.length || result.warnings.length ? (
         <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${result.issues.length ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-          {[...result.issues, ...result.warnings].join(", ")}
+          {formatIssueList([...result.issues, ...result.warnings])}
         </div>
       ) : null}
 

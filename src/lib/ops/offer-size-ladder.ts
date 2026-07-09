@@ -622,7 +622,25 @@ function numberFromRow(value: number | string | null | undefined, fallback = 0) 
 }
 
 function stringArrayFromRow(value: unknown) {
-  return Array.isArray(value) ? value.map((item) => String(item)) : [];
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (item === null || item === undefined) return "";
+      if (typeof item === "string") return item;
+      if (typeof item === "number" || typeof item === "boolean") return String(item);
+      if (typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        const preferred = record.message || record.error || record.code || record.reason || record.text;
+        if (preferred) return String(preferred);
+        try {
+          return JSON.stringify(record);
+        } catch {
+          return "unlesbarer_issue_eintrag";
+        }
+      }
+      return String(item);
+    })
+    .filter(Boolean);
 }
 
 function defaultSizeLabel(widthCm: number, heightCm: number) {
