@@ -1010,7 +1010,7 @@ export function detectOfferSizeLadderProductModel(text: string): OfferSizeLadder
   if (/uv[\s-]*print|uvdruck|uv[\s-]*druck|print\s+on\s+acrylic/.test(normalized)) return "uv_print";
   if (/outdoor|aussen|außen|wasserdicht|wetterfest|ip65|ip67/.test(normalized)) return "outdoor";
   if (/non\s*-?\s*lit|ohne\s+neon|kein\s+neon/.test(normalized)) return "unsupported";
-  if (/neon\s*flex|neonflex|led\s+logo|wandschild|led[\s-]*neon/.test(normalized)) return "neonflex";
+  if (/neon\s*flex|neonflex|led\s*flex|led\s+logo|wandschild|led[\s-]*neon/.test(normalized)) return "neonflex";
   return "unknown";
 }
 

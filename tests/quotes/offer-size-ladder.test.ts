@@ -105,6 +105,32 @@ test("offer size ladder can extrapolate from flexible anchors without a 250cm qu
   assert.ok(option250!.customerUnitPriceNet > 550 * OFFER_SIZE_LADDER_CUSTOMER_FACTOR);
 });
 
+test("offer size ladder detects LED Flex product custom fields as neonflex", async () => {
+  const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
+    Size_1: "80x32cm",
+    Production_1: "100",
+    Shipping_1: "120",
+    Size_2: "120x48cm",
+    Production_2: "160",
+    Shipping_2: "180",
+    Size_3: "250x100cm",
+    Production_3: "500",
+    Shipping_3: "620",
+    Product_1: "LED Flex",
+  });
+
+  const result = await generateOfferSizeLadder({
+    trelloCardId: "cardLedFlexModel1",
+    sourceText: extraction.sourceText,
+    anchors: extraction.anchors,
+    stepCm: 10,
+    maxLongSideCm: 250,
+  });
+
+  assert.equal(result.productModel, "neonflex");
+  assert.equal(result.status, "draft");
+});
+
 test("offer size ladder can build a review ladder from only the minimum supplier anchor", async () => {
   const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
     Size_1: "100x40cm",
