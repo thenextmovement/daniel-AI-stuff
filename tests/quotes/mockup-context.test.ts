@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildBackboardPromptBlock,
   buildImageMockupPrompt,
   buildMockupContext,
   buildMockupTrelloDescription,
@@ -103,6 +104,48 @@ test("image and video prompts share context but stay separately optimized", () =
     assert.match(prompt, /no visible power supply/);
     assert.match(prompt, /no fake logo variations/);
   }
+});
+
+test("backboard prompt block explains feinschnitt as minimal acrylic bridges", () => {
+  const context = buildMockupContext({
+    manualSegment: "Restaurant",
+    requestTitle: "Schriftzug Logo",
+    color: "Warmweiss",
+    usage: "Innenbereich",
+    backboard: "Feinschnitt",
+    product: "LED Neon Flex Schild",
+  });
+  const imagePrompt = buildImageMockupPrompt(context);
+  const videoPrompt = buildVideoMockupPrompt(context);
+
+  assert.match(context.backboardPromptBlock || "", /Feinschnitt/);
+  assert.match(imagePrompt, /Do not show a large acrylic backing plate/);
+  assert.match(imagePrompt, /minimal transparent acrylic directly behind the tubes/);
+  assert.match(imagePrompt, /nearly invisible transparent acrylic bridges/);
+  assert.match(videoPrompt, /Feinschnitt/);
+  assert.doesNotMatch(imagePrompt, /rectangular acrylic backing/);
+});
+
+test("backboard prompt block distinguishes formzuschnitt from rectangular backing", () => {
+  const contour = buildBackboardPromptBlock("Formzuschnitt");
+  const rectangle = buildBackboardPromptBlock("Rechteckiger Zuschnitt");
+
+  assert.match(contour || "", /contour-cut acrylic backing/);
+  assert.match(contour || "", /outside contour of the logo/);
+  assert.match(contour || "", /Do not turn this into a large rectangular plate/);
+  assert.match(rectangle || "", /rectangular acrylic backing/);
+  assert.match(rectangle || "", /one clear rectangular or square acrylic glass plate/);
+  assert.match(rectangle || "", /Do not make the acrylic backing follow the logo contour/);
+});
+
+test("missing backboard does not invent a feinschnitt rule", () => {
+  const context = buildMockupContext({
+    requestDescription: "Logo fuer Empfang",
+  });
+
+  assert.equal(context.backboard, "Rueckplatte laut Angebot");
+  assert.equal(context.backboardPromptBlock, null);
+  assert.doesNotMatch(buildImageMockupPrompt(context), /Feinschnitt|minimal transparent acrylic directly behind the tubes/);
 });
 
 test("segment storage uses manual or ai source and maps to existing NT taxonomy", () => {

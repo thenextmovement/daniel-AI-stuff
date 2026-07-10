@@ -32,6 +32,7 @@ export type MockupContext = MockupSegmentResult & {
   usage: string;
   lightColor: string;
   backboard: string;
+  backboardPromptBlock: string | null;
   productType: string;
   signContext: string;
 };
@@ -233,6 +234,50 @@ function textValue(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function normalizeBackboardKey(value: unknown) {
+  return textValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss");
+}
+
+export function buildBackboardPromptBlock(backboardValue: string | null | undefined) {
+  const normalized = normalizeBackboardKey(backboardValue);
+  if (!normalized) return null;
+
+  if (/feinschnitt|fine\s*cut|minimal\s*(?:acryl|acrylic)/i.test(normalized)) {
+    return [
+      "Backboard construction rule: Feinschnitt.",
+      "Do not show a large acrylic backing plate.",
+      "Do not show a contour-cut acrylic board around the full logo.",
+      "The neon tubes should have only minimal transparent acrylic directly behind the tubes.",
+      "If separate letters or logo parts need support, connect them with very thin, nearly invisible transparent acrylic bridges.",
+      "The result must still be one manufacturable sign, but with as little visible acrylic as technically possible.",
+    ].join("\n");
+  }
+
+  if (/rechteck|rectang|square|quadratisch|viereck/i.test(normalized)) {
+    return [
+      "Backboard construction rule: rectangular acrylic backing.",
+      "Show the complete design mounted on one clear rectangular or square acrylic glass plate.",
+      "Use straight clean edges and proportions that fit the design.",
+      "Do not make the acrylic backing follow the logo contour.",
+    ].join("\n");
+  }
+
+  if (/formzuschnitt|form\s*zuschnitt|kontur|contour|cut\s*to\s*shape|shape\s*cut|cut-to-shape/i.test(normalized)) {
+    return [
+      "Backboard construction rule: Formzuschnitt / contour-cut acrylic backing.",
+      "Show a transparent acrylic backing plate that roughly follows the outside contour of the logo.",
+      "The contour-cut acrylic may be visible, but it must look clean, premium and intentionally shaped.",
+      "Do not turn this into a large rectangular plate unless the request explicitly says rectangular backing.",
+    ].join("\n");
+  }
+
+  return null;
+}
+
 function normalizeKey(value: unknown) {
   return textValue(value).toLowerCase();
 }
@@ -380,6 +425,7 @@ export function buildMockupContext(input: MockupContextInput): MockupContext {
   const usage = textValue(input.usage) || "Innenbereich";
   const lightColor = textValue(input.color) || "Leuchtfarbe laut Kundenanfrage";
   const backboard = textValue(input.backboard) || "Rueckplatte laut Angebot";
+  const backboardPromptBlock = buildBackboardPromptBlock(backboard);
   const productType = textValue(input.product) || "LED-Neonschild";
   const signContext = textValue(input.requestTitle) || textValue(input.customerCompany) || "kundenspezifisches Schild";
 
@@ -389,6 +435,7 @@ export function buildMockupContext(input: MockupContextInput): MockupContext {
     usage,
     lightColor,
     backboard,
+    backboardPromptBlock,
     productType,
     signContext,
   };
@@ -408,6 +455,7 @@ export function buildImageMockupPrompt(context: MockupContext) {
     `Installation/use: ${context.usage}.`,
     `Light color: ${context.lightColor}.`,
     `Backboard: ${context.backboard}.`,
+    context.backboardPromptBlock,
     `Product type: ${context.productType}.`,
     "Use a realistic wall or mounting surface, high-quality lighting, natural shadows, realistic glow and reflections.",
     "Keep the sign as the clear focus. Preserve the exact sign artwork, logo proportions, text, symbols and layout.",
@@ -420,6 +468,7 @@ export function buildVideoMockupPrompt(context: MockupContext) {
     "Create a short premium product video based on the provided neon sign mockup.",
     `Industry: ${context.segment}.`,
     `Scene setting: ${context.setting}`,
+    context.backboardPromptBlock,
     "Use a clean reveal with a slow subtle camera movement toward the sign.",
     "Animate only the light turning on, realistic glow, reflections and slight depth. Keep the sign in focus.",
     "Preserve the exact sign artwork, logo, text, symbols, proportions and layout throughout the video.",
