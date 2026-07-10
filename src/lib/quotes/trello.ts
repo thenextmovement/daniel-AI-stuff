@@ -116,6 +116,11 @@ export type TrelloFailureContextCard = {
   createdAt: string | null;
   customFields: CustomFieldMap;
   attachmentsCount: number;
+  labels?: Array<{
+    id: string;
+    name: string | null;
+    color: string | null;
+  }>;
 };
 
 export type TrelloFailureContext = {
@@ -270,8 +275,13 @@ export async function getTrelloFailureContext(cardId: string): Promise<TrelloFai
     customFieldItems?: TrelloCustomFieldItem[];
     attachments?: TrelloAttachment[];
     actions?: TrelloAction[];
+    labels?: Array<{
+      id: string;
+      name?: string | null;
+      color?: string | null;
+    }>;
   }>(
-    `/cards/${encodeURIComponent(cardId)}?fields=id,idShort,shortLink,name,desc,idBoard,idList,url,shortUrl,closed,dateLastActivity&customFieldItems=true&attachments=true&actions=updateCard,commentCard,createCard&actions_limit=80&action_fields=id,type,date,data`,
+    `/cards/${encodeURIComponent(cardId)}?fields=id,idShort,shortLink,name,desc,idBoard,idList,url,shortUrl,closed,dateLastActivity&customFieldItems=true&attachments=true&labels=all&actions=updateCard,commentCard,createCard&actions_limit=80&action_fields=id,type,date,data`,
   );
   const fields = card.idBoard
     ? await trelloFetch<TrelloCustomField[]>(`/boards/${encodeURIComponent(card.idBoard)}/customFields`)
@@ -303,6 +313,11 @@ export async function getTrelloFailureContext(cardId: string): Promise<TrelloFai
       createdAt: trelloCardCreatedAt(card.id),
       customFields,
       attachmentsCount: card.attachments?.length || 0,
+      labels: (card.labels || []).map((label) => ({
+        id: label.id,
+        name: label.name || null,
+        color: label.color || null,
+      })),
     },
     actions: (card.actions || []).map(mapFailureContextAction),
   };

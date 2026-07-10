@@ -443,6 +443,173 @@ test("company brain treats quote email log rows as sent offer proof", () => {
   assert.match(sent?.summary || "", /Versand- oder Ausgangsbeleg/);
 });
 
+test("company brain verifies Trello sent labels against mail evidence", () => {
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-label-ok",
+    offerNumber: "A/N 14510",
+    documentReference: "A/N 14510",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-label-ok",
+    updatedAt: "2026-07-07T08:55:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [
+    {
+      id: "trello-live-card-label-ok",
+      source: "trello_live",
+      title: "Trello-Karte: LED Flex",
+      detail: "Aktuelle Liste: Quote Ready · Tags: Angebot gesendet, Video gesendet",
+      occurredAt: "2026-07-07T09:01:00.000Z",
+      direction: "system",
+      href: null,
+      confidence: "medium",
+    },
+    {
+      id: "trello-live-label-offer",
+      source: "trello_live.labels",
+      title: "Trello-Tag: Angebot gesendet",
+      detail: "Farbe: green",
+      occurredAt: "2026-07-07T09:01:00.000Z",
+      direction: "system",
+      href: null,
+      confidence: "medium",
+    },
+    {
+      id: "trello-live-label-video",
+      source: "trello_live.labels",
+      title: "Trello-Tag: Video gesendet",
+      detail: "Farbe: blue",
+      occurredAt: "2026-07-07T09:01:00.000Z",
+      direction: "system",
+      href: null,
+      confidence: "medium",
+    },
+    {
+      id: "quote-email-log:label-ok",
+      source: "quote_email_log",
+      title: "Ihr NEONTRIP Angebot Nr. 14510",
+      detail: "Empfänger: max@example.com · Angebot: A/N 14510 · Status: sent",
+      occurredAt: "2026-07-07T09:00:00.000Z",
+      direction: "outbound",
+      href: null,
+      confidence: "high",
+    },
+  ];
+
+  const checks = buildCompanyBrainCrossChecks({ records: [], offers, evidence, question: "Ist das Angebot rausgegangen?" });
+  const projection = checks.find((check) => check.key === "trello_projection");
+
+  assert.equal(projection?.status, "pass");
+  assert.match(projection?.summary || "", /passen zusammen/);
+});
+
+test("company brain warns when Trello sent label has no mail evidence", () => {
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-label-missing",
+    offerNumber: "A/N 14511",
+    documentReference: "A/N 14511",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-label-missing",
+    updatedAt: "2026-07-07T08:55:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [{
+    id: "trello-live-label-offer-missing",
+    source: "trello_live.labels",
+    title: "Trello-Tag: Angebot gesendet",
+    detail: "Farbe: green",
+    occurredAt: "2026-07-07T09:01:00.000Z",
+    direction: "system",
+    href: null,
+    confidence: "medium",
+  }];
+
+  const checks = buildCompanyBrainCrossChecks({ records: [], offers, evidence, question: "Ist das Angebot rausgegangen?" });
+  const projection = checks.find((check) => check.key === "trello_projection");
+
+  assert.equal(projection?.status, "review");
+  assert.match(projection?.summary || "", /DB\/Mail-Beleg fehlt/);
+});
+
+test("company brain warns when Trello failure title is stale after send proof", () => {
+  const offers: CompanyBrainOfferSummary[] = [{
+    offerId: "offer-stale-failure",
+    offerNumber: "A/N 14512",
+    documentReference: "A/N 14512",
+    publicUrl: null,
+    status: "SENT",
+    customerName: "Max Muster",
+    customerEmail: "max@example.com",
+    projectTitle: "Schild",
+    trelloCardId: "card-stale-failure",
+    updatedAt: "2026-07-07T08:55:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    itemCount: 1,
+    imageCount: 1,
+    selectedItemCount: 1,
+    designEvidenceCount: 1,
+    productHints: ["Schild"],
+    colorHints: [],
+    selectedItems: [],
+    imageEvidence: [],
+  }];
+  const evidence: CompanyBrainEvidence[] = [
+    {
+      id: "trello-live-card-stale",
+      source: "trello_live",
+      title: "Trello-Karte: FEHLER - LED Flex",
+      detail: "Aktuelle Liste: Quote Ready",
+      occurredAt: "2026-07-07T09:01:00.000Z",
+      direction: "system",
+      href: null,
+      confidence: "medium",
+    },
+    {
+      id: "quote-email-log:stale-failure",
+      source: "quote_email_log",
+      title: "Ihr NEONTRIP Angebot Nr. 14512",
+      detail: "Empfänger: max@example.com · Angebot: A/N 14512 · Status: sent",
+      occurredAt: "2026-07-07T09:00:00.000Z",
+      direction: "outbound",
+      href: null,
+      confidence: "high",
+    },
+  ];
+
+  const checks = buildCompanyBrainCrossChecks({ records: [], offers, evidence, question: "Ist das Angebot rausgegangen?" });
+  const projection = checks.find((check) => check.key === "trello_projection");
+
+  assert.equal(projection?.status, "review");
+  assert.match(projection?.summary || "", /veraltete Trello-Projektion/);
+});
+
 test("company brain blocks resend when a send proof already exists", () => {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-SENT",

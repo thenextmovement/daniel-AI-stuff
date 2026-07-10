@@ -159,7 +159,7 @@ export type CompanyBrainAsset = {
 };
 
 export type CompanyBrainCrossCheck = {
-  key: "color_match" | "offer_sent" | "design_count" | "product_type" | "customer_confirmation" | "order_link";
+  key: "color_match" | "offer_sent" | "trello_projection" | "design_count" | "product_type" | "customer_confirmation" | "order_link";
   label: string;
   status: "pass" | "review" | "fail" | "unknown";
   severity: "info" | "warning" | "critical";
@@ -330,6 +330,11 @@ export type CompanyBrainTrelloFailureDiagnosis = {
     currentListName: string | null;
     dateLastActivity: string | null;
     attachmentsCount: number;
+    labels?: Array<{
+      id: string;
+      name: string | null;
+      color: string | null;
+    }>;
     customFields: Array<{
       name: string;
       value: string;
@@ -627,6 +632,42 @@ function trelloCustomFieldEntries(context: TrelloFailureContext) {
     }))
     .filter((entry): entry is { name: string; value: string } => Boolean(entry.name && entry.value))
     .slice(0, 10);
+}
+
+function trelloLabelEntries(context: TrelloFailureContext | null) {
+  return (context?.card.labels || [])
+    .map((label) => ({
+      id: cleanText(label.id),
+      name: cleanText(label.name),
+      color: cleanText(label.color) || null,
+    }))
+    .filter((label) => Boolean(label.id || label.name))
+    .slice(0, 20);
+}
+
+function trelloProjectionSignalsFromEvidence(evidence: CompanyBrainEvidence[]) {
+  const labelEvidence = evidence.filter((entry) => entry.source === "trello_live.labels");
+  const labelText = labelEvidence.map((entry) => `${entry.title} ${entry.detail || ""}`).join(" ").toLowerCase();
+  const titleText = evidence
+    .filter((entry) => entry.source === "trello_live")
+    .map((entry) => `${entry.title} ${entry.detail || ""}`)
+    .join(" ")
+    .toLowerCase();
+  const actionText = evidence
+    .filter((entry) => entry.source === "trello_live.actions")
+    .map((entry) => `${entry.title} ${entry.detail || ""}`)
+    .join(" ")
+    .toLowerCase();
+  return {
+    labelEvidence,
+    offerSent: /angebot\s+gesendet|quote\s+sent/.test(labelText),
+    videoSent: /video\s+gesendet|video\s+sent/.test(labelText),
+    updateSent: /update\s+gesendet|update\s+sent/.test(labelText),
+    qcFailed: /qc-?failed|qc\s+failed/.test(labelText),
+    qcVerified: /qc-?verified|qc\s+verified/.test(labelText),
+    failureTitle: /(^|\s)(fehler|❌\s*fehler)[:\s-]/.test(titleText),
+    failureAction: /fehler|fehlgeschlagen|failed|nicht rausgeschickt|nicht versendet|nicht gesendet/.test(actionText),
+  };
 }
 
 function extractTrelloAutomationExecutionIds(context: TrelloFailureContext | null) {
@@ -1312,6 +1353,7 @@ function mapOfferEvidence(offer: CompanyBrainOfferSummary): CompanyBrainEvidence
 
 function mapTrelloEvidence(context: TrelloFailureContext | null): CompanyBrainEvidence[] {
   if (!context) return [];
+  const labels = trelloLabelEntries(context);
   const entries: CompanyBrainEvidence[] = [
     {
       id: `trello-live-${context.card.id}`,
@@ -1320,6 +1362,7 @@ function mapTrelloEvidence(context: TrelloFailureContext | null): CompanyBrainEv
       detail: [
         context.card.currentListName ? `Aktuelle Liste: ${context.card.currentListName}` : null,
         context.card.attachmentsCount ? `${context.card.attachmentsCount} Anhang/Anhänge` : null,
+        labels.length ? `Tags: ${labels.map((label) => label.name || label.id).join(", ")}` : null,
       ].filter(Boolean).join(" · ") || null,
       occurredAt: context.card.dateLastActivity,
       direction: "system",
@@ -1327,6 +1370,19 @@ function mapTrelloEvidence(context: TrelloFailureContext | null): CompanyBrainEv
       confidence: "medium",
     },
   ];
+
+  for (const label of labels.slice(0, 10)) {
+    entries.push({
+      id: `trello-live-label-${context.card.id}-${label.id || label.name}`,
+      source: "trello_live.labels",
+      title: `Trello-Tag: ${label.name || label.id}`,
+      detail: label.color ? `Farbe: ${label.color}` : null,
+      occurredAt: context.card.dateLastActivity,
+      direction: "system",
+      href: context.card.url || context.card.shortUrl,
+      confidence: "medium",
+    });
+  }
 
   for (const action of context.actions.slice(0, 10)) {
     const isMove = Boolean(action.fromListName || action.toListName);
@@ -1806,6 +1862,10 @@ function buildSourceHealth(
   const shopifyLinked = records.filter((record) => record.latestOrderNumber);
   const trelloLinked = records.filter((record) => record.trelloCardId || record.trelloCardUrl);
   const liveTrelloCard = trelloFailureDiagnosis?.card || null;
+  const trelloLabelEvidence = evidence.filter((entry) => entry.source === "trello_live.labels");
+  const trelloLabelNames = trelloLabelEvidence
+    .map((entry) => entry.title.replace(/^Trello-Tag:\s*/i, ""))
+    .filter(Boolean);
 
   return [
     {
@@ -1873,14 +1933,14 @@ function buildSourceHealth(
       label: "Trello",
       status: liveTrelloCard || trelloLinked.length ? "ok" : records.length ? "missing" : "partial",
       summary: liveTrelloCard
-        ? `Live-Karte gelesen: ${liveTrelloCard.name || liveTrelloCard.id}.`
+        ? `Live-Karte gelesen: ${liveTrelloCard.name || liveTrelloCard.id}${trelloLabelNames.length ? ` · Tags: ${trelloLabelNames.join(", ")}` : ""}.`
         : trelloLinked.length
           ? `${trelloLinked.length} Trello-Referenz(en).`
           : "Keine Trello-Referenz im geladenen Fall.",
       count: liveTrelloCard ? 1 : trelloLinked.length,
       lastSeenAt: liveTrelloCard?.dateLastActivity || null,
       detail: liveTrelloCard
-        ? "Live-Trello wurde gelesen; Source of Truth bleibt Postgres/Offer/Audit."
+        ? "Live-Trello wurde gelesen; Labels sind Projektion. Source of Truth bleibt Postgres/Offer/Audit."
         : "Trello bleibt Projektion, nicht Source of Truth.",
     },
     {
@@ -2787,6 +2847,7 @@ export function buildCompanyBrainCrossChecks(input: {
   const latestOffer = offers[0] || null;
   const outboundEvidence = evidence.find((entry) => entry.direction === "outbound" && /angebot|mail|e-mail|follow-up|dokument/i.test(`${entry.title} ${entry.detail || ""}`));
   const deliveryFailureEvidence = evidence.find(isOfferDeliveryFailureEvidence);
+  const trelloProjection = trelloProjectionSignalsFromEvidence(evidence);
   const inboundEvidence = evidence.find((entry) => entry.direction === "inbound");
   const offerEvidence = evidence.find((entry) => entry.source.startsWith("offers_api"));
   const designEvidence = evidence.filter((entry) => /design|bild|position|mockup|entwurf|motiv/i.test(`${entry.title} ${entry.detail || ""}`));
@@ -2832,6 +2893,61 @@ export function buildCompanyBrainCrossChecks(input: {
         ? "Angebot existiert, aber ein eindeutiger Versandbeleg fehlt im geladenen Ergebnis."
         : "Kein Angebot für Versandprüfung geladen.",
     evidenceIds: [deliveryFailureEvidence?.id, outboundEvidence?.id, offerEvidence?.id].filter(Boolean) as string[],
+  });
+
+  const trelloHasSentProjection = trelloProjection.offerSent || trelloProjection.videoSent || trelloProjection.updateSent;
+  const trelloProjectionEvidenceIds = uniqueStrings([
+    ...trelloProjection.labelEvidence.map((entry) => entry.id),
+    ...evidence
+      .filter((entry) => entry.source === "trello_live" || entry.source === "trello_live.actions")
+      .slice(0, 3)
+      .map((entry) => entry.id),
+    outboundEvidence?.id,
+  ]);
+  const trelloProjectionStatus: CompanyBrainCrossCheck["status"] =
+    !trelloProjection.labelEvidence.length && !evidence.some((entry) => entry.source === "trello_live")
+      ? "unknown"
+      : trelloProjection.failureTitle && (offerSent || trelloHasSentProjection)
+        ? "review"
+        : trelloProjection.offerSent && offerSent
+          ? "pass"
+          : trelloProjection.offerSent && !offerSent
+            ? "review"
+            : !trelloProjection.offerSent && offerSent
+              ? "review"
+              : trelloProjection.failureAction
+                ? "review"
+                : "unknown";
+  const trelloProjectionActual = [
+    trelloProjection.offerSent ? "Angebot gesendet" : null,
+    trelloProjection.videoSent ? "Video gesendet" : null,
+    trelloProjection.updateSent ? "Update gesendet" : null,
+    trelloProjection.qcVerified ? "QC-VERIFIED" : null,
+    trelloProjection.qcFailed ? "QC-FAILED" : null,
+    trelloProjection.failureTitle ? "Titel: FEHLER" : null,
+    trelloProjection.failureAction ? "Fehlerhistorie" : null,
+    offerSent ? "DB/Mail: Versandbeleg" : null,
+  ].filter(Boolean).join(" · ") || null;
+  checks.push({
+    key: "trello_projection",
+    label: "Trello-Tags vs. Versandbeleg",
+    status: trelloProjectionStatus,
+    severity: statusSeverity(trelloProjectionStatus),
+    expected: "Trello-Projektion konsistent mit DB/Mail-Beleg",
+    actual: trelloProjectionActual,
+    summary:
+      trelloProjectionStatus === "pass"
+        ? "Trello-Tag und Versand-/Ausgangsbeleg passen zusammen."
+        : trelloProjection.failureTitle && (offerSent || trelloHasSentProjection)
+          ? "Trello zeigt noch FEHLER, obwohl ein Versandsignal oder Versandbeleg vorhanden ist. Das wirkt wie eine veraltete Trello-Projektion."
+          : trelloProjection.offerSent && !offerSent
+            ? "Trello-Tag meldet Angebotsversand, aber DB/Mail-Beleg fehlt im geladenen Ergebnis."
+            : !trelloProjection.offerSent && offerSent
+              ? "DB/Mail-Beleg meldet Versand, aber der Trello-Tag 'Angebot gesendet' fehlt."
+              : trelloProjection.failureAction
+                ? "Trello-Historie enthält einen Fehlerhinweis; Versandstatus muss gegen DB/Mail und Audit geprüft werden."
+                : "Keine aussagekräftigen Trello-Versand-Tags geladen.",
+    evidenceIds: trelloProjectionEvidenceIds,
   });
 
   const designStatus: CompanyBrainCrossCheck["status"] =
@@ -3249,6 +3365,7 @@ export function buildTrelloFailureDiagnosis(input: {
       currentListName: input.context.card.currentListName,
       dateLastActivity: input.context.card.dateLastActivity,
       attachmentsCount: input.context.card.attachmentsCount,
+      labels: trelloLabelEntries(input.context),
       customFields: trelloCustomFieldEntries(input.context),
     },
     triggerMove: triggerMove
@@ -4012,6 +4129,9 @@ export function buildCompanyBrainAnswer(
       bullets.push(`Letzter Karten-Move: ${trelloFailureDiagnosis.triggerMove.fromListName || "unbekannt"} -> ${trelloFailureDiagnosis.triggerMove.toListName || "unbekannt"}${trelloFailureDiagnosis.triggerMove.occurredAt ? ` am ${trelloFailureDiagnosis.triggerMove.occurredAt}` : ""}.`);
     }
     if (liveTrelloCard.descriptionPreview) bullets.push(`Trello-Beschreibung: ${liveTrelloCard.descriptionPreview}`);
+    if (liveTrelloCard.labels?.length) {
+      bullets.push(`Trello-Tags: ${liveTrelloCard.labels.map((label) => label.name || label.id).join(", ")}.`);
+    }
     if (liveTrelloCard.customFields.length) {
       bullets.push(`Kartenfelder: ${liveTrelloCard.customFields.slice(0, 4).map((field) => `${field.name}: ${field.value}`).join(" · ")}.`);
     }
