@@ -505,6 +505,44 @@ test("company brain repairs stale trello projection only after send proof", asyn
   });
 });
 
+test("company brain trello projection repair is idempotent when card is already clean", async () => {
+  await withGuardedRetryFetchMock({
+    quoteEmailGuardRows: [{
+      id: "quote-email-1",
+      recipient_email: "customer@example.com",
+      angebotsnummer: "14427",
+      subject: "Ihr NEONTRIP Angebot A/N 14427",
+      status: "sent",
+      sent_at: "2026-07-06T07:45:00.000Z",
+      created_at: "2026-07-06T07:45:00.000Z",
+    }],
+    trelloCard: {
+      name: "LED Flex",
+      labels: [{ id: "label-offer-sent", name: "Angebot gesendet", color: "green" }],
+      boardLabels: [{ id: "label-offer-sent", name: "Angebot gesendet", color: "green" }],
+    },
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(payload.trelloProjectionRepair.renamed, false);
+    assert.equal(payload.trelloProjectionRepair.addedOfferSentLabel, false);
+    assert.equal(payload.trelloProjectionRepair.trelloComment, null);
+    assert.equal(calls.some((call) => call.startsWith("PUT https://api.trello.com/1/cards/trello-card-1")), false);
+    assert.equal(calls.some((call) => call.startsWith("POST https://api.trello.com/1/cards/trello-card-1/idLabels")), false);
+    assert.equal(calls.some((call) => call.startsWith("POST https://api.trello.com/1/cards/trello-card-1/actions/comments")), false);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
+  });
+});
+
 test("company brain blocks trello projection repair without send proof", async () => {
   await withGuardedRetryFetchMock({
     quoteEmailGuardRows: [],

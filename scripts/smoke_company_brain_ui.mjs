@@ -48,6 +48,18 @@ const actionProposals = [
     payloadPreview: ["Empfänger: praxis@kurswechsel.de", "Angebot: A/N 14427", "Idempotency: smoke-key"],
   },
   {
+    key: "repair_trello_projection",
+    label: "Trello-Projektion bereinigen",
+    type: "prepared_task",
+    riskLevel: "medium",
+    approvalRequired: true,
+    enabled: true,
+    summary: "Entfernt nach serverseitigem Versandbeleg-Check einen stale FEHLER-Titel und setzt fehlenden 'Angebot gesendet'-Tag. Kein Kundenkontakt.",
+    confirmationText: "Nur Trello-Projektion reparieren; Source of Truth bleibt Kundenakte/Angebot/Outlook/Audit.",
+    href: "https://trello.com/c/BiP93WuG/smoke",
+    payloadPreview: ["Karte: BiP93WuG", "Server prüft vor Änderung erneut einen Versandbeleg.", "Mögliche Änderung: FEHLER-Prefix entfernen und Tag 'Angebot gesendet' setzen."],
+  },
+  {
     key: "inspect_n8n_run",
     label: "n8n-Run untersuchen",
     type: "manual_check",
@@ -256,10 +268,24 @@ async function setupRoutes(page) {
     });
   });
   await page.route("**/api/ops/company-brain/actions**", async (route) => {
+    const body = route.request().postDataJSON();
+    const actionKey = body?.actionKey;
+    const responseBody = actionKey === "repair_trello_projection"
+      ? {
+          ok: true,
+          actionKey,
+          customerCommunicationSent: false,
+          trelloProjectionRepair: {
+            renamed: true,
+            addedOfferSentLabel: true,
+            trelloComment: { id: "comment-smoke" },
+          },
+        }
+      : { ok: true, sent: true, duplicate: false };
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, sent: true, duplicate: false }),
+      body: JSON.stringify(responseBody),
     });
   });
   await page.route("**/api/ops/session", async (route) => {
@@ -278,6 +304,15 @@ async function waitForBodyText(page, label, snippets) {
   }
   const missing = snippets.filter((snippet) => !body.includes(snippet));
   throw new Error(`${label}: missing ${missing.join(", ")}. Body: ${body.slice(0, 1400)}`);
+}
+
+async function waitForEnabled(locator, label) {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    if ((await locator.count()) > 0 && !(await locator.first().isDisabled())) return locator.first();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error(`${label}: button not enabled`);
 }
 
 async function runViewport(browser, target, viewport, label) {
@@ -299,6 +334,8 @@ async function runViewport(browser, target, viewport, label) {
     "Vom Kartenfehler zur sicheren Aktion",
     "Trello-Karte gelesen",
     "Kunden-E-Mail korrigieren",
+    "Trello-Projektion bereinigen",
+    "Projektion freigeben",
     "Guarded Retry möglich",
     "Schon erledigt",
     "E-Mail-Korrektur vorbereitet",
@@ -318,10 +355,16 @@ async function runViewport(browser, target, viewport, label) {
     "Versand klären",
   ]);
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
-  await page.getByRole("button", { name: "Versand freigeben" }).click();
+  const fixCenter = page.locator("#company-brain-fix-center");
+  await (await waitForEnabled(fixCenter.getByRole("button", { name: "Projektion freigeben" }), `${label}: projection repair`)).click();
+  await waitForBodyText(page, `${label}: projection confirmation panel`, ["Freigabe prüfen", "Diese Aktion bleibt intern"]);
+  await fixCenter.locator('input[placeholder="Freigabe"]:visible').first().fill("Freigabe");
+  await (await waitForEnabled(fixCenter.getByRole("button", { name: "Jetzt ausführen" }), `${label}: projection execute`)).click();
+  await waitForBodyText(page, `${label}: projection repair reload`, ["Ausgeführt: Trello-Projektion bereinigt, Trello-Kommentar geschrieben. Fall neu geladen."]);
+  await (await waitForEnabled(fixCenter.getByRole("button", { name: "Versand freigeben" }), `${label}: guarded resend`)).click();
   await waitForBodyText(page, `${label}: confirmation panel`, ["Freigabe prüfen", "Diese Aktion kann Kundenkontakt auslösen"]);
-  await page.locator('input[placeholder="Freigabe"]:visible').first().fill("Freigabe");
-  await page.locator('button:visible', { hasText: "Jetzt ausführen" }).first().click();
+  await fixCenter.locator('input[placeholder="Freigabe"]:visible').first().fill("Freigabe");
+  await (await waitForEnabled(fixCenter.getByRole("button", { name: "Jetzt ausführen" }), `${label}: guarded resend execute`)).click();
   await waitForBodyText(page, `${label}: action reload`, ["Ausgeführt: Angebot erneut gesendet. Fall neu geladen."]);
 
   const layout = await page.evaluate(() => ({
