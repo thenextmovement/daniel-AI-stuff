@@ -1157,6 +1157,7 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
     id: "sale-repeat-open",
     sale_key: "offer:repeat-open",
     customer_email: "repeat@example.com",
+    customer_name: "Repeat Customer",
     shopify_payment_status: "pending",
     payment_decision_status: "wait_for_payment",
     assignment_status: "payment_open",
@@ -1166,7 +1167,8 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
   const newOpenRow = saleRow({
     id: "sale-new-open",
     sale_key: "offer:new-open",
-    customer_email: "new@example.com",
+    customer_email: "new@other.test",
+    customer_name: "New Customer",
     shopify_payment_status: "pending",
     payment_decision_status: "wait_for_payment",
     assignment_status: "payment_open",
@@ -1177,6 +1179,7 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
     id: "sale-repeat-paid-before",
     sale_key: "shopify:order:repeat-before",
     customer_email: "repeat@example.com",
+    customer_name: "Repeat Customer",
     shopify_order_name: "#9001",
     shopify_payment_status: "paid",
     payment_decision_status: "paid_confirmed",
@@ -1203,6 +1206,98 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
     assert.equal(board.items[0]?.priorPaidCustomer.hasPriorPaidOrder, true);
     assert.equal(board.items[0]?.priorPaidCustomer.lastPaidOrderName, "#9001");
     assert.equal(board.counts.priorPaidCustomerOpen, 1);
+  });
+});
+
+test("supplier sales board uses Shopify paid history by business domain, exact private email and name", async () => {
+  const businessOpenRow = saleRow({
+    id: "sale-business-open",
+    sale_key: "offer:business-open",
+    customer_email: "buyer@company.test",
+    customer_name: "Business Buyer",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-24T10:00:00.000Z",
+    updated_at: "2026-06-24T10:00:00.000Z",
+  });
+  const privateExactOpenRow = saleRow({
+    id: "sale-private-exact-open",
+    sale_key: "offer:private-exact-open",
+    customer_email: "buyer@gmail.com",
+    customer_name: "Private Exact",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-23T10:00:00.000Z",
+    updated_at: "2026-06-23T10:00:00.000Z",
+  });
+  const privateDomainOnlyOpenRow = saleRow({
+    id: "sale-private-domain-open",
+    sale_key: "offer:private-domain-open",
+    customer_email: "someone@gmail.com",
+    customer_name: "Private Domain Only",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-25T10:00:00.000Z",
+    updated_at: "2026-06-25T10:00:00.000Z",
+  });
+  const nameOpenRow = saleRow({
+    id: "sale-name-open",
+    sale_key: "offer:name-open",
+    customer_email: null,
+    customer_name: "Filippo Melena",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-22T10:00:00.000Z",
+    updated_at: "2026-06-22T10:00:00.000Z",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("or") === "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)") {
+        return Response.json([]);
+      }
+      return Response.json([privateDomainOnlyOpenRow, businessOpenRow, privateExactOpenRow, nameOpenRow]);
+    }
+    if (url.pathname.endsWith("/v_orders_by_email") && method === "GET") {
+      return Response.json([
+        { email: "finance@company.test", order_number: "#BIZ-OLD", financial_status: "paid", created_at: "2026-05-01T10:00:00.000Z" },
+        { email: "other@gmail.com", order_number: "#GMAIL-OTHER", financial_status: "paid", created_at: "2026-05-02T10:00:00.000Z" },
+        { email: "buyer@gmail.com", order_number: "#GMAIL-EXACT", financial_status: "paid", created_at: "2026-05-03T10:00:00.000Z" },
+      ]);
+    }
+    if (url.pathname.endsWith("/crm_sales") && method === "GET") {
+      return Response.json([
+        {
+          id: "crm-paid-name",
+          shopify_order_name: "#NAME-OLD",
+          financial_status: "paid",
+          customer_name: "Filippo Melena",
+          customer_email: "old.customer@example.test",
+          shopify_created_at: "2026-05-04T10:00:00.000Z",
+          created_at: "2026-05-04T10:00:00.000Z",
+        },
+      ]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    const byId = new Map(board.items.map((item) => [item.id, item]));
+    assert.equal(byId.get("sale-business-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(byId.get("sale-business-open")?.priorPaidCustomer.matchBasis, "company_domain");
+    assert.equal(byId.get("sale-private-exact-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(byId.get("sale-private-exact-open")?.priorPaidCustomer.matchBasis, "exact_email");
+    assert.equal(byId.get("sale-private-domain-open")?.priorPaidCustomer.hasPriorPaidOrder, false);
+    assert.equal(byId.get("sale-name-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(byId.get("sale-name-open")?.priorPaidCustomer.matchBasis, "customer_name");
+    assert.equal(board.counts.priorPaidCustomerOpen, 3);
   });
 });
 

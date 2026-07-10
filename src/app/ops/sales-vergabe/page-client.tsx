@@ -226,6 +226,13 @@ function priorPaidCustomerPriority(sale: SupplierSale) {
   );
 }
 
+function priorPaidCustomerBasisLabel(sale: SupplierSale) {
+  if (sale.priorPaidCustomer.matchBasis === "company_domain") return "Firmendomain";
+  if (sale.priorPaidCustomer.matchBasis === "customer_name") return "Name";
+  if (sale.priorPaidCustomer.matchBasis === "exact_email") return "E-Mail";
+  return "Historie";
+}
+
 function missingPaymentLinkIssue(sale: SupplierSale) {
   if (sale.shopifyPaymentStatus === "paid") return false;
   if (["assigned", "in_production", "completed", "canceled"].includes(sale.assignmentStatus)) return false;
@@ -778,7 +785,7 @@ function SaleCard({
               <BadgeCheck className="h-4 w-4 text-cyan-700" />
               Bestandskunde: frueher bereits bezahlt
               <span className="text-xs font-medium text-cyan-800">
-                {sale.priorPaidCustomer.lastPaidOrderName ? `letzte Zahlung ${sale.priorPaidCustomer.lastPaidOrderName}` : "ggf. frueher freigeben"}
+                {sale.priorPaidCustomer.lastPaidOrderName ? `letzte Zahlung ${sale.priorPaidCustomer.lastPaidOrderName}` : "ggf. frueher freigeben"} · Match: {priorPaidCustomerBasisLabel(sale)}
               </span>
             </div>
           ) : null}

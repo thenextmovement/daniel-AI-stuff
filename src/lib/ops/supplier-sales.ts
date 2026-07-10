@@ -58,12 +58,19 @@ type MasterRequestTrelloRow = {
 
 type ShopifyOrderMatchRow = {
   shopify_order_id?: string | null;
+  shopify_order_number?: string | number | null;
+  shopify_order_name?: string | null;
+  order_number?: string | number | null;
   name?: string | null;
   email?: string | null;
   kunde_email?: string | null;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  financial_status?: string | null;
   total_price?: number | string | null;
   match_text?: string | null;
   created_at?: string | null;
+  shopify_created_at?: string | null;
 };
 
 export type SupplierSaleRow = {
@@ -168,6 +175,7 @@ export type SupplierSalePriorPaidCustomer = {
   paidOrderCount: number;
   lastPaidAt: string | null;
   lastPaidOrderName: string | null;
+  matchBasis: "exact_email" | "company_domain" | "customer_name" | null;
 };
 
 export type SupplierSale = {
@@ -1537,11 +1545,13 @@ function postOrderReviewFromRow(row: SupplierSaleRow): SupplierSalePostOrderRevi
 function priorPaidCustomerFromRow(row: SupplierSaleRow): SupplierSalePriorPaidCustomer {
   const marker = jsonRecord(row.metadata?.prior_paid_customer);
   const paidOrderCount = Number(marker.paid_order_count || marker.paidOrderCount || 0);
+  const matchBasis = nullableText(marker.match_basis || marker.matchBasis, 40);
   return {
     hasPriorPaidOrder: Boolean(marker.has_prior_paid_order || marker.hasPriorPaidOrder),
     paidOrderCount: Number.isFinite(paidOrderCount) ? paidOrderCount : 0,
     lastPaidAt: nullableText(marker.last_paid_at || marker.lastPaidAt, 80),
     lastPaidOrderName: nullableText(marker.last_paid_order_name || marker.lastPaidOrderName, 120),
+    matchBasis: matchBasis === "exact_email" || matchBasis === "company_domain" || matchBasis === "customer_name" ? matchBasis : null,
   };
 }
 
@@ -1721,43 +1731,154 @@ function saleRecencyMs(row: SupplierSaleRow) {
   );
 }
 
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "web.de",
+  "gmx.de",
+  "gmx.net",
+  "gmx.at",
+  "gmx.ch",
+  "yahoo.com",
+  "yahoo.de",
+  "hotmail.com",
+  "hotmail.de",
+  "outlook.com",
+  "outlook.de",
+  "live.com",
+  "live.de",
+  "msn.com",
+  "aol.com",
+  "t-online.de",
+  "freenet.de",
+  "proton.me",
+  "protonmail.com",
+  "mailbox.org",
+  "posteo.de",
+  "zoho.com",
+  "yandex.com",
+  "yandex.ru",
+  "icloud.de",
+]);
+
+type PriorPaidMatchBasis = NonNullable<SupplierSalePriorPaidCustomer["matchBasis"]>;
+
+function emailDomain(value: unknown) {
+  const email = lowerNullable(value, 260);
+  const domain = email?.split("@")[1]?.trim() || null;
+  return domain && domain.includes(".") ? domain : null;
+}
+
+function businessEmailDomain(value: unknown) {
+  const domain = emailDomain(value);
+  if (!domain || PERSONAL_EMAIL_DOMAINS.has(domain)) return null;
+  return domain;
+}
+
+function normalizedCustomerName(value: unknown) {
+  const text = nullableText(value, 260);
+  if (!text) return null;
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (normalized.length < 5) return null;
+  return normalized;
+}
+
+function paidHistoryRow(input: {
+  id: string;
+  source: string;
+  orderName?: string | null;
+  customerEmail?: string | null;
+  customerName?: string | null;
+  financialStatus?: string | null;
+  createdAt?: string | null;
+}): SupplierSaleRow | null {
+  if (normalizeShopifyPaymentStatus(input.financialStatus || "unknown") !== "paid") return null;
+  const createdAt = input.createdAt || new Date(0).toISOString();
+  return {
+    id: input.id,
+    sale_key: `${input.source}:${input.id}`,
+    source: input.source,
+    shopify_order_id: null,
+    shopify_order_name: nullableText(input.orderName, 120),
+    customer_email: lowerNullable(input.customerEmail, 260),
+    customer_name: nullableText(input.customerName, 260),
+    shopify_payment_status: "paid",
+    payment_decision_status: "paid_confirmed",
+    created_at: createdAt,
+    updated_at: createdAt,
+    metadata: {},
+    raw_shopify: {},
+    offer_snapshot: {},
+  } as SupplierSaleRow;
+}
+
+function shopifyHistoryOrderName(row: ShopifyOrderMatchRow) {
+  return nullableText(row.order_number || row.name || row.shopify_order_name || row.shopify_order_number || row.shopify_order_id, 120);
+}
+
+function addPaidRow(map: Map<string, Array<{ row: SupplierSaleRow; basis: PriorPaidMatchBasis }>>, key: string | null, row: SupplierSaleRow, basis: PriorPaidMatchBasis) {
+  if (!key) return;
+  const list = map.get(key) || [];
+  list.push({ row, basis });
+  map.set(key, list);
+}
+
+function uniquePriorPaidMatches(matches: Array<{ row: SupplierSaleRow; basis: PriorPaidMatchBasis }>, currentRow: SupplierSaleRow) {
+  const currentMs = saleRecencyMs(currentRow);
+  const seen = new Set<string>();
+  return matches
+    .filter(({ row }) => {
+      if (row.id === currentRow.id || seen.has(row.id)) return false;
+      seen.add(row.id);
+      const paidMs = saleRecencyMs(row);
+      return !currentMs || !paidMs || paidMs < currentMs;
+    })
+    .sort((left, right) => saleRecencyMs(right.row) - saleRecencyMs(left.row));
+}
+
 function markPriorPaidCustomers(saleRows: SupplierSaleRow[], paidHistoryRows: SupplierSaleRow[]) {
   if (!saleRows.length || !paidHistoryRows.length) return saleRows;
-  const paidRowsByEmail = new Map<string, SupplierSaleRow[]>();
+  const paidRowsByEmail = new Map<string, Array<{ row: SupplierSaleRow; basis: PriorPaidMatchBasis }>>();
+  const paidRowsByBusinessDomain = new Map<string, Array<{ row: SupplierSaleRow; basis: PriorPaidMatchBasis }>>();
+  const paidRowsByName = new Map<string, Array<{ row: SupplierSaleRow; basis: PriorPaidMatchBasis }>>();
   for (const row of paidHistoryRows) {
     if (!hasPaidCustomerSignal(row)) continue;
     const email = lowerNullable(row.customer_email, 260);
-    if (!email) continue;
-    const list = paidRowsByEmail.get(email) || [];
-    list.push(row);
-    paidRowsByEmail.set(email, list);
-  }
-
-  for (const list of paidRowsByEmail.values()) {
-    list.sort((left, right) => saleRecencyMs(right) - saleRecencyMs(left));
+    addPaidRow(paidRowsByEmail, email, row, "exact_email");
+    addPaidRow(paidRowsByBusinessDomain, businessEmailDomain(email), row, "company_domain");
+    addPaidRow(paidRowsByName, normalizedCustomerName(row.customer_name), row, "customer_name");
   }
 
   return saleRows.map((row) => {
     if (hasPaidCustomerSignal(row) || ["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status)) return row;
     const email = lowerNullable(row.customer_email, 260);
-    if (!email) return row;
-    const currentMs = saleRecencyMs(row);
-    const priorPaidRows = (paidRowsByEmail.get(email) || []).filter((paidRow) => {
-      if (paidRow.id === row.id) return false;
-      const paidMs = saleRecencyMs(paidRow);
-      return !currentMs || !paidMs || paidMs < currentMs;
-    });
-    if (!priorPaidRows.length) return row;
-    const latestPaid = priorPaidRows[0];
+    const businessDomain = businessEmailDomain(email);
+    const nameKey = normalizedCustomerName(row.customer_name);
+    const matches = uniquePriorPaidMatches([
+      ...(email ? paidRowsByEmail.get(email) || [] : []),
+      ...(businessDomain ? paidRowsByBusinessDomain.get(businessDomain) || [] : []),
+      ...(nameKey ? paidRowsByName.get(nameKey) || [] : []),
+    ], row);
+    if (!matches.length) return row;
+    const latestPaid = matches[0].row;
     return {
       ...row,
       metadata: {
         ...jsonRecord(row.metadata),
         prior_paid_customer: {
           has_prior_paid_order: true,
-          paid_order_count: priorPaidRows.length,
+          paid_order_count: matches.length,
           last_paid_at: latestPaid.created_at || latestPaid.updated_at || null,
           last_paid_order_name: latestPaid.shopify_order_name || latestPaid.offer_number || latestPaid.document_reference || null,
+          match_basis: matches[0].basis,
         },
       },
     };
@@ -1800,6 +1921,153 @@ async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
     }),
   ));
   return rows.flat();
+}
+
+function priorPaidLookupKeys(saleRows: SupplierSaleRow[]) {
+  const openRows = saleRows.filter((row) => !hasPaidCustomerSignal(row) && !["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status));
+  return {
+    emails: Array.from(new Set(openRows.map((row) => lowerNullable(row.customer_email, 260)).filter((value): value is string => Boolean(value)))),
+    domains: Array.from(new Set(openRows.map((row) => businessEmailDomain(row.customer_email)).filter((value): value is string => Boolean(value)))),
+    names: Array.from(new Set(openRows.map((row) => nullableText(row.customer_name, 260)).filter((value): value is string => Boolean(normalizedCustomerName(value))))),
+  };
+}
+
+function batchesOf<T>(values: T[], size: number) {
+  const batches: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    batches.push(values.slice(index, index + size));
+  }
+  return batches;
+}
+
+function ilikeAnyFilter(column: string, values: string[], mapper: (value: string) => string) {
+  if (!values.length) return null;
+  return `(${values.map((value) => `${column}.ilike.${mapper(value)}`).join(",")})`;
+}
+
+function exactIlikeAnyFilter(column: string, values: string[]) {
+  return ilikeAnyFilter(column, values, (value) => encodeFilterValue(value));
+}
+
+async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
+  const { emails, domains, names } = priorPaidLookupKeys(saleRows);
+  if (!emails.length && !domains.length && !names.length) return [];
+  const historyRows: SupplierSaleRow[] = [];
+  const orderSelect = "email,order_number,total_price,financial_status,created_at";
+  const crmSelect = "id,shopify_order_id,shopify_order_number,shopify_order_name,financial_status,customer_name,customer_email,total_price,shopify_created_at,created_at";
+
+  for (const batch of batchesOf(emails, 75)) {
+    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
+      select: orderSelect,
+      email: inList(batch),
+      order: "created_at.desc",
+      limit: Math.min(Math.max(batch.length * 10, 100), 1000),
+    });
+    for (const row of rows) {
+      const history = paidHistoryRow({
+        id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
+        source: "shopify_projection",
+        orderName: shopifyHistoryOrderName(row),
+        customerEmail: row.email,
+        financialStatus: row.financial_status,
+        createdAt: row.created_at,
+      });
+      if (history) historyRows.push(history);
+    }
+  }
+
+  for (const batch of batchesOf(domains, 50)) {
+    const or = ilikeAnyFilter("email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
+    if (!or) continue;
+    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
+      select: orderSelect,
+      or,
+      order: "created_at.desc",
+      limit: Math.min(Math.max(batch.length * 20, 100), 1000),
+    });
+    for (const row of rows) {
+      const history = paidHistoryRow({
+        id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
+        source: "shopify_projection",
+        orderName: shopifyHistoryOrderName(row),
+        customerEmail: row.email,
+        financialStatus: row.financial_status,
+        createdAt: row.created_at,
+      });
+      if (history) historyRows.push(history);
+    }
+  }
+
+  for (const batch of batchesOf(emails, 75)) {
+    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+      select: crmSelect,
+      customer_email: inList(batch),
+      order: "shopify_created_at.desc,created_at.desc",
+      limit: Math.min(Math.max(batch.length * 10, 100), 1000),
+    });
+    for (const row of rows) {
+      const history = paidHistoryRow({
+        id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
+        source: "shopify_crm_sales",
+        orderName: shopifyHistoryOrderName(row),
+        customerEmail: row.customer_email,
+        customerName: row.customer_name,
+        financialStatus: row.financial_status,
+        createdAt: row.shopify_created_at || row.created_at,
+      });
+      if (history) historyRows.push(history);
+    }
+  }
+
+  for (const batch of batchesOf(domains, 50)) {
+    const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
+    if (!or) continue;
+    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+      select: crmSelect,
+      or,
+      order: "shopify_created_at.desc,created_at.desc",
+      limit: Math.min(Math.max(batch.length * 20, 100), 1000),
+    });
+    for (const row of rows) {
+      const history = paidHistoryRow({
+        id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
+        source: "shopify_crm_sales",
+        orderName: shopifyHistoryOrderName(row),
+        customerEmail: row.customer_email,
+        customerName: row.customer_name,
+        financialStatus: row.financial_status,
+        createdAt: row.shopify_created_at || row.created_at,
+      });
+      if (history) historyRows.push(history);
+    }
+  }
+
+  for (const batch of batchesOf(names, 50)) {
+    const or = exactIlikeAnyFilter("customer_name", batch);
+    if (!or) continue;
+    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+      select: crmSelect,
+      or,
+      order: "shopify_created_at.desc,created_at.desc",
+      limit: Math.min(Math.max(batch.length * 10, 100), 1000),
+    });
+    for (const row of rows) {
+      const history = paidHistoryRow({
+        id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
+        source: "shopify_crm_sales",
+        orderName: shopifyHistoryOrderName(row),
+        customerEmail: row.customer_email,
+        customerName: row.customer_name,
+        financialStatus: row.financial_status,
+        createdAt: row.shopify_created_at || row.created_at,
+      });
+      if (history) historyRows.push(history);
+    }
+  }
+
+  const deduped = new Map<string, SupplierSaleRow>();
+  for (const row of historyRows) deduped.set(row.id, row);
+  return Array.from(deduped.values());
 }
 
 function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new Date()): SupplierSaleBoard["counts"] {
@@ -1960,6 +2228,7 @@ function rowFromSale(sale: SupplierSale): SupplierSaleRow {
               paid_order_count: sale.priorPaidCustomer.paidOrderCount,
               last_paid_at: sale.priorPaidCustomer.lastPaidAt,
               last_paid_order_name: sale.priorPaidCustomer.lastPaidOrderName,
+              match_basis: sale.priorPaidCustomer.matchBasis,
             },
           }
         : {}),
@@ -3339,7 +3608,11 @@ export async function listSupplierSalesBoard(options?: {
     saleRows = saleRows.filter(matchesUrgency);
     statsRows = statsRows.filter(matchesUrgency);
   }
-  const priorPaidHistoryRows = await fetchPriorPaidCustomerHistory(saleRows);
+  const [supplierPaidHistoryRows, shopifyPaidHistoryRows] = await Promise.all([
+    fetchPriorPaidCustomerHistory(saleRows),
+    fetchShopifyProjectionPaidCustomerHistory(saleRows).catch(() => []),
+  ]);
+  const priorPaidHistoryRows = [...supplierPaidHistoryRows, ...shopifyPaidHistoryRows];
   statsRows = markPriorPaidCustomers(statsRows, priorPaidHistoryRows);
   saleRows = markPriorPaidCustomers(saleRows, priorPaidHistoryRows);
   saleRows = saleRows.slice(0, requestedLimit);
