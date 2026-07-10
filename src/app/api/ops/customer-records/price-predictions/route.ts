@@ -105,6 +105,7 @@ function hasQuoteReadySizeLadderAutomationAccess(request: NextRequest, bodyToken
     process.env.QUOTE_INTERNAL_API_TOKEN,
     process.env.SUPPLIER_SALES_AGENT_API_TOKEN,
     process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY,
+    process.env.QUOTE_READY_SIZE_LADDER_AGENT_API_TOKEN,
   ]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
