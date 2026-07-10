@@ -175,6 +175,7 @@ export type SupplierSalePriorPaidCustomer = {
   paidOrderCount: number;
   lastPaidAt: string | null;
   lastPaidOrderName: string | null;
+  lastPaidOrderUrl: string | null;
   matchBasis: "exact_email" | "company_domain" | "customer_name" | null;
 };
 
@@ -1551,6 +1552,7 @@ function priorPaidCustomerFromRow(row: SupplierSaleRow): SupplierSalePriorPaidCu
     paidOrderCount: Number.isFinite(paidOrderCount) ? paidOrderCount : 0,
     lastPaidAt: nullableText(marker.last_paid_at || marker.lastPaidAt, 80),
     lastPaidOrderName: nullableText(marker.last_paid_order_name || marker.lastPaidOrderName, 120),
+    lastPaidOrderUrl: nullableText(marker.last_paid_order_url || marker.lastPaidOrderUrl, 1000),
     matchBasis: matchBasis === "exact_email" || matchBasis === "company_domain" || matchBasis === "customer_name" ? matchBasis : null,
   };
 }
@@ -1791,10 +1793,25 @@ function normalizedCustomerName(value: unknown) {
   return normalized;
 }
 
+function shopifyAdminOrderUrl(input: { orderId?: unknown; orderName?: unknown; orderUrl?: unknown }) {
+  const directUrl = nullableText(input.orderUrl, 1000);
+  if (directUrl) return directUrl;
+  const domain = shopifyShopDomain();
+  if (!domain) return null;
+  const gid = shopifyOrderGidFromId(input.orderId);
+  const numericId = shopifyOrderNumericId(gid) || nullableText(input.orderId, 120)?.match(/^\d+$/)?.[0] || null;
+  if (numericId) return `https://${domain}/admin/orders/${numericId}`;
+  const orderName = nullableText(input.orderName, 120);
+  if (orderName) return `https://${domain}/admin/orders?query=${encodeURIComponent(orderName)}`;
+  return null;
+}
+
 function paidHistoryRow(input: {
   id: string;
   source: string;
+  orderId?: string | number | null;
   orderName?: string | null;
+  orderUrl?: string | null;
   customerEmail?: string | null;
   customerName?: string | null;
   financialStatus?: string | null;
@@ -1806,8 +1823,9 @@ function paidHistoryRow(input: {
     id: input.id,
     sale_key: `${input.source}:${input.id}`,
     source: input.source,
-    shopify_order_id: null,
+    shopify_order_id: nullableText(input.orderId, 180),
     shopify_order_name: nullableText(input.orderName, 120),
+    shopify_order_url: shopifyAdminOrderUrl(input),
     customer_email: lowerNullable(input.customerEmail, 260),
     customer_name: nullableText(input.customerName, 260),
     shopify_payment_status: "paid",
@@ -1869,6 +1887,7 @@ function markPriorPaidCustomers(saleRows: SupplierSaleRow[], paidHistoryRows: Su
     ], row);
     if (!matches.length) return row;
     const latestPaid = matches[0].row;
+    const latestPaidOrderName = latestPaid.shopify_order_name || latestPaid.offer_number || latestPaid.document_reference || null;
     return {
       ...row,
       metadata: {
@@ -1877,7 +1896,12 @@ function markPriorPaidCustomers(saleRows: SupplierSaleRow[], paidHistoryRows: Su
           has_prior_paid_order: true,
           paid_order_count: matches.length,
           last_paid_at: latestPaid.created_at || latestPaid.updated_at || null,
-          last_paid_order_name: latestPaid.shopify_order_name || latestPaid.offer_number || latestPaid.document_reference || null,
+          last_paid_order_name: latestPaidOrderName,
+          last_paid_order_url: shopifyAdminOrderUrl({
+            orderId: latestPaid.shopify_order_id || latestPaid.metadata?.admin_graphql_api_id || latestPaid.raw_shopify?.admin_graphql_api_id,
+            orderName: latestPaidOrderName,
+            orderUrl: latestPaid.shopify_order_url,
+          }),
           match_basis: matches[0].basis,
         },
       },
@@ -1967,6 +1991,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
       const history = paidHistoryRow({
         id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
         source: "shopify_projection",
+        orderId: row.shopify_order_id,
         orderName: shopifyHistoryOrderName(row),
         customerEmail: row.email,
         financialStatus: row.financial_status,
@@ -1989,6 +2014,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
       const history = paidHistoryRow({
         id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
         source: "shopify_projection",
+        orderId: row.shopify_order_id,
         orderName: shopifyHistoryOrderName(row),
         customerEmail: row.email,
         financialStatus: row.financial_status,
@@ -2009,6 +2035,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
         source: "shopify_crm_sales",
+        orderId: row.shopify_order_id,
         orderName: shopifyHistoryOrderName(row),
         customerEmail: row.customer_email,
         customerName: row.customer_name,
@@ -2032,6 +2059,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
         source: "shopify_crm_sales",
+        orderId: row.shopify_order_id,
         orderName: shopifyHistoryOrderName(row),
         customerEmail: row.customer_email,
         customerName: row.customer_name,
@@ -2055,6 +2083,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
         source: "shopify_crm_sales",
+        orderId: row.shopify_order_id,
         orderName: shopifyHistoryOrderName(row),
         customerEmail: row.customer_email,
         customerName: row.customer_name,
@@ -2228,6 +2257,7 @@ function rowFromSale(sale: SupplierSale): SupplierSaleRow {
               paid_order_count: sale.priorPaidCustomer.paidOrderCount,
               last_paid_at: sale.priorPaidCustomer.lastPaidAt,
               last_paid_order_name: sale.priorPaidCustomer.lastPaidOrderName,
+              last_paid_order_url: sale.priorPaidCustomer.lastPaidOrderUrl,
               match_basis: sale.priorPaidCustomer.matchBasis,
             },
           }

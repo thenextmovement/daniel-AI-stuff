@@ -787,6 +787,17 @@ function SaleCard({
               <span className="text-xs font-medium text-cyan-800">
                 {sale.priorPaidCustomer.lastPaidOrderName ? `letzte Zahlung ${sale.priorPaidCustomer.lastPaidOrderName}` : "ggf. frueher freigeben"} · Match: {priorPaidCustomerBasisLabel(sale)}
               </span>
+              {sale.priorPaidCustomer.lastPaidOrderUrl ? (
+                <a
+                  href={sale.priorPaidCustomer.lastPaidOrderUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-[0.5rem] border border-cyan-300 bg-white px-2.5 py-1 text-xs font-semibold text-cyan-900 hover:border-cyan-700"
+                >
+                  Shopify-Beleg
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              ) : null}
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">

@@ -1181,6 +1181,7 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
     customer_email: "repeat@example.com",
     customer_name: "Repeat Customer",
     shopify_order_name: "#9001",
+    shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/9001",
     shopify_payment_status: "paid",
     payment_decision_status: "paid_confirmed",
     assignment_status: "completed",
@@ -1205,6 +1206,7 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
     assert.deepEqual(board.items.map((item) => item.id), ["sale-repeat-open", "sale-new-open"]);
     assert.equal(board.items[0]?.priorPaidCustomer.hasPriorPaidOrder, true);
     assert.equal(board.items[0]?.priorPaidCustomer.lastPaidOrderName, "#9001");
+    assert.equal(board.items[0]?.priorPaidCustomer.lastPaidOrderUrl, "https://galaxybuzzdk.myshopify.com/admin/orders/9001");
     assert.equal(board.counts.priorPaidCustomerOpen, 1);
   });
 });
@@ -1275,6 +1277,7 @@ test("supplier sales board uses Shopify paid history by business domain, exact p
       return Response.json([
         {
           id: "crm-paid-name",
+          shopify_order_id: "123456789",
           shopify_order_name: "#NAME-OLD",
           financial_status: "paid",
           customer_name: "Filippo Melena",
@@ -1292,11 +1295,14 @@ test("supplier sales board uses Shopify paid history by business domain, exact p
     const byId = new Map(board.items.map((item) => [item.id, item]));
     assert.equal(byId.get("sale-business-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
     assert.equal(byId.get("sale-business-open")?.priorPaidCustomer.matchBasis, "company_domain");
+    assert.equal(byId.get("sale-business-open")?.priorPaidCustomer.lastPaidOrderName, "#BIZ-OLD");
+    assert.equal(byId.get("sale-business-open")?.priorPaidCustomer.lastPaidOrderUrl, "https://neontrip.myshopify.com/admin/orders?query=%23BIZ-OLD");
     assert.equal(byId.get("sale-private-exact-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
     assert.equal(byId.get("sale-private-exact-open")?.priorPaidCustomer.matchBasis, "exact_email");
     assert.equal(byId.get("sale-private-domain-open")?.priorPaidCustomer.hasPriorPaidOrder, false);
     assert.equal(byId.get("sale-name-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
     assert.equal(byId.get("sale-name-open")?.priorPaidCustomer.matchBasis, "customer_name");
+    assert.equal(byId.get("sale-name-open")?.priorPaidCustomer.lastPaidOrderUrl, "https://neontrip.myshopify.com/admin/orders/123456789");
     assert.equal(board.counts.priorPaidCustomerOpen, 3);
   });
 });
