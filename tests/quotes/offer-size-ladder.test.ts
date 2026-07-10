@@ -1021,6 +1021,116 @@ test("offer size ladder offer apply retries short Trello links with canonical ca
   }
 });
 
+test("offer size ladder offer apply retries the original short link after canonical lookup misses", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;
+  const originalOffersKey = process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  process.env.NEONTRIP_OFFERS_BASE_URL = "https://offers.test";
+  process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "offers-key";
+
+  const offer = {
+    offerId: "offer_short_link_1",
+    offerNumber: "A/N Short",
+    documentReference: "A/N Short",
+    trelloCardId: "shortStored1",
+    publicUrl: "https://angebote.neontrip.de/offer/short",
+    status: "DRAFT",
+    updatedAt: "2026-07-09T10:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none" as const, lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [{
+      id: "item_1",
+      section: "LED-Leuchtschild",
+      title: "LED Logo Wandschild",
+      description: "Größe: 80x40cm",
+      quantity: 1,
+      unitPriceNet: 520,
+      listPriceNet: null,
+      discountLabel: null,
+      selectable: true,
+      selectedByDefault: true,
+      selectedFinal: null,
+      quantityEditable: false,
+      minQuantity: 1,
+      maxQuantity: null,
+      sortOrder: 0,
+    }],
+    images: [],
+    totals: {},
+  };
+
+  const calledUrls: string[] = [];
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    calledUrls.push(`${method} ${url}`);
+
+    if (url === "https://offers.test/api/internal/offers/by-trello/65f000000000000000000def" && method === "GET") {
+      return new Response(JSON.stringify({ ok: false, error: "Offer not found.", code: "NOT_FOUND" }), { status: 404 });
+    }
+    if (url === "https://offers.test/api/internal/offers/by-trello/shortStored1" && method === "GET") {
+      return new Response(JSON.stringify({ ok: true, offer }), { status: 200 });
+    }
+    if (url === "https://offers.test/api/internal/offers/by-trello/shortStored1?dryRun=true" && method === "PATCH") {
+      const body = JSON.parse(String(init?.body || "{}"));
+      return new Response(JSON.stringify({
+        ok: true,
+        dryRun: true,
+        offer: { ...offer, items: body.items },
+        diff: { changedKeys: ["items"] },
+      }), { status: 200 });
+    }
+
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await applyOfferSizeLadderToOffer({
+      trelloCard: "https://trello.com/c/shortStored1/example",
+      trelloCardId: "65f000000000000000000def",
+      dryRun: true,
+      createdBy: "Daniel",
+      productModel: "neonflex",
+      stepCm: 10,
+      maxLongSideCm: 250,
+      customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+      anchors: [
+        { role: "minimum", widthCm: 80, heightCm: 40, productionPrice: 100, shippingPrice: 100 },
+        { role: "requested", widthCm: 150, heightCm: 75, productionPrice: 190, shippingPrice: 210 },
+        { role: "max_250", widthCm: 250, heightCm: 125, productionPrice: 480, shippingPrice: 520 },
+      ],
+    });
+
+    assert.equal(result.dryRun, true);
+    assert.equal(result.sizeLadder.trelloCardId, "shortStored1");
+    assert.ok(calledUrls.includes("GET https://offers.test/api/internal/offers/by-trello/65f000000000000000000def"));
+    assert.ok(calledUrls.includes("GET https://offers.test/api/internal/offers/by-trello/shortStored1"));
+    assert.ok(calledUrls.includes("PATCH https://offers.test/api/internal/offers/by-trello/shortStored1?dryRun=true"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalOffersBaseUrl === undefined) delete process.env.NEONTRIP_OFFERS_BASE_URL;
+    else process.env.NEONTRIP_OFFERS_BASE_URL = originalOffersBaseUrl;
+    if (originalOffersKey === undefined) delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+    else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = originalOffersKey;
+  }
+});
+
 test("offer size ladder offer apply can use visible UI anchors without reloading Trello", async () => {
   const originalFetch = globalThis.fetch;
   const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;

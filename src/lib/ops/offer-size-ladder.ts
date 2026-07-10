@@ -1467,38 +1467,44 @@ async function resolveOfferForSizeLadder(input: OfferSizeLadderOfferApplyInput, 
     };
   }
 
-  const firstLookupId = sizeLadder.trelloCardId;
-  try {
-    return {
-      offer: await getOfferByTrelloCardId(firstLookupId),
-      offerId: null,
-      trelloCardId: firstLookupId,
-    };
-  } catch (error) {
-    if (!(error instanceof OpsOfferApiError) || error.status !== 404) throw error;
+  const lookupIds = Array.from(new Set([
+    sizeLadder.trelloCardId,
+    normalizeTrelloCardIdentifier(input.trelloCard),
+    normalizeTrelloCardIdentifier(input.trelloCardId),
+    normalizeTrelloCardIdentifier(input.trelloCardUrl),
+  ].filter((value): value is string => Boolean(value))));
 
-    const fallbackIdentifier = normalizeTrelloCardIdentifier(input.trelloCard || input.trelloCardId || input.trelloCardUrl);
-    if (fallbackIdentifier) {
-      const card = await getTrelloCard(fallbackIdentifier).catch(() => null);
-      if (card?.id && card.id !== firstLookupId) {
-        try {
-          return {
-            offer: await getOfferByTrelloCardId(card.id),
-            offerId: null,
-            trelloCardId: card.id,
-          };
-        } catch (fallbackError) {
-          if (!(fallbackError instanceof OpsOfferApiError) || fallbackError.status !== 404) throw fallbackError;
-        }
-      }
+  for (const trelloCardId of lookupIds) {
+    try {
+      return {
+        offer: await getOfferByTrelloCardId(trelloCardId),
+        offerId: null,
+        trelloCardId,
+      };
+    } catch (error) {
+      if (!(error instanceof OpsOfferApiError) || error.status !== 404) throw error;
     }
-
-    throw new QuoteValidationError(
-      "Kein Angebot zu dieser Trello-Karte gefunden. Falls das Angebot schon existiert, bitte Trello neu laden oder die interne Offer-ID eintragen.",
-      [],
-      404,
-    );
   }
+
+  for (const lookupId of lookupIds) {
+    const card = await getTrelloCard(lookupId).catch(() => null);
+    if (!card?.id || lookupIds.includes(card.id)) continue;
+    try {
+      return {
+        offer: await getOfferByTrelloCardId(card.id),
+        offerId: null,
+        trelloCardId: card.id,
+      };
+    } catch (fallbackError) {
+      if (!(fallbackError instanceof OpsOfferApiError) || fallbackError.status !== 404) throw fallbackError;
+    }
+  }
+
+  throw new QuoteValidationError(
+    "Kein Angebot zu dieser Trello-Karte gefunden. Falls das Angebot schon existiert, bitte Trello neu laden oder die interne Offer-ID eintragen.",
+    [],
+    404,
+  );
 }
 
 export function buildOfferSizeLadderOfferPatch(input: {
