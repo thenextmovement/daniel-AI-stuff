@@ -271,7 +271,7 @@ function isOpsApiPath(pathname: string) {
 }
 
 function isSelfAuthenticatedOpsApiPath(pathname: string) {
-  return pathname === "/api/ops/supplier-sales";
+  return pathname === "/api/ops/supplier-sales" || pathname === "/api/ops/customer-records/price-predictions";
 }
 
 function isOpsPagePath(pathname: string) {
