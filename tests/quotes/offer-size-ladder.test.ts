@@ -49,6 +49,62 @@ test("offer size ladder extracts anchors from combined Trello custom fields", ()
   assert.equal(extraction.anchors[2]?.shippingPrice, 590);
 });
 
+test("offer size ladder extracts flexible indexed supplier anchors from Trello fields", () => {
+  const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
+    Size_1: "90x45cm",
+    Price_1: "220",
+    Color_1: "Color as Logo",
+    Backboard_1: "Cut to Shape",
+    Product_1: "LED Flex",
+    Size_2: "120x60cm",
+    Production_2: "120",
+    Shipping_2: "170",
+    Size_3: "150x75cm",
+    Production_3: "170",
+    Shipping_3: "230",
+    Size_4: "180x90cm",
+    Production_4: "230",
+    Shipping_4: "320",
+  });
+
+  assert.equal(extraction.anchors.length, 4);
+  assert.equal(extraction.anchors[0]?.role, "minimum");
+  assert.equal(extraction.anchors[0]?.widthCm, 90);
+  assert.equal(extraction.anchors[0]?.productionPrice, 99);
+  assert.equal(extraction.anchors[0]?.shippingPrice, 121);
+  assert.equal(extraction.anchors[1]?.role, "requested");
+  assert.equal(extraction.anchors[2]?.role, "anchor_3");
+  assert.equal(extraction.anchors[3]?.role, "max_250");
+  assert.equal(extraction.anchors[3]?.widthCm, 180);
+});
+
+test("offer size ladder can extrapolate from flexible anchors without a 250cm quote", async () => {
+  const result = await generateOfferSizeLadder({
+    trelloCardId: "cardFlexibleAnchors1",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 90, heightCm: 45, productionPrice: 99, shippingPrice: 121 },
+      { role: "requested", widthCm: 120, heightCm: 60, productionPrice: 120, shippingPrice: 170 },
+      { role: "anchor_3", widthCm: 150, heightCm: 75, productionPrice: 170, shippingPrice: 230 },
+      { role: "max_250", widthCm: 180, heightCm: 90, productionPrice: 230, shippingPrice: 320 },
+    ],
+    stepCm: 10,
+    maxLongSideCm: 250,
+  });
+
+  assert.equal(result.status, "needs_review");
+  assert.equal(result.anchorList.length, 4);
+  assert.ok(result.warnings.includes("largest_supplier_anchor_below_250cm_extrapolated"));
+  assert.equal(result.options[0]?.longSideCm, 90);
+  assert.equal(result.options.find((option) => option.longSideCm === 90)?.isDefault, true);
+  assert.equal(result.options.find((option) => option.longSideCm === 180)?.supplierTotalEstimated, 550);
+  const option250 = result.options.find((option) => option.longSideCm === 250);
+  assert.ok(option250);
+  assert.equal(option250!.reviewStatus, "needs_review");
+  assert.ok(option250!.issues.includes("extrapolated_beyond_largest_supplier_anchor"));
+  assert.ok(option250!.customerUnitPriceNet > 550 * OFFER_SIZE_LADDER_CUSTOMER_FACTOR);
+});
+
 test("offer size ladder uses the 2.3 customer factor", async () => {
   const result = await generateOfferSizeLadder({
     trelloCardId: "https://trello.com/c/cardFactor1/example",

@@ -82,6 +82,17 @@ type OfferSizeLadderResultView = {
     productionPrice: number;
     shippingPrice: number;
   }>;
+  anchorList?: Array<{
+    role: string;
+    widthCm: number;
+    heightCm: number;
+    productionPrice: number;
+    shippingPrice: number;
+    currency?: string | null;
+    source?: string | null;
+    confidence?: number | null;
+    rawText?: string | null;
+  }>;
   options: OfferSizeLadderOptionView[];
   persisted?: {
     anchorSetId: string;
@@ -1582,6 +1593,19 @@ export function SupplierPriceReviewClient({
   }
 
   function currentSizeLadderAnchorPayload() {
+    if (sizeLadderResult?.anchorList?.length) {
+      return sizeLadderResult.anchorList.map((anchor) => ({
+        role: anchor.role,
+        widthCm: anchor.widthCm,
+        heightCm: anchor.heightCm,
+        productionPrice: anchor.productionPrice,
+        shippingPrice: anchor.shippingPrice,
+        currency: anchor.currency || "USD",
+        source: anchor.source || "custom_fields",
+        confidence: anchor.confidence ?? 0.9,
+        rawText: anchor.rawText || null,
+      }));
+    }
     return (["minimum", "requested", "max_250"] as const).map((role) => {
       const synced = sizeLadderResult?.anchors?.[role];
       return {

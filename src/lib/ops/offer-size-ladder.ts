@@ -22,7 +22,8 @@ export const OFFER_SIZE_LADDER_MODEL_VERSION = "anchored_offer_size_ladder_v1";
 export const OFFER_SIZE_LADDER_MAX_OFFER_ITEMS = 300;
 export const OFFER_SIZE_LADDER_MAX_OPTIONS = 300;
 
-export type OfferSizeLadderAnchorRole = "minimum" | "requested" | "max_250";
+export type OfferSizeLadderCoreAnchorRole = "minimum" | "requested" | "max_250";
+export type OfferSizeLadderAnchorRole = OfferSizeLadderCoreAnchorRole | `anchor_${number}`;
 export type OfferSizeLadderProductModel =
   | "neonflex"
   | "uv_print"
@@ -115,7 +116,8 @@ export type OfferSizeLadderResult = {
   confidence: number;
   issues: string[];
   warnings: string[];
-  anchors: Record<OfferSizeLadderAnchorRole, OfferSizeLadderAnchor>;
+  anchors: Record<OfferSizeLadderCoreAnchorRole, OfferSizeLadderAnchor>;
+  anchorList: OfferSizeLadderAnchor[];
   options: OfferSizeLadderOption[];
   persisted?: {
     anchorSetId: string;
@@ -179,8 +181,9 @@ type OfferSizeLadderOptionRow = {
   metadata: Record<string, unknown> | null;
 };
 
-export type OfferSizeLadderDraft = Omit<OfferSizeLadderResult, "anchors" | "persisted" | "pricingBasis"> & {
+export type OfferSizeLadderDraft = Omit<OfferSizeLadderResult, "anchors" | "anchorList" | "persisted" | "pricingBasis"> & {
   anchorSetId: string;
+  anchorList?: OfferSizeLadderAnchor[];
   pricingBasis: "new_supplier_direct_2_6" | "legacy_supplier_2_3" | "manual";
   createdBy: string | null;
   createdAt: string | null;
@@ -536,7 +539,9 @@ function splitTotalSupplierPrice(total: number) {
   };
 }
 
-const ROLE_ALIASES: Record<OfferSizeLadderAnchorRole, { index: number; names: string[] }> = {
+const CORE_ANCHOR_ROLES = ["minimum", "requested", "max_250"] as const;
+
+const ROLE_ALIASES: Record<OfferSizeLadderCoreAnchorRole, { index: number; names: string[] }> = {
   minimum: {
     index: 1,
     names: ["minimum", "min", "kleinst", "kleinstmoeglich", "kleinstmoglich", "smallest", "custom field 1", "field 1", "anker 1", "anchor 1"],
@@ -551,14 +556,16 @@ const ROLE_ALIASES: Record<OfferSizeLadderAnchorRole, { index: number; names: st
   },
 };
 
-function roleFieldNames(role: OfferSizeLadderAnchorRole, kind: "size" | "production" | "shipping" | "total") {
+function indexedFieldNames(index: number, kind: "size" | "production" | "shipping" | "total") {
+  if (kind === "size") return [`Size_${index}`, `Size ${index}`, `Größe ${index}`, `Groesse ${index}`, `Mass ${index}`, `Maß ${index}`];
+  if (kind === "production") return [`Production_${index}`, `Production ${index}`, `Production Price_${index}`, `Production Price ${index}`, `Prod_${index}`, `Prod ${index}`];
+  if (kind === "shipping") return [`Shipping_${index}`, `Shipping ${index}`, `Shipping Cost_${index}`, `Shipping Cost ${index}`, `Ship_${index}`, `Ship ${index}`];
+  return [`Price_${index}`, `Price ${index}`, `Preis ${index}`, `Total_${index}`, `Total ${index}`, `Supplier Total ${index}`];
+}
+
+function roleFieldNames(role: OfferSizeLadderCoreAnchorRole, kind: "size" | "production" | "shipping" | "total") {
   const { index, names } = ROLE_ALIASES[role];
-  const suffixNames = (() => {
-    if (kind === "size") return [`Size_${index}`, `Size ${index}`, `Größe ${index}`, `Groesse ${index}`, `Mass ${index}`, `Maß ${index}`];
-    if (kind === "production") return [`Production_${index}`, `Production ${index}`, `Production Price_${index}`, `Production Price ${index}`, `Prod_${index}`, `Prod ${index}`];
-    if (kind === "shipping") return [`Shipping_${index}`, `Shipping ${index}`, `Shipping Cost_${index}`, `Shipping Cost ${index}`, `Ship_${index}`, `Ship ${index}`];
-    return [`Price_${index}`, `Price ${index}`, `Preis ${index}`, `Total_${index}`, `Total ${index}`, `Supplier Total ${index}`];
-  })();
+  const suffixNames = indexedFieldNames(index, kind);
   const roleNames = names.flatMap((name) => {
     if (kind === "size") return [`${name} size`, `${name} groesse`, `${name} größe`, `${name} mass`, `${name} maß`];
     if (kind === "production") return [`${name} production`, `${name} production price`, `${name} prod`];
@@ -568,7 +575,7 @@ function roleFieldNames(role: OfferSizeLadderAnchorRole, kind: "size" | "product
   return [...suffixNames, ...roleNames];
 }
 
-function combinedRoleFieldValues(customFields: CustomFieldMap, role: OfferSizeLadderAnchorRole) {
+function combinedRoleFieldValues(customFields: CustomFieldMap, role: OfferSizeLadderCoreAnchorRole) {
   const aliases = ROLE_ALIASES[role].names.map(normalizeFieldName);
   return customFieldEntries(customFields)
     .filter((entry) => aliases.some((alias) => entry.normalizedKey === alias || entry.normalizedKey.includes(alias)))
@@ -628,12 +635,87 @@ function parseAnchorFromText(role: OfferSizeLadderAnchorRole, text: string, warn
   return null;
 }
 
-export function extractOfferSizeLadderAnchorsFromTrelloFields(customFields: CustomFieldMap): OfferSizeLadderTrelloAnchorExtraction {
+function customFieldIndexes(customFields: CustomFieldMap) {
+  const indexes = new Set<number>();
+  for (const entry of customFieldEntries(customFields)) {
+    const match = entry.normalizedKey.match(/(?:^| )(?:size|groesse|production|production price|prod|shipping|shipping cost|ship|price|preis|total|supplier total) (\d+)(?:$| )/);
+    const index = Number(match?.[1]);
+    if (Number.isInteger(index) && index > 0 && index <= 20) indexes.add(index);
+  }
+  return Array.from(indexes).sort((a, b) => a - b);
+}
+
+function normalizeExtractedAnchorRoles(anchors: OfferSizeLadderAnchorInput[]) {
+  const sorted = [...anchors].sort((left, right) => {
+    const leftLongSide = Math.max(Number(left.widthCm), Number(left.heightCm));
+    const rightLongSide = Math.max(Number(right.widthCm), Number(right.heightCm));
+    if (Math.abs(leftLongSide - rightLongSide) > 0.001) return leftLongSide - rightLongSide;
+    return Number(left.widthCm) * Number(left.heightCm) - Number(right.widthCm) * Number(right.heightCm);
+  });
+  return sorted.map((anchor, index) => {
+    const role: OfferSizeLadderAnchorRole =
+      index === 0 ? "minimum" :
+      index === sorted.length - 1 ? "max_250" :
+      index === 1 ? "requested" :
+      `anchor_${index + 1}`;
+    return { ...anchor, role };
+  });
+}
+
+function extractIndexedTrelloAnchors(customFields: CustomFieldMap, warnings: string[]) {
   const anchors: OfferSizeLadderAnchorInput[] = [];
+  for (const index of customFieldIndexes(customFields)) {
+    const role = `anchor_${index}` as OfferSizeLadderAnchorRole;
+    const sizeText = readCustomFieldValue(customFields, indexedFieldNames(index, "size"));
+    const productionText = readCustomFieldValue(customFields, indexedFieldNames(index, "production"));
+    const shippingText = readCustomFieldValue(customFields, indexedFieldNames(index, "shipping"));
+    const totalText = readCustomFieldValue(customFields, indexedFieldNames(index, "total"));
+    const size = parseSizeText(sizeText);
+    if (!size) continue;
+
+    const productionPrice = parseMoneyNumber(productionText);
+    const shippingPrice = parseMoneyNumber(shippingText);
+    if (productionPrice !== null && shippingPrice !== null) {
+      anchors.push({
+        role,
+        widthCm: size.widthCm,
+        heightCm: size.heightCm,
+        productionPrice,
+        shippingPrice,
+        currency: "USD",
+        source: "custom_fields",
+        confidence: 0.9,
+        rawText: [sizeText, productionText, shippingText].filter(Boolean).join(" | "),
+      });
+      continue;
+    }
+
+    const totalPrice = parseMoneyNumber(totalText);
+    if (totalPrice !== null) {
+      warnings.push(`anchor_${index}_total_only_estimated_split`);
+      anchors.push({
+        role,
+        widthCm: size.widthCm,
+        heightCm: size.heightCm,
+        ...splitTotalSupplierPrice(totalPrice),
+        currency: "USD",
+        source: "custom_fields",
+        confidence: 0.48,
+        rawText: [sizeText, totalText].filter(Boolean).join(" | "),
+      });
+    }
+  }
+  return normalizeExtractedAnchorRoles(anchors);
+}
+
+export function extractOfferSizeLadderAnchorsFromTrelloFields(customFields: CustomFieldMap): OfferSizeLadderTrelloAnchorExtraction {
   const warnings: string[] = [];
   const sourceText = customFieldEntries(customFields).map((entry) => `${entry.key}: ${entry.value}`).join("\n");
+  const indexedAnchors = extractIndexedTrelloAnchors(customFields, warnings);
+  if (indexedAnchors.length >= 2) return { anchors: indexedAnchors, sourceText, warnings };
 
-  for (const role of ["minimum", "requested", "max_250"] as const) {
+  const anchors: OfferSizeLadderAnchorInput[] = [];
+  for (const role of CORE_ANCHOR_ROLES) {
     const sizeText =
       readCustomFieldValue(customFields, roleFieldNames(role, "size")) ||
       readCustomFieldByPattern(customFields, [
@@ -683,14 +765,14 @@ export function extractOfferSizeLadderAnchorsFromTrelloFields(customFields: Cust
     if (combinedAnchor) anchors.push(combinedAnchor);
   }
 
-  if (anchors.length !== 3) {
+  if (anchors.length < 2) {
     const present = new Set(anchors.map((anchor) => anchor.role));
-    for (const role of ["minimum", "requested", "max_250"] as const) {
+    for (const role of CORE_ANCHOR_ROLES) {
       if (!present.has(role)) warnings.push(`${role}_custom_field_anchor_missing`);
     }
   }
 
-  return { anchors, sourceText, warnings };
+  return { anchors: normalizeExtractedAnchorRoles(anchors), sourceText, warnings };
 }
 
 function requiredPositiveNumber(name: string, value: unknown) {
@@ -956,22 +1038,35 @@ function normalizeAnchor(input: OfferSizeLadderAnchorInput): OfferSizeLadderAnch
   };
 }
 
-function anchorsByRole(inputs: OfferSizeLadderAnchorInput[]) {
-  const result = new Map<OfferSizeLadderAnchorRole, OfferSizeLadderAnchor>();
-  for (const input of inputs) {
-    if (!["minimum", "requested", "max_250"].includes(input.role)) {
-      throw new QuoteValidationError("Unbekannte Anchor-Rolle.");
-    }
-    if (result.has(input.role)) throw new QuoteValidationError(`Anchor ${input.role} wurde mehrfach angegeben.`);
-    result.set(input.role, normalizeAnchor(input));
+function normalizeAnchorList(inputs: OfferSizeLadderAnchorInput[]) {
+  const normalized = inputs.map(normalizeAnchor).sort((left, right) => {
+    if (Math.abs(left.longSideCm - right.longSideCm) > 0.001) return left.longSideCm - right.longSideCm;
+    return left.areaCm2 - right.areaCm2;
+  });
+  if (normalized.length < 2) {
+    throw new QuoteValidationError("Mindestens zwei Supplier-Anker sind fuer eine Groessenleiter erforderlich.");
   }
-  for (const role of ["minimum", "requested", "max_250"] as const) {
-    if (!result.has(role)) throw new QuoteValidationError(`Anchor ${role} fehlt.`);
+  return normalized.map((anchor, index) => {
+    const role: OfferSizeLadderAnchorRole =
+      index === 0 ? "minimum" :
+      index === normalized.length - 1 ? "max_250" :
+      index === 1 ? "requested" :
+      `anchor_${index + 1}`;
+    return { ...anchor, role };
+  });
+}
+
+function anchorsByRole(anchorList: OfferSizeLadderAnchor[]) {
+  const minimum = anchorList[0];
+  const requested = anchorList[1] || anchorList[0];
+  const max = anchorList[anchorList.length - 1];
+  if (!minimum || !requested || !max) {
+    throw new QuoteValidationError("Mindestens zwei Supplier-Anker sind fuer eine Groessenleiter erforderlich.");
   }
   return {
-    minimum: result.get("minimum")!,
-    requested: result.get("requested")!,
-    max_250: result.get("max_250")!,
+    minimum: { ...minimum, role: "minimum" as const },
+    requested: { ...requested, role: "requested" as const },
+    max_250: { ...max, role: "max_250" as const },
   };
 }
 
@@ -982,9 +1077,10 @@ function interpolateByArea(
   upperArea: number,
   upperValue: number,
   mode: "log" | "linear",
+  clamp = true,
 ) {
   if (Math.abs(upperArea - lowerArea) < 0.001) return round2(lowerValue);
-  const bounded = Math.max(Math.min(targetArea, upperArea), lowerArea);
+  const bounded = clamp ? Math.max(Math.min(targetArea, upperArea), lowerArea) : targetArea;
   const t = (bounded - lowerArea) / (upperArea - lowerArea);
   if (mode === "log" && lowerValue > 0 && upperValue > 0 && lowerArea > 0 && upperArea > 0) {
     const logT = (Math.log(bounded) - Math.log(lowerArea)) / (Math.log(upperArea) - Math.log(lowerArea));
@@ -1021,6 +1117,7 @@ function interpolatePrice(targetArea: number, sortedAnchors: OfferSizeLadderAnch
     upper.areaCm2,
     upper[field],
     field === "productionPrice" ? "log" : "linear",
+    false,
   );
 }
 
@@ -1045,8 +1142,8 @@ function addAnchorConsistencyIssue(params: {
   }
 }
 
-function ladderLongSides(minLongSide: number, requestedLongSide: number, maxLongSide: number, stepCm: number) {
-  const values = new Set<number>([roundDimension(minLongSide), roundDimension(requestedLongSide), roundDimension(maxLongSide)]);
+function ladderLongSides(minLongSide: number, maxLongSide: number, stepCm: number, anchorLongSides: number[]) {
+  const values = new Set<number>(anchorLongSides.map(roundDimension));
   const firstStep = Math.ceil(minLongSide / stepCm) * stepCm;
   for (let value = firstStep; value <= maxLongSide + 0.001; value += stepCm) {
     if (value >= minLongSide - 0.001) values.add(roundDimension(value));
@@ -1112,6 +1209,8 @@ async function persistOfferSizeLadder(input: OfferSizeLadderGenerateInput, resul
       model_key: OFFER_SIZE_LADDER_MODEL_KEY,
       model_version: OFFER_SIZE_LADDER_MODEL_VERSION,
       option_count: result.options.length,
+      supplier_anchor_count: result.anchorList.length,
+      supplier_anchor_roles: result.anchorList.map((anchor) => anchor.role),
     },
     created_by: trimNullable(input.createdBy),
     updated_at: new Date().toISOString(),
@@ -1138,7 +1237,7 @@ async function persistOfferSizeLadder(input: OfferSizeLadderGenerateInput, resul
     headers: { Prefer: "return=minimal" },
   }, { anchor_set_id: `eq.${anchorSetId}` });
 
-  for (const anchor of Object.values(result.anchors)) {
+  for (const anchor of result.anchorList) {
     await supabaseRequest("offer_size_quote_anchors", {
       method: "POST",
       body: JSON.stringify({
@@ -1285,8 +1384,8 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   const trelloCardId = normalizeTrelloCardIdentifier(input.trelloCardId);
   if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
 
-  const anchors = anchorsByRole(input.anchors);
-  const allAnchors = [anchors.minimum, anchors.requested, anchors.max_250];
+  const allAnchors = normalizeAnchorList(input.anchors);
+  const anchors = anchorsByRole(allAnchors);
   const sortedByArea = [...allAnchors].sort((a, b) => a.areaCm2 - b.areaCm2);
   const sourceText = [input.sourceText, ...allAnchors.map((anchor) => anchor.rawText)].filter(Boolean).join("\n");
   const productModel = input.productModel || detectOfferSizeLadderProductModel(sourceText);
@@ -1299,19 +1398,19 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   if (Math.abs(customerFactor - OFFER_SIZE_LADDER_CUSTOMER_FACTOR) > 0.001) {
     warnings.push("customer_factor_differs_from_current_2_3_policy");
   }
-  if (anchors.minimum.longSideCm > anchors.requested.longSideCm + 0.5) issues.push("minimum_anchor_larger_than_requested_anchor");
-  if (anchors.requested.longSideCm > anchors.max_250.longSideCm + 0.5) issues.push("requested_anchor_larger_than_max_anchor");
-  if (anchors.max_250.longSideCm < maxLongSideCm - 15 || anchors.max_250.longSideCm > maxLongSideCm + 15) {
-    issues.push("max_anchor_not_close_to_250cm");
+  if (anchors.max_250.longSideCm < maxLongSideCm - 15) {
+    warnings.push("largest_supplier_anchor_below_250cm_extrapolated");
+  } else if (anchors.max_250.longSideCm > maxLongSideCm + 15) {
+    warnings.push("largest_supplier_anchor_above_250cm");
   }
   if (new Set(allAnchors.map((anchor) => anchor.currency)).size > 1) warnings.push("anchor_currencies_differ");
   if (productModel === "uv_print" || productModel === "outdoor") warnings.push(`${productModel}_requires_manual_review`);
   if (["three_d", "full_glow", "acryl_light_box", "unsupported"].includes(productModel)) issues.push(`${productModel}_not_supported_for_neonflex_ladder`);
   if (productModel === "unknown") warnings.push("product_model_unknown");
 
-  addAnchorConsistencyIssue({ issues, warnings, lower: anchors.minimum, upper: anchors.requested });
-  addAnchorConsistencyIssue({ issues, warnings, lower: anchors.requested, upper: anchors.max_250 });
-  addAnchorConsistencyIssue({ issues, warnings, lower: anchors.minimum, upper: anchors.max_250 });
+  for (let index = 0; index < allAnchors.length - 1; index += 1) {
+    addAnchorConsistencyIssue({ issues, warnings, lower: allAnchors[index]!, upper: allAnchors[index + 1]! });
+  }
 
   const baseConfidence = (() => {
     let score = productModel === "neonflex" ? 0.88 : productModel === "unknown" ? 0.62 : 0.52;
@@ -1325,7 +1424,8 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   })();
   const setStatus: OfferSizeLadderSetStatus = issues.length ? "blocked" : warnings.length ? "needs_review" : "draft";
 
-  const longSides = ladderLongSides(anchors.minimum.longSideCm, anchors.requested.longSideCm, maxLongSideCm, stepCm);
+  const largestSupplierAnchorLongSide = anchors.max_250.longSideCm;
+  const longSides = ladderLongSides(anchors.minimum.longSideCm, maxLongSideCm, stepCm, allAnchors.map((anchor) => anchor.longSideCm));
   const options = longSides.map<OfferSizeLadderOption>((longSideCm, index) => {
     const exactAnchor = allAnchors.find((anchor) => Math.abs(anchor.longSideCm - longSideCm) < 0.5);
     const dimensions = exactAnchor || optionDimensionsForLongSide(anchors.minimum, longSideCm);
@@ -1338,6 +1438,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
     const optionIssues = [...issues];
     const optionWarnings = [...warnings];
     if (longSideCm > 200) optionWarnings.push("long_side_over_200cm_requires_review");
+    if (longSideCm > largestSupplierAnchorLongSide + 0.5) optionWarnings.push("extrapolated_beyond_largest_supplier_anchor");
     const reviewStatus: OfferSizeLadderReviewStatus = optionIssues.length
       ? "blocked"
       : optionWarnings.length
@@ -1367,6 +1468,8 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
       sortOrder: index,
       metadata: {
         exact_anchor_role: exactAnchor?.role || null,
+        supplier_anchor_count: allAnchors.length,
+        extrapolated_beyond_largest_anchor: longSideCm > largestSupplierAnchorLongSide + 0.5,
         pricing_basis: "new_supplier_direct_2_6",
       },
     };
@@ -1387,6 +1490,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
     issues,
     warnings,
     anchors,
+    anchorList: allAnchors,
     options,
     persisted: null,
   };
@@ -1405,9 +1509,9 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
   const card = await getTrelloCard(trelloCardId);
   const canonicalTrelloCardId = card.id || trelloCardId;
   const extraction = extractOfferSizeLadderAnchorsFromTrelloFields(card.customFields || {});
-  if (extraction.anchors.length !== 3) {
+  if (extraction.anchors.length < 2) {
     throw new QuoteValidationError(
-      "Die drei Trello-Anker konnten nicht vollständig gelesen werden.",
+      "Mindestens zwei Trello-Anker konnten nicht vollständig gelesen werden.",
       extraction.warnings,
       422,
     );
