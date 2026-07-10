@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   applyOfferSizeLadderToOffer,
   applyOfferSizeLadderOptionOverrides,
@@ -1660,4 +1661,13 @@ test("offer size ladder creates missing Trello offer_items_json field before pro
     if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
     else process.env.TRELLO_TOKEN = originalTrelloToken;
   }
+});
+
+test("price review prepares a Trello draft when the size ladder offer does not exist yet", () => {
+  const source = readFileSync("src/app/ops/customer-records/price-review/page-client.tsx", "utf8");
+
+  assert.match(source, /function isMissingOfferSizeLadderError/);
+  assert.match(source, /generateSizeLadderFromTrello\(true, \{ missingOfferFallback: true \}\)/);
+  assert.match(source, /Noch kein Angebot gefunden\. Draft gespeichert/);
+  assert.match(source, /Wenn das Angebot noch nicht existiert/);
 });

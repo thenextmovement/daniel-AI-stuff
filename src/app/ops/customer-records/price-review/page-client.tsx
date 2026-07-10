@@ -173,6 +173,19 @@ function formatApiError(payload: ReviewResponse | null) {
   return base;
 }
 
+function isMissingOfferSizeLadderError(payload: ReviewResponse | null) {
+  const text = [
+    formatIssueText(payload?.error),
+    payload?.issues?.length ? formatIssueList(payload.issues) : "",
+    payload?.details ? formatIssueText(payload.details) : "",
+  ].join(" ").toLowerCase();
+  return (
+    text.includes("kein angebot zu dieser trello-karte")
+    || text.includes("angebot nicht gefunden")
+    || text.includes("offer not found")
+  );
+}
+
 function parseOfferItemCandidates(payload: ReviewResponse | null): OfferItemCandidateView[] {
   const errorText = formatIssueText(payload?.error).toLowerCase();
   if (!errorText.includes("mehrere moegliche schildpositionen") && !errorText.includes("mehrere mögliche schildpositionen")) {
@@ -670,6 +683,9 @@ function SizeLadderResultCard({
               <div className="text-sm font-semibold text-black">Diese Tabelle ins Angebot übernehmen</div>
               <div className="mt-1 text-xs text-black/45">
                 Nutzt die sichtbaren Größen und manuell geänderten Angebotspreise. Das Angebot wird nicht automatisch versendet.
+              </div>
+              <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                Wenn das Angebot noch nicht existiert, wird die Tabelle als Draft gespeichert und fuer die spaetere Angebotserstellung in Trello vorbereitet.
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1504,7 +1520,7 @@ export function SupplierPriceReviewClient({
     }
   }
 
-  async function generateSizeLadderFromTrello(persist: boolean) {
+  async function generateSizeLadderFromTrello(persist: boolean, options?: { missingOfferFallback?: boolean }) {
     setSizeLadderRunning(true);
     setError(null);
     setMessage(null);
@@ -1545,7 +1561,13 @@ export function SupplierPriceReviewClient({
       const projection = payload.sizeLadder.persisted?.trelloProjection;
       setMessage(
         persist
-          ? projection?.written === false
+          ? options?.missingOfferFallback
+            ? projection?.written === false
+              ? `Noch kein Angebot gefunden. Draft gespeichert, aber Trello-Projektion fehlt: ${projection.error || "offer_items_json nicht geschrieben"}`
+              : projection?.createdField
+                ? "Noch kein Angebot gefunden. Draft gespeichert, offer_items_json angelegt und fuer die spaetere Angebotserstellung vorbereitet."
+                : "Noch kein Angebot gefunden. Draft gespeichert und offer_items_json fuer die spaetere Angebotserstellung vorbereitet."
+            : projection?.written === false
             ? `Draft gespeichert, aber Trello-Projektion fehlt: ${projection.error || "offer_items_json nicht geschrieben"}`
             : projection?.createdField
               ? "Trello-Anker geladen, Draft gespeichert, offer_items_json angelegt und fuer das Angebot vorbereitet."
@@ -1616,6 +1638,11 @@ export function SupplierPriceReviewClient({
       const payload = (await response.json().catch(() => null)) as ReviewResponse | null;
       if (!response.ok || !payload?.ok || !payload.sizeLadderOfferApply) {
         setSizeLadderTargetCandidates(parseOfferItemCandidates(payload));
+        if (isMissingOfferSizeLadderError(payload)) {
+          setSizeLadderOfferApplying(null);
+          await generateSizeLadderFromTrello(true, { missingOfferFallback: true });
+          return;
+        }
         setError(formatApiError(payload));
         setSizeLadderOfferApplying(null);
         return;
