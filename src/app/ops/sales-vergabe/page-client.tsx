@@ -122,7 +122,7 @@ type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "deadline" | "s
 type SupplierFilter = "all" | "quentin" | "said" | "special" | "manual_review";
 type PaymentFilter = "all" | "paid" | "unpaid" | "pending" | "authorized" | "partially_paid" | "unknown";
 type UrgencyFilter = "all" | "rush" | "standard";
-type QuickFilter = "all" | "paid_priority" | "missing_payment_link" | "sync_issue" | "deadline";
+type QuickFilter = "all" | "paid_priority" | "prior_paid_customer" | "missing_payment_link" | "sync_issue" | "deadline";
 
 const BOARD_PAGE_SIZE = 50;
 
@@ -213,6 +213,15 @@ function paidAssignmentPriority(sale: SupplierSale) {
   return (
     sale.shopifyPaymentStatus === "paid" &&
     !sale.assignedSupplier &&
+    !["assigned", "in_production", "completed", "canceled"].includes(sale.assignmentStatus)
+  );
+}
+
+function priorPaidCustomerPriority(sale: SupplierSale) {
+  return (
+    sale.priorPaidCustomer.hasPriorPaidOrder &&
+    sale.shopifyPaymentStatus !== "paid" &&
+    sale.paymentDecisionStatus !== "paid_confirmed" &&
     !["assigned", "in_production", "completed", "canceled"].includes(sale.assignmentStatus)
   );
 }
@@ -735,6 +744,7 @@ function SaleCard({
   const reviewWindowOpen = postOrderReviewWindowOpen(sale, reviewNow);
   const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
   const paidPriority = paidAssignmentPriority(sale);
+  const priorPaidPriority = priorPaidCustomerPriority(sale);
   const assignBlockReason = assignmentBlockReason(sale, deliveryDate, paymentDecision);
   const reminderBlockReason = !sale.customerEmail
     ? "Kunden-E-Mail fehlt."
@@ -743,7 +753,7 @@ function SaleCard({
       : null;
 
   return (
-    <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : "border-stone-200"}`}>
+    <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : priorPaidPriority ? "border-cyan-300 ring-2 ring-cyan-100" : "border-stone-200"}`}>
       <div className="grid gap-4 lg:grid-cols-[7rem_minmax(0,1fr)_minmax(20rem,0.78fr)]">
         <div className="h-28 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100">
           {sale.primaryImageUrl ? (
@@ -761,6 +771,15 @@ function SaleCard({
               <CheckCircle2 className="h-4 w-4 text-emerald-700" />
               Bezahlt - sofort vergeben
               {reviewWindowOpen ? <span className="text-xs font-medium text-emerald-800">24h-Fenster offen</span> : null}
+            </div>
+          ) : null}
+          {priorPaidPriority ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[0.5rem] border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-950">
+              <BadgeCheck className="h-4 w-4 text-cyan-700" />
+              Bestandskunde: frueher bereits bezahlt
+              <span className="text-xs font-medium text-cyan-800">
+                {sale.priorPaidCustomer.lastPaidOrderName ? `letzte Zahlung ${sale.priorPaidCustomer.lastPaidOrderName}` : "ggf. frueher freigeben"}
+              </span>
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
@@ -791,6 +810,12 @@ function SaleCard({
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900">
                 <Zap className="h-3.5 w-3.5" />
                 Eil/Express
+              </span>
+            ) : null}
+            {priorPaidPriority ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-medium text-cyan-900">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                schon bezahlt gehabt
               </span>
             ) : null}
             {reviewBadge ? (
@@ -1144,6 +1169,7 @@ export function SupplierSalesClient({
   const items = useMemo(() => board?.items || [], [board]);
   const visibleItems = useMemo(() => {
     if (quickFilter === "paid_priority") return items.filter(paidAssignmentPriority);
+    if (quickFilter === "prior_paid_customer") return items.filter(priorPaidCustomerPriority);
     if (quickFilter === "missing_payment_link") return items.filter(missingPaymentLinkIssue);
     if (quickFilter === "sync_issue") return items.filter(hasSyncIssue);
     if (quickFilter === "deadline") return items.filter(isDeadlineRelevant);
@@ -1352,7 +1378,7 @@ export function SupplierSalesClient({
           {savingSaleId === "assignment-task-cleanup" ? <span className="text-sm text-stone-500">Bereinigung laeuft...</span> : null}
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-8">
+        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-9">
           <StatFilterButton
             active={scope === "active" && payment === "paid"}
             label="Bezahlte offene Sales"
@@ -1365,6 +1391,16 @@ export function SupplierSalesClient({
           </StatFilterButton>
           <StatFilterButton active={scope === "ready"} label="Bereite Sales" onClick={() => selectScope("ready")}>
             <OpsStatCard label="Bereit" value={board?.counts.readyToAssign || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Bezahlt oder freigegeben." />
+          </StatFilterButton>
+          <StatFilterButton
+            active={quickFilter === "prior_paid_customer"}
+            label="Bestandskunden mit offener Zahlung"
+            onClick={() => {
+              selectScope("active");
+              setQuickFilter("prior_paid_customer");
+            }}
+          >
+            <OpsStatCard label="Bestandskunde" value={board?.counts.priorPaidCustomerOpen || 0} tone="info" icon={<BadgeCheck className="h-5 w-5" />} detail="Frueher bezahlt, jetzt offen." />
           </StatFilterButton>
           <StatFilterButton active={scope === "payment"} label="Offene Zahlungen" onClick={() => selectScope("payment")}>
             <OpsStatCard label="Zahlung" value={board?.counts.paymentOpen || 0} tone="warning" icon={<CreditCard className="h-5 w-5" />} detail="Offen oder Entscheidung fehlt." />
@@ -1524,6 +1560,10 @@ export function SupplierSalesClient({
             <QuickFilterButton active={quickFilter === "paid_priority"} onClick={() => setQuickFilter("paid_priority")}>
               <CheckCircle2 className="h-3.5 w-3.5" />
               Bezahlt sofort ({items.filter(paidAssignmentPriority).length})
+            </QuickFilterButton>
+            <QuickFilterButton active={quickFilter === "prior_paid_customer"} onClick={() => setQuickFilter("prior_paid_customer")}>
+              <BadgeCheck className="h-3.5 w-3.5" />
+              Bestandskunde offen ({items.filter(priorPaidCustomerPriority).length})
             </QuickFilterButton>
             <QuickFilterButton active={quickFilter === "missing_payment_link"} onClick={() => setQuickFilter("missing_payment_link")}>
               <AlertTriangle className="h-3.5 w-3.5" />

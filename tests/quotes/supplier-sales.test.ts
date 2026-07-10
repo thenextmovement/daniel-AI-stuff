@@ -710,6 +710,52 @@ test("supplier sales board sorts newest sales first by accepted snapshot", () =>
   assert.equal(board.items[0].id, "sale-new");
 });
 
+test("supplier sales board prioritizes open repeat customers after paid sales", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [
+      saleRow({
+        id: "sale-new-unpaid",
+        customer_email: "new@example.com",
+        shopify_payment_status: "pending",
+        payment_decision_status: "wait_for_payment",
+        assignment_status: "payment_open",
+        created_at: "2026-06-18T10:00:00.000Z",
+      }),
+      saleRow({
+        id: "sale-repeat-unpaid",
+        customer_email: "repeat@example.com",
+        shopify_payment_status: "pending",
+        payment_decision_status: "wait_for_payment",
+        assignment_status: "payment_open",
+        created_at: "2026-06-17T10:00:00.000Z",
+        metadata: {
+          prior_paid_customer: {
+            has_prior_paid_order: true,
+            paid_order_count: 2,
+            last_paid_at: "2026-05-20T10:00:00.000Z",
+            last_paid_order_name: "#1000",
+          },
+        },
+      }),
+      saleRow({
+        id: "sale-paid",
+        shopify_payment_status: "paid",
+        payment_decision_status: "paid_confirmed",
+        assignment_status: "ready_to_assign",
+        created_at: "2026-06-16T10:00:00.000Z",
+      }),
+    ],
+    [],
+    [],
+    new Date("2026-06-18T12:00:00.000Z"),
+  );
+
+  assert.deepEqual(board.items.map((item) => item.id), ["sale-paid", "sale-repeat-unpaid", "sale-new-unpaid"]);
+  assert.equal(board.items[1]?.priorPaidCustomer.hasPriorPaidOrder, true);
+  assert.equal(board.items[1]?.priorPaidCustomer.lastPaidOrderName, "#1000");
+  assert.equal(board.counts.priorPaidCustomerOpen, 1);
+});
+
 test("supplier sales deadline board keeps due-date priority", () => {
   const board = buildSupplierSaleBoardFromRows(
     [
@@ -1103,6 +1149,60 @@ test("supplier sales board reads payment link from offer snapshot fallback", asy
   }, async () => {
     const board = await listSupplierSalesBoard({ scope: "active" });
     assert.equal(board.items[0]?.paymentLink, "https://galaxybuzzdk.myshopify.com/orders/snapshot-payment/status");
+  });
+});
+
+test("supplier sales board marks unpaid active rows when the same customer paid before", async () => {
+  const repeatOpenRow = saleRow({
+    id: "sale-repeat-open",
+    sale_key: "offer:repeat-open",
+    customer_email: "repeat@example.com",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-21T10:00:00.000Z",
+    updated_at: "2026-06-21T10:00:00.000Z",
+  });
+  const newOpenRow = saleRow({
+    id: "sale-new-open",
+    sale_key: "offer:new-open",
+    customer_email: "new@example.com",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-22T10:00:00.000Z",
+    updated_at: "2026-06-22T10:00:00.000Z",
+  });
+  const priorPaidRow = saleRow({
+    id: "sale-repeat-paid-before",
+    sale_key: "shopify:order:repeat-before",
+    customer_email: "repeat@example.com",
+    shopify_order_name: "#9001",
+    shopify_payment_status: "paid",
+    payment_decision_status: "paid_confirmed",
+    assignment_status: "completed",
+    created_at: "2026-05-20T10:00:00.000Z",
+    updated_at: "2026-05-20T10:00:00.000Z",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("or") === "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)") {
+        return Response.json([priorPaidRow]);
+      }
+      return Response.json([newOpenRow, repeatOpenRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    assert.deepEqual(board.items.map((item) => item.id), ["sale-repeat-open", "sale-new-open"]);
+    assert.equal(board.items[0]?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(board.items[0]?.priorPaidCustomer.lastPaidOrderName, "#9001");
+    assert.equal(board.counts.priorPaidCustomerOpen, 1);
   });
 });
 

@@ -163,6 +163,13 @@ export type SupplierSalePostOrderReview = {
   eventId: string | null;
 };
 
+export type SupplierSalePriorPaidCustomer = {
+  hasPriorPaidOrder: boolean;
+  paidOrderCount: number;
+  lastPaidAt: string | null;
+  lastPaidOrderName: string | null;
+};
+
 export type SupplierSale = {
   id: string;
   saleKey: string;
@@ -225,6 +232,7 @@ export type SupplierSale = {
   latestEvent: SupplierSaleEvent | null;
   orderConfirmationEmail: SupplierOrderConfirmationEmailState | null;
   postOrderReview: SupplierSalePostOrderReview;
+  priorPaidCustomer: SupplierSalePriorPaidCustomer;
 };
 
 export type SupplierSaleItem = {
@@ -266,6 +274,7 @@ export type SupplierSaleBoard = {
     dueSoon: number;
     overdue: number;
     rushOrders: number;
+    priorPaidCustomerOpen: number;
     missingPaymentLinks: number;
     quentinRecommended: number;
     saidRecommended: number;
@@ -1525,6 +1534,17 @@ function postOrderReviewFromRow(row: SupplierSaleRow): SupplierSalePostOrderRevi
   return { status, signedAt, expiresAt, changeRequestedAt, reviewedAt, reviewedBy, reviewNote, message, eventId };
 }
 
+function priorPaidCustomerFromRow(row: SupplierSaleRow): SupplierSalePriorPaidCustomer {
+  const marker = jsonRecord(row.metadata?.prior_paid_customer);
+  const paidOrderCount = Number(marker.paid_order_count || marker.paidOrderCount || 0);
+  return {
+    hasPriorPaidOrder: Boolean(marker.has_prior_paid_order || marker.hasPriorPaidOrder),
+    paidOrderCount: Number.isFinite(paidOrderCount) ? paidOrderCount : 0,
+    lastPaidAt: nullableText(marker.last_paid_at || marker.lastPaidAt, 80),
+    lastPaidOrderName: nullableText(marker.last_paid_order_name || marker.lastPaidOrderName, 120),
+  };
+}
+
 const QUENTIN_NEON_BOARD_URL = "https://trello.com/b/9QNAfkv4/quentin-neon-signs";
 const QUENTIN_NEON_BOARD_ID = "62bae9b97705e7419ed64593";
 
@@ -1631,6 +1651,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     latestEvent,
     orderConfirmationEmail: mapOrderConfirmationEmailState(row.metadata || {}),
     postOrderReview: postOrderReviewFromRow(row),
+    priorPaidCustomer: priorPaidCustomerFromRow(row),
   };
 }
 
@@ -1646,6 +1667,23 @@ function paidUnassignedPriority(row: SupplierSaleRow) {
   if (row.shopify_payment_status !== "paid") return false;
   if (hasExternalSupplierAssignmentSignal(row) || hasCompletedShopifyFulfillmentSignal(row)) return false;
   return !["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status);
+}
+
+function hasPaidCustomerSignal(row: SupplierSaleRow) {
+  return row.shopify_payment_status === "paid" || row.payment_decision_status === "paid_confirmed";
+}
+
+function priorPaidCustomerPriority(row: SupplierSaleRow) {
+  if (hasPaidCustomerSignal(row)) return false;
+  if (hasExternalSupplierAssignmentSignal(row) || hasCompletedShopifyFulfillmentSignal(row)) return false;
+  if (["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status)) return false;
+  return priorPaidCustomerFromRow(row).hasPriorPaidOrder;
+}
+
+function openAssignmentPriority(row: SupplierSaleRow) {
+  if (paidUnassignedPriority(row)) return 0;
+  if (priorPaidCustomerPriority(row)) return 1;
+  return 2;
 }
 
 function missingPaymentLinkPriority(row: SupplierSaleRow) {
@@ -1683,6 +1721,79 @@ function saleRecencyMs(row: SupplierSaleRow) {
   );
 }
 
+function markPriorPaidCustomers(saleRows: SupplierSaleRow[], paidHistoryRows: SupplierSaleRow[]) {
+  if (!saleRows.length || !paidHistoryRows.length) return saleRows;
+  const paidRowsByEmail = new Map<string, SupplierSaleRow[]>();
+  for (const row of paidHistoryRows) {
+    if (!hasPaidCustomerSignal(row)) continue;
+    const email = lowerNullable(row.customer_email, 260);
+    if (!email) continue;
+    const list = paidRowsByEmail.get(email) || [];
+    list.push(row);
+    paidRowsByEmail.set(email, list);
+  }
+
+  for (const list of paidRowsByEmail.values()) {
+    list.sort((left, right) => saleRecencyMs(right) - saleRecencyMs(left));
+  }
+
+  return saleRows.map((row) => {
+    if (hasPaidCustomerSignal(row) || ["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status)) return row;
+    const email = lowerNullable(row.customer_email, 260);
+    if (!email) return row;
+    const currentMs = saleRecencyMs(row);
+    const priorPaidRows = (paidRowsByEmail.get(email) || []).filter((paidRow) => {
+      if (paidRow.id === row.id) return false;
+      const paidMs = saleRecencyMs(paidRow);
+      return !currentMs || !paidMs || paidMs < currentMs;
+    });
+    if (!priorPaidRows.length) return row;
+    const latestPaid = priorPaidRows[0];
+    return {
+      ...row,
+      metadata: {
+        ...jsonRecord(row.metadata),
+        prior_paid_customer: {
+          has_prior_paid_order: true,
+          paid_order_count: priorPaidRows.length,
+          last_paid_at: latestPaid.created_at || latestPaid.updated_at || null,
+          last_paid_order_name: latestPaid.shopify_order_name || latestPaid.offer_number || latestPaid.document_reference || null,
+        },
+      },
+    };
+  });
+}
+
+async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
+  const emails = Array.from(new Set(
+    saleRows
+      .filter((row) => !hasPaidCustomerSignal(row) && !["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status))
+      .map((row) => lowerNullable(row.customer_email, 260))
+      .filter((value): value is string => Boolean(value)),
+  ));
+  if (!emails.length) return [];
+  return supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: [
+      "id",
+      "customer_email",
+      "shopify_order_name",
+      "offer_number",
+      "document_reference",
+      "shopify_payment_status",
+      "payment_decision_status",
+      "created_at",
+      "updated_at",
+      "metadata",
+      "raw_shopify",
+      "offer_snapshot",
+    ].join(","),
+    customer_email: inList(emails),
+    or: "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)",
+    order: "created_at.desc,updated_at.desc",
+    limit: Math.min(Math.max(emails.length * 20, 100), 2000),
+  });
+}
+
 function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new Date()): SupplierSaleBoard["counts"] {
   const today = now.toISOString().slice(0, 10);
   const dueSoonLimit = new Date(now);
@@ -1704,6 +1815,7 @@ function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new 
       return Boolean(dueDate && dueDate < today && !["completed", "canceled"].includes(row.assignment_status));
     }).length,
     rushOrders: saleRows.filter((row) => supplierSaleHasRushSignal(row)).length,
+    priorPaidCustomerOpen: activeRows.filter((row) => priorPaidCustomerPriority(row)).length,
     missingPaymentLinks: activeRows.filter((row) => missingPaymentLinkPriority(row)).length,
     quentinRecommended: saleRows.filter((row) => row.recommended_supplier === "quentin").length,
     saidRecommended: saleRows.filter((row) => row.recommended_supplier === "said").length,
@@ -1751,8 +1863,8 @@ export function buildSupplierSaleBoardFromRows(
       const rightDue = right.supplierDueDate ? new Date(right.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
       if (leftDue !== rightDue) return leftDue - rightDue;
     } else {
-      const paidRank = Number(paidUnassignedPriority(rightRow)) - Number(paidUnassignedPriority(leftRow));
-      if (paidRank !== 0) return paidRank;
+      const priorityRank = openAssignmentPriority(leftRow) - openAssignmentPriority(rightRow);
+      if (priorityRank !== 0) return priorityRank;
     }
     const recency = saleRecencyMs(rightRow) - saleRecencyMs(leftRow);
     if (recency !== 0) return recency;
@@ -1831,7 +1943,19 @@ function rowFromSale(sale: SupplierSale): SupplierSaleRow {
     primary_image_url: sale.primaryImageUrl,
     raw_shopify: {},
     offer_snapshot: {},
-    metadata: sale.paymentLink ? { payment_link: sale.paymentLink } : {},
+    metadata: {
+      ...(sale.paymentLink ? { payment_link: sale.paymentLink } : {}),
+      ...(sale.priorPaidCustomer.hasPriorPaidOrder
+        ? {
+            prior_paid_customer: {
+              has_prior_paid_order: true,
+              paid_order_count: sale.priorPaidCustomer.paidOrderCount,
+              last_paid_at: sale.priorPaidCustomer.lastPaidAt,
+              last_paid_order_name: sale.priorPaidCustomer.lastPaidOrderName,
+            },
+          }
+        : {}),
+    },
     created_at: sale.createdAt,
     updated_at: sale.updatedAt,
   };
@@ -3137,6 +3261,7 @@ export async function listSupplierSalesBoard(options?: {
       "id",
       "assignment_status",
       "shopify_payment_status",
+      "payment_decision_status",
       "supplier_due_date",
       "customer_due_date",
       "recommended_supplier",
@@ -3206,6 +3331,9 @@ export async function listSupplierSalesBoard(options?: {
     saleRows = saleRows.filter(matchesUrgency);
     statsRows = statsRows.filter(matchesUrgency);
   }
+  const priorPaidHistoryRows = await fetchPriorPaidCustomerHistory([...statsRows, ...saleRows]);
+  statsRows = markPriorPaidCustomers(statsRows, priorPaidHistoryRows);
+  saleRows = markPriorPaidCustomers(saleRows, priorPaidHistoryRows);
   saleRows = saleRows.slice(0, requestedLimit);
   const counts = buildSupplierSaleCountsFromRows(statsRows, now);
   if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts);
