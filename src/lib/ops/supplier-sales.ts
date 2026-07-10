@@ -1772,26 +1772,34 @@ async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
       .filter((value): value is string => Boolean(value)),
   ));
   if (!emails.length) return [];
-  return supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
-    select: [
-      "id",
-      "customer_email",
-      "shopify_order_name",
-      "offer_number",
-      "document_reference",
-      "shopify_payment_status",
-      "payment_decision_status",
-      "created_at",
-      "updated_at",
-      "metadata",
-      "raw_shopify",
-      "offer_snapshot",
-    ].join(","),
-    customer_email: inList(emails),
-    or: "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)",
-    order: "created_at.desc,updated_at.desc",
-    limit: Math.min(Math.max(emails.length * 20, 100), 2000),
-  });
+  const select = [
+    "id",
+    "customer_email",
+    "shopify_order_name",
+    "offer_number",
+    "document_reference",
+    "shopify_payment_status",
+    "payment_decision_status",
+    "created_at",
+    "updated_at",
+    "metadata",
+    "raw_shopify",
+    "offer_snapshot",
+  ].join(",");
+  const batches: string[][] = [];
+  for (let index = 0; index < emails.length; index += 75) {
+    batches.push(emails.slice(index, index + 75));
+  }
+  const rows = await Promise.all(batches.map((batch) =>
+    supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select,
+      customer_email: inList(batch),
+      or: "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)",
+      order: "created_at.desc,updated_at.desc",
+      limit: Math.min(Math.max(batch.length * 20, 100), 1500),
+    }),
+  ));
+  return rows.flat();
 }
 
 function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new Date()): SupplierSaleBoard["counts"] {
@@ -3331,7 +3339,7 @@ export async function listSupplierSalesBoard(options?: {
     saleRows = saleRows.filter(matchesUrgency);
     statsRows = statsRows.filter(matchesUrgency);
   }
-  const priorPaidHistoryRows = await fetchPriorPaidCustomerHistory([...statsRows, ...saleRows]);
+  const priorPaidHistoryRows = await fetchPriorPaidCustomerHistory(saleRows);
   statsRows = markPriorPaidCustomers(statsRows, priorPaidHistoryRows);
   saleRows = markPriorPaidCustomers(saleRows, priorPaidHistoryRows);
   saleRows = saleRows.slice(0, requestedLimit);
