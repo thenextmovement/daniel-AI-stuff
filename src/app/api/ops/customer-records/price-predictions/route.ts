@@ -114,7 +114,10 @@ function hasQuoteReadySizeLadderAutomationAccess(request: NextRequest, bodyToken
 
 function quoteReadyAuthProbe(request: NextRequest, bodyToken?: string | null, action?: string | null) {
   if (action !== "prepare_quote_ready_size_ladder") return null;
-  if (request.headers.get("x-quote-ready-auth-probe") !== "1") return null;
+  const enabled =
+    request.headers.get("x-quote-ready-auth-probe") === "1" ||
+    request.nextUrl.searchParams.get("quoteReadyAuthProbe") === "1";
+  if (!enabled) return null;
   const candidate = getAutomationToken(request, bodyToken);
   const expectedTokens = [
     ["SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN", process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN],
