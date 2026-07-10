@@ -327,7 +327,7 @@ async function waitForBodyText(page, label, snippets) {
   const deadline = Date.now() + 30000;
   let body = "";
   while (Date.now() < deadline) {
-    body = ((await page.textContent("body")) || "").replace(/\s+/g, " ");
+    body = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
     const missing = snippets.filter((snippet) => !body.includes(snippet));
     if (!missing.length) return;
     await page.waitForTimeout(250);
@@ -351,16 +351,25 @@ async function runViewport(browser, target, viewport, label) {
   await page.goto(`${target}/ops/company-brain`, { waitUntil: "networkidle" });
   await page.getByLabel(/Fall, E-Mail, Angebotsnummer, Trello-ID/).fill("https://trello.com/c/BiP93WuG/smoke");
   await page.getByRole("button", { name: "Suchen" }).click();
-  await waitForBodyText(page, `${label}: decision summary`, [
-    "Sofortbild",
+  await waitForBodyText(page, `${label}: compact summary`, [
+    "FALL-KOMMANDOSTAND",
+    "Kurzantwort und nächste Aktion",
+    "KURZANTWORT",
     "Lösbar nach Freigabe",
-    "Ursache in Klartext",
-    "Erlaubter nächster Schritt",
-    "Direktaktion",
-    "Entscheidung",
+    "NÄCHSTER SCHRITT",
+    "DIREKTE AKTIONEN",
+    "Trello-Projektion bereinigen",
+    "Projektion freigeben",
+    "Diagnoseweg, Belege und Quellen anzeigen",
+    "FIX CENTER",
+  ]);
+  await page.locator("summary").filter({ hasText: "Diagnoseweg, Belege und Quellen anzeigen" }).first().click({ force: true });
+  await waitForBodyText(page, `${label}: expanded diagnosis`, [
+    "SOFORTBILD",
+    "ENTSCHEIDUNG",
     "Kann nach Freigabe gelöst werden",
     "Guarded Fix",
-    "Fall-Route",
+    "FALL-ROUTE",
     "Vom Kartenfehler zur sicheren Aktion",
     "Trello-Karte gelesen",
     "Kunden-E-Mail korrigieren",
@@ -373,23 +382,24 @@ async function runViewport(browser, target, viewport, label) {
     "Empfänger und Angebot im Fix Center prüfen",
     "System-Blocker",
     "Live Outlook / Graph",
-    "Benötigte Runtime-Variablen",
+    "BENÖTIGTE RUNTIME-VARIABLEN",
     "MICROSOFT_GRAPH_TENANT_ID",
     "OUTLOOK_SHARED_MAILBOX",
     "Setup-Paket kopieren",
-    "Fehlerkarte-Check",
+    "FEHLERKARTE-CHECK",
     "Kann Company Brain diesen Trello-Fehler erklären und lösen?",
-    "Karte verstehen",
-    "Ursache finden",
-    "Fehler beheben",
-    "Versand klären",
-    "Mitarbeiterführung",
+    "KARTE VERSTEHEN",
+    "URSACHE FINDEN",
+    "FEHLER BEHEBEN",
+    "VERSAND KLÄREN",
+    "MITARBEITERFÜHRUNG",
     "Mitarbeiter kann nach Freigabe lösen",
     "Root Cause: customer_email_invalid",
     "Nächster Klick: Trello-Projektion bereinigen",
-    "Belege, die zählen",
-    "Nicht tun",
+    "BELEGE, DIE ZÄHLEN",
+    "NICHT TUN",
   ]);
+  await page.locator("summary").filter({ hasText: "Diagnoseweg, Belege und Quellen anzeigen" }).first().click({ force: true });
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   const fixCenter = page.locator("#company-brain-fix-center");
   await (await waitForEnabled(fixCenter.getByRole("button", { name: "Projektion freigeben" }), `${label}: projection repair`)).click();

@@ -78,6 +78,9 @@ test("company brain fix center groups risky actions and avoids browser prompts",
   assert.match(source, /Kundenakte prüfen/);
   assert.match(source, /trello:/);
   assert.match(source, /Sofortbild/);
+  assert.match(source, /Kurzantwort und nächste Aktion/);
+  assert.match(source, /Direkte Aktionen/);
+  assert.match(source, /Diagnoseweg, Belege und Quellen anzeigen/);
   assert.match(source, /Ursache in Klartext/);
   assert.match(source, /Erlaubter nächster Schritt/);
   assert.match(source, /Strukturierter Audit-Befund/);

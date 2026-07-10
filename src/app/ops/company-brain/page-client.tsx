@@ -10,11 +10,9 @@ import {
   ClipboardCopy,
   Clock3,
   ExternalLink,
-  FileSearch,
   GitBranch,
   History,
   ListChecks,
-  MailCheck,
   MessageSquareText,
   Network,
   PackageSearch,
@@ -28,7 +26,7 @@ import type { CompanyBrainProblemType, CompanyBrainResolveResult } from "@/lib/o
 import type { CompanyBrainAliasRepairItem } from "@/lib/ops/company-brain-alias-repair";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
-import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
+import { OpsPageIntro, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 
 type ResolveApiResponse = {
   ok: boolean;
@@ -1430,7 +1428,23 @@ export function OpsCompanyBrainClient({
           </div>
         </form>
 
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm md:p-6">
+        <details open={!result && aliasRepairItems.length > 0} className="group rounded-[2rem] border border-stone-200 bg-white shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 marker:hidden md:px-6">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Repair Center</p>
+              <h2 className="mt-1 text-base font-semibold text-stone-950">Trello-Aliasse reparieren</h2>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                aliasRepairItems.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"
+              }`}>
+                {aliasRepairItems.length ? `${aliasRepairItems.length} offen` : "keine offenen Aliasse"}
+              </span>
+              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs font-semibold text-stone-500 group-open:hidden">öffnen</span>
+              <span className="hidden rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs font-semibold text-stone-500 group-open:inline">schließen</span>
+            </div>
+          </summary>
+          <div className="border-t border-stone-200 p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Repair Center</p>
@@ -1565,26 +1579,18 @@ export function OpsCompanyBrainClient({
               </div>
             </div>
           </div>
-        </section>
+          </div>
+        </details>
 
         {result ? (
           <>
-            <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-              <OpsStatCard label="Kundenakten" value={stats.records} icon={<BrainCircuit className="h-5 w-5" />} />
-              <OpsStatCard label="Angebote" value={stats.offers} tone="info" icon={<FileSearch className="h-5 w-5" />} />
-              <OpsStatCard label="Belege" value={stats.evidence} tone="success" icon={<MailCheck className="h-5 w-5" />} />
-              <OpsStatCard label="Fallakte" value={stats.events} tone="info" icon={<History className="h-5 w-5" />} />
-              <OpsStatCard label="Assets" value={stats.assets} tone="neutral" icon={<PackageSearch className="h-5 w-5" />} />
-              <OpsStatCard label="Watcher" value={stats.openWatchers} tone={stats.openWatchers ? "warning" : "success"} icon={<Bell className="h-5 w-5" />} />
-            </section>
-
             <section className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-sm">
               <div className="border-b border-stone-200 bg-stone-950 px-5 py-5 text-white md:px-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="max-w-4xl">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Fall-Kommandostand</p>
-                    <h2 className="mt-2 text-2xl font-semibold leading-tight">Was ist passiert und was darf jetzt sicher passieren?</h2>
-                    <p className="mt-2 text-sm leading-6 text-white/70">{result.answer.headline}</p>
+                    <h2 className="mt-2 text-2xl font-semibold leading-tight">Kurzantwort und nächste Aktion</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/70">Erst die Entscheidung, dann die Buttons. Details bleiben einklappbar.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${verdictClass(result.answer.verdict)}`}>
@@ -1600,6 +1606,63 @@ export function OpsCompanyBrainClient({
                 </div>
               </div>
 
+              <div className="border-b border-stone-200 bg-white px-5 py-5 md:px-6">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.8fr)_minmax(300px,0.85fr)]">
+                  <div className={`rounded-2xl border px-4 py-3 ${operatorDecisionClass(operatorView.brief?.tone || "neutral")}`}>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Kurzantwort</p>
+                    <h3 className="mt-2 text-xl font-semibold leading-tight">{operatorView.brief?.title || result.employeeGuidance.resolutionLabel}</h3>
+                    <p className="mt-2 text-sm leading-6 opacity-85">
+                      {shortText(operatorView.brief?.cause || result.problemResolution.rootCause || result.answer.headline, 260)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Nächster Schritt</p>
+                    <p className="mt-2 text-base font-semibold leading-6 text-stone-950">
+                      {operatorView.brief?.nextStep || result.employeeGuidance.nextBestActionLabel || result.nextActions[0] || "Fall erneut prüfen"}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-stone-500">
+                      {result.retryAssessment.canSendWithConfirmation ? "Versand nur guarded nach Freigabe." : customerContactPolicyLabel(result.employeeGuidance.customerContactPolicy)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Direkte Aktionen</p>
+                      <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-500">{operatorView.readyActions.length}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {operatorView.readyActions.length ? operatorView.readyActions.map((action) => (
+                        <button
+                          key={`top-action-${action.key}`}
+                          type="button"
+                          onClick={() => startActionProposal(action.key)}
+                          disabled={!action.enabled || actionLoadingKey === action.key}
+                          className={`flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:brightness-95 disabled:opacity-50 ${riskClass(action.riskLevel)}`}
+                        >
+                          <span>{action.label}</span>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">{actionButtonLabel(action)}</span>
+                        </button>
+                      )) : (
+                        <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm leading-6 text-stone-600">Keine sichere Aktion. Erst Blocker in den Details klären.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Kundenakten {stats.records}</span>
+                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Angebote {stats.offers}</span>
+                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Belege {stats.evidence}</span>
+                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Watcher {stats.openWatchers}</span>
+                </div>
+              </div>
+
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-stone-200 bg-[#fbfaf7] px-5 py-4 text-sm font-semibold text-stone-950 marker:hidden md:px-6">
+                  <span>Diagnoseweg, Belege und Quellen anzeigen</span>
+                  <span className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs text-stone-500 group-open:hidden">öffnen</span>
+                  <span className="hidden rounded-full border border-stone-200 bg-white px-3 py-1 text-xs text-stone-500 group-open:inline">schließen</span>
+                </summary>
+                <div>
               <div className="border-b border-stone-200 bg-[#f7f5ef] px-5 py-5 md:px-6">
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
                   <div className="min-w-0">
@@ -2141,6 +2204,8 @@ export function OpsCompanyBrainClient({
                   </div>
                 </aside>
               </div>
+                </div>
+              </details>
             </section>
 
             <section id="company-brain-fix-center" className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm md:p-6">
