@@ -260,6 +260,33 @@ function retryAssessmentLabel(status: string) {
   return "Nur prüfen";
 }
 
+function guidanceResolutionClass(status: string) {
+  if (status === "self_service") return "border-emerald-300 bg-emerald-50 text-emerald-950";
+  if (status === "needs_data_fix") return "border-amber-300 bg-amber-50 text-amber-950";
+  if (status === "blocked") return "border-rose-300 bg-rose-50 text-rose-950";
+  return "border-stone-200 bg-stone-50 text-stone-800";
+}
+
+function guidanceStepClass(status: string) {
+  if (status === "done") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (status === "ready") return "border-sky-200 bg-sky-50 text-sky-950";
+  if (status === "blocked") return "border-rose-200 bg-rose-50 text-rose-950";
+  return "border-amber-200 bg-amber-50 text-amber-950";
+}
+
+function guidanceStepLabel(status: string) {
+  if (status === "done") return "Erledigt";
+  if (status === "ready") return "Bereit";
+  if (status === "blocked") return "Blockiert";
+  return "Prüfen";
+}
+
+function customerContactPolicyLabel(policy: string) {
+  if (policy === "guarded_only") return "Kundenkontakt nur guarded";
+  if (policy === "internal_only") return "Nur intern lösen";
+  return "Kein Kundenkontakt";
+}
+
 function operatorDecisionClass(tone: "success" | "warning" | "danger" | "neutral") {
   if (tone === "success") return "border-emerald-300 bg-emerald-50 text-emerald-950";
   if (tone === "warning") return "border-amber-300 bg-amber-50 text-amber-950";
@@ -1569,6 +1596,72 @@ export function OpsCompanyBrainClient({
                     <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${retryAssessmentClass(result.retryAssessment.status)}`}>
                       {retryAssessmentLabel(result.retryAssessment.status)}
                     </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-b border-stone-200 bg-[#f7f5ef] px-5 py-5 md:px-6">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Mitarbeiterführung</p>
+                      <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${guidanceResolutionClass(result.employeeGuidance.resolutionStatus)}`}>
+                        {result.employeeGuidance.resolutionLabel}
+                      </span>
+                      <span className="rounded-full border border-stone-200 bg-white px-3 py-1 text-[11px] font-semibold text-stone-600">
+                        {customerContactPolicyLabel(result.employeeGuidance.customerContactPolicy)}
+                      </span>
+                    </div>
+                    <h3 className="mt-2 text-xl font-semibold leading-tight text-stone-950">{result.employeeGuidance.playbookTitle}</h3>
+                    <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-stone-800">{result.employeeGuidance.plainLanguageSummary}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600">
+                        Root Cause: {result.employeeGuidance.rootCauseCode}
+                      </span>
+                      <span className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600">
+                        Nächster Klick: {result.employeeGuidance.nextBestActionLabel || "keiner"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Nicht tun</p>
+                    <div className="mt-2 grid gap-1.5">
+                      {result.employeeGuidance.forbiddenActions.slice(0, 4).map((entry) => (
+                        <p key={entry} className="text-xs font-medium leading-5 text-stone-700">{entry}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                  {result.employeeGuidance.steps.map((step) => (
+                    <div key={step.key} className={`rounded-2xl border px-4 py-3 ${guidanceStepClass(step.status)}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-65">{step.label}</p>
+                        <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold">{guidanceStepLabel(step.status)}</span>
+                      </div>
+                      <p className="mt-2 text-sm font-semibold leading-5">{step.actionLabel || step.label.replace(/^\d+\.\s*/, "")}</p>
+                      <p className="mt-1 text-xs leading-5 opacity-80">{step.summary}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Belege, die zählen</p>
+                    <div className="mt-2 grid gap-1.5">
+                      {result.employeeGuidance.evidenceBullets.slice(0, 5).map((entry) => (
+                        <p key={entry} className="text-xs font-medium leading-5">{entry}</p>
+                      ))}
+                    </div>
+                  </div>
+                  <div className={`rounded-2xl border px-4 py-3 ${result.employeeGuidance.blockerBullets.length ? "border-amber-200 bg-amber-50 text-amber-950" : "border-stone-200 bg-white text-stone-700"}`}>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Blocker</p>
+                    <div className="mt-2 grid gap-1.5">
+                      {(result.employeeGuidance.blockerBullets.length ? result.employeeGuidance.blockerBullets.slice(0, 5) : ["Keine harten Blocker im geführten Modus."]).map((entry) => (
+                        <p key={entry} className="text-xs font-medium leading-5">{entry}</p>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

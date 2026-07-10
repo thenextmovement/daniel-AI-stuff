@@ -171,6 +171,36 @@ function companyBrainPayload() {
         requiredEvidence: [],
         missingEvidence: [],
       },
+      employeeGuidance: {
+        playbookKey: "offer_not_sent",
+        playbookTitle: "Angebot nicht raus",
+        rootCauseCode: "customer_email_invalid",
+        resolutionStatus: "self_service",
+        resolutionLabel: "Mitarbeiter kann nach Freigabe lösen",
+        canEmployeeResolve: true,
+        customerContactPolicy: "guarded_only",
+        plainLanguageSummary: "Problemtyp: Angebot nicht raus. Ursache: Kunden-E-Mail war unvollständig. Nächster sicherer Schritt: Trello-Projektion bereinigen. Kundenkontakt ist nur über die guarded Aktion erlaubt.",
+        evidenceBullets: [
+          "Trello-Karte gelesen: FEHLER - LED Flex Grüll.",
+          "Automation-Beleg: NEONTRIP Quote Ready SIMPLE v1.1 · Execution 2770420 · Node Offer Send.",
+          "Kundenakte: REQ-SMOKE.",
+          "Angebot: A/N 14427 · Status SENT.",
+        ],
+        blockerBullets: [],
+        forbiddenActions: [
+          "Keine Kundenmail aus Company Brain ohne explizite Freigabe.",
+          "Trello nicht als Source of Truth verwenden.",
+          "Keinen n8n-Workflow ohne Backup, Diff, Test und Rollback ändern.",
+        ],
+        nextBestActionKey: "repair_trello_projection",
+        nextBestActionLabel: "Trello-Projektion bereinigen",
+        steps: [
+          { key: "understand_card", label: "1. Fall verstehen", status: "done", summary: "Quote Ready · erwartete Aktion: offer_send.", actionKey: null, actionLabel: null, riskLevel: "none" },
+          { key: "prove_cause", label: "2. Ursache belegen", status: "done", summary: "Automation meldete eine unvollständige Kunden-E-Mail.", actionKey: "inspect_n8n_run", actionLabel: "n8n-Run prüfen", riskLevel: "medium" },
+          { key: "fix_data", label: "3. Daten/Projektion reparieren", status: "ready", summary: "Stale Trello-Projektion bereinigen.", actionKey: "repair_trello_projection", actionLabel: "Trello-Projektion bereinigen", riskLevel: "medium" },
+          { key: "clear_send", label: "4. Versand klären", status: "ready", summary: "Guarded Retry nach Duplicate-Check.", actionKey: "guarded_offer_resend", actionLabel: "Angebot erneut senden", riskLevel: "high" },
+        ],
+      },
       checks: [],
       sourceHealth: [],
       automationRuns: [{
@@ -353,6 +383,12 @@ async function runViewport(browser, target, viewport, label) {
     "Ursache finden",
     "Fehler beheben",
     "Versand klären",
+    "Mitarbeiterführung",
+    "Mitarbeiter kann nach Freigabe lösen",
+    "Root Cause: customer_email_invalid",
+    "Nächster Klick: Trello-Projektion bereinigen",
+    "Belege, die zählen",
+    "Nicht tun",
   ]);
   await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
   const fixCenter = page.locator("#company-brain-fix-center");

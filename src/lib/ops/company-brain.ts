@@ -268,6 +268,33 @@ export type CompanyBrainRetryAssessment = {
   safeFixes: string[];
 };
 
+export type CompanyBrainGuidanceStep = {
+  key: "understand_card" | "prove_cause" | "fix_data" | "clear_send";
+  label: string;
+  status: "done" | "ready" | "blocked" | "needs_review";
+  summary: string;
+  actionKey: CompanyBrainActionProposal["key"] | null;
+  actionLabel: string | null;
+  riskLevel: CompanyBrainActionProposal["riskLevel"] | "none";
+};
+
+export type CompanyBrainEmployeeGuidance = {
+  playbookKey: CompanyBrainProblemType;
+  playbookTitle: string;
+  rootCauseCode: string;
+  resolutionStatus: "self_service" | "needs_data_fix" | "blocked" | "diagnose_only";
+  resolutionLabel: string;
+  canEmployeeResolve: boolean;
+  customerContactPolicy: "guarded_only" | "internal_only" | "no_customer_contact";
+  plainLanguageSummary: string;
+  evidenceBullets: string[];
+  blockerBullets: string[];
+  forbiddenActions: string[];
+  nextBestActionKey: CompanyBrainActionProposal["key"] | null;
+  nextBestActionLabel: string | null;
+  steps: CompanyBrainGuidanceStep[];
+};
+
 export type CompanyBrainCheck = {
   key: "offer_sent" | "color" | "design" | "product_type" | "customer_reply" | "order";
   label: string;
@@ -429,6 +456,7 @@ export type CompanyBrainResolveResult = {
   retryAssessment: CompanyBrainRetryAssessment;
   evidenceScore: CompanyBrainEvidenceScore;
   problemResolution: CompanyBrainProblemResolution;
+  employeeGuidance: CompanyBrainEmployeeGuidance;
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
@@ -2409,6 +2437,7 @@ function buildDossier(input: {
   actionProposals: CompanyBrainActionProposal[];
   evidenceScore: CompanyBrainEvidenceScore;
   problemResolution: CompanyBrainProblemResolution;
+  employeeGuidance: CompanyBrainEmployeeGuidance;
   checks: CompanyBrainCheck[];
   sourceHealth: CompanyBrainSourceHealth[];
   automationRuns: CompanyBrainAutomationRun[];
@@ -2469,6 +2498,18 @@ function buildDossier(input: {
         `Empfehlung: ${input.problemResolution.recommendedResolution}`,
         `Sicher an Kunden antworten: ${input.evidenceScore.safeToAnswerCustomer ? "ja" : "nein"}`,
         ...input.problemResolution.escalationPath.map((entry) => `Eskalation: ${entry}`),
+      ],
+    },
+    {
+      title: "Mitarbeiterführung",
+      lines: [
+        `Status: ${input.employeeGuidance.resolutionLabel}`,
+        `Root-Cause-Code: ${input.employeeGuidance.rootCauseCode}`,
+        `Kundenkontakt: ${input.employeeGuidance.customerContactPolicy}`,
+        `Kurzantwort: ${input.employeeGuidance.plainLanguageSummary}`,
+        input.employeeGuidance.nextBestActionLabel ? `Nächster Klick: ${input.employeeGuidance.nextBestActionLabel}` : "Nächster Klick: keiner",
+        ...input.employeeGuidance.steps.map((step) => `${step.label}: ${step.status} - ${step.summary}${step.actionLabel ? ` (${step.actionLabel})` : ""}`),
+        ...input.employeeGuidance.forbiddenActions.map((entry) => `Nicht tun: ${entry}`),
       ],
     },
     {
@@ -4032,6 +4073,223 @@ export function buildActionProposals(input: {
   return actions;
 }
 
+const GUIDANCE_DATA_FIX_ACTIONS: CompanyBrainActionProposal["key"][] = [
+  "correct_customer_email",
+  "prepare_email_correction",
+  "repair_trello_projection",
+  "post_trello_status_comment",
+  "create_internal_task",
+  "save_case_note",
+];
+
+function guidanceActionPriority(action: CompanyBrainActionProposal, retryStatus: CompanyBrainRetryAssessment["status"]) {
+  const priorityByKey: Record<CompanyBrainActionProposal["key"], number> = {
+    guarded_offer_resend: retryStatus === "ready" ? 0 : 20,
+    correct_customer_email: 1,
+    prepare_email_correction: 2,
+    repair_trello_projection: 3,
+    post_trello_status_comment: 4,
+    prepare_offer_retry: 5,
+    create_internal_task: 6,
+    open_problem_case: 7,
+    save_case_note: 8,
+    verify_live_outlook: 9,
+    open_offer_admin: 10,
+    inspect_n8n_run: 11,
+    collect_design_assets: 12,
+    copy_reply_draft: 13,
+  };
+  return priorityByKey[action.key] ?? 30;
+}
+
+function guidanceRootCauseCode(input: {
+  problemType: CompanyBrainProblemType;
+  trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
+  automationRuns: CompanyBrainAutomationRun[];
+  retryAssessment: CompanyBrainRetryAssessment;
+  crossChecks: CompanyBrainCrossCheck[];
+}) {
+  const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
+  if (failedAutomation?.issueKey) return failedAutomation.issueKey;
+  if (input.trelloFailureDiagnosis.rootCauseKey !== "not_requested") return input.trelloFailureDiagnosis.rootCauseKey;
+  const failedCheck = input.crossChecks.find((check) => check.status === "fail") || null;
+  if (failedCheck) return `${failedCheck.key}_failed`;
+  if (input.retryAssessment.status === "needs_fix") return "data_fix_required";
+  if (input.retryAssessment.status === "blocked") return "blocked_by_guardrails";
+  return input.problemType;
+}
+
+function guidanceResolutionLabel(status: CompanyBrainEmployeeGuidance["resolutionStatus"]) {
+  if (status === "self_service") return "Mitarbeiter kann nach Freigabe lösen";
+  if (status === "needs_data_fix") return "Mitarbeiter kann Datenfix vorbereiten";
+  if (status === "blocked") return "Nicht selbst lösen";
+  return "Nur Diagnose";
+}
+
+function guidanceStepStatusClass(
+  condition: boolean,
+  fallback: CompanyBrainGuidanceStep["status"] = "needs_review",
+): CompanyBrainGuidanceStep["status"] {
+  return condition ? "done" : fallback;
+}
+
+export function buildCompanyBrainEmployeeGuidance(input: {
+  problemResolution: CompanyBrainProblemResolution;
+  retryAssessment: CompanyBrainRetryAssessment;
+  evidenceScore: CompanyBrainEvidenceScore;
+  actionProposals: CompanyBrainActionProposal[];
+  trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
+  automationRuns: CompanyBrainAutomationRun[];
+  sourceHealth: CompanyBrainSourceHealth[];
+  crossChecks: CompanyBrainCrossCheck[];
+  records: CompanyBrainRecordSummary[];
+  offers: CompanyBrainOfferSummary[];
+}): CompanyBrainEmployeeGuidance {
+  const readyActions = input.actionProposals
+    .filter((action) => action.enabled)
+    .sort((left, right) => guidanceActionPriority(left, input.retryAssessment.status) - guidanceActionPriority(right, input.retryAssessment.status));
+  const nextBestAction = readyActions.find((action) =>
+    action.key === "guarded_offer_resend" ||
+    GUIDANCE_DATA_FIX_ACTIONS.includes(action.key) ||
+    action.key === "inspect_n8n_run" ||
+    action.key === "verify_live_outlook",
+  ) || readyActions[0] || null;
+  const dataFixAction = readyActions.find((action) => GUIDANCE_DATA_FIX_ACTIONS.includes(action.key)) || null;
+  const guardedRetryAction = readyActions.find((action) => action.key === "guarded_offer_resend") || null;
+  const hasSourceOfTruth = input.records.length > 0 || input.offers.length > 0;
+  const hasTrello = input.trelloFailureDiagnosis.status === "loaded";
+  const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
+  const rootCauseCode = guidanceRootCauseCode({
+    problemType: input.problemResolution.problemType,
+    trelloFailureDiagnosis: input.trelloFailureDiagnosis,
+    automationRuns: input.automationRuns,
+    retryAssessment: input.retryAssessment,
+    crossChecks: input.crossChecks,
+  });
+  const hardBlockers = uniqueStrings([
+    ...input.retryAssessment.blockers,
+    ...input.trelloFailureDiagnosis.blockedFixes,
+    ...input.sourceHealth
+      .filter((source) => ["customer_records", "offers", "workflow_audit", "outlook_mirror"].includes(source.key) && source.status === "missing")
+      .map((source) => `${source.label}: ${source.summary}`),
+  ]).slice(0, 6);
+  const resolutionStatus: CompanyBrainEmployeeGuidance["resolutionStatus"] =
+    input.retryAssessment.canSendWithConfirmation && guardedRetryAction
+      ? "self_service"
+      : dataFixAction && hasSourceOfTruth && !input.retryAssessment.canSendWithConfirmation
+        ? "needs_data_fix"
+        : hardBlockers.length || input.retryAssessment.status === "blocked"
+          ? "blocked"
+          : "diagnose_only";
+  const customerContactPolicy: CompanyBrainEmployeeGuidance["customerContactPolicy"] =
+    input.retryAssessment.canSendWithConfirmation ? "guarded_only" : dataFixAction ? "internal_only" : "no_customer_contact";
+  const canEmployeeResolve = resolutionStatus === "self_service" || resolutionStatus === "needs_data_fix";
+  const cause = input.trelloFailureDiagnosis.rootCauseKey !== "not_requested"
+    ? input.trelloFailureDiagnosis.rootCause
+    : input.problemResolution.rootCause;
+  const nextStepText = nextBestAction
+    ? `Nächster sicherer Schritt: ${nextBestAction.label}.`
+    : input.retryAssessment.safeFixes[0] || input.problemResolution.recommendedResolution;
+  const evidenceBullets = uniqueStrings([
+    hasTrello ? `Trello-Karte gelesen: ${input.trelloFailureDiagnosis.card?.name || input.trelloFailureDiagnosis.card?.id || "unbekannt"}.` : null,
+    failedAutomation
+      ? `Automation-Beleg: ${failedAutomation.workflowName || "Workflow"}${failedAutomation.executionId ? ` · Execution ${failedAutomation.executionId}` : ""}${failedAutomation.failedNode ? ` · Node ${failedAutomation.failedNode}` : ""}.`
+      : null,
+    input.records[0]?.requestId ? `Kundenakte: ${input.records[0].requestId}.` : null,
+    input.offers[0] ? `Angebot: ${input.offers[0].offerNumber || input.offers[0].documentReference || input.offers[0].offerId} · Status ${input.offers[0].status}.` : null,
+    `${input.evidenceScore.score}/100 Beweis-Score: ${input.evidenceScore.summary}`,
+    ...input.crossChecks
+      .filter((check) => check.status === "pass" || check.status === "fail")
+      .slice(0, 3)
+      .map((check) => `${check.label}: ${check.summary}`),
+  ]).slice(0, 6);
+  const forbiddenActions = uniqueStrings([
+    "Keine Kundenmail aus Company Brain ohne explizite Freigabe.",
+    input.retryAssessment.canSendWithConfirmation ? null : "Keinen Angebots-Resend starten.",
+    "Trello nicht als Source of Truth verwenden.",
+    "Keinen n8n-Workflow ohne Backup, Diff, Test und Rollback ändern.",
+    input.evidenceScore.status === "conflicting" ? "Keine verbindliche Kundenaussage bei widersprüchlicher Beweislage." : null,
+  ]);
+
+  const steps: CompanyBrainGuidanceStep[] = [
+    {
+      key: "understand_card",
+      label: "1. Fall verstehen",
+      status: guidanceStepStatusClass(hasTrello || hasSourceOfTruth),
+      summary: hasTrello
+        ? `${input.trelloFailureDiagnosis.card?.currentListName || "Trello-Liste unbekannt"} · erwartete Aktion: ${input.trelloFailureDiagnosis.expectedAction}.`
+        : hasSourceOfTruth
+          ? "Kundenakte oder Angebot geladen; Trello ist für diesen Fall nicht zwingend."
+          : "Erst Trello-Link, Request-ID, Angebotsnummer oder E-Mail eindeutig laden.",
+      actionKey: null,
+      actionLabel: null,
+      riskLevel: "none",
+    },
+    {
+      key: "prove_cause",
+      label: "2. Ursache belegen",
+      status: guidanceStepStatusClass(
+        input.evidenceScore.status === "strong" ||
+          input.evidenceScore.status === "medium" ||
+          input.trelloFailureDiagnosis.rootCauseKey === "automation_failed" ||
+          Boolean(failedAutomation),
+      ),
+      summary: cause,
+      actionKey: failedAutomation ? "inspect_n8n_run" : null,
+      actionLabel: failedAutomation ? "n8n-Run prüfen" : null,
+      riskLevel: failedAutomation ? "medium" : "none",
+    },
+    {
+      key: "fix_data",
+      label: "3. Daten/Projektion reparieren",
+      status: dataFixAction ? "ready" : hardBlockers.length ? "blocked" : "needs_review",
+      summary: dataFixAction
+        ? dataFixAction.summary
+        : hardBlockers[0] || input.retryAssessment.safeFixes[0] || input.problemResolution.recommendedResolution,
+      actionKey: dataFixAction?.key || null,
+      actionLabel: dataFixAction?.label || null,
+      riskLevel: dataFixAction?.riskLevel || "none",
+    },
+    {
+      key: "clear_send",
+      label: "4. Versand klären",
+      status: guardedRetryAction ? "ready" : input.retryAssessment.canSendWithConfirmation ? "needs_review" : "blocked",
+      summary: guardedRetryAction
+        ? guardedRetryAction.summary
+        : input.retryAssessment.summary || "Versand bleibt gesperrt, bis Duplicate-, Empfänger- und Beleglage sauber sind.",
+      actionKey: guardedRetryAction?.key || null,
+      actionLabel: guardedRetryAction?.label || null,
+      riskLevel: guardedRetryAction?.riskLevel || "none",
+    },
+  ];
+
+  return {
+    playbookKey: input.problemResolution.problemType,
+    playbookTitle: input.problemResolution.label,
+    rootCauseCode,
+    resolutionStatus,
+    resolutionLabel: guidanceResolutionLabel(resolutionStatus),
+    canEmployeeResolve,
+    customerContactPolicy,
+    plainLanguageSummary: [
+      `Problemtyp: ${input.problemResolution.label}.`,
+      `Ursache: ${cause}`,
+      nextStepText,
+      customerContactPolicy === "guarded_only"
+        ? "Kundenkontakt ist nur über die guarded Aktion erlaubt."
+        : customerContactPolicy === "internal_only"
+          ? "Erst internen Datenfix ausführen; kein Kundenkontakt."
+          : "Nur erklären und intern sichern; kein Kundenkontakt.",
+    ].join(" "),
+    evidenceBullets,
+    blockerBullets: hardBlockers,
+    forbiddenActions,
+    nextBestActionKey: nextBestAction?.key || null,
+    nextBestActionLabel: nextBestAction?.label || null,
+    steps,
+  };
+}
+
 function questionMentions(question: string | null, ...needles: string[]) {
   const normalized = (question || "").toLowerCase();
   return needles.some((needle) => normalized.includes(needle));
@@ -4634,6 +4892,18 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     retryAssessment,
     trelloFailureDiagnosis,
   });
+  const employeeGuidance = buildCompanyBrainEmployeeGuidance({
+    problemResolution,
+    retryAssessment,
+    evidenceScore,
+    actionProposals,
+    trelloFailureDiagnosis,
+    automationRuns,
+    sourceHealth,
+    crossChecks,
+    records: recordSummaries,
+    offers: offerSummaries,
+  });
   const dossier = buildDossier({
     generatedAt,
     answer,
@@ -4647,6 +4917,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     actionProposals,
     evidenceScore,
     problemResolution,
+    employeeGuidance,
     checks,
     sourceHealth,
     automationRuns,
@@ -4677,6 +4948,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     retryAssessment,
     evidenceScore,
     problemResolution,
+    employeeGuidance,
     checks,
     sourceHealth,
     automationRuns,

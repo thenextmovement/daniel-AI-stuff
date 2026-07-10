@@ -6,6 +6,7 @@ import {
   buildCompanyBrainCrossChecks,
   buildIntegrationReadiness,
   buildCompanyBrainRetryAssessment,
+  buildCompanyBrainEmployeeGuidance,
   buildOutlookGraphSearchTerms,
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
@@ -1257,6 +1258,185 @@ test("company brain retry assessment treats n8n invalid customer email as data f
   assert.ok(retry.safeFixes.some((fix) => /kein Retry an die alte Adresse/i.test(fix)));
   assert.equal(correctEmail?.enabled, true);
   assert.equal(guardedResend?.enabled, false);
+});
+
+test("company brain employee guidance turns invalid email cases into guided data fixes", () => {
+  const retry = {
+    status: "needs_fix" as const,
+    label: "Fix vor Retry nötig",
+    summary: "Die Automation hatte eine ungültige oder unvollständige Kunden-E-Mail-Adresse.",
+    recipientEmail: "praxis@kurswechsel.de",
+    offerId: "offer-invalid-email",
+    offerNumber: "AN-14427",
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["Die Automation hatte eine ungültige oder unvollständige Kunden-E-Mail-Adresse."],
+    safeFixes: ["Ungültige Kunden-E-Mail korrigieren oder verifizieren; kein Retry an die alte Adresse."],
+  };
+  const actions = actionProposalFixture({ retry });
+  const guidance = buildCompanyBrainEmployeeGuidance({
+    problemResolution: {
+      problemType: "offer_not_sent",
+      label: "Angebot nicht raus",
+      severity: "warning",
+      confidence: "medium",
+      specialCaseKind: "open_question",
+      rootCause: "Kunden-E-Mail ist unvollständig.",
+      recommendedResolution: "E-Mail korrigieren und Fall neu prüfen.",
+      internalTaskTitle: "Angebot nicht raus: AN-14427",
+      internalTaskDescription: "Test",
+      customerReplyPolicy: [],
+      escalationPath: [],
+      requiredEvidence: [],
+      missingEvidence: [],
+    },
+    retryAssessment: retry,
+    evidenceScore: { status: "medium", score: 60, summary: "Beweise teilweise geladen.", safeToAnswerCustomer: false, reasons: [] },
+    actionProposals: actions,
+    trelloFailureDiagnosis: {
+      ...retryDiagnosis(),
+      rootCauseKey: "automation_failed",
+      rootCause: "n8n-Execution ist wegen invalid customer_email fehlgeschlagen.",
+    },
+    automationRuns: [{
+      id: "run-invalid-email",
+      workflowName: "NEONTRIP Quote Ready SIMPLE v1.1",
+      action: "offer_send",
+      status: "failed",
+      error: "invalid customer_email praxis@kurswechsel",
+      createdAt: "2026-07-06T07:41:13.408Z",
+      requestId: "REQ-INVALID-EMAIL",
+      executionId: "2770420",
+      correlationId: null,
+      sourceEventId: null,
+      targetRecordId: null,
+      failedNode: "Offer Send",
+      idempotencyKey: null,
+      retrySafety: "blocked",
+      summary: "Kunden-E-Mail unvollständig.",
+      issueKey: "customer_email_invalid",
+    }],
+    sourceHealth: [],
+    crossChecks: [],
+    records: [{
+      requestId: "REQ-INVALID-EMAIL",
+      displayName: "Kurswechsel",
+      company: null,
+      email: "praxis@kurswechsel.de",
+      phone: null,
+      status: "open",
+      title: "Schild",
+      requestedSize: null,
+      requestedColors: [],
+      trelloCardId: "card-invalid-email",
+      trelloCardUrl: null,
+      latestOfferSentAt: null,
+      latestOfferViewedAt: null,
+      latestOfferSignedAt: null,
+      latestOrderNumber: null,
+      latestOrderStatus: null,
+      latestOutboundAt: null,
+      latestInboundAt: null,
+      communicationsCount: 0,
+      timelineCount: 0,
+    }],
+    offers: [],
+  });
+
+  assert.equal(guidance.resolutionStatus, "needs_data_fix");
+  assert.equal(guidance.customerContactPolicy, "internal_only");
+  assert.equal(guidance.nextBestActionKey, "correct_customer_email");
+  assert.equal(guidance.steps.find((step) => step.key === "fix_data")?.status, "ready");
+  assert.ok(guidance.forbiddenActions.some((entry) => /Keinen Angebots-Resend/.test(entry)));
+});
+
+test("company brain employee guidance allows only guarded self service when retry is ready", () => {
+  const retry = {
+    status: "ready" as const,
+    label: "Retry bereit",
+    summary: "Der Retry kann nach erneuter serverseitiger Duplicate-Prüfung und Freigabe ausgeführt werden.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-ready",
+    offerNumber: "AN-5001",
+    idempotencyKey: "company-brain-offer-resend:offer-ready:max@example.com",
+    canSendWithConfirmation: true,
+    blockers: [],
+    safeFixes: ["Serverseitigen Duplicate-Check ausführen und erst danach senden."],
+  };
+  const guidance = buildCompanyBrainEmployeeGuidance({
+    problemResolution: {
+      problemType: "offer_not_sent",
+      label: "Angebot nicht raus",
+      severity: "warning",
+      confidence: "medium",
+      specialCaseKind: "open_question",
+      rootCause: "Angebot wurde noch nicht versendet.",
+      recommendedResolution: "Guarded Retry ausführen.",
+      internalTaskTitle: "Angebot nicht raus: AN-5001",
+      internalTaskDescription: "Test",
+      customerReplyPolicy: [],
+      escalationPath: [],
+      requiredEvidence: [],
+      missingEvidence: [],
+    },
+    retryAssessment: retry,
+    evidenceScore: { status: "strong", score: 84, summary: "Beweise stark.", safeToAnswerCustomer: true, reasons: [] },
+    actionProposals: actionProposalFixture({ retry }),
+    trelloFailureDiagnosis: { ...retryDiagnosis(), rootCauseKey: "offer_exists_no_send_proof" },
+    automationRuns: [],
+    sourceHealth: [],
+    crossChecks: [],
+    records: [{
+      requestId: "REQ-READY",
+      displayName: "Max Muster",
+      company: null,
+      email: "max@example.com",
+      phone: null,
+      status: "open",
+      title: "Schild",
+      requestedSize: null,
+      requestedColors: [],
+      trelloCardId: "card-ready",
+      trelloCardUrl: null,
+      latestOfferSentAt: null,
+      latestOfferViewedAt: null,
+      latestOfferSignedAt: null,
+      latestOrderNumber: null,
+      latestOrderStatus: null,
+      latestOutboundAt: null,
+      latestInboundAt: null,
+      communicationsCount: 0,
+      timelineCount: 0,
+    }],
+    offers: [{
+      offerId: "offer-ready",
+      offerNumber: "AN-5001",
+      documentReference: "AN-5001",
+      publicUrl: null,
+      status: "SENT",
+      customerName: "Max Muster",
+      customerEmail: "max@example.com",
+      projectTitle: "Schild",
+      trelloCardId: "card-ready",
+      updatedAt: "2026-07-06T08:00:00.000Z",
+      viewedAt: null,
+      acceptedAt: null,
+      itemCount: 1,
+      imageCount: 1,
+      selectedItemCount: 1,
+      designEvidenceCount: 1,
+      productHints: ["Schild"],
+      colorHints: [],
+      selectedItems: [],
+      imageEvidence: [],
+    }],
+  });
+
+  assert.equal(guidance.resolutionStatus, "self_service");
+  assert.equal(guidance.customerContactPolicy, "guarded_only");
+  assert.equal(guidance.nextBestActionKey, "guarded_offer_resend");
+  assert.equal(guidance.steps.find((step) => step.key === "clear_send")?.status, "ready");
+  assert.ok(guidance.forbiddenActions.some((entry) => /ohne explizite Freigabe/.test(entry)));
 });
 
 test("company brain retry assessment blocks offer request mismatches before any email fix", () => {

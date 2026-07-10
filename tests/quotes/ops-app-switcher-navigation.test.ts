@@ -93,6 +93,11 @@ test("company brain fix center groups risky actions and avoids browser prompts",
   assert.match(source, /Ursache finden/);
   assert.match(source, /Fehler beheben/);
   assert.match(source, /Versand klären/);
+  assert.match(source, /Mitarbeiterführung/);
+  assert.match(source, /Root Cause:/);
+  assert.match(source, /Nächster Klick:/);
+  assert.match(source, /Belege, die zählen/);
+  assert.match(source, /Nicht tun/);
   assert.match(source, /Was noch fehlt/);
   assert.match(source, /Action Center:/);
   assert.match(source, /action\.payloadPreview/);
