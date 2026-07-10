@@ -95,6 +95,22 @@ function hasSupplierPriceReviewAutomationAccess(request: NextRequest, bodyToken?
   return Boolean(expected && candidate && tokenMatches(candidate, expected));
 }
 
+function hasQuoteReadySizeLadderAutomationAccess(request: NextRequest, bodyToken?: string | null, action?: string | null) {
+  if (action !== "prepare_quote_ready_size_ladder") return false;
+  const candidate = getAutomationToken(request, bodyToken);
+  if (!candidate) return false;
+  return [
+    process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN,
+    process.env.OPS_INTERNAL_API_KEY,
+    process.env.QUOTE_INTERNAL_API_TOKEN,
+    process.env.SUPPLIER_SALES_AGENT_API_TOKEN,
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .some((expected) => tokenMatches(candidate, expected));
+}
+
 function trimNullable(value: string | null | undefined) {
   const normalized = String(value || "").trim();
   return normalized || null;
@@ -335,7 +351,9 @@ export async function POST(request: NextRequest) {
 
   const host = getOpsHost(request);
   const opsActor = await getActor(request, body?.operatorName || null);
-  const automationAllowed = hasSupplierPriceReviewAutomationAccess(request, body?.agentToken || null);
+  const automationAllowed =
+    hasSupplierPriceReviewAutomationAccess(request, body?.agentToken || null) ||
+    hasQuoteReadySizeLadderAutomationAccess(request, body?.agentToken || null, body?.action);
   if (!opsActor && !automationAllowed && !isOpsPortalConfigured(host)) return notConfigured();
   if (!opsActor && automationAllowed && !isPricePredictionRouteAutomationAction(body?.action)) return forbidden();
 

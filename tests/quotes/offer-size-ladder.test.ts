@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { NextRequest } from "next/server";
+import { POST as pricePredictionsPOST } from "../../src/app/api/ops/customer-records/price-predictions/route";
 import {
   applyOfferSizeLadderToOffer,
   applyOfferSizeLadderOptionOverrides,
@@ -406,6 +408,80 @@ test("quote ready preflight comment exposes status and grouping", async () => {
   assert.match(comment, /NEONTRIP_SIZE_LADDER_PREFLIGHT/);
   assert.match(comment, /Quote ready Groessenleiter/);
   assert.match(comment, /Design 1: 1 Anker \(1\)/);
+});
+
+test("quote ready size ladder route accepts scoped internal automation keys", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalOpsKey = process.env.OPS_INTERNAL_API_KEY;
+  const originalSupplierToken = process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  process.env.OPS_INTERNAL_API_KEY = "ops-internal-route-key";
+  delete process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN;
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.startsWith("https://api.trello.com/1/cards/cardRouteQuoteReady")) {
+      return new Response(JSON.stringify({
+        id: "cardRouteQuoteReady",
+        idBoard: "board-1",
+        name: "LED Flex Route Test",
+        desc: "Neon Flex",
+        customFieldItems: [
+          { idCustomField: "size-1", value: { text: "100x50cm" } },
+          { idCustomField: "price-1", value: { text: "300" } },
+          { idCustomField: "product-1", value: { text: "LED Flex" } },
+        ],
+        attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+        actions: [],
+      }), { status: 200 });
+    }
+    if (url.startsWith("https://api.trello.com/1/boards/board-1/customFields")) {
+      return new Response(JSON.stringify([
+        { id: "size-1", name: "Size_1", type: "text" },
+        { id: "price-1", name: "Price_1", type: "text" },
+        { id: "product-1", name: "Product_1", type: "text" },
+      ]), { status: 200 });
+    }
+    return new Response(`unexpected ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const response = await pricePredictionsPOST(new NextRequest("https://ops.neontrip.de/api/ops/customer-records/price-predictions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer ops-internal-route-key",
+      },
+      body: JSON.stringify({
+        action: "prepare_quote_ready_size_ladder",
+        quoteReadySizeLadder: {
+          trelloCard: "cardRouteQuoteReady",
+          maxLongSideCm: 120,
+          persist: false,
+          projectToTrello: false,
+          commentToTrello: false,
+        },
+      }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.quoteReadySizeLadder.trelloCardId, "cardRouteQuoteReady");
+    assert.equal(body.quoteReadySizeLadder.sourceMockupCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalOpsKey === undefined) delete process.env.OPS_INTERNAL_API_KEY;
+    else process.env.OPS_INTERNAL_API_KEY = originalOpsKey;
+    if (originalSupplierToken === undefined) delete process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN;
+    else process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN = originalSupplierToken;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+  }
 });
 
 test("offer size ladder uses the 2.3 customer factor", async () => {
