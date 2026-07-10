@@ -5,7 +5,9 @@ import {
   applyOfferSizeLadderToOffer,
   applyOfferSizeLadderOptionOverrides,
   buildOfferSizeLadderOfferPatch,
+  buildQuoteReadySizeLadderPreflightFromTrelloCard,
   extractOfferSizeLadderAnchorsFromTrelloFields,
+  formatQuoteReadySizeLadderPreflightComment,
   generateOfferSizeLadder,
   generateOfferSizeLadderFromTrello,
   listOfferSizeLadderDrafts,
@@ -214,6 +216,196 @@ test("offer size ladder can build a review ladder from only the minimum supplier
   assert.equal(option120!.reviewStatus, "needs_review");
   assert.ok(option120!.issues.includes("single_anchor_estimated_size"));
   assert.ok(option120!.supplierTotalEstimated > 300);
+});
+
+test("quote ready preflight groups two Neonflex source mockups with one anchor per design", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyTwoDesigns",
+    idBoard: "board-1",
+    name: "LED Flex Lisa 75/100cm Color as Logo",
+    desc: "Neon Flex",
+    customFields: {
+      Size_1: "75x45cm",
+      Price_1: "220",
+      Product_1: "LED Flex",
+      Color_1: "Color as Logo",
+      Backboard_1: "Cut to Shape",
+      Size_2: "100x60cm",
+      Price_2: "300",
+      Product_2: "LED Flex",
+      Color_2: "Warmweiss",
+      Backboard_2: "Cut to Shape",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+      { id: "att-3", name: "Mockup02_ai_1.jpg" },
+    ],
+  }, {
+    trelloCard: "https://trello.com/c/cardQuoteReadyTwoDesigns/test",
+    stepCm: 10,
+    maxLongSideCm: 120,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.expectedDesignCount, 2);
+  assert.equal(result.sourceMockupCount, 2);
+  assert.equal(result.anchorCount, 2);
+  assert.equal(result.designs.length, 2);
+  assert.equal(result.designs[0]?.anchorFieldIndexes.join(","), "1");
+  assert.equal(result.designs[1]?.anchorFieldIndexes.join(","), "2");
+  assert.equal(result.designs[0]?.sizeLadder.options[0]?.longSideCm, 75);
+  assert.equal(result.designs[1]?.sizeLadder.options[0]?.longSideCm, 100);
+  assert.equal(result.status, "needs_review");
+  assert.ok(result.warnings.includes("design_1:single_supplier_anchor_pricing_curve_low_confidence"));
+  assert.ok(result.offerItemsJson);
+  const items = JSON.parse(result.offerItemsJson || "[]") as Array<Record<string, unknown>>;
+  assert.equal(items.some((item) => item.title === "Leuchtschild Design 1"), true);
+  assert.equal(items.some((item) => item.title === "Leuchtschild Design 2"), true);
+  assert.equal(items.every((item) => item.quantityEditable === true), true);
+  assert.equal(items.every((item) => item.maxQuantity === null), true);
+});
+
+test("quote ready preflight groups four supplier anchors into two design ladders", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyFourAnchors",
+    idBoard: "board-1",
+    name: "LED Flex multiple designs",
+    desc: "Neon Flex",
+    customFields: {
+      Size_1: "80x40cm",
+      Production_1: "80",
+      Shipping_1: "100",
+      Product_1: "LED Flex",
+      Size_2: "120x60cm",
+      Production_2: "120",
+      Shipping_2: "150",
+      Product_2: "LED Flex",
+      Size_3: "90x45cm",
+      Production_3: "90",
+      Shipping_3: "110",
+      Product_3: "LED Flex",
+      Size_4: "130x65cm",
+      Production_4: "140",
+      Shipping_4: "170",
+      Product_4: "LED Flex",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardQuoteReadyFourAnchors",
+    stepCm: 10,
+    maxLongSideCm: 130,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.designs.length, 2);
+  assert.deepEqual(result.designs.map((design) => design.anchorFieldIndexes), [[1, 2], [3, 4]]);
+  assert.equal(result.designs[0]?.sizeLadder.anchorList.length, 2);
+  assert.equal(result.designs[1]?.sizeLadder.anchorList.length, 2);
+  assert.equal(result.anchorsPerDesign, 2);
+  assert.ok(!result.warnings.includes("anchor_count_not_evenly_divisible_by_design_count"));
+});
+
+test("quote ready preflight marks uneven anchor grouping for review", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyUnevenAnchors",
+    idBoard: "board-1",
+    name: "LED Flex multiple designs",
+    customFields: {
+      Size_1: "80x40cm",
+      Price_1: "180",
+      Product_1: "LED Flex",
+      Size_2: "120x60cm",
+      Price_2: "270",
+      Product_2: "LED Flex",
+      Size_3: "90x45cm",
+      Price_3: "210",
+      Product_3: "LED Flex",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardQuoteReadyUnevenAnchors",
+    maxLongSideCm: 130,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.status, "needs_review");
+  assert.ok(result.warnings.includes("anchor_count_not_evenly_divisible_by_design_count"));
+  assert.deepEqual(result.designs.map((design) => design.anchorFieldIndexes), [[1, 2], [3]]);
+});
+
+test("quote ready preflight blocks unsupported full glow and missing source mockups", async () => {
+  const fullGlow = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyFullGlow",
+    idBoard: "board-1",
+    name: "Full Glow LED Flex",
+    customFields: {
+      Size_1: "100x50cm",
+      Price_1: "300",
+      Product_1: "Full Glow",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "cardQuoteReadyFullGlow",
+    maxLongSideCm: 120,
+    projectToTrello: false,
+    persist: false,
+  });
+  assert.equal(fullGlow.status, "blocked");
+  assert.ok(fullGlow.issues.includes("design_1:full_glow_not_supported_for_neonflex_ladder"));
+
+  const missingMockups = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyMissingMockups",
+    idBoard: "board-1",
+    name: "LED Flex",
+    customFields: {
+      Size_1: "100x50cm",
+      Price_1: "300",
+      Product_1: "LED Flex",
+    },
+    attachments: [{ id: "att-quote", name: "Image.PNG" }],
+  }, {
+    trelloCard: "cardQuoteReadyMissingMockups",
+    projectToTrello: false,
+    persist: false,
+  });
+  assert.equal(missingMockups.status, "blocked");
+  assert.ok(missingMockups.issues.includes("source_mockups_missing"));
+  assert.equal(missingMockups.offerItemsJson, null);
+});
+
+test("quote ready preflight comment exposes status and grouping", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyComment",
+    idBoard: "board-1",
+    name: "LED Flex",
+    customFields: {
+      Size_1: "100x50cm",
+      Price_1: "300",
+      Product_1: "LED Flex",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "cardQuoteReadyComment",
+    maxLongSideCm: 120,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  const comment = formatQuoteReadySizeLadderPreflightComment(result);
+  assert.match(comment, /NEONTRIP_SIZE_LADDER_PREFLIGHT/);
+  assert.match(comment, /Quote ready Groessenleiter/);
+  assert.match(comment, /Design 1: 1 Anker \(1\)/);
 });
 
 test("offer size ladder uses the 2.3 customer factor", async () => {

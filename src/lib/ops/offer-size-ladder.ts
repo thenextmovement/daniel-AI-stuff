@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createTrelloBoardCustomField, getTrelloCard, updateTrelloCustomField } from "@/lib/quotes/trello";
+import { addTrelloCardComment, createTrelloBoardCustomField, getTrelloCard, updateTrelloCustomField } from "@/lib/quotes/trello";
 import type { CustomFieldMap, TrelloCardData, TrelloEditableCustomField } from "@/lib/quotes/types";
 import { roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
@@ -215,6 +215,57 @@ export type OfferSizeLadderTrelloAnchorExtraction = {
   anchors: OfferSizeLadderAnchorInput[];
   sourceText: string;
   warnings: string[];
+};
+
+export type OfferSizeLadderIndexedAnchorInput = OfferSizeLadderAnchorInput & {
+  fieldIndex: number;
+};
+
+export type QuoteReadySizeLadderPreflightStatus = "ready" | "needs_review" | "blocked";
+
+export type QuoteReadySizeLadderPreflightInput = Omit<OfferSizeLadderGenerateInput, "trelloCardId" | "trelloCardUrl" | "anchors"> & {
+  trelloCard: string;
+  projectToTrello?: boolean;
+  commentToTrello?: boolean;
+};
+
+export type QuoteReadySizeLadderPreflightDesign = {
+  designId: string;
+  designIndex: number;
+  sourceMockupName: string;
+  anchorFieldIndexes: number[];
+  anchorCount: number;
+  productModel: OfferSizeLadderProductModel;
+  sizeLadder: OfferSizeLadderResult;
+};
+
+export type QuoteReadySizeLadderPreflightResult = {
+  status: QuoteReadySizeLadderPreflightStatus;
+  trelloCardId: string;
+  trelloCardUrl: string | null;
+  trelloCardName: string | null;
+  sourceMockupCount: number;
+  expectedDesignCount: number;
+  anchorCount: number;
+  anchorsPerDesign: number | null;
+  issues: string[];
+  warnings: string[];
+  designs: QuoteReadySizeLadderPreflightDesign[];
+  offerItemsJson: string | null;
+  trelloComment: string;
+  trelloProjection?: {
+    written: boolean;
+    fieldName: string;
+    optionCount: number;
+    createdField?: boolean;
+    error?: string;
+  } | null;
+  commentProjection?: {
+    written: boolean;
+    skipped?: boolean;
+    id?: string;
+    error?: string;
+  } | null;
 };
 
 export type OfferSizeLadderOfferApplyInput = OfferSizeLadderTrelloGenerateInput & {
@@ -655,7 +706,7 @@ function sortedAnchorRole(anchor: Pick<OfferSizeLadderAnchorInput, "widthCm" | "
   return `anchor_${index + 1}`;
 }
 
-function normalizeExtractedAnchorRoles(anchors: OfferSizeLadderAnchorInput[]) {
+function normalizeExtractedAnchorRoles<T extends OfferSizeLadderAnchorInput>(anchors: T[]): T[] {
   const sorted = [...anchors].sort((left, right) => {
     const leftLongSide = Math.max(Number(left.widthCm), Number(left.heightCm));
     const rightLongSide = Math.max(Number(right.widthCm), Number(right.heightCm));
@@ -664,12 +715,12 @@ function normalizeExtractedAnchorRoles(anchors: OfferSizeLadderAnchorInput[]) {
   });
   return sorted.map((anchor, index) => {
     const role = sortedAnchorRole(anchor, index);
-    return { ...anchor, role };
+    return { ...anchor, role } as T;
   });
 }
 
-function extractIndexedTrelloAnchors(customFields: CustomFieldMap, warnings: string[]) {
-  const anchors: OfferSizeLadderAnchorInput[] = [];
+function extractIndexedTrelloAnchors(customFields: CustomFieldMap, warnings: string[]): OfferSizeLadderIndexedAnchorInput[] {
+  const anchors: OfferSizeLadderIndexedAnchorInput[] = [];
   for (const index of customFieldIndexes(customFields)) {
     const role = `anchor_${index}` as OfferSizeLadderAnchorRole;
     const sizeText = readCustomFieldValue(customFields, indexedFieldNames(index, "size"));
@@ -684,6 +735,7 @@ function extractIndexedTrelloAnchors(customFields: CustomFieldMap, warnings: str
     if (productionPrice !== null && shippingPrice !== null) {
       anchors.push({
         role,
+        fieldIndex: index,
         widthCm: size.widthCm,
         heightCm: size.heightCm,
         productionPrice,
@@ -701,6 +753,7 @@ function extractIndexedTrelloAnchors(customFields: CustomFieldMap, warnings: str
       warnings.push(`anchor_${index}_total_only_estimated_split`);
       anchors.push({
         role,
+        fieldIndex: index,
         widthCm: size.widthCm,
         heightCm: size.heightCm,
         ...splitTotalSupplierPrice(totalPrice),
@@ -922,7 +975,7 @@ function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSi
   if (!options.length) {
     throw new QuoteValidationError("Keine freigegebenen Größenoptionen für Trello offer_items_json vorhanden.", [], 409);
   }
-  if (options.length > 45) {
+  if (options.length > OFFER_SIZE_LADDER_MAX_OPTIONS) {
     throw new QuoteValidationError("Zu viele Größenoptionen für Trello offer_items_json.", [], 409);
   }
 
@@ -945,9 +998,9 @@ function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSi
     customerUnitPriceNet: option.customerUnitPriceNet,
     selectable: true,
     selectedByDefault: option === defaultOption,
-    quantityEditable: false,
+    quantityEditable: true,
     minQuantity: 1,
-    maxQuantity: 1,
+    maxQuantity: null,
     sizeLadder: {
       source: "ops_price_review",
       modelKey: option.modelKey,
@@ -1006,6 +1059,432 @@ async function projectOfferSizeLadderToTrello(card: TrelloCardData, result: Offe
     optionCount: JSON.parse(value).length,
     createdField,
   };
+}
+
+const QUOTE_READY_SIZE_LADDER_COMMENT_MARKER = "[NEONTRIP_SIZE_LADDER_PREFLIGHT]";
+const mockupFilePattern = /^Mockup((?:\d+)|(?:(?:_\d+)+)(?:\.\d+)*)(?:_ai_(\d+))?\.(jpe?g|png|webp)$/i;
+
+function trelloAttachmentName(attachment: { name?: string | null; fileName?: string | null }) {
+  return String(attachment.name || attachment.fileName || "").trim();
+}
+
+function parseMockupName(name: string | null | undefined) {
+  const match = String(name || "").trim().match(mockupFilePattern);
+  if (!match) return null;
+  const sourceToken = match[1] || "";
+  const normalizedSourceToken = sourceToken.replace(/\./g, "_").toLowerCase();
+  const aiIndex = match[2] ? Number(match[2]) : null;
+  if (aiIndex !== null && (!Number.isFinite(aiIndex) || aiIndex < 1)) return null;
+  return { sourceToken, normalizedSourceToken, aiIndex };
+}
+
+function isQuoteReadySourceMockupName(name: string | null | undefined) {
+  const normalized = String(name || "").trim();
+  if (!normalized) return false;
+  if (/(?:^|[_\-\s])(?:ai|ki)(?:[_\-\s]|\d)/i.test(normalized)) return false;
+  const parsed = parseMockupName(normalized);
+  return Boolean(parsed && parsed.aiIndex === null);
+}
+
+function sourceMockupSortValue(name: string) {
+  const parsed = parseMockupName(name);
+  if (!parsed) return Number.POSITIVE_INFINITY;
+  const numeric = Number(parsed.normalizedSourceToken.replace(/_/g, ""));
+  return Number.isFinite(numeric) ? numeric : Number.POSITIVE_INFINITY;
+}
+
+function listQuoteReadySourceMockups(card: TrelloCardData) {
+  return (card.attachments || [])
+    .map((attachment) => ({ name: trelloAttachmentName(attachment), attachment }))
+    .filter((entry) => isQuoteReadySourceMockupName(entry.name))
+    .sort((left, right) => sourceMockupSortValue(left.name) - sourceMockupSortValue(right.name) || left.name.localeCompare(right.name, "de"));
+}
+
+function indexedDesignFieldValue(customFields: CustomFieldMap, index: number, kind: "color" | "backboard" | "usage" | "product") {
+  if (kind === "color") {
+    return readCustomFieldValue(customFields, [
+      `Color_${index}`,
+      `Color ${index}`,
+      `Farbe_${index}`,
+      `Farbe ${index}`,
+      `Light_Color_${index}`,
+      `Leuchtfarbe_${index}`,
+      "Color",
+      "Farbe",
+      "Light_Color",
+      "Leuchtfarbe",
+    ]);
+  }
+  if (kind === "backboard") {
+    return readCustomFieldValue(customFields, [
+      `Backboard_${index}`,
+      `Backboard ${index}`,
+      `Rueckplatte_${index}`,
+      `Rückplatte_${index}`,
+      `Rueckplatte ${index}`,
+      `Rückplatte ${index}`,
+      "Backboard",
+      "Rueckplatte",
+      "Rückplatte",
+    ]);
+  }
+  if (kind === "usage") {
+    return readCustomFieldValue(customFields, [
+      `Usage_${index}`,
+      `Usage ${index}`,
+      `Einsatzort_${index}`,
+      `Einsatzort ${index}`,
+      `Einsatzbereich_${index}`,
+      "Usage",
+      "Einsatzort",
+      "Einsatzbereich",
+    ]);
+  }
+  return readCustomFieldValue(customFields, [
+    `Product_${index}`,
+    `Product ${index}`,
+    `Produkt_${index}`,
+    `Produkt ${index}`,
+    `Product Type_${index}`,
+    `Product Type ${index}`,
+    `Produkttyp_${index}`,
+    `Produktart_${index}`,
+    "Product",
+    "Produkt",
+    "Product Type",
+    "Produkttyp",
+    "Produktart",
+  ]);
+}
+
+function sourceTextForAnchorGroup(params: {
+  card: TrelloCardData;
+  inputSourceText?: string | null;
+  sourceMockupName: string;
+  fieldIndexes: number[];
+  anchors: OfferSizeLadderAnchorInput[];
+}) {
+  const { card, fieldIndexes } = params;
+  const customFields = card.customFields || {};
+  const indexedValues = fieldIndexes.flatMap((index) => [
+    indexedDesignFieldValue(customFields, index, "product"),
+    indexedDesignFieldValue(customFields, index, "color"),
+    indexedDesignFieldValue(customFields, index, "backboard"),
+    indexedDesignFieldValue(customFields, index, "usage"),
+  ]);
+  return [
+    card.name,
+    card.desc,
+    params.inputSourceText,
+    params.sourceMockupName,
+    ...indexedValues,
+    ...params.anchors.map((anchor) => anchor.rawText),
+  ].filter(Boolean).join("\n");
+}
+
+function distributeAnchorGroups(anchors: OfferSizeLadderIndexedAnchorInput[], designCount: number) {
+  const sorted = [...anchors].sort((left, right) => left.fieldIndex - right.fieldIndex);
+  const base = Math.floor(sorted.length / designCount);
+  const remainder = sorted.length % designCount;
+  const groups: OfferSizeLadderIndexedAnchorInput[][] = [];
+  let offset = 0;
+  for (let index = 0; index < designCount; index += 1) {
+    const size = base + (index < remainder ? 1 : 0);
+    groups.push(sorted.slice(offset, offset + size));
+    offset += size;
+  }
+  return groups;
+}
+
+function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: QuoteReadySizeLadderPreflightResult) {
+  const items: Array<Record<string, unknown>> = [];
+  for (const design of result.designs) {
+    const options = design.sizeLadder.options
+      .filter((option) => option.reviewStatus !== "blocked")
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.longSideCm - b.longSideCm);
+    if (!options.length) continue;
+
+    const firstFieldIndex = design.anchorFieldIndexes[0] || design.designIndex;
+    const customFields = card.customFields || {};
+    const color = indexedDesignFieldValue(customFields, firstFieldIndex, "color");
+    const backboard = indexedDesignFieldValue(customFields, firstFieldIndex, "backboard");
+    const usage = indexedDesignFieldValue(customFields, firstFieldIndex, "usage");
+    const defaultOption = options.find((option) => option.isDefault) || options[0]!;
+    const title = result.expectedDesignCount > 1 ? `Leuchtschild Design ${design.designIndex}` : "Leuchtschild Design";
+
+    for (const option of options) {
+      items.push({
+        section: "LED-Leuchtschild",
+        title,
+        description: [
+          `Größe: ${option.sizeLabel}`,
+          color ? `Leuchtfarbe: ${color}` : null,
+          backboard ? `Rückplatte: ${backboard}` : null,
+          usage ? `Einsatzort: ${usage}` : null,
+        ].filter(Boolean).join("\n"),
+        quantity: 1,
+        customerUnitPriceNet: option.customerUnitPriceNet,
+        selectable: true,
+        selectedByDefault: option === defaultOption,
+        quantityEditable: true,
+        minQuantity: 1,
+        maxQuantity: null,
+        sizeLadder: {
+          source: "ops_quote_ready_preflight",
+          designId: design.designId,
+          modelKey: option.modelKey,
+          modelVersion: option.modelVersion,
+          confidence: option.confidence,
+          reviewStatus: option.reviewStatus,
+          widthCm: option.widthCm,
+          heightCm: option.heightCm,
+          longSideCm: option.longSideCm,
+        },
+      });
+    }
+  }
+
+  if (!items.length) {
+    throw new QuoteValidationError("Keine freigegebenen Größenoptionen für Trello offer_items_json vorhanden.", [], 409);
+  }
+  if (items.length > OFFER_SIZE_LADDER_MAX_OFFER_ITEMS) {
+    throw new QuoteValidationError(
+      `Quote-ready Groessenleiter erzeugt ${items.length} Angebotspositionen, erlaubt sind maximal ${OFFER_SIZE_LADDER_MAX_OFFER_ITEMS}.`,
+      [],
+      409,
+    );
+  }
+  return JSON.stringify(items);
+}
+
+async function projectQuoteReadySizeLadderToTrello(card: TrelloCardData, result: QuoteReadySizeLadderPreflightResult) {
+  let field = findEditableCustomField(card.editableFields, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  let createdField = false;
+
+  if (!field) {
+    if (!card.idBoard) {
+      return {
+        written: false,
+        fieldName: "offer_items_json",
+        optionCount: 0,
+        error: "trello_offer_items_json_board_missing",
+      };
+    }
+    const created = await createTrelloBoardCustomField({
+      boardId: card.idBoard,
+      name: "offer_items_json",
+      type: "text",
+      pos: "bottom",
+      displayCardFront: false,
+    });
+    field = {
+      id: created.id,
+      name: created.name || "offer_items_json",
+      type: created.type || "text",
+      value: null,
+      displayValue: null,
+      options: [],
+    };
+    createdField = true;
+  }
+
+  const value = result.offerItemsJson || publicOfferItemsForQuoteReadyPreflight(card, result);
+  await updateTrelloCustomField({
+    cardId: card.id,
+    fieldId: field.id,
+    type: field.type || "text",
+    value,
+  });
+  return {
+    written: true,
+    fieldName: field.name,
+    optionCount: JSON.parse(value).length,
+    createdField,
+  };
+}
+
+function quoteReadyPreflightStatus(input: {
+  issues: string[];
+  warnings: string[];
+  designs: QuoteReadySizeLadderPreflightDesign[];
+}): QuoteReadySizeLadderPreflightStatus {
+  if (input.issues.length || input.designs.some((design) => design.sizeLadder.status === "blocked")) return "blocked";
+  if (input.warnings.length || input.designs.some((design) => design.sizeLadder.status === "needs_review")) return "needs_review";
+  return "ready";
+}
+
+export function formatQuoteReadySizeLadderPreflightComment(result: QuoteReadySizeLadderPreflightResult) {
+  const statusLabel = result.status === "ready" ? "READY" : result.status === "needs_review" ? "NEEDS REVIEW" : "BLOCKED";
+  const lines = [
+    QUOTE_READY_SIZE_LADDER_COMMENT_MARKER,
+    `Quote ready Groessenleiter: ${statusLabel}`,
+    `Designs: ${result.expectedDesignCount} | Ausgangsmockups: ${result.sourceMockupCount} | Supplier-Anker: ${result.anchorCount}`,
+    result.anchorsPerDesign ? `Anker pro Design: ${result.anchorsPerDesign}` : null,
+    result.designs.length ? "" : null,
+    ...result.designs.map((design) => {
+      const defaultOption = design.sizeLadder.options.find((option) => option.isDefault) || design.sizeLadder.options[0];
+      return [
+        `Design ${design.designIndex}: ${design.anchorCount} Anker (${design.anchorFieldIndexes.join(", ")})`,
+        defaultOption ? `Start: ${defaultOption.sizeLabel} / ${defaultOption.customerUnitPriceNet} EUR netto` : null,
+        `Status: ${design.sizeLadder.status}, Modell: ${design.productModel}, Confidence: ${Math.round(design.sizeLadder.confidence * 100)}%`,
+      ].filter(Boolean).join(" | ");
+    }),
+    result.issues.length ? "" : null,
+    ...result.issues.map((issue) => `BLOCKER: ${issue}`),
+    result.warnings.length ? "" : null,
+    ...result.warnings.map((warning) => `CHECK: ${warning}`),
+  ];
+  return lines.filter((line): line is string => line !== null).join("\n");
+}
+
+export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
+  card: TrelloCardData,
+  input: Omit<QuoteReadySizeLadderPreflightInput, "trelloCard"> & { trelloCard?: string | null } = {},
+): Promise<QuoteReadySizeLadderPreflightResult> {
+  const canonicalTrelloCardId = card.id || normalizeTrelloCardIdentifier(input.trelloCard) || "";
+  if (!canonicalTrelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
+
+  const warnings: string[] = [];
+  const issues: string[] = [];
+  const sourceMockups = listQuoteReadySourceMockups(card);
+  const expectedDesignCount = sourceMockups.length;
+  const indexedAnchors = extractIndexedTrelloAnchors(card.customFields || {}, warnings);
+
+  if (!sourceMockups.length) issues.push("source_mockups_missing");
+  if (!indexedAnchors.length) issues.push("supplier_anchor_fields_missing");
+  if (sourceMockups.length && indexedAnchors.length < sourceMockups.length) {
+    issues.push("anchor_count_below_design_count");
+  }
+  if (sourceMockups.length && indexedAnchors.length > 0 && indexedAnchors.length % sourceMockups.length !== 0) {
+    warnings.push("anchor_count_not_evenly_divisible_by_design_count");
+  }
+
+  const designs: QuoteReadySizeLadderPreflightDesign[] = [];
+  const anchorGroups = sourceMockups.length && indexedAnchors.length >= sourceMockups.length
+    ? distributeAnchorGroups(indexedAnchors, sourceMockups.length)
+    : [];
+
+  for (let index = 0; index < anchorGroups.length; index += 1) {
+    const group = anchorGroups[index] || [];
+    const sourceMockup = sourceMockups[index];
+    if (!sourceMockup || !group.length) continue;
+    const anchors = normalizeExtractedAnchorRoles(group.map(({ fieldIndex: _fieldIndex, ...anchor }) => anchor));
+    const fieldIndexes = group.map((anchor) => anchor.fieldIndex);
+    const sourceText = sourceTextForAnchorGroup({
+      card,
+      inputSourceText: input.sourceText,
+      sourceMockupName: sourceMockup.name,
+      fieldIndexes,
+      anchors,
+    });
+    const productModel = input.productModel || detectOfferSizeLadderProductModel(sourceText);
+    const designId = `design_${index + 1}`;
+    const sizeLadder = await generateOfferSizeLadder({
+      trelloCardId: canonicalTrelloCardId,
+      trelloCardUrl: input.trelloCard && String(input.trelloCard).includes("trello.com/c/") ? String(input.trelloCard) : null,
+      offerId: input.offerId,
+      offerItemId: input.offerItemId,
+      designId,
+      productModel,
+      sourceText,
+      stepCm: input.stepCm,
+      maxLongSideCm: input.maxLongSideCm,
+      customerFactor: input.customerFactor,
+      createdBy: input.createdBy,
+      persist: input.persist === true,
+      anchors,
+    });
+    designs.push({
+      designId,
+      designIndex: index + 1,
+      sourceMockupName: sourceMockup.name,
+      anchorFieldIndexes: fieldIndexes,
+      anchorCount: anchors.length,
+      productModel,
+      sizeLadder,
+    });
+  }
+
+  for (const design of designs) {
+    for (const warning of design.sizeLadder.warnings) {
+      const scoped = `${design.designId}:${warning}`;
+      if (!warnings.includes(scoped)) warnings.push(scoped);
+    }
+    for (const issue of design.sizeLadder.issues) {
+      const scoped = `${design.designId}:${issue}`;
+      if (!issues.includes(scoped)) issues.push(scoped);
+    }
+  }
+
+  const status = quoteReadyPreflightStatus({ issues, warnings, designs });
+  const result: QuoteReadySizeLadderPreflightResult = {
+    status,
+    trelloCardId: canonicalTrelloCardId,
+    trelloCardUrl: input.trelloCard && String(input.trelloCard).includes("trello.com/c/") ? String(input.trelloCard) : null,
+    trelloCardName: trimNullable(card.name),
+    sourceMockupCount: sourceMockups.length,
+    expectedDesignCount,
+    anchorCount: indexedAnchors.length,
+    anchorsPerDesign: sourceMockups.length && indexedAnchors.length >= sourceMockups.length
+      ? Math.floor(indexedAnchors.length / sourceMockups.length)
+      : null,
+    issues,
+    warnings,
+    designs,
+    offerItemsJson: null,
+    trelloComment: "",
+    trelloProjection: null,
+    commentProjection: null,
+  };
+
+  if (designs.length && status !== "blocked") {
+    result.offerItemsJson = publicOfferItemsForQuoteReadyPreflight(card, result);
+  }
+  result.trelloComment = formatQuoteReadySizeLadderPreflightComment(result);
+
+  if (input.projectToTrello !== false && result.offerItemsJson && status !== "blocked") {
+    try {
+      result.trelloProjection = await projectQuoteReadySizeLadderToTrello(card, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Trello offer_items_json Projektion fehlgeschlagen.";
+      result.trelloProjection = {
+        written: false,
+        fieldName: "offer_items_json",
+        optionCount: 0,
+        error: message,
+      };
+      result.warnings = [...result.warnings, "trello_offer_items_json_projection_failed"];
+      result.status = result.status === "ready" ? "needs_review" : result.status;
+      result.trelloComment = formatQuoteReadySizeLadderPreflightComment(result);
+    }
+  }
+
+  if (input.commentToTrello === true) {
+    const existingComment = (card.actions || []).some((action) => String(action.data?.text || "").includes(QUOTE_READY_SIZE_LADDER_COMMENT_MARKER));
+    if (existingComment) {
+      result.commentProjection = { written: false, skipped: true };
+    } else {
+      try {
+        const comment = await addTrelloCardComment({ cardId: canonicalTrelloCardId, text: result.trelloComment });
+        result.commentProjection = { written: Boolean(comment?.id), id: comment?.id };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Trello Kommentar fehlgeschlagen.";
+        result.commentProjection = { written: false, error: message };
+        result.warnings = [...result.warnings, "trello_comment_projection_failed"];
+        result.status = result.status === "ready" ? "needs_review" : result.status;
+        result.trelloComment = formatQuoteReadySizeLadderPreflightComment(result);
+      }
+    }
+  }
+
+  return result;
+}
+
+export async function prepareQuoteReadySizeLadderPreflight(input: QuoteReadySizeLadderPreflightInput): Promise<QuoteReadySizeLadderPreflightResult> {
+  const trelloCardId = normalizeTrelloCardIdentifier(input.trelloCard);
+  if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
+  const card = await getTrelloCard(trelloCardId);
+  return buildQuoteReadySizeLadderPreflightFromTrelloCard(card, input);
 }
 
 export function detectOfferSizeLadderProductModel(text: string): OfferSizeLadderProductModel {

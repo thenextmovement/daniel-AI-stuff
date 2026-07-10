@@ -22,6 +22,7 @@ import {
   generateOfferSizeLadder,
   generateOfferSizeLadderFromTrello,
   listOfferSizeLadderDrafts,
+  prepareQuoteReadySizeLadderPreflight,
   type OfferSizeLadderAnchorInput,
   type OfferSizeLadderProductModel,
 } from "@/lib/ops/offer-size-ladder";
@@ -120,6 +121,10 @@ function getAutomationActor(request: NextRequest, operatorName?: string | null):
   };
 }
 
+function isPricePredictionRouteAutomationAction(action: string | null | undefined) {
+  return isSupplierPricePredictionAutomationAction(action) || action === "prepare_quote_ready_size_ladder";
+}
+
 export async function GET(request: NextRequest) {
   const host = getOpsHost(request);
   if (!isOpsPortalConfigured(host)) return notConfigured();
@@ -154,6 +159,7 @@ export async function POST(request: NextRequest) {
           | "apply_trello_estimate_to_offer"
           | "generate_offer_size_ladder"
           | "generate_offer_size_ladder_from_trello"
+          | "prepare_quote_ready_size_ladder"
           | "apply_offer_size_ladder_to_offer"
           | "list_offer_size_ladder_drafts"
           | "import_trello_training_candidates";
@@ -263,6 +269,20 @@ export async function POST(request: NextRequest) {
             customerUnitPriceNet?: number | string | null;
           }>;
         };
+        quoteReadySizeLadder?: {
+          trelloCard?: string | null;
+          offerId?: string | null;
+          offerItemId?: string | null;
+          designId?: string | null;
+          productModel?: string | null;
+          sourceText?: string | null;
+          stepCm?: number | string | null;
+          maxLongSideCm?: number | string | null;
+          customerFactor?: number | string | null;
+          persist?: boolean;
+          projectToTrello?: boolean;
+          commentToTrello?: boolean;
+        };
         sizeLadderOfferApply?: {
           trelloCard?: string | null;
           trelloCardId?: string | null;
@@ -317,11 +337,11 @@ export async function POST(request: NextRequest) {
   const opsActor = await getActor(request, body?.operatorName || null);
   const automationAllowed = hasSupplierPriceReviewAutomationAccess(request, body?.agentToken || null);
   if (!opsActor && !automationAllowed && !isOpsPortalConfigured(host)) return notConfigured();
-  if (!opsActor && automationAllowed && !isSupplierPricePredictionAutomationAction(body?.action)) return forbidden();
+  if (!opsActor && automationAllowed && !isPricePredictionRouteAutomationAction(body?.action)) return forbidden();
 
   const actor =
     opsActor ||
-    (automationAllowed && isSupplierPricePredictionAutomationAction(body?.action)
+    (automationAllowed && isPricePredictionRouteAutomationAction(body?.action)
       ? getAutomationActor(request, body?.operatorName || null)
       : null);
   if (!actor) return unauthorized();
@@ -459,6 +479,26 @@ export async function POST(request: NextRequest) {
         persist: input.persist === true,
       });
       return NextResponse.json({ ok: true, sizeLadder });
+    }
+
+    if (body?.action === "prepare_quote_ready_size_ladder") {
+      const input = body.quoteReadySizeLadder || {};
+      const quoteReadySizeLadder = await prepareQuoteReadySizeLadderPreflight({
+        trelloCard: String(input.trelloCard || ""),
+        offerId: trimNullable(input.offerId),
+        offerItemId: trimNullable(input.offerItemId),
+        designId: trimNullable(input.designId),
+        productModel: trimNullable(input.productModel) as OfferSizeLadderProductModel | null,
+        sourceText: trimNullable(input.sourceText),
+        stepCm: input.stepCm === null || input.stepCm === undefined ? undefined : Number(input.stepCm),
+        maxLongSideCm: input.maxLongSideCm === null || input.maxLongSideCm === undefined ? undefined : Number(input.maxLongSideCm),
+        customerFactor: input.customerFactor === null || input.customerFactor === undefined ? undefined : Number(input.customerFactor),
+        createdBy: actor.operatorName || actor.mode,
+        persist: input.persist !== false,
+        projectToTrello: input.projectToTrello !== false,
+        commentToTrello: input.commentToTrello === true,
+      });
+      return NextResponse.json({ ok: true, quoteReadySizeLadder });
     }
 
     if (body?.action === "apply_offer_size_ladder_to_offer") {
