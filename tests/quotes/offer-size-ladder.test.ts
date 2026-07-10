@@ -78,6 +78,14 @@ test("offer size ladder extracts flexible indexed supplier anchors from Trello f
   assert.equal(extraction.anchors[3]?.widthCm, 180);
 });
 
+test("offer size ladder schema allows flexible intermediate anchor roles", () => {
+  const migration = readFileSync("supabase/migrations/20260710082115_widen_offer_size_anchor_roles.sql", "utf8");
+  assert.match(migration, /drop constraint if exists offer_size_quote_anchors_role_check/i);
+  assert.match(migration, /add constraint offer_size_quote_anchors_role_check/i);
+  assert.match(migration, /role in \('minimum', 'requested', 'max_250'\)/i);
+  assert.match(migration, /\^anchor_\(\[3-9\]\|1\[0-9\]\|20\)\$/);
+});
+
 test("offer size ladder can extrapolate from flexible anchors without a 250cm quote", async () => {
   const result = await generateOfferSizeLadder({
     trelloCardId: "cardFlexibleAnchors1",
