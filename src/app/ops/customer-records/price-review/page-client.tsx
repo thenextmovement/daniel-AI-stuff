@@ -409,6 +409,14 @@ function sizeLadderStatusTone(status: string) {
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
+function sizeLadderAnchorRoleLabel(role: string) {
+  if (role === "minimum") return "Minimum";
+  if (role === "requested") return "Kundenwunsch";
+  if (role === "max_250") return "250cm";
+  const match = role.match(/^anchor_(\d+)$/);
+  return match?.[1] ? `Anker ${match[1]}` : role.replaceAll("_", " ");
+}
+
 function estimateApplyKey(item: SupplierPriceTrelloEstimateItem) {
   return `${item.requestedInput}-${item.widthCm}-${item.heightCm}`;
 }
@@ -632,7 +640,7 @@ function SizeLadderResultCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-semibold text-black">3-Anchor Size Ladder</div>
+            <div className="text-sm font-semibold text-black">Flexible Anchor Size Ladder</div>
             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${sizeLadderStatusTone(result.status)}`}>
               {result.status} · {Math.round(result.confidence * 100)}%
             </span>
@@ -640,6 +648,13 @@ function SizeLadderResultCard({
           <div className="mt-1 text-xs text-black/50">
             {result.productModel} · Faktor {result.customerFactor.toFixed(1)} · {result.options.length} Größenoptionen
           </div>
+          {result.anchorList?.length ? (
+            <div className="mt-1 text-xs text-black/45">
+              Supplier-Anker: {result.anchorList.map((anchor) => (
+                `${sizeLadderAnchorRoleLabel(anchor.role)} ${formatCm(anchor.widthCm)} x ${formatCm(anchor.heightCm)}`
+              )).join(" · ")}
+            </div>
+          ) : null}
           <div className="mt-1 text-xs text-black/45">
             {result.offerId ? `Interne Vorschau fuer Angebot ${result.offerId}` : "Interne Vorschau ohne Offer-ID"} · Karte {result.trelloCardId}
           </div>
@@ -1874,10 +1889,10 @@ export function SupplierPriceReviewClient({
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-black">
                   <ShieldCheck className="h-4 w-4 text-[#fa31a2]" />
-                  3-Anchor Größenleiter
+                  Flexible Anchor-Größenleiter
                 </div>
                 <div className="mt-1 text-sm text-black/55">
-                  Supplier-Preise für Minimum, Kundenwunsch und 250cm eintragen. Daraus entstehen 10cm-Größenoptionen mit Faktor 2,3.
+                  Supplier-Preise aus Trello laden oder manuell eintragen. Feld 3 ist nur dann 250cm, wenn die eingetragene Größe wirklich 250cm ist.
                 </div>
               </div>
               <div className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-black/50">
@@ -1932,7 +1947,7 @@ export function SupplierPriceReviewClient({
               {([
                 ["minimum", "Minimum"],
                 ["requested", "Kundenwunsch"],
-                ["max_250", "250cm"],
+                ["max_250", "Dritter Anker / 250cm"],
               ] as Array<[SizeLadderAnchorRole, string]>).map(([role, label]) => (
                 <div key={role} className="rounded-lg border border-black/10 bg-black/[0.02] p-3">
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-black/45">{label}</div>

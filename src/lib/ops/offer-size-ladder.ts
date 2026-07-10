@@ -540,6 +540,8 @@ function splitTotalSupplierPrice(total: number) {
 }
 
 const CORE_ANCHOR_ROLES = ["minimum", "requested", "max_250"] as const;
+const NOMINAL_MAX_ANCHOR_LONG_SIDE_CM = 250;
+const NOMINAL_MAX_ANCHOR_TOLERANCE_CM = 0.5;
 
 const ROLE_ALIASES: Record<OfferSizeLadderCoreAnchorRole, { index: number; names: string[] }> = {
   minimum: {
@@ -645,6 +647,14 @@ function customFieldIndexes(customFields: CustomFieldMap) {
   return Array.from(indexes).sort((a, b) => a - b);
 }
 
+function sortedAnchorRole(anchor: Pick<OfferSizeLadderAnchorInput, "widthCm" | "heightCm">, index: number): OfferSizeLadderAnchorRole {
+  const longSideCm = Math.max(Number(anchor.widthCm), Number(anchor.heightCm));
+  if (index === 0) return "minimum";
+  if (Math.abs(longSideCm - NOMINAL_MAX_ANCHOR_LONG_SIDE_CM) <= NOMINAL_MAX_ANCHOR_TOLERANCE_CM) return "max_250";
+  if (index === 1) return "requested";
+  return `anchor_${index + 1}`;
+}
+
 function normalizeExtractedAnchorRoles(anchors: OfferSizeLadderAnchorInput[]) {
   const sorted = [...anchors].sort((left, right) => {
     const leftLongSide = Math.max(Number(left.widthCm), Number(left.heightCm));
@@ -653,11 +663,7 @@ function normalizeExtractedAnchorRoles(anchors: OfferSizeLadderAnchorInput[]) {
     return Number(left.widthCm) * Number(left.heightCm) - Number(right.widthCm) * Number(right.heightCm);
   });
   return sorted.map((anchor, index) => {
-    const role: OfferSizeLadderAnchorRole =
-      index === 0 ? "minimum" :
-      index === sorted.length - 1 ? "max_250" :
-      index === 1 ? "requested" :
-      `anchor_${index + 1}`;
+    const role = sortedAnchorRole(anchor, index);
     return { ...anchor, role };
   });
 }
@@ -1047,11 +1053,7 @@ function normalizeAnchorList(inputs: OfferSizeLadderAnchorInput[]) {
     throw new QuoteValidationError("Mindestens ein Supplier-Anker ist fuer eine Groessenleiter erforderlich.");
   }
   return normalized.map((anchor, index) => {
-    const role: OfferSizeLadderAnchorRole =
-      index === 0 ? "minimum" :
-      index === normalized.length - 1 ? "max_250" :
-      index === 1 ? "requested" :
-      `anchor_${index + 1}`;
+    const role = sortedAnchorRole(anchor, index);
     return { ...anchor, role };
   });
 }
@@ -1138,7 +1140,12 @@ function addAnchorConsistencyIssue(params: {
   const areaRatio = params.upper.areaCm2 / params.lower.areaCm2;
   const totalRatio = params.upper.supplierTotal / params.lower.supplierTotal;
   if (areaRatio > 1.03 && totalRatio < 0.98) {
-    params.issues.push(`${params.upper.role}_larger_but_cheaper_than_${params.lower.role}`);
+    const problem = `${params.upper.role}_larger_but_cheaper_than_${params.lower.role}`;
+    if (Math.abs(params.upper.longSideCm - NOMINAL_MAX_ANCHOR_LONG_SIDE_CM) <= NOMINAL_MAX_ANCHOR_TOLERANCE_CM) {
+      params.issues.push(problem);
+    } else {
+      params.warnings.push(problem);
+    }
   }
   if (areaRatio >= 1.75 && totalRatio < 1.18) {
     params.issues.push(`${params.upper.role}_area_increase_price_increase_too_low`);
