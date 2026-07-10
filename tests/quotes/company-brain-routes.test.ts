@@ -71,6 +71,11 @@ async function withGuardedRetryFetchMock<T>(
     offerOverride?: Record<string, unknown>;
     quoteEmailGuardRows?: unknown[];
     outlookGuardRows?: unknown[];
+    trelloCard?: {
+      name?: string;
+      labels?: Array<{ id: string; name?: string | null; color?: string | null }>;
+      boardLabels?: Array<{ id: string; name?: string | null; color?: string | null }>;
+    };
   },
   callback: (calls: string[]) => Promise<T>,
 ) {
@@ -79,12 +84,16 @@ async function withGuardedRetryFetchMock<T>(
   const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const originalOffersBaseUrl = process.env.NEONTRIP_OFFERS_BASE_URL;
   const originalOffersKey = process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
   const calls: string[] = [];
 
   process.env.SUPABASE_URL = "https://supabase.example.test";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
   process.env.NEONTRIP_OFFERS_BASE_URL = "https://offers.example.test";
   process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "offers-test-key";
+  process.env.TRELLO_API_KEY = "trello-key-test";
+  process.env.TRELLO_TOKEN = "trello-token-test";
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -183,6 +192,36 @@ async function withGuardedRetryFetchMock<T>(
       return json([]);
     }
 
+    if (url.hostname === "api.trello.com") {
+      if (method === "GET" && url.pathname === "/1/cards/trello-card-1") {
+        return json({
+          id: "trello-card-1",
+          shortLink: "TRELLO1",
+          name: options.trelloCard?.name || "FEHLER - LED Flex",
+          desc: "Request-ID: REQ-GUARD-1",
+          idBoard: "board-1",
+          idList: "list-1",
+          url: "https://trello.com/c/TRELLO1",
+          shortUrl: "https://trello.com/c/TRELLO1",
+          closed: false,
+          dateLastActivity: "2026-07-10T08:00:00.000Z",
+          customFieldItems: [],
+          attachments: [],
+          actions: [],
+          labels: options.trelloCard?.labels || [],
+        });
+      }
+      if (method === "GET" && url.pathname === "/1/boards/board-1/customFields") return json([]);
+      if (method === "GET" && url.pathname === "/1/lists/list-1") return json({ id: "list-1", name: "Quote Ready" });
+      if (method === "GET" && url.pathname === "/1/boards/board-1/labels") {
+        return json(options.trelloCard?.boardLabels || [{ id: "label-offer-sent", name: "Angebot gesendet", color: "green" }]);
+      }
+      if (method === "PUT" && url.pathname === "/1/cards/trello-card-1") return json({ id: "trello-card-1" });
+      if (method === "POST" && url.pathname === "/1/cards/trello-card-1/idLabels") return json({ id: "label-added" });
+      if (method === "POST" && url.pathname === "/1/cards/trello-card-1/actions/comments") return json({ id: "comment-1" });
+      return json({ error: `unexpected trello ${method} ${url.pathname}` }, 500);
+    }
+
     return json({ error: "unexpected fetch" }, 500);
   }) as typeof fetch;
 
@@ -198,6 +237,10 @@ async function withGuardedRetryFetchMock<T>(
     else process.env.NEONTRIP_OFFERS_BASE_URL = originalOffersBaseUrl;
     if (originalOffersKey === undefined) delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
     else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = originalOffersKey;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
   }
 }
 
@@ -420,6 +463,65 @@ test("company brain guarded resend blocks offers from a different request before
     assert.equal(payload.code, "company_brain_retry_blocked");
     assert.deepEqual(payload.customerCommunicationSent, false);
     assert.match(payload.blockers.join(" "), /Angebot gehört zu Request REQ-OTHER-CASE/);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
+  });
+});
+
+test("company brain repairs stale trello projection only after send proof", async () => {
+  await withGuardedRetryFetchMock({
+    quoteEmailGuardRows: [{
+      id: "quote-email-1",
+      recipient_email: "customer@example.com",
+      angebotsnummer: "14427",
+      subject: "Ihr NEONTRIP Angebot A/N 14427",
+      status: "sent",
+      sent_at: "2026-07-06T07:45:00.000Z",
+      created_at: "2026-07-06T07:45:00.000Z",
+    }],
+    trelloCard: {
+      name: "FEHLER - LED Flex",
+      labels: [],
+      boardLabels: [{ id: "label-offer-sent", name: "Angebot gesendet", color: "green" }],
+    },
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(payload.trelloProjectionRepair.renamed, true);
+    assert.equal(payload.trelloProjectionRepair.addedOfferSentLabel, true);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
+    assert.equal(calls.some((call) => call.startsWith("PUT https://api.trello.com/1/cards/trello-card-1") && call.includes("name=LED+Flex")), true);
+    assert.equal(calls.some((call) => call.startsWith("POST https://api.trello.com/1/cards/trello-card-1/idLabels") && call.includes("value=label-offer-sent")), true);
+    assert.equal(calls.some((call) => call.startsWith("POST https://api.trello.com/1/cards/trello-card-1/actions/comments")), true);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
+  });
+});
+
+test("company brain blocks trello projection repair without send proof", async () => {
+  await withGuardedRetryFetchMock({
+    quoteEmailGuardRows: [],
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 409);
+    assertNoStore(response);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.code, "missing_send_proof");
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.match(payload.blockers.join(" "), /Kein Versandbeleg/);
+    assert.equal(calls.some((call) => call.includes("api.trello.com/1/cards/trello-card-1") && !call.includes("workflow_audit_log")), false);
     assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
     assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
   });

@@ -23,7 +23,13 @@ import {
   type CompanyBrainProblemType,
 } from "@/lib/ops/company-brain";
 import { recordWorkflowAuditEvent } from "@/lib/ops/workflow-audit";
-import { addTrelloCardComment } from "@/lib/quotes/trello";
+import {
+  addTrelloCardComment,
+  addTrelloCardLabel,
+  getTrelloBoardLabels,
+  getTrelloFailureContext,
+  updateTrelloCard,
+} from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -51,6 +57,7 @@ type CompanyBrainActionKey =
   | "prepare_email_correction"
   | "correct_customer_email"
   | "post_trello_status_comment"
+  | "repair_trello_projection"
   | "prepare_offer_retry"
   | "guarded_offer_resend";
 
@@ -166,6 +173,7 @@ function normalizeActionKey(value: unknown): CompanyBrainActionKey {
     value === "prepare_email_correction" ||
     value === "correct_customer_email" ||
     value === "post_trello_status_comment" ||
+    value === "repair_trello_projection" ||
     value === "prepare_offer_retry" ||
     value === "guarded_offer_resend"
   ) return value;
@@ -189,6 +197,21 @@ function requireConfirmation(body: CompanyBrainActionInput) {
 function sourceRefFor(actionKey: CompanyBrainActionKey, requestId: string, problemType: CompanyBrainProblemType | null) {
   const raw = `company-brain:${actionKey}:${requestId}:${problemType || "none"}:v1`;
   return `company-brain:${createHash("sha256").update(raw).digest("hex").slice(0, 32)}`;
+}
+
+function stripTrelloFailurePrefix(name: string) {
+  return cleanText(name, 300)
+    .replace(/^(?:\s*(?:❌\s*)?(?:FEHLER|ERROR)\s*[:\-–—]\s*)+/i, "")
+    .trim();
+}
+
+function trelloLabelNameKey(value: unknown) {
+  return cleanText(value, 120).toLowerCase().replace(/[^a-z0-9äöüß]/g, "");
+}
+
+function isOfferSentTrelloLabelName(value: unknown) {
+  const key = trelloLabelNameKey(value);
+  return key === "angebotgesendet" || key === "quotesent";
 }
 
 function problemTypeLabel(problemType: CompanyBrainProblemType | null) {
@@ -747,6 +770,152 @@ export async function POST(request: NextRequest) {
         actionKey,
         requestId: record.requestId,
         trelloComment,
+        audit: retryAudit,
+        customerCommunicationSent: false,
+      });
+    }
+
+    if (actionKey === "repair_trello_projection") {
+      if (!trelloCardId) {
+        throw new QuoteValidationError("Trello-Karte fehlt.", ["Ohne Trello-Card-ID wird keine Projektion repariert."], 422);
+      }
+
+      const recipientEmail = normalizeEmail(body.recipientEmail || record.email);
+      const effectiveOfferNumber = normalizeOfferNumber(offerNumber || body.offerNumber);
+      const quoteEmailRows = recipientEmail
+        ? await fetchQuoteEmailGuardRows(recipientEmail, effectiveOfferNumber)
+        : [];
+      const sendProof = quoteEmailRows.find((row) =>
+        Boolean(row.sent_at || /sent|delivered|success|ok/i.test(String(row.status || ""))),
+      );
+      const hasRecordSendProof = Boolean(record.quote?.sentAt);
+
+      if (!sendProof && !hasRecordSendProof) {
+        retryAudit = await recordWorkflowAuditEvent({
+          workflowName: "company_brain_fix_center",
+          action: "repair_trello_projection",
+          status: "blocked",
+          requestId: record.requestId,
+          trelloCardId,
+          offerId,
+          offerNumber: effectiveOfferNumber || offerNumber,
+          idempotencyKey: `company-brain-trello-projection:${record.requestId}:${trelloCardId}`,
+          retrySafety: "blocked",
+          customer_communication_sent: false,
+          errorMessage: "Kein Versandbeleg fuer Trello-Projektionsreparatur.",
+          metadata: {
+            operator_name: operatorName,
+            projection_only: true,
+            customer_communication_sent: false,
+            blocker: "missing_send_proof",
+          },
+        });
+        return jsonResponse(
+          {
+            ok: false,
+            actionKey,
+            requestId: record.requestId,
+            error: "Trello-Projektion blockiert.",
+            code: "missing_send_proof",
+            blockers: ["Kein Versandbeleg gefunden. Trello wird nicht als Source of Truth repariert."],
+            audit: retryAudit,
+            customerCommunicationSent: false,
+          },
+          { status: 409 },
+        );
+      }
+
+      let trelloContext: Awaited<ReturnType<typeof getTrelloFailureContext>>;
+      try {
+        trelloContext = await getTrelloFailureContext(trelloCardId);
+      } catch (error) {
+        if (/Trello API-Konfiguration fehlt/i.test(errorMessage(error))) {
+          throw new QuoteValidationError(
+            "Trello ist nicht konfiguriert.",
+            ["TRELLO_API_KEY/TRELLO_TOKEN fehlen in der Runtime. Die Projektion wurde nicht geändert."],
+            503,
+          );
+        }
+        throw error;
+      }
+
+      const currentName = cleanText(trelloContext.card.name, 300);
+      const repairedName = stripTrelloFailurePrefix(currentName);
+      let renamed = false;
+      if (repairedName && currentName && repairedName !== currentName) {
+        await updateTrelloCard(trelloCardId, { name: repairedName });
+        renamed = true;
+      }
+
+      const currentLabels = trelloContext.card.labels || [];
+      const hasOfferSentLabel = currentLabels.some((label) => isOfferSentTrelloLabelName(label.name));
+      let addedOfferSentLabel = false;
+      let offerSentLabelId: string | null = null;
+      if (!hasOfferSentLabel && trelloContext.card.idBoard) {
+        const boardLabels = await getTrelloBoardLabels(trelloContext.card.idBoard);
+        const offerSentLabel = boardLabels.find((label) => isOfferSentTrelloLabelName(label.name)) || null;
+        if (offerSentLabel?.id) {
+          await addTrelloCardLabel({ cardId: trelloCardId, labelId: offerSentLabel.id });
+          addedOfferSentLabel = true;
+          offerSentLabelId = offerSentLabel.id;
+        }
+      }
+
+      let trelloComment: Awaited<ReturnType<typeof addTrelloCardComment>> | null = null;
+      if (renamed || addedOfferSentLabel) {
+        trelloComment = await addTrelloCardComment({
+          cardId: trelloCardId,
+          text: [
+            "NEONTRIP Company Brain - Trello-Projektion bereinigt",
+            "",
+            renamed ? `Titel bereinigt: ${currentName} -> ${repairedName}` : null,
+            addedOfferSentLabel ? "Tag gesetzt: Angebot gesendet" : null,
+            `Versandbeleg: ${sendProof?.sent_at || record.quote?.sentAt || sendProof?.created_at || "vorhanden"}`,
+            "",
+            "Hinweis: Trello ist nur Projektion. Source of Truth bleibt Kundenakte/Angebot/Outlook/Audit. Kein Kundenkontakt durch diese Aktion.",
+          ].filter((line): line is string => Boolean(line)).join("\n"),
+        });
+      }
+
+      retryAudit = await recordWorkflowAuditEvent({
+        workflowName: "company_brain_fix_center",
+        action: "repair_trello_projection",
+        status: renamed || addedOfferSentLabel ? "success" : "prepared",
+        requestId: record.requestId,
+        trelloCardId,
+        offerId,
+        offerNumber: effectiveOfferNumber || offerNumber,
+        sourceEventId: trelloComment?.id || null,
+        idempotencyKey: `company-brain-trello-projection:${record.requestId}:${trelloCardId}`,
+        retrySafety: "safe_after_review",
+        customer_communication_sent: false,
+        metadata: {
+          operator_name: operatorName,
+          projection_only: true,
+          customer_communication_sent: false,
+          previous_name: currentName || null,
+          repaired_name: renamed ? repairedName : null,
+          renamed,
+          added_offer_sent_label: addedOfferSentLabel,
+          offer_sent_label_id: offerSentLabelId,
+          send_proof: sendProof?.sent_at || record.quote?.sentAt || sendProof?.created_at || null,
+          trello_comment_id: trelloComment?.id || null,
+        },
+      });
+
+      return jsonResponse({
+        ok: true,
+        actionKey,
+        requestId: record.requestId,
+        trelloProjectionRepair: {
+          cardId: trelloCardId,
+          previousName: currentName || null,
+          repairedName: renamed ? repairedName : currentName || null,
+          renamed,
+          addedOfferSentLabel,
+          offerSentLabelId,
+          trelloComment,
+        },
         audit: retryAudit,
         customerCommunicationSent: false,
       });

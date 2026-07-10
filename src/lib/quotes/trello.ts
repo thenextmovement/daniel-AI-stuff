@@ -566,6 +566,40 @@ export async function addTrelloCardComment(input: {
   return (await response.json()) as { id: string };
 }
 
+export type TrelloBoardLabel = {
+  id: string;
+  name?: string | null;
+  color?: string | null;
+};
+
+export async function getTrelloBoardLabels(boardId: string) {
+  return trelloFetch<TrelloBoardLabel[]>(
+    `/boards/${encodeURIComponent(boardId)}/labels?fields=id,name,color&limit=1000`,
+  );
+}
+
+export async function addTrelloCardLabel(input: {
+  cardId: string;
+  labelId: string;
+}) {
+  const { key, token } = trelloConfig();
+  const url = new URL(`https://api.trello.com/1/cards/${encodeURIComponent(input.cardId)}/idLabels`);
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+  url.searchParams.set("value", input.labelId);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Label konnte nicht gesetzt werden: ${response.status}`);
+  }
+
+  return (await response.json().catch(() => ({}))) as { id?: string };
+}
+
 export async function getTrelloBoardCustomFields(boardId: string) {
   return trelloFetch<TrelloCustomField[]>(`/boards/${encodeURIComponent(boardId)}/customFields`);
 }

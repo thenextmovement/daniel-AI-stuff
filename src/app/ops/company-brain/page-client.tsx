@@ -374,7 +374,7 @@ function buildOperatorDecision(result: CompanyBrainResolveResult) {
 }
 
 function buildCaseRoute(result: CompanyBrainResolveResult) {
-  const dataFixPriority = ["correct_customer_email", "prepare_email_correction", "post_trello_status_comment", "create_internal_task", "save_case_note"];
+  const dataFixPriority = ["correct_customer_email", "prepare_email_correction", "repair_trello_projection", "post_trello_status_comment", "create_internal_task", "save_case_note"];
   const dataFix = dataFixPriority
     .map((key) => result.actionProposals.find((action) => action.enabled && action.key === key))
     .find((action): action is CompanyBrainActionProposalView => Boolean(action));
@@ -575,7 +575,7 @@ function buildFailedCardCapability(result: CompanyBrainResolveResult, readyActio
     result.automationRuns.find((run) => !isCompanyBrainFixRun(run)) ||
     null;
   const dataFixAction = readyActions.find((action) =>
-    ["correct_customer_email", "prepare_email_correction", "post_trello_status_comment", "create_internal_task"].includes(action.key),
+    ["correct_customer_email", "prepare_email_correction", "repair_trello_projection", "post_trello_status_comment", "create_internal_task"].includes(action.key),
   ) || null;
   const customerAction = result.actionProposals.find((action) => action.key === "guarded_offer_resend");
   const hasLiveExecution = Boolean(failedAutomation?.executionId && (failedAutomation.issueKey || failedAutomation.failedNode || failedAutomation.error));
@@ -684,7 +684,7 @@ function shortText(value: string | null | undefined, max = 180) {
 
 function actionGroupKey(action: CompanyBrainActionProposalView): CompanyBrainActionGroupKey {
   if (["open_problem_case", "save_case_note", "create_internal_task", "prepare_offer_retry"].includes(action.key)) return "internal";
-  if (["prepare_email_correction", "correct_customer_email", "post_trello_status_comment"].includes(action.key)) return "fix";
+  if (["prepare_email_correction", "correct_customer_email", "post_trello_status_comment", "repair_trello_projection"].includes(action.key)) return "fix";
   if (action.key === "guarded_offer_resend") return "customer";
   return "manual";
 }
@@ -697,6 +697,7 @@ function executableAction(actionKey: string) {
     "prepare_email_correction",
     "correct_customer_email",
     "post_trello_status_comment",
+    "repair_trello_projection",
     "prepare_offer_retry",
     "guarded_offer_resend",
   ].includes(actionKey);
@@ -714,6 +715,7 @@ function actionStateLabel(action: CompanyBrainActionProposalView) {
 function actionButtonLabel(action: CompanyBrainActionProposalView) {
   if (action.key === "guarded_offer_resend") return "Versand freigeben";
   if (action.key === "correct_customer_email") return "E-Mail-Korrektur freigeben";
+  if (action.key === "repair_trello_projection") return "Projektion freigeben";
   if (action.key === "post_trello_status_comment") return "Kommentar freigeben";
   if (action.key === "save_case_note") return "Notiz speichern";
   if (action.key === "open_problem_case") return "Problemfall anlegen";
@@ -726,10 +728,11 @@ function operatorActionPriority(action: CompanyBrainActionProposalView, retrySta
     correct_customer_email: 1,
     prepare_email_correction: 2,
     prepare_offer_retry: 3,
-    post_trello_status_comment: 4,
-    create_internal_task: 5,
-    open_problem_case: 6,
-    save_case_note: 7,
+    repair_trello_projection: 4,
+    post_trello_status_comment: 5,
+    create_internal_task: 6,
+    open_problem_case: 7,
+    save_case_note: 8,
   };
   const riskOffset = action.riskLevel === "low" ? 0.01 : action.riskLevel === "medium" ? 0.02 : 0.03;
   return (priorityByKey[action.key] ?? 20) + riskOffset;
@@ -1262,6 +1265,11 @@ export function OpsCompanyBrainClient({
         blockers?: string[];
         changedTables?: Record<string, number>;
         trelloComment?: { id?: string } | null;
+        trelloProjectionRepair?: {
+          renamed?: boolean;
+          addedOfferSentLabel?: boolean;
+          trelloComment?: { id?: string } | null;
+        } | null;
       } | null;
       if (!response.ok || !payload?.ok) {
         setActionResultMessage(payload?.blockers?.length ? payload.blockers.join(" ") : formatApiError(payload));
@@ -1270,7 +1278,9 @@ export function OpsCompanyBrainClient({
       const created = [
         payload.sent ? (payload.duplicate ? "Versand bereits idempotent vorhanden" : "Angebot erneut gesendet") : null,
         payload.changedTables ? "Kunden-E-Mail aktualisiert" : null,
+        payload.trelloProjectionRepair?.renamed || payload.trelloProjectionRepair?.addedOfferSentLabel ? "Trello-Projektion bereinigt" : null,
         payload.trelloComment?.id ? "Trello-Kommentar geschrieben" : null,
+        payload.trelloProjectionRepair?.trelloComment?.id ? "Trello-Kommentar geschrieben" : null,
         payload.task?.id ? `Aufgabe ${payload.task.id}` : null,
         payload.note?.id ? `Notiz ${payload.note.id}` : null,
         payload.specialCase ? "Problemfall-Audit" : null,

@@ -241,6 +241,7 @@ export type CompanyBrainActionProposal = {
     | "prepare_email_correction"
     | "correct_customer_email"
     | "post_trello_status_comment"
+    | "repair_trello_projection"
     | "prepare_offer_retry"
     | "guarded_offer_resend";
   label: string;
@@ -3686,6 +3687,7 @@ function buildProblemResolution(input: {
 export function buildActionProposals(input: {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
+  crossChecks?: CompanyBrainCrossCheck[];
   evidenceScore: CompanyBrainEvidenceScore;
   problemResolution: CompanyBrainProblemResolution;
   replyDraft: CompanyBrainReplyDraft;
@@ -3724,6 +3726,7 @@ export function buildActionProposals(input: {
   const customerEmailCorrected = latestFixRun("correct_customer_email");
   const offerRetryPrepared = latestFixRun("prepare_offer_retry");
   const trelloStatusPosted = latestFixRun("post_trello_status_comment");
+  const trelloProjectionRepaired = latestFixRun("repair_trello_projection");
   const problemCaseOpened = latestFixRun("open_problem_case");
   const internalTaskCreated = latestFixRun("create_internal_task");
   const guardedRetrySent = companyBrainFixRuns.find((run) =>
@@ -3746,6 +3749,17 @@ export function buildActionProposals(input: {
     }
     return "Erstellt eine interne Retry-Aufgabe mit Belegen, Blockern und Guardrails. Es wird noch nichts gesendet.";
   };
+  const trelloProjectionCheck = (input.crossChecks || []).find((check) => check.key === "trello_projection") || null;
+  const trelloProjectionText = `${trelloProjectionCheck?.summary || ""} ${trelloProjectionCheck?.actual || ""}`;
+  const trelloProjectionRepairAllowed = Boolean(
+    primaryRecord &&
+    trelloCardId &&
+    !trelloProjectionRepaired &&
+    (
+      input.trelloFailureDiagnosis.rootCauseKey === "sent" ||
+      /DB\/Mail: Versandbeleg|Versandbeleg vorhanden|veraltete Trello-Projektion|Tag 'Angebot gesendet' fehlt/i.test(trelloProjectionText)
+    ),
+  );
 
   const actions: CompanyBrainActionProposal[] = [
     {
@@ -3929,6 +3943,28 @@ export function buildActionProposals(input: {
         `Ursache: ${input.trelloFailureDiagnosis.rootCause || input.problemResolution.rootCause}`,
         `Nächster Schritt: ${retry.safeFixes[0] || input.trelloFailureDiagnosis.recommendedFix}`,
       ],
+    },
+    {
+      key: "repair_trello_projection",
+      label: "Trello-Projektion bereinigen",
+      type: "prepared_task",
+      riskLevel: "medium",
+      approvalRequired: true,
+      enabled: trelloProjectionRepairAllowed,
+      summary: trelloProjectionRepaired
+        ? `Trello-Projektion wurde bereits bereinigt.${fixRunSuffix(trelloProjectionRepaired)}`
+        : trelloProjectionRepairAllowed
+          ? "Entfernt nach serverseitigem Versandbeleg-Check einen stale FEHLER-Titel und setzt fehlenden 'Angebot gesendet'-Tag. Kein Kundenkontakt."
+          : "Nur möglich, wenn ein DB-/Mail-Versandbeleg geladen ist und Trello als stale Projektion erkannt wurde.",
+      confirmationText: "Nur Trello-Projektion reparieren; Source of Truth bleibt Kundenakte/Angebot/Outlook/Audit.",
+      href: input.trelloFailureDiagnosis.card?.url || primaryRecord?.trelloCardUrl || null,
+      payloadPreview: [
+        `Karte: ${trelloCardId || "unbekannt"}`,
+        trelloProjectionCheck ? `Befund: ${trelloProjectionCheck.summary}` : "Befund: Trello-Projektion prüfen",
+        primaryOffer?.offerNumber ? `Angebot: ${primaryOffer.offerNumber}` : null,
+        "Server prüft vor Änderung erneut einen Versandbeleg.",
+        "Mögliche Änderung: FEHLER-Prefix entfernen und Tag 'Angebot gesendet' setzen.",
+      ].filter(Boolean) as string[],
     },
     {
       key: "guarded_offer_resend",
@@ -4587,6 +4623,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   const actionProposals = buildActionProposals({
     records: recordSummaries,
     offers: offerSummaries,
+    crossChecks,
     evidenceScore,
     problemResolution,
     replyDraft,
