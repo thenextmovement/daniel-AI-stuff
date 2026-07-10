@@ -105,6 +105,45 @@ test("offer size ladder can extrapolate from flexible anchors without a 250cm qu
   assert.ok(option250!.customerUnitPriceNet > 550 * OFFER_SIZE_LADDER_CUSTOMER_FACTOR);
 });
 
+test("offer size ladder can build a review ladder from only the minimum supplier anchor", async () => {
+  const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
+    Size_1: "100x40cm",
+    Price_1: "300",
+    Product_1: "LED Flex",
+    Color_1: "Color as Logo",
+    Backboard_1: "Cut to Shape",
+  });
+
+  assert.equal(extraction.anchors.length, 1);
+  assert.equal(extraction.anchors[0]?.role, "minimum");
+  assert.equal(extraction.anchors[0]?.widthCm, 100);
+  assert.equal(extraction.anchors[0]?.productionPrice, 135);
+  assert.equal(extraction.anchors[0]?.shippingPrice, 165);
+
+  const result = await generateOfferSizeLadder({
+    trelloCardId: "cardSingleAnchor1",
+    productModel: "neonflex",
+    anchors: extraction.anchors,
+    stepCm: 10,
+    maxLongSideCm: 250,
+  });
+
+  assert.equal(result.status, "needs_review");
+  assert.equal(result.anchorList.length, 1);
+  assert.ok(result.warnings.includes("single_supplier_anchor_pricing_curve_low_confidence"));
+  assert.equal(result.options[0]?.longSideCm, 100);
+  assert.equal(result.options.find((option) => option.longSideCm < 100), undefined);
+  const option100 = result.options.find((option) => option.longSideCm === 100);
+  assert.ok(option100);
+  assert.equal(option100!.isDefault, true);
+  assert.equal(option100!.supplierTotalEstimated, 300);
+  const option120 = result.options.find((option) => option.longSideCm === 120);
+  assert.ok(option120);
+  assert.equal(option120!.reviewStatus, "needs_review");
+  assert.ok(option120!.issues.includes("single_anchor_estimated_size"));
+  assert.ok(option120!.supplierTotalEstimated > 300);
+});
+
 test("offer size ladder uses the 2.3 customer factor", async () => {
   const result = await generateOfferSizeLadder({
     trelloCardId: "https://trello.com/c/cardFactor1/example",
