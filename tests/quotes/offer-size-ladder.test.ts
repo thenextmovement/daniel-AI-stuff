@@ -15,8 +15,36 @@ import {
   listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
   resolveQuoteReadyOfferStructure,
+  validateOfferItemsJsonProjection,
 } from "../../src/lib/ops/offer-size-ladder";
 import { OpsOfferApiError } from "../../src/lib/ops/offers";
+
+test("offer_items_json projection validator accepts an omitted or open max quantity", () => {
+  const baseItem = {
+    section: "LED-Leuchtschild",
+    title: "Leuchtschild Design",
+    quantity: 1,
+    customerUnitPriceNet: 355,
+    minQuantity: 1,
+  };
+
+  assert.equal(validateOfferItemsJsonProjection(JSON.stringify([baseItem])).length, 1);
+  assert.equal(validateOfferItemsJsonProjection(JSON.stringify([{ ...baseItem, maxQuantity: null }])).length, 1);
+});
+
+test("offer_items_json projection validator rejects invalid quantity limits with the item path", () => {
+  assert.throws(
+    () => validateOfferItemsJsonProjection(JSON.stringify([{
+      section: "LED-Leuchtschild",
+      title: "Leuchtschild Design",
+      quantity: 1,
+      customerUnitPriceNet: 355,
+      minQuantity: 1,
+      maxQuantity: 0,
+    }])),
+    /Angebotsposition 1: maxQuantity/,
+  );
+});
 
 test("offer size ladder extracts three anchors from Trello Size Production Shipping fields", () => {
   const extraction = extractOfferSizeLadderAnchorsFromTrelloFields({
@@ -267,7 +295,7 @@ test("quote ready preflight groups two Neonflex source mockups with one anchor p
   assert.equal(items.some((item) => item.title === "Leuchtschild Design 1"), true);
   assert.equal(items.some((item) => item.title === "Leuchtschild Design 2"), true);
   assert.equal(items.every((item) => item.quantityEditable === true), true);
-  assert.equal(items.every((item) => item.maxQuantity === null), true);
+  assert.equal(items.every((item) => item.maxQuantity === undefined), true);
 });
 
 test("quote ready structure uses one source mockup per Neon design and two for every paired sign type", () => {

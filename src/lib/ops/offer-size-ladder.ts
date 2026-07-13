@@ -977,6 +977,95 @@ export function applyOfferSizeLadderOptionOverrides(
   };
 }
 
+export function validateOfferItemsJsonProjection(value: string) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new QuoteValidationError("Trello offer_items_json ist kein gültiges JSON.", ["offer_items_json"], 422);
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new QuoteValidationError("Trello offer_items_json muss mindestens eine Angebotsposition enthalten.", ["offer_items_json"], 422);
+  }
+  if (parsed.length > OFFER_SIZE_LADDER_MAX_OFFER_ITEMS) {
+    throw new QuoteValidationError(
+      `Trello offer_items_json enthält ${parsed.length} Positionen, erlaubt sind maximal ${OFFER_SIZE_LADDER_MAX_OFFER_ITEMS}.`,
+      ["offer_items_json"],
+      422,
+    );
+  }
+
+  const requireText = (item: Record<string, unknown>, index: number, field: "section" | "title") => {
+    if (typeof item[field] !== "string" || !item[field].trim()) {
+      throw new QuoteValidationError(
+        `Angebotsposition ${index + 1}: ${field} fehlt.`,
+        [`items.${index}.${field}`],
+        422,
+      );
+    }
+  };
+  const optionalPositiveInt = (item: Record<string, unknown>, index: number, field: "minQuantity" | "maxQuantity") => {
+    const fieldValue = item[field];
+    if (fieldValue === undefined || fieldValue === null) return undefined;
+    if (!Number.isInteger(fieldValue) || Number(fieldValue) < 1 || Number(fieldValue) > 999) {
+      throw new QuoteValidationError(
+        `Angebotsposition ${index + 1}: ${field} muss eine ganze Zahl zwischen 1 und 999 sein.`,
+        [`items.${index}.${field}`],
+        422,
+      );
+    }
+    return Number(fieldValue);
+  };
+
+  parsed.forEach((rawItem, index) => {
+    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+      throw new QuoteValidationError(
+        `Angebotsposition ${index + 1} ist kein gültiges Objekt.`,
+        [`items.${index}`],
+        422,
+      );
+    }
+    const item = rawItem as Record<string, unknown>;
+    requireText(item, index, "section");
+    requireText(item, index, "title");
+    if (!Number.isInteger(item.quantity) || Number(item.quantity) < 1 || Number(item.quantity) > 999) {
+      throw new QuoteValidationError(
+        `Angebotsposition ${index + 1}: quantity muss eine ganze Zahl zwischen 1 und 999 sein.`,
+        [`items.${index}.quantity`],
+        422,
+      );
+    }
+    const unitPrice = item.customerUnitPriceNet ?? item.unitPriceNet;
+    if (typeof unitPrice !== "number" || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) {
+      throw new QuoteValidationError(
+        `Angebotsposition ${index + 1}: customerUnitPriceNet ist ungültig.`,
+        [`items.${index}.customerUnitPriceNet`],
+        422,
+      );
+    }
+    for (const field of ["selectable", "selectedByDefault", "quantityEditable"] as const) {
+      if (item[field] !== undefined && typeof item[field] !== "boolean") {
+        throw new QuoteValidationError(
+          `Angebotsposition ${index + 1}: ${field} muss boolean sein.`,
+          [`items.${index}.${field}`],
+          422,
+        );
+      }
+    }
+    const minQuantity = optionalPositiveInt(item, index, "minQuantity");
+    const maxQuantity = optionalPositiveInt(item, index, "maxQuantity");
+    if (minQuantity !== undefined && maxQuantity !== undefined && minQuantity > maxQuantity) {
+      throw new QuoteValidationError(
+        `Angebotsposition ${index + 1}: minQuantity darf nicht größer als maxQuantity sein.`,
+        [`items.${index}.minQuantity`, `items.${index}.maxQuantity`],
+        422,
+      );
+    }
+  });
+
+  return parsed as Array<Record<string, unknown>>;
+}
+
 function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSizeLadderResult) {
   const options = result.options
     .filter((option) => option.reviewStatus !== "blocked")
@@ -1009,7 +1098,6 @@ function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSi
     selectedByDefault: option === defaultOption,
     quantityEditable: true,
     minQuantity: 1,
-    maxQuantity: null,
     sizeLadder: {
       source: "ops_price_review",
       modelKey: option.modelKey,
@@ -1056,6 +1144,7 @@ async function projectOfferSizeLadderToTrello(card: TrelloCardData, result: Offe
   }
 
   const value = offerItemsJsonForTrelloProjection(card, result);
+  validateOfferItemsJsonProjection(value);
   await updateTrelloCustomField({
     cardId: card.id,
     fieldId: field.id,
@@ -1310,7 +1399,6 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
         selectedByDefault: option === defaultOption,
         quantityEditable: true,
         minQuantity: 1,
-        maxQuantity: null,
         sizeLadder: {
           source: "ops_quote_ready_preflight",
           designId: design.designId,
@@ -1371,6 +1459,7 @@ async function projectQuoteReadySizeLadderToTrello(card: TrelloCardData, result:
   }
 
   const value = result.offerItemsJson || publicOfferItemsForQuoteReadyPreflight(card, result);
+  validateOfferItemsJsonProjection(value);
   await updateTrelloCustomField({
     cardId: card.id,
     fieldId: field.id,
