@@ -8,6 +8,7 @@ import {
   applyOfferSizeLadderOptionOverrides,
   buildOfferSizeLadderOfferPatch,
   buildQuoteReadySizeLadderPreflightFromTrelloCard,
+  classifyManualReleaseSizeLadderPreflight,
   extractOfferSizeLadderAnchorsFromTrelloFields,
   formatQuoteReadySizeLadderPreflightComment,
   generateOfferSizeLadder,
@@ -496,6 +497,11 @@ test("quote ready preflight marks uneven anchor grouping for review", async () =
   assert.equal(result.status, "needs_review");
   assert.ok(result.warnings.includes("anchor_count_not_evenly_divisible_by_design_count"));
   assert.deepEqual(result.designs.map((design) => design.anchorFieldIndexes), [[1, 2], [3]]);
+
+  const release = classifyManualReleaseSizeLadderPreflight(result);
+  assert.equal(release.decision, "blocked");
+  assert.equal(release.reason, "technical_size_ladder_validation_failed");
+  assert.ok(release.technicalIssues.includes("anchor_count_not_evenly_divisible_by_design_count"));
 });
 
 test("quote ready preflight blocks unsupported full glow and missing source mockups", async () => {
@@ -520,6 +526,7 @@ test("quote ready preflight blocks unsupported full glow and missing source mock
   });
   assert.equal(fullGlow.status, "blocked");
   assert.ok(fullGlow.issues.includes("design_1:full_glow_not_supported_for_neonflex_ladder"));
+  assert.equal(classifyManualReleaseSizeLadderPreflight(fullGlow).decision, "skipped");
 
   const missingMockups = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
     id: "cardQuoteReadyMissingMockups",
@@ -539,6 +546,56 @@ test("quote ready preflight blocks unsupported full glow and missing source mock
   assert.equal(missingMockups.status, "blocked");
   assert.ok(missingMockups.issues.includes("source_mockups_missing"));
   assert.equal(missingMockups.offerItemsJson, null);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(missingMockups).decision, "blocked");
+});
+
+test("manual Trello move approves Neonflex review warnings without consulting QC labels", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardManualReleaseWarning",
+    idBoard: "board-1",
+    name: "LED Flex manual release",
+    customFields: {
+      Size_1: "100x50cm",
+      Price_1: "300",
+      Product_1: "LED Flex",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "cardManualReleaseWarning",
+    maxLongSideCm: 120,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.status, "needs_review");
+  const release = classifyManualReleaseSizeLadderPreflight(result);
+  assert.equal(release.decision, "ready");
+  assert.equal(release.reason, "manual_move_approved_review_warnings");
+  assert.ok(release.ignoredReviewWarnings.some((warning) => warning.includes("single_supplier_anchor")));
+});
+
+test("manual Trello move skips UV-print Neon and leaves the existing offer flow unchanged", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardManualReleaseUvPrint",
+    idBoard: "board-1",
+    name: "LED Flex UV Print Inside",
+    customFields: {
+      Size_1: "100x50cm",
+      Price_1: "300",
+      Product_1: "LED Flex UV Print",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "cardManualReleaseUvPrint",
+    maxLongSideCm: 120,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.designs[0]?.productModel, "uv_print");
+  const release = classifyManualReleaseSizeLadderPreflight(result);
+  assert.equal(release.decision, "skipped");
+  assert.equal(release.reason, "non_standard_neon_product_uses_existing_offer_flow");
 });
 
 test("quote ready preflight comment exposes status and grouping", async () => {
@@ -565,7 +622,7 @@ test("quote ready preflight comment exposes status and grouping", async () => {
   assert.match(comment, /Design 1: 1 Anker \(1\)/);
 });
 
-test("quote ready size ladder route accepts scoped internal automation keys", async () => {
+test("quote ready size ladder routes accept scoped internal automation keys", async () => {
   const originalFetch = globalThis.fetch;
   const originalOpsKey = process.env.OPS_INTERNAL_API_KEY;
   const originalSupplierToken = process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN;
@@ -626,6 +683,30 @@ test("quote ready size ladder route accepts scoped internal automation keys", as
     assert.equal(body.ok, true);
     assert.equal(body.quoteReadySizeLadder.trelloCardId, "cardRouteQuoteReady");
     assert.equal(body.quoteReadySizeLadder.sourceMockupCount, 1);
+
+    const releaseResponse = await pricePredictionsPOST(new NextRequest("https://ops.neontrip.de/api/ops/customer-records/price-predictions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer ops-internal-route-key",
+      },
+      body: JSON.stringify({
+        action: "ensure_manual_release_size_ladder",
+        quoteReadySizeLadder: {
+          trelloCard: "cardRouteQuoteReady",
+          maxLongSideCm: 120,
+          persist: false,
+          projectToTrello: false,
+        },
+      }),
+    }));
+    const releaseBody = await releaseResponse.json();
+    assert.equal(releaseResponse.status, 200);
+    assert.equal(releaseBody.ok, true);
+    assert.equal(releaseBody.manualReleaseSizeLadder.decision, "ready");
+    assert.equal(releaseBody.manualReleaseSizeLadder.manuallyApproved, true);
+    assert.equal(releaseBody.manualReleaseSizeLadder.offerItemsProjected, false);
+    assert.ok(releaseBody.manualReleaseSizeLadder.optionCount > 0);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalOpsKey === undefined) delete process.env.OPS_INTERNAL_API_KEY;

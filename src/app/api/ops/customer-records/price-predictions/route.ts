@@ -21,6 +21,7 @@ import {
   applyOfferSizeLadderToOffer,
   generateOfferSizeLadder,
   generateOfferSizeLadderFromTrello,
+  ensureManualReleaseSizeLadder,
   listOfferSizeLadderDrafts,
   prepareQuoteReadySizeLadderPreflight,
   type OfferSizeLadderAnchorInput,
@@ -96,7 +97,7 @@ function hasSupplierPriceReviewAutomationAccess(request: NextRequest, bodyToken?
 }
 
 function hasQuoteReadySizeLadderAutomationAccess(request: NextRequest, bodyToken?: string | null, action?: string | null) {
-  if (action !== "prepare_quote_ready_size_ladder") return false;
+  if (!isQuoteReadySizeLadderAutomationAction(action)) return false;
   const candidate = getAutomationToken(request, bodyToken);
   if (!candidate) return false;
   return [
@@ -110,38 +111,6 @@ function hasQuoteReadySizeLadderAutomationAccess(request: NextRequest, bodyToken
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .some((expected) => tokenMatches(candidate, expected));
-}
-
-function quoteReadyAuthProbe(request: NextRequest, bodyToken?: string | null, action?: string | null) {
-  if (action !== "prepare_quote_ready_size_ladder") return null;
-  const enabled =
-    request.headers.get("x-quote-ready-auth-probe") === "1" ||
-    request.nextUrl.searchParams.get("quoteReadyAuthProbe") === "1";
-  if (!enabled) return null;
-  const candidate = getAutomationToken(request, bodyToken);
-  const expectedTokens = [
-    ["SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN", process.env.SUPPLIER_PRICE_REVIEW_AGENT_API_TOKEN],
-    ["OPS_INTERNAL_API_KEY", process.env.OPS_INTERNAL_API_KEY],
-    ["QUOTE_INTERNAL_API_TOKEN", process.env.QUOTE_INTERNAL_API_TOKEN],
-    ["SUPPLIER_SALES_AGENT_API_TOKEN", process.env.SUPPLIER_SALES_AGENT_API_TOKEN],
-    ["NEONTRIP_OFFERS_INTERNAL_API_KEY", process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY],
-    ["QUOTE_READY_SIZE_LADDER_AGENT_API_TOKEN", process.env.QUOTE_READY_SIZE_LADDER_AGENT_API_TOKEN],
-  ].map(([key, rawValue]) => {
-    const value = String(rawValue || "").trim();
-    return {
-      key,
-      present: Boolean(value),
-      length: value.length,
-      digestPrefix: value ? digest(value).slice(0, 12) : null,
-      matchesCandidate: Boolean(candidate && value && tokenMatches(candidate, value)),
-    };
-  });
-  return {
-    candidatePresent: Boolean(candidate),
-    candidateLength: String(candidate || "").trim().length,
-    candidateDigestPrefix: candidate ? digest(candidate).slice(0, 12) : null,
-    expectedTokens,
-  };
 }
 
 function trimNullable(value: string | null | undefined) {
@@ -171,7 +140,11 @@ function getAutomationActor(request: NextRequest, operatorName?: string | null):
 }
 
 function isPricePredictionRouteAutomationAction(action: string | null | undefined) {
-  return isSupplierPricePredictionAutomationAction(action) || action === "prepare_quote_ready_size_ladder";
+  return isSupplierPricePredictionAutomationAction(action) || isQuoteReadySizeLadderAutomationAction(action);
+}
+
+function isQuoteReadySizeLadderAutomationAction(action: string | null | undefined) {
+  return action === "prepare_quote_ready_size_ladder" || action === "ensure_manual_release_size_ladder";
 }
 
 export async function GET(request: NextRequest) {
@@ -209,6 +182,7 @@ export async function POST(request: NextRequest) {
           | "generate_offer_size_ladder"
           | "generate_offer_size_ladder_from_trello"
           | "prepare_quote_ready_size_ladder"
+          | "ensure_manual_release_size_ladder"
           | "apply_offer_size_ladder_to_offer"
           | "list_offer_size_ladder_drafts"
           | "import_trello_training_candidates";
@@ -396,8 +370,6 @@ export async function POST(request: NextRequest) {
       ? getAutomationActor(request, body?.operatorName || null)
       : null);
   if (!actor) {
-    const authProbe = quoteReadyAuthProbe(request, body?.agentToken || null, body?.action);
-    if (authProbe) return NextResponse.json({ ok: false, error: "unauthorized", authProbe }, { status: 401 });
     return unauthorized();
   }
 
@@ -554,6 +526,26 @@ export async function POST(request: NextRequest) {
         commentToTrello: input.commentToTrello === true,
       });
       return NextResponse.json({ ok: true, quoteReadySizeLadder });
+    }
+
+    if (body?.action === "ensure_manual_release_size_ladder") {
+      const input = body.quoteReadySizeLadder || {};
+      const manualReleaseSizeLadder = await ensureManualReleaseSizeLadder({
+        trelloCard: String(input.trelloCard || ""),
+        offerId: trimNullable(input.offerId),
+        offerItemId: trimNullable(input.offerItemId),
+        designId: trimNullable(input.designId),
+        productModel: trimNullable(input.productModel) as OfferSizeLadderProductModel | null,
+        sourceText: trimNullable(input.sourceText),
+        stepCm: input.stepCm === null || input.stepCm === undefined ? undefined : Number(input.stepCm),
+        maxLongSideCm: input.maxLongSideCm === null || input.maxLongSideCm === undefined ? undefined : Number(input.maxLongSideCm),
+        customerFactor: input.customerFactor === null || input.customerFactor === undefined ? undefined : Number(input.customerFactor),
+        createdBy: actor.operatorName || actor.mode,
+        persist: input.persist !== false,
+        projectToTrello: input.projectToTrello !== false,
+        commentToTrello: false,
+      });
+      return NextResponse.json({ ok: true, manualReleaseSizeLadder });
     }
 
     if (body?.action === "apply_offer_size_ladder_to_offer") {

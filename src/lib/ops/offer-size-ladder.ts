@@ -277,6 +277,22 @@ export type QuoteReadySizeLadderPreflightResult = {
   } | null;
 };
 
+export type ManualReleaseSizeLadderDecision = "ready" | "skipped" | "blocked";
+
+export type ManualReleaseSizeLadderResult = {
+  decision: ManualReleaseSizeLadderDecision;
+  reason: string;
+  manuallyApproved: true;
+  trelloCardId: string;
+  structureProductType: QuoteReadyOfferStructureProductType;
+  productModels: OfferSizeLadderProductModel[];
+  technicalIssues: string[];
+  ignoredReviewWarnings: string[];
+  offerItemsProjected: boolean;
+  optionCount: number;
+  quoteReadySizeLadder: QuoteReadySizeLadderPreflightResult;
+};
+
 export type OfferSizeLadderOfferApplyInput = OfferSizeLadderTrelloGenerateInput & {
   anchors?: OfferSizeLadderAnchorInput[];
   trelloCardId?: string | null;
@@ -1666,6 +1682,116 @@ export async function prepareQuoteReadySizeLadderPreflight(input: QuoteReadySize
   if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
   const card = await getTrelloCard(trelloCardId);
   return buildQuoteReadySizeLadderPreflightFromTrelloCard(card, input);
+}
+
+export function classifyManualReleaseSizeLadderPreflight(
+  preflight: QuoteReadySizeLadderPreflightResult,
+): Pick<ManualReleaseSizeLadderResult, "decision" | "reason" | "productModels" | "technicalIssues" | "ignoredReviewWarnings"> {
+  const productModels = [...new Set(preflight.designs.map((design) => design.productModel))];
+  if (preflight.structureProductType !== "neon") {
+    return {
+      decision: "skipped",
+      reason: "special_product_uses_existing_offer_flow",
+      productModels,
+      technicalIssues: [],
+      ignoredReviewWarnings: preflight.warnings,
+    };
+  }
+  if (productModels.some((model) => model !== "neonflex")) {
+    return {
+      decision: "skipped",
+      reason: "non_standard_neon_product_uses_existing_offer_flow",
+      productModels,
+      technicalIssues: [],
+      ignoredReviewWarnings: preflight.warnings,
+    };
+  }
+
+  const technicalIssues = [...preflight.issues];
+  if (
+    preflight.expectedDesignCount > 1
+    && preflight.warnings.includes("anchor_count_not_evenly_divisible_by_design_count")
+  ) {
+    technicalIssues.push("anchor_count_not_evenly_divisible_by_design_count");
+  }
+  if (!preflight.designs.length && !technicalIssues.length) technicalIssues.push("size_ladder_designs_missing");
+  if (!preflight.offerItemsJson && !technicalIssues.length) technicalIssues.push("offer_items_json_missing");
+
+  if (technicalIssues.length) {
+    return {
+      decision: "blocked",
+      reason: "technical_size_ladder_validation_failed",
+      productModels,
+      technicalIssues: [...new Set(technicalIssues)],
+      ignoredReviewWarnings: preflight.warnings.filter((warning) => !technicalIssues.includes(warning)),
+    };
+  }
+
+  return {
+    decision: "ready",
+    reason: preflight.status === "needs_review"
+      ? "manual_move_approved_review_warnings"
+      : "manual_move_approved",
+    productModels,
+    technicalIssues: [],
+    ignoredReviewWarnings: preflight.warnings,
+  };
+}
+
+export async function ensureManualReleaseSizeLadder(
+  input: QuoteReadySizeLadderPreflightInput,
+): Promise<ManualReleaseSizeLadderResult> {
+  const trelloCardId = normalizeTrelloCardIdentifier(input.trelloCard);
+  if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
+  const card = await getTrelloCard(trelloCardId);
+  const quoteReadySizeLadder = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card, {
+    ...input,
+    trelloCard: input.trelloCard,
+    projectToTrello: false,
+    commentToTrello: false,
+  });
+  const classification = classifyManualReleaseSizeLadderPreflight(quoteReadySizeLadder);
+  let offerItemsProjected = false;
+  let optionCount = 0;
+
+  if (classification.decision === "ready" && input.projectToTrello !== false) {
+    try {
+      const projection = await projectQuoteReadySizeLadderToTrello(card, quoteReadySizeLadder);
+      quoteReadySizeLadder.trelloProjection = projection;
+      offerItemsProjected = projection.written;
+      optionCount = projection.optionCount;
+      if (!projection.written) {
+        classification.decision = "blocked";
+        classification.reason = "trello_offer_items_json_projection_failed";
+        classification.technicalIssues = [projection.error || "trello_offer_items_json_projection_failed"];
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Trello offer_items_json Projektion fehlgeschlagen.";
+      quoteReadySizeLadder.trelloProjection = {
+        written: false,
+        fieldName: "offer_items_json",
+        optionCount: 0,
+        error: message,
+      };
+      classification.decision = "blocked";
+      classification.reason = "trello_offer_items_json_projection_failed";
+      classification.technicalIssues = ["trello_offer_items_json_projection_failed"];
+    }
+  } else if (classification.decision === "ready") {
+    optionCount = quoteReadySizeLadder.offerItemsJson
+      ? validateOfferItemsJsonProjection(quoteReadySizeLadder.offerItemsJson).length
+      : 0;
+  }
+
+  return {
+    ...classification,
+    manuallyApproved: true,
+    trelloCardId,
+    structureProductType: quoteReadySizeLadder.structureProductType,
+    offerItemsProjected,
+    optionCount,
+    quoteReadySizeLadder,
+  };
 }
 
 export function detectOfferSizeLadderProductModel(text: string): OfferSizeLadderProductModel {
