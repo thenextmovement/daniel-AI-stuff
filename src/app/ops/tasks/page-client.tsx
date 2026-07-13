@@ -458,7 +458,7 @@ export function OpsTasksClient({
         <section className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
           <form onSubmit={createTask} className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-700 text-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-600 text-white">
                 <Plus className="h-5 w-5" />
               </div>
               <div>
