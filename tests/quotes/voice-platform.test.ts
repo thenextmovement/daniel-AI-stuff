@@ -287,6 +287,7 @@ test("OpenAI ingress is replay-gated and receives a privacy-preserving safety id
 test("runtime recovery uses immutable attempt snapshots and admin audit actors are server-derived", () => {
   const data = readFileSync("src/lib/ops/voice-platform-data.ts", "utf8");
   const route = readFileSync("src/app/api/ops/voice-platform/route.ts", "utf8");
+  const panel = readFileSync("src/app/ops/voice-copilot/voice-platform-panel.tsx", "utf8");
   assert.match(data, /const modelSnapshot = attempt\.model_snapshot/);
   assert.match(data, /const promptSnapshot = attempt\.prompt_snapshot/);
   assert.match(data, /instructionsTemplate: requireVoiceText\(promptSnapshot\.instructions_template/);
@@ -297,4 +298,6 @@ test("runtime recovery uses immutable attempt snapshots and admin audit actors a
   assert.match(data, /internal_test_allowlist_required/);
   assert.match(route, /resolveVoiceCopilotActor\(request\)/);
   assert.match(route, /\{ \.\.\.input, actor \}/);
+  assert.match(panel, /option value="internal_test_authorization">Interne Testfreigabe/);
+  assert.doesNotMatch(panel, /!allowPhone \|\| operatorName\.length/);
 });
