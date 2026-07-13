@@ -167,6 +167,14 @@ test("migration contains atomic claims, hard kill switches and private storage d
   assert.match(sql, /revoke all on table public\.%I from public, anon, authenticated/);
 });
 
+test("prompt approval migration qualifies output-column names", () => {
+  const sql = readFileSync("supabase/migrations/20260713180317_fix_voice_prompt_approval_ambiguity.sql", "utf8");
+  assert.match(sql, /update public\.voice_prompt_versions as prompt/);
+  assert.match(sql, /prompt\.status = 'approved'/);
+  assert.match(sql, /audit\.idempotency_key = p_idempotency_key/);
+  assert.doesNotMatch(sql, /where mode = v_mode and status = 'approved'/);
+});
+
 test("n8n voice workflows are separate, inactive and leave payment reminder untouched", () => {
   const files = ["voice-call-dispatcher-v1.json", "voice-outcome-processor-v1.json", "voice-failure-retry-processor-v1.json"];
   const workflows = files.map((file) => JSON.parse(readFileSync(`n8n/workflows/${file}`, "utf8")) as { active: boolean; nodes: Array<{ type: string }> });
