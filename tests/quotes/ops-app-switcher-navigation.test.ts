@@ -6,6 +6,7 @@ test("ops app switcher exposes the complete internal software menu", () => {
   const source = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
   const expectedLabels = [
     "Kundenakte",
+    "Voice Copilot",
     "Schildgrößen & Preise",
     "Anrufe",
     "Aufgaben",
@@ -19,6 +20,7 @@ test("ops app switcher exposes the complete internal software menu", () => {
   ];
   const expectedHrefs = [
     "/ops/customer-records",
+    "/ops/voice-copilot",
     "/ops/customer-records/price-review",
     "/ops/customer-records/calls",
     "/ops/tasks",

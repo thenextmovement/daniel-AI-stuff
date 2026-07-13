@@ -1,0 +1,25 @@
+import { headers } from "next/headers";
+import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
+import { VoiceCopilotClient } from "./page-client";
+
+export const metadata = {
+  title: "Voice Copilot - NEONTRIP Ops",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
+
+export default async function VoiceCopilotPage() {
+  const headerStore = await headers();
+  const host = headerStore.get("x-forwarded-host") || headerStore.get("host");
+  const opsEnabled = isOpsPortalConfigured(host);
+  const localMode = isOpsPortalBypassed(host);
+
+  return (
+    <VoiceCopilotClient
+      initialHasSession={opsEnabled ? await hasOpsSession(host, headerStore) : false}
+      opsEnabled={opsEnabled}
+      localMode={localMode}
+    />
+  );
+}

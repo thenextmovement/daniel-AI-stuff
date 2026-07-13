@@ -1,10 +1,11 @@
 "use client";
 
 import { useId, useState } from "react";
-import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Menu, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
+import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Headphones, Menu, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound, X } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
+  | "voiceCopilot"
   | "priceReview"
   | "calls"
   | "tasks"
@@ -34,6 +35,13 @@ const OPS_APPS: Array<{
     helper: "Suche & Fallarbeit",
     href: "/ops/customer-records",
     Icon: UsersRound,
+  },
+  {
+    key: "voiceCopilot",
+    label: "Voice Copilot",
+    helper: "Live-Hilfe & Wissen",
+    href: "/ops/voice-copilot",
+    Icon: Headphones,
   },
   {
     key: "priceReview",
