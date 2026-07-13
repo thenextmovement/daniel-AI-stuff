@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  buildOutboundVoiceInstructions, buildRealtimeVoiceTools, buildVoiceConsentEvidence,
-  normalizePhoneE164, parseVoiceOutcome, sanitizeVoiceEventPayload,
+  buildInternalVoiceSandboxContext, buildOutboundVoiceInstructions, buildRealtimeVoiceTools, buildVoiceConsentEvidence,
+  isInternalVoiceSandboxRequest, normalizePhoneE164, parseVoiceOutcome, sanitizeVoiceEventPayload,
 } from "../../src/lib/ops/voice-platform-contract";
 import { VOICE_EVAL_SCENARIOS, VOICE_MODEL_COMPARISON_IDS, validateVoiceEvalSuite } from "../../src/lib/ops/voice-platform-evals";
 import { bearerMatches, signAttemptBinding, verifyAttemptBinding, verifyTwilioSignature } from "../../services/voice-runtime/security";
@@ -36,6 +36,23 @@ test("outbound prompt discloses digital assistant after permission and blocks co
   assert.match(instructions, /KI-gestuetzter digitaler Telefonassistent[\s\S]+erst dann mit inhaltlicher Qualifikation/);
   assert.match(instructions, /Keine Preise, Rabatte, Liefertermine/);
   assert.match(instructions, /untrusted customer data/);
+});
+
+test("internal sandbox context is explicit and cannot masquerade as a customer inquiry", () => {
+  const requestId = "internal-test:00000000-0000-4000-8000-000000000042";
+  assert.equal(isInternalVoiceSandboxRequest(requestId, true), true);
+  assert.equal(isInternalVoiceSandboxRequest(requestId, false), false);
+  assert.equal(isInternalVoiceSandboxRequest("REQ-42", true), false);
+  const context = buildInternalVoiceSandboxContext({ requestId, contactName: "Daniel", companyName: null });
+  const instructions = buildOutboundVoiceInstructions({
+    mode: "lead_qualification",
+    instructionsTemplate: "Teste die Sprachqualitaet.",
+    context,
+    knowledgeMatches: [],
+  });
+  assert.match(instructions, /internen Testanruf freigegeben/);
+  assert.match(instructions, /Behaupte nicht, dass eine Kundenanfrage oder ein Angebot vorliegt/);
+  assert.doesNotMatch(instructions, /Sie hatten bei uns wegen \[Anfrage\] angefragt/);
 });
 
 test("only the seven bounded tools are exposed", () => {
@@ -235,6 +252,8 @@ test("OpenAI ingress is replay-gated and receives a privacy-preserving safety id
   assert.match(realtime, /setTimeout\(\(\) => void this\.finishCustomerStop\(active\), 5_000\)/);
   assert.match(realtime, /active\.lastOutcome = active\.lastOutcome\?\.customerRequestedStop/);
   assert.match(realtime, /active\.lastOutcome = \{[\s\S]+terminalStatus: "handed_off"/);
+  assert.match(realtime, /INTERNAL_TEST_OPENING_INSTRUCTION/);
+  assert.match(realtime, /Behaupte nicht, dass eine Kundenanfrage oder ein Angebot vorliegt/);
   assert.match(realtime, /throw new Error\("invalid realtime event JSON"\)/);
   assert.doesNotMatch(server, /catch\(\(\) => undefined\)/);
 });
@@ -248,6 +267,8 @@ test("runtime recovery uses immutable attempt snapshots and admin audit actors a
   assert.match(data, /production_model_confirmation_required/);
   assert.match(data, /PROVIDER GEPRUEFT KEIN CALL/);
   assert.match(data, /consent_withdrawn/);
+  assert.match(data, /internal_test_authorization/);
+  assert.match(data, /internal_test_allowlist_required/);
   assert.match(route, /resolveVoiceCopilotActor\(request\)/);
   assert.match(route, /\{ \.\.\.input, actor \}/);
 });

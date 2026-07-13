@@ -13,12 +13,20 @@ type ActiveCall = {
   finalized: boolean;
   openingText: string;
   openingAttempts: number;
+  openingInstruction: string;
   disclosureConfirmed: boolean;
   hangupAfterResponse: boolean;
   stopTimer: ReturnType<typeof setTimeout> | null;
 };
 
-const OPENING_INSTRUCTION = "Beginne jetzt exakt in dieser Reihenfolge und in einem Sprechzug: Identifiziere dich als Nia von NEONTRIP, nenne den konkreten Anfrage- oder Angebotsbezug, frage 'Passt es gerade kurz?' und sage direkt danach 'Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent'. Beginne erst danach mit der Qualifikation oder dem Follow-up.";
+const CUSTOMER_OPENING_INSTRUCTION = "Beginne jetzt exakt in dieser Reihenfolge und in einem Sprechzug: Identifiziere dich als Nia von NEONTRIP, nenne den konkreten Anfrage- oder Angebotsbezug, frage 'Passt es gerade kurz?' und sage direkt danach 'Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent'. Beginne erst danach mit der Qualifikation oder dem Follow-up.";
+const INTERNAL_TEST_OPENING_INSTRUCTION = "Beginne jetzt exakt in dieser Reihenfolge und in einem Sprechzug: Identifiziere dich als Nia von NEONTRIP, sage dass dieser interne Testanruf freigegeben wurde, frage 'Passt es gerade kurz?' und sage direkt danach 'Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent'. Behaupte nicht, dass eine Kundenanfrage oder ein Angebot vorliegt.";
+
+function openingInstruction(session: Pick<RuntimeSession, "requestId" | "allowlistOnly">) {
+  return session.allowlistOnly && /^internal-test:/i.test(session.requestId)
+    ? INTERNAL_TEST_OPENING_INSTRUCTION
+    : CUSTOMER_OPENING_INSTRUCTION;
+}
 
 function containsAssistantDisclosure(value: string) {
   return /digital(?:er|en)?\s+telefonassistent|ki[- ]?(?:telefon|sprach)?assistent/i.test(value);
@@ -52,12 +60,12 @@ export class OpenAiRealtimeAdapter {
       tracing: null,
     }, { headers: { "OpenAI-Safety-Identifier": session.safetyIdentifier } });
     await this.ops.updateAttempt(attemptId, { openAiCallId: callId, status: "live" });
-    await this.connectSideband(callId, attemptId, session.safetyIdentifier, false);
+    await this.connectSideband(callId, attemptId, session.safetyIdentifier, false, openingInstruction(session));
   }
 
   async recoverCall(session: Extract<RecoveredRuntimeSession, { recoveryAction: "reconnect" }>) {
     if (!session.openAiCallId || this.calls.has(session.openAiCallId)) return false;
-    await this.connectSideband(session.openAiCallId, session.attemptId, session.safetyIdentifier, session.disclosureConfirmed);
+    await this.connectSideband(session.openAiCallId, session.attemptId, session.safetyIdentifier, session.disclosureConfirmed, openingInstruction(session));
     return true;
   }
 
@@ -110,7 +118,7 @@ export class OpenAiRealtimeAdapter {
     }
   }
 
-  private async connectSideband(callId: string, attemptId: string, safetyIdentifier: string, disclosureConfirmed: boolean) {
+  private async connectSideband(callId: string, attemptId: string, safetyIdentifier: string, disclosureConfirmed: boolean, firstTurnInstruction: string) {
     const socket = new WebSocket(`wss://api.openai.com/v1/realtime?call_id=${encodeURIComponent(callId)}`, {
       headers: {
         authorization: `Bearer ${this.config.openAiApiKey}`,
@@ -119,6 +127,7 @@ export class OpenAiRealtimeAdapter {
     });
     const active: ActiveCall = {
       attemptId, callId, socket, lastOutcome: null, finalized: false, openingText: "", openingAttempts: 1,
+      openingInstruction: firstTurnInstruction,
       disclosureConfirmed, hangupAfterResponse: false, stopTimer: null,
     };
     this.calls.set(callId, active);
@@ -126,7 +135,7 @@ export class OpenAiRealtimeAdapter {
     socket.on("open", () => {
       void this.ops.event(attemptId, "runtime", "sideband.connected", `sideband-open:${callId}`, { call_id: callId })
         .catch((error) => console.error("voice sideband connect event failed", error instanceof Error ? error.message : "unknown error"));
-      if (!active.disclosureConfirmed) socket.send(JSON.stringify({ type: "response.create", response: { instructions: OPENING_INSTRUCTION } }));
+      if (!active.disclosureConfirmed) socket.send(JSON.stringify({ type: "response.create", response: { instructions: active.openingInstruction } }));
     });
     socket.on("message", (raw) => void this.handleMessage(active, String(raw)).catch((error) => this.handleProcessingError(active, error)));
     socket.on("error", (error) => {
@@ -155,7 +164,7 @@ export class OpenAiRealtimeAdapter {
       } else if (active.openingAttempts < 2 && active.socket.readyState === WebSocket.OPEN) {
         active.openingAttempts += 1;
         active.openingText = "";
-        active.socket.send(JSON.stringify({ type: "response.create", response: { instructions: OPENING_INSTRUCTION } }));
+        active.socket.send(JSON.stringify({ type: "response.create", response: { instructions: active.openingInstruction } }));
       } else {
         await this.terminateCall(active, technicalOutcome("compliance_disclosure_failed", "Required first-turn digital assistant disclosure was not observed"), "disclosure failed");
       }
@@ -176,7 +185,7 @@ export class OpenAiRealtimeAdapter {
     if (!active.disclosureConfirmed) {
       if (active.socket.readyState === WebSocket.OPEN) {
         active.socket.send(JSON.stringify({ type: "conversation.item.create", item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ ok: false, error: "disclosure_required" }) } }));
-        active.socket.send(JSON.stringify({ type: "response.create", response: { instructions: OPENING_INSTRUCTION } }));
+        active.socket.send(JSON.stringify({ type: "response.create", response: { instructions: active.openingInstruction } }));
       }
       return;
     }

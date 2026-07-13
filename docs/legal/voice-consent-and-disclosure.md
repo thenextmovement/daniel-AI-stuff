@@ -19,11 +19,13 @@ The confirmation email should repeat the scope, time/source reference, and an ea
 
 ## Opening
 
-The implementation does not open with “Ich bin eine KI”. It does disclose the digital assistant in the first speaking turn after NEONTRIP identity and concrete inquiry/offer reference:
+The implementation does not open with “Ich bin eine KI”. It asks whether the call currently fits after NEONTRIP identity and the concrete inquiry/offer reference, then discloses the AI-supported digital assistant in the same first speaking turn before any qualification or follow-up content:
 
-> Hallo Frau/Herr ..., hier ist Nia von NEONTRIP. Sie hatten bei uns wegen ... angefragt. Ich unterstütze Sie dabei als digitaler Telefonassistent. Passt es gerade kurz?
+> Hallo Frau/Herr ..., hier ist Nia von NEONTRIP. Sie hatten bei uns wegen ... angefragt. Passt es gerade kurz? Ich unterstütze Sie dabei als KI-gestützter digitaler Telefonassistent.
 
-This differs from the earlier plan to disclose only after the customer answers, because that would not reliably meet the first-interaction requirement. If asked whether it is AI or human, the agent answers immediately and truthfully.
+The assistant does not wait for the customer's answer before disclosure. If asked whether it is AI or human, the agent answers immediately and truthfully.
+
+An internal telephone test uses a separate, synthetic `internal-test:<uuid>` context. It must be allowlist-only, use a consent record with source `internal_test_authorization`, include a concrete source reference, and never claim that a customer inquiry or offer exists. This exception is only for expressly approved internal sandbox calls; customer calls remain bound to an active inquiry and the full consent gate.
 
 ## Privacy Defaults
 

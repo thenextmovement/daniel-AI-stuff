@@ -61,6 +61,8 @@ An active inquiry is necessary but is not treated as consent. The signed endpoin
 
 Evidence is retained for at least five years and the retention deadline is extended to five years after every call attempt that uses the consent. Withdrawal first blocks queued, claimed, dialing, and live targets, then terminates their active attempts through the OpenAI and provider controls. Stop failures are returned and persisted in the withdrawal audit record rather than hidden. A stop request during a call finalizes as `do_not_call` and creates an active DNC record.
 
+Internal allowlist tests are isolated from customer records. Their request ID must use `internal-test:<uuid>`, the campaign must be `allowlist_only`, the number must be enabled in `voice_test_allowlist`, and the consent source must be `internal_test_authorization` with a concrete source reference. The generated context explicitly states that no customer inquiry or offer exists. This test-only path cannot authorize a non-allowlisted or customer campaign.
+
 ## Legal and Transparency Review
 
 Review date: 2026-07-13. This engineering review is a launch gate, not a substitute for NEONTRIP's external legal approval.

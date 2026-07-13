@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  buildInternalVoiceSandboxContext,
   buildOutboundVoiceInstructions,
   buildRealtimeVoiceTools,
   buildVoiceConsentEvidence,
+  isInternalVoiceSandboxRequest,
   type ClaimedVoiceCall,
   normalizePhoneE164,
   normalizeVoiceMode,
@@ -191,8 +193,11 @@ function mapClaimedCall(row: Record<string, unknown>): ClaimedVoiceCall {
 }
 
 export async function prepareVoiceRuntimeSession(call: ClaimedVoiceCall): Promise<VoiceRuntimeSessionPackage> {
-  const context = await getVoiceCustomerContext(call.requestId);
-  assertActiveVoiceInquiry(context, call.mode);
+  const internalSandbox = isInternalVoiceSandboxRequest(call.requestId, call.allowlistOnly);
+  const context = internalSandbox
+    ? buildInternalVoiceSandboxContext({ requestId: call.requestId, contactName: call.contactName, companyName: call.companyName })
+    : await getVoiceCustomerContext(call.requestId);
+  if (!internalSandbox) assertActiveVoiceInquiry(context, call.mode);
   const knowledgeMatches = await searchApprovedVoiceKnowledge(buildVoiceKnowledgeQuery(context, call.mode), call.mode, 6);
   return {
     ...call,
@@ -539,7 +544,17 @@ export async function executeVoiceTool(input: {
   });
   const target = targets[0];
   if (!target) throw new QuoteValidationError("Voice Target wurde nicht gefunden.", ["target_not_found"], 404);
-  const context = await getVoiceCustomerContext(target.request_id);
+  const campaigns = await supabaseRequest<CampaignRow[]>("voice_call_campaigns", undefined, {
+    select: CAMPAIGN_SELECT,
+    id: `eq.${target.campaign_id}`,
+    limit: 1,
+  });
+  const campaign = campaigns[0];
+  if (!campaign) throw new QuoteValidationError("Voice Kampagne wurde nicht gefunden.", ["campaign_not_found"], 404);
+  const internalSandbox = isInternalVoiceSandboxRequest(target.request_id, campaign.allowlist_only);
+  const context = internalSandbox
+    ? buildInternalVoiceSandboxContext({ requestId: target.request_id, contactName: target.contact_name || null, companyName: target.company_name || null })
+    : await getVoiceCustomerContext(target.request_id);
 
   let result: Record<string, unknown>;
   let resultAudit: Record<string, unknown>;
@@ -554,14 +569,7 @@ export async function executeVoiceTool(input: {
     resultAudit = { ok: true, request_id: context.requestId, message_count: context.outlook.length };
   } else if (toolName === "search_approved_knowledge") {
     const query = requireVoiceText(args.query, "Suchbegriff", 240, 2);
-    const campaigns = await supabaseRequest<CampaignRow[]>("voice_call_campaigns", undefined, {
-      select: CAMPAIGN_SELECT,
-      id: `eq.${target.campaign_id}`,
-      limit: 1,
-    });
-    const mode = campaigns[0]?.mode;
-    if (!mode) throw new QuoteValidationError("Voice Kampagne wurde nicht gefunden.", ["campaign_not_found"], 404);
-    const matches = await searchApprovedVoiceKnowledge(query, mode, 6);
+    const matches = await searchApprovedVoiceKnowledge(query, campaign.mode, 6);
     result = { matches };
     resultAudit = { ok: true, query_hash: voiceStableHash(query), match_count: matches.length };
   } else if (toolName === "schedule_callback") {
@@ -775,7 +783,7 @@ export async function addVoiceTarget(input: Record<string, unknown>) {
   const phoneE164 = normalizePhoneE164(input.phone);
   const [campaigns, consents] = await Promise.all([
     supabaseRequest<CampaignRow[]>("voice_call_campaigns", undefined, { select: CAMPAIGN_SELECT, id: `eq.${campaignId}`, limit: 1 }),
-    supabaseRequest<Array<Record<string, unknown>>>("voice_contact_consents", undefined, { select: "id,request_id,phone_e164,purposes,status,valid_until", id: `eq.${consentId}`, limit: 1 }),
+    supabaseRequest<Array<Record<string, unknown>>>("voice_contact_consents", undefined, { select: "id,request_id,phone_e164,phone_hash,purposes,status,valid_until,source,source_ref", id: `eq.${consentId}`, limit: 1 }),
   ]);
   const campaign = campaigns[0];
   const consent = consents[0];
@@ -786,7 +794,23 @@ export async function addVoiceTarget(input: Record<string, unknown>) {
       || !purposes.includes(campaign.mode)) {
     throw new QuoteValidationError("Call-Ziel passt nicht exakt zur aktiven Einwilligung und Kampagne.", ["target_consent_mismatch"], 409);
   }
-  assertActiveVoiceInquiry(await getVoiceCustomerContext(requestId), campaign.mode);
+  const internalSandbox = isInternalVoiceSandboxRequest(requestId, campaign.allowlist_only);
+  if (internalSandbox) {
+    if (consent.source !== "internal_test_authorization" || !voiceCleanText(consent.source_ref, 500)) {
+      throw new QuoteValidationError("Interner Testcall braucht einen dokumentierten Freigabenachweis.", ["internal_test_consent_required"], 409);
+    }
+    const allowlist = await supabaseRequest<Array<{ id: string }>>("voice_test_allowlist", undefined, {
+      select: "id",
+      phone_hash: `eq.${String(consent.phone_hash || "")}`,
+      enabled: "eq.true",
+      limit: 1,
+    });
+    if (!allowlist[0]) {
+      throw new QuoteValidationError("Interner Testcall ist nicht auf der aktiven Allowlist.", ["internal_test_allowlist_required"], 409);
+    }
+  } else {
+    assertActiveVoiceInquiry(await getVoiceCustomerContext(requestId), campaign.mode);
+  }
   const idempotencyKey = `voice-target:${campaignId}:${voiceStableHash({ requestId, phoneE164 })}`;
   const rows = await supabaseRequest<TargetRow[]>("voice_call_targets", {
     method: "POST",

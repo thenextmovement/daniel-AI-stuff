@@ -89,6 +89,7 @@ const TERMINAL_STATUSES = new Set<VoiceCallOutcomeInput["terminalStatus"]>([
 ]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const E164_RE = /^\+[1-9][0-9]{7,14}$/;
+const INTERNAL_TEST_REQUEST_RE = /^internal-test:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function voiceCleanText(value: unknown, maxLength = 500) {
   return String(value || "").replace(/\u0000/g, "").replace(/\s+/g, " ").trim().slice(0, maxLength);
@@ -130,6 +131,37 @@ export function voicePhoneHash(phoneE164: string) {
 
 export function voiceStableHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+export function isInternalVoiceSandboxRequest(requestId: unknown, allowlistOnly: unknown) {
+  return allowlistOnly === true && INTERNAL_TEST_REQUEST_RE.test(voiceCleanText(requestId, 160));
+}
+
+export function buildInternalVoiceSandboxContext(input: {
+  requestId: string;
+  contactName: string | null;
+  companyName: string | null;
+}): VoiceCustomerContext {
+  if (!INTERNAL_TEST_REQUEST_RE.test(input.requestId)) {
+    throw new QuoteValidationError("Interne Test-Request-ID ist ungueltig.", ["invalid_internal_test_request"], 422);
+  }
+  return {
+    requestId: input.requestId,
+    customer: { displayName: voiceCleanText(input.contactName, 160) || "Testperson", company: voiceCleanText(input.companyName, 160) || null },
+    request: {
+      title: "interner NEONTRIP Sprachassistenten-Test",
+      description: "Ausdruecklich freigegebener interner Allowlist-Test ohne Kundenanfrage.",
+      status: "internal_test",
+      segment: null,
+      size: null,
+      colors: [],
+      application: null,
+      deliveryTime: null,
+    },
+    offer: null,
+    outlook: [],
+    sourceStatus: { customerRecord: "ok", offer: "not_linked", outlook: "empty" },
+  };
 }
 
 export function buildVoiceConsentEvidence(input: {
@@ -278,7 +310,10 @@ export function buildOutboundVoiceInstructions(input: {
   context: VoiceCustomerContext;
   knowledgeMatches: VoiceKnowledgeMatch[];
 }) {
-  const opening = input.mode === "lead_qualification"
+  const internalTest = input.context.request.status === "internal_test";
+  const opening = internalTest
+    ? "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Nia von NEONTRIP. Sie haben diesen internen Testanruf freigegeben. Passt es gerade kurz? Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent."
+    : input.mode === "lead_qualification"
     ? "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Nia von NEONTRIP. Sie hatten bei uns wegen [Anfrage] angefragt. Passt es gerade kurz? Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent."
     : "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Nia von NEONTRIP. Ich melde mich zu Ihrem Angebot [Angebot]. Passt es gerade kurz? Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent.";
   return [
@@ -286,8 +321,11 @@ export function buildOutboundVoiceInstructions(input: {
     "Sprich Deutsch, natuerlich, knapp und ruhig. Stelle immer nur eine Frage auf einmal und lasse Unterbrechungen zu.",
     "Du darfst keine echte Person vortaeuschen.",
     opening,
-    "Sage nicht als allererste Worte, dass du eine KI bist. Frage nach Identifikation als NEONTRIP und dem konkreten Anfragebezug, ob es gerade passt. Informiere direkt danach noch im selben ersten Sprechzug klar als KI-gestuetzter digitaler Telefonassistent und beginne erst dann mit inhaltlicher Qualifikation oder Follow-up.",
+    internalTest
+      ? "Sage nicht als allererste Worte, dass du eine KI bist. Frage nach Identifikation als NEONTRIP und dem internen Testbezug, ob es gerade passt. Informiere direkt danach noch im selben ersten Sprechzug klar als KI-gestuetzter digitaler Telefonassistent."
+      : "Sage nicht als allererste Worte, dass du eine KI bist. Frage nach Identifikation als NEONTRIP und dem konkreten Anfragebezug, ob es gerade passt. Informiere direkt danach noch im selben ersten Sprechzug klar als KI-gestuetzter digitaler Telefonassistent und beginne erst dann mit inhaltlicher Qualifikation oder Follow-up.",
     "Falls die Person direkt fragt, ob du eine KI oder ein Mensch bist, antworte sofort und wahrheitsgemaess.",
+    internalTest ? "Dies ist ein interner Funktionstest. Behaupte nicht, dass eine Kundenanfrage oder ein Angebot vorliegt." : "",
     input.instructionsTemplate,
     "Keine Preise, Rabatte, Liefertermine, Produktionsstarts, Rechtsaussagen oder verbindlichen Zusagen nennen.",
     "Keine Bestellung, Angebotsaenderung oder E-Mail selbst ausloesen.",

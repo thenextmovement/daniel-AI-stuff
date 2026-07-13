@@ -7,6 +7,8 @@ export type VoiceTool = {
 
 export type RuntimeSession = {
   attemptId: string;
+  requestId: string;
+  allowlistOnly: boolean;
   phoneE164: string;
   safetyIdentifier: string;
   modelId: string;
