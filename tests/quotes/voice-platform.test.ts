@@ -12,6 +12,7 @@ import { signVoiceConsentWebhook, verifyVoiceConsentWebhook } from "../../src/li
 import { OpsClient } from "../../services/voice-runtime/ops-client";
 import { TwilioSipAdapter } from "../../services/voice-runtime/telephony";
 import { assertActiveVoiceInquiry } from "../../src/lib/ops/voice-platform-data";
+import { getProviderReadiness } from "../../services/voice-runtime/config";
 
 test("voice eval suite covers at least 50 unique German safety scenarios", () => {
   const result = validateVoiceEvalSuite();
@@ -99,6 +100,31 @@ test("runtime bearer and Twilio callback signatures are constant-time verified",
   const binding = signAttemptBinding("attempt-1", "binding-secret");
   assert.equal(verifyAttemptBinding("attempt-1", binding, "binding-secret"), true);
   assert.equal(verifyAttemptBinding("attempt-2", binding, "binding-secret"), false);
+});
+
+test("runtime provider readiness fails closed without claiming a call", () => {
+  assert.deepEqual(getProviderReadiness({}), {
+    openAi: false,
+    telephony: false,
+    dispatch: false,
+    missing: [
+      "OPENAI_API_KEY", "OPENAI_WEBHOOK_SECRET", "OPENAI_PROJECT_ID",
+      "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "VOICE_SIP_BINDING_SECRET",
+    ],
+  });
+  assert.deepEqual(getProviderReadiness({
+    OPENAI_API_KEY: "configured",
+    OPENAI_WEBHOOK_SECRET: "configured",
+    OPENAI_PROJECT_ID: "configured",
+    VOICE_SIP_BINDING_SECRET: "configured",
+    TWILIO_ACCOUNT_SID: "configured",
+    TWILIO_AUTH_TOKEN: "configured",
+    TWILIO_FROM_NUMBER: "configured",
+  }), { openAi: true, telephony: true, dispatch: true, missing: [] });
+  const server = readFileSync("services/voice-runtime/server.ts", "utf8");
+  assert.ok(server.indexOf("if (!telephony || !realtime)") < server.indexOf("const claimed = await ops.claim()"));
+  assert.match(server, /provider_not_ready/);
+  assert.match(server, /ready: config\.providerReadiness\.dispatch/);
 });
 
 test("consent ingest rejects forged and replayed webhooks", () => {

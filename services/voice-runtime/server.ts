@@ -8,10 +8,14 @@ import { noClearOutcome, notReachedOutcome, technicalOutcome } from "./outcomes.
 
 const config = loadRuntimeConfig();
 const ops = new OpsClient(config);
-const telephony = new TwilioSipAdapter(config);
-const realtime = new OpenAiRealtimeAdapter(config, ops);
+const telephony = config.providerReadiness.telephony ? new TwilioSipAdapter(config) : null;
+const realtime = config.providerReadiness.openAi ? new OpenAiRealtimeAdapter(config, ops) : null;
 
 async function recoverActiveCalls() {
+  if (!telephony || !realtime) {
+    console.warn(`voice runtime recovery disabled; missing provider configuration: ${config.providerReadiness.missing.join(", ")}`);
+    return;
+  }
   const sessions = await ops.recover();
   let recovered = 0;
   let reconciled = 0;
@@ -76,6 +80,9 @@ async function rawBody(request: IncomingMessage, maxBytes = 128_000) {
 }
 
 async function dispatch(response: ServerResponse) {
+  if (!telephony || !realtime) {
+    return json(response, 503, { ok: false, error: "provider_not_ready", missing: config.providerReadiness.missing });
+  }
   const claimed = await ops.claim();
   if (!claimed) return json(response, 200, { ok: true, claimed: false });
   let session;
@@ -101,6 +108,7 @@ async function dispatch(response: ServerResponse) {
 }
 
 async function openAiWebhook(request: IncomingMessage, response: ServerResponse) {
+  if (!realtime) return json(response, 503, { ok: false, error: "openai_not_ready", missing: config.providerReadiness.missing });
   const body = await rawBody(request);
   const event = await realtime.unwrapWebhook(body, request.headers);
   if (event.type !== "realtime.call.incoming") return json(response, 200, { ok: true, ignored: true });
@@ -138,6 +146,7 @@ async function openAiWebhook(request: IncomingMessage, response: ServerResponse)
 }
 
 async function twilioWebhook(request: IncomingMessage, response: ServerResponse) {
+  if (!telephony) return json(response, 503, { ok: false, error: "telephony_not_ready", missing: config.providerReadiness.missing });
   const body = await rawBody(request);
   const params = new URLSearchParams(body);
   const requestUrl = new URL(request.url || "/webhooks/twilio", config.publicUrl);
@@ -172,7 +181,17 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url || "/", config.publicUrl);
     if (request.method === "GET" && url.pathname === "/health") {
-      return json(response, 200, { ok: true, service: "neontrip-voice-runtime", commit: config.commitSha });
+      return json(response, 200, {
+        ok: true,
+        service: "neontrip-voice-runtime",
+        commit: config.commitSha,
+        ready: config.providerReadiness.dispatch,
+        providers: {
+          openAi: config.providerReadiness.openAi,
+          telephony: config.providerReadiness.telephony,
+          missing: config.providerReadiness.missing,
+        },
+      });
     }
     if (request.method === "POST" && url.pathname === "/dispatch") {
       if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });
@@ -188,11 +207,12 @@ const server = createServer(async (request, response) => {
       let stopped = false;
       const stopErrors: string[] = [];
       try {
-        stopped = await realtime.stopAttempt(attemptId);
+        stopped = realtime ? await realtime.stopAttempt(attemptId) : false;
       } catch (error) {
         stopErrors.push(error instanceof Error ? error.message : "OpenAI stop failed");
       }
       if (providerCallId) {
+        if (!telephony) return json(response, 503, { ok: false, error: "telephony_not_ready", missing: config.providerReadiness.missing });
         try {
           const providerStatus = await telephony.getCallStatus(providerCallId);
           if (!["completed", "failed", "busy", "no-answer", "canceled"].includes(providerStatus)) {
@@ -210,6 +230,7 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname.startsWith("/attempts/") && url.pathname.endsWith("/handoff")) {
       if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });
+      if (!realtime) return json(response, 503, { ok: false, error: "openai_not_ready", missing: config.providerReadiness.missing });
       const attemptId = url.pathname.split("/")[2] || "";
       const handedOff = await realtime.handoffAttempt(attemptId);
       if (handedOff) await ops.finalize(attemptId, {

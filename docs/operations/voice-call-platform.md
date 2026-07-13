@@ -124,6 +124,8 @@ VOICE_N8N_WEBHOOK_TOKEN=<outcome webhook secret>
 SOURCE_COMMIT=<deployed commit>
 ```
 
+The runtime can start in a fail-closed maintenance state before the OpenAI and Twilio provider variables are present. `GET /health` then returns `ok: true`, `ready: false`, and only the missing variable names. Dispatch is rejected with `503 provider_not_ready` before an attempt is claimed; provider webhooks are also rejected with `503`. `ready: true` is required before enabling any sandbox dispatch.
+
 n8n uses environment variables listed in `n8n/voice-platform-workflow-manifest.json`. No secret belongs in workflow JSON.
 
 ## Operations

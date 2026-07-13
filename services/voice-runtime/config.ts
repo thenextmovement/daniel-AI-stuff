@@ -1,9 +1,29 @@
 export type RuntimeConfig = ReturnType<typeof loadRuntimeConfig>;
 
+const OPENAI_PROVIDER_VARIABLES = ["OPENAI_API_KEY", "OPENAI_WEBHOOK_SECRET", "OPENAI_PROJECT_ID"] as const;
+const TELEPHONY_PROVIDER_VARIABLES = [
+  "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "OPENAI_PROJECT_ID", "VOICE_SIP_BINDING_SECRET",
+] as const;
+
 function required(name: string) {
   const value = String(process.env[name] || "").trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
+}
+
+function optional(name: string) {
+  return String(process.env[name] || "").trim();
+}
+
+export function getProviderReadiness(env: Record<string, string | undefined> = process.env) {
+  const missingOpenAi = OPENAI_PROVIDER_VARIABLES.filter((name) => !String(env[name] || "").trim());
+  const missingTelephony = TELEPHONY_PROVIDER_VARIABLES.filter((name) => !String(env[name] || "").trim());
+  return {
+    openAi: missingOpenAi.length === 0,
+    telephony: missingTelephony.length === 0,
+    dispatch: missingOpenAi.length === 0 && missingTelephony.length === 0,
+    missing: [...new Set([...missingOpenAi, ...missingTelephony])],
+  };
 }
 
 export function loadRuntimeConfig() {
@@ -22,13 +42,14 @@ export function loadRuntimeConfig() {
     opsBaseUrl,
     opsToken: required("VOICE_RUNTIME_API_TOKEN"),
     dispatchToken: required("VOICE_DISPATCH_TOKEN"),
-    openAiApiKey: required("OPENAI_API_KEY"),
-    openAiWebhookSecret: required("OPENAI_WEBHOOK_SECRET"),
-    openAiProjectId: required("OPENAI_PROJECT_ID"),
-    sipBindingSecret: required("VOICE_SIP_BINDING_SECRET"),
-    twilioAccountSid: required("TWILIO_ACCOUNT_SID"),
-    twilioAuthToken: required("TWILIO_AUTH_TOKEN"),
-    twilioFromNumber: required("TWILIO_FROM_NUMBER"),
+    openAiApiKey: optional("OPENAI_API_KEY"),
+    openAiWebhookSecret: optional("OPENAI_WEBHOOK_SECRET"),
+    openAiProjectId: optional("OPENAI_PROJECT_ID"),
+    sipBindingSecret: optional("VOICE_SIP_BINDING_SECRET"),
+    twilioAccountSid: optional("TWILIO_ACCOUNT_SID"),
+    twilioAuthToken: optional("TWILIO_AUTH_TOKEN"),
+    twilioFromNumber: optional("TWILIO_FROM_NUMBER"),
+    providerReadiness: getProviderReadiness(),
     handoffUri: String(process.env.VOICE_HUMAN_HANDOFF_URI || "").trim(),
     n8nOutcomeUrl,
     n8nWebhookToken,
