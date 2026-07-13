@@ -7,11 +7,16 @@ declare
   v_model_id uuid;
   v_consent_id uuid;
   v_consent_2_id uuid;
+  v_consent_3_id uuid;
+  v_consent_4_id uuid;
   v_campaign_id uuid;
   v_target_id uuid;
+  v_target_3_id uuid;
+  v_target_4_id uuid;
   v_attempt_id uuid;
   v_event_id uuid;
   v_duplicate boolean;
+  v_eligible boolean;
   v_count integer;
 begin
   update public.voice_model_releases
@@ -35,7 +40,7 @@ begin
   ) values (
     'REQ-SQL-1', '+4915111111111', 'phone-hash-1', array['lead_qualification'], 'granted',
     'Ausdrueckliche Testeinwilligung fuer einen KI-gestuetzten Telefonkontakt.', 'sql-v1',
-    'sql-test', 'submission-1', 'evidence-1', now() - interval '1 minute', now() + interval '5 years', 'consent-1'
+    'sql-test', 'submission-1', 'evidence-1', now() - interval '6 years', now(), 'consent-1'
   ) returning id into v_consent_id;
 
   insert into public.voice_test_allowlist (phone_e164, phone_hash, label, approved_by)
@@ -62,6 +67,14 @@ begin
 
   select attempt_id into v_attempt_id from public.claim_next_voice_call('sql-worker', 120);
   if v_attempt_id is null then raise exception 'eligible call was not claimed'; end if;
+  if not exists (
+    select 1 from public.voice_contact_consents
+    where id = v_consent_id and evidence_retain_until >= now() + interval '4 years 11 months'
+  ) then
+    raise exception 'consent evidence retention was not extended after use';
+  end if;
+  select eligible into v_eligible from public.check_voice_call_attempt_eligibility(v_attempt_id);
+  if not v_eligible then raise exception 'freshly claimed call failed the second eligibility gate'; end if;
   select count(*) into v_count from public.claim_next_voice_call('sql-worker-2', 120);
   if v_count <> 0 then raise exception 'concurrency gate allowed a second claim'; end if;
 
@@ -121,6 +134,100 @@ begin
   if not exists (select 1 from public.voice_call_targets where idempotency_key = 'target-2' and status = 'blocked') then
     raise exception 'customer stop did not block the target';
   end if;
+
+  insert into public.voice_contact_consents (
+    request_id, phone_e164, phone_hash, purposes, status, consent_wording, form_version,
+    source, source_ref, evidence_hash, granted_at, evidence_retain_until, idempotency_key
+  ) values (
+    'REQ-SQL-3', '+4915222222222', 'phone-hash-3', array['lead_qualification'], 'granted',
+    'Ausdrueckliche dritte Testeinwilligung fuer einen KI-gestuetzten Telefonkontakt.', 'sql-v1',
+    'sql-test', 'submission-3', 'evidence-3', now() - interval '1 minute', now() + interval '5 years', 'consent-3'
+  ) returning id into v_consent_3_id;
+  insert into public.voice_test_allowlist (phone_e164, phone_hash, label, approved_by)
+  values ('+4915222222222', 'phone-hash-3', 'SQL Provider Recovery', 'sql-test');
+  insert into public.voice_call_targets (
+    campaign_id, request_id, consent_id, phone_e164, phone_hash, idempotency_key
+  ) values (
+    v_campaign_id, 'REQ-SQL-3', v_consent_3_id, '+4915222222222', 'phone-hash-3', 'target-3'
+  ) returning id into v_target_3_id;
+  select attempt_id into v_attempt_id from public.claim_next_voice_call('sql-worker', 120);
+  if v_attempt_id is null then raise exception 'provider recovery target was not claimed'; end if;
+  perform public.finalize_voice_call_attempt(
+    v_attempt_id, 'failed', 'technical_failure', 'Provider create result is uncertain',
+    null, null, array[]::text[], null, false, false, false, false,
+    'telephony_start_uncertain', 'test uncertainty'
+  );
+  if not exists (
+    select 1 from public.voice_call_targets
+    where id = v_target_3_id and status = 'blocked' and blocked_reason = 'manual_provider_reconciliation_required'
+  ) then
+    raise exception 'uncertain provider create was allowed to retry automatically';
+  end if;
+  perform public.resolve_voice_provider_uncertainty(
+    v_target_3_id, 'confirmed_no_call', 'sql-test', 'provider-resolution-3'
+  );
+  if not exists (
+    select 1 from public.voice_call_targets
+    where id = v_target_3_id and status = 'retry' and blocked_reason is null
+  ) then
+    raise exception 'provider reconciliation did not atomically requeue the confirmed no-call target';
+  end if;
+  if not exists (
+    select 1 from public.voice_platform_audit_log
+    where idempotency_key = 'provider-resolution-3' and action = 'provider_uncertainty_resolved'
+  ) then
+    raise exception 'provider reconciliation was not audited';
+  end if;
+  select duplicate into v_duplicate from public.resolve_voice_provider_uncertainty(
+    v_target_3_id, 'confirmed_no_call', 'sql-test', 'provider-resolution-3'
+  );
+  if not v_duplicate then raise exception 'provider reconciliation replay was not idempotent'; end if;
+  update public.voice_call_targets set status = 'cancelled' where id = v_target_3_id;
+
+  insert into public.voice_contact_consents (
+    request_id, phone_e164, phone_hash, purposes, status, consent_wording, form_version,
+    source, source_ref, evidence_hash, granted_at, evidence_retain_until, idempotency_key
+  ) values (
+    'REQ-SQL-4', '+4915333333333', 'phone-hash-4', array['lead_qualification'], 'granted',
+    'Ausdrueckliche vierte Testeinwilligung fuer einen KI-gestuetzten Telefonkontakt.', 'sql-v1',
+    'sql-test', 'submission-4', 'evidence-4', now() - interval '1 minute', now() + interval '5 years', 'consent-4'
+  ) returning id into v_consent_4_id;
+  insert into public.voice_test_allowlist (phone_e164, phone_hash, label, approved_by)
+  values ('+4915333333333', 'phone-hash-4', 'SQL Consent Withdrawal', 'sql-test');
+  insert into public.voice_call_targets (
+    campaign_id, request_id, consent_id, phone_e164, phone_hash, idempotency_key
+  ) values (
+    v_campaign_id, 'REQ-SQL-4', v_consent_4_id, '+4915333333333', 'phone-hash-4', 'target-4'
+  ) returning id into v_target_4_id;
+  select attempt_id into v_attempt_id from public.claim_next_voice_call('sql-worker', 120);
+  if v_attempt_id is null then raise exception 'consent withdrawal target was not claimed'; end if;
+  update public.voice_call_targets
+  set status = 'blocked', blocked_reason = 'consent_withdrawn', claimed_by = null, claimed_until = null
+  where id = v_target_4_id;
+  perform public.finalize_voice_call_attempt(
+    v_attempt_id, 'cancelled', 'not_reached', 'Consent was withdrawn during the active attempt',
+    null, null, array[]::text[], null, false, false, false, false, 'consent_withdrawn', null
+  );
+  if not exists (
+    select 1 from public.voice_call_targets
+    where id = v_target_4_id and status = 'blocked' and blocked_reason = 'consent_withdrawn'
+  ) then
+    raise exception 'attempt finalization overwrote a consent-withdrawal block';
+  end if;
+
+  begin
+    perform public.record_voice_model_evaluation(
+      v_model_id, 'too-short-suite', 'short-eval-must-fail', 1, 1, 0, 100, 'passed', '{}'::jsonb,
+      jsonb_build_object(
+        'lead_qualification', jsonb_build_object('id', v_prompt_id::text),
+        'follow_up', jsonb_build_object('id', v_follow_prompt_id::text)
+      ),
+      'sql-test'
+    );
+    raise exception 'short evaluation was accepted';
+  exception when others then
+    if sqlerrm = 'short evaluation was accepted' or position('at least 50' in sqlerrm) = 0 then raise; end if;
+  end;
 
   update public.voice_model_releases
   set enabled = true, lifecycle = 'production', eval_status = 'passed', eval_score = 95,

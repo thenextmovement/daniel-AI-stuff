@@ -20,6 +20,36 @@ async function recoverActiveCalls() {
       if (session.providerCompleted) {
         await ops.finalize(session.attemptId, noClearOutcome("Provider completed event was recovered after runtime restart"));
         reconciled += 1;
+      } else if (session.recoveryAction === "reconcile_provider") {
+        if (session.providerCallId) {
+          const status = await telephony.getCallStatus(session.providerCallId);
+          if (["busy", "no-answer", "canceled"].includes(status)) {
+            await ops.finalize(session.attemptId, notReachedOutcome(status));
+            reconciled += 1;
+            continue;
+          }
+          if (status === "failed") {
+            await ops.finalize(session.attemptId, technicalOutcome("twilio_failed", status));
+            reconciled += 1;
+            continue;
+          }
+          if (status === "completed") {
+            await ops.finalize(session.attemptId, noClearOutcome("Provider completed before sideband recovery"));
+            reconciled += 1;
+            continue;
+          }
+          await telephony.stopCall(session.providerCallId, ["queued", "ringing"].includes(status) ? "canceled" : "completed");
+        }
+        await ops.finalize(session.attemptId, technicalOutcome("provider_recovery_required", session.blockedReason));
+        reconciled += 1;
+      } else if (session.recoveryAction === "terminate") {
+        await realtime.hangup(session.openAiCallId!);
+        await ops.finalize(session.attemptId, {
+          ...technicalOutcome("recovery_call_ineligible", session.blockedReason),
+          terminalStatus: "cancelled",
+          summaryForHuman: "Der aktive Anruf wurde beim Runtime-Neustart durch einen Berechtigungs- oder Kill-Switch-Gate beendet.",
+        });
+        reconciled += 1;
       } else if (await realtime.recoverCall(session)) recovered += 1;
     } catch (error) {
       console.error("voice sideband recovery failed", session.attemptId, error instanceof Error ? error.message : "unknown error");
@@ -46,15 +76,26 @@ async function rawBody(request: IncomingMessage, maxBytes = 128_000) {
 }
 
 async function dispatch(response: ServerResponse) {
-  const session = await ops.claim();
-  if (!session) return json(response, 200, { ok: true, claimed: false });
+  const claimed = await ops.claim();
+  if (!claimed) return json(response, 200, { ok: true, claimed: false });
+  let session;
+  try {
+    session = await ops.getAttempt(claimed.attemptId);
+  } catch (error) {
+    await ops.finalize(claimed.attemptId, {
+      ...technicalOutcome("pre_dial_eligibility_failed", error instanceof Error ? error.message : "unknown error"),
+      terminalStatus: "cancelled",
+      summaryForHuman: "Der Anruf wurde durch die erneute Berechtigungspruefung vor dem Waehlen blockiert.",
+    });
+    throw error;
+  }
   try {
     const call = await telephony.startOutboundCall(session);
     await ops.updateAttempt(session.attemptId, { providerCallId: call.providerCallId, status: "dialing" });
     await ops.event(session.attemptId, "runtime", "dispatch.started", `dispatch:${session.attemptId}`, { status: "dialing" });
     return json(response, 202, { ok: true, claimed: true, attemptId: session.attemptId });
   } catch (error) {
-    await ops.finalize(session.attemptId, technicalOutcome("telephony_start_failed", error instanceof Error ? error.message : "unknown error"));
+    await ops.finalize(claimed.attemptId, technicalOutcome("telephony_start_uncertain", error instanceof Error ? error.message : "unknown error"));
     throw error;
   }
 }
@@ -108,6 +149,14 @@ async function twilioWebhook(request: IncomingMessage, response: ServerResponse)
   const status = String(params.get("CallStatus") || "").toLowerCase();
   const attemptId = String(requestUrl.searchParams.get("attemptId") || "");
   if (attemptId) await ops.event(attemptId, "telephony", `twilio.${status}`, `twilio:${providerCallId}:${status}`, { status, call_id: providerCallId });
+  if (attemptId && providerCallId && ["initiated", "ringing", "answered"].includes(status)) {
+    await ops.updateAttempt(attemptId, {
+      providerCallId,
+      ...(status === "ringing" || status === "answered" ? { status: "ringing" } : {}),
+    }).catch((error) => {
+      console.error("voice provider callback state update failed", attemptId, error instanceof Error ? error.message : "unknown error");
+    });
+  }
   if (attemptId && ["busy", "no-answer", "failed", "canceled"].includes(status)) {
     await ops.finalize(attemptId, status === "failed" ? technicalOutcome("twilio_failed", status) : notReachedOutcome(status));
   }
@@ -134,9 +183,30 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname.startsWith("/attempts/") && url.pathname.endsWith("/stop")) {
       if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });
       const attemptId = url.pathname.split("/")[2] || "";
-      const stopped = await realtime.stopAttempt(attemptId);
+      const controlBody = JSON.parse((await rawBody(request)) || "{}") as { providerCallId?: unknown };
+      const providerCallId = typeof controlBody.providerCallId === "string" ? controlBody.providerCallId.trim() : "";
+      let stopped = false;
+      const stopErrors: string[] = [];
+      try {
+        stopped = await realtime.stopAttempt(attemptId);
+      } catch (error) {
+        stopErrors.push(error instanceof Error ? error.message : "OpenAI stop failed");
+      }
+      if (providerCallId) {
+        try {
+          const providerStatus = await telephony.getCallStatus(providerCallId);
+          if (!["completed", "failed", "busy", "no-answer", "canceled"].includes(providerStatus)) {
+            await telephony.stopCall(providerCallId, ["queued", "ringing"].includes(providerStatus) ? "canceled" : "completed");
+          }
+          stopped = true;
+        } catch (error) {
+          stopErrors.push(error instanceof Error ? error.message : "provider stop failed");
+        }
+      }
+      if (!stopped && stopErrors.length) throw new Error(`voice call stop failed: ${stopErrors.join("; ")}`);
       if (stopped) await ops.finalize(attemptId, { ...notReachedOutcome("canceled"), summaryForHuman: "Anruf wurde durch einen Operator gestoppt." });
-      return json(response, stopped ? 200 : 404, { ok: stopped });
+      if (stopErrors.length) return json(response, 502, { ok: false, error: "partial_stop_failure", partialErrors: stopErrors });
+      return json(response, stopped ? 200 : 404, { ok: stopped, partialErrors: stopErrors });
     }
     if (request.method === "POST" && url.pathname.startsWith("/attempts/") && url.pathname.endsWith("/handoff")) {
       if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });

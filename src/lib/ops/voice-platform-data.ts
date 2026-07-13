@@ -257,16 +257,28 @@ async function loadAttempt(attemptIdInput: unknown) {
   return attempt;
 }
 
+export async function assertVoiceAttemptStillEligible(attemptIdInput: unknown) {
+  const attemptId = requireVoiceUuid(attemptIdInput, "Attempt-ID");
+  const rows = await supabaseRpc<Array<{ eligible: boolean; reason: string }>>("check_voice_call_attempt_eligibility", {
+    p_attempt_id: attemptId,
+  });
+  if (!rows[0]?.eligible) {
+    const reason = voiceCleanText(rows[0]?.reason, 120) || "eligibility_check_failed";
+    throw new QuoteValidationError("Voice Attempt ist nicht mehr anrufberechtigt.", [`voice_${reason}`], 409);
+  }
+}
+
 export async function getVoiceRuntimeSessionByAttempt(attemptIdInput: unknown) {
   const attempt = await loadAttempt(attemptIdInput);
   if (!["reserved", "dialing", "ringing", "live"].includes(attempt.status)) {
     throw new QuoteValidationError("Voice Attempt ist nicht aktiv.", ["attempt_not_active"], 409);
   }
-  const [targets, models, prompts] = await Promise.all([
-    supabaseRequest<TargetRow[]>("voice_call_targets", undefined, { select: TARGET_SELECT, id: `eq.${attempt.target_id}`, limit: 1 }),
-    supabaseRequest<ModelReleaseRow[]>("voice_model_releases", undefined, { select: MODEL_SELECT, id: `eq.${attempt.model_release_id}`, limit: 1 }),
-    supabaseRequest<PromptVersionRow[]>("voice_prompt_versions", undefined, { select: PROMPT_SELECT, id: `eq.${attempt.prompt_version_id}`, limit: 1 }),
-  ]);
+  await assertVoiceAttemptStillEligible(attempt.id);
+  const targets = await supabaseRequest<TargetRow[]>("voice_call_targets", undefined, {
+    select: TARGET_SELECT,
+    id: `eq.${attempt.target_id}`,
+    limit: 1,
+  });
   const target = targets[0];
   if (!target) throw new QuoteValidationError("Voice Target wurde nicht gefunden.", ["target_not_found"], 404);
   const campaign = (await supabaseRequest<CampaignRow[]>("voice_call_campaigns", undefined, {
@@ -274,28 +286,39 @@ export async function getVoiceRuntimeSessionByAttempt(attemptIdInput: unknown) {
     id: `eq.${target.campaign_id}`,
     limit: 1,
   }))[0];
-  const model = models[0];
-  const prompt = prompts[0];
-  if (!campaign || !model || !prompt) throw new QuoteValidationError("Voice Session-Konfiguration ist unvollstaendig.", ["session_configuration_missing"], 409);
+  if (!campaign) throw new QuoteValidationError("Voice Session-Konfiguration ist unvollstaendig.", ["session_configuration_missing"], 409);
+  const contextSnapshot = attempt.context_snapshot || {};
+  const modelSnapshot = attempt.model_snapshot || {};
+  const promptSnapshot = attempt.prompt_snapshot || {};
+  const snapshotRequestId = requireVoiceText(contextSnapshot.request_id, "Snapshot-Request-ID", 160, 3);
+  if (snapshotRequestId !== target.request_id) {
+    throw new QuoteValidationError("Voice Attempt Snapshot passt nicht zum Ziel.", ["attempt_snapshot_mismatch"], 409);
+  }
+  const sessionConfig = modelSnapshot.session_config && typeof modelSnapshot.session_config === "object" && !Array.isArray(modelSnapshot.session_config)
+    ? modelSnapshot.session_config as Record<string, unknown>
+    : {};
+  const capabilities = modelSnapshot.capabilities && typeof modelSnapshot.capabilities === "object" && !Array.isArray(modelSnapshot.capabilities)
+    ? modelSnapshot.capabilities as Record<string, unknown>
+    : {};
   return prepareVoiceRuntimeSession({
     attemptId: attempt.id,
     targetId: target.id,
     campaignId: campaign.id,
     requestId: target.request_id,
-    offerId: target.offer_id || null,
+    offerId: voiceCleanText(contextSnapshot.offer_id, 160) || null,
     phoneE164: target.phone_e164,
     contactName: target.contact_name || null,
     companyName: target.company_name || null,
-    mode: campaign.mode,
-    modelReleaseId: model.id,
-    modelId: model.model_id,
-    voice: model.voice,
-    sessionConfig: model.session_config || {},
-    capabilities: model.capabilities || {},
-    promptVersionId: prompt.id,
-    instructionsTemplate: prompt.instructions_template,
+    mode: normalizeVoiceMode(contextSnapshot.mode || campaign.mode),
+    modelReleaseId: attempt.model_release_id,
+    modelId: requireVoiceText(modelSnapshot.model_id, "Snapshot-Modell-ID", 160, 3),
+    voice: requireVoiceText(modelSnapshot.voice, "Snapshot-Stimme", 80, 2),
+    sessionConfig,
+    capabilities,
+    promptVersionId: attempt.prompt_version_id,
+    instructionsTemplate: requireVoiceText(promptSnapshot.instructions_template, "Snapshot-Prompt", 20_000, 100),
     attemptNumber: attempt.attempt_number,
-    allowlistOnly: campaign.allowlist_only,
+    allowlistOnly: contextSnapshot.allowlist_only === true,
   });
 }
 
@@ -308,7 +331,7 @@ export async function listRecoverableVoiceRuntimeSessions(workerIdInput: unknown
   const targets = await supabaseRequest<TargetRow[]>("voice_call_targets", undefined, {
     select: TARGET_SELECT,
     claimed_by: `eq.${workerId}`,
-    status: "in.(dialing,live)",
+    status: "in.(claimed,dialing,live)",
     limit: 100,
   });
   if (!targets.length) return [];
@@ -316,8 +339,7 @@ export async function listRecoverableVoiceRuntimeSessions(workerIdInput: unknown
   const attempts = await supabaseRequest<AttemptRow[]>("voice_call_attempts", undefined, {
     select: ATTEMPT_SELECT,
     target_id: `in.(${targetIds.join(",")})`,
-    status: "in.(dialing,ringing,live)",
-    openai_call_id: "not.is.null",
+    status: "in.(reserved,dialing,ringing,live)",
     limit: 100,
   });
   if (!attempts.length) return [];
@@ -330,12 +352,32 @@ export async function listRecoverableVoiceRuntimeSessions(workerIdInput: unknown
   });
   const disclosed = new Set(recoveryEvents.filter((entry) => entry.event_type === "disclosure.confirmed").map((entry) => entry.attempt_id));
   const providerCompleted = new Set(recoveryEvents.filter((entry) => entry.event_type === "twilio.completed").map((entry) => entry.attempt_id));
-  return Promise.all(attempts.map(async (attempt) => ({
-    ...(await getVoiceRuntimeSessionByAttempt(attempt.id)),
-    openAiCallId: String(attempt.openai_call_id),
-    disclosureConfirmed: disclosed.has(attempt.id),
-    providerCompleted: providerCompleted.has(attempt.id),
-  })));
+  return Promise.all(attempts.map(async (attempt) => {
+    const recoveryState = {
+      attemptId: attempt.id,
+      openAiCallId: attempt.openai_call_id ? String(attempt.openai_call_id) : null,
+      providerCallId: attempt.provider_call_id ? String(attempt.provider_call_id) : null,
+      disclosureConfirmed: disclosed.has(attempt.id),
+      providerCompleted: providerCompleted.has(attempt.id),
+    };
+    if (!recoveryState.openAiCallId) {
+      return {
+        ...recoveryState,
+        recoveryAction: "reconcile_provider" as const,
+        blockedReason: "provider_create_or_bridge_interrupted",
+      };
+    }
+    try {
+      return { ...(await getVoiceRuntimeSessionByAttempt(attempt.id)), ...recoveryState, recoveryAction: "reconnect" as const };
+    } catch (error) {
+      if (!(error instanceof QuoteValidationError)) throw error;
+      return {
+        ...recoveryState,
+        recoveryAction: "terminate" as const,
+        blockedReason: error.issues[0] || "recovery_eligibility_failed",
+      };
+    }
+  }));
 }
 
 export async function updateVoiceAttemptProvider(input: {
@@ -378,7 +420,7 @@ export async function updateVoiceAttemptProvider(input: {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
       body: JSON.stringify({ status: status === "live" ? "live" : "dialing", updated_at: new Date().toISOString() }),
-    }, { id: `eq.${rows[0].target_id}` });
+    }, { id: `eq.${rows[0].target_id}`, status: "in.(claimed,dialing,live)" });
   }
   return rows[0];
 }
@@ -487,6 +529,9 @@ export async function executeVoiceTool(input: {
   if (existing && sideEffectTools.has(toolName)) return { duplicate: true, result: existing.result };
 
   const attempt = await loadAttempt(attemptId);
+  if (!["reserved", "dialing", "ringing", "live"].includes(attempt.status)) {
+    throw new QuoteValidationError("Voice Tool kann nur fuer einen aktiven Attempt ausgefuehrt werden.", ["attempt_not_active"], 409);
+  }
   const targets = await supabaseRequest<TargetRow[]>("voice_call_targets", undefined, {
     select: TARGET_SELECT,
     id: `eq.${attempt.target_id}`,
@@ -631,18 +676,55 @@ export async function createVoiceConsent(input: Record<string, unknown>) {
 
 export async function withdrawVoiceConsent(input: Record<string, unknown>) {
   const consentId = requireVoiceUuid(input.consentId, "Consent-ID");
+  const actor = actorName(input.actor);
   const rows = await supabaseRequest<Array<Record<string, unknown>>>("voice_contact_consents", {
     method: "PATCH",
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({ status: "withdrawn", withdrawn_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
   }, { id: `eq.${consentId}`, status: "eq.granted" });
   if (!rows[0]) throw new QuoteValidationError("Einwilligung ist nicht aktiv oder wurde nicht gefunden.", ["consent_not_active"], 409);
-  await supabaseRequest("voice_call_targets", {
+  const affectedTargets = await supabaseRequest<TargetRow[]>("voice_call_targets", {
     method: "PATCH",
-    headers: { Prefer: "return=minimal" },
+    headers: { Prefer: "return=representation" },
     body: JSON.stringify({ status: "blocked", blocked_reason: "consent_withdrawn", claimed_by: null, claimed_until: null, updated_at: new Date().toISOString() }),
-  }, { consent_id: `eq.${consentId}`, status: "in.(queued,retry,claimed,dialing)" });
-  return rows[0];
+  }, { consent_id: `eq.${consentId}`, status: "in.(queued,retry,claimed,dialing,live)" });
+  const targetIds = affectedTargets.map((target) => target.id);
+  const activeAttempts = targetIds.length ? await supabaseRequest<AttemptRow[]>("voice_call_attempts", undefined, {
+    select: ATTEMPT_SELECT,
+    target_id: `in.(${targetIds.join(",")})`,
+    status: "in.(reserved,dialing,ringing,live)",
+    limit: 100,
+  }) : [];
+  const stoppedAttemptIds: string[] = [];
+  const stopFailures: Array<{ attemptId: string; error: string }> = [];
+  for (const attempt of activeAttempts) {
+    try {
+      if (attempt.status === "reserved" && !attempt.provider_call_id && !attempt.openai_call_id) {
+        await finalizeVoiceCall(attempt.id, {
+          terminalStatus: "cancelled", outcomeCode: "not_reached",
+          summaryForHuman: "Anruf wurde vor dem Verbindungsaufbau wegen Einwilligungswiderruf beendet.",
+          customerIntent: null, productInterest: null, objections: [], callbackAt: null,
+          humanHandoffRequested: false, humanHandoffCompleted: false,
+          customerRequestedStop: false, unsafeOrUnsupportedRequest: false,
+          failureCode: "consent_withdrawn", failureDetail: null,
+        });
+      } else {
+        await controlVoiceAttempt({ attemptId: attempt.id, actor }, "stop");
+      }
+      stoppedAttemptIds.push(attempt.id);
+    } catch (error) {
+      stopFailures.push({ attemptId: attempt.id, error: error instanceof Error ? error.message : "unknown stop failure" });
+    }
+  }
+  await supabaseRequest("voice_platform_audit_log", {
+    method: "POST", headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      actor, action: "consent_withdrawn", target_type: "voice_contact_consent", target_id: consentId,
+      idempotency_key: `voice-admin:consent-withdrawn:${consentId}:${randomUUID()}`,
+      metadata: { affected_target_ids: targetIds, stopped_attempt_ids: stoppedAttemptIds, stop_failures: stopFailures },
+    }),
+  });
+  return { consent: rows[0], stoppedAttemptIds, stopFailures };
 }
 
 export async function addVoiceAllowlist(input: Record<string, unknown>) {
@@ -752,10 +834,11 @@ async function controlVoiceAttempt(input: Record<string, unknown>, action: "stop
   const baseUrl = String(process.env.VOICE_RUNTIME_BASE_URL || "").trim().replace(/\/+$/, "");
   const token = String(process.env.VOICE_DISPATCH_TOKEN || "").trim();
   if (!baseUrl || !token) throw new QuoteValidationError("Voice Runtime Steuerung ist nicht konfiguriert.", ["runtime_control_unavailable"], 503);
+  const attempt = await loadAttempt(attemptId);
   const response = await fetch(`${baseUrl}/attempts/${encodeURIComponent(attemptId)}/${action}`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({ actor }),
+    body: JSON.stringify({ actor, providerCallId: attempt.provider_call_id || null }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new QuoteValidationError("Aktiver Anruf konnte nicht gesteuert werden.", ["runtime_control_failed"], response.status === 404 ? 404 : 502);
@@ -768,6 +851,22 @@ async function controlVoiceAttempt(input: Record<string, unknown>, action: "stop
     }),
   });
   return { attemptId, action };
+}
+
+async function resolveVoiceProviderUncertainty(input: Record<string, unknown>) {
+  const targetId = requireVoiceUuid(input.targetId, "Target-ID");
+  const resolution = voiceCleanText(input.resolution, 40);
+  const confirmation = voiceCleanText(input.confirmation, 80);
+  const expected = resolution === "confirmed_no_call" ? "PROVIDER GEPRUEFT KEIN CALL" : "PROVIDER FALL SCHLIESSEN";
+  if (!new Set(["confirmed_no_call", "close_without_retry"]).has(resolution) || confirmation !== expected) {
+    throw new QuoteValidationError("Provider-Aufloesung erfordert die exakte Bestaetigung.", ["provider_resolution_confirmation_required"], 422);
+  }
+  return supabaseRpc("resolve_voice_provider_uncertainty", {
+    p_target_id: targetId,
+    p_resolution: resolution,
+    p_actor: actorName(input.actor),
+    p_idempotency_key: voiceCleanText(input.idempotencyKey, 240) || `voice-admin:provider-resolution:${targetId}:${randomUUID()}`,
+  });
 }
 
 async function setVoiceModelEnabled(input: Record<string, unknown>) {
@@ -862,6 +961,7 @@ export async function runVoicePlatformAdminAction(actionInput: unknown, input: R
   if (action === "set_campaign_status") return setVoiceCampaignStatus(input);
   if (action === "stop_attempt") return controlVoiceAttempt(input, "stop");
   if (action === "handoff_attempt") return controlVoiceAttempt(input, "handoff");
+  if (action === "resolve_provider_uncertainty") return resolveVoiceProviderUncertainty(input);
   if (action === "set_model_enabled") return setVoiceModelEnabled(input);
   if (action === "register_model") return registerVoiceModelRelease(input);
   const actor = actorName(input.actor);
@@ -883,6 +983,9 @@ export async function runVoicePlatformAdminAction(actionInput: unknown, input: R
     });
   }
   if (action === "promote_model") {
+    if (voiceCleanText(input.confirmation, 80) !== "PRODUKTIONSMODELL FREIGEBEN") {
+      throw new QuoteValidationError("Produktionsmodellfreigabe erfordert die exakte Bestaetigung.", ["production_model_confirmation_required"], 422);
+    }
     return supabaseRpc("promote_voice_model_release", { p_release_id: requireVoiceUuid(input.modelReleaseId, "Modell-Release-ID"), p_approved_by: actor, p_idempotency_key: idempotencyKey });
   }
   if (action === "rollback_model") {
@@ -893,7 +996,7 @@ export async function runVoicePlatformAdminAction(actionInput: unknown, input: R
     const passedCount = Number(input.passedCount);
     const safetyFailureCount = Number(input.safetyFailureCount || 0);
     const averageScore = Number(input.averageScore);
-    if (!Number.isInteger(scenarioCount) || scenarioCount < 1 || !Number.isInteger(passedCount) || passedCount < 0 || passedCount > scenarioCount) {
+    if (!Number.isInteger(scenarioCount) || scenarioCount < 50 || !Number.isInteger(passedCount) || passedCount < 0 || passedCount > scenarioCount) {
       throw new QuoteValidationError("Eval-Zaehler sind ungueltig.", ["invalid_eval_counts"], 422);
     }
     const approvedPrompts = await supabaseRequest<PromptVersionRow[]>("voice_prompt_versions", undefined, {

@@ -18,7 +18,7 @@ type ActiveCall = {
   stopTimer: ReturnType<typeof setTimeout> | null;
 };
 
-const OPENING_INSTRUCTION = "Beginne jetzt exakt in dieser Reihenfolge: Identifiziere dich als Nia von NEONTRIP, nenne den konkreten Anfrage- oder Angebotsbezug, sage noch im selben Sprechzug 'Ich unterstuetze Sie dabei als digitaler Telefonassistent' und frage erst dann, ob es gerade kurz passt.";
+const OPENING_INSTRUCTION = "Beginne jetzt exakt in dieser Reihenfolge und in einem Sprechzug: Identifiziere dich als Nia von NEONTRIP, nenne den konkreten Anfrage- oder Angebotsbezug, frage 'Passt es gerade kurz?' und sage direkt danach 'Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent'. Beginne erst danach mit der Qualifikation oder dem Follow-up.";
 
 function containsAssistantDisclosure(value: string) {
   return /digital(?:er|en)?\s+telefonassistent|ki[- ]?(?:telefon|sprach)?assistent/i.test(value);
@@ -55,7 +55,7 @@ export class OpenAiRealtimeAdapter {
     await this.connectSideband(callId, attemptId, session.safetyIdentifier, false);
   }
 
-  async recoverCall(session: RecoveredRuntimeSession) {
+  async recoverCall(session: Extract<RecoveredRuntimeSession, { recoveryAction: "reconnect" }>) {
     if (!session.openAiCallId || this.calls.has(session.openAiCallId)) return false;
     await this.connectSideband(session.openAiCallId, session.attemptId, session.safetyIdentifier, session.disclosureConfirmed);
     return true;
@@ -63,6 +63,10 @@ export class OpenAiRealtimeAdapter {
 
   async reject(callId: string) {
     await this.client.realtime.calls.reject(callId, { status_code: 603 });
+  }
+
+  async hangup(callId: string) {
+    await this.client.realtime.calls.hangup(callId);
   }
 
   async stopAttempt(attemptId: string) {

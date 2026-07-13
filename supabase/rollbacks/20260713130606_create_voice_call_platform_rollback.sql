@@ -1,6 +1,8 @@
 drop function if exists public.finalize_voice_call_attempt(uuid, text, text, text, text, text, text[], timestamptz, boolean, boolean, boolean, boolean, text, text);
+drop function if exists public.resolve_voice_provider_uncertainty(uuid, text, text, text);
 drop function if exists public.record_voice_call_event(uuid, text, text, text, text, jsonb, timestamptz);
 drop function if exists public.schedule_voice_callback(uuid, text, timestamptz, text, text);
+drop function if exists public.check_voice_call_attempt_eligibility(uuid);
 drop function if exists public.claim_next_voice_call(text, integer);
 drop function if exists public.approve_voice_prompt_version(uuid, text, text);
 drop function if exists public.record_voice_model_evaluation(uuid, text, text, integer, integer, integer, numeric, text, jsonb, jsonb, text);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
+import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, resolveOpsRequestActor } from "@/lib/ops/auth";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -16,6 +16,10 @@ export async function authorizeVoiceCopilotApi(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
   return null;
+}
+
+export async function resolveVoiceCopilotActor(request: NextRequest) {
+  return resolveOpsRequestActor(getOpsHost(request), request.headers);
 }
 
 export async function readVoiceCopilotJson(request: NextRequest) {

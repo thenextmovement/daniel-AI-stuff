@@ -16,11 +16,18 @@ export type RuntimeSession = {
   tools: VoiceTool[];
 };
 
-export type RecoveredRuntimeSession = RuntimeSession & {
-  openAiCallId: string;
+type RecoveredCallState = {
+  attemptId: string;
+  openAiCallId: string | null;
+  providerCallId: string | null;
   disclosureConfirmed: boolean;
   providerCompleted: boolean;
 };
+
+export type RecoveredRuntimeSession =
+  | (RuntimeSession & RecoveredCallState & { recoveryAction: "reconnect" })
+  | (RecoveredCallState & { recoveryAction: "terminate"; blockedReason: string })
+  | (RecoveredCallState & { recoveryAction: "reconcile_provider"; blockedReason: string });
 
 export type StructuredOutcome = {
   terminalStatus: "completed" | "failed" | "cancelled" | "handed_off";

@@ -307,3 +307,10 @@ export async function hasOpsSession(host?: string | null, headers?: HeaderReader
   const value = store.get(OPS_SESSION_COOKIE)?.value;
   return Boolean(value && safeEqual(value, sessionDigest(configuredToken)));
 }
+
+export async function resolveOpsRequestActor(host?: string | null, headers?: HeaderReader | null) {
+  if (isOpsPortalBypassed(host)) return "local-ops";
+  const access = await validateCloudflareAccess(headers);
+  if (access.ok) return access.email || access.subject || "cloudflare-access";
+  return (await hasOpsSession(host, headers)) ? "ops-session" : null;
+}

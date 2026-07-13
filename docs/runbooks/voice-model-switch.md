@@ -19,12 +19,12 @@ Each release stores provider, exact model ID, API version, transport, voice, aud
 3. Verify the documented SIP, sideband WebSocket, function-tool, voice/audio, and event-schema contract. Record this review with `Sandbox-Vertrag`; this produces `contract_passed` but can never authorize customer calls or production promotion.
 4. Enable the independent model kill switch and select the model as `candidate`. Only allowlist-only campaigns can use a `contract_passed` candidate.
 5. Approve exactly one prompt version for each mode (`lead_qualification` and `follow_up`).
-6. Run all 56 scenario IDs from `de-neontrip-voice-v1` against this candidate and the current baseline. Any exact public model ID can be evaluated without code changes: `VOICE_EVAL_MODEL_IDS=<model-id> npm run eval:voice:live`. Record passed count, safety failures, average score, and report reference through the Ops eval form. The server records both approved prompt IDs, versions, and hashes as the immutable evaluation manifest.
+6. Run all 56 scenario IDs from `de-neontrip-voice-v1` against this candidate and the current baseline. Any exact public model ID can be evaluated without code changes: `VOICE_EVAL_MODEL_IDS=<model-id> npm run eval:voice:live`. Record passed count, safety failures, average score, and report reference through the Ops eval form. The database rejects suites below 50 scenarios. The server records both approved prompt IDs, versions, and hashes as the immutable evaluation manifest.
 7. A release is promotable only with `eval_status=passed`, zero blocking safety failures under the review policy, a complete two-mode prompt manifest, and an approver/timestamp.
 8. Run allowlist-only calls. Confirm stop, DNC, callback, handoff, interruption, and provider failure paths.
 9. Promote in Ops. The prior production release atomically becomes `rollback`.
 
-The implementation currently registers `gpt-realtime-2.1` and `gpt-realtime-1.5`. Both use the same 56 scenario IDs. Neither seed is production-approved by the migration.
+The implementation currently registers `gpt-realtime-2.1` and `gpt-realtime-1.5`. Both use the same 56 scenario IDs. The 2.1 release is selected as the initial candidate but starts with `eval_status=pending`; neither seed is sandbox-contract-approved or production-approved by the migration.
 
 ## Current Comparison
 
@@ -35,7 +35,7 @@ Synthetic text-only Realtime run on 2026-07-13 with identical prompts and scenar
 | `gpt-realtime-2.1` | 39/56 | 0 | failed production gate |
 | `gpt-realtime-1.5` | 41/56 | 0 | failed production gate |
 
-Reports are stored under `artifacts/voice-evals/` and contain hashes and structured checks, not raw model text. The remaining misses are expected-tool, handoff, or first-turn-disclosure assertions. Because the production RPC requires all scenarios plus zero safety failures, neither result can be promoted. The migration keeps `gpt-realtime-2.1` as the initial sandbox candidate because current OpenAI documentation recommends it for strongest Realtime reasoning, instruction following, interruption, noise handling, and tool use; the small text-only score difference does not replace audio/telephony evaluation.
+Reports are stored under `artifacts/voice-evals/` and contain hashes and structured checks, not raw model text. The remaining misses are expected-tool, handoff, or first-turn-disclosure assertions. Because the production RPC requires at least 50 scenarios, every submitted scenario passing, and zero safety failures, neither result can be promoted. The migration keeps `gpt-realtime-2.1` selected as the initial candidate because current OpenAI documentation recommends it for strongest Realtime reasoning, instruction following, interruption, noise handling, and tool use; it remains `pending` until an operator records the contract review. The small text-only score difference does not replace audio/telephony evaluation.
 
 ## “GPT Live 1” Procedure
 

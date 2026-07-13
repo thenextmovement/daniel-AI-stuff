@@ -10,6 +10,7 @@ import { bearerMatches, signAttemptBinding, verifyAttemptBinding, verifyTwilioSi
 import { createHmac } from "node:crypto";
 import { signVoiceConsentWebhook, verifyVoiceConsentWebhook } from "../../src/lib/ops/voice-consent-webhook";
 import { OpsClient } from "../../services/voice-runtime/ops-client";
+import { TwilioSipAdapter } from "../../services/voice-runtime/telephony";
 import { assertActiveVoiceInquiry } from "../../src/lib/ops/voice-platform-data";
 
 test("voice eval suite covers at least 50 unique German safety scenarios", () => {
@@ -31,7 +32,8 @@ test("outbound prompt discloses digital assistant after permission and blocks co
     },
     knowledgeMatches: [],
   });
-  assert.ok(instructions.indexOf("digitaler Telefonassistent") < instructions.indexOf("Passt es gerade kurz"));
+  assert.ok(instructions.indexOf("Passt es gerade kurz") < instructions.indexOf("KI-gestuetzter digitaler Telefonassistent"));
+  assert.match(instructions, /KI-gestuetzter digitaler Telefonassistent[\s\S]+erst dann mit inhaltlicher Qualifikation/);
   assert.match(instructions, /Keine Preise, Rabatte, Liefertermine/);
   assert.match(instructions, /untrusted customer data/);
 });
@@ -111,6 +113,10 @@ test("migration contains atomic claims, hard kill switches and private storage d
   assert.match(sql, /approve_voice_model_sandbox/);
   assert.match(sql, /evaluated_prompt_manifest/);
   assert.match(sql, /model\.evaluated_prompt_manifest @> jsonb_build_object/);
+  assert.match(sql, /scenario_count >= 50/);
+  assert.match(sql, /check_voice_call_attempt_eligibility/);
+  assert.match(sql, /consent_not_active/);
+  assert.match(sql, /model_kill_switch/);
   assert.match(sql, /max_concurrent_calls/);
   assert.match(sql, /recording_enabled boolean not null default false/);
   assert.match(sql, /transcript_storage_enabled boolean not null default false/);
@@ -168,12 +174,34 @@ test("runtime retries idempotent outcome finalization after transient Ops failur
   }
 });
 
+test("Twilio create is attempted once so an uncertain POST cannot duplicate a call", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw new TypeError("connection reset after request write");
+  }) as typeof fetch;
+  try {
+    const adapter = new TwilioSipAdapter({
+      twilioAccountSid: "AC00000000000000000000000000000000", twilioAuthToken: "test",
+      twilioFromNumber: "+4911111111111", openAiProjectId: "project", publicUrl: "https://voice.example",
+      sipBindingSecret: "binding",
+    } as never);
+    await assert.rejects(() => adapter.startOutboundCall({
+      attemptId: "00000000-0000-4000-8000-000000000001", phoneE164: "+4915222222222",
+    } as never), /connection reset/);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("runtime restart recovery requests worker-bound active sideband sessions", async () => {
   const originalFetch = globalThis.fetch;
   let observedUrl = "";
   globalThis.fetch = (async (input) => {
     observedUrl = String(input);
-    return Response.json({ sessions: [{ attemptId: "00000000-0000-4000-8000-000000000001", openAiCallId: "rtc_1", disclosureConfirmed: true }] });
+    return Response.json({ sessions: [{ attemptId: "00000000-0000-4000-8000-000000000001", openAiCallId: "rtc_1", providerCallId: "CA1", disclosureConfirmed: true, providerCompleted: false, recoveryAction: "reconnect" }] });
   }) as typeof fetch;
   try {
     const client = new OpsClient({ opsBaseUrl: "https://ops.example", opsToken: "runtime-token", workerId: "voice-runtime-1" } as never);
@@ -181,8 +209,14 @@ test("runtime restart recovery requests worker-bound active sideband sessions", 
     assert.equal(sessions[0]?.openAiCallId, "rtc_1");
     assert.equal(observedUrl, "https://ops.example/api/internal/voice-platform/recover?workerId=voice-runtime-1");
     const server = readFileSync("services/voice-runtime/server.ts", "utf8");
-    assert.match(server, /recoverActiveCalls\(\)/);
-    assert.match(server, /realtime\.recoverCall\(session\)/);
+  assert.match(server, /recoverActiveCalls\(\)/);
+  assert.match(server, /realtime\.recoverCall\(session\)/);
+  assert.match(server, /session\.recoveryAction === "reconcile_provider"/);
+	  assert.match(server, /provider_recovery_required/);
+	  assert.match(server, /telephony_start_uncertain/);
+	  assert.match(server, /voice provider callback state update failed/);
+	  assert.match(server, /providerCallId/);
+	  assert.match(server, /await ops\.getAttempt\(claimed\.attemptId\)/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -203,4 +237,17 @@ test("OpenAI ingress is replay-gated and receives a privacy-preserving safety id
   assert.match(realtime, /active\.lastOutcome = \{[\s\S]+terminalStatus: "handed_off"/);
   assert.match(realtime, /throw new Error\("invalid realtime event JSON"\)/);
   assert.doesNotMatch(server, /catch\(\(\) => undefined\)/);
+});
+
+test("runtime recovery uses immutable attempt snapshots and admin audit actors are server-derived", () => {
+  const data = readFileSync("src/lib/ops/voice-platform-data.ts", "utf8");
+  const route = readFileSync("src/app/api/ops/voice-platform/route.ts", "utf8");
+  assert.match(data, /const modelSnapshot = attempt\.model_snapshot/);
+  assert.match(data, /const promptSnapshot = attempt\.prompt_snapshot/);
+  assert.match(data, /instructionsTemplate: requireVoiceText\(promptSnapshot\.instructions_template/);
+  assert.match(data, /production_model_confirmation_required/);
+  assert.match(data, /PROVIDER GEPRUEFT KEIN CALL/);
+  assert.match(data, /consent_withdrawn/);
+  assert.match(route, /resolveVoiceCopilotActor\(request\)/);
+  assert.match(route, /\{ \.\.\.input, actor \}/);
 });

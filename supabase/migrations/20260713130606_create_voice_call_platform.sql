@@ -85,7 +85,7 @@ create table if not exists public.voice_model_evaluations (
   evaluated_by text not null,
   evaluated_at timestamptz not null default now(),
   constraint voice_model_evaluations_count_check check (
-    scenario_count >= 1 and passed_count >= 0 and passed_count <= scenario_count and safety_failure_count >= 0
+    scenario_count >= 50 and passed_count >= 0 and passed_count <= scenario_count and safety_failure_count >= 0
   ),
   constraint voice_model_evaluations_score_check check (average_score >= 0 and average_score <= 100),
   constraint voice_model_evaluations_status_check check (status in ('passed', 'failed')),
@@ -372,7 +372,7 @@ insert into public.voice_model_releases (
     'openai-gpt-realtime-2-1-sip-v1', 'openai', 'gpt-realtime-2.1', 'v1', 'sip', 'marin',
     '{"turn_detection":{"type":"server_vad"}}'::jsonb,
     '{"speech_to_speech":true,"function_tools":true,"sip":true,"sideband":true,"barge_in":true}'::jsonb,
-    'candidate', 'contract_passed', 'Initial candidate; customer use still requires the full eval gate.'
+    'candidate', 'pending', 'Initial candidate; disabled for calls until the SIP and sideband contract is explicitly approved.'
   ),
   (
     'openai-gpt-realtime-1-5-sip-v1', 'openai', 'gpt-realtime-1.5', 'v1', 'sip', 'marin',
@@ -387,12 +387,12 @@ insert into public.voice_prompt_versions (
 ) values
   (
     'lead-qualification', 1, 'lead_qualification',
-    'Begruesse die angefragte Person natuerlich als Nia von NEONTRIP, nenne den konkreten Anfragebezug und noch im ersten Sprechzug, dass du als digitaler Telefonassistent unterstuetzt. Frage dann, ob es gerade passt. Klaere Bedarf, Produkt, Einsatz, ungefaehre Groesse, Lichtwirkung und naechsten Schritt. Stelle nur eine Frage auf einmal. Nenne keine Preise oder Termine und uebergib unsichere oder sensible Fragen an einen Menschen.',
+    'Begruesse die angefragte Person natuerlich als Nia von NEONTRIP, nenne den konkreten Anfragebezug, frage, ob es gerade passt, und sage direkt danach noch im ersten Sprechzug, dass du als KI-gestuetzter digitaler Telefonassistent unterstuetzt. Klaere erst danach Bedarf, Produkt, Einsatz, ungefaehre Groesse, Lichtwirkung und naechsten Schritt. Stelle nur eine Frage auf einmal. Nenne keine Preise oder Termine und uebergib unsichere oder sensible Fragen an einen Menschen.',
     'fc7e5b1e0dcf129be0ddd3d8b9299d3190d30fcb1cc2d7a6c7b22d8bfa31ef03', 'review', 'migration'
   ),
   (
     'offer-follow-up', 1, 'follow_up',
-    'Begruesse die angefragte Person natuerlich als Nia von NEONTRIP, beziehe dich auf das konkrete Angebot und nenne noch im ersten Sprechzug, dass du als digitaler Telefonassistent unterstuetzt. Frage dann, ob es gerade passt. Klaere Interesse, offene Fragen, Einwaende und den gewuenschten naechsten Schritt. Stelle nur eine Frage auf einmal. Nenne keine neuen Preise oder Termine und uebergib Anpassungen oder sensible Fragen an einen Menschen.',
+    'Begruesse die angefragte Person natuerlich als Nia von NEONTRIP, beziehe dich auf das konkrete Angebot, frage, ob es gerade passt, und sage direkt danach noch im ersten Sprechzug, dass du als KI-gestuetzter digitaler Telefonassistent unterstuetzt. Klaere erst danach Interesse, offene Fragen, Einwaende und den gewuenschten naechsten Schritt. Stelle nur eine Frage auf einmal. Nenne keine neuen Preise oder Termine und uebergib Anpassungen oder sensible Fragen an einen Menschen.',
     'e9133bf3319fccf839fafb577a8ec5c5401a5de7b885824855f8b40d149a0dc4', 'review', 'migration'
   )
 on conflict (prompt_key, version_number) do nothing;
@@ -586,6 +586,7 @@ begin
     return;
   end if;
   if p_status not in ('passed', 'failed') then raise exception 'invalid evaluation status'; end if;
+  if p_scenario_count < 50 then raise exception 'at least 50 evaluation scenarios are required'; end if;
   if jsonb_typeof(p_prompt_manifest) <> 'object'
      or not (p_prompt_manifest ? 'lead_qualification' and p_prompt_manifest ? 'follow_up') then
     raise exception 'complete prompt manifest is required';
@@ -762,7 +763,11 @@ begin
   ) values (
     v_target.id, v_attempt_number, 'voice-attempt:' || v_target.id::text || ':' || v_attempt_number::text,
     v_model.id, v_prompt.id, 'twilio', 'reserved',
-    jsonb_build_object('request_id', v_target.request_id, 'offer_id', v_target.offer_id),
+    jsonb_build_object(
+      'request_id', v_target.request_id, 'offer_id', v_target.offer_id,
+      'campaign_id', v_campaign.id, 'consent_id', v_target.consent_id,
+      'mode', v_campaign.mode, 'allowlist_only', v_campaign.allowlist_only
+    ),
     jsonb_build_object('release_key', v_model.release_key, 'model_id', v_model.model_id, 'voice', v_model.voice,
       'api_version', v_model.api_version, 'transport', v_model.transport, 'session_config', v_model.session_config,
       'capabilities', v_model.capabilities),
@@ -770,11 +775,104 @@ begin
       'instructions_template', v_prompt.instructions_template, 'content_hash', v_prompt.content_hash)
   ) returning id into v_attempt_id;
 
+  update public.voice_contact_consents
+  set evidence_retain_until = greatest(evidence_retain_until, now() + interval '5 years'),
+      updated_at = now()
+  where id = v_target.consent_id;
+
   return query select
     v_attempt_id, v_target.id, v_campaign.id, v_target.request_id, v_target.offer_id,
     v_target.phone_e164, v_target.contact_name, v_target.company_name, v_campaign.mode,
     v_model.id, v_model.model_id, v_model.voice, v_model.session_config, v_model.capabilities,
     v_prompt.id, v_prompt.instructions_template, v_attempt_number, v_campaign.allowlist_only;
+end;
+$$;
+
+create or replace function public.check_voice_call_attempt_eligibility(
+  p_attempt_id uuid
+)
+returns table (eligible boolean, reason text)
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_attempt public.voice_call_attempts%rowtype;
+  v_target public.voice_call_targets%rowtype;
+  v_campaign public.voice_call_campaigns%rowtype;
+  v_consent public.voice_contact_consents%rowtype;
+  v_model public.voice_model_releases%rowtype;
+  v_prompt public.voice_prompt_versions%rowtype;
+  v_settings public.voice_runtime_settings%rowtype;
+begin
+  select * into v_attempt from public.voice_call_attempts where id = p_attempt_id;
+  if v_attempt.id is null then return query select false, 'attempt_not_found'::text; return; end if;
+  if v_attempt.status not in ('reserved', 'dialing', 'ringing', 'live') then
+    return query select false, 'attempt_not_active'::text; return;
+  end if;
+
+  select * into v_target from public.voice_call_targets where id = v_attempt.target_id;
+  if v_target.id is null or v_target.status not in ('claimed', 'dialing', 'live') then
+    return query select false, 'target_not_active'::text; return;
+  end if;
+  select * into v_campaign from public.voice_call_campaigns where id = v_target.campaign_id;
+  select * into v_consent from public.voice_contact_consents where id = v_target.consent_id;
+  select * into v_model from public.voice_model_releases where id = v_attempt.model_release_id;
+  select * into v_prompt from public.voice_prompt_versions where id = v_attempt.prompt_version_id;
+  select * into v_settings from public.voice_runtime_settings where singleton;
+
+  if v_settings.singleton is null or not v_settings.global_enabled then
+    return query select false, 'global_kill_switch'::text; return;
+  end if;
+  if v_campaign.id is null or v_campaign.status <> 'active' then
+    return query select false, 'campaign_not_active'::text; return;
+  end if;
+  if v_consent.id is null or v_consent.status <> 'granted'
+     or v_consent.request_id <> v_target.request_id
+     or v_consent.phone_hash <> v_target.phone_hash
+     or not (v_campaign.mode = any(v_consent.purposes))
+     or (v_consent.valid_until is not null and v_consent.valid_until <= now()) then
+    return query select false, 'consent_not_active'::text; return;
+  end if;
+  if exists (
+    select 1 from public.voice_do_not_call dnc
+    where dnc.active and (dnc.phone_hash = v_target.phone_hash or dnc.request_id = v_target.request_id)
+  ) then
+    return query select false, 'do_not_call'::text; return;
+  end if;
+  if v_prompt.id is null or v_prompt.id <> v_campaign.prompt_version_id
+     or v_prompt.mode <> v_campaign.mode or v_prompt.status <> 'approved' then
+    return query select false, 'prompt_not_approved'::text; return;
+  end if;
+  if v_model.id is null or not v_model.enabled or v_model.lifecycle <> v_campaign.model_channel then
+    return query select false, 'model_kill_switch'::text; return;
+  end if;
+  if v_campaign.allowlist_only then
+    if not v_settings.internal_test_calls_enabled
+       or v_model.eval_status not in ('contract_passed', 'passed')
+       or not exists (
+         select 1 from public.voice_test_allowlist allowlist
+         where allowlist.enabled and allowlist.phone_hash = v_target.phone_hash
+       ) then
+      return query select false, 'sandbox_not_authorized'::text; return;
+    end if;
+  elsif not v_settings.customer_calls_enabled
+        or v_model.eval_status <> 'passed'
+        or v_model.approved_by is null or v_model.approved_at is null
+        or not (v_model.evaluated_prompt_manifest @> jsonb_build_object(
+          v_campaign.mode, jsonb_build_object('id', v_campaign.prompt_version_id::text)
+        )) then
+    return query select false, 'customer_calls_not_authorized'::text; return;
+  end if;
+  if v_attempt.status = 'reserved' and (
+    extract(isodow from timezone(v_campaign.timezone, now()))::smallint <> all(v_campaign.allowed_weekdays)
+    or timezone(v_campaign.timezone, now())::time < v_campaign.contact_window_start
+    or timezone(v_campaign.timezone, now())::time >= v_campaign.contact_window_end
+  ) then
+    return query select false, 'outside_contact_window'::text; return;
+  end if;
+
+  return query select true, 'eligible'::text;
 end;
 $$;
 
@@ -902,7 +1000,9 @@ begin
     p_handoff_requested, p_handoff_completed, p_customer_requested_stop, p_unsafe_or_unsupported_request
   ) on conflict on constraint voice_call_outcomes_attempt_id_key do nothing;
 
-  if p_customer_requested_stop or p_outcome_code = 'do_not_call' then
+  if v_target.status = 'blocked' then
+    v_target_status := 'blocked';
+  elsif p_customer_requested_stop or p_outcome_code = 'do_not_call' then
     v_target_status := 'blocked';
     insert into public.voice_do_not_call (
       request_id, phone_hash, active, reason, source, idempotency_key, created_by
@@ -910,6 +1010,8 @@ begin
       v_target.request_id, v_target.phone_hash, true, 'Customer requested no further AI voice calls',
       'voice_call', 'voice-dnc:' || v_target.id::text, 'voice-runtime'
     ) on conflict (idempotency_key) do nothing;
+  elsif p_failure_code in ('telephony_start_uncertain', 'provider_recovery_required') then
+    v_target_status := 'blocked';
   elsif p_outcome_code = 'callback_requested' and p_callback_at is not null then
     v_target_status := 'retry';
   elsif p_terminal_status in ('completed', 'handed_off') then
@@ -931,11 +1033,77 @@ begin
       end,
       claimed_by = null, claimed_until = null,
       last_error_code = p_failure_code,
-      blocked_reason = case when v_target_status = 'blocked' then 'customer_requested_stop' else blocked_reason end,
+      blocked_reason = case
+        when p_customer_requested_stop or p_outcome_code = 'do_not_call' then 'customer_requested_stop'
+        when p_failure_code in ('telephony_start_uncertain', 'provider_recovery_required') then 'manual_provider_reconciliation_required'
+        else blocked_reason
+      end,
       updated_at = now()
   where id = v_target.id;
 
   return query select p_attempt_id, v_target_status, false;
+end;
+$$;
+
+create or replace function public.resolve_voice_provider_uncertainty(
+  p_target_id uuid,
+  p_resolution text,
+  p_actor text,
+  p_idempotency_key text
+)
+returns table (target_id uuid, target_status text, duplicate boolean)
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_target public.voice_call_targets%rowtype;
+  v_target_status text;
+begin
+  if p_resolution not in ('confirmed_no_call', 'close_without_retry') then
+    raise exception 'invalid provider uncertainty resolution';
+  end if;
+  if nullif(trim(p_actor), '') is null or nullif(trim(p_idempotency_key), '') is null then
+    raise exception 'actor and idempotency key are required';
+  end if;
+
+  select * into v_target from public.voice_call_targets where id = p_target_id for update;
+  if v_target.id is null then raise exception 'voice call target not found'; end if;
+
+  if exists (select 1 from public.voice_platform_audit_log where idempotency_key = p_idempotency_key) then
+    return query select v_target.id, v_target.status, true;
+    return;
+  end if;
+  if v_target.status <> 'blocked' or v_target.blocked_reason <> 'manual_provider_reconciliation_required' then
+    raise exception 'target is not awaiting provider reconciliation';
+  end if;
+  if exists (
+    select 1 from public.voice_call_attempts
+    where voice_call_attempts.target_id = v_target.id
+      and voice_call_attempts.status in ('reserved', 'dialing', 'ringing', 'live')
+  ) then
+    raise exception 'target still has an active call attempt';
+  end if;
+
+  v_target_status := case when p_resolution = 'confirmed_no_call' then 'retry' else 'cancelled' end;
+  update public.voice_call_targets
+  set status = v_target_status,
+      next_attempt_at = case when p_resolution = 'confirmed_no_call' then now() else next_attempt_at end,
+      blocked_reason = case when p_resolution = 'close_without_retry' then 'provider_reconciliation_closed' else null end,
+      last_error_code = null,
+      claimed_by = null,
+      claimed_until = null,
+      updated_at = now()
+  where id = v_target.id;
+
+  insert into public.voice_platform_audit_log (
+    actor, action, target_type, target_id, idempotency_key, metadata
+  ) values (
+    p_actor, 'provider_uncertainty_resolved', 'voice_call_target', v_target.id::text,
+    p_idempotency_key, jsonb_build_object('resolution', p_resolution, 'resulting_status', v_target_status)
+  );
+
+  return query select v_target.id, v_target_status, false;
 end;
 $$;
 
@@ -964,9 +1132,11 @@ revoke all on function public.rollback_voice_model_release(text, text) from publ
 revoke all on function public.record_voice_model_evaluation(uuid, text, text, integer, integer, integer, numeric, text, jsonb, jsonb, text) from public, anon, authenticated;
 revoke all on function public.approve_voice_prompt_version(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.claim_next_voice_call(text, integer) from public, anon, authenticated;
+revoke all on function public.check_voice_call_attempt_eligibility(uuid) from public, anon, authenticated;
 revoke all on function public.schedule_voice_callback(uuid, text, timestamptz, text, text) from public, anon, authenticated;
 revoke all on function public.record_voice_call_event(uuid, text, text, text, text, jsonb, timestamptz) from public, anon, authenticated;
 revoke all on function public.finalize_voice_call_attempt(uuid, text, text, text, text, text, text[], timestamptz, boolean, boolean, boolean, boolean, text, text) from public, anon, authenticated;
+revoke all on function public.resolve_voice_provider_uncertainty(uuid, text, text, text) from public, anon, authenticated;
 
 grant execute on function public.promote_voice_model_release(uuid, text, text) to service_role;
 grant execute on function public.select_voice_model_candidate(uuid, text, text) to service_role;
@@ -975,9 +1145,11 @@ grant execute on function public.rollback_voice_model_release(text, text) to ser
 grant execute on function public.record_voice_model_evaluation(uuid, text, text, integer, integer, integer, numeric, text, jsonb, jsonb, text) to service_role;
 grant execute on function public.approve_voice_prompt_version(uuid, text, text) to service_role;
 grant execute on function public.claim_next_voice_call(text, integer) to service_role;
+grant execute on function public.check_voice_call_attempt_eligibility(uuid) to service_role;
 grant execute on function public.schedule_voice_callback(uuid, text, timestamptz, text, text) to service_role;
 grant execute on function public.record_voice_call_event(uuid, text, text, text, text, jsonb, timestamptz) to service_role;
 grant execute on function public.finalize_voice_call_attempt(uuid, text, text, text, text, text, text[], timestamptz, boolean, boolean, boolean, boolean, text, text) to service_role;
+grant execute on function public.resolve_voice_provider_uncertainty(uuid, text, text, text) to service_role;
 
 comment on table public.voice_runtime_settings is
   'Fail-closed global Voice Platform switches. All outbound call paths require these gates.';
