@@ -1,0 +1,33 @@
+{
+  "name": "NEONTRIP Voice Call Dispatcher v1",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "Europe/Berlin", "executionTimeout": 60, "saveDataErrorExecution": "all", "saveDataSuccessExecution": "none", "errorWorkflow": "MSzTKddYH7LkSub3" },
+  "nodes": [
+    {
+      "id": "voice-dispatch-schedule",
+      "name": "Dispatch Tick",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 0],
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 1 }] } }
+    },
+    {
+      "id": "voice-dispatch-runtime",
+      "name": "Claim And Dispatch One Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [260, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VOICE_RUNTIME_URL + '/dispatch' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Authorization", "value": "={{ 'Bearer ' + $env.VOICE_DISPATCH_TOKEN }}" }] },
+        "options": { "timeout": 30000, "response": { "response": { "neverError": false, "responseFormat": "json" } } }
+      }
+    }
+  ],
+  "connections": { "Dispatch Tick": { "main": [[{ "node": "Claim And Dispatch One Call", "type": "main", "index": 0 }]] } }
+}

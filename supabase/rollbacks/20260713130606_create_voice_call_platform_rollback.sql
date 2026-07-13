@@ -1,0 +1,25 @@
+drop function if exists public.finalize_voice_call_attempt(uuid, text, text, text, text, text, text[], timestamptz, boolean, boolean, boolean, boolean, text, text);
+drop function if exists public.record_voice_call_event(uuid, text, text, text, text, jsonb, timestamptz);
+drop function if exists public.schedule_voice_callback(uuid, text, timestamptz, text, text);
+drop function if exists public.claim_next_voice_call(text, integer);
+drop function if exists public.approve_voice_prompt_version(uuid, text, text);
+drop function if exists public.record_voice_model_evaluation(uuid, text, text, integer, integer, integer, numeric, text, jsonb, jsonb, text);
+drop function if exists public.rollback_voice_model_release(text, text);
+drop function if exists public.approve_voice_model_sandbox(uuid, text, text);
+drop function if exists public.select_voice_model_candidate(uuid, text, text);
+drop function if exists public.promote_voice_model_release(uuid, text, text);
+
+drop table if exists public.voice_platform_audit_log;
+drop table if exists public.voice_call_actions;
+drop table if exists public.voice_call_outcomes;
+drop table if exists public.voice_call_events;
+drop table if exists public.voice_call_attempts;
+drop table if exists public.voice_call_targets;
+drop table if exists public.voice_call_campaigns;
+drop table if exists public.voice_test_allowlist;
+drop table if exists public.voice_do_not_call;
+drop table if exists public.voice_contact_consents;
+drop table if exists public.voice_runtime_settings;
+drop table if exists public.voice_model_evaluations;
+drop table if exists public.voice_model_releases;
+drop table if exists public.voice_prompt_versions;

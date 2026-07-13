@@ -1,0 +1,16 @@
+{
+  "capturedAt": "2026-07-13T13:30:00Z",
+  "scope": "voice-call-platform",
+  "baseline": {
+    "NEONTRIP Voice Call Dispatcher v1": "absent",
+    "NEONTRIP Voice Outcome Processor v1": "absent",
+    "NEONTRIP Voice Failure Retry Processor v1": "absent"
+  },
+  "protectedWorkflow": {
+    "id": "HzMgctp78bcMq44A",
+    "name": "NEONTRIP Payment Reminder Processor v1.1",
+    "expectedChange": "none"
+  },
+  "rollback": "Keep all new workflows inactive, then delete the three IDs recorded in n8n/voice-platform-workflow-manifest.json.",
+  "secretsIncluded": false
+}

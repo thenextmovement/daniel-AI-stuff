@@ -1,0 +1,18 @@
+{
+  "status": "created_inactive",
+  "active": false,
+  "workflows": [
+    { "name": "NEONTRIP Voice Call Dispatcher v1", "id": "Z6WbBeWfPJ7ijMDC", "errorWorkflow": "MSzTKddYH7LkSub3" },
+    { "name": "NEONTRIP Voice Outcome Processor v1", "id": "FasnNPZxB7hFC7SA", "errorWorkflow": "MSzTKddYH7LkSub3" },
+    { "name": "NEONTRIP Voice Failure Retry Processor v1", "id": "MSzTKddYH7LkSub3" }
+  ],
+  "requiredEnvironment": [
+    "VOICE_RUNTIME_URL",
+    "VOICE_DISPATCH_TOKEN",
+    "VOICE_OPS_BASE_URL",
+    "VOICE_RUNTIME_API_TOKEN",
+    "VOICE_N8N_WEBHOOK_TOKEN",
+    "VOICE_N8N_OUTCOME_URL"
+  ],
+  "activationRequiresExplicitApproval": true
+}

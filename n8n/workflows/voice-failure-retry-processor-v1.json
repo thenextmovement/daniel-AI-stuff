@@ -1,0 +1,59 @@
+{
+  "name": "NEONTRIP Voice Failure Retry Processor v1",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "Europe/Berlin", "executionTimeout": 60, "saveDataErrorExecution": "all", "saveDataSuccessExecution": "none" },
+  "nodes": [
+    {
+      "id": "voice-failure-trigger",
+      "name": "Voice Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "voice-failure-normalize",
+      "name": "Normalize Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 0],
+      "parameters": {
+        "jsCode": "const event = $input.first().json;\nconst data = event.execution?.data || event;\nconst attemptId = String(data.attemptId || data.resultData?.runData?.['Claim And Dispatch One Call']?.[0]?.data?.main?.[0]?.[0]?.json?.attemptId || '');\nconst validAttempt = /^[0-9a-f-]{36}$/i.test(attemptId);\nconst message = String(event.execution?.error?.message || event.error?.message || 'n8n voice workflow failure').slice(0, 1000);\nreturn [{ json: { validAttempt, attemptId, outcome: { terminalStatus: 'failed', outcomeCode: 'technical_failure', summaryForHuman: 'Der Voice-Workflow wurde wegen eines technischen Fehlers beendet.', customerIntent: null, productInterest: null, objections: [], callbackAt: null, humanHandoffRequested: false, humanHandoffCompleted: false, customerRequestedStop: false, unsafeOrUnsupportedRequest: false, failureCode: 'n8n_workflow_failure', failureDetail: message } } }];"
+      }
+    },
+    {
+      "id": "voice-failure-has-attempt",
+      "name": "Attempt Bound",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [500, 0],
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "id": "has-attempt", "leftValue": "={{ $json.validAttempt }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "options": {} }
+    },
+    {
+      "id": "voice-failure-finalize",
+      "name": "Record Failure And Retry State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [760, -80],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VOICE_OPS_BASE_URL + '/api/internal/voice-platform/finalize' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Authorization", "value": "={{ 'Bearer ' + $env.VOICE_RUNTIME_API_TOKEN }}" }, { "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ attemptId: $json.attemptId, outcome: $json.outcome }) }}",
+        "options": { "timeout": 30000 }
+      }
+    }
+  ],
+  "connections": {
+    "Voice Workflow Error": { "main": [[{ "node": "Normalize Failure", "type": "main", "index": 0 }]] },
+    "Normalize Failure": { "main": [[{ "node": "Attempt Bound", "type": "main", "index": 0 }]] },
+    "Attempt Bound": { "main": [[{ "node": "Record Failure And Retry State", "type": "main", "index": 0 }], []] }
+  }
+}

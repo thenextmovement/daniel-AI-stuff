@@ -1,0 +1,17 @@
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY tsconfig.voice-runtime.json ./
+COPY services/voice-runtime ./services/voice-runtime
+RUN npm run build:voice-runtime
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY --chown=node:node --from=builder /app/dist/voice-runtime ./dist/voice-runtime
+USER node
+EXPOSE 3100
+CMD ["node", "dist/voice-runtime/server.js"]

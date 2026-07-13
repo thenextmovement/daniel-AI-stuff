@@ -18,6 +18,22 @@ export async function authorizeVoiceCopilotApi(request: NextRequest) {
   return null;
 }
 
+export async function readVoiceCopilotJson(request: NextRequest) {
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (declaredLength > 64_000) {
+    throw new QuoteValidationError("Voice-Copilot-Payload ist zu gross.", ["payload_too_large"], 413);
+  }
+  const raw = await request.text();
+  if (Buffer.byteLength(raw, "utf8") > 64_000) {
+    throw new QuoteValidationError("Voice-Copilot-Payload ist zu gross.", ["payload_too_large"], 413);
+  }
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new QuoteValidationError("Voice-Copilot-Payload ist kein gueltiges JSON.", ["invalid_json"], 400);
+  }
+}
+
 export function voiceCopilotApiFailure(error: unknown, operation: string) {
   if (error instanceof QuoteValidationError) {
     return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });

@@ -1,0 +1,50 @@
+{
+  "name": "NEONTRIP Voice Outcome Processor v1",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "Europe/Berlin", "executionTimeout": 60, "saveDataErrorExecution": "all", "saveDataSuccessExecution": "none", "errorWorkflow": "MSzTKddYH7LkSub3" },
+  "nodes": [
+    {
+      "id": "voice-outcome-webhook",
+      "name": "Outcome Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "parameters": { "httpMethod": "POST", "path": "neontrip-voice-outcome-v1", "responseMode": "onReceived", "options": {} }
+    },
+    {
+      "id": "voice-outcome-validate",
+      "name": "Authenticate And Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst headers = input.headers || {};\nconst expected = String($env.VOICE_N8N_WEBHOOK_TOKEN || '');\nconst received = String(headers.authorization || '').replace(/^Bearer\\s+/i, '');\nif (!expected || received !== expected) throw new Error('unauthorized voice outcome webhook');\nconst body = input.body || input;\nif (!/^[0-9a-f-]{36}$/i.test(String(body.attemptId || ''))) throw new Error('invalid attemptId');\nif (!body.outcome || typeof body.outcome !== 'object') throw new Error('missing outcome');\nreturn [{ json: { attemptId: body.attemptId, outcome: body.outcome } }];"
+      }
+    },
+    {
+      "id": "voice-outcome-finalize",
+      "name": "Finalize In Ops",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [500, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VOICE_OPS_BASE_URL + '/api/internal/voice-platform/finalize' }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Authorization", "value": "={{ 'Bearer ' + $env.VOICE_RUNTIME_API_TOKEN }}" }, { "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 30000 }
+      }
+    }
+  ],
+  "connections": {
+    "Outcome Webhook": { "main": [[{ "node": "Authenticate And Validate", "type": "main", "index": 0 }]] },
+    "Authenticate And Validate": { "main": [[{ "node": "Finalize In Ops", "type": "main", "index": 0 }]] }
+  }
+}

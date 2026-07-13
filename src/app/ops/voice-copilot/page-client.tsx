@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, BrainCircuit, CheckCircle2, Headphones, Mic, Radio, ShieldCheck, Square, WandSparkles } from "lucide-react";
+import { AlertTriangle, BookOpen, BrainCircuit, CheckCircle2, Headphones, Mic, PhoneCall, Radio, ShieldCheck, Square, WandSparkles } from "lucide-react";
 import type { VoiceCopilotMode } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { OpsLoginCard } from "../ops-login-card";
@@ -10,6 +10,7 @@ import { OpsPageIntro, opsPageContainerClass, opsPageShellClass, OpsStatCard } f
 import { CustomerContextPanel } from "./customer-context-panel";
 import { KnowledgePanel } from "./knowledge-panel";
 import { PostCallReview } from "./post-call-review";
+import { VoicePlatformPanel } from "./voice-platform-panel";
 
 type VoiceCopilotClientProps = {
   initialHasSession: boolean;
@@ -42,7 +43,7 @@ const modeOptions: Array<{
     label: "Lead-Qualifikation",
     objective: "Bedarf, Einsatz, grobe Spezifikation und naechsten Schritt klaeren.",
     firstInstruction:
-      "Stelle dich Daniel klar als digitaler KI-Assistent von NEONTRIP vor und frage dann, was auf dem Schild stehen soll oder welches Logo/Motiv geplant ist.",
+      "Begruesse als Nia von NEONTRIP mit Bezug zur Anfrage, nenne im ersten Sprechzug natuerlich, dass du als digitaler Telefonassistent unterstuetzt, und frage dann, ob es gerade passt.",
     suggestions: [
       "Klaere Text, Logo oder Motiv.",
       "Klaere Einsatzort, grobe Groesse und Innen/Aussen.",
@@ -54,7 +55,7 @@ const modeOptions: Array<{
     label: "Follow-up",
     objective: "Interesse, Einwaende und naechsten Schritt nach Angebot klaeren.",
     firstInstruction:
-      "Stelle dich Daniel klar als digitaler KI-Assistent von NEONTRIP vor und frage freundlich, ob das Angebot noch interessant ist oder ob etwas offen ist.",
+      "Begruesse als Nia von NEONTRIP mit Bezug zum Angebot, nenne im ersten Sprechzug natuerlich, dass du als digitaler Telefonassistent unterstuetzt, und frage dann, ob es gerade passt.",
     suggestions: [
       "Frage, ob die Angebotsrichtung grundsaetzlich passt.",
       "Klaere den konkreten Blocker: Preis, Design, Timing oder interne Freigabe.",
@@ -100,7 +101,7 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
   const [events, setEvents] = useState<string[]>([]);
   const [requestSummary, setRequestSummary] = useState("");
   const [knownInterest, setKnownInterest] = useState("LED-Neonschild / Leuchtreklame");
-  const [activeView, setActiveView] = useState<"live" | "knowledge">("live");
+  const [activeView, setActiveView] = useState<"live" | "platform" | "knowledge">("live");
   const [knowledgeEnabled, setKnowledgeEnabled] = useState<boolean | null>(null);
   const [selectedContext, setSelectedContext] = useState<VoiceCustomerContext | null>(null);
   const [consentStatus, setConsentStatus] = useState<"pending" | "confirmed" | "declined">("pending");
@@ -285,7 +286,7 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
         <OpsPageIntro
           eyebrow="Realtime Sales Assist"
           title="Voice Copilot"
-          description="Interner gpt-realtime-2.1 Test fuer Live-Gespraechshilfe, Follow-up-Qualifikation und Knowledge-Kandidaten."
+          description="Interner Realtime-Test, modellunabhaengige Call-Plattform und geprueftes Wissen fuer Erstkontakt und Follow-up."
         >
           <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/10 px-3 py-2 text-sm text-white/80">
             <Headphones className="h-4 w-4" />
@@ -294,6 +295,15 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
         </OpsPageIntro>
 
         <div className="inline-flex w-fit rounded-lg border border-stone-200 bg-white p-1" role="tablist" aria-label="Voice Copilot Bereich">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "platform"}
+            onClick={() => setActiveView("platform")}
+            className={`inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "platform" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+          >
+            <PhoneCall className="h-4 w-4" /> Plattform
+          </button>
           <button
             type="button"
             role="tab"
@@ -480,7 +490,7 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
           requestId={selectedContext?.requestId || null}
           enabled={knowledgeEnabled === true && status === "stopped"}
         />
-        </> : <KnowledgePanel operatorName={operatorName} />}
+        </> : activeView === "platform" ? <VoicePlatformPanel operatorName={operatorName} /> : <KnowledgePanel operatorName={operatorName} />}
       </div>
     </main>
   );
