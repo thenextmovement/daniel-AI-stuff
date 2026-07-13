@@ -574,7 +574,7 @@ test("manual Trello move approves Neonflex review warnings without consulting QC
   assert.ok(release.ignoredReviewWarnings.some((warning) => warning.includes("single_supplier_anchor")));
 });
 
-test("manual Trello move skips UV-print Neon and leaves the existing offer flow unchanged", async () => {
+test("manual Trello move accepts UV-print Neon when supplier anchors are monotonic", async () => {
   const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
     id: "cardManualReleaseUvPrint",
     idBoard: "board-1",
@@ -594,8 +594,38 @@ test("manual Trello move skips UV-print Neon and leaves the existing offer flow 
 
   assert.equal(result.designs[0]?.productModel, "uv_print");
   const release = classifyManualReleaseSizeLadderPreflight(result);
-  assert.equal(release.decision, "skipped");
-  assert.equal(release.reason, "non_standard_neon_product_uses_existing_offer_flow");
+  assert.equal(release.decision, "ready");
+  assert.equal(release.reason, "manual_move_approved_review_warnings");
+});
+
+test("manual Trello move blocks a larger supplier anchor with a lower total price", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardManualReleaseFallingPrice",
+    idBoard: "board-1",
+    name: "LED Flex UV Print Inside",
+    customFields: {
+      Size_1: "100x50cm",
+      Price_1: "266",
+      Product_1: "LED Flex UV Print",
+      Size_2: "150x75cm",
+      Price_2: "385",
+      Product_2: "LED Flex UV Print",
+      Size_3: "170x85cm",
+      Price_3: "349",
+      Product_3: "LED Flex UV Print",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "cardManualReleaseFallingPrice",
+    maxLongSideCm: 250,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.ok(result.warnings.some((warning) => warning.includes("larger_but_cheaper_than")));
+  const release = classifyManualReleaseSizeLadderPreflight(result);
+  assert.equal(release.decision, "blocked");
+  assert.ok(release.technicalIssues.some((issue) => issue.includes("larger_but_cheaper_than")));
 });
 
 test("quote ready preflight comment exposes status and grouping", async () => {

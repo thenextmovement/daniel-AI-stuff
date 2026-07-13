@@ -1697,7 +1697,17 @@ export function classifyManualReleaseSizeLadderPreflight(
       ignoredReviewWarnings: preflight.warnings,
     };
   }
-  if (productModels.some((model) => model !== "neonflex")) {
+  const supportedNeonModels: OfferSizeLadderProductModel[] = ["neonflex", "uv_print", "outdoor"];
+  if (productModels.some((model) => !supportedNeonModels.includes(model))) {
+    if (productModels.includes("unknown")) {
+      return {
+        decision: "blocked",
+        reason: "technical_size_ladder_validation_failed",
+        productModels,
+        technicalIssues: ["product_model_unknown"],
+        ignoredReviewWarnings: preflight.warnings.filter((warning) => warning !== "design_1:product_model_unknown"),
+      };
+    }
     return {
       decision: "skipped",
       reason: "non_standard_neon_product_uses_existing_offer_flow",
@@ -1713,6 +1723,9 @@ export function classifyManualReleaseSizeLadderPreflight(
     && preflight.warnings.includes("anchor_count_not_evenly_divisible_by_design_count")
   ) {
     technicalIssues.push("anchor_count_not_evenly_divisible_by_design_count");
+  }
+  for (const warning of preflight.warnings) {
+    if (/larger_but_cheaper_than/i.test(warning)) technicalIssues.push(warning);
   }
   if (!preflight.designs.length && !technicalIssues.length) technicalIssues.push("size_ladder_designs_missing");
   if (!preflight.offerItemsJson && !technicalIssues.length) technicalIssues.push("offer_items_json_missing");
