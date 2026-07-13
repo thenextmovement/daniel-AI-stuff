@@ -2276,6 +2276,27 @@ async function fetchOutlookGraphEvidence(input: {
   }
 }
 
+export async function fetchOutlookGraphEvidenceForBoundCustomer(input: {
+  requestId: string;
+  customerEmail: string | null;
+  offerNumber: string | null;
+}) {
+  const identifiers: CompanyBrainIdentifier[] = [];
+  if (input.customerEmail) {
+    identifiers.push({ type: "email", label: "Gebundene Kunden-E-Mail", value: input.customerEmail, confidence: "high", href: null });
+  }
+  if (input.offerNumber) {
+    identifiers.push({ type: "offer_number", label: "Gebundene Angebotsnummer", value: input.offerNumber, confidence: "high", href: null });
+  }
+
+  return fetchOutlookGraphEvidence({
+    query: input.requestId,
+    identifiers,
+    records: [],
+    offers: [],
+  });
+}
+
 export function buildIntegrationReadiness(env: Record<string, string | undefined> = process.env): CompanyBrainIntegrationReadiness[] {
   const graphGroups = [
     ["MICROSOFT_GRAPH_TENANT_ID", "AZURE_TENANT_ID"],

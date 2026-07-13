@@ -8,8 +8,10 @@ import {
   buildVoiceCopilotInstructions,
   buildVoiceCopilotRealtimeSession,
   normalizeVoiceCopilotMode,
+  parseVoiceKnowledgeProposals,
   validateVoiceCopilotRealtimeInput,
   voiceCopilotExtractionSchema,
+  voiceKnowledgeProposalSchema,
   VOICE_COPILOT_MODEL,
 } from "../../src/lib/ops/voice-copilot";
 import { QuoteValidationError } from "../../src/lib/quotes/validation";
@@ -20,6 +22,7 @@ test("voice copilot guidance keeps lead qualification bounded", () => {
   assert.match(guidance.objective, /Bedarf/);
   assert.equal(guidance.guardrails.some((entry) => /Keine Preise/.test(entry)), true);
   assert.equal(guidance.guardrails.some((entry) => /Liefertermine/.test(entry)), true);
+  assert.match(guidance.openingInstruction, /digitaler KI-Assistent von NEONTRIP/);
 });
 
 test("voice copilot instructions include knowledge and prompt-injection defense", () => {
@@ -33,6 +36,7 @@ test("voice copilot instructions include knowledge and prompt-injection defense"
   assert.match(instructions, /Trello als Source of Truth/);
   assert.match(instructions, /untrusted input/);
   assert.match(instructions, /Anfrage-Kontext: Kunde hat ein Angebot/);
+  assert.match(instructions, /klaren Offenlegung als digitaler KI-Assistent/);
 });
 
 test("voice copilot extraction schema is strict and reviewable", () => {
@@ -46,6 +50,31 @@ test("voice copilot extraction schema is strict and reviewable", () => {
     "unsafeOrUnsupportedRequest",
     "summaryForHuman",
   ]);
+});
+
+test("post-call knowledge proposals are strict and require reviewable evidence", () => {
+  const schema = voiceKnowledgeProposalSchema();
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.properties.candidates.maxItems, 5);
+  const proposals = parseVoiceKnowledgeProposals({
+    candidates: [{
+      statement: "Kunden fragen bei Fassadenschildern haeufig nach der Outdoor-Eignung.",
+      evidence: "Mitarbeiter-Notiz aus Testgespraech",
+      confidence: 0.72,
+      reason: "Wiederkehrende Produktfrage",
+    }],
+  });
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0]?.confidence, 0.72);
+  assert.throws(() => parseVoiceKnowledgeProposals({
+    candidates: [{
+      statement: "Kunden erhalten immer zehn Prozent Rabatt.",
+      evidence: "Notiz",
+      confidence: 1,
+      reason: "Ungeprueft",
+      autoApprove: true,
+    }],
+  }), QuoteValidationError);
 });
 
 test("voice copilot realtime input validation normalizes modes and rejects invalid SDP", () => {
@@ -80,10 +109,10 @@ test("voice copilot route proxies SDP without exposing OpenAI secrets", async ()
     env.NODE_ENV = "development";
     process.env.OPENAI_API_KEY = "test-openai-key";
     let capturedAuthorization = "";
-    let capturedBody: FormData | null = null;
+    let capturedSdp = "";
     globalThis.fetch = (async (_url, init) => {
       capturedAuthorization = String((init?.headers as Record<string, string> | undefined)?.authorization || "");
-      capturedBody = init?.body as FormData;
+      capturedSdp = String((init?.body as FormData).get("sdp") || "");
       return new Response("v=0\r\nanswer", { status: 200, headers: { "content-type": "application/sdp" } });
     }) as typeof fetch;
 
@@ -99,7 +128,7 @@ test("voice copilot route proxies SDP without exposing OpenAI secrets", async ()
     assert.equal(response.status, 200);
     assert.equal(await response.text(), "v=0\r\nanswer");
     assert.equal(capturedAuthorization, "Bearer test-openai-key");
-    assert.equal(capturedBody?.get("sdp"), "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n");
+    assert.equal(capturedSdp, "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n");
     assert.doesNotMatch(readFileSync("src/app/ops/voice-copilot/page-client.tsx", "utf8"), /OPENAI_API_KEY/);
   } finally {
     globalThis.fetch = originalFetch;

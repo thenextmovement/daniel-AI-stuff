@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BrainCircuit, CheckCircle2, Headphones, Mic, ShieldCheck, Square, WandSparkles } from "lucide-react";
+import { AlertTriangle, BookOpen, BrainCircuit, CheckCircle2, Headphones, Mic, Radio, ShieldCheck, Square, WandSparkles } from "lucide-react";
 import type { VoiceCopilotMode } from "@/lib/ops/voice-copilot";
+import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, opsPageContainerClass, opsPageShellClass, OpsStatCard } from "../ops-design";
+import { CustomerContextPanel } from "./customer-context-panel";
+import { KnowledgePanel } from "./knowledge-panel";
+import { PostCallReview } from "./post-call-review";
 
 type VoiceCopilotClientProps = {
   initialHasSession: boolean;
@@ -38,7 +42,7 @@ const modeOptions: Array<{
     label: "Lead-Qualifikation",
     objective: "Bedarf, Einsatz, grobe Spezifikation und naechsten Schritt klaeren.",
     firstInstruction:
-      "Begruesse Daniel als Testkunden und frage zuerst, was auf dem Schild stehen soll oder welches Logo/Motiv geplant ist.",
+      "Stelle dich Daniel klar als digitaler KI-Assistent von NEONTRIP vor und frage dann, was auf dem Schild stehen soll oder welches Logo/Motiv geplant ist.",
     suggestions: [
       "Klaere Text, Logo oder Motiv.",
       "Klaere Einsatzort, grobe Groesse und Innen/Aussen.",
@@ -50,7 +54,7 @@ const modeOptions: Array<{
     label: "Follow-up",
     objective: "Interesse, Einwaende und naechsten Schritt nach Angebot klaeren.",
     firstInstruction:
-      "Begruesse Daniel als Testkunden und frage freundlich, ob das Angebot noch interessant ist oder ob etwas offen ist.",
+      "Stelle dich Daniel klar als digitaler KI-Assistent von NEONTRIP vor und frage freundlich, ob das Angebot noch interessant ist oder ob etwas offen ist.",
     suggestions: [
       "Frage, ob die Angebotsrichtung grundsaetzlich passt.",
       "Klaere den konkreten Blocker: Preis, Design, Timing oder interne Freigabe.",
@@ -96,9 +100,14 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
   const [events, setEvents] = useState<string[]>([]);
   const [requestSummary, setRequestSummary] = useState("");
   const [knownInterest, setKnownInterest] = useState("LED-Neonschild / Leuchtreklame");
+  const [activeView, setActiveView] = useState<"live" | "knowledge">("live");
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState<boolean | null>(null);
+  const [selectedContext, setSelectedContext] = useState<VoiceCustomerContext | null>(null);
+  const [consentStatus, setConsentStatus] = useState<"pending" | "confirmed" | "declined">("pending");
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const voiceSessionIdRef = useRef<string | null>(null);
 
   const selectedMode = useMemo(() => modeOptions.find((entry) => entry.mode === mode) || modeOptions[0], [mode]);
 
@@ -120,6 +129,16 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
     }
   }, [operatorName]);
 
+  useEffect(() => {
+    if (!hasSession) return;
+    let cancelled = false;
+    void fetch("/api/ops/voice-copilot/knowledge", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => { if (!cancelled) setKnowledgeEnabled(Boolean(payload?.enabled)); })
+      .catch(() => { if (!cancelled) setKnowledgeEnabled(false); });
+    return () => { cancelled = true; };
+  }, [hasSession]);
+
   function appendEvent(message: string) {
     setEvents((current) => [logLine(message), ...current].slice(0, 30));
   }
@@ -131,6 +150,15 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
     dataChannelRef.current = null;
     peerConnectionRef.current = null;
     mediaStreamRef.current = null;
+    const finishedSessionId = voiceSessionIdRef.current;
+    voiceSessionIdRef.current = null;
+    if (finishedSessionId) {
+      void fetch("/api/ops/voice-copilot/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: finishedSessionId, status: "completed" }),
+      }).catch(() => appendEvent("Session-Audit konnte nicht abgeschlossen werden."));
+    }
     setStatus("stopped");
     appendEvent("Session beendet.");
   }
@@ -189,12 +217,16 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
           mode,
           requestSummary,
           knownInterest,
+          operatorName,
+          requestId: selectedContext?.requestId || null,
+          consentStatus: mode === "internal_test" ? "not_required_internal" : consentStatus,
         }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.error || "Realtime-Session konnte nicht gestartet werden.");
       }
+      voiceSessionIdRef.current = response.headers.get("x-neontrip-voice-session-id");
       await peerConnection.setRemoteDescription({ type: "answer", sdp: await response.text() });
       setStatus("live");
       appendEvent("Session live.");
@@ -261,6 +293,28 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
           </div>
         </OpsPageIntro>
 
+        <div className="inline-flex w-fit rounded-lg border border-stone-200 bg-white p-1" role="tablist" aria-label="Voice Copilot Bereich">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "live"}
+            onClick={() => setActiveView("live")}
+            className={`inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "live" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+          >
+            <Radio className="h-4 w-4" /> Live
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "knowledge"}
+            onClick={() => setActiveView("knowledge")}
+            className={`inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "knowledge" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+          >
+            <BookOpen className="h-4 w-4" /> Wissen
+          </button>
+        </div>
+
+        {activeView === "live" ? <>
         <section className="grid gap-4 md:grid-cols-3">
           <OpsStatCard label="Modus" value={selectedMode.label} tone="info" icon={<BrainCircuit className="h-5 w-5" />} detail={selectedMode.objective} />
           <OpsStatCard label="Modell" value="2.1" tone="success" icon={<CheckCircle2 className="h-5 w-5" />} detail="Direkter OpenAI Realtime WebRTC-Pfad" />
@@ -269,6 +323,20 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
           <div className="grid gap-4 rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_32px_rgba(20,16,12,0.06)]">
+            <div className="grid gap-3">
+              <label className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500" htmlFor="operatorName">
+                Mitarbeiter
+              </label>
+              <input
+                id="operatorName"
+                value={operatorName}
+                onChange={(event) => setOperatorName(event.target.value)}
+                disabled={status === "connecting" || status === "live"}
+                autoComplete="name"
+                className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 text-sm text-stone-900 outline-none focus:border-stone-500"
+              />
+            </div>
+
             <div className="grid gap-3">
               <label className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500" htmlFor="mode">
                 Modus
@@ -298,7 +366,30 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
               />
             </div>
 
-            <div className="grid gap-3">
+            {knowledgeEnabled === true && mode !== "internal_test" ? (
+              <div className="grid gap-3">
+                <p className="text-xs font-semibold uppercase text-stone-500">Kundenvorgang</p>
+                <CustomerContextPanel
+                  selected={selectedContext}
+                  disabled={status === "connecting" || status === "live"}
+                  onSelect={setSelectedContext}
+                />
+                <label className="grid gap-2 text-xs font-semibold uppercase text-stone-500" htmlFor="consentStatus">
+                  Einwilligung
+                  <select
+                    id="consentStatus"
+                    value={consentStatus}
+                    onChange={(event) => setConsentStatus(event.target.value as typeof consentStatus)}
+                    disabled={status === "connecting" || status === "live"}
+                    className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 text-sm font-normal normal-case text-stone-900 outline-none focus:border-stone-500"
+                  >
+                    <option value="pending">Offen</option>
+                    <option value="confirmed">Bestaetigt</option>
+                    <option value="declined">Abgelehnt</option>
+                  </select>
+                </label>
+              </div>
+            ) : <div className="grid gap-3">
               <label className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500" htmlFor="requestSummary">
                 Kontext
               </label>
@@ -309,7 +400,7 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
                 placeholder="Optionaler Testkontext fuer Lead oder Follow-up"
                 className="min-h-28 resize-y rounded-lg border border-stone-200 bg-white px-3 py-3 text-sm text-stone-900 outline-none focus:border-stone-500"
               />
-            </div>
+            </div>}
 
             {error ? (
               <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
@@ -322,7 +413,13 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
               <button
                 type="button"
                 onClick={startSession}
-                disabled={status === "connecting" || status === "live"}
+                disabled={
+                  status === "connecting" ||
+                  status === "live" ||
+                  knowledgeEnabled === null ||
+                  operatorName.trim().length < 2 ||
+                  (knowledgeEnabled === true && mode !== "internal_test" && (!selectedContext || consentStatus === "declined"))
+                }
                 className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-stone-950 px-4 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Mic className="h-4 w-4" />
@@ -377,6 +474,13 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
             {events.length ? events.map((entry) => <p key={entry}>{entry}</p>) : <p className="text-stone-400">Noch keine Session gestartet.</p>}
           </div>
         </section>
+        <PostCallReview
+          mode={mode}
+          operatorName={operatorName}
+          requestId={selectedContext?.requestId || null}
+          enabled={knowledgeEnabled === true && status === "stopped"}
+        />
+        </> : <KnowledgePanel operatorName={operatorName} />}
       </div>
     </main>
   );
