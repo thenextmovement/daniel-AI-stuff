@@ -14,6 +14,7 @@ import {
   generateOfferSizeLadderFromTrello,
   listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+  resolveQuoteReadyOfferStructure,
 } from "../../src/lib/ops/offer-size-ladder";
 import { OpsOfferApiError } from "../../src/lib/ops/offers";
 
@@ -269,6 +270,129 @@ test("quote ready preflight groups two Neonflex source mockups with one anchor p
   assert.equal(items.every((item) => item.maxQuantity === null), true);
 });
 
+test("quote ready structure uses one source mockup per Neon design and two for every paired sign type", () => {
+  const cases = [
+    { name: "LED Neon Flex", expectedType: "neon", expectedDivisor: 1 },
+    { name: "3D Frontlit Letters", expectedType: "three_d", expectedDivisor: 2 },
+    { name: "3D Backlit Letters", expectedType: "three_d", expectedDivisor: 2 },
+    { name: "3D Non-Lit Letters", expectedType: "three_d", expectedDivisor: 2 },
+    { name: "Full Glow Letters", expectedType: "three_d", expectedDivisor: 2 },
+    { name: "Ultra Thin Acrylic Lightbox", expectedType: "ultra_thin", expectedDivisor: 2 },
+    { name: "Lightbox Double Sided", expectedType: "lightbox_double_sided", expectedDivisor: 2 },
+    { name: "Acrylic Lightbox", expectedType: "acrylic_lightbox", expectedDivisor: 2 },
+  ] as const;
+
+  for (const entry of cases) {
+    const structure = resolveQuoteReadyOfferStructure({
+      id: `card-${entry.expectedType}`,
+      name: entry.name,
+      customFields: {},
+      attachments: [],
+    });
+    assert.equal(structure.productType, entry.expectedType, entry.name);
+    assert.equal(structure.sourceMockupsPerDesign, entry.expectedDivisor, entry.name);
+  }
+});
+
+test("quote ready preflight groups two 3D source mockups into one design", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyThreeDPair",
+    idBoard: "board-1",
+    name: "3D Backlit Letters 80/120cm",
+    customFields: {
+      Size_1: "80x40cm",
+      Price_1: "220",
+      Product_1: "3D Backlit",
+      Size_2: "120x60cm",
+      Price_2: "320",
+      Product_2: "3D Backlit",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+      { id: "att-ai", name: "Mockup01_ai_1.jpg" },
+    ],
+  }, {
+    trelloCard: "cardQuoteReadyThreeDPair",
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.structureProductType, "three_d");
+  assert.equal(result.sourceMockupsPerDesign, 2);
+  assert.equal(result.sourceMockupCount, 2);
+  assert.equal(result.expectedDesignCount, 1);
+  assert.equal(result.designs.length, 1);
+  assert.deepEqual(result.designs[0]?.sourceMockupNames, ["Mockup01.jpg", "Mockup02.jpg"]);
+  assert.deepEqual(result.designs[0]?.anchorFieldIndexes, [1, 2]);
+  assert.equal(result.status, "blocked");
+  assert.ok(result.issues.includes("design_1:three_d_not_supported_for_neonflex_ladder"));
+  assert.equal(result.offerItemsJson, null);
+});
+
+test("quote ready preflight blocks an incomplete 3D source-mockup pair", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyThreeDOdd",
+    idBoard: "board-1",
+    name: "3D Non-Lit Letters",
+    customFields: {
+      Size_1: "80x40cm",
+      Price_1: "220",
+      Product_1: "3D Non-Lit",
+      Size_2: "120x60cm",
+      Price_2: "320",
+      Product_2: "3D Non-Lit",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+      { id: "att-3", name: "Mockup03.jpg" },
+    ],
+  }, {
+    trelloCard: "cardQuoteReadyThreeDOdd",
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.expectedDesignCount, 2);
+  assert.equal(result.status, "blocked");
+  assert.ok(result.issues.includes("source_mockup_pair_incomplete"));
+  assert.equal(result.offerItemsJson, null);
+});
+
+test("current Neon title wins over stale 3D description during size-ladder projection", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyStaleDescription",
+    idBoard: "board-1",
+    name: "LED Flex two designs",
+    desc: "Alte Notiz: Produktart 3D Backlit Buchstaben",
+    customFields: {
+      Size_1: "80x40cm",
+      Price_1: "220",
+      Product_1: "LED Flex",
+      Size_2: "120x60cm",
+      Price_2: "320",
+      Product_2: "LED Flex",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardQuoteReadyStaleDescription",
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.structureProductType, "neon");
+  assert.equal(result.sourceMockupsPerDesign, 1);
+  assert.equal(result.expectedDesignCount, 2);
+  assert.equal(result.designs.length, 2);
+  assert.ok(result.designs.every((design) => design.productModel === "neonflex"));
+  assert.ok(result.issues.every((issue) => !issue.includes("three_d_not_supported")));
+  assert.ok(result.offerItemsJson);
+});
+
 test("quote ready preflight groups four supplier anchors into two design ladders", async () => {
   const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
     id: "cardQuoteReadyFourAnchors",
@@ -356,7 +480,10 @@ test("quote ready preflight blocks unsupported full glow and missing source mock
       Price_1: "300",
       Product_1: "Full Glow",
     },
-    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
   }, {
     trelloCard: "cardQuoteReadyFullGlow",
     maxLongSideCm: 120,

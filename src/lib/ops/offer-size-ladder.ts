@@ -222,6 +222,12 @@ export type OfferSizeLadderIndexedAnchorInput = OfferSizeLadderAnchorInput & {
 };
 
 export type QuoteReadySizeLadderPreflightStatus = "ready" | "needs_review" | "blocked";
+export type QuoteReadyOfferStructureProductType =
+  | "neon"
+  | "three_d"
+  | "ultra_thin"
+  | "lightbox_double_sided"
+  | "acrylic_lightbox";
 
 export type QuoteReadySizeLadderPreflightInput = Omit<OfferSizeLadderGenerateInput, "trelloCardId" | "trelloCardUrl" | "anchors"> & {
   trelloCard: string;
@@ -233,6 +239,7 @@ export type QuoteReadySizeLadderPreflightDesign = {
   designId: string;
   designIndex: number;
   sourceMockupName: string;
+  sourceMockupNames: string[];
   anchorFieldIndexes: number[];
   anchorCount: number;
   productModel: OfferSizeLadderProductModel;
@@ -244,6 +251,8 @@ export type QuoteReadySizeLadderPreflightResult = {
   trelloCardId: string;
   trelloCardUrl: string | null;
   trelloCardName: string | null;
+  structureProductType: QuoteReadyOfferStructureProductType;
+  sourceMockupsPerDesign: 1 | 2;
   sourceMockupCount: number;
   expectedDesignCount: number;
   anchorCount: number;
@@ -1100,6 +1109,79 @@ function listQuoteReadySourceMockups(card: TrelloCardData) {
     .sort((left, right) => sourceMockupSortValue(left.name) - sourceMockupSortValue(right.name) || left.name.localeCompare(right.name, "de"));
 }
 
+type QuoteReadyOfferStructure = {
+  productType: QuoteReadyOfferStructureProductType;
+  sourceMockupsPerDesign: 1 | 2;
+};
+
+function detectQuoteReadyProductType(text: string | null | undefined): QuoteReadyOfferStructureProductType | null {
+  const normalized = String(text || "")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .toLowerCase();
+  if (!normalized.trim()) return null;
+
+  if (
+    /(?:light\s*box|lightbox|lichtbox|lichtkasten)\s*(?:double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig)|(?:double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig)\s*(?:light\s*box|lightbox|lichtbox|lichtkasten)|nasenschild/.test(normalized)
+  ) {
+    return "lightbox_double_sided";
+  }
+  if (/ultra\s*-?\s*thin/.test(normalized)) return "ultra_thin";
+  if (/acryl(?:ic)?\s*-?\s*(?:light\s*-?\s*box|lightbox)|(?:light\s*-?\s*box|lightbox)\s*-?\s*acryl(?:ic)?/.test(normalized)) {
+    return "acrylic_lightbox";
+  }
+  if (/\b3\s*-?\s*d\b|front\s*-?\s*lit|front\s*beleuchtet|back\s*-?\s*lit|r(?:ü|ue|u)ck\s*beleuchtet|hinter\s*(?:be)?leuchtet|non\s*-?\s*lit|nonlit|unbeleuchtet|nicht\s*beleuchtet|full\s*-?\s*glow|fullglow/.test(normalized)) {
+    return "three_d";
+  }
+  if (/led\s*-?\s*neon|neon\s*flex|neonflex|led\s*flex|(?:led|neon)?\s*schriftzug/.test(normalized)) {
+    return "neon";
+  }
+  return null;
+}
+
+function explicitQuoteReadyProductContext(customFields: CustomFieldMap) {
+  return customFieldEntries(customFields)
+    .filter(({ normalizedKey }) => /^(?:product|produkt|product type|produkttyp|produktart|template|offer template|angebot template|schildart|sign type)(?: \d+)?$/.test(normalizedKey))
+    .map(({ value }) => value)
+    .join("\n");
+}
+
+export function resolveQuoteReadyOfferStructure(card: TrelloCardData): QuoteReadyOfferStructure {
+  const productType = detectQuoteReadyProductType(card.name)
+    || detectQuoteReadyProductType(explicitQuoteReadyProductContext(card.customFields || {}))
+    || "neon";
+  return {
+    productType,
+    sourceMockupsPerDesign: productType === "neon" ? 1 : 2,
+  };
+}
+
+function groupQuoteReadySourceMockups(
+  sourceMockups: ReturnType<typeof listQuoteReadySourceMockups>,
+  sourceMockupsPerDesign: 1 | 2,
+) {
+  const groups: Array<typeof sourceMockups> = [];
+  for (let index = 0; index < sourceMockups.length; index += sourceMockupsPerDesign) {
+    groups.push(sourceMockups.slice(index, index + sourceMockupsPerDesign));
+  }
+  return groups;
+}
+
+function productModelForQuoteReadyStructure(
+  structure: QuoteReadyOfferStructure,
+  sourceText: string,
+): OfferSizeLadderProductModel {
+  if (structure.productType === "three_d") {
+    return /full\s*-?\s*glow|fullglow/i.test(sourceText) ? "full_glow" : "three_d";
+  }
+  if (structure.productType !== "neon") return "acryl_light_box";
+
+  const normalized = sourceText.toLowerCase();
+  if (/uv[\s-]*print|uvdruck|uv[\s-]*druck|print\s+on\s+acrylic/.test(normalized)) return "uv_print";
+  if (/outdoor|aussen|außen|wasserdicht|wetterfest|ip65|ip67/.test(normalized)) return "outdoor";
+  if (/neon\s*flex|neonflex|led\s*flex|led\s+logo|wandschild|led[\s-]*neon/.test(normalized)) return "neonflex";
+  return "unknown";
+}
+
 function indexedDesignFieldValue(customFields: CustomFieldMap, index: number, kind: "color" | "backboard" | "usage" | "product") {
   if (kind === "color") {
     return readCustomFieldValue(customFields, [
@@ -1318,6 +1400,7 @@ export function formatQuoteReadySizeLadderPreflightComment(result: QuoteReadySiz
   const lines = [
     QUOTE_READY_SIZE_LADDER_COMMENT_MARKER,
     `Quote ready Groessenleiter: ${statusLabel}`,
+    `Produkttyp: ${result.structureProductType} | Regel: ${result.sourceMockupsPerDesign} Ausgangsmockup${result.sourceMockupsPerDesign === 1 ? "" : "s"} = 1 Design`,
     `Designs: ${result.expectedDesignCount} | Ausgangsmockups: ${result.sourceMockupCount} | Supplier-Anker: ${result.anchorCount}`,
     result.anchorsPerDesign ? `Anker pro Design: ${result.anchorsPerDesign}` : null,
     result.designs.length ? "" : null,
@@ -1347,37 +1430,43 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   const warnings: string[] = [];
   const issues: string[] = [];
   const sourceMockups = listQuoteReadySourceMockups(card);
-  const expectedDesignCount = sourceMockups.length;
+  const structure = resolveQuoteReadyOfferStructure(card);
+  const sourceMockupGroups = groupQuoteReadySourceMockups(sourceMockups, structure.sourceMockupsPerDesign);
+  const expectedDesignCount = sourceMockupGroups.length;
   const indexedAnchors = extractIndexedTrelloAnchors(card.customFields || {}, warnings);
 
   if (!sourceMockups.length) issues.push("source_mockups_missing");
+  if (sourceMockups.length % structure.sourceMockupsPerDesign !== 0) {
+    issues.push("source_mockup_pair_incomplete");
+  }
   if (!indexedAnchors.length) issues.push("supplier_anchor_fields_missing");
-  if (sourceMockups.length && indexedAnchors.length < sourceMockups.length) {
+  if (expectedDesignCount && indexedAnchors.length < expectedDesignCount) {
     issues.push("anchor_count_below_design_count");
   }
-  if (sourceMockups.length && indexedAnchors.length > 0 && indexedAnchors.length % sourceMockups.length !== 0) {
+  if (expectedDesignCount && indexedAnchors.length > 0 && indexedAnchors.length % expectedDesignCount !== 0) {
     warnings.push("anchor_count_not_evenly_divisible_by_design_count");
   }
 
   const designs: QuoteReadySizeLadderPreflightDesign[] = [];
-  const anchorGroups = sourceMockups.length && indexedAnchors.length >= sourceMockups.length
-    ? distributeAnchorGroups(indexedAnchors, sourceMockups.length)
+  const anchorGroups = expectedDesignCount && indexedAnchors.length >= expectedDesignCount
+    ? distributeAnchorGroups(indexedAnchors, expectedDesignCount)
     : [];
 
   for (let index = 0; index < anchorGroups.length; index += 1) {
     const group = anchorGroups[index] || [];
-    const sourceMockup = sourceMockups[index];
-    if (!sourceMockup || !group.length) continue;
+    const sourceMockupGroup = sourceMockupGroups[index] || [];
+    const sourceMockup = sourceMockupGroup[0];
+    if (!sourceMockup || sourceMockupGroup.length !== structure.sourceMockupsPerDesign || !group.length) continue;
     const anchors = normalizeExtractedAnchorRoles(group.map(({ fieldIndex: _fieldIndex, ...anchor }) => anchor));
     const fieldIndexes = group.map((anchor) => anchor.fieldIndex);
     const sourceText = sourceTextForAnchorGroup({
       card,
       inputSourceText: input.sourceText,
-      sourceMockupName: sourceMockup.name,
+      sourceMockupName: sourceMockupGroup.map((mockup) => mockup.name).join("\n"),
       fieldIndexes,
       anchors,
     });
-    const productModel = input.productModel || detectOfferSizeLadderProductModel(sourceText);
+    const productModel = input.productModel || productModelForQuoteReadyStructure(structure, sourceText);
     const designId = `design_${index + 1}`;
     const sizeLadder = await generateOfferSizeLadder({
       trelloCardId: canonicalTrelloCardId,
@@ -1398,6 +1487,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
       designId,
       designIndex: index + 1,
       sourceMockupName: sourceMockup.name,
+      sourceMockupNames: sourceMockupGroup.map((mockup) => mockup.name),
       anchorFieldIndexes: fieldIndexes,
       anchorCount: anchors.length,
       productModel,
@@ -1422,11 +1512,13 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     trelloCardId: canonicalTrelloCardId,
     trelloCardUrl: input.trelloCard && String(input.trelloCard).includes("trello.com/c/") ? String(input.trelloCard) : null,
     trelloCardName: trimNullable(card.name),
+    structureProductType: structure.productType,
+    sourceMockupsPerDesign: structure.sourceMockupsPerDesign,
     sourceMockupCount: sourceMockups.length,
     expectedDesignCount,
     anchorCount: indexedAnchors.length,
-    anchorsPerDesign: sourceMockups.length && indexedAnchors.length >= sourceMockups.length
-      ? Math.floor(indexedAnchors.length / sourceMockups.length)
+    anchorsPerDesign: expectedDesignCount && indexedAnchors.length >= expectedDesignCount
+      ? Math.floor(indexedAnchors.length / expectedDesignCount)
       : null,
     issues,
     warnings,
