@@ -21,6 +21,7 @@ export const OFFER_SIZE_LADDER_MODEL_KEY = "anchored_offer_size_ladder";
 export const OFFER_SIZE_LADDER_MODEL_VERSION = "anchored_offer_size_ladder_v1";
 export const OFFER_SIZE_LADDER_MAX_OFFER_ITEMS = 300;
 export const OFFER_SIZE_LADDER_MAX_OPTIONS = 300;
+export const TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS = 16_384;
 
 export type OfferSizeLadderCoreAnchorRole = "minimum" | "requested" | "max_250";
 export type OfferSizeLadderAnchorRole = OfferSizeLadderCoreAnchorRole | `anchor_${number}`;
@@ -1114,17 +1115,16 @@ function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSi
     selectedByDefault: option === defaultOption,
     quantityEditable: true,
     minQuantity: 1,
-    sizeLadder: {
-      source: "ops_price_review",
-      modelKey: option.modelKey,
-      modelVersion: option.modelVersion,
-      confidence: option.confidence,
-      reviewStatus: option.reviewStatus,
-      widthCm: option.widthCm,
-      heightCm: option.heightCm,
-      longSideCm: option.longSideCm,
-    },
   })));
+}
+
+function assertTrelloCustomFieldTextFits(value: string) {
+  if (value.length <= TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS) return;
+  throw new QuoteValidationError(
+    `Trello offer_items_json ist mit ${value.length} Zeichen zu groß; maximal ${TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS} Zeichen sind erlaubt.`,
+    ["offer_items_json"],
+    422,
+  );
 }
 
 async function projectOfferSizeLadderToTrello(card: TrelloCardData, result: OfferSizeLadderResult) {
@@ -1161,6 +1161,16 @@ async function projectOfferSizeLadderToTrello(card: TrelloCardData, result: Offe
 
   const value = offerItemsJsonForTrelloProjection(card, result);
   validateOfferItemsJsonProjection(value);
+  assertTrelloCustomFieldTextFits(value);
+  if (field.value === value) {
+    return {
+      written: true,
+      skipped: true,
+      fieldName: field.name,
+      optionCount: JSON.parse(value).length,
+      createdField,
+    };
+  }
   await updateTrelloCustomField({
     cardId: card.id,
     fieldId: field.id,
@@ -1415,17 +1425,6 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
         selectedByDefault: option === defaultOption,
         quantityEditable: true,
         minQuantity: 1,
-        sizeLadder: {
-          source: "ops_quote_ready_preflight",
-          designId: design.designId,
-          modelKey: option.modelKey,
-          modelVersion: option.modelVersion,
-          confidence: option.confidence,
-          reviewStatus: option.reviewStatus,
-          widthCm: option.widthCm,
-          heightCm: option.heightCm,
-          longSideCm: option.longSideCm,
-        },
       });
     }
   }
@@ -1476,6 +1475,16 @@ async function projectQuoteReadySizeLadderToTrello(card: TrelloCardData, result:
 
   const value = result.offerItemsJson || publicOfferItemsForQuoteReadyPreflight(card, result);
   validateOfferItemsJsonProjection(value);
+  assertTrelloCustomFieldTextFits(value);
+  if (field.value === value) {
+    return {
+      written: true,
+      skipped: true,
+      fieldName: field.name,
+      optionCount: JSON.parse(value).length,
+      createdField,
+    };
+  }
   await updateTrelloCustomField({
     cardId: card.id,
     fieldId: field.id,
@@ -1789,7 +1798,7 @@ export async function ensureManualReleaseSizeLadder(
       };
       classification.decision = "blocked";
       classification.reason = "trello_offer_items_json_projection_failed";
-      classification.technicalIssues = ["trello_offer_items_json_projection_failed"];
+      classification.technicalIssues = [message];
     }
   } else if (classification.decision === "ready") {
     optionCount = quoteReadySizeLadder.offerItemsJson

@@ -15,6 +15,7 @@ import {
   generateOfferSizeLadderFromTrello,
   listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+  TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS,
   resolveQuoteReadyOfferStructure,
   validateOfferItemsJsonProjection,
 } from "../../src/lib/ops/offer-size-ladder";
@@ -297,6 +298,46 @@ test("quote ready preflight groups two Neonflex source mockups with one anchor p
   assert.equal(items.some((item) => item.title === "Leuchtschild Design 2"), true);
   assert.equal(items.every((item) => item.quantityEditable === true), true);
   assert.equal(items.every((item) => item.maxQuantity === undefined), true);
+});
+
+test("quote ready two-design ladder fits into the Trello text custom field", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "6a560ca840b187f4b219d0da",
+    idBoard: "board-1",
+    name: "LED Flex Jan smallest size plus 60cm Orange",
+    desc: "Neon Flex",
+    customFields: {
+      Size_1: "45x37cm",
+      Price_1: "120",
+      Product_1: "LED Flex",
+      Color_1: "Orange",
+      Backboard_1: "Formzuschnitt",
+      Usage_1: "Innen",
+      Size_2: "60x60cm",
+      Price_2: "157",
+      Product_2: "LED Flex",
+      Color_2: "Orange",
+      Backboard_2: "Formzuschnitt",
+      Usage_2: "Innen",
+    },
+    attachments: [
+      { id: "att-4694", name: "Mockup4694.jpg" },
+      { id: "att-4695", name: "Mockup4695.jpg" },
+    ],
+  }, {
+    trelloCard: "6a560ca840b187f4b219d0da",
+    stepCm: 10,
+    maxLongSideCm: 250,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.expectedDesignCount, 2);
+  assert.ok(result.offerItemsJson);
+  const items = JSON.parse(result.offerItemsJson || "[]") as Array<Record<string, unknown>>;
+  assert.equal(items.length, 42);
+  assert.ok((result.offerItemsJson || "").length <= TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS);
+  assert.equal(items.every((item) => item.sizeLadder === undefined), true);
 });
 
 test("quote ready structure uses one source mockup per Neon design and two for every paired sign type", () => {
