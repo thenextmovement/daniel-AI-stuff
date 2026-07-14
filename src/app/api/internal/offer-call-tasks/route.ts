@@ -20,6 +20,7 @@ type OfferCallTaskAction =
   | "create_inquiry_call_task"
   | "create_offer_sent_call_task"
   | "create_unopened_24h_call_task"
+  | "create_shopify_sync_failure_task"
   | "complete_task"
   | "log_call";
 
@@ -46,6 +47,7 @@ type OfferCallTaskRequest = {
 const SHARED_CALL_ASSIGNEE = "Daniel + Fabienne";
 const INQUIRY_CALL_SOURCE_TYPE = "neontrip_inquiry_call";
 const OFFER_CALL_SOURCE_TYPE = "neontrip_offer_call";
+const SHOPIFY_SYNC_SOURCE_TYPE = "neontrip_shopify_sync_failure";
 
 function configuredInternalKeys() {
   return [
@@ -254,6 +256,31 @@ async function createCallTask(body: OfferCallTaskRequest, request: NextRequest) 
   return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks, trelloDescriptionSync });
 }
 
+async function createShopifySyncFailureTask(body: OfferCallTaskRequest, request: NextRequest) {
+  const actor = automationActor(request, body.operatorName);
+  const record = await resolveCustomerRecord(body);
+  const offerId = trimNullable(body.offer?.offerId) || trimNullable(body.offer?.documentReference) || record.requestId;
+  const failureDetail = trimNullable(body.note);
+  const reason = [
+    "Ein abgeschlossenes Angebot konnte nicht als Shopify-Sale synchronisiert werden.",
+    failureDetail ? `Fehler: ${failureDetail}` : null,
+  ].filter(Boolean).join("\n");
+  const task = await createCustomerInternalTask({
+    title: "Shopify-Sale fehlt - sofort pruefen",
+    description: taskDescription(record, body, reason),
+    assigneeName: SHARED_CALL_ASSIGNEE,
+    dueAt: new Date().toISOString(),
+    category: "problem_case",
+    priority: "urgent",
+    requestId: record.requestId,
+    idempotencyKey: `ops-shopify-sync:offer:${offerId}`,
+    sourceType: SHOPIFY_SYNC_SOURCE_TYPE,
+    sourceId: offerId,
+  }, actor);
+
+  return NextResponse.json({ ok: true, action: body.action, requestId: record.requestId, task });
+}
+
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
@@ -273,6 +300,10 @@ export async function POST(request: NextRequest) {
       body?.action === "create_unopened_24h_call_task"
     ) {
       return await createCallTask(body, request);
+    }
+
+    if (body?.action === "create_shopify_sync_failure_task") {
+      return await createShopifySyncFailureTask(body, request);
     }
 
     if (body?.action === "complete_task") {
