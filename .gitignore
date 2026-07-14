@@ -6,6 +6,8 @@ deploy/_source/.backup-pre-build/
 
 # Screenshots (for documentation, not needed in repo)
 *.png
+audits/*-lighthouse-*.json
+audits/chrome-landingpages-*/
 
 # Temporary files
 *.tmp
