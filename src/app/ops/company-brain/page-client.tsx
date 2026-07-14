@@ -847,11 +847,14 @@ export function OpsCompanyBrainClient({
         primaryRun: null,
       };
     }
+    const hasVideoQcFailure = result.automationRuns.some((run) =>
+      run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
+    );
     const readyActions = result.actionProposals
       .filter((action) => action.enabled && executableAction(action.key))
       .sort((left, right) =>
-        operatorActionPriority(left, result.retryAssessment.status, result.employeeGuidance.rootCauseCode.startsWith("video_content_qc_")) -
-        operatorActionPriority(right, result.retryAssessment.status, result.employeeGuidance.rootCauseCode.startsWith("video_content_qc_")),
+        operatorActionPriority(left, result.retryAssessment.status, hasVideoQcFailure) -
+        operatorActionPriority(right, result.retryAssessment.status, hasVideoQcFailure),
       )
       .slice(0, 3);
     const blockedFixes = uniqueStrings([
