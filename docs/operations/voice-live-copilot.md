@@ -78,9 +78,29 @@ Legal and privacy owners must approve the exact spoken consent wording, processo
 7. Obtain legal/privacy approval before any customer test.
 8. Enable only for named operators, monitor structured errors, and retain the immediate kill switch.
 
+Production activation uses the restricted GitHub Actions operation after the code commit is live:
+
+```bash
+gh workflow run coolify-secret-sync.yml --ref main \
+  -f mode=enable_voice_live_copilot \
+  -f ops_kind=application \
+  -f ops_uuid=<ops-resource-uuid>
+```
+
+The operation changes only `VOICE_LIVE_COPILOT_ENABLED`. It skips the restart when the requested value is already configured.
+
 ## Rollback
 
 Set `VOICE_LIVE_COPILOT_ENABLED=false` and restart Ops. This blocks new transcription and suggestion requests without deleting session audit data or changing the existing voice agent.
+
+The restricted production rollback operation is:
+
+```bash
+gh workflow run coolify-secret-sync.yml --ref main \
+  -f mode=disable_voice_live_copilot \
+  -f ops_kind=application \
+  -f ops_uuid=<ops-resource-uuid>
+```
 
 ## Verification
 

@@ -267,6 +267,16 @@ test("live copilot keeps raw transcript client-side and binds suggestions to an 
   assert.doesNotMatch(client, /OPENAI_API_KEY/);
 });
 
+test("Coolify operations expose a restricted and reversible live copilot flag switch", () => {
+  const workflow = readFileSync(".github/workflows/coolify-secret-sync.yml", "utf8");
+  assert.match(workflow, /- enable_voice_live_copilot/);
+  assert.match(workflow, /- disable_voice_live_copilot/);
+  assert.match(workflow, /const key = "VOICE_LIVE_COPILOT_ENABLED"/);
+  assert.match(workflow, /currentValue !== desiredValue/);
+  assert.match(workflow, /await restart\(opsKind, opsUuid\)/);
+  assert.doesNotMatch(workflow, /VOICE_LIVE_COPILOT_ENABLED.*process\.env\.FLAG_VALUE/);
+});
+
 test("voice copilot route proxies SDP without exposing OpenAI secrets", async () => {
   const originalKey = process.env.OPENAI_API_KEY;
   const originalNodeEnv = process.env.NODE_ENV;
