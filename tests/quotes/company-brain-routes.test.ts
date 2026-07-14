@@ -72,6 +72,7 @@ async function withGuardedRetryFetchMock<T>(
     quoteEmailGuardRows?: unknown[];
     quoteEmailGuardError?: boolean;
     workflowAuditGuardRows?: unknown[];
+    workflowAuditWriteError?: boolean;
     outlookGuardRows?: unknown[];
     trelloCard?: {
       name?: string;
@@ -189,7 +190,10 @@ async function withGuardedRetryFetchMock<T>(
         return json(isGuardLookup ? options.outlookGuardRows || [] : []);
       }
       if (table === "workflow_audit_log") {
-        if (method === "POST") return json([{ id: "audit-row-1" }]);
+        if (method === "POST") {
+          if (options.workflowAuditWriteError) return json({ error: "audit response unavailable" }, 500);
+          return json([{ id: "audit-row-1" }]);
+        }
         return json(options.workflowAuditGuardRows || []);
       }
       return json([]);
@@ -543,6 +547,37 @@ test("company brain repairs trello projection from a successful delivery audit w
     assert.equal(payload.trelloProjectionRepair.renamed, true);
     assert.equal(payload.trelloProjectionRepair.addedOfferSentLabel, true);
     assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("GET ")), true);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
+  });
+});
+
+test("company brain reports projection success when audit confirmation fails after Trello changed", async () => {
+  await withGuardedRetryFetchMock({
+    quoteEmailGuardRows: [{
+      id: "quote-proof-before-audit-error",
+      status: "sent",
+      sent_at: "2026-07-14T11:47:37.200Z",
+      created_at: "2026-07-14T11:47:37.200Z",
+    }],
+    workflowAuditWriteError: true,
+    trelloCard: {
+      name: "FEHLER - 3D Backlit",
+      labels: [],
+      boardLabels: [{ id: "label-offer-sent", name: "Angebot gesendet", color: "green" }],
+    },
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(payload.trelloProjectionRepair.renamed, true);
+    assert.equal(payload.trelloProjectionRepair.addedOfferSentLabel, true);
+    assert.match(payload.auditWarning, /Trello wurde aktualisiert/);
     assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
   });
 });

@@ -1325,6 +1325,7 @@ export function OpsCompanyBrainClient({
           addedOfferSentLabel?: boolean;
           trelloComment?: { id?: string } | null;
         } | null;
+        auditWarning?: string | null;
       } | null;
       if (!response.ok || !payload?.ok) {
         setActionResultMessage(payload?.blockers?.length ? payload.blockers.join(" ") : formatApiError(payload));
@@ -1340,7 +1341,10 @@ export function OpsCompanyBrainClient({
         payload.note?.id ? `Notiz ${payload.note.id}` : null,
         payload.specialCase ? "Problemfall-Audit" : null,
       ].filter(Boolean).join(", ");
-      const successMessage = created ? `Ausgeführt: ${created}.` : "Aktion ausgeführt.";
+      const successMessage = [
+        created ? `Ausgeführt: ${created}.` : "Aktion ausgeführt.",
+        payload.auditWarning || null,
+      ].filter(Boolean).join(" ");
       cancelActionProposal();
       const refreshed = await resolveWith(
         { query, question, problemType },

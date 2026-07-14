@@ -1019,33 +1019,39 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      retryAudit = await recordWorkflowAuditEvent({
-        workflowName: "company_brain_fix_center",
-        action: "repair_trello_projection",
-        status: renamed || addedOfferSentLabel ? "success" : "prepared",
-        requestId: record.requestId,
-        trelloCardId,
-        offerId,
-        offerNumber: effectiveOfferNumber || offerNumber,
-        sourceEventId: trelloComment?.id || null,
-        idempotencyKey: `company-brain-trello-projection:${record.requestId}:${trelloCardId}`,
-        retrySafety: "safe_after_review",
-        customer_communication_sent: false,
-        metadata: {
-          operator_name: operatorName,
-          projection_only: true,
+      let auditWarning: string | null = null;
+      try {
+        retryAudit = await recordWorkflowAuditEvent({
+          workflowName: "company_brain_fix_center",
+          action: "repair_trello_projection",
+          status: renamed || addedOfferSentLabel ? "success" : "prepared",
+          requestId: record.requestId,
+          trelloCardId,
+          offerId,
+          offerNumber: effectiveOfferNumber || offerNumber,
+          sourceEventId: trelloComment?.id || null,
+          idempotencyKey: `company-brain-trello-projection:${record.requestId}:${trelloCardId}`,
+          retrySafety: "safe_after_review",
           customer_communication_sent: false,
-          previous_name: currentName || null,
-          repaired_name: renamed ? repairedName : null,
-          renamed,
-          added_offer_sent_label: addedOfferSentLabel,
-          offer_sent_label_id: offerSentLabelId,
-          send_proof: sendProofAt,
-          send_proof_source: workflowSendProof ? "workflow_audit_log" : sendProof ? "quote_email_log" : "customer_record",
-          workflow_delivery_audit_id: workflowSendProof?.id || null,
-          trello_comment_id: trelloComment?.id || null,
-        },
-      });
+          metadata: {
+            operator_name: operatorName,
+            projection_only: true,
+            customer_communication_sent: false,
+            previous_name: currentName || null,
+            repaired_name: renamed ? repairedName : null,
+            renamed,
+            added_offer_sent_label: addedOfferSentLabel,
+            offer_sent_label_id: offerSentLabelId,
+            send_proof: sendProofAt,
+            send_proof_source: workflowSendProof ? "workflow_audit_log" : sendProof ? "quote_email_log" : "customer_record",
+            workflow_delivery_audit_id: workflowSendProof?.id || null,
+            trello_comment_id: trelloComment?.id || null,
+          },
+        });
+      } catch (auditError) {
+        console.error("company brain trello projection changed but audit confirmation failed", auditError);
+        auditWarning = "Trello wurde aktualisiert, aber der interne Audit konnte nicht bestaetigt werden. Aktion nicht wiederholen.";
+      }
 
       return jsonResponse({
         ok: true,
@@ -1061,6 +1067,7 @@ export async function POST(request: NextRequest) {
           trelloComment,
         },
         audit: retryAudit,
+        auditWarning,
         customerCommunicationSent: false,
       });
     }
