@@ -1679,6 +1679,17 @@ async function fetchN8nExecution(executionId: string): Promise<N8nExecutionRespo
   return (await response.json()) as N8nExecutionResponse;
 }
 
+export function applyVideoQcRetryState(run: CompanyBrainAutomationRun): CompanyBrainAutomationRun {
+  if (!isVideoQcRetryExhausted(run)) return run;
+
+  return {
+    ...run,
+    retrySafety: "Retry blockiert, bis das Mockup korrigiert oder ersetzt und fachlich geprüft wurde.",
+    recommendedFix: "Keinen weiteren Lauf mit unverändertem Mockup starten. Mockup/Logo auf Form, Schrift, Farbe und Perspektive prüfen oder ersetzen; erst danach einen neuen Video-Lauf freigeben.",
+    safeFix: "Mockup korrigieren oder ersetzen; unveränderten Input nicht erneut starten.",
+  };
+}
+
 async function fetchN8nLiveRuns(
   executionIds: string[],
   fallbackRuns: CompanyBrainAutomationRun[],
@@ -1709,7 +1720,7 @@ async function fetchN8nLiveRuns(
       const issueFailedNode = issueHint.key === "video_content_qc_failed" || issueHint.key === "video_content_qc_unavailable"
         ? "Analyze Video Content QC"
         : null;
-      runs.push({
+      runs.push(applyVideoQcRetryState({
         id: `n8n-live-${executionId}`,
         workflowName: n8nWorkflowName(execution),
         action: fallback?.action || "offer_send",
@@ -1737,7 +1748,7 @@ async function fetchN8nLiveRuns(
         videoQcConfidence: fallback?.videoQcConfidence ?? null,
         videoQcIssues: fallback?.videoQcIssues || [],
         videoGenerationMode: fallback?.videoGenerationMode || null,
-      });
+      }));
     } catch (error) {
       errors.push(`${executionId}: ${errorMessage(error)}`);
     }

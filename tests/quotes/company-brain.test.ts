@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildCompanyBrainAnswer,
   buildActionProposals,
+  applyVideoQcRetryState,
   buildCompanyBrainCrossChecks,
   buildIntegrationReadiness,
   buildCompanyBrainRetryAssessment,
@@ -107,6 +108,38 @@ test("company brain keeps the richer audit fallback for duplicate n8n executions
   assert.equal(deduped[0]?.id, "audit-3100049");
   assert.equal(deduped[0]?.currentAttempt, 2);
   assert.equal(deduped[0]?.videoQcConfidence, 0.8);
+});
+
+test("company brain removes stale second-retry advice from exhausted video QC runs", () => {
+  const run = applyVideoQcRetryState({
+    id: "n8n-live-3100049",
+    workflowName: "KI-Video Generator v1.0",
+    action: "offer_send",
+    status: "success",
+    error: "DESIGN_MORPH",
+    createdAt: "2026-07-14T10:43:02.000Z",
+    requestId: "REQ-VIDEO-QC",
+    executionId: "3100049",
+    correlationId: "card-video-qc",
+    sourceEventId: null,
+    targetRecordId: null,
+    failedNode: "Analyze Video Content QC",
+    idempotencyKey: "video-qc:card-video-qc",
+    retrySafety: "automatic_retry_once",
+    summary: "Video-QC abgelehnt.",
+    issueKey: "video_content_qc_failed",
+    recommendedFix: "Einen automatischen Zweitversuch zulassen.",
+    safeFix: "Automatischen Zweitversuch abwarten.",
+    currentAttempt: 2,
+    automaticVideoAttemptLimit: 2,
+    retryPlanned: false,
+    videoQcConfidence: 0.8,
+  });
+
+  assert.match(run.recommendedFix || "", /Keinen weiteren Lauf mit unverändertem Mockup/);
+  assert.doesNotMatch(run.recommendedFix || "", /Zweitversuch.*zulassen/i);
+  assert.match(run.retrySafety || "", /Retry blockiert/);
+  assert.match(run.safeFix || "", /unveränderten Input nicht erneut starten/);
 });
 
 test("company brain extracts multiple request ids from dirty alias fields", () => {
