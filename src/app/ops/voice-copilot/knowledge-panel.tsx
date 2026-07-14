@@ -5,9 +5,10 @@ import { AlertTriangle, Check, LoaderCircle, Plus, RotateCcw, ShieldCheck, X } f
 import type { VoiceKnowledgeCandidate, VoiceKnowledgeEntry } from "@/lib/ops/voice-knowledge";
 
 type KnowledgePanelProps = { operatorName: string };
+type KnowledgeAvailability = "loading" | "ready" | "feature_flag_disabled" | "error";
 
 export function KnowledgePanel({ operatorName }: KnowledgePanelProps) {
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [availability, setAvailability] = useState<KnowledgeAvailability>("loading");
   const [entries, setEntries] = useState<VoiceKnowledgeEntry[]>([]);
   const [candidates, setCandidates] = useState<VoiceKnowledgeCandidate[]>([]);
   const [title, setTitle] = useState("");
@@ -28,10 +29,20 @@ export function KnowledgePanel({ operatorName }: KnowledgePanelProps) {
       const candidateData = await candidateResponse.json().catch(() => null);
       if (!knowledgeResponse.ok) throw new Error(knowledge?.error || "Wissen konnte nicht geladen werden.");
       if (!candidateResponse.ok) throw new Error(candidateData?.error || "Kandidaten konnten nicht geladen werden.");
-      setEnabled(Boolean(knowledge.enabled));
+      if (knowledge?.availability === "feature_flag_disabled" || knowledge?.enabled === false) {
+        setAvailability("feature_flag_disabled");
+        setEntries([]);
+        setCandidates([]);
+        return;
+      }
+      if (knowledge?.availability !== "ready" || knowledge?.enabled !== true) {
+        throw new Error("Der Wissensstatus ist unvollstaendig.");
+      }
+      setAvailability("ready");
       setEntries(Array.isArray(knowledge.entries) ? knowledge.entries : []);
       setCandidates(Array.isArray(candidateData.candidates) ? candidateData.candidates : []);
     } catch (loadError) {
+      setAvailability("error");
       setError(loadError instanceof Error ? loadError.message : "Wissen konnte nicht geladen werden.");
     } finally {
       setBusy(false);
@@ -107,7 +118,7 @@ export function KnowledgePanel({ operatorName }: KnowledgePanelProps) {
     }
   }
 
-  if (enabled === null) {
+  if (availability === "loading") {
     return (
       <section className="flex min-h-32 items-center justify-center rounded-lg border border-stone-200 bg-white p-5 text-sm text-stone-500">
         <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> Wissen wird geladen.
@@ -115,11 +126,23 @@ export function KnowledgePanel({ operatorName }: KnowledgePanelProps) {
     );
   }
 
-  if (enabled === false) {
+  if (availability === "feature_flag_disabled") {
     return (
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
-        <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" /> Wissenssystem nicht aktiviert</div>
-        <p className="mt-2">Migration und Feature-Flag sind noch nicht live. Bestehende Realtime-Tests bleiben davon unberuehrt.</p>
+        <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" /> Wissenssystem in dieser Umgebung ausgeschaltet</div>
+        <p className="mt-2">Die Anwendung hat das Feature-Flag <code>VOICE_COPILOT_KNOWLEDGE_ENABLED</code> noch nicht aktiviert. Der Status der Datenbankmigration ist davon unabhaengig.</p>
+      </section>
+    );
+  }
+
+  if (availability === "error") {
+    return (
+      <section className="rounded-lg border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900">
+        <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" /> Wissenssystem nicht erreichbar</div>
+        <p className="mt-2">{error || "Wissen konnte nicht geladen werden."}</p>
+        <button type="button" onClick={load} disabled={busy} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 font-semibold disabled:opacity-50">
+          {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Erneut laden
+        </button>
       </section>
     );
   }

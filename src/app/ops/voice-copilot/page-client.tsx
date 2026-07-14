@@ -134,9 +134,17 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
     if (!hasSession) return;
     let cancelled = false;
     void fetch("/api/ops/voice-copilot/knowledge", { cache: "no-store" })
-      .then((response) => response.json())
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || "Wissensstatus konnte nicht geladen werden.");
+        return payload;
+      })
       .then((payload) => { if (!cancelled) setKnowledgeEnabled(Boolean(payload?.enabled)); })
-      .catch(() => { if (!cancelled) setKnowledgeEnabled(false); });
+      .catch((loadError) => {
+        if (cancelled) return;
+        setKnowledgeEnabled(null);
+        setError(loadError instanceof Error ? loadError.message : "Wissensstatus konnte nicht geladen werden.");
+      });
     return () => { cancelled = true; };
   }, [hasSession]);
 

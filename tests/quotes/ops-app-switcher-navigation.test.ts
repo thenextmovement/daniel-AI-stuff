@@ -42,7 +42,9 @@ test("ops app switcher exposes the complete internal software menu", () => {
   }
 
   assert.match(source, /minmax\(11\.75rem,1fr\)/);
+  assert.match(source, /grid-cols-2/);
   assert.match(source, /whitespace-normal break-words/);
+  assert.doesNotMatch(source, /mobileOpen|sm:hidden|>Bereiche</);
 });
 
 test("secondary ops entry points expose Company Brain", () => {

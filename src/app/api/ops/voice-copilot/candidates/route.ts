@@ -12,11 +12,17 @@ export async function GET(request: NextRequest) {
   const authError = await authorizeVoiceCopilotApi(request);
   if (authError) return authError;
   if (!isVoiceKnowledgeEnabled()) {
-    return NextResponse.json({ ok: true, enabled: false, candidates: [] }, { headers: { "cache-control": "no-store" } });
+    return NextResponse.json(
+      { ok: true, enabled: false, availability: "feature_flag_disabled", candidates: [] },
+      { headers: { "cache-control": "no-store" } },
+    );
   }
   try {
     const candidates = await listVoiceKnowledgeCandidates();
-    return NextResponse.json({ ok: true, enabled: true, candidates }, { headers: { "cache-control": "no-store" } });
+    return NextResponse.json(
+      { ok: true, enabled: true, availability: "ready", candidates },
+      { headers: { "cache-control": "no-store" } },
+    );
   } catch (error) {
     return voiceCopilotApiFailure(error, "candidate-list");
   }

@@ -49,6 +49,7 @@ test("disabled knowledge feature leaves the database untouched", async () => {
     const payload = await response.json();
     assert.equal(response.status, 200);
     assert.equal(payload.enabled, false);
+    assert.equal(payload.availability, "feature_flag_disabled");
     assert.deepEqual(payload.entries, []);
   } finally {
     globalThis.fetch = originalFetch;
@@ -57,6 +58,19 @@ test("disabled knowledge feature leaves the database untouched", async () => {
     if (originalFlag === undefined) delete env.VOICE_COPILOT_KNOWLEDGE_ENABLED;
     else env.VOICE_COPILOT_KNOWLEDGE_ENABLED = originalFlag;
   }
+});
+
+test("voice knowledge UI separates feature flags from migration and load errors", () => {
+  const panel = readFileSync("src/app/ops/voice-copilot/knowledge-panel.tsx", "utf8");
+  const client = readFileSync("src/app/ops/voice-copilot/page-client.tsx", "utf8");
+
+  assert.match(panel, /Wissenssystem in dieser Umgebung ausgeschaltet/);
+  assert.match(panel, /Status der Datenbankmigration ist davon unabhaengig/);
+  assert.match(panel, /Wissenssystem nicht erreichbar/);
+  assert.match(panel, /Erneut laden/);
+  assert.doesNotMatch(panel, /Migration und Feature-Flag sind noch nicht live/);
+  assert.match(client, /if \(!response\.ok\) throw new Error/);
+  assert.match(client, /setKnowledgeEnabled\(null\)/);
 });
 
 test("voice knowledge chunks are bounded and deterministic", () => {
