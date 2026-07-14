@@ -15,6 +15,7 @@ import {
   searchApprovedVoiceKnowledge,
   updateVoiceCallSessionStatus,
 } from "@/lib/ops/voice-knowledge";
+import { getVoiceOpenAiApiKey } from "@/lib/ops/voice-openai-config";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
   if (!isOpsPortalConfigured(host)) return notConfigured();
   if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) return unauthorized();
 
-  const openAiApiKey = process.env.OPENAI_API_KEY || "";
+  const openAiApiKey = getVoiceOpenAiApiKey();
   if (!openAiApiKey) {
     return NextResponse.json({ ok: false, error: "openai_not_configured" }, { status: 503 });
   }

@@ -25,7 +25,7 @@ Postgres is the source of truth. Trello data is not used as trusted knowledge. R
 
 `VOICE_COPILOT_EXTRACTION_MODEL` selects the Responses API model for post-call note analysis. If it is absent, post-call analysis returns `post_call_analysis_not_configured` without falling back to an unknown model.
 
-Existing `OPENAI_API_KEY`, Offers API and Microsoft Graph variables remain server-only.
+Existing `OPS_OPENAI_API_KEY` (preferred) or `OPENAI_API_KEY`, Offers API and Microsoft Graph variables remain server-only. Post-call extraction uses `VOICE_COPILOT_EXTRACTION_MODEL` or falls back to `OPS_COPILOT_OPENAI_MODEL`.
 
 ## Activation order
 

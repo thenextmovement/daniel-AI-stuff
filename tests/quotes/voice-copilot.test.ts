@@ -14,6 +14,7 @@ import {
   voiceKnowledgeProposalSchema,
   VOICE_COPILOT_MODEL,
 } from "../../src/lib/ops/voice-copilot";
+import { getVoiceCopilotExtractionModel, getVoiceOpenAiApiKey } from "../../src/lib/ops/voice-openai-config";
 import { QuoteValidationError } from "../../src/lib/quotes/validation";
 
 test("voice copilot guidance keeps lead qualification bounded", () => {
@@ -98,6 +99,32 @@ test("voice copilot realtime session uses the direct realtime model", () => {
   assert.equal(session.model, VOICE_COPILOT_MODEL);
   assert.equal(session.audio.output.voice, "marin");
   assert.match(session.instructions, /Keine Preise/);
+});
+
+test("voice OpenAI configuration accepts the existing Ops aliases", () => {
+  const env = process.env as Record<string, string | undefined>;
+  const originalOpenAiKey = env.OPENAI_API_KEY;
+  const originalOpsOpenAiKey = env.OPS_OPENAI_API_KEY;
+  const originalExtractionModel = env.VOICE_COPILOT_EXTRACTION_MODEL;
+  const originalOpsModel = env.OPS_COPILOT_OPENAI_MODEL;
+  try {
+    delete env.OPENAI_API_KEY;
+    delete env.VOICE_COPILOT_EXTRACTION_MODEL;
+    env.OPS_OPENAI_API_KEY = "ops-test-key";
+    env.OPS_COPILOT_OPENAI_MODEL = "ops-test-model";
+
+    assert.equal(getVoiceOpenAiApiKey(), "ops-test-key");
+    assert.equal(getVoiceCopilotExtractionModel(), "ops-test-model");
+  } finally {
+    if (originalOpenAiKey === undefined) delete env.OPENAI_API_KEY;
+    else env.OPENAI_API_KEY = originalOpenAiKey;
+    if (originalOpsOpenAiKey === undefined) delete env.OPS_OPENAI_API_KEY;
+    else env.OPS_OPENAI_API_KEY = originalOpsOpenAiKey;
+    if (originalExtractionModel === undefined) delete env.VOICE_COPILOT_EXTRACTION_MODEL;
+    else env.VOICE_COPILOT_EXTRACTION_MODEL = originalExtractionModel;
+    if (originalOpsModel === undefined) delete env.OPS_COPILOT_OPENAI_MODEL;
+    else env.OPS_COPILOT_OPENAI_MODEL = originalOpsModel;
+  }
 });
 
 test("voice copilot route proxies SDP without exposing OpenAI secrets", async () => {

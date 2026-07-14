@@ -7,6 +7,7 @@ import {
   parseVoiceKnowledgeProposals,
   voiceKnowledgeProposalSchema,
 } from "@/lib/ops/voice-copilot";
+import { getVoiceCopilotExtractionModel, getVoiceOpenAiApiKey } from "@/lib/ops/voice-openai-config";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
@@ -27,8 +28,8 @@ export async function POST(request: NextRequest) {
     if (summary.length < 40) {
       throw new QuoteValidationError("Die Gespraechsnotiz ist zu kurz.", ["summary_too_short"], 422);
     }
-    const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
-    const model = String(process.env.VOICE_COPILOT_EXTRACTION_MODEL || "").trim();
+    const apiKey = getVoiceOpenAiApiKey();
+    const model = getVoiceCopilotExtractionModel();
     if (!apiKey || !model) {
       return NextResponse.json({ ok: false, error: "post_call_analysis_not_configured" }, { status: 503 });
     }
