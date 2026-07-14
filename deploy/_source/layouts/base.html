@@ -9,7 +9,7 @@
   <meta name="description" content="{{META_DESCRIPTION}}">
 
   <!-- AI Search & Crawler Optimization -->
-  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="robots" content="{{ROBOTS_META}}">
   <meta name="author" content="Dara Nova GmbH">
   <link rel="canonical" href="{{CANONICAL}}">
   {{HREFLANG_TAGS}}
@@ -78,8 +78,8 @@
   <link rel="icon" type="image/svg+xml" href="/assets/neontrip-favicon.svg">
 
   <!-- Preload: Hero LCP Images (desktop + mobile, media-split) -->
-  <link rel="preload" as="image" href="../assets/images/hero-poster-desktop-neon.webp" fetchpriority="high" media="(min-width: 768px)">
-  <link rel="preload" as="image" href="../assets/images/hero-poster-neon-mobile.webp" fetchpriority="high" media="(max-width: 767px)">
+  <link rel="preload" as="image" href="{{HERO_PRELOAD_DESKTOP}}" fetchpriority="high" media="(min-width: 768px)">
+  <link rel="preload" as="image" href="{{HERO_PRELOAD_MOBILE}}" fetchpriority="high" media="(max-width: 767px)">
 
   <!-- Preload: Fonts (start download before CSS parse) -->
   <link rel="preload" as="font" href="../assets/fonts/inter-latin.woff2" type="font/woff2" crossorigin>
@@ -656,7 +656,7 @@
         return fd;
       };
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', injectTrackingFields);
+        document.addEventListener('DOMContentLoaded', function() { injectTrackingFields(); });
       } else {
         injectTrackingFields();
       }
@@ -697,6 +697,10 @@
         }
       } catch(e) {}
     }
+    // Page-specific section scripts run in their own Cookiebot-managed scope.
+    // Expose the existing helper explicitly so custom Hero variants reuse the
+    // exact same conversion action instead of creating a duplicate event path.
+    window.fireEnhancedConversion = fireEnhancedConversion;
 
     // File upload size validation (max 20MB)
     const MAX_FILE_SIZE = 20 * 1024 * 1024;
@@ -1555,7 +1559,7 @@
     // ═══════ Mobile Hero Form — 3-Step ═══════
     (function() {
       var form = document.getElementById('hero-form');
-      if (!form) return;
+      if (!form || form.hasAttribute('data-nt-custom-hero')) return;
       var bars = [document.getElementById('hero-bar-1'), document.getElementById('hero-bar-2'), document.getElementById('hero-bar-3')];
       var steps = [document.getElementById('hero-step-1'), document.getElementById('hero-step-2'), document.getElementById('hero-step-3')];
       if (!bars[0] || !steps[0]) return;
@@ -1606,7 +1610,7 @@
     // ═══════ Desktop Hero Form — 3-Step ═══════
     (function() {
       const heroFormD = document.getElementById('hero-form-desktop');
-      if (!heroFormD) return;
+      if (!heroFormD || heroFormD.hasAttribute('data-nt-custom-hero')) return;
       let heroCurrentStep = 1;
       const heroStepsD = heroFormD.querySelectorAll('.hero-form-step');
       const heroBarsD = [document.getElementById('hero-bar-d-1'), document.getElementById('hero-bar-d-2'), document.getElementById('hero-bar-d-3')];

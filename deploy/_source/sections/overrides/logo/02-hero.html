@@ -1,0 +1,944 @@
+<!-- ===== SECTION: logo photo hero pilot ===== -->
+<style>
+  .nt-logo-hero {
+    --nt-pink: #fa31a2;
+    --nt-pink-dark: #c5286e;
+    --nt-dark: #0a0a0a;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: var(--nt-dark);
+    color: #fff;
+  }
+  .nt-logo-hero__media,
+  .nt-logo-hero__shade { position: absolute; inset: 0; }
+  .nt-logo-hero__media { z-index: -3; }
+  .nt-logo-hero__media img { width: 100%; height: 100%; object-fit: cover; object-position: 68% 42%; }
+  .nt-logo-hero__shade {
+    z-index: -2;
+    background:
+      linear-gradient(90deg, rgba(10,10,10,.98) 0%, rgba(10,10,10,.94) 38%, rgba(10,10,10,.72) 66%, rgba(10,10,10,.56) 100%),
+      radial-gradient(800px 560px at 20% 30%, rgba(250,49,162,.15), transparent 64%),
+      linear-gradient(180deg, rgba(10,10,10,.36), transparent 24%, rgba(10,10,10,.72));
+  }
+  .nt-logo-hero__inner {
+    width: min(100% - 112px, 1200px);
+    margin: 0 auto;
+    padding: 116px 0 26px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 430px;
+    gap: 56px;
+    align-items: start;
+  }
+  .nt-logo-hero__copy { min-width: 0; padding-top: 12px; }
+  .nt-logo-hero__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    width: fit-content;
+    margin-bottom: 18px;
+    padding: 7px 12px;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 999px;
+    background: rgba(255,255,255,.07);
+    color: rgba(255,255,255,.88);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    backdrop-filter: blur(12px);
+  }
+  .nt-logo-hero__eyebrow-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 10px rgba(34,197,94,.72);
+  }
+  section#hero.nt-logo-hero h1 {
+    max-width: 760px;
+    margin: 0;
+    color: #fff;
+    font-size: clamp(50px, 4.2vw, 60px) !important;
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -.04em;
+    text-shadow: 0 3px 28px rgba(0,0,0,.45);
+  }
+  .nt-logo-hero__accent {
+    color: var(--nt-pink);
+    text-shadow: 0 0 26px rgba(250,49,162,.48), 0 0 58px rgba(250,49,162,.2);
+  }
+  .nt-logo-hero__subline {
+    max-width: 650px;
+    margin: 20px 0 0;
+    color: rgba(255,255,255,.72);
+    font-size: clamp(16px, 1.45vw, 19px);
+    font-weight: 450;
+    line-height: 1.55;
+    letter-spacing: -.012em;
+  }
+  .nt-logo-hero__trust {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 9px 13px;
+    margin-top: 20px;
+    color: rgba(255,255,255,.76);
+    font-size: 12.5px;
+    font-weight: 620;
+  }
+  .nt-logo-hero__trust-check { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: rgba(34,197,94,.15); color: #7ef09a; font-size: 11px; font-weight: 900; }
+  .nt-logo-hero__trust-separator { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,.38); }
+  .nt-logo-hero__actions { display: flex; align-items: center; gap: 16px; margin-top: 24px; }
+  .nt-logo-hero__primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 54px;
+    padding: 14px 23px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--nt-pink), var(--nt-pink-dark));
+    color: #fff;
+    font-size: 15px;
+    font-weight: 750;
+    text-decoration: none;
+    box-shadow: 0 10px 32px rgba(250,49,162,.34), inset 0 1px rgba(255,255,255,.24);
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .nt-logo-hero__primary:hover { transform: translateY(-2px); box-shadow: 0 14px 38px rgba(250,49,162,.44); }
+  .nt-logo-hero__primary:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .nt-logo-hero__process { max-width: 690px; margin-top: 34px; }
+  .nt-logo-hero__process-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .nt-logo-hero__process-head::after { display: none; }
+  .nt-logo-hero__process-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .nt-logo-hero__process-card {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.12);
+    padding: 10px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.04);
+    backdrop-filter: blur(12px);
+  }
+  .nt-logo-hero__process-visual { width: 100%; aspect-ratio: 1 / 1; overflow: hidden; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; background: rgba(255,255,255,.94); }
+  .nt-logo-hero__process-visual img { width: 100%; height: 100%; object-fit: cover; }
+  .nt-logo-hero__process-card:first-child .nt-logo-hero__process-visual { display: grid; place-items: center; padding: 25px; background: linear-gradient(135deg,#f7f7f8,#fff); }
+  .nt-logo-hero__process-card:first-child .nt-logo-hero__process-visual img { object-fit: contain; }
+  .nt-logo-hero__process-meta { display: flex; align-items: baseline; gap: 10px; min-height: 46px; padding: 12px 4px 4px; }
+  .nt-logo-hero__process-number { color: rgba(255,255,255,.72); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+  .nt-logo-hero__process-title { overflow: hidden; color: #fff; font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: -.015em; text-overflow: ellipsis; }
+
+  .nt-logo-hero__form-shell { position: relative; isolation: isolate; margin-top: 28px; }
+  .nt-logo-hero__form-shell::before { content: ''; position: absolute; inset: -2px; z-index: 1; border-radius: 26px; background: linear-gradient(115deg,#fa31a2 0%,#ffb6df 24%,#8b5cf6 48%,#fff 62%,#fa31a2 78%,#ffb6df 100%); background-size: 300% 300%; box-shadow: 0 0 18px rgba(250,49,162,.48),0 0 42px rgba(250,49,162,.24); animation: ntLogoLightstrip 6s ease-in-out infinite; pointer-events: none; }
+  .nt-logo-form__halo { position: absolute; inset: -48px; z-index: 0; border-radius: 48px; background: radial-gradient(70% 55% at 50% 50%,var(--nt-pink),transparent 70%); opacity: .27; filter: blur(40px); pointer-events: none; }
+  .nt-logo-form {
+    position: relative;
+    overflow: hidden;
+    z-index: 2;
+    padding: 64px 28px 18px;
+    border: 0;
+    border-radius: 24px;
+    background: rgba(255,255,255,.985);
+    color: var(--nt-dark);
+    box-shadow: 0 28px 90px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.18);
+  }
+  .nt-logo-form__watermark {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    width: 152px;
+    height: auto;
+    opacity: .68;
+    filter: invert(1);
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .nt-logo-form__header { position: relative; z-index: 1; text-align: center; }
+  .nt-logo-form__header h2 { margin: 0; font-size: 20px; font-weight: 730; line-height: 1.15; letter-spacing: -.035em; }
+  .nt-logo-form__header p { margin: 5px 0 0; color: rgba(10,10,10,.55); font-size: 12.5px; font-weight: 500; }
+  .nt-logo-form__progress { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+  .nt-logo-form__progress span { height: 4px; border-radius: 999px; background: rgba(10,10,10,.09); transition: background .2s ease; }
+  .nt-logo-form__progress span.is-active { background: var(--nt-pink); }
+  .nt-logo-form__step[hidden] { display: none; }
+  .nt-logo-form__step-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .nt-logo-form__upload {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 132px;
+    padding: 14px 18px 12px;
+    border: 2px dashed rgba(250,49,162,.34);
+    border-radius: 17px;
+    background: rgba(250,49,162,.035);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s ease, background .2s ease, transform .2s ease;
+  }
+  .nt-logo-form__upload:hover,
+  .nt-logo-form__upload.is-dragging { border-color: var(--nt-pink); background: rgba(250,49,162,.065); }
+  .nt-logo-form__upload:focus-within { outline: 3px solid rgba(250,49,162,.23); outline-offset: 2px; }
+  .nt-logo-form__upload input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .nt-logo-form__upload-icon { display: grid; place-items: center; width: 46px; height: 46px; margin: 0 auto 7px; border-radius: 13px; background: #fff; color: var(--nt-pink); box-shadow: 0 6px 20px rgba(250,49,162,.2),0 0 0 1px rgba(250,49,162,.12); }
+  .nt-logo-form__upload-title { display: block; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+  .nt-logo-form__upload-sub { display: block; margin-top: 3px; color: rgba(10,10,10,.55); font-size: 12px; font-weight: 500; }
+  .nt-logo-form__formats { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin-top: 8px; }
+  .nt-logo-form__formats span { padding: 3px 6px; border-radius: 6px; background: rgba(10,10,10,.06); color: rgba(10,10,10,.55); font-size: 9px; font-weight: 780; }
+  .nt-logo-form__formats span:first-child,
+  .nt-logo-form__formats span:nth-child(2),
+  .nt-logo-form__formats span:nth-child(3),
+  .nt-logo-form__formats span:nth-child(4) { background: rgba(250,49,162,.1); color: #bd1f78; }
+  .nt-logo-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .nt-logo-form__field { margin-bottom: 9px; }
+  .nt-logo-form__field label { display: block; margin-bottom: 5px; font-size: 11px; font-weight: 710; }
+  .nt-logo-form__field input,
+  .nt-logo-form__field select,
+  .nt-logo-form__field textarea {
+    width: 100%;
+    min-height: 43px;
+    padding: 10px 12px;
+    border: 1px solid rgba(10,10,10,.1);
+    border-radius: 11px;
+    outline: none;
+    background: rgba(10,10,10,.035);
+    color: var(--nt-dark);
+    font: 560 14px/1.3 Inter, sans-serif;
+    transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+  }
+  .nt-logo-form__field textarea { min-height: 68px; resize: vertical; }
+  .nt-logo-form__field input:focus,
+  .nt-logo-form__field select:focus,
+  .nt-logo-form__field textarea:focus { border-color: var(--nt-pink); background: #fff; box-shadow: 0 0 0 3px rgba(250,49,162,.13); }
+  .nt-logo-form__context-intro { margin: 1px 0 9px; padding: 8px 10px; border-radius: 10px; background: rgba(250,49,162,.055); color: rgba(10,10,10,.62); font-size: 11px; font-weight: 560; line-height: 1.4; }
+  .nt-logo-form__priority { min-width: 0; margin: 0 0 9px; padding: 0; border: 0; }
+  .nt-logo-form__priority legend { margin-bottom: 6px; padding: 0; font-size: 11px; font-weight: 710; }
+  .nt-logo-form__optional { color: rgba(10,10,10,.42); font-weight: 520; }
+  .nt-logo-form__choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .nt-logo-form__choice { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 8px 10px; border: 1px solid rgba(10,10,10,.1); border-radius: 11px; background: rgba(10,10,10,.025); color: rgba(10,10,10,.72); font-size: 11px; font-weight: 650; line-height: 1.3; cursor: pointer; }
+  .nt-logo-form__choice:has(input:checked) { border-color: rgba(250,49,162,.56); background: rgba(250,49,162,.07); color: var(--nt-dark); box-shadow: 0 0 0 2px rgba(250,49,162,.08); }
+  .nt-logo-form__choice input { flex: 0 0 17px; width: 17px; height: 17px; margin: 0; accent-color: var(--nt-pink); }
+  .nt-logo-form__choice:focus-within { outline: 3px solid rgba(250,49,162,.2); outline-offset: 1px; }
+  .nt-logo-form__no-design { display: flex; justify-content: center; margin: 6px 0 8px; }
+  .nt-logo-form__option-row { display: flex; align-items: center; gap: 9px; margin: 0 0 9px; padding: 7px 9px; border: 1px solid rgba(250,49,162,.25); border-radius: 12px; background: rgba(250,49,162,.06); }
+  .nt-logo-form__express-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px; background: rgba(250,49,162,.13); color: var(--nt-pink); }
+  .nt-logo-form__express-copy { flex: 1; min-width: 0; }
+  .nt-logo-form__express-copy strong { display: block; font-size: 13.5px; letter-spacing: -.01em; }
+  .nt-logo-form__express-copy span { display: block; margin-top: 2px; color: rgba(10,10,10,.6); font-size: 11.5px; font-weight: 500; }
+  .nt-logo-form__check { display: inline-flex; align-items: center; gap: 8px; color: rgba(10,10,10,.62); font-size: 11px; font-weight: 620; cursor: pointer; }
+  .nt-logo-form__check input { width: 16px; height: 16px; accent-color: var(--nt-pink); }
+  .nt-logo-form__date { display: flex; align-items: center; gap: 7px; }
+  .nt-logo-form__date label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .nt-logo-form__date input { width: 128px; padding: 7px 8px; border: 1px solid rgba(10,10,10,.1); border-radius: 9px; background: rgba(10,10,10,.035); color: var(--nt-dark); font: 600 11px Inter, sans-serif; }
+  .nt-logo-form__cta,
+  .nt-logo-form__back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 52px;
+    border: 0;
+    border-radius: 14px;
+    font: 750 14px Inter, sans-serif;
+    cursor: pointer;
+  }
+  .nt-logo-form__cta { position: relative; overflow: hidden; width: 100%; min-height: 48px; padding: 11px 18px; border-radius: 15px; background: linear-gradient(180deg, var(--nt-pink), var(--nt-pink-dark)); color: #fff; box-shadow: 0 9px 28px rgba(250,49,162,.34),0 2px 8px rgba(250,49,162,.2),inset 0 1px rgba(255,255,255,.3); }
+  .nt-logo-form__cta::after { content: ''; position: absolute; top: 0; left: -120%; width: 60%; height: 100%; background: linear-gradient(105deg,transparent 40%,rgba(255,255,255,.38) 50%,transparent 60%); transform: skewX(-18deg); animation: ntLogoShine 5.6s ease-in-out infinite; pointer-events: none; }
+  .nt-logo-form__cta:hover { filter: brightness(1.04); }
+  .nt-logo-form__cta:disabled { cursor: wait; opacity: .72; }
+  .nt-logo-form__cta:focus-visible,
+  .nt-logo-form__back:focus-visible { outline: 3px solid rgba(250,49,162,.28); outline-offset: 2px; }
+  .nt-logo-form__actions { display: grid; grid-template-columns: 52px 1fr; gap: 9px; margin-top: 3px; }
+  .nt-logo-form__back { background: rgba(10,10,10,.06); color: rgba(10,10,10,.58); }
+  .nt-logo-form__assurance { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 31px; margin-top: 8px; padding: 6px 9px; border: 1px solid rgba(10,10,10,.06); border-radius: 11px; background: rgba(10,10,10,.025); color: rgba(10,10,10,.68); font-size: 10.5px; font-weight: 620; white-space: nowrap; }
+  .nt-logo-form__assurance-google { display: inline-flex; align-items: center; gap: 5px; color: var(--nt-dark); }
+  .nt-logo-form__assurance-google svg { flex: 0 0 16px; width: 16px; height: 16px; }
+  .nt-logo-form__assurance-score { font-size: 11.5px; font-weight: 780; }
+  .nt-logo-form__assurance-stars { color: #f59e0b; font-size: 9px; letter-spacing: -1px; }
+  .nt-logo-form__assurance-divider { width: 1px; height: 15px; background: rgba(10,10,10,.12); }
+  .nt-logo-form__assurance-free { display: inline-flex; align-items: center; gap: 4px; }
+  .nt-logo-form__assurance-free::before { content: '✓'; color: #16a34a; font-weight: 900; }
+  .nt-logo-form__microproof { display: flex; align-items: flex-start; gap: 9px; margin-top: 7px; padding: 8px 10px; border: 1px solid rgba(10,10,10,.05); border-radius: 12px; background: rgba(10,10,10,.03); animation: ntLogoFadeIn .4s ease-out; }
+  .nt-logo-form__microproof-avatar { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #fa31a2, #6d28d9); color: #fff; font-size: 9px; font-weight: 800; }
+  .nt-logo-form__microproof blockquote { margin: 0; color: rgba(10,10,10,.82); font-size: 11.5px; font-weight: 500; line-height: 1.4; }
+  .nt-logo-form__microproof cite { display: block; margin-top: 4px; color: rgba(10,10,10,.55); font-size: 10.5px; font-style: normal; font-weight: 500; }
+  .nt-logo-form__privacy { margin: 10px 0 0; color: rgba(10,10,10,.42); font-size: 9.5px; line-height: 1.4; text-align: center; }
+  .nt-logo-form__privacy a { color: inherit; text-decoration: underline; }
+  .nt-logo-form__message { min-height: 18px; margin-top: 8px; color: #b42318; font-size: 11px; font-weight: 650; text-align: center; }
+  .nt-logo-form__message:empty { display: none; }
+  .nt-logo-form__success { scroll-margin-top: 92px; padding: 28px 8px 18px; text-align: center; }
+  .nt-logo-form__success-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 15px; border-radius: 50%; background: #edfdf3; color: #16a34a; }
+  .nt-logo-form__success h3 { margin: 0; font-size: 24px; font-weight: 760; letter-spacing: -.035em; }
+  .nt-logo-form__success p { max-width: 350px; margin: 8px auto 0; color: rgba(10,10,10,.56); font-size: 13px; line-height: 1.5; }
+  .nt-logo-enrichment { margin-top: 22px; padding-top: 20px; border-top: 1px solid rgba(10,10,10,.09); text-align: left; }
+  .nt-logo-enrichment__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+  .nt-logo-enrichment__head h4 { margin: 0; font-size: 17px; font-weight: 760; line-height: 1.25; letter-spacing: -.025em; }
+  .nt-logo-enrichment__timer { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; background: rgba(250,49,162,.09); color: #ad176b; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .nt-logo-enrichment__intro { margin: 6px 0 14px !important; color: rgba(10,10,10,.58) !important; font-size: 12px !important; line-height: 1.45 !important; text-align: left; }
+  .nt-logo-enrichment__actions { display: grid; grid-template-columns: 1fr auto; gap: 9px; margin-top: 4px; }
+  .nt-logo-enrichment__skip { min-height: 48px; padding: 10px 14px; border: 1px solid rgba(10,10,10,.1); border-radius: 14px; background: rgba(10,10,10,.035); color: rgba(10,10,10,.62); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .nt-logo-enrichment__status { min-height: 18px; margin: 8px 0 0 !important; color: rgba(10,10,10,.58) !important; font-size: 11.5px !important; text-align: center; }
+  .nt-logo-enrichment__done { margin-top: 18px; padding: 13px 14px; border-radius: 13px; background: #f3faf5; color: #176b35; font-size: 12px; font-weight: 650; line-height: 1.45; }
+
+  .nt-logo-hero__logos { position: relative; z-index: 1; width: 100%; padding: 0 0 18px; }
+  .nt-logo-hero__logos-inner { width: 100%; overflow: hidden; -webkit-mask-image: linear-gradient(to right,transparent,#000 4%,#000 96%,transparent); mask-image: linear-gradient(to right,transparent,#000 4%,#000 96%,transparent); }
+  .nt-logo-hero__logos-title { width: 100%; margin: 0 auto 8px; padding: 0 56px; color: rgba(255,255,255,.6); font-size: 11.5px; font-weight: 600; letter-spacing: .14em; text-align: left; text-transform: uppercase; }
+  .nt-logo-hero__logo-row { display: flex; align-items: center; width: max-content; animation: ntLogoMarquee 34s linear infinite; will-change: transform; }
+  .nt-logo-hero__logo-group { display: flex; flex: 0 0 auto; align-items: center; gap: 56px; min-height: 60px; padding-right: 56px; }
+  .nt-logo-hero__logo-row img { flex: 0 0 112px; width: 112px; height: 28px; object-fit: contain; filter: brightness(0) invert(1); opacity: .52; transform: scale(var(--logo-scale,1)); }
+
+  @keyframes ntLogoShine { 0% { left: -120%; } 55%,100% { left: 140%; } }
+  @keyframes ntLogoFadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes ntLogoMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @keyframes ntLogoLightstrip { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  @keyframes ntLogoReveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  .nt-logo-hero__eyebrow,.nt-logo-hero h1,.nt-logo-hero__subline,.nt-logo-hero__trust,.nt-logo-hero__actions,.nt-logo-hero__process { animation: ntLogoReveal .62s cubic-bezier(.2,.72,.2,1) both; }
+  .nt-logo-hero h1 { animation-delay: .05s; }
+  .nt-logo-hero__subline { animation-delay: .1s; }
+  .nt-logo-hero__trust { animation-delay: .15s; }
+  .nt-logo-hero__actions { animation-delay: .2s; }
+  .nt-logo-hero__process { animation-delay: .25s; }
+  .nt-logo-hero__form-shell { animation: ntLogoReveal .72s .12s cubic-bezier(.2,.72,.2,1) both; }
+
+  @media (max-width: 1023px) {
+    .nt-logo-hero__inner { width: min(100% - 48px, 1200px); grid-template-columns: minmax(0, 1fr) minmax(390px, 46%); gap: 30px; }
+    section#hero.nt-logo-hero h1 { font-size: clamp(44px, 6vw, 60px) !important; }
+    .nt-logo-form { padding: 24px 22px 22px; }
+  }
+  @media (max-width: 899px) {
+    .nt-logo-hero__media { height: 720px; }
+    .nt-logo-hero__media img { object-position: 58% 35%; }
+    .nt-logo-hero__shade {
+      background:
+        linear-gradient(180deg, rgba(10,10,10,.79) 0%, rgba(10,10,10,.92) 32%, rgba(10,10,10,.99) 64%, #0a0a0a 100%),
+        radial-gradient(520px 400px at 20% 18%, rgba(250,49,162,.16), transparent 66%);
+    }
+    .nt-logo-hero__inner { width: min(100% - 28px, 520px); padding: 86px 0 20px; grid-template-columns: 1fr; gap: 8px; }
+    .nt-logo-hero__copy { padding-top: 0; text-align: center; }
+    .nt-logo-hero__eyebrow { margin: 0 auto 9px; padding: 7px 11px; font-size: 12px; line-height: 1.2; }
+    section#hero.nt-logo-hero h1 { max-width: 350px; margin-inline: auto; font-size: clamp(38px, 10.2vw, 45px) !important; line-height: 1.02; }
+    .nt-logo-hero__subline { max-width: 350px; margin: 9px auto 0; font-size: 16px; line-height: 1.42; }
+    .nt-logo-hero__trust { justify-content: center; margin-top: 9px; font-size: 12.5px; line-height: 1.3; }
+    .nt-logo-hero__trust-separator,.nt-logo-hero__trust-advisor { display: none; }
+    .nt-logo-hero__actions { display: none; }
+    .nt-logo-hero__primary { width: 100%; max-width: 360px; }
+    .nt-logo-hero__process { display: block; max-width: 380px; margin: 11px auto 0; text-align: left; }
+    .nt-logo-hero__process-head { justify-content: center; margin-bottom: 7px; font-size: 13px; line-height: 1.3; letter-spacing: 0; }
+    .nt-logo-hero__process-head::after { display: none; }
+    .nt-logo-hero__process-grid { gap: 7px; }
+    .nt-logo-hero__process-card { padding: 5px; border-radius: 10px; background: rgba(255,255,255,.08); }
+    .nt-logo-hero__process-visual { height: 58px; border-radius: 7px; }
+    .nt-logo-hero__process-card:first-child .nt-logo-hero__process-visual { padding: 10px; }
+    .nt-logo-hero__process-meta { justify-content: center; min-height: 24px; padding: 5px 1px 1px; align-items: flex-start; gap: 0; text-align: center; }
+    .nt-logo-hero__process-number { display: none; }
+    .nt-logo-hero__process-title { font-size: 12px; line-height: 1.2; white-space: normal; }
+    .nt-logo-hero__form-shell { margin-top: 0; scroll-margin-top: 76px; }
+    .nt-logo-form { padding: 17px 16px 18px; border-radius: 20px; }
+    .nt-logo-form__watermark { display: none; }
+    .nt-logo-form__header { padding-right: 0; }
+    .nt-logo-form__header h2 { font-size: 20px; }
+    .nt-logo-form__header p { margin-top: 4px; font-size: 14px; line-height: 1.35; }
+    .nt-logo-form__progress { margin: 10px 0; }
+    .nt-logo-form__upload { min-height: 124px; padding: 8px 14px 7px; }
+    .nt-logo-form__upload-icon { width: 40px; height: 40px; margin-bottom: 5px; }
+    .nt-logo-form__upload-title { font-size: 16px; }
+    .nt-logo-form__upload-sub { font-size: 12.5px; line-height: 1.3; }
+    .nt-logo-form__formats { margin-top: 5px; }
+    .nt-logo-form__formats span { font-size: 11px; }
+    .nt-logo-form__no-design { margin: 2px 0 4px; }
+    .nt-logo-form__check { min-height: 44px; font-size: 12.5px; line-height: 1.3; }
+    .nt-logo-form__check input { width: 20px; height: 20px; flex: 0 0 20px; }
+    .nt-logo-form__option-row { align-items: center; padding: 3px 7px; }
+    .nt-logo-form__express-copy strong { font-size: 14px; }
+    .nt-logo-form__express-copy span { display: none; }
+    .nt-logo-form__date { width: auto; }
+    .nt-logo-form__date input { width: 116px; min-height: 44px; font-size: 12.5px; }
+    .nt-logo-form__cta { font-size: 15px; }
+    .nt-logo-form__assurance { gap: 7px; padding-inline: 8px; font-size: 12px; }
+    .nt-logo-form__assurance-reviews { display: none; }
+    .nt-logo-form__microproof blockquote { font-size: 12.5px; line-height: 1.45; }
+    .nt-logo-form__microproof cite { font-size: 12px; line-height: 1.4; }
+    .nt-logo-form__privacy { font-size: 12px; line-height: 1.45; }
+    .nt-logo-form__field label { font-size: 13px; }
+    .nt-logo-form__context-intro { font-size: 13px; line-height: 1.45; }
+    .nt-logo-form__priority legend { font-size: 13px; line-height: 1.35; }
+    .nt-logo-form__choice-grid { grid-template-columns: 1fr; }
+    .nt-logo-form__choice { min-height: 48px; font-size: 14px; }
+    .nt-logo-form__choice input { width: 20px; height: 20px; flex-basis: 20px; }
+    .nt-logo-form__row { grid-template-columns: 1fr; gap: 0; }
+    .nt-logo-form__field input,
+    .nt-logo-form__field select,
+    .nt-logo-form__field textarea { min-height: 46px; font-size: 16px; }
+    .nt-logo-hero__logos { padding: 0 0 20px; }
+    .nt-logo-hero__logos-inner { width: 100%; }
+    .nt-logo-hero__logos-title { width: 100%; padding: 0 14px; font-size: 12px; text-align: center; }
+    .nt-logo-hero__logo-row { animation-duration: 40s; }
+    .nt-logo-hero__logo-group { gap: 38px; min-height: 52px; padding-right: 38px; }
+    .nt-logo-hero__logo-row img { flex-basis: 96px; width: 96px; height: 24px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nt-logo-hero__primary { transition: none; }
+    .nt-logo-hero__logo-row { animation: none; }
+    .nt-logo-form__cta::after { animation: none; }
+    .nt-logo-form__microproof { animation: none; }
+    .nt-logo-hero__form-shell::before { animation: none; }
+    .nt-logo-hero__eyebrow,.nt-logo-hero h1,.nt-logo-hero__subline,.nt-logo-hero__trust,.nt-logo-hero__actions,.nt-logo-hero__process,.nt-logo-hero__form-shell { animation: none; }
+  }
+</style>
+
+<section id="hero" class="nt-logo-hero" aria-labelledby="nt-logo-hero-title">
+  <picture class="nt-logo-hero__media" aria-hidden="true">
+    <source media="(max-width: 767px)" srcset="{{HERO_IMAGE_MOBILE}}">
+    <img src="{{HERO_IMAGE}}" alt="" width="800" height="868" fetchpriority="high" decoding="sync">
+  </picture>
+  <div class="nt-logo-hero__shade" aria-hidden="true"></div>
+
+  <div class="nt-logo-hero__inner">
+    <div class="nt-logo-hero__copy">
+      <div class="nt-logo-hero__eyebrow"><span class="nt-logo-hero__eyebrow-dot" aria-hidden="true"></span>{{HERO_EYEBROW}}</div>
+      <h1 id="nt-logo-hero-title">{{H1_TEXT}}</h1>
+      <p class="nt-logo-hero__subline">{{HERO_SUBLINE}}</p>
+
+      <div class="nt-logo-hero__trust" aria-label="Projekterfahrung und Beratung">
+        <span class="nt-logo-hero__trust-check" aria-hidden="true">✓</span>
+        <span>8.200+ Projekte</span>
+        <span class="nt-logo-hero__trust-separator" aria-hidden="true"></span>
+        <span class="nt-logo-hero__trust-advisor">Beratung aus Düsseldorf</span>
+      </div>
+
+      <div class="nt-logo-hero__actions">
+        <a href="#hero-form-desktop" class="nt-logo-hero__primary">
+          Kostenlose 3D-Vorschau anfordern
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <div class="nt-logo-hero__process" aria-label="Vom hochgeladenen Logo über die Visualisierung zum fertigen Schild">
+        <div class="nt-logo-hero__process-head">Logo → 3D-Vorschau → fertiges Schild</div>
+        <div class="nt-logo-hero__process-grid">
+          <div class="nt-logo-hero__process-card">
+            <div class="nt-logo-hero__process-visual"><img src="{{HERO_PROCESS_IMAGE_1}}" alt="Beispiel für eine hochgeladene Logo-Datei" width="180" height="90" loading="lazy" decoding="async" fetchpriority="low"></div>
+            <div class="nt-logo-hero__process-meta"><span class="nt-logo-hero__process-number">01</span><span class="nt-logo-hero__process-title">{{HERO_PROCESS_TITLE_1}}</span></div>
+          </div>
+          <div class="nt-logo-hero__process-card">
+            <div class="nt-logo-hero__process-visual"><img src="{{HERO_PROCESS_IMAGE_2}}" alt="Beispiel für eine 3D-Visualisierung von NEONTRIP" width="320" height="200" loading="lazy" decoding="async" fetchpriority="low"></div>
+            <div class="nt-logo-hero__process-meta"><span class="nt-logo-hero__process-number">02</span><span class="nt-logo-hero__process-title">{{HERO_PROCESS_TITLE_2}}</span></div>
+          </div>
+          <div class="nt-logo-hero__process-card">
+            <div class="nt-logo-hero__process-visual"><img src="{{HERO_PROCESS_IMAGE_3}}" alt="Beispiel für ein fertig montiertes Logo-Leuchtschild" width="320" height="200" loading="lazy" decoding="async" fetchpriority="low"></div>
+            <div class="nt-logo-hero__process-meta"><span class="nt-logo-hero__process-number">03</span><span class="nt-logo-hero__process-title">{{HERO_PROCESS_TITLE_3}}</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nt-logo-hero__form-shell">
+      <div class="nt-logo-form__halo" aria-hidden="true"></div>
+      <form id="hero-form-desktop" class="nt-logo-form" action="/api/c" method="POST" enctype="multipart/form-data" data-nt-custom-hero data-default-product="{{DEFAULT_PRODUCT}}" data-default-location="{{DEFAULT_LOCATION}}">
+        <input type="hidden" name="source" value="{{HERO_FORM_SOURCE}}">
+        <input type="hidden" name="request_id" value="">
+        <input type="hidden" name="nt_client_submit_id" value="">
+        <div class="nt-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+
+        <img class="nt-logo-form__watermark" src="../assets/logo_weiss_neontrip.webp" alt="" aria-hidden="true" width="744" height="140">
+        <div class="nt-logo-form__header" id="hero-form-desktop-header">
+          <h2 id="hero-form-title-d">{{HERO_FORM_TITLE}}</h2>
+          <p>{{HERO_FORM_SUBLINE}}</p>
+        </div>
+        <div class="nt-logo-form__progress" aria-hidden="true"><span class="is-active" id="nt-logo-progress-1"></span><span id="nt-logo-progress-2"></span></div>
+
+        <div class="nt-logo-form__step" id="nt-logo-form-step-1">
+          <p class="nt-logo-form__step-label">Schritt 1 von 2 · Ihr Logo</p>
+          <label class="nt-logo-form__upload" id="nt-logo-upload-zone">
+            <input id="nt-logo-file" type="file" name="datei" accept=".svg,.pdf,.eps,.ai,.png,.jpg,.jpeg" aria-describedby="nt-logo-upload-help">
+            <span>
+              <span class="nt-logo-form__upload-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></svg>
+              </span>
+              <span class="nt-logo-form__upload-title" id="nt-logo-upload-title">Logo oder Entwurf hochladen</span>
+              <span class="nt-logo-form__upload-sub" id="nt-logo-upload-help">Datei auswählen oder hier ablegen · max. 20 MB</span>
+              <span class="nt-logo-form__formats" aria-hidden="true"><span>SVG</span><span>PDF</span><span>EPS</span><span>AI</span><span>PNG</span><span>JPG</span></span>
+            </span>
+          </label>
+
+          <div class="nt-logo-form__no-design">
+            <label class="nt-logo-form__check"><input type="checkbox" name="kein_design" value="ja" id="nt-logo-no-design">Design später senden – Anfrage trotzdem starten</label>
+          </div>
+          <div class="nt-logo-form__option-row">
+            <span class="nt-logo-form__express-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg></span>
+            <span class="nt-logo-form__express-copy"><strong>Express benötigt?</strong><span>Wunschdatum eintragen – wir prüfen die Machbarkeit</span></span>
+            <div class="nt-logo-form__date"><label for="nt-logo-date">Wunschdatum</label><input id="nt-logo-date" type="date" name="wunschdatum"></div>
+          </div>
+
+          <button class="nt-logo-form__cta" type="button" id="nt-logo-next">
+            Kostenlose 3D-Vorschau starten
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+
+          <div class="nt-logo-form__assurance" aria-label="Google-Bewertung und unverbindliche Vorschau">
+            <span class="nt-logo-form__assurance-google">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1Z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23Z" fill="#34A853"/><path d="M5.84 14.09A6.3 6.3 0 0 1 5.49 12c0-.73.13-1.43.35-2.09V7.07H2.18A10.98 10.98 0 0 0 1 12c0 1.78.43 3.45 1.18 4.93l2.85-2.22.81-.62Z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53Z" fill="#EA4335"/></svg>
+              <span class="nt-logo-form__assurance-score">4,9/5</span>
+              <span class="nt-logo-form__assurance-stars" aria-hidden="true">★★★★★</span>
+              <span class="nt-logo-form__assurance-reviews">236 Bewertungen</span>
+            </span>
+            <span class="nt-logo-form__assurance-divider" aria-hidden="true"></span>
+            <span class="nt-logo-form__assurance-free">Kostenlos &amp; unverbindlich</span>
+          </div>
+
+          <div class="nt-logo-form__microproof">
+            <div class="nt-logo-form__microproof-avatar" aria-hidden="true">LM</div>
+            <blockquote>„{{HERO_REVIEW_QUOTE}}“<cite>{{HERO_REVIEW_AUTHOR}}</cite></blockquote>
+          </div>
+        </div>
+
+        <div class="nt-logo-form__step" id="nt-logo-form-step-2" hidden>
+          <p class="nt-logo-form__step-label">Schritt 2 von 2 · Kontaktdaten & Projekt</p>
+          <div class="nt-logo-form__row">
+            <div class="nt-logo-form__field"><label for="nt-logo-name">Name *</label><input id="nt-logo-name" name="name" type="text" autocomplete="name" required placeholder="Max Mustermann"></div>
+            <div class="nt-logo-form__field"><label for="nt-logo-company">Firma</label><input id="nt-logo-company" name="firma" type="text" autocomplete="organization" placeholder="Unternehmen"></div>
+          </div>
+          <div class="nt-logo-form__row">
+            <div class="nt-logo-form__field"><label for="nt-logo-email">E-Mail *</label><input id="nt-logo-email" name="email" type="email" autocomplete="email" required placeholder="max@firma.de"></div>
+            <div class="nt-logo-form__field"><label for="nt-logo-phone">Telefon <span style="font-weight:500;color:rgba(10,10,10,.4)">(optional)</span></label><input id="nt-logo-phone" name="telefon" type="tel" autocomplete="tel" placeholder="+49 …"></div>
+          </div>
+          <div class="nt-logo-form__row">
+            <div class="nt-logo-form__field">
+              <label for="nt-logo-product">Gewünschte Umsetzung</label>
+              <select id="nt-logo-product" name="produkt">
+                <option value="LED Neonschild">LED Neonschild</option>
+                <option value="3D Buchstaben (Front)">3D-Buchstaben · frontbeleuchtet</option>
+                <option value="3D Buchstaben (Rückbeleuchtet)">3D-Buchstaben · rückbeleuchtet</option>
+                <option value="Leuchtkasten">Leuchtkasten</option>
+                <option value="Noch unsicher">Noch unsicher</option>
+              </select>
+            </div>
+            <div class="nt-logo-form__field"><label for="nt-logo-size">Ungefähre Größe</label><input id="nt-logo-size" name="groesse" type="text" inputmode="text" placeholder="z. B. 120 cm breit"></div>
+          </div>
+          <div class="nt-logo-form__field"><label for="nt-logo-message">Weitere Wünsche <span class="nt-logo-form__optional">(optional)</span></label><textarea id="nt-logo-message" name="nachricht" rows="2" placeholder="z. B. bevorzugte Lichtwirkung oder wichtige Details"></textarea></div>
+
+          <div class="nt-logo-form__actions">
+            <button class="nt-logo-form__back" type="button" id="nt-logo-back" aria-label="Zurück zu Schritt 1">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <button class="nt-logo-form__cta" type="submit" id="nt-logo-submit">
+              3D-Vorschau unverbindlich anfordern
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+          <p class="nt-logo-form__privacy">Hinweise zur Verarbeitung Ihrer Angaben finden Sie in unserer <a href="/datenschutz.html">Datenschutzerklärung</a>.</p>
+        </div>
+
+        <div class="nt-logo-form__message" id="nt-logo-form-message" role="status" aria-live="polite"></div>
+        <div class="nt-logo-form__success" id="nt-logo-form-success" hidden tabindex="-1">
+          <div class="nt-logo-form__success-icon" aria-hidden="true"><svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg></div>
+          <h3>Anfrage entgegengenommen</h3>
+          <p>Vielen Dank. Wir prüfen jetzt Logo, gewünschte Umsetzung und Ihre Kontaktdaten.</p>
+
+          <div class="nt-logo-enrichment" id="nt-logo-enrichment">
+            <div class="nt-logo-enrichment__head">
+              <h4>Optional: Visualisierung noch genauer vorbereiten</h4>
+              <span class="nt-logo-enrichment__timer" id="nt-logo-enrichment-timer" aria-label="Verbleibende Zeit">5:00</span>
+            </div>
+            <p class="nt-logo-enrichment__intro">Diese Angaben sind keine Voraussetzung für die Anfrage. Sie helfen uns, das Schild im passenden Umfeld und mit dem richtigen Schwerpunkt zu zeigen.</p>
+            <div class="nt-logo-form__row">
+              <div class="nt-logo-form__field">
+                <label for="nt-logo-request-for">Für wen ist die Anfrage?</label>
+                <select id="nt-logo-request-for" name="anfrage_fuer">
+                  <option value="">Bitte auswählen</option>
+                  <option value="Eigenes Unternehmen">Für unser eigenes Unternehmen</option>
+                  <option value="Kundenprojekt">Im Auftrag eines Kunden</option>
+                  <option value="Verein oder Organisation">Für einen Verein / eine Organisation</option>
+                  <option value="Privat">Privat</option>
+                </select>
+              </div>
+              <div class="nt-logo-form__field">
+                <label for="nt-logo-location">Wo soll das Schild eingesetzt werden?</label>
+                <select id="nt-logo-location" name="einsatzort">
+                  <option value="">Bitte auswählen</option>
+                  <option value="Büro, Empfang oder Innenwand">Büro / Empfang / Innenwand</option>
+                  <option value="Fassade oder Außenbereich">Fassade / Außenbereich</option>
+                  <option value="Laden oder Showroom">Laden / Showroom</option>
+                  <option value="Gastronomie oder Hotel">Gastronomie / Hotel</option>
+                  <option value="Praxis, Kanzlei oder Studio">Praxis / Kanzlei / Studio</option>
+                  <option value="Vereinsheim oder Organisation">Vereinsheim / Organisation</option>
+                  <option value="Messe oder Event">Messe / Event</option>
+                  <option value="Privater Raum">Privater Raum</option>
+                  <option value="Anderer Einsatzort">Anderer Einsatzort</option>
+                </select>
+              </div>
+            </div>
+            <fieldset class="nt-logo-form__priority">
+              <legend>Was ist bei der Umsetzung wichtiger?</legend>
+              <div class="nt-logo-form__choice-grid">
+                <label class="nt-logo-form__choice"><input type="radio" name="projekt_prioritaet" value="Möglichst genaue Umsetzung unserer Marke/CI"><span>Möglichst genaue Umsetzung unserer Marke/CI</span></label>
+                <label class="nt-logo-form__choice"><input type="radio" name="projekt_prioritaet" value="Möglichst günstiger Preis"><span>Möglichst günstiger Preis</span></label>
+              </div>
+            </fieldset>
+            <div class="nt-logo-form__field"><label for="nt-logo-setting">Konkretes Umfeld für das Mockup</label><textarea id="nt-logo-setting" name="mockup_setting" rows="2" maxlength="1000" placeholder="z. B. Empfang im Red Bull Headquarter Salzburg, dunkle Steinwand, frontal über dem Tresen"></textarea></div>
+            <div class="nt-logo-form__field"><label for="nt-logo-reference">Website oder Standort als Referenz <span class="nt-logo-form__optional">(optional)</span></label><input id="nt-logo-reference" name="mockup_reference" type="url" maxlength="500" inputmode="url" placeholder="https://…"></div>
+            <div class="nt-logo-enrichment__actions">
+              <button class="nt-logo-form__cta" type="button" id="nt-logo-enrichment-save">Angaben übernehmen</button>
+              <button class="nt-logo-enrichment__skip" type="button" id="nt-logo-enrichment-skip">Überspringen</button>
+            </div>
+            <p class="nt-logo-enrichment__status" id="nt-logo-enrichment-status" role="status" aria-live="polite"></p>
+          </div>
+          <div class="nt-logo-enrichment__done" id="nt-logo-enrichment-done" hidden>Danke. Ihre Anfrage wird mit diesen Zusatzangaben weiterbearbeitet.</div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="nt-logo-hero__logos" aria-label="Auswahl realisierter Kundenprojekte">
+    <div class="nt-logo-hero__logos-inner">
+      <div class="nt-logo-hero__logos-title">Leuchtschilder für Unternehmen – vom Empfang bis zur Fassade</div>
+      <div class="nt-logo-hero__logo-row">
+        <div class="nt-logo-hero__logo-group">
+          <img src="../assets/images/kundenlogos/hero-marquee/1.svg" alt="Greenpeace" style="--logo-scale:1.15">
+          <img src="../assets/images/kundenlogos/hero-marquee/3.svg" alt="ERGO" style="--logo-scale:1.1">
+          <img src="../assets/images/kundenlogos/hero-marquee/7.svg" alt="Campari Group" style="--logo-scale:1.2">
+          <img src="../assets/images/kundenlogos/hero-marquee/Amazon.svg" alt="Amazon" style="--logo-scale:1">
+          <img src="../assets/images/kundenlogos/hero-marquee/11.svg" alt="Celonis" style="--logo-scale:1">
+          <img src="../assets/images/kundenlogos/hero-marquee/Aperol.svg" alt="Aperol" style="--logo-scale:1.2">
+          <img src="../assets/images/kundenlogos/hero-marquee/15.svg" alt="Starlink" style="--logo-scale:2.1">
+          <img src="../assets/images/kundenlogos/hero-marquee/17.svg" alt="Schwarzkopf" style="--logo-scale:1.3">
+          <img src="../assets/images/kundenlogos/hero-marquee/19.svg" alt="Paramount+" style="--logo-scale:1.15">
+          <img src="../assets/images/kundenlogos/hero-marquee/21.svg" alt="Google" style="--logo-scale:1">
+          <img src="../assets/images/kundenlogos/hero-marquee/DBSchenker.svg" alt="DB Schenker" style="--logo-scale:1.2">
+        </div>
+        <div class="nt-logo-hero__logo-group" aria-hidden="true">
+          <img src="../assets/images/kundenlogos/hero-marquee/1.svg" alt="" style="--logo-scale:1.15">
+          <img src="../assets/images/kundenlogos/hero-marquee/3.svg" alt="" style="--logo-scale:1.1">
+          <img src="../assets/images/kundenlogos/hero-marquee/7.svg" alt="" style="--logo-scale:1.2">
+          <img src="../assets/images/kundenlogos/hero-marquee/Amazon.svg" alt="" style="--logo-scale:1">
+          <img src="../assets/images/kundenlogos/hero-marquee/11.svg" alt="" style="--logo-scale:1">
+          <img src="../assets/images/kundenlogos/hero-marquee/Aperol.svg" alt="" style="--logo-scale:1.2">
+          <img src="../assets/images/kundenlogos/hero-marquee/15.svg" alt="" style="--logo-scale:2.1">
+          <img src="../assets/images/kundenlogos/hero-marquee/17.svg" alt="" style="--logo-scale:1.3">
+          <img src="../assets/images/kundenlogos/hero-marquee/19.svg" alt="" style="--logo-scale:1.15">
+          <img src="../assets/images/kundenlogos/hero-marquee/21.svg" alt="" style="--logo-scale:1">
+          <img src="../assets/images/kundenlogos/hero-marquee/DBSchenker.svg" alt="" style="--logo-scale:1.2">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+  var form = document.getElementById('hero-form-desktop');
+  if (!form || !form.hasAttribute('data-nt-custom-hero')) return;
+
+  var step1 = document.getElementById('nt-logo-form-step-1');
+  var step2 = document.getElementById('nt-logo-form-step-2');
+  var progress1 = document.getElementById('nt-logo-progress-1');
+  var progress2 = document.getElementById('nt-logo-progress-2');
+  var next = document.getElementById('nt-logo-next');
+  var back = document.getElementById('nt-logo-back');
+  var fileInput = document.getElementById('nt-logo-file');
+  var uploadZone = document.getElementById('nt-logo-upload-zone');
+  var uploadTitle = document.getElementById('nt-logo-upload-title');
+  var noDesign = document.getElementById('nt-logo-no-design');
+  var submit = document.getElementById('nt-logo-submit');
+  var message = document.getElementById('nt-logo-form-message');
+  var success = document.getElementById('nt-logo-form-success');
+  var currentStep = 1;
+  var conversionFired = false;
+  var uploadStartedFired = false;
+  var assetAttachedFired = false;
+  var contactStepFired = false;
+  var enrichmentTimer = null;
+  var enrichmentDeadline = 0;
+  var enrichmentFinalized = false;
+  var enrichmentInFlight = false;
+
+  function track(name, params) {
+    if (typeof window.ntTrack === 'function') window.ntTrack(name, Object.assign({ form_name: '{{HERO_FORM_NAME}}', intent_id: '{{INTENT_ID}}' }, params || {}));
+  }
+
+  function trackUploadStarted(method) {
+    if (uploadStartedFired) return;
+    uploadStartedFired = true;
+    track('upload_started', { interaction_method: method || 'unknown' });
+  }
+
+  function setStep(step) {
+    currentStep = step;
+    step1.hidden = step !== 1;
+    step2.hidden = step !== 2;
+    progress1.classList.add('is-active');
+    progress2.classList.toggle('is-active', step === 2);
+    message.textContent = '';
+    if (step === 2 && !contactStepFired) {
+      contactStepFired = true;
+      track('contact_step_viewed', { asset_status: fileInput.files.length ? 'attached' : 'send_later' });
+    }
+    var target = step === 2 ? document.getElementById('nt-logo-name') : fileInput;
+    window.requestAnimationFrame(function() {
+      if (target) target.focus({ preventScroll: true });
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  function updateFileLabel(file) {
+    if (!file) {
+      uploadTitle.textContent = 'Logo oder Entwurf hochladen';
+      uploadZone.classList.remove('has-file');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      fileInput.value = '';
+      uploadTitle.textContent = 'Datei ist größer als 20 MB';
+      message.textContent = 'Bitte wählen Sie eine kleinere Datei.';
+      return;
+    }
+    uploadZone.classList.add('has-file');
+    uploadTitle.textContent = file.name;
+    message.textContent = '';
+    noDesign.checked = false;
+    if (!assetAttachedFired) {
+      assetAttachedFired = true;
+      track('asset_attached', { file_extension: (file.name.split('.').pop() || '').toLowerCase(), file_size_kb: Math.round(file.size / 1024) });
+    }
+  }
+
+  fileInput.addEventListener('click', function() { trackUploadStarted('file_picker'); });
+  fileInput.addEventListener('change', function() { updateFileLabel(fileInput.files && fileInput.files[0]); });
+  ['dragenter', 'dragover'].forEach(function(type) {
+    uploadZone.addEventListener(type, function(event) { event.preventDefault(); trackUploadStarted('drag_drop'); uploadZone.classList.add('is-dragging'); });
+  });
+  ['dragleave', 'drop'].forEach(function(type) {
+    uploadZone.addEventListener(type, function(event) { event.preventDefault(); uploadZone.classList.remove('is-dragging'); });
+  });
+  uploadZone.addEventListener('drop', function(event) {
+    if (!event.dataTransfer || !event.dataTransfer.files.length) return;
+    try { fileInput.files = event.dataTransfer.files; } catch (_) {}
+    updateFileLabel(event.dataTransfer.files[0]);
+  });
+  noDesign.addEventListener('change', function() {
+    if (noDesign.checked) {
+      fileInput.value = '';
+      updateFileLabel(null);
+      track('asset_send_later_selected');
+    }
+  });
+
+  next.addEventListener('click', function() {
+    if (!fileInput.files.length && !noDesign.checked) {
+      message.textContent = 'Bitte laden Sie Ihr Logo hoch oder wählen Sie „Design später senden“.';
+      noDesign.focus();
+      return;
+    }
+    setStep(2);
+  });
+  back.addEventListener('click', function() { setStep(1); });
+
+  var dateInput = document.getElementById('nt-logo-date');
+  if (dateInput) dateInput.min = new Date().toISOString().slice(0, 10);
+  var productSelect = document.getElementById('nt-logo-product');
+  if (productSelect && form.dataset.defaultProduct) {
+    var matchingOption = Array.from(productSelect.options).some(function(option) { return option.value === form.dataset.defaultProduct; });
+    if (matchingOption) productSelect.value = form.dataset.defaultProduct;
+  }
+  var locationSelect = document.getElementById('nt-logo-location');
+  if (locationSelect) {
+    if (form.dataset.defaultLocation) locationSelect.value = form.dataset.defaultLocation;
+    var keyword = (new URLSearchParams(window.location.search).get('kw') || '').toLowerCase();
+    var locationRules = [
+      { terms: ['außen', 'aussen', 'fassade', 'outdoor'], value: 'Fassade oder Außenbereich' },
+      { terms: ['gastro', 'restaurant', 'bar', 'hotel'], value: 'Gastronomie oder Hotel' },
+      { terms: ['laden', 'shop', 'store', 'showroom'], value: 'Laden oder Showroom' },
+      { terms: ['praxis', 'kanzlei', 'studio'], value: 'Praxis, Kanzlei oder Studio' },
+      { terms: ['messe', 'event'], value: 'Messe oder Event' },
+      { terms: ['büro', 'buero', 'empfang', 'innen', 'wand'], value: 'Büro, Empfang oder Innenwand' }
+    ];
+    locationRules.some(function(rule) {
+      if (!rule.terms.some(function(term) { return keyword.indexOf(term) !== -1; })) return false;
+      locationSelect.value = rule.value;
+      return true;
+    });
+  }
+
+  var enrichment = document.getElementById('nt-logo-enrichment');
+  var enrichmentDone = document.getElementById('nt-logo-enrichment-done');
+  var enrichmentTimerLabel = document.getElementById('nt-logo-enrichment-timer');
+  var enrichmentStatus = document.getElementById('nt-logo-enrichment-status');
+  var enrichmentSave = document.getElementById('nt-logo-enrichment-save');
+  var enrichmentSkip = document.getElementById('nt-logo-enrichment-skip');
+
+  function enrichmentBody(status) {
+    var priority = form.querySelector('[name="projekt_prioritaet"]:checked');
+    return {
+      request_id: success.dataset.requestId || clientSubmitId(),
+      nt_client_submit_id: clientSubmitId(),
+      enrichment_status: status,
+      enrichment_version: 'lead_context_v1',
+      requester_type: document.getElementById('nt-logo-request-for').value || null,
+      installation_context: locationSelect.value || null,
+      decision_priority: priority ? priority.value : null,
+      mockup_setting: document.getElementById('nt-logo-setting').value.trim() || null,
+      mockup_reference: document.getElementById('nt-logo-reference').value.trim() || null,
+      intent_id: '{{INTENT_ID}}',
+      lp_variant: '{{LP_VARIANT}}',
+      landing_page_url: location.href,
+      enrichment_token: success.dataset.enrichmentToken || null
+    };
+  }
+
+  function showEnrichmentDone(status) {
+    enrichmentFinalized = true;
+    if (enrichmentTimer) clearInterval(enrichmentTimer);
+    enrichment.hidden = true;
+    enrichmentDone.hidden = false;
+    enrichmentDone.textContent = status === 'completed'
+      ? 'Danke. Ihre Anfrage wird mit diesen Zusatzangaben weiterbearbeitet.'
+      : 'Alles klar. Ihre Anfrage wird ohne weitere Zusatzangaben bearbeitet.';
+  }
+
+  async function submitEnrichment(status, passive) {
+    if (enrichmentFinalized || enrichmentInFlight) return;
+    enrichmentInFlight = true;
+    var body = enrichmentBody(status);
+    if (!passive) {
+      enrichmentSave.disabled = true;
+      enrichmentSkip.disabled = true;
+      enrichmentStatus.textContent = status === 'completed' ? 'Angaben werden gespeichert …' : 'Wird übernommen …';
+    }
+    try {
+      var response = await fetch('/api/e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        keepalive: true
+      });
+      var payload = null;
+      try { payload = await response.json(); } catch (_) {}
+      if (!response.ok || !payload || payload.ok !== true) throw new Error('enrichment_not_accepted_' + response.status);
+      showEnrichmentDone(status);
+      track(status === 'completed' ? 'qualification_submitted' : status === 'timeout' ? 'qualification_timed_out' : 'qualification_skipped', {
+        requester_type: body.requester_type || 'not_provided',
+        installation_context: body.installation_context || 'not_provided',
+        decision_priority: body.decision_priority || 'not_provided'
+      });
+    } catch (error) {
+      if (passive || status !== 'completed') {
+        showEnrichmentDone(status);
+        return;
+      }
+      enrichmentInFlight = false;
+      enrichmentSave.disabled = false;
+      enrichmentSkip.disabled = false;
+      enrichmentStatus.textContent = 'Die Zusatzangaben konnten noch nicht gespeichert werden. Bitte versuchen Sie es erneut.';
+      track('qualification_submit_failed', { error_type: error && error.message ? error.message : 'unknown' });
+    }
+  }
+
+  function startEnrichmentTimer() {
+    if (!enrichment || !enrichmentTimerLabel) return;
+    enrichmentDeadline = Date.now() + 5 * 60 * 1000;
+    track('qualification_viewed');
+    function tick() {
+      var seconds = Math.max(0, Math.ceil((enrichmentDeadline - Date.now()) / 1000));
+      enrichmentTimerLabel.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+      if (seconds <= 0) submitEnrichment('timeout', true);
+    }
+    tick();
+    enrichmentTimer = setInterval(tick, 1000);
+  }
+
+  if (enrichmentSave) enrichmentSave.addEventListener('click', function() { submitEnrichment('completed', false); });
+  if (enrichmentSkip) enrichmentSkip.addEventListener('click', function() { submitEnrichment('skipped', false); });
+  addEventListener('pagehide', function() {
+    if (enrichmentFinalized || enrichmentInFlight || !success.dataset.requestId || !navigator.sendBeacon) return;
+    var payload = enrichmentBody('abandoned');
+    navigator.sendBeacon('/api/e', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+  });
+
+  function clientSubmitId() {
+    var existing = form.querySelector('[name="nt_client_submit_id"]').value;
+    if (existing) return existing;
+    var id = window.crypto && typeof window.crypto.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          var r = Math.random() * 16 | 0;
+          return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+        });
+    form.querySelector('[name="nt_client_submit_id"]').value = id;
+    form.querySelector('[name="request_id"]').value = id;
+    return id;
+  }
+
+  form.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    if (currentStep !== 2) { setStep(2); return; }
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    var original = submit.innerHTML;
+    submit.disabled = true;
+    submit.setAttribute('aria-busy', 'true');
+    submit.textContent = 'Anfrage wird gesendet …';
+    message.textContent = '';
+
+    try {
+      var submitId = clientSubmitId();
+      var formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(form, '{{HERO_FORM_NAME}}') : new FormData(form);
+      formData.set('nt_client_submit_id', submitId);
+      formData.set('request_id', submitId);
+      var response = await fetch(form.action, { method: 'POST', body: formData, headers: { Accept: 'application/json', 'X-Client-Submit-Id': submitId } });
+      var payload = null;
+      try { payload = await response.json(); } catch (_) {}
+      if (!response.ok || !payload || payload.ok !== true || payload.filtered) {
+        throw new Error('submit_not_accepted_' + response.status);
+      }
+
+      if (!conversionFired && typeof window.fireEnhancedConversion === 'function') {
+        window.fireEnhancedConversion('{{HERO_FORM_NAME}}', formData.get('email'), formData.get('telefon'), formData.get('name'));
+        conversionFired = true;
+      }
+
+      track('lead_accepted', {
+        lead_id: payload.request_id || submitId,
+        asset_status: formData.get('datei') && formData.get('datei').size ? 'attached' : 'send_later'
+      });
+
+      step1.hidden = true;
+      step2.hidden = true;
+      form.querySelector('.nt-logo-form__header').hidden = true;
+      form.querySelector('.nt-logo-form__progress').hidden = true;
+      message.textContent = '';
+      success.hidden = false;
+      success.dataset.requestId = payload.request_id || submitId;
+      success.dataset.enrichmentToken = payload.enrichment_token || '';
+      success.focus({ preventScroll: true });
+      if (payload.enrichment_available && payload.enrichment_token) startEnrichmentTimer();
+      else showEnrichmentDone('skipped');
+      requestAnimationFrame(function() {
+        success.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'start'
+        });
+      });
+    } catch (error) {
+      submit.disabled = false;
+      submit.removeAttribute('aria-busy');
+      submit.innerHTML = original;
+      message.textContent = 'Das hat gerade nicht funktioniert. Bitte versuchen Sie es erneut oder rufen Sie uns an.';
+      track('lead_submit_failed', { error_type: error && error.message ? error.message : 'unknown' });
+      if (typeof window.ntReportSubmitFailure === 'function') window.ntReportSubmitFailure('{{HERO_FORM_NAME}}', error);
+      if (typeof window.ntShowFailureBanner === 'function') window.ntShowFailureBanner(form);
+    }
+  });
+})();
+</script>
+<!-- ===== /SECTION: logo photo hero pilot ===== -->

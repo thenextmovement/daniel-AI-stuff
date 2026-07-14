@@ -1,239 +1,64 @@
 {
   "slug": "firmenlogo-beleuchtet",
-  "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
+  "extends": "logo",
+  "intent_id": "company_logo_ci",
+  "lp_variant": "photo_upload_company_logo_v1",
+  "funnel_event_category": "company_logo_ci_funnel",
+  "hero_form_name": "hero_form_company_logo_photo_v1",
+  "hero_form_source": "hero-form-company-logo-photo-v1",
+  "default_location": "Büro, Empfang oder Innenwand",
+  "hero_eyebrow": "CI-gerechte 3D-Vorschau für Unternehmen",
+  "hero_form_title": "Kostenlose Vorschau Ihres Firmenlogos",
+  "hero_form_subline": "Logo hochladen. Wir prüfen Bauart, Proportion und Wirkung im gewünschten Umfeld.",
   "lang": "de",
-  "title": "Firmenlogo beleuchtet — LED Wandlogo | NEONTRIP",
-  "meta_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Visualisierung in 24h.",
+  "title": "Firmenlogo beleuchtet umsetzen | Kostenlose 3D-Vorschau | NEONTRIP",
+  "meta_description": "Firmenlogo beleuchtet als LED-Neon, 3D-Buchstaben oder Leuchtkasten. Logo hochladen und eine kostenlose, CI-orientierte 3D-Vorschau mit Angebot erhalten.",
   "canonical": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/",
-  "og_title": "NEONTRIP – Firmenlogo beleuchtet | LED Wandlogo",
-  "og_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Visualisierung in 24h.",
-  "h1_text": "Ihr Firmenlogo beleuchtet — kostenlose 3D-Vorschau in 24h",
-  "default_product": "LED Logo Wandschild",
-  "price_anchor": "LED Logo ab 499 € · 3D Buchstaben ab 599 € · Neon ab 299 €",
-  "price_anchor_desktop": "Firmenlogo beleuchtet ab 499 EUR",
-  "hero_subline": "Ihr Logo als beleuchtetes Wandschild — für Empfang, Büro, Fassade oder Ladenfläche. 100 % CI-konform, IP67 für außen, kostenlose 3D-Vorschau in 24h.",
-  "footer_tagline": "Beleuchtete Firmenlogos aus Düsseldorf.",
-  "footer_products": "LED Logo · 3D Buchstaben · Neon · Leuchtkästen",
-  "faq_cta_title": "Bereit für Ihr beleuchtetes Firmenlogo?",
-  "clarity_page_type": "landing",
   "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/firmenlogo-beleuchtet/\">",
+  "og_title": "Beleuchtetes Firmenlogo mit 3D-Vorschau | NEONTRIP",
+  "og_description": "Firmenlogo hochladen und als beleuchtetes Logo im passenden Unternehmensumfeld visualisieren lassen.",
+  "h1_text": "Ihr Firmenlogo als <span class=\"nt-logo-hero__accent\">beleuchtetes Logo</span>",
+  "hero_subline": "Logo hochladen und kostenlos als LED-Neon, 3D-Buchstaben oder Leuchtkasten visualisieren lassen – passend zu Marke, Raum und gewünschter Wirkung.",
+  "default_product": "Noch unsicher",
+  "footer_tagline": "Beleuchtete Firmenlogos aus Düsseldorf.",
+  "footer_products": "LED Logos · 3D Buchstaben · Leuchtkästen",
+  "faq_cta_title": "Wie könnte Ihr Firmenlogo beleuchtet aussehen?",
+  "clarity_page_type": "landing-company-logo",
+  "dki_suffix": "",
+  "dki_sync_form_title": false,
+  "dki_accent_class": "nt-logo-hero__accent",
+  "dki_accent_terms": [
+    "beleuchtetes Firmenlogo",
+    "Firmenlogo als Leuchtschild",
+    "LED Firmenlogo",
+    "3D Firmenlogo",
+    "beleuchtetes Logo",
+    "Leuchtlogo"
+  ],
   "dki_rules": [
-    [
-      "firmenlogo beleuchtet",
-      "Ihr Firmenlogo beleuchtet"
-    ],
-    [
-      "firmenlogo schild",
-      "Ihr Firmenlogo als Leuchtschild"
-    ],
-    [
-      "firmenlogo leuchten",
-      "Ihr Firmenlogo als Leuchtschild"
-    ],
-    [
-      "firmenlogo neon",
-      "Ihr Firmenlogo als Neon Leuchtschild"
-    ],
-    [
-      "led firmenlogo",
-      "Ihr Firmenlogo als LED Schild"
-    ],
-    [
-      "led logo wand",
-      "Ihr LED Logo an der Wand"
-    ],
-    [
-      "logo wand beleuchtet",
-      "Ihr Wandlogo beleuchtet"
-    ],
-    [
-      "logo beleuchtet wand",
-      "Ihr Wandlogo beleuchtet"
-    ],
-    [
-      "logo an der wand beleuchtet",
-      "Ihr Wandlogo beleuchtet"
-    ],
-    [
-      "wandlogo beleuchtet",
-      "Ihr Wandlogo beleuchtet"
-    ],
-    [
-      "logo mit beleuchtung",
-      "Ihr Firmenlogo mit Beleuchtung"
-    ],
-    [
-      "logo beleuchtet",
-      "Ihr Firmenlogo beleuchtet"
-    ],
-    [
-      "beleuchtetes logo",
-      "Ihr Firmenlogo beleuchtet"
-    ],
-    [
-      "beleuchtetes firmenlogo",
-      "Ihr beleuchtetes Firmenlogo"
-    ],
-    [
-      "logo hinterleuchtet",
-      "Hinterleuchtetes Firmenlogo"
-    ],
-    [
-      "hinterleuchtetes logo",
-      "Hinterleuchtetes Firmenlogo"
-    ],
-    [
-      "3d logo beleuchtet",
-      "Ihr 3D-Logo beleuchtet"
-    ],
-    [
-      "3d leuchtlogo",
-      "3D Leuchtlogo"
-    ],
-    [
-      "fassade logo beleuchtet",
-      "Ihr Fassadenlogo beleuchtet"
-    ],
-    [
-      "fassadenlogo beleuchtet",
-      "Ihr Fassadenlogo beleuchtet"
-    ],
-    [
-      "eigenes logo beleuchtet",
-      "Ihr eigenes Logo als Leuchtschild"
-    ],
-    [
-      "leuchtlogo",
-      "Ihr Leuchtlogo"
-    ],
-    [
-      "logo leuchtschild",
-      "Ihr Logo als Leuchtschild"
-    ],
-    [
-      "logo als leuchtschild",
-      "Ihr Logo als Leuchtschild"
-    ],
-    [
-      "logo schild beleuchtet",
-      "Ihr beleuchtetes Logo-Schild"
-    ],
-    [
-      "markenlogo leuchtschild",
-      "Ihr Markenlogo als Leuchtschild"
-    ],
-    [
-      "acrylglas logo beleuchtet",
-      "Ihr Acrylglas-Logo beleuchtet"
-    ],
-    [
-      "metallschild logo beleuchtet",
-      "Ihr Metallschild mit Logo beleuchtet"
-    ],
-    [
-      "edelstahl logo beleuchtet",
-      "Ihr Edelstahl-Logo beleuchtet"
-    ],
-    [
-      "plexiglas logo beleuchtet",
-      "Ihr Plexiglas-Logo beleuchtet"
-    ],
-    [
-      "empfang logo beleuchtet",
-      "Ihr Empfangslogo beleuchtet"
-    ],
-    [
-      "büro logo beleuchtet",
-      "Ihr Büro-Logo beleuchtet"
-    ]
+    ["firmenlogo beleuchtet", "Ihr beleuchtetes Firmenlogo"],
+    ["beleuchtetes firmenlogo", "Ihr beleuchtetes Firmenlogo"],
+    ["firmenlogo leuchtschild", "Ihr Firmenlogo als Leuchtschild"],
+    ["led firmenlogo", "Ihr LED Firmenlogo"],
+    ["3d firmenlogo", "Ihr 3D Firmenlogo mit Beleuchtung"],
+    ["firmenlogo wand", "Ihr Firmenlogo als beleuchtetes Wandlogo"],
+    ["logo beleuchtet", "Ihr Logo als beleuchtetes Logo"],
+    ["leuchtlogo", "Ihr individuelles Leuchtlogo"]
   ],
   "structured_data": [
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "NEONTRIP",
-      "legalName": "Dara Nova GmbH",
-      "description": "NEONTRIP ist Spezialist für beleuchtete Firmenlogos, LED Wandlogos und 3D-Leuchtbuchstaben aus Düsseldorf. Über 8.247 B2B-Projekte realisiert.",
-      "url": "https://neontrip.de",
-      "logo": "/assets/neontrip-favicon.svg",
-      "telephone": "+49-211-54257240",
-      "email": "support@neontrip.de",
-      "foundingDate": "2020",
-      "slogan": "Jedes Firmenlogo. Beleuchtet.",
-      "knowsAbout": [
-        "Beleuchtete Firmenlogos",
-        "LED Wandlogos",
-        "3D Leuchtbuchstaben",
-        "Hinterleuchtete Logos",
-        "Fassadenlogos",
-        "Corporate Signage"
-      ],
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Bilker Allee 29",
-        "addressLocality": "Düsseldorf",
-        "postalCode": "40219",
-        "addressRegion": "NRW",
-        "addressCountry": "DE"
-      },
-      "sameAs": [
-        "https://www.instagram.com/neontrip.de",
-        "https://www.linkedin.com/company/neontrip"
-      ]
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "LocalBusiness",
-      "name": "NEONTRIP",
-      "legalName": "Dara Nova GmbH",
-      "description": "Spezialist für beleuchtete Firmenlogos, LED Wandlogos, 3D-Leuchtbuchstaben und Fassadenlogos aus Düsseldorf. Über 8.247 B2B-Projekte realisiert.",
-      "url": "https://neontrip.de",
-      "telephone": "+49-211-54257240",
-      "email": "support@neontrip.de",
-      "priceRange": "€€€",
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Bilker Allee 29",
-        "addressLocality": "Düsseldorf",
-        "postalCode": "40219",
-        "addressCountry": "DE"
-      },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "4.9",
-        "reviewCount": "236",
-        "bestRating": "5"
-      }
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "Product",
-      "name": "Beleuchtetes Firmenlogo — LED, 3D & Neon",
-      "description": "Ihr Firmenlogo als beleuchtetes Wandschild — LED, 3D-Buchstaben oder Neon. Innen & außen, IP67 wetterfest, 100 % CI-konform.",
-      "brand": {
-        "@type": "Brand",
-        "name": "NEONTRIP"
-      },
-      "manufacturer": {
+      "@type": "Service",
+      "name": "Beleuchtetes Firmenlogo nach eigener Gestaltung",
+      "serviceType": "Planung und Herstellung individueller beleuchteter Firmenlogos",
+      "provider": {
         "@type": "Organization",
-        "name": "Dara Nova GmbH"
+        "name": "NEONTRIP",
+        "url": "https://neontrip.de"
       },
-      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
-      "category": "Beleuchtete Firmenlogos",
-      "offers": {
-        "@type": "AggregateOffer",
-        "priceCurrency": "EUR",
-        "lowPrice": "499",
-        "highPrice": "12000",
-        "offerCount": "6",
-        "availability": "https://schema.org/InStock",
-        "price": "499"
-      },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "4.9",
-        "reviewCount": "236"
-      }
+      "areaServed": "Deutschland",
+      "url": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/",
+      "description": "Visualisierung und projektbezogene Planung eines Firmenlogos als LED-Neon, beleuchtete 3D-Buchstaben oder Leuchtkasten."
     },
     {
       "@context": "https://schema.org",
@@ -241,82 +66,26 @@
       "mainEntity": [
         {
           "@type": "Question",
-          "name": "Was kostet ein beleuchtetes Firmenlogo?",
+          "name": "Wie wird ein Firmenlogo möglichst CI-gerecht beleuchtet?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Beleuchtete Firmenlogos kosten je nach Technik, Größe und Montageort zwischen 499 € und 12.000 €. LED Wandlogos starten ab 499 €, hinterleuchtete 3D-Logos ab 799 €, großformatige Fassadenlogos typischerweise 2.500–8.000 €. NEONTRIP erstellt innerhalb von 24 Stunden ein kostenloses Angebot mit 3D-Visualisierung Ihres Logos an der Wand."
+            "text": "Ausgangspunkt sind die Logo-Datei, definierte Farben und Proportionen. In der technischen Prüfung wird geklärt, welche Bauart feine Konturen, Farbwirkung, Abstände und Montage am besten abbildet."
           }
         },
         {
           "@type": "Question",
-          "name": "Welche Beleuchtungstechniken gibt es für Firmenlogos an der Wand?",
+          "name": "Kann das Firmenlogo vor der Produktion im Büro oder Empfang visualisiert werden?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Die gängigsten Techniken: (1) LED Neon Flex für filigrane Logos und Schriftzüge, (2) 3D-Buchstaben frontbeleuchtet — leuchten direkt nach vorne, (3) 3D-Buchstaben mit Halo-Effekt — rückbeleuchtet, indirekter Lichtschein an der Wand, (4) Leuchtkasten mit durchleuchteter Logofläche, (5) hinterleuchtete Logoplatten aus Acryl oder Metall. Jede Technik erzeugt eine andere Wirkung — von subtil bis markant."
+            "text": "Ja. Ein Foto, eine Beschreibung oder der konkrete Standort helfen dabei, das Logo im späteren Umfeld zu visualisieren und Größe sowie Lichtwirkung besser einzuschätzen."
           }
         },
         {
           "@type": "Question",
-          "name": "Kann ich mein Firmenlogo für Innen- und Außenwände nutzen?",
+          "name": "Welche Datei eignet sich für die Anfrage?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Ja. Für Innen (Empfang, Büro, Konferenzraum) verwenden wir IP20-Ausführung mit dezenter Netzteil-Montage. Für Außen (Fassade, Eingang, Ladenfront) fertigen wir IP67-wetterfest mit UV-beständigen Materialien, geeignet für -20 °C bis +50 °C. Wir beraten Sie individuell zur richtigen Technik pro Montageort."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie wird ein beleuchtetes Logo an der Wand montiert?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Jedes Logo wird montagefertig geliefert — mit Abstandshaltern (für den schwebenden Wandabstand), Bohrschablone, Netzteil und Anleitung. Kleine Empfangslogos können Sie selbst montieren, für Fassaden- und Großformat-Installationen empfehlen wir unseren professionellen Montageservice deutschlandweit. Wir übernehmen auf Wunsch auch die komplette Installation inklusive Stromanschluss."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie groß darf mein Firmenlogo an der Wand sein?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Es gibt keine feste Größenbeschränkung. Empfangslogos starten ab 40 cm Breite, typische Wandlogos für Büros liegen bei 80–150 cm, Fassadenlogos werden häufig 2–6 Meter breit gefertigt. Jedes Projekt wird individuell auf Ihre Wandfläche und Corporate-Design-Vorgaben geplant."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wird mein Logo 100 % CI-konform umgesetzt?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Ja. Wir fertigen jedes Firmenlogo exakt nach Ihrem Corporate Design — inklusive Pantone-genauer Farbabstimmung, originalgetreuer Schriften und Proportionen. Senden Sie uns Ihre Logo-Datei (PNG, JPG, PDF, AI, EPS oder SVG). Bei niedrig aufgelösten Vorlagen zeichnen unsere Designer das Logo vor der Produktion professionell nach — ohne Zusatzkosten."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie lange hält ein beleuchtetes Firmenlogo?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "LED-beleuchtete Firmenlogos halten mindestens 110.000 Betriebsstunden — das entspricht über 25 Jahren bei 12 Stunden täglicher Nutzung. Die Schilder sind wartungsfrei. Wir gewähren 24 Monate Garantie auf alle Komponenten."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie schnell wird ein beleuchtetes Firmenlogo geliefert?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Standardlieferung erfolgt in 7–14 Werktagen ab Auftragsbestätigung. Für Ladeneröffnungen, Büro-Umzüge und Filial-Rollouts bieten wir Express-Produktion ab 3 Werktagen. NEONTRIP ist auf termingenaue B2B-Lieferungen deutschlandweit spezialisiert."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Brauche ich eine Genehmigung für ein beleuchtetes Logo an der Fassade?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Für Innenmontage (Empfang, Büro) ist keine Genehmigung notwendig. Für Außenwerbung an der Fassade kann je nach Stadt und Gebäude eine baurechtliche Genehmigung erforderlich sein. Wir beraten Sie zu den Anforderungen in Ihrer Region und können auf Wunsch komplette Planungsunterlagen für Ihren Antrag erstellen."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie läuft die Bestellung eines beleuchteten Firmenlogos ab?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Der Ablauf: 1. Logo hochladen, Wunschmaße und Montageort (innen/außen) angeben. 2. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau mit Angebot. 3. Nach Freigabe startet die Fertigung (7–14 Werktage, Express ab 3 Werktagen). 4. Lieferung montagefertig mit Zubehör — optional mit professionellem Montageservice deutschlandweit."
+            "text": "Vektordateien wie SVG, PDF, EPS oder AI sind ideal. PNG und JPG reichen für eine erste Einschätzung ebenfalls aus."
           }
         }
       ]
@@ -324,57 +93,31 @@
     {
       "@context": "https://schema.org",
       "@type": "WebPage",
-      "name": "Firmenlogo beleuchtet — LED Wandlogo nach Maß | NEONTRIP",
+      "name": "Firmenlogo beleuchtet umsetzen | NEONTRIP",
       "url": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/",
-      "description": "Ihr Firmenlogo beleuchtet an der Wand — LED, 3D oder Neon. Ab 499 EUR.",
-      "speakable": {
-        "@type": "SpeakableSpecification",
-        "cssSelector": [
-          "h1",
-          ".faq-answer p"
-        ]
-      }
+      "description": "Firmenlogo hochladen und als beleuchtetes Logo visualisieren lassen."
     },
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        {
-          "@type": "ListItem",
-          "position": 1,
-          "name": "NEONTRIP",
-          "item": "https://neontrip.de"
-        },
-        {
-          "@type": "ListItem",
-          "position": 2,
-          "name": "Produkte",
-          "item": "https://anfrage.neontrip.de/"
-        },
-        {
-          "@type": "ListItem",
-          "position": 3,
-          "name": "Firmenlogo beleuchtet",
-          "item": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/"
-        }
+        {"@type": "ListItem", "position": 1, "name": "NEONTRIP", "item": "https://neontrip.de"},
+        {"@type": "ListItem", "position": 2, "name": "Beleuchtetes Firmenlogo", "item": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/"}
       ]
     }
   ],
-  "sections": [
-    "header",
-    "hero",
-    "stats-bar",
-    "projekte",
-    "events",
-    "anfrage",
-    "vorteile",
-    "bewertungen",
-    "testimonials",
-    "faq",
-    "kunden",
-    "kontakt",
-    "footer"
-  ],
-  "sticky_produkt": "neonschild",
-  "dki_suffix": " — kostenlose 3D-Vorschau in 24h"
+  "section_variants": {
+    "header": "logo",
+    "hero": "logo",
+    "stats-bar": "logo",
+    "projekte": "firmenlogo-beleuchtet",
+    "process": "logo",
+    "events": "logo",
+    "anfrage": "logo",
+    "vorteile": "logo",
+    "testimonials": "logo",
+    "faq": "firmenlogo-beleuchtet",
+    "kontakt": "logo",
+    "footer": "logo"
+  }
 }

@@ -1,5 +1,6 @@
 {
   "slug": "test",
+  "robots_meta": "noindex, nofollow, noarchive",
   "hero_video_desktop": "../assets/videos/hero-desktop-neon.mp4",
   "hero_video_mobile": "../assets/videos/hero-mobile-neon.mp4",
   "lang": "de",

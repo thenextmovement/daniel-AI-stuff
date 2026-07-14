@@ -1,313 +1,69 @@
 {
   "slug": "firmenschilder",
-  "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
+  "extends": "logo",
+  "intent_id": "firm_sign_outdoor",
+  "lp_variant": "photo_upload_firm_sign_v1",
+  "funnel_event_category": "firm_sign_outdoor_funnel",
+  "hero_form_name": "hero_form_firm_sign_photo_v1",
+  "hero_form_source": "hero-form-firm-sign-photo-v1",
+  "default_location": "Fassade oder Außenbereich",
+  "hero_preload_desktop": "../assets/images/hero-poster-desktop-leuchtbuchstaben.webp",
+  "hero_preload_mobile": "../assets/images/hero-poster-mobile.webp",
+  "hero_image": "../assets/images/hero-poster-desktop-leuchtbuchstaben.webp",
+  "hero_image_mobile": "../assets/images/hero-poster-mobile.webp",
+  "hero_eyebrow": "Firmenschilder für Fassade, Eingang und Innenraum",
+  "hero_form_title": "Kostenlose Vorschau Ihres Firmenschilds",
+  "hero_form_subline": "Logo oder Entwurf hochladen. Wir visualisieren Schild, Beleuchtung und Wirkung am Einsatzort.",
   "lang": "de",
-  "title": "Beleuchtete Firmenschilder & LED Werbeschilder | NEONTRIP Düsseldorf",
-  "meta_description": "Beleuchtete Firmenschilder ab 499 EUR — 3D-Vorschau in 24h kostenlos. IP67 wetterfest. Jetzt unverbindlich anfragen!",
+  "title": "Individuelle Firmenschilder mit Beleuchtung | 3D-Vorschau | NEONTRIP",
+  "meta_description": "Individuelle Firmenschilder für Fassade, Eingang und Innenraum. Logo hochladen und eine kostenlose 3D-Vorschau mit projektbezogenem Angebot erhalten.",
   "canonical": "https://anfrage.neontrip.de/firmenschilder/",
-  "og_title": "NEONTRIP – Beleuchtete Firmenschilder & LED Werbeschilder",
-  "og_description": "Beleuchtete Firmenschilder ab 499 EUR — 3D-Vorschau in 24h kostenlos. IP67 wetterfest. Jetzt unverbindlich anfragen!",
-  "h1_text": "Ihr Firmenschild beleuchtet — kostenlose 3D-Vorschau in 24h",
-  "dki_suffix": " — kostenlose 3D-Vorschau in 24h",
-  "default_product": "Vollflächig beleuchtet",
-  "price_anchor": "Firmenschilder ab 499 € · LED Neon ab 299 € · Leuchtkästen ab 499 €",
-  "price_anchor_desktop": "Beleuchtete Firmenschilder ab 499 EUR",
-  "hero_subline": "LED Firmenschilder für Fassade, Empfang und Ladenfläche — von Einzelbuchstaben bis Komplett-Schildanlagen. Kostenlose Visualisierung.",
-  "footer_tagline": "Beleuchtete Firmenschilder aus Düsseldorf.",
-  "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
-  "faq_cta_title": "Bereit für Ihr Firmenschild?",
-  "clarity_page_type": "landing",
   "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/firmenschilder/\">",
+  "og_title": "Individuelle Firmenschilder mit 3D-Vorschau | NEONTRIP",
+  "og_description": "Firmenschild für Fassade, Eingang oder Innenraum visualisieren lassen – passend zu Logo, Gebäude und gewünschter Fernwirkung.",
+  "h1_text": "Individuelle <span class=\"nt-logo-hero__accent\">Firmenschilder</span> mit Beleuchtung",
+  "hero_subline": "Logo oder Entwurf hochladen und kostenlos als Firmenschild visualisieren lassen – für Fassade, Eingang, Empfang oder Ladenfläche.",
+  "default_product": "Noch unsicher",
+  "footer_tagline": "Individuelle Firmenschilder aus Düsseldorf.",
+  "footer_products": "Fassadenschilder · 3D Buchstaben · Leuchtkästen",
+  "faq_cta_title": "Wie könnte Ihr Firmenschild am Gebäude aussehen?",
+  "clarity_page_type": "landing-firm-sign",
+  "dki_suffix": "",
+  "dki_sync_form_title": false,
+  "dki_accent_class": "nt-logo-hero__accent",
+  "dki_accent_terms": [
+    "Firmenschild außen",
+    "beleuchtetes Firmenschild",
+    "Firmenschild mit Logo",
+    "Firmenschilder",
+    "Fassadenschild",
+    "Leuchtwerbeschild"
+  ],
   "dki_rules": [
-    [
-      "beleuchtetes firmenschild",
-      "Beleuchtetes Firmenschild"
-    ],
-    [
-      "beleuchtetes logo",
-      "Ihr Logo als Leuchtschild"
-    ],
-    [
-      "firmenschild beleuchtet aussen",
-      "Beleuchtetes Firmenschild für Außen"
-    ],
-    [
-      "leuchtschild personalisiert",
-      "Personalisiertes Leuchtschild"
-    ],
-    [
-      "led leuchtschilder",
-      "LED Leuchtschilder"
-    ],
-    [
-      "leuchtlogo",
-      "Ihr Leuchtlogo"
-    ],
-    [
-      "logo beleuchtet wand",
-      "Beleuchtetes Wandlogo"
-    ],
-    [
-      "logo als leuchtschild",
-      "Ihr Logo als Leuchtschild"
-    ],
-    [
-      "logo leuchtschild",
-      "Ihr Logo als Leuchtschild"
-    ],
-    [
-      "firmenschild beleuchtet",
-      "Beleuchtetes Firmenschild"
-    ],
-    [
-      "firmenschild led",
-      "LED Firmenschild"
-    ],
-    [
-      "firmenlogo beleuchtet",
-      "Ihr Firmenlogo als Leuchtschild"
-    ],
-    [
-      "werbeschild beleuchtet",
-      "Beleuchtetes Werbeschild"
-    ],
-    [
-      "ladenschild beleuchtet",
-      "Beleuchtetes Ladenschild"
-    ],
-    [
-      "praxisschild beleuchtet",
-      "Beleuchtetes Praxisschild"
-    ],
-    [
-      "led firmenschild",
-      "LED Firmenschild"
-    ],
-    [
-      "leuchtschild firma",
-      "Leuchtschild für Ihr Unternehmen"
-    ],
-    [
-      "firmenschild außen",
-      "Firmenschild für den Außenbereich"
-    ],
-    [
-      "firmenschild innen",
-      "Firmenschild für den Empfangsbereich"
-    ],
-    [
-      "werbeschild led",
-      "LED Werbeschild"
-    ],
-    [
-      "leuchtbuchstaben firma",
-      "Leuchtbuchstaben für Ihr Unternehmen"
-    ],
-    [
-      "firmenschilder",
-      "Beleuchtete Firmenschilder"
-    ],
-    [
-      "werbeschild",
-      "Beleuchtetes Werbeschild"
-    ],
-    [
-      "led logo firma",
-      "Ihr Firmenlogo als LED Schild"
-    ],
-    [
-      "praxisschild led",
-      "LED Praxisschild"
-    ],
-    [
-      "geschaeftsschild beleuchtet",
-      "Beleuchtetes Geschäftsschild"
-    ],
-    [
-      "geschäftsschild beleuchtet",
-      "Beleuchtetes Geschäftsschild"
-    ],
-    [
-      "nasenschild beleuchtet",
-      "Beleuchtetes Nasenschild"
-    ],
-    [
-      "nasenschild led",
-      "LED Nasenschild"
-    ],
-    [
-      "aussenwerbung beleuchtet",
-      "Beleuchtete Außenwerbung"
-    ],
-    [
-      "außenwerbung beleuchtet",
-      "Beleuchtete Außenwerbung"
-    ],
-    [
-      "firmenlogo schild",
-      "Ihr Firmenlogo als Leuchtschild"
-    ],
-    [
-      "firmenlogo leuchten",
-      "Ihr Firmenlogo als Leuchtschild"
-    ],
-    [
-      "neon licht logo",
-      "Ihr Logo als Neon Leuchtschild"
-    ],
-    [
-      "neon logo erstellen",
-      "Neon Logo erstellen lassen"
-    ],
-    [
-      "neon logo",
-      "Ihr Logo als Neon Leuchtschild"
-    ],
-    [
-      "logo neon",
-      "Ihr Logo als Neon Leuchtschild"
-    ],
-    [
-      "logo lampe",
-      "Ihr Logo als Leuchtschild"
-    ],
-    [
-      "led firmenlogo",
-      "Ihr Firmenlogo als LED Schild"
-    ],
-    [
-      "led schild",
-      "LED Schild"
-    ],
-    [
-      "led zeichen",
-      "LED Zeichen"
-    ],
-    [
-      "ladenschild bestellen",
-      "Ladenschild bestellen"
-    ],
-    [
-      "led logo",
-      "Ihr Logo als Leuchtschild"
-    ]
+    ["firmenschild außen", "Ihr Firmenschild außen"],
+    ["firmenschild aussen", "Ihr Firmenschild außen"],
+    ["firmenschild beleuchtet", "Ihr beleuchtetes Firmenschild"],
+    ["beleuchtetes firmenschild", "Ihr beleuchtetes Firmenschild"],
+    ["firmenschild mit logo", "Ihr Firmenschild mit Logo"],
+    ["firmenschild fassade", "Ihr Firmenschild für die Fassade"],
+    ["fassadenschild", "Ihr individuelles Fassadenschild"],
+    ["leuchtwerbeschild", "Ihr individuelles Leuchtwerbeschild"],
+    ["firmenschilder", "Individuelle Firmenschilder mit Beleuchtung"]
   ],
   "structured_data": [
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "NEONTRIP",
-      "legalName": "Dara Nova GmbH",
-      "description": "NEONTRIP ist ein Anbieter für beleuchtete Firmenschilder, LED Werbeschilder und 3D-Leuchtbuchstaben aus Düsseldorf. Spezialisiert auf B2B-Projekte für Unternehmen, Agenturen und Marken.",
-      "url": "https://neontrip.de",
-      "logo": "/assets/neontrip-favicon.svg",
-      "telephone": "+49-211-54257240",
-      "email": "support@neontrip.de",
-      "foundingDate": "2020",
-      "numberOfEmployees": {
-        "@type": "QuantitativeValue",
-        "minValue": 10,
-        "maxValue": 50
-      },
-      "slogan": "Jedes Logo. Als beleuchtetes Firmenschild.",
-      "knowsAbout": [
-        "Beleuchtete Firmenschilder",
-        "LED Werbeschilder",
-        "3D Leuchtbuchstaben",
-        "Leuchtkästen",
-        "Profilbuchstaben",
-        "Außenwerbung"
-      ],
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Bilker Allee 29",
-        "addressLocality": "Düsseldorf",
-        "postalCode": "40219",
-        "addressRegion": "NRW",
-        "addressCountry": "DE"
-      },
-      "areaServed": {
-        "@type": "GeoCircle",
-        "geoMidpoint": {
-          "@type": "GeoCoordinates",
-          "latitude": 51.2277,
-          "longitude": 6.7735
-        },
-        "geoRadius": "500 km"
-      },
-      "sameAs": [
-        "https://www.instagram.com/neontrip.de",
-        "https://www.linkedin.com/company/neontrip",
-        "https://www.tiktok.com/@neontrip.de",
-        "https://www.youtube.com/@neontrip",
-        "https://www.facebook.com/neontrip.de"
-      ]
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "LocalBusiness",
-      "name": "NEONTRIP",
-      "legalName": "Dara Nova GmbH",
-      "description": "Anbieter für beleuchtete Firmenschilder, LED Werbeschilder, 3D-Leuchtbuchstaben und Leuchtkästen aus Düsseldorf. Über 8.247 B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
-      "url": "https://neontrip.de",
-      "telephone": "+49-211-54257240",
-      "email": "support@neontrip.de",
-      "priceRange": "€€€",
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Bilker Allee 29",
-        "addressLocality": "Düsseldorf",
-        "postalCode": "40219",
-        "addressCountry": "DE"
-      },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "4.9",
-        "reviewCount": "236",
-        "bestRating": "5"
-      },
-      "openingHoursSpecification": {
-        "@type": "OpeningHoursSpecification",
-        "dayOfWeek": [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday"
-        ],
-        "opens": "09:00",
-        "closes": "17:00"
-      }
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "Product",
-      "name": "Beleuchtete Firmenschilder & LED Werbeschilder",
-      "description": "Beleuchtete Firmenschilder und LED Werbeschilder nach Maß. Von Einzelbuchstaben bis Komplett-Schildanlagen für Fassaden, Empfangsbereiche und Ladenflächen.",
-      "brand": {
-        "@type": "Brand",
-        "name": "NEONTRIP"
-      },
-      "manufacturer": {
+      "@type": "Service",
+      "name": "Individuelle Firmenschilder mit Beleuchtung",
+      "serviceType": "Planung und Herstellung individueller Firmenschilder",
+      "provider": {
         "@type": "Organization",
-        "name": "Dara Nova GmbH"
+        "name": "NEONTRIP",
+        "url": "https://neontrip.de"
       },
-      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
-      "category": "Firmenschilder",
-      "offers": {
-        "@type": "AggregateOffer",
-        "priceCurrency": "EUR",
-        "lowPrice": "499",
-        "highPrice": "8000",
-        "offerCount": "6",
-        "availability": "https://schema.org/InStock",
-        "price": "499"
-      },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "4.9",
-        "reviewCount": "236"
-      }
+      "areaServed": "Deutschland",
+      "url": "https://anfrage.neontrip.de/firmenschilder/",
+      "description": "Projektbezogene Planung und Visualisierung von Firmenschildern für Fassade, Eingang und Innenraum."
     },
     {
       "@context": "https://schema.org",
@@ -315,114 +71,34 @@
       "mainEntity": [
         {
           "@type": "Question",
-          "name": "Was kostet ein beleuchtetes Firmenschild?",
+          "name": "Welche Firmenschilder eignen sich für eine Fassade?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Beleuchtete Firmenschilder kosten je nach Größe, Material und Beleuchtungsart zwischen 499 € und 10.000 €. Einfache LED-Einzelbuchstaben starten ab 499 €, Profilbuchstaben-Anlagen ab 1.000 €, komplette Fassaden-Schildanlagen ab 2.000 €. Der typische Bereich liegt bei 1.000–4.000 €. Großprojekte wie beleuchtete Pylone oder Filial-Rollouts werden individuell kalkuliert. NEONTRIP erstellt innerhalb von 24 Stunden ein kostenloses Angebot mit 3D-Visualisierung."
+            "text": "Geeignete Bauarten hängen von Logo, gewünschter Fernwirkung, Untergrund, Stromanschluss und Witterung ab. Häufig kommen beleuchtete 3D-Buchstaben, Leuchtkästen oder individuell aufgebaute Logo-Schilder infrage."
           }
         },
         {
           "@type": "Question",
-          "name": "Welche Arten von beleuchteten Firmenschildern gibt es?",
+          "name": "Welche Angaben werden für ein Firmenschild benötigt?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Die gängigsten Arten beleuchteter Firmenschilder sind: Leuchtkästen mit Logo (gleichmäßig durchleuchtete Fläche), 3D-Leuchtbuchstaben (front- oder rückbeleuchtet als Einzelbuchstaben), beleuchtete Pylone und Stelen (freistehende Werbeträger), hinterleuchtete Schilder mit Halo-Effekt (indirekter Lichtschein an der Wand) und LED-Rahmen mit Spanntuch. Jede Variante eignet sich für unterschiedliche Einsatzbereiche und Budgets."
+            "text": "Hilfreich sind Logo oder Entwurf, ungefähre Maße, Fotos der Fassade oder Wand, Angaben zum Untergrund, der Betrachtungsentfernung und zum vorhandenen Stromanschluss."
           }
         },
         {
           "@type": "Question",
-          "name": "Welche Materialien werden für beleuchtete Firmenschilder verwendet?",
+          "name": "Kann das Firmenschild vorab am Gebäude visualisiert werden?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Beleuchtete Firmenschilder werden aus Aluminium, Edelstahl oder Acrylglas gefertigt. 3D-Profilbuchstaben bestehen typischerweise aus lackiertem Aluminium mit Acrylglas-Fronten. Leuchtkästen verwenden pulverbeschichtetes Aluminium mit opalem Acryl. Edelstahl kommt bei Premium-Anwendungen und exponierten Außenstandorten zum Einsatz. Alle Materialien sind UV-beständig, wetterfest und für den Dauereinsatz im Außenbereich geeignet."
+            "text": "Ja. Mit einem möglichst frontalen Foto des Einsatzorts kann das Schild im späteren Umfeld dargestellt werden. Dadurch lassen sich Größe, Position und Lichtwirkung vor der Fertigung besser abstimmen."
           }
         },
         {
           "@type": "Question",
-          "name": "Sind beleuchtete Firmenschilder wetterfest für außen?",
+          "name": "Was beeinflusst den Preis eines Firmenschilds?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Ja, alle NEONTRIP Firmenschilder für den Außenbereich sind nach Schutzklasse IP67 wetterfest. Sie sind beständig gegen Regen, Schnee, UV-Strahlung und Temperaturschwankungen von -20 °C bis +50 °C. Die Gehäuse aus Aluminium oder Edelstahl korrodieren nicht und die Oberflächen verblassen nicht. Auch Küstenstandorte und raue Industrieumgebungen sind kein Problem."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie wird ein beleuchtetes Firmenschild montiert?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Jedes Firmenschild wird montagefertig geliefert — mit Abstandshaltern, Bohrschablone, Netzteil und bebilderter Anleitung. Kleine und mittlere Schilder können mit handwerklichem Geschick selbst montiert werden. Für großformatige Fassadenschilder oder Pylone empfehlen wir unseren professionellen Montageservice oder die Beauftragung eines lokalen Schilderbauers. Die elektrische Installation erfolgt über ein vorverkabeltes Netzteil mit Schuko-Stecker."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Braucht man eine Genehmigung für ein beleuchtetes Firmenschild?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "In Deutschland ist für beleuchtete Außenwerbung in der Regel eine Baugenehmigung erforderlich. Die Vorschriften variieren je nach Bundesland und Kommune. Firmenschilder an der Fassade oder als freistehende Werbeanlagen (Pylone, Stelen) erfordern meist einen Bauantrag beim zuständigen Bauamt. Innenschilder im Empfangsbereich sind genehmigungsfrei. NEONTRIP unterstützt auf Anfrage bei der Antragstellung und berät zu den lokalen Vorschriften."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie viel Strom verbraucht ein LED-Firmenschild?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Ein durchschnittliches LED-Firmenschild (ca. 1–2 Meter Breite) verbraucht zwischen 30 und 100 Watt. Bei 12 Stunden täglicher Nutzung und 0,30 €/kWh Strompreis liegen die jährlichen Kosten bei ca. 40–130 €. LED-Technik ist damit bis zu 80 % effizienter als herkömmliche Leuchtstoffröhren oder Neonröhren. Optional sind Dämmerungssensoren und Zeitschaltuhren möglich."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie lange hält ein beleuchtetes Firmenschild?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "LED-Firmenschilder halten mindestens 110.000 Betriebsstunden — das entspricht über 12 Jahren im Dauerbetrieb oder über 25 Jahren bei 12 Stunden täglicher Nutzung. Die Schilder sind wartungsfrei. Materialien wie Aluminium und Edelstahl sind korrosionsbeständig und behalten ihre Optik über viele Jahre. Falls nach langer Zeit ein Netzteil ausfällt, lässt es sich unkompliziert tauschen."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Kann man das eigene Firmenlogo als beleuchtetes Schild umsetzen?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Ja, praktisch jedes Firmenlogo kann als beleuchtetes Firmenschild umgesetzt werden — egal wie komplex. Ob filigrane Schriften, mehrfarbige Designs, fotorealistische Logos oder 3D-Buchstaben. Einfach Logo-Datei senden (PNG, JPG, PDF, AI oder EPS) und innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Visualisierung mit Angebot. Alle Schilder werden 100 % CI-konform nach Ihren Corporate-Design-Vorgaben gefertigt."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie groß kann ein Firmenschild sein?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Bei NEONTRIP gibt es keine feste Größenbeschränkung. Kleine Empfangsschilder ab 30 cm Breite sind ebenso möglich wie großformatige Fassadenbeschriftungen über mehrere Meter. Leuchtbuchstaben werden typischerweise zwischen 20 cm und 150 cm Höhe gefertigt. Für Pylone und Stelen sind Höhen bis 6 Meter und mehr realisierbar. Jedes Projekt wird individuell geplant — die Größe richtet sich nach Standort, Sichtbarkeit und Genehmigungsvorgaben."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Welche Beleuchtungsoptionen gibt es für Firmenschilder?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Die gängigsten Beleuchtungsoptionen sind: Frontbeleuchtung (Buchstaben leuchten von vorne durch transluzentes Acryl), Rückbeleuchtung mit Halo-Effekt (indirekter Lichtschein hinter den Buchstaben an der Wand), Durchleuchtung bei Leuchtkästen (gleichmäßige Ausleuchtung der gesamten Fläche), Seitenbeleuchtung bei Acrylglas-Schildern und Kombinationsbeleuchtung (Front und Rück gleichzeitig). LED Neon Flex eignet sich für Schriftzüge mit Neon-Optik."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie schnell wird ein beleuchtetes Firmenschild geliefert?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Standardlieferung erfolgt in 7–10 Werktagen ab Auftragsbestätigung. Bei Eilaufträgen — etwa für Ladeneröffnungen oder Messen — ist Express-Lieferung ab 3 Werktagen möglich. NEONTRIP liefert europaweit und ist auf termingenaue Lieferungen für Ladeneröffnungen, Filial-Rollouts und Messeauftritte spezialisiert. Alle Schilder werden montagefertig mit komplettem Zubehör geliefert."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Gibt es eine Garantie auf beleuchtete Firmenschilder?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Ja, NEONTRIP gewährt 24 Monate Garantie auf alle beleuchteten Firmenschilder. Die Garantie deckt LED-Module, Netzteile und Verarbeitung ab. Bei sachgemäßem Einsatz halten die Schilder deutlich länger als die Garantiezeit — über 110.000 Betriebsstunden. Auf Anfrage ist eine Garantieverlängerung möglich. Ersatzteile wie Netzteile sind auch nach Jahren verfügbar."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Wie läuft die Bestellung eines beleuchteten Firmenschilds ab?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Der Bestellprozess bei NEONTRIP ist einfach: 1. Anfrage senden — Logo oder Idee hochladen und Wunschmaße angeben. 2. Kostenlose Visualisierung — innerhalb von 24 Stunden erhalten Sie eine 3D-Vorschau mit Angebot. 3. Freigabe und Produktion — nach Ihrer Bestätigung geht das Schild in die Fertigung (7–10 Werktage, Express ab 3 Werktagen). 4. Lieferung — montagefertig mit Zubehör, europaweit versichert. Optional bieten wir professionellen Montageservice."
+            "text": "Wichtige Faktoren sind Abmessungen, Bauart, Material, Beleuchtung, Anzahl einzelner Elemente, Montageart und die Anforderungen des Innen- oder Außenbereichs. Deshalb wird das Angebot projektbezogen erstellt."
           }
         }
       ]
@@ -430,65 +106,31 @@
     {
       "@context": "https://schema.org",
       "@type": "WebPage",
-      "name": "Beleuchtete Firmenschilder & LED Werbeschilder | NEONTRIP",
+      "name": "Individuelle Firmenschilder mit Beleuchtung | NEONTRIP",
       "url": "https://anfrage.neontrip.de/firmenschilder/",
-      "description": "Beleuchtete Firmenschilder & LED Werbeschilder nach Maß aus Düsseldorf. Von Einzelbuchstaben bis Komplett-Schildanlagen.",
-      "speakable": {
-        "@type": "SpeakableSpecification",
-        "cssSelector": [
-          "h1",
-          ".faq-answer p"
-        ]
-      }
+      "description": "Firmenschild für Fassade, Eingang oder Innenraum visualisieren lassen."
     },
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        {
-          "@type": "ListItem",
-          "position": 1,
-          "name": "NEONTRIP",
-          "item": "https://neontrip.de"
-        },
-        {
-          "@type": "ListItem",
-          "position": 2,
-          "name": "Produkte",
-          "item": "https://anfrage.neontrip.de/"
-        },
-        {
-          "@type": "ListItem",
-          "position": 3,
-          "name": "Firmenschilder",
-          "item": "https://anfrage.neontrip.de/firmenschilder/"
-        }
+        {"@type": "ListItem", "position": 1, "name": "NEONTRIP", "item": "https://neontrip.de"},
+        {"@type": "ListItem", "position": 2, "name": "Firmenschilder", "item": "https://anfrage.neontrip.de/firmenschilder/"}
       ]
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "VideoObject",
-      "name": "NEONTRIP — Beleuchtete Firmenschilder & LED Werbeschilder",
-      "description": "Einblick in die Produktion und Installation beleuchteter Firmenschilder, LED Werbeschilder und 3D-Leuchtbuchstaben von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
-      "uploadDate": "2025-01-01"
     }
   ],
-  "sections": [
-    "header",
-    "hero",
-    "stats-bar",
-    "projekte",
-    "events",
-    "anfrage",
-    "vorteile",
-    "bewertungen",
-    "testimonials",
-    "faq",
-    "kunden",
-    "kontakt",
-    "footer"
-  ],
-  "sticky_produkt": "sonderanfertigung"
+  "section_variants": {
+    "header": "logo",
+    "hero": "logo",
+    "stats-bar": "logo",
+    "projekte": "firmenschilder",
+    "process": "logo",
+    "events": "logo",
+    "anfrage": "logo",
+    "vorteile": "logo",
+    "testimonials": "logo",
+    "faq": "firmenschilder",
+    "kontakt": "logo",
+    "footer": "logo"
+  }
 }

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="{{LANG}}" class="no-js">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="{{ROBOTS_META}}">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>{{TITLE}}</title>
+  <meta name="description" content="{{META_DESCRIPTION}}">
+  <link rel="canonical" href="{{CANONICAL}}">
+  {{HREFLANG_TAGS}}
+
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:site_name" content="NEONTRIP">
+  <meta property="og:url" content="{{CANONICAL}}">
+  <meta property="og:title" content="{{OG_TITLE}}">
+  <meta property="og:description" content="{{OG_DESCRIPTION}}">
+  <meta property="og:image" content="https://anfrage.neontrip.de/assets/images/projekte/aperol-deli-neon.webp">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{OG_TITLE}}">
+  <meta name="twitter:description" content="{{OG_DESCRIPTION}}">
+  <meta name="twitter:image" content="https://anfrage.neontrip.de/assets/images/projekte/aperol-deli-neon.webp">
+
+  <script>document.documentElement.classList.remove('no-js');window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:2000});gtag('set','url_passthrough',true);gtag('set','ads_data_redaction',false);window.addEventListener('CookiebotOnAccept',function(){if(!window.Cookiebot)return;gtag('consent','update',{ad_storage:Cookiebot.consent.marketing?'granted':'denied',ad_user_data:Cookiebot.consent.marketing?'granted':'denied',ad_personalization:Cookiebot.consent.marketing?'granted':'denied',analytics_storage:Cookiebot.consent.statistics?'granted':'denied'})});</script>
+  <script>(function(){if(/^(localhost|127\.0\.0\.1|::1)$/.test(location.hostname))return;var script=document.createElement('script');script.id='Cookiebot';script.src='https://consent.cookiebot.com/uc.js';script.async=true;script.setAttribute('data-cbid','4f26624a-11f0-49f6-9377-353b340cebd1');script.setAttribute('data-blockingmode','auto');document.head.appendChild(script)})();</script>
+  <script>gtag('js',new Date());gtag('config','G-NEEVFC08VX',{anonymize_ip:true,linker:{domains:['neontrip.de','anfrage.neontrip.de','konfigurator.neontrip.de']}});gtag('config','AW-314675901',{allow_enhanced_conversions:true});(function(){var loaded=false;function loadGoogleTag(){if(loaded)return;loaded=true;var script=document.createElement('script');script.async=true;script.src='https://www.googletagmanager.com/gtag/js?id=G-NEEVFC08VX';document.head.appendChild(script)}['pointerdown','touchstart','keydown','scroll'].forEach(function(type){addEventListener(type,loadGoogleTag,{once:true,passive:true})});function afterLoad(){setTimeout(loadGoogleTag,4000)}if(document.readyState==='complete')afterLoad();else addEventListener('load',afterLoad,{once:true});setTimeout(loadGoogleTag,8000)})();</script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/neontrip-favicon.svg">
+  <link rel="preload" as="image" href="{{HERO_PRELOAD_DESKTOP}}" fetchpriority="high" media="(min-width:768px)">
+  <link rel="preload" as="image" href="{{HERO_PRELOAD_MOBILE}}" fetchpriority="high" media="(max-width:767px)">
+  <link rel="preload" as="font" href="../assets/fonts/inter-latin.woff2" type="font/woff2" crossorigin>
+  <link rel="preconnect" href="https://consent.cookiebot.com">
+  <link rel="dns-prefetch" href="https://www.googletagmanager.com">
+
+  <style>
+    @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:url(../assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+    @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:swap;src:url(../assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+    :root{--nt-pink:#fa31a2;--nt-pink-dark:#c5286e;--nt-ink:#0a0a0a;--nt-muted:#62626b;--nt-line:#e8e8ec;--nt-soft:#f7f7f8;--nt-radius:24px;--nt-shadow:0 24px 70px rgba(10,10,10,.11)}
+    *,*::before,*::after{box-sizing:border-box}
+    html{scroll-behavior:smooth;scroll-padding-top:78px;-webkit-font-smoothing:antialiased}
+    body{margin:0;background:#fff;color:var(--nt-ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,input,select,textarea{font:inherit}
+    img,svg{display:block;max-width:100%}
+    a{color:inherit}
+    button,a{-webkit-tap-highlight-color:transparent}
+    :focus-visible{outline:3px solid rgba(250,49,162,.42);outline-offset:3px}
+    .nt-hp{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;opacity:0}
+    .nt-skip{position:fixed;left:14px;top:14px;z-index:1000;padding:10px 14px;border-radius:10px;background:#fff;color:#111;font-weight:750;text-decoration:none;transform:translateY(-180%)}
+    .nt-skip:focus{transform:none}
+    .nt-container{width:min(100% - 48px,1160px);margin-inline:auto}
+    .nt-section{padding:96px 0}
+    .nt-section--soft{background:var(--nt-soft)}
+    .nt-section--dark{background:var(--nt-ink);color:#fff}
+    .nt-kicker{margin:0 0 12px;color:var(--nt-pink-dark);font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+    .nt-section-title{max-width:830px;margin:0;font-size:clamp(34px,5vw,58px);font-weight:670;line-height:1.05;letter-spacing:-.045em}
+    .nt-section-lead{max-width:720px;margin:18px 0 0;color:var(--nt-muted);font-size:clamp(16px,2vw,20px);line-height:1.65}
+    .nt-section--dark .nt-section-lead{color:rgba(255,255,255,.65)}
+    .nt-section--dark .nt-kicker{color:#ff77c4}
+    .nt-button{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:52px;padding:14px 22px;border:0;border-radius:999px;background:linear-gradient(180deg,var(--nt-pink),var(--nt-pink-dark));box-shadow:0 10px 30px rgba(250,49,162,.27);color:#fff;font-size:14px;font-weight:780;text-decoration:none;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+    .nt-button:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(250,49,162,.36)}
+    .nt-button--dark{background:var(--nt-ink);box-shadow:none}
+    .nt-card{border:1px solid var(--nt-line);border-radius:var(--nt-radius);background:#fff;box-shadow:0 2px 0 rgba(10,10,10,.02)}
+    .nt-failure{padding:28px 20px;border:1px solid #fecaca;border-radius:18px;background:#fff7f7;text-align:center}
+    .nt-failure h3{margin:0 0 8px;font-size:22px}.nt-failure p{max-width:420px;margin:0 auto 18px;color:#6b3030;line-height:1.55}.nt-failure__links{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}.nt-failure__links a{padding:11px 15px;border-radius:999px;background:#fff;border:1px solid #f1b7b7;font-weight:700;text-decoration:none}
+    .nt-mobile-sticky{display:none}
+    #CybotCookiebotDialog{max-width:420px!important;border-radius:14px!important;font-family:Inter,sans-serif!important}
+    #CybotCookiebotDialogBodyContentTitle{font-size:15px!important}#CybotCookiebotDialogBodyContentText{font-size:11px!important;line-height:1.4!important}
+    #CybotCookiebotDialog #CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll,#CybotCookiebotDialog #CybotCookiebotDialogBodyButtonAccept{background:var(--nt-pink)!important;border-color:var(--nt-pink)!important;color:#fff!important}
+    @media(max-width:767px){html{scroll-padding-top:66px}.nt-container{width:min(100% - 28px,560px)}.nt-section{padding:68px 0}.nt-mobile-sticky{display:flex;position:fixed;z-index:70;right:14px;bottom:max(14px,env(safe-area-inset-bottom));left:14px;align-items:center;justify-content:center;min-height:52px;border-radius:999px;background:linear-gradient(180deg,var(--nt-pink),var(--nt-pink-dark));box-shadow:0 13px 38px rgba(10,10,10,.26);color:#fff;font-size:14px;font-weight:800;text-decoration:none;transition:opacity .2s ease,transform .2s ease}.nt-mobile-sticky.is-hidden{opacity:0;transform:translateY(90px);pointer-events:none}body{padding-bottom:80px}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+  </style>
+
+  {{DKI_SCRIPT}}
+  {{STRUCTURED_DATA}}
+
+  <script type="text/plain" data-cookieconsent="statistics">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script","vvb78gxiwp");clarity("set","page_type","{{CLARITY_PAGE_TYPE}}");clarity("set","language","{{LANG}}");</script>
+  <script type="text/plain" data-cookieconsent="marketing">!function(e){if(!window.pintrk){window.pintrk=function(){window.pintrk.queue.push(Array.prototype.slice.call(arguments))};var n=window.pintrk;n.queue=[],n.version="3.0";var t=document.createElement("script");t.async=!0;t.src=e;var r=document.getElementsByTagName("script")[0];r.parentNode.insertBefore(t,r)}}("https://s.pinimg.com/ct/core.js");pintrk('load','2614194923903');pintrk('page');</script>
+</head>
+<body>
+  <a class="nt-skip" href="#main-content">Direkt zum Inhalt</a>
+  {{SECTIONS}}
+  <a class="nt-mobile-sticky" id="nt-mobile-sticky" href="#hero-form-desktop">Kostenlose 3D-Vorschau anfordern</a>
+
+  <script>
+  (function(){
+    var keys=['gclid','gbraid','wbraid','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];
+    var params=new URLSearchParams(location.search);
+    keys.forEach(function(key){var value=params.get(key);if(value){try{sessionStorage.setItem('nt_'+key,value)}catch(e){}}});
+    try{if(!sessionStorage.getItem('nt_landing_page_url'))sessionStorage.setItem('nt_landing_page_url',location.href);sessionStorage.setItem('nt_current_page_url',location.href);if(document.referrer&&!sessionStorage.getItem('nt_referrer'))sessionStorage.setItem('nt_referrer',document.referrer)}catch(e){}
+    function hidden(form,name,value){if(!form||value==null||value==='')return;var input=form.querySelector('input[type="hidden"][name="'+name+'"]');if(!input){input=document.createElement('input');input.type='hidden';input.name=name;form.appendChild(input)}input.value=value}
+    function inject(form){var forms=form?[form]:Array.from(document.querySelectorAll('form'));forms.forEach(function(item){keys.forEach(function(key){try{hidden(item,key,sessionStorage.getItem('nt_'+key))}catch(e){}});try{var landing=sessionStorage.getItem('nt_landing_page_url')||location.href;var current=sessionStorage.getItem('nt_current_page_url')||location.href;var ref=sessionStorage.getItem('nt_referrer')||document.referrer||'';hidden(item,'landing_page_url',landing);hidden(item,'_landing_page_url',landing);hidden(item,'current_page_url',current);hidden(item,'referrer',ref);hidden(item,'_referrer',ref);hidden(item,'lp_intent','{{INTENT_ID}}');hidden(item,'lp_variant','{{LP_VARIANT}}')}catch(e){}item.dataset.trackingInjected='true'})}
+    window.ntInjectTrackingFields=inject;
+    window.ntPrepareSubmit=function(form,formName){inject(form);var data=new FormData(form);if(data.get('website')){try{window.ntReportSubmitFailure(formName||'form',new Error('honeypot_prefilled_client'))}catch(e){}data.delete('website')}return data};
+    inject();
+  })();
+
+  window.ntTrack=function(name,params){var payload=Object.assign({event_category:'{{FUNNEL_EVENT_CATEGORY}}',page_path:location.pathname,lp_variant:'{{LP_VARIANT}}'},params||{});try{if(typeof gtag==='function')gtag('event',name,payload);else{window.dataLayer=window.dataLayer||[];window.dataLayer.push(Object.assign({event:name},payload))}}catch(e){}};
+
+  window.fireEnhancedConversion=function(label,email,phone,fullName){if(typeof gtag!=='function')return;var userData={};if(email)userData.email=String(email).trim().toLowerCase();if(phone){var clean=String(phone).trim().replace(/[\s\-()\/]/g,'');if(!clean.startsWith('+'))clean='+49'+clean.replace(/^0/,'');userData.phone_number=clean}if(fullName){var parts=String(fullName).trim().split(/\s+/);if(parts.length>1)userData.address={first_name:parts[0].toLowerCase(),last_name:parts.slice(1).join(' ').toLowerCase(),country:'DE'}}var conversion={send_to:'AW-314675901/MvNdCMPjpIocEL2lhpYB',value:280,currency:'EUR'};if(Object.keys(userData).length){gtag('set','user_data',userData);conversion.user_data=userData}gtag('event','conversion',conversion);gtag('event','generate_lead',{currency:'EUR',value:280,form_name:label});gtag('event','nerdy form submitted',{event_category:'lead',event_label:label,value:280});try{if(typeof pintrk==='function'){if(email)pintrk('set',{em:String(email).trim().toLowerCase()});pintrk('track','lead',{lead_type:label,value:280,currency:'EUR'})}}catch(e){}};
+
+  window.ntReportSubmitFailure=function(formName,error){try{console.error('[NT][form-fail]',formName,error)}catch(e){}try{var payload=JSON.stringify({form:formName,error:(error&&(error.message||String(error)))||'unknown',url:location.href,referrer:document.referrer||'',ua:navigator.userAgent,ts:new Date().toISOString()});if(navigator.sendBeacon)navigator.sendBeacon('/api/r',new Blob([payload],{type:'application/json'}));else fetch('/api/r',{method:'POST',body:payload,headers:{'Content-Type':'application/json'},keepalive:true}).catch(function(){})}catch(e){}};
+  window.ntShowFailureBanner=function(container){if(!container||container.dataset.ntFailShown==='1')return;container.dataset.ntFailShown='1';container.innerHTML='<div class="nt-failure" role="alert"><h3>Übermittlung fehlgeschlagen</h3><p>Ihre Anfrage konnte gerade nicht übertragen werden. Bitte versuchen Sie es erneut oder kontaktieren Sie uns direkt.</p><div class="nt-failure__links"><a href="tel:+4921154257240">+49 211 54257240</a><a href="mailto:support@neontrip.de">support@neontrip.de</a></div></div>'};
+
+  (function(){var sticky=document.getElementById('nt-mobile-sticky');var form=document.getElementById('hero-form-desktop');if(!sticky||!form||!('IntersectionObserver'in window))return;new IntersectionObserver(function(entries){sticky.classList.toggle('is-hidden',entries[0].isIntersecting)},{threshold:.08}).observe(form)})();
+  </script>
+  <script>(function(){if(/^(localhost|127\.0\.0\.1|::1)$/.test(location.hostname))return;var script=document.createElement('script');script.defer=true;script.src='https://static.cloudflareinsights.com/beacon.min.js';script.setAttribute('data-cf-beacon','{"token":"92bd73acc6e245f1a17f6c36b00927ef"}');document.body.appendChild(script)})();</script>
+</body>
+</html>

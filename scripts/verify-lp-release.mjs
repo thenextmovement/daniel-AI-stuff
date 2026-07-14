@@ -39,12 +39,15 @@ function gitTracked(path) {
 
 [
   'functions/api/c.js',
+  'functions/api/e.js',
   'functions/api/r.js',
+  'deploy/robots.txt',
+  'deploy/sitemap.xml',
   'deploy/_source/layouts/base.html',
   'deploy/_source/sections/02-hero.html',
 ].forEach(assertFile);
 
-['functions/api/c.js', 'functions/api/r.js'].forEach((path) => {
+['functions/api/c.js', 'functions/api/e.js', 'functions/api/r.js', 'deploy/robots.txt', 'deploy/sitemap.xml'].forEach((path) => {
   if (!gitTracked(path)) fail(`${path} is not tracked by git`);
 });
 
@@ -56,8 +59,16 @@ assertIncludes('functions/api/c.js', 'export async function onRequestPost', 'POS
 assertIncludes('functions/api/c.js', 'FAIL_REPORT_PATH = "/api/r"', 'fail-report path');
 assertIncludes('functions/api/c.js', 'nt_dry_run', 'dry-run smoke support');
 assertIncludes('functions/api/c.js', 'honeypot_prefilled_forwarded', 'honeypot false-positive forwarding');
+assertIncludes('functions/api/c.js', 'LEAD_ENRICHMENT_SIGNING_SECRET', 'signed enrichment token');
+assertIncludes('functions/api/e.js', 'LEAD_ENRICHMENT_WEBHOOK_URL', 'enrichment upstream binding');
+assertIncludes('functions/api/e.js', 'X-Idempotency-Key', 'enrichment idempotency header');
+assertIncludes('functions/api/e.js', 'validToken', 'enrichment token verification');
 assertIncludes('functions/api/r.js', 'N8N_FAIL_REPORT_WEBHOOK', 'fail alert webhook');
 assertIncludes('functions/api/r.js', 'nt_dry_run', 'fail-alert dry-run smoke support');
+assertIncludes('deploy/robots.txt', 'Sitemap: https://anfrage.neontrip.de/sitemap.xml', 'sitemap declaration');
+assertIncludes('deploy/robots.txt', 'Disallow: /test/', 'test-route exclusion');
+assertIncludes('deploy/robots.txt', 'Disallow: /test2/', 'test2-route exclusion');
+assertIncludes('deploy/sitemap.xml', 'https://anfrage.neontrip.de/logo/', 'logo sitemap entry');
 
 assertIncludes('deploy/_source/layouts/base.html', 'window.ntPrepareSubmit', 'central submit preparation');
 assertIncludes('deploy/_source/layouts/base.html', 'landing_page_url', 'landing_page_url capture');
@@ -91,6 +102,17 @@ for (const page of generatedPages) {
   if (!html.includes('window.ntPrepareSubmit')) fail(`${page} missing central submit preparation`);
   if (!html.includes('landing_page_url')) fail(`${page} missing landing_page_url tracking`);
   if (!html.includes('_referrer')) fail(`${page} missing referrer mirror tracking`);
+}
+
+for (const slug of ['logo', 'firmenlogo-beleuchtet', 'firmenschilder']) {
+  const page = `deploy/${slug}/index.html`;
+  assertIncludes(page, '/api/e', `${slug} enrichment endpoint`);
+  assertIncludes(page, 'enrichment_token', `${slug} signed enrichment token`);
+  assertIncludes(page, 'qualification_submitted', `${slug} qualification tracking`);
+}
+
+for (const slug of ['test', 'test2']) {
+  assertIncludes(`deploy/${slug}/index.html`, 'content="noindex, nofollow, noarchive"', `${slug} noindex directive`);
 }
 
 if (failures.length) {

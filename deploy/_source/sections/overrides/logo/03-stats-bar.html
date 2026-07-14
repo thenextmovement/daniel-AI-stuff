@@ -1,0 +1,16 @@
+<section class="nt-proofbar" aria-label="Vertrauen und Service">
+  <div class="nt-container nt-proofbar__grid">
+    <div><strong>4,9 / 5</strong><span>bei 236 Google-Bewertungen</span></div>
+    <div><strong>Kostenlose 3D-Vorschau</strong><span>vor der Produktion</span></div>
+    <div><strong>Persönliche Beratung</strong><span>für Material, Licht und Montage</span></div>
+    <div><strong>Innen &amp; außen</strong><span>passend zum Einsatzort geplant</span></div>
+  </div>
+</section>
+<style>
+  .nt-proofbar{border-bottom:1px solid var(--nt-line);background:#fff}
+  .nt-proofbar__grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;padding-block:24px}
+  .nt-proofbar__grid>div{min-width:0;padding:3px 26px;border-right:1px solid var(--nt-line)}
+  .nt-proofbar__grid>div:first-child{padding-left:0}.nt-proofbar__grid>div:last-child{padding-right:0;border:0}
+  .nt-proofbar strong,.nt-proofbar span{display:block}.nt-proofbar strong{font-size:14px;letter-spacing:-.01em}.nt-proofbar span{margin-top:5px;color:var(--nt-muted);font-size:12px;line-height:1.4}
+  @media(max-width:800px){.nt-proofbar__grid{grid-template-columns:1fr 1fr;gap:18px 0}.nt-proofbar__grid>div{padding:0 14px;border:0}.nt-proofbar__grid>div:nth-child(odd){padding-left:0;border-right:1px solid var(--nt-line)}}
+</style>

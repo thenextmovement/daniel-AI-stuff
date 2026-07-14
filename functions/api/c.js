@@ -17,6 +17,7 @@
 const UPSTREAM_URL = "https://fuajob.online/webhook/landing-anfrage";
 const UPSTREAM_TIMEOUT_MS = 25000; // Pages Functions hard limit is 30s — 5s buffer
 const FAIL_REPORT_PATH = "/api/r"; // same-origin, relative
+const ENRICHMENT_TOKEN_TTL_SECONDS = 15 * 60;
 
 // Allowed request origins for CORS. Same-origin requests don't trigger CORS
 // at all, but we support OPTIONS preflights defensively in case someone
@@ -46,6 +47,28 @@ function jsonResponse(body, status, extraHeaders = {}) {
       ...extraHeaders,
     },
   });
+}
+
+function base64Url(bytes) {
+  let binary = "";
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  for (let i = 0; i < view.length; i += 1) binary += String.fromCharCode(view[i]);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function createEnrichmentToken(secret, leadId) {
+  if (!secret) return null;
+  const expiresAt = Math.floor(Date.now() / 1000) + ENRICHMENT_TOKEN_TTL_SECONDS;
+  const message = `${leadId}.${expiresAt}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return `${expiresAt}.${base64Url(signature)}`;
 }
 
 // Fire-and-forget error beacon to the same-origin fail-report endpoint.
@@ -121,6 +144,18 @@ async function handlePost(request, ctx) {
     );
   }
 
+  // One stable lead ID travels through browser, Cloudflare, n8n and
+  // Supabase. The previous response returned the edge request ID instead,
+  // which could not be used to update the stored request later.
+  const idCandidate = String(
+    formData.get("request_id") || formData.get("nt_client_submit_id") || ""
+  ).trim();
+  const leadId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idCandidate)
+    ? idCandidate
+    : crypto.randomUUID();
+  formData.set("request_id", leadId);
+  formData.set("nt_client_submit_id", leadId);
+
   // Synthetic deploy smoke test. Verifies that the Pages Function exists,
   // accepts multipart FormData and returns JSON without creating a real lead.
   if (formData.get("nt_dry_run") === "1") {
@@ -135,6 +170,7 @@ async function handlePost(request, ctx) {
   // Direct bot posts that fill "website" are filtered. If the payload also
   // contains real contact fields, treat it as likely mobile/password-manager
   // autofill and forward it instead of silently losing a possible lead.
+  const cf = request.cf || {};
   const honeypot = formData.get("website");
   if (honeypot) {
     const hasContact =
@@ -161,7 +197,6 @@ async function handlePost(request, ctx) {
   // ─── Cloudflare-enriched headers for n8n ───
   // These give n8n visibility into where the lead actually came from,
   // independent of what the client reports.
-  const cf = request.cf || {};
   const upstreamHeaders = new Headers();
   // DO NOT forward Host / Content-Length / Content-Type — fetch will
   // recompute them based on the FormData body. DO NOT forward Origin.
@@ -245,8 +280,19 @@ async function handlePost(request, ctx) {
     upstreamPromise.catch(() => {});
   }
 
+  const enrichmentToken = await createEnrichmentToken(
+    ctx && ctx.env ? ctx.env.LEAD_ENRICHMENT_SIGNING_SECRET : null,
+    leadId
+  );
   return jsonResponse(
-    { ok: true, queued: true, request_id: requestId },
+    {
+      ok: true,
+      queued: true,
+      request_id: leadId,
+      edge_request_id: requestId,
+      enrichment_token: enrichmentToken,
+      enrichment_available: Boolean(enrichmentToken),
+    },
     200,
     { ...cors, "X-Request-Id": requestId }
   );

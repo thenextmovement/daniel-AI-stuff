@@ -45,25 +45,62 @@ const specificSlug = args.find(a => !a.startsWith('--'));
 
 // ─── Load configs ───
 function loadConfigs() {
-  const configs = [];
   const configFiles = fs.readdirSync(CONFIGS_DIR).filter(f => f.endsWith('.json'));
+  const rawConfigs = new Map();
   for (const file of configFiles) {
     const config = JSON.parse(fs.readFileSync(path.join(CONFIGS_DIR, file), 'utf8'));
-    configs.push(config);
+    if (!config.slug) throw new Error(`Config is missing slug: ${file}`);
+    if (rawConfigs.has(config.slug)) throw new Error(`Duplicate config slug: ${config.slug}`);
+    rawConfigs.set(config.slug, config);
   }
-  return configs;
+
+  // Small intent pages can inherit the proven page shell without copying a
+  // several-hundred-line config. Arrays are intentionally replaced, while
+  // section variants are merged so a child can override only one section.
+  const resolving = new Set();
+  const resolved = new Map();
+  function resolve(slug) {
+    if (resolved.has(slug)) return resolved.get(slug);
+    const own = rawConfigs.get(slug);
+    if (!own) throw new Error(`Extended config not found: ${slug}`);
+    if (resolving.has(slug)) throw new Error(`Circular config inheritance: ${[...resolving, slug].join(' -> ')}`);
+    resolving.add(slug);
+    const parent = own.extends ? resolve(String(own.extends)) : {};
+    const config = {
+      ...parent,
+      ...own,
+      section_variants: {
+        ...(parent.section_variants || {}),
+        ...(own.section_variants || {}),
+      },
+    };
+    delete config.extends;
+    resolving.delete(slug);
+    resolved.set(slug, config);
+    return config;
+  }
+
+  return [...rawConfigs.keys()].map(resolve);
 }
 
 // ─── Load section ───
-function loadSection(sectionName, slug) {
+function loadSection(sectionName, slug, sectionVariants = {}) {
   const filename = SECTION_FILES[sectionName];
   if (!filename) {
     console.warn(`⚠ Unknown section: ${sectionName}`);
     return `<!-- Unknown section: ${sectionName} -->`;
   }
 
-  // Check for LP-specific override first
-  const overridePath = path.join(OVERRIDES_DIR, slug, filename);
+  // A page may reuse one proven section implementation while keeping its own
+  // copy, images and tracking identifiers in config. Only allow safe slug
+  // characters so this cannot escape the overrides directory.
+  const requestedVariant = sectionVariants && sectionVariants[sectionName];
+  const variantSlug = requestedVariant
+    ? String(requestedVariant).replace(/[^a-zA-Z0-9_-]/g, '')
+    : slug;
+
+  // Check for LP-specific or explicitly shared override first
+  const overridePath = path.join(OVERRIDES_DIR, variantSlug, filename);
   if (fs.existsSync(overridePath)) {
     return fs.readFileSync(overridePath, 'utf8');
   }
@@ -92,6 +129,11 @@ function generateDkiScript(config) {
 
   const hasSuffix = !!(config.dki_suffix && String(config.dki_suffix).length > 0);
   const escapedSuffix = hasSuffix ? config.dki_suffix.replace(/'/g, "\\'") : '';
+  const accentClass = String(config.dki_accent_class || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const accentTerms = Array.isArray(config.dki_accent_terms)
+    ? config.dki_accent_terms.map(term => String(term).replace(/'/g, "\\'"))
+    : [];
+  const syncFormTitle = config.dki_sync_form_title !== false;
 
   return `<!-- Dynamic Text Replacement (Google Ads Keyword Mapping) -->
   <script>
@@ -100,7 +142,7 @@ function generateDkiScript(config) {
     if (!kw) return;
     var h, rules = [
 ${rulesStr}
-    ];
+    ], accentClass = '${accentClass}', accentTerms = [${accentTerms.map(term => `'${term}'`).join(', ')}], syncFormTitle = ${syncFormTitle};
     for (var i = 0; i < rules.length; i++) {
       if (kw.indexOf(rules[i][0]) !== -1) { h = rules[i][1]; break; }
     }
@@ -108,12 +150,23 @@ ${rulesStr}
     var suffix = '${escapedSuffix}';
     document.addEventListener('DOMContentLoaded', function() {
       var el = document.querySelector('#hero h1');
-      if (el) el.innerHTML = h + suffix;
-      var plain = h.replace(/<[^>]*>/g, '');
+      var headline = h;
+      if (accentClass && accentTerms.length) {
+        for (var j = 0; j < accentTerms.length; j++) {
+          var needle = accentTerms[j];
+          var at = headline.toLowerCase().indexOf(needle.toLowerCase());
+          if (at !== -1) {
+            headline = headline.slice(0, at) + '<span class="' + accentClass + '">' + headline.slice(at, at + needle.length) + '</span>' + headline.slice(at + needle.length);
+            break;
+          }
+        }
+      }
+      if (el) el.innerHTML = headline + suffix;
+      var plain = (h + suffix).replace(/<[^>]*>/g, '');
       var ft = document.getElementById('hero-form-title-d');
       var ftm = document.getElementById('hero-form-title');
-      if (ft) ft.textContent = plain + ' — in 60 Sek.';
-      if (ftm) ftm.textContent = plain + ' — in 1 Min.';
+      if (syncFormTitle && ft) ft.textContent = plain + ' — in 60 Sek.';
+      if (syncFormTitle && ftm) ftm.textContent = plain + ' — in 1 Min.';
     });
   })();
   </script>`;
@@ -133,6 +186,7 @@ function generateStructuredData(config) {
 function replaceVariables(html, config) {
   const vars = {
     '{{LANG}}': config.lang || 'de',
+    '{{ROBOTS_META}}': config.robots_meta || 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1',
     '{{TITLE}}': config.title,
     '{{META_DESCRIPTION}}': config.meta_description,
     '{{CANONICAL}}': config.canonical,
@@ -150,7 +204,29 @@ function replaceVariables(html, config) {
     '{{FAQ_CTA_TITLE}}': config.faq_cta_title || '',
     '{{HERO_VIDEO_DESKTOP}}': config.hero_video_desktop || '../assets/videos/hero-desktop-neon.mp4',
     '{{HERO_VIDEO_MOBILE}}': config.hero_video_mobile || '../assets/videos/hero-mobile.mp4',
+    '{{HERO_PRELOAD_DESKTOP}}': config.hero_preload_desktop || '../assets/images/hero-poster-desktop-neon.webp',
+    '{{HERO_PRELOAD_MOBILE}}': config.hero_preload_mobile || '../assets/images/hero-poster-neon-mobile.webp',
+    '{{HERO_IMAGE}}': config.hero_image || '../assets/images/hero-poster-desktop-neon.webp',
+    '{{HERO_IMAGE_MOBILE}}': config.hero_image_mobile || config.hero_image || '../assets/images/hero-poster-neon-mobile.webp',
+    '{{HERO_EYEBROW}}': config.hero_eyebrow || 'Individuelle Leuchtreklame für Unternehmen',
+    '{{HERO_FORM_TITLE}}': config.hero_form_title || 'Kostenlose 3D-Vorschau + Festpreisangebot',
+    '{{HERO_FORM_SUBLINE}}': config.hero_form_subline || 'Unverbindlich anfragen · persönliche Beratung',
+    '{{HERO_PROCESS_IMAGE_1}}': config.hero_process_image_1 || '../assets/images/kundenlogos/3.svg',
+    '{{HERO_PROCESS_IMAGE_2}}': config.hero_process_image_2 || '../assets/images/projekte/loveme-backlit.webp',
+    '{{HERO_PROCESS_IMAGE_3}}': config.hero_process_image_3 || '../assets/images/projekte/aperol-deli-neon.webp',
+    '{{HERO_PROCESS_TITLE_1}}': config.hero_process_title_1 || 'Logo hochladen',
+    '{{HERO_PROCESS_TITLE_2}}': config.hero_process_title_2 || '3D-Vorschau erhalten',
+    '{{HERO_PROCESS_TITLE_3}}': config.hero_process_title_3 || 'Schild produzieren',
+    '{{HERO_PROOF_TEXT}}': config.hero_proof_text || '4,9/5 bei 236 Google-Bewertungen',
+    '{{HERO_REVIEW_QUOTE}}': config.hero_review_quote || 'Schnelle Visualisierung, persönliche Beratung und zuverlässige Umsetzung.',
+    '{{HERO_REVIEW_AUTHOR}}': config.hero_review_author || 'Verifizierte Google-Bewertung',
     '{{DEFAULT_PRODUCT}}': config.default_product || 'LED Neonschild',
+    '{{DEFAULT_LOCATION}}': config.default_location || '',
+    '{{INTENT_ID}}': config.intent_id || config.slug,
+    '{{LP_VARIANT}}': config.lp_variant || 'photo_upload_v1',
+    '{{FUNNEL_EVENT_CATEGORY}}': config.funnel_event_category || `${config.slug}_funnel`,
+    '{{HERO_FORM_NAME}}': config.hero_form_name || `hero_form_${config.slug.replace(/-/g, '_')}`,
+    '{{HERO_FORM_SOURCE}}': config.hero_form_source || `hero-form-${config.slug}-photo-v1`,
     '{{PRICE_ANCHOR}}': config.price_anchor || 'LED Neon ab 299 € · 3D Buchstaben ab 499 € · Leuchtkästen ab 499 €',
     '{{PRICE_ANCHOR_DESKTOP}}': config.price_anchor_desktop || 'LED Neon Schilder ab 199 EUR',
     '{{STICKY_PRODUKT}}': config.sticky_produkt || 'neonschild',
@@ -199,12 +275,18 @@ function minifyHtml(html) {
 function buildLP(config) {
   const startTime = Date.now();
 
-  // Load base layout
-  const baseHtml = fs.readFileSync(path.join(LAYOUTS_DIR, 'base.html'), 'utf8');
+  // Load the configured layout. Slugs opt in explicitly so existing LPs keep
+  // their current shell while pilots can ship a lean, page-specific document.
+  const layoutName = String(config.layout || 'base').replace(/[^a-zA-Z0-9_-]/g, '');
+  const layoutPath = path.join(LAYOUTS_DIR, `${layoutName}.html`);
+  if (!fs.existsSync(layoutPath)) {
+    throw new Error(`Layout not found: ${layoutName}.html`);
+  }
+  const baseHtml = fs.readFileSync(layoutPath, 'utf8');
 
   // Assemble sections
   const sections = config.sections.map(sectionName => {
-    return loadSection(sectionName, config.slug);
+    return loadSection(sectionName, config.slug, config.section_variants || {});
   }).join('\n\n');
 
   // Insert sections into base

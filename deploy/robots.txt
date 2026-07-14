@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /test/
+Disallow: /test2/
+
+Sitemap: https://anfrage.neontrip.de/sitemap.xml

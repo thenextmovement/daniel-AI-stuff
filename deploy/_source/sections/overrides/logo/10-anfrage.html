@@ -1,0 +1,11 @@
+<section class="nt-continuation" aria-label="Anfrage fortsetzen">
+  <div class="nt-container nt-continuation__inner">
+    <div><p class="nt-kicker">In wenigen Schritten anfragen</p><h2>Ihr Logo reicht für den ersten Schritt.</h2><p>Keine doppelte Dateneingabe: Der Upload oben bleibt der einzige Anfrageweg dieser Seite.</p></div>
+    <a class="nt-button" href="#hero-form-desktop" id="nt-continue-cta">Logo hochladen &amp; Angebot erhalten</a>
+  </div>
+</section>
+<style>
+  .nt-continuation{padding:42px 0;background:linear-gradient(120deg,#fff0f8,#faf5ff)}.nt-continuation__inner{display:flex;align-items:center;justify-content:space-between;gap:28px}.nt-continuation h2{margin:0;font-size:clamp(27px,4vw,42px);letter-spacing:-.04em}.nt-continuation p:not(.nt-kicker){margin:9px 0 0;color:var(--nt-muted);font-size:14px;line-height:1.5}.nt-continuation .nt-button{flex:0 0 auto}
+  @media(max-width:700px){.nt-continuation__inner{align-items:flex-start;flex-direction:column}.nt-continuation .nt-button{width:100%}}
+</style>
+<script>(function(){var input=document.getElementById('nt-logo-file');var cta=document.getElementById('nt-continue-cta');if(!input||!cta)return;input.addEventListener('change',function(){if(input.files&&input.files.length)cta.textContent='Kontaktdaten ergänzen & Anfrage senden'})})();</script>

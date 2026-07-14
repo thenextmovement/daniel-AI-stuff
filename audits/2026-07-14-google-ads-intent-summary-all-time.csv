@@ -1,0 +1,14 @@
+intent_id,target_route,full_all_statuses_search_clicks,full_all_statuses_search_conversions_raw,full_all_statuses_search_cost_eur,full_all_statuses_search_cpa_raw_eur,conservative_search_clicks,conservative_search_conversions,conservative_search_cost_eur,conservative_search_cpa_eur,last_30d_clicks,last_30d_conversions,last_30d_cost_eur,last_30d_cpa_eur
+logo_general,/logo/,7990,700.18,42851.16,61.20,7910,581.19,42597.92,73.29,162,15.50,1370.87,88.44
+company_logo,/firmenlogo-beleuchtet/,613,55.08,3284.72,59.64,609,49.08,3240.13,66.02,14,3.00,131.92,43.97
+neon_custom,/neon-schild-personalisieren/,6106,390.00,23919.57,61.33,6026,291.65,23731.04,81.37,108,5.00,511.87,102.37
+company_sign_outdoor,/firmenschilder/,1980,110.13,7383.25,67.04,1968,86.13,7346.60,85.30,87,7.00,448.13,64.02
+text_sign,/led-schriftzuege/,6024,353.92,20825.02,58.84,5927,206.92,20598.17,99.55,91,2.50,335.67,134.27
+neon_general,/neon-schilder/,5719,375.84,21712.16,57.77,5597,238.84,21491.78,89.98,59,1.50,252.86,168.57
+illuminated_advertising,/leuchtreklame/,2641,142.23,9969.21,70.09,2603,106.23,9901.09,93.20,28,3.00,163.24,54.41
+illuminated_letters,/leuchtbuchstaben/,1508,70.94,5586.04,78.74,1504,66.94,5580.08,83.36,20,2.00,91.07,45.53
+lightbox,/leuchtkaesten/,355,7.44,1270.79,170.81,352,5.44,1266.32,232.78,13,1.00,73.27,73.27
+event_signage,/messe-event/,10,0.00,101.62,,10,0.00,101.62,,0,0.00,0.00,
+brand,brand_route_tbd,3570,514.22,6924.92,13.47,3511,370.26,6890.78,18.61,139,6.00,406.24,67.71
+manual_review,manual_review,16196,843.35,49857.23,59.12,15958,527.51,49441.24,93.73,98,3.00,454.95,151.65
+negative_components_diy,negative_review,144,2.00,357.39,178.70,144,2.00,357.39,178.70,3,0.00,3.97,

@@ -1,0 +1,21 @@
+decision,search_term,target_route,full_conservative_clicks,full_conservative_conversions,full_conservative_cost_eur,full_conservative_cpa_eur,last_30d_conversions,last_30d_cost_eur,last_30d_cpa_eur,note
+scale_test,led logo,/logo/,571,49.23,3487.26,70.84,3.00,225.98,75.33,dauerhafter Non-Brand-Winner
+scale_test,led logo wand,/logo/,123,16.98,898.98,52.94,1.00,44.05,44.05,eigene Hero- und DKI-Variante
+scale_test,led schild personalisiert,/neon-schild-personalisieren/,523,23.00,1823.01,79.26,2.00,109.67,54.84,Custom-Neon-Intent
+scale_test,neonschild personalisiert,/neon-schild-personalisieren/,90,5.00,472.38,94.48,1.00,46.21,46.21,kleiner enger Test
+scale_test,led schriftzug,/led-schriftzuege/,381,10.47,1063.29,101.56,2.00,70.98,35.49,aktuell stark aber historisch gemischt
+scale_test,firmenlogo beleuchtet innen,/firmenlogo-beleuchtet/,39,5.00,209.63,41.93,1.00,21.13,21.13,sehr hohe Intent-Uebereinstimmung
+scale_test,firmenschild aussen,/firmenschilder/,35,3.00,131.19,43.73,1.00,18.23,18.23,Fassaden- und Aussen-Hero
+scale_test,leuchtreklame aussen,/leuchtreklame/,79,4.00,294.37,73.59,1.00,11.95,11.95,Standort- und Aussenvariante
+scale_test,lichtwerbung,/leuchtreklame/,101,4.00,342.71,85.68,1.00,20.71,20.71,fachlicher Produkt-Router
+scale_test,3d buchstaben beleuchtet,/leuchtbuchstaben/,11,2.00,46.10,23.05,1.00,6.58,6.58,kleines Volumen hoher Intent
+reactivate_after_lp,neon logo,/logo/,533,56.17,4382.03,78.01,0.00,20.59,,historisch stark aktuell unbestaetigt
+reactivate_after_lp,neon logo erstellen,/logo/,188,22.85,852.57,37.31,0.00,0.00,,nicht alte Kampagne reaktivieren sondern neue Intent-Gruppe
+reactivate_after_lp,neon schild logo,/logo/,107,22.00,946.94,43.04,0.00,6.77,,Logo-Hero erforderlich
+reactivate_after_lp,neon schild personalisiert,/neon-schild-personalisieren/,657,37.43,3105.67,82.97,0.00,97.92,,hohes historisches Volumen aktuelle Effizienz fehlt
+reactivate_after_lp,leuchtschild personalisiert,/neon-schild-personalisieren/,297,17.00,935.21,55.01,0.00,6.48,,enge Phrase statt Broad
+reactivate_after_lp,firmenlogo beleuchtet,/firmenlogo-beleuchtet/,50,11.00,249.47,22.68,0.00,0.00,,CI-Seite zuerst fertigstellen
+reactivate_after_lp,firmenschild beleuchtet,/firmenschilder/,59,8.00,219.69,27.46,0.00,17.22,,Aussen- und Standortkontext
+hold_or_negative,logo erstellen,negative_review,119,0.00,171.28,,0.00,0.00,,haeufig Logo-Design statt Schildkauf
+hold_or_negative,3d buchstaben,negative_review,68,0.00,235.19,,0.00,0.00,,zu unspezifisch
+hold_paid,leuchtkasten,/leuchtkaesten/,53,1.00,177.44,177.44,1.00,10.84,10.84,keine Skalierung wegen schwacher Langzeitbasis
