@@ -70,6 +70,8 @@ async function withGuardedRetryFetchMock<T>(
   options: {
     offerOverride?: Record<string, unknown>;
     quoteEmailGuardRows?: unknown[];
+    quoteEmailGuardError?: boolean;
+    workflowAuditGuardRows?: unknown[];
     outlookGuardRows?: unknown[];
     trelloCard?: {
       name?: string;
@@ -179,6 +181,7 @@ async function withGuardedRetryFetchMock<T>(
       if (table === "quote_email_log") {
         const isGuardLookup = url.searchParams.get("recipient_email") === "eq.customer@example.com"
           && url.searchParams.get("angebotsnummer") === "eq.14427";
+        if (isGuardLookup && options.quoteEmailGuardError) return json({ error: "quote email schema unavailable" }, 500);
         return json(isGuardLookup ? options.quoteEmailGuardRows || [] : []);
       }
       if (table === "customer_email_messages") {
@@ -187,7 +190,7 @@ async function withGuardedRetryFetchMock<T>(
       }
       if (table === "workflow_audit_log") {
         if (method === "POST") return json([{ id: "audit-row-1" }]);
-        return json([]);
+        return json(options.workflowAuditGuardRows || []);
       }
       return json([]);
     }
@@ -502,6 +505,148 @@ test("company brain repairs stale trello projection only after send proof", asyn
     assert.equal(calls.some((call) => call.startsWith("POST https://api.trello.com/1/cards/trello-card-1/idLabels") && call.includes("value=label-offer-sent")), true);
     assert.equal(calls.some((call) => call.startsWith("POST https://api.trello.com/1/cards/trello-card-1/actions/comments")), true);
     assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
+  });
+});
+
+test("company brain repairs trello projection from a successful delivery audit when quote email evidence is unavailable", async () => {
+  await withGuardedRetryFetchMock({
+    quoteEmailGuardError: true,
+    workflowAuditGuardRows: [{
+      id: "delivery-audit-1",
+      document_id: "REQ-GUARD-1",
+      action: "initial_delivery_complete",
+      status: "success",
+      error_message: null,
+      metadata: {
+        request_id: "REQ-GUARD-1",
+        offer_id: "offer-guard-1",
+        trello_card_id: "trello-card-1",
+        execution_id: "3101931",
+      },
+      created_at: "2026-07-14T11:47:37.200Z",
+    }],
+    trelloCard: {
+      name: "FEHLER - 3D Backlit",
+      labels: [],
+      boardLabels: [{ id: "label-offer-sent", name: "Angebot gesendet", color: "green" }],
+    },
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(payload.trelloProjectionRepair.renamed, true);
+    assert.equal(payload.trelloProjectionRepair.addedOfferSentLabel, true);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("GET ")), true);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
+  });
+});
+
+test("company brain blocks trello projection repair when Outlook has a later delivery failure", async () => {
+  await withGuardedRetryFetchMock({
+    workflowAuditGuardRows: [{
+      id: "delivery-audit-before-bounce",
+      document_id: "REQ-GUARD-1",
+      action: "initial_delivery_complete",
+      status: "success",
+      error_message: null,
+      metadata: { request_id: "REQ-GUARD-1", offer_id: "offer-guard-1" },
+      created_at: "2026-07-14T11:47:37.200Z",
+    }],
+    outlookGuardRows: [{
+      id: "bounce-after-delivery",
+      direction: "inbound",
+      matched_email: "customer@example.com",
+      subject: "Unzustellbar: Angebot 14427",
+      body_preview: "Die Nachricht konnte nicht zugestellt werden: recipient unknown customer@example.com",
+      received_at: "2026-07-14T11:50:00.000Z",
+      created_at: "2026-07-14T11:50:00.000Z",
+      to_emails: ["customer@example.com"],
+    }],
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.code, "delivery_failure_after_send_proof");
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(calls.some((call) => call.includes("api.trello.com/1/cards/trello-card-1") && !call.includes("workflow_audit_log")), false);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
+  });
+});
+
+test("company brain ignores a delivery audit that predates the latest workflow failure", async () => {
+  await withGuardedRetryFetchMock({
+    workflowAuditGuardRows: [{
+      id: "newer-video-failure",
+      document_id: "REQ-GUARD-1",
+      action: "video_content_qc",
+      status: "failed",
+      error_message: "DESIGN_MORPH",
+      metadata: { request_id: "REQ-GUARD-1", offer_id: "offer-guard-1" },
+      created_at: "2026-07-14T12:00:00.000Z",
+    }, {
+      id: "older-delivery-success",
+      document_id: "REQ-GUARD-1",
+      action: "initial_delivery_complete",
+      status: "success",
+      error_message: null,
+      metadata: { request_id: "REQ-GUARD-1", offer_id: "offer-guard-1" },
+      created_at: "2026-07-14T11:47:37.200Z",
+    }],
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(payload.code, "missing_send_proof");
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(calls.some((call) => call.includes("api.trello.com/1/cards/trello-card-1") && !call.includes("workflow_audit_log")), false);
+  });
+});
+
+test("company brain does not resolve conflicting workflow audits without comparable timestamps", async () => {
+  await withGuardedRetryFetchMock({
+    workflowAuditGuardRows: [{
+      id: "undated-delivery-success",
+      document_id: "REQ-GUARD-1",
+      action: "initial_delivery_complete",
+      status: "success",
+      error_message: null,
+      metadata: { request_id: "REQ-GUARD-1", offer_id: "offer-guard-1" },
+      created_at: null,
+    }, {
+      id: "dated-video-failure",
+      document_id: "REQ-GUARD-1",
+      action: "video_content_qc",
+      status: "failed",
+      error_message: "DESIGN_MORPH",
+      metadata: { request_id: "REQ-GUARD-1", offer_id: "offer-guard-1" },
+      created_at: "2026-07-14T12:00:00.000Z",
+    }],
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainActionRequest({
+      actionKey: "repair_trello_projection",
+      trelloCardId: "trello-card-1",
+    }));
+    const payload = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(payload.code, "missing_send_proof");
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(calls.some((call) => call.includes("api.trello.com/1/cards/trello-card-1") && !call.includes("workflow_audit_log")), false);
   });
 });
 

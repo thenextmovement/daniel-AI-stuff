@@ -110,6 +110,16 @@ type OutlookMessageGuardRow = {
   to_emails?: string[] | null;
 };
 
+type WorkflowDeliveryProofRow = {
+  id?: string | null;
+  document_id?: string | null;
+  action?: string | null;
+  status?: string | null;
+  error_message?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
 const ALLOWED_SPECIAL_CASE_KINDS: CustomerSpecialCaseKind[] = [
   "gift",
   "replacement",
@@ -309,6 +319,57 @@ async function fetchOutlookGuardRows(recipientEmail: string, offerNumber: string
   }
   const rows = await supabaseRequest<OutlookMessageGuardRow[]>("customer_email_messages", undefined, query);
   return rows.filter((row) => rowMentionsEmail(row, recipientEmail) || !offerNumber);
+}
+
+async function fetchWorkflowDeliveryProofRows(input: {
+  requestId: string;
+  offerId: string | null;
+  trelloCardId: string | null;
+}) {
+  const filters = [
+    `document_id.eq.${encodeURIComponent(input.requestId)}`,
+    `metadata->>request_id.eq.${encodeURIComponent(input.requestId)}`,
+    input.offerId ? `metadata->>offer_id.eq.${encodeURIComponent(input.offerId)}` : null,
+    input.trelloCardId ? `metadata->>trello_card_id.eq.${encodeURIComponent(input.trelloCardId)}` : null,
+  ].filter((value): value is string => Boolean(value));
+  return supabaseRequest<WorkflowDeliveryProofRow[]>("workflow_audit_log", undefined, {
+    select: "id,document_id,action,status,error_message,metadata,created_at",
+    or: `(${filters.join(",")})`,
+    order: "created_at.desc",
+    limit: 20,
+  });
+}
+
+function isSuccessfulDeliveryAudit(row: WorkflowDeliveryProofRow) {
+  if (cleanText(row.error_message)) return false;
+  const action = cleanText(row.action).toLowerCase();
+  const status = cleanText(row.status).toLowerCase();
+  return (action === "initial_delivery_complete" && /^(success|sent|completed|ok)$/.test(status)) ||
+    (action === "guarded_offer_resend" && /^(success|sent|completed|duplicate|ok)$/.test(status));
+}
+
+function workflowAuditMetadataText(row: WorkflowDeliveryProofRow, key: string) {
+  const value = row.metadata?.[key];
+  return typeof value === "string" ? cleanText(value, 240) : "";
+}
+
+function workflowAuditMatchesProjectionCase(
+  row: WorkflowDeliveryProofRow,
+  input: { requestId: string; offerId: string | null },
+) {
+  const auditRequestId = cleanText(row.document_id, 240) || workflowAuditMetadataText(row, "request_id");
+  if (auditRequestId !== input.requestId) return false;
+  if (!input.offerId) return true;
+  return workflowAuditMetadataText(row, "offer_id") === input.offerId;
+}
+
+function isFailedWorkflowAudit(row: WorkflowDeliveryProofRow) {
+  return Boolean(cleanText(row.error_message) || /fail|error|blocked/i.test(cleanText(row.status)));
+}
+
+function occurredAtMs(value: string | null | undefined) {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 async function recordCompanyBrainRetryAudit(input: {
@@ -782,15 +843,96 @@ export async function POST(request: NextRequest) {
 
       const recipientEmail = normalizeEmail(body.recipientEmail || record.email);
       const effectiveOfferNumber = normalizeOfferNumber(offerNumber || body.offerNumber);
-      const quoteEmailRows = recipientEmail
-        ? await fetchQuoteEmailGuardRows(recipientEmail, effectiveOfferNumber)
-        : [];
+      const [quoteEmailResult, workflowDeliveryResult, outlookResult] = await Promise.allSettled([
+        recipientEmail ? fetchQuoteEmailGuardRows(recipientEmail, effectiveOfferNumber) : Promise.resolve([]),
+        fetchWorkflowDeliveryProofRows({ requestId: record.requestId, offerId, trelloCardId }),
+        recipientEmail ? fetchOutlookGuardRows(recipientEmail, effectiveOfferNumber) : Promise.resolve([]),
+      ]);
+      const quoteEmailRows = quoteEmailResult.status === "fulfilled" ? quoteEmailResult.value : [];
+      const workflowDeliveryRows = workflowDeliveryResult.status === "fulfilled" ? workflowDeliveryResult.value : [];
+      const outlookRows = outlookResult.status === "fulfilled" ? outlookResult.value : [];
       const sendProof = quoteEmailRows.find((row) =>
         Boolean(row.sent_at || /sent|delivered|success|ok/i.test(String(row.status || ""))),
       );
+      const workflowRowsForCase = workflowDeliveryRows
+        .filter((row) => workflowAuditMatchesProjectionCase(row, { requestId: record.requestId, offerId }))
+        .sort((left, right) => (occurredAtMs(right.created_at) || 0) - (occurredAtMs(left.created_at) || 0));
+      const workflowSendProofCandidate = workflowRowsForCase.find(isSuccessfulDeliveryAudit) || null;
+      const latestWorkflowFailure = workflowRowsForCase.find(isFailedWorkflowAudit) || null;
+      const workflowSendProofTime = occurredAtMs(workflowSendProofCandidate?.created_at);
+      const latestWorkflowFailureTime = occurredAtMs(latestWorkflowFailure?.created_at);
+      const workflowSendProof = workflowSendProofCandidate && (
+        !latestWorkflowFailure ||
+        (workflowSendProofTime !== null &&
+          latestWorkflowFailureTime !== null &&
+          workflowSendProofTime >= latestWorkflowFailureTime)
+      ) ? workflowSendProofCandidate : null;
       const hasRecordSendProof = Boolean(record.quote?.sentAt);
+      const sendProofAt = sendProof?.sent_at || record.quote?.sentAt || sendProof?.created_at || workflowSendProof?.created_at || null;
+      const latestDeliveryFailure = outlookRows.find((row) =>
+        isDeliveryFailureText(`${row.subject || ""} ${row.body_preview || ""}`),
+      ) || null;
+      const deliveryFailureAt = latestDeliveryFailure?.received_at || latestDeliveryFailure?.sent_at || latestDeliveryFailure?.created_at || null;
+      const sendProofTime = occurredAtMs(sendProofAt);
+      const deliveryFailureTime = occurredAtMs(deliveryFailureAt);
+      const deliveryFailureAfterProof = Boolean(
+        latestDeliveryFailure &&
+        (!sendProofTime || !deliveryFailureTime || deliveryFailureTime >= sendProofTime),
+      );
 
-      if (!sendProof && !hasRecordSendProof) {
+      if (recipientEmail && outlookResult.status === "rejected") {
+        throw new QuoteValidationError(
+          "Outlook-Zustellstatus ist derzeit nicht lesbar.",
+          ["Trello-Projektion wurde nicht geändert. Outlook-Spiegel erneut prüfen."],
+          503,
+        );
+      }
+
+      if (!sendProof && !hasRecordSendProof && !workflowSendProof && quoteEmailResult.status === "rejected" && workflowDeliveryResult.status === "rejected") {
+        throw new QuoteValidationError(
+          "Versandbelege sind derzeit nicht lesbar.",
+          ["Trello-Projektion wurde nicht geändert. quote_email_log und workflow_audit_log erneut prüfen."],
+          503,
+        );
+      }
+
+      if (deliveryFailureAfterProof) {
+        retryAudit = await recordWorkflowAuditEvent({
+          workflowName: "company_brain_fix_center",
+          action: "repair_trello_projection",
+          status: "blocked",
+          requestId: record.requestId,
+          trelloCardId,
+          offerId,
+          offerNumber: effectiveOfferNumber || offerNumber,
+          idempotencyKey: `company-brain-trello-projection:${record.requestId}:${trelloCardId}`,
+          retrySafety: "blocked",
+          customer_communication_sent: false,
+          errorMessage: "Spaeterer Zustellfehler blockiert Trello-Projektionsreparatur.",
+          metadata: {
+            operator_name: operatorName,
+            projection_only: true,
+            customer_communication_sent: false,
+            blocker: "delivery_failure_after_send_proof",
+            delivery_failure_at: deliveryFailureAt,
+          },
+        });
+        return jsonResponse(
+          {
+            ok: false,
+            actionKey,
+            requestId: record.requestId,
+            error: "Trello-Projektion blockiert.",
+            code: "delivery_failure_after_send_proof",
+            blockers: ["Ein späterer Outlook-Zustellfehler ist vorhanden. Trello wird nicht auf 'Angebot gesendet' repariert."],
+            audit: retryAudit,
+            customerCommunicationSent: false,
+          },
+          { status: 409 },
+        );
+      }
+
+      if (!sendProof && !hasRecordSendProof && !workflowSendProof) {
         retryAudit = await recordWorkflowAuditEvent({
           workflowName: "company_brain_fix_center",
           action: "repair_trello_projection",
@@ -870,7 +1012,7 @@ export async function POST(request: NextRequest) {
             "",
             renamed ? `Titel bereinigt: ${currentName} -> ${repairedName}` : null,
             addedOfferSentLabel ? "Tag gesetzt: Angebot gesendet" : null,
-            `Versandbeleg: ${sendProof?.sent_at || record.quote?.sentAt || sendProof?.created_at || "vorhanden"}`,
+            `Versandbeleg: ${sendProofAt || "vorhanden"}`,
             "",
             "Hinweis: Trello ist nur Projektion. Source of Truth bleibt Kundenakte/Angebot/Outlook/Audit. Kein Kundenkontakt durch diese Aktion.",
           ].filter((line): line is string => Boolean(line)).join("\n"),
@@ -898,7 +1040,9 @@ export async function POST(request: NextRequest) {
           renamed,
           added_offer_sent_label: addedOfferSentLabel,
           offer_sent_label_id: offerSentLabelId,
-          send_proof: sendProof?.sent_at || record.quote?.sentAt || sendProof?.created_at || null,
+          send_proof: sendProofAt,
+          send_proof_source: workflowSendProof ? "workflow_audit_log" : sendProof ? "quote_email_log" : "customer_record",
+          workflow_delivery_audit_id: workflowSendProof?.id || null,
           trello_comment_id: trelloComment?.id || null,
         },
       });
