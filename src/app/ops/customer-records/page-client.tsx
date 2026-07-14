@@ -20028,6 +20028,10 @@ function RecordCard({
   const [showOptionalContactFields, setShowOptionalContactFields] = useState(false);
   const [showSimpleContactEditor, setShowSimpleContactEditor] = useState(false);
   const [activeTab, setActiveTab] = useState<RecordDetailTab>("contact");
+  const requestId = typeof record.requestId === "string" ? record.requestId.trim() : "";
+  const hasRequestId = Boolean(requestId);
+  const requestLabel = hasRequestId ? requestId : "Kontakt ohne Anfrage";
+  const shortRequestLabel = hasRequestId ? `#${requestId.slice(0, 8)}` : "ohne Anfrage";
   const lastRecordRequestIdRef = useRef(record.requestId);
   const visibleTabs = simpleView
     ? ([
@@ -20116,8 +20120,10 @@ function RecordCard({
       ? {
           label: "Rückruf morgen",
           type: "button" as const,
-          onClick: () => onScheduleCallback(record.requestId, buildTomorrowAt(10), "Rückruf auf morgen verschoben."),
-          disabled: actionRunning,
+          onClick: () => {
+            if (hasRequestId) void onScheduleCallback(requestId, buildTomorrowAt(10), "Rückruf auf morgen verschoben.");
+          },
+          disabled: actionRunning || !hasRequestId,
         }
       : pending > 0
         ? {
@@ -20180,10 +20186,16 @@ function RecordCard({
     showSimpleContactEditor || hasUnsavedChanges || Boolean(preview) || Boolean(previewError) || Boolean(saveSucceeded);
 
   async function handlePreview() {
+    if (!hasRequestId) {
+      setPreview(null);
+      setPreviewSignature(null);
+      setPreviewError("Dieser Kontakt hat noch keine Anfrage-ID. Kontaktdaten koennen erst bearbeitet werden, wenn eine Anfrage angelegt oder verknuepft wurde.");
+      return;
+    }
     setPreviewing(true);
     setPreviewError(null);
     try {
-      const nextPreview = await onPreview(record.requestId, updates);
+      const nextPreview = await onPreview(requestId, updates);
       setPreview(nextPreview);
       setPreviewSignature(currentSignature);
     } catch (error) {
@@ -20196,9 +20208,13 @@ function RecordCard({
   }
 
   async function handleSave() {
+    if (!hasRequestId) {
+      setPreviewError("Dieser Kontakt hat noch keine Anfrage-ID. Kontaktdaten koennen erst bearbeitet werden, wenn eine Anfrage angelegt oder verknuepft wurde.");
+      return;
+    }
     setPreviewError(null);
     try {
-      await onSave(record.requestId, updates);
+      await onSave(requestId, updates);
       setPreview(null);
       setPreviewSignature(null);
     } catch (error) {
@@ -20230,7 +20246,7 @@ function RecordCard({
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center rounded-full border border-white/12 bg-white/8 px-3 py-1 text-xs font-medium text-white/76">
-                  Request {record.requestId}
+                  {hasRequestId ? `Request ${requestId}` : requestLabel}
                 </span>
                 <span
                   className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${
@@ -20268,7 +20284,7 @@ function RecordCard({
                 <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-sm text-white/52">
                   {record.email ? <span>{record.email}</span> : null}
                   {record.email ? <span>•</span> : null}
-                  <span className="text-white/38">#{record.requestId.slice(0, 8)}</span>
+                  <span className="text-white/38">{shortRequestLabel}</span>
                 </div>
               ) : null}
               <div className="mt-2 flex flex-wrap gap-2">
