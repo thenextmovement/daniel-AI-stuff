@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import { VoiceCopilotClient } from "./page-client";
+import { isVoiceLiveCopilotEnabled } from "@/lib/ops/voice-openai-config";
 
 export const metadata = {
   title: "Voice Copilot - NEONTRIP Ops",
@@ -20,6 +21,7 @@ export default async function VoiceCopilotPage() {
       initialHasSession={opsEnabled ? await hasOpsSession(host, headerStore) : false}
       opsEnabled={opsEnabled}
       localMode={localMode}
+      liveCopilotEnabled={isVoiceLiveCopilotEnabled()}
     />
   );
 }

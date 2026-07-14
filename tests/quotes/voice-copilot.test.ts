@@ -7,14 +7,27 @@ import {
   buildVoiceCopilotGuidance,
   buildVoiceCopilotInstructions,
   buildVoiceCopilotRealtimeSession,
+  buildVoiceCopilotTranscriptionSession,
+  enforceVoiceCopilotSuggestionGuardrails,
+  formatVoiceCopilotTranscript,
+  normalizeVoiceCopilotTranscriptTurns,
   normalizeVoiceCopilotMode,
+  parseVoiceCopilotSuggestions,
   parseVoiceKnowledgeProposals,
   validateVoiceCopilotRealtimeInput,
+  validateVoiceCopilotTranscriptionInput,
+  voiceCopilotSuggestionSchema,
   voiceCopilotExtractionSchema,
   voiceKnowledgeProposalSchema,
   VOICE_COPILOT_MODEL,
 } from "../../src/lib/ops/voice-copilot";
-import { getVoiceCopilotExtractionModel, getVoiceOpenAiApiKey } from "../../src/lib/ops/voice-openai-config";
+import {
+  getVoiceCopilotExtractionModel,
+  getVoiceCopilotSuggestionModel,
+  getVoiceCopilotTranscriptionModel,
+  getVoiceOpenAiApiKey,
+  isVoiceLiveCopilotEnabled,
+} from "../../src/lib/ops/voice-openai-config";
 import { QuoteValidationError } from "../../src/lib/quotes/validation";
 
 test("voice copilot guidance keeps lead qualification bounded", () => {
@@ -78,6 +91,54 @@ test("post-call knowledge proposals are strict and require reviewable evidence",
   }), QuoteValidationError);
 });
 
+test("live copilot suggestions are strict, bounded and source-aware", () => {
+  const schema = voiceCopilotSuggestionSchema();
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.properties.suggestions.maxItems, 3);
+  const suggestions = parseVoiceCopilotSuggestions({
+    suggestions: [{
+      kind: "question",
+      text: "Soll das Schild innen oder aussen eingesetzt werden?",
+      reason: "Der Einsatzort fehlt noch.",
+      sourceLabels: ["Kundenvorgang"],
+      confidence: 0.91,
+    }],
+  });
+  assert.equal(suggestions[0]?.kind, "question");
+  assert.throws(() => parseVoiceCopilotSuggestions({
+    suggestions: [{
+      kind: "answer",
+      text: "Sie erhalten zehn Prozent Rabatt.",
+      reason: "Ungepruefte Aussage",
+      sourceLabels: [],
+      confidence: 1,
+      autoSend: true,
+    }],
+  }), QuoteValidationError);
+});
+
+test("live copilot deterministically replaces unsafe commercial commitments", () => {
+  const suggestions = enforceVoiceCopilotSuggestionGuardrails([
+    {
+      kind: "answer",
+      text: "Ich garantiere Ihnen 10 % Rabatt und Lieferung bis Freitag.",
+      reason: "Modellfehler",
+      sourceLabels: ["Angebot"],
+      confidence: 0.99,
+    },
+    {
+      kind: "question",
+      text: "Soll ein Mitarbeiter den konkreten Preis pruefen?",
+      reason: "Sichere Rueckfrage",
+      sourceLabels: [],
+      confidence: 0.9,
+    },
+  ]);
+  assert.equal(suggestions[0]?.kind, "warning");
+  assert.match(suggestions[0]?.text || "", /Keine Preis/);
+  assert.equal(suggestions.some((suggestion) => /10 % Rabatt/.test(suggestion.text)), false);
+});
+
 test("voice copilot realtime input validation normalizes modes and rejects invalid SDP", () => {
   assert.equal(normalizeVoiceCopilotMode("follow_up"), "follow_up");
   assert.equal(normalizeVoiceCopilotMode("bad-mode"), "internal_test");
@@ -94,6 +155,54 @@ test("voice copilot realtime input validation normalizes modes and rejects inval
   assert.equal(input.requestSummary?.length, 1200);
 });
 
+test("live transcription requires two SDP offers, a bound request and confirmed consent", () => {
+  assert.throws(() => validateVoiceCopilotTranscriptionInput({
+    customerSdp: "v=0\r\n",
+    operatorSdp: "v=0\r\n",
+    mode: "follow_up",
+    requestId: "request-1",
+    consentStatus: "pending",
+  }), /Einwilligung/);
+  assert.throws(() => validateVoiceCopilotTranscriptionInput({
+    customerSdp: "v=0\r\n",
+    operatorSdp: "v=0\r\n",
+    mode: "follow_up",
+    consentStatus: "confirmed",
+  }), /Kundenvorgang/);
+  const input = validateVoiceCopilotTranscriptionInput({
+    customerSdp: "v=0\r\ncustomer",
+    operatorSdp: "v=0\r\noperator",
+    mode: "follow_up",
+    requestId: "request-1",
+    consentStatus: "confirmed",
+    operatorName: "Daniel",
+  });
+  assert.equal(input.consentStatus, "confirmed");
+  assert.equal(input.requestId, "request-1");
+});
+
+test("live transcript is speaker-bound, size-limited and formatted without metadata", () => {
+  const turns = normalizeVoiceCopilotTranscriptTurns([
+    { speaker: "customer", text: "Was kostet die Aussenmontage?", injected: "ignore" },
+    { speaker: "operator", text: "Ich pruefe das fuer Sie." },
+  ]);
+  assert.deepEqual(turns, [
+    { speaker: "customer", text: "Was kostet die Aussenmontage?" },
+    { speaker: "operator", text: "Ich pruefe das fuer Sie." },
+  ]);
+  assert.equal(formatVoiceCopilotTranscript(turns), "Kunde: Was kostet die Aussenmontage?\nMitarbeiter: Ich pruefe das fuer Sie.");
+  assert.throws(() => normalizeVoiceCopilotTranscriptTurns([{ speaker: "other", text: "x" }]), QuoteValidationError);
+});
+
+test("transcription session is text-only and uses manual turn commits", () => {
+  const session = buildVoiceCopilotTranscriptionSession("gpt-realtime-whisper");
+  assert.equal(session.type, "transcription");
+  assert.equal(session.audio.input.transcription.model, "gpt-realtime-whisper");
+  assert.equal(session.audio.input.transcription.language, "de");
+  assert.equal(session.audio.input.turn_detection, null);
+  assert.equal("output" in session.audio, false);
+});
+
 test("voice copilot realtime session uses the direct realtime model", () => {
   const session = buildVoiceCopilotRealtimeSession({ mode: "internal_test" });
   assert.equal(session.model, VOICE_COPILOT_MODEL);
@@ -107,14 +216,23 @@ test("voice OpenAI configuration accepts the existing Ops aliases", () => {
   const originalOpsOpenAiKey = env.OPS_OPENAI_API_KEY;
   const originalExtractionModel = env.VOICE_COPILOT_EXTRACTION_MODEL;
   const originalOpsModel = env.OPS_COPILOT_OPENAI_MODEL;
+  const originalSuggestionModel = env.VOICE_COPILOT_SUGGESTION_MODEL;
+  const originalTranscriptionModel = env.VOICE_COPILOT_TRANSCRIPTION_MODEL;
+  const originalLiveFlag = env.VOICE_LIVE_COPILOT_ENABLED;
   try {
     delete env.OPENAI_API_KEY;
     delete env.VOICE_COPILOT_EXTRACTION_MODEL;
     env.OPS_OPENAI_API_KEY = "ops-test-key";
     env.OPS_COPILOT_OPENAI_MODEL = "ops-test-model";
+    delete env.VOICE_COPILOT_SUGGESTION_MODEL;
+    delete env.VOICE_COPILOT_TRANSCRIPTION_MODEL;
+    env.VOICE_LIVE_COPILOT_ENABLED = "true";
 
     assert.equal(getVoiceOpenAiApiKey(), "ops-test-key");
     assert.equal(getVoiceCopilotExtractionModel(), "ops-test-model");
+    assert.equal(getVoiceCopilotSuggestionModel(), "ops-test-model");
+    assert.equal(getVoiceCopilotTranscriptionModel(), "gpt-realtime-whisper");
+    assert.equal(isVoiceLiveCopilotEnabled(), true);
   } finally {
     if (originalOpenAiKey === undefined) delete env.OPENAI_API_KEY;
     else env.OPENAI_API_KEY = originalOpenAiKey;
@@ -124,7 +242,29 @@ test("voice OpenAI configuration accepts the existing Ops aliases", () => {
     else env.VOICE_COPILOT_EXTRACTION_MODEL = originalExtractionModel;
     if (originalOpsModel === undefined) delete env.OPS_COPILOT_OPENAI_MODEL;
     else env.OPS_COPILOT_OPENAI_MODEL = originalOpsModel;
+    if (originalSuggestionModel === undefined) delete env.VOICE_COPILOT_SUGGESTION_MODEL;
+    else env.VOICE_COPILOT_SUGGESTION_MODEL = originalSuggestionModel;
+    if (originalTranscriptionModel === undefined) delete env.VOICE_COPILOT_TRANSCRIPTION_MODEL;
+    else env.VOICE_COPILOT_TRANSCRIPTION_MODEL = originalTranscriptionModel;
+    if (originalLiveFlag === undefined) delete env.VOICE_LIVE_COPILOT_ENABLED;
+    else env.VOICE_LIVE_COPILOT_ENABLED = originalLiveFlag;
   }
+});
+
+test("live copilot keeps raw transcript client-side and binds suggestions to an audited session", () => {
+  const client = readFileSync("src/app/ops/voice-copilot/live-call-copilot.tsx", "utf8");
+  const transcriptionRoute = readFileSync("src/app/api/ops/voice-copilot/transcription-session/route.ts", "utf8");
+  const suggestionRoute = readFileSync("src/app/api/ops/voice-copilot/suggestions/route.ts", "utf8");
+  assert.match(client, /getDisplayMedia/);
+  assert.match(client, /input_audio_buffer\.commit/);
+  assert.match(transcriptionRoute, /transcriptStored: false/);
+  assert.match(transcriptionRoute, /interactionMode: "live_copilot"/);
+  assert.match(transcriptionRoute, /wordingVersion: "live-transcription-v1"/);
+  assert.match(transcriptionRoute, /isVoiceLiveCopilotEnabled/);
+  assert.match(suggestionRoute, /getVoiceCallSessionBinding/);
+  assert.match(suggestionRoute, /isVoiceLiveCopilotEnabled/);
+  assert.match(suggestionRoute, /store: false/);
+  assert.doesNotMatch(client, /OPENAI_API_KEY/);
 });
 
 test("voice copilot route proxies SDP without exposing OpenAI secrets", async () => {

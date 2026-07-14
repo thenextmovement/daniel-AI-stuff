@@ -27,6 +27,8 @@ Postgres is the source of truth. Trello data is not used as trusted knowledge. R
 
 Existing `OPS_OPENAI_API_KEY` (preferred) or `OPENAI_API_KEY`, Offers API and Microsoft Graph variables remain server-only. Post-call extraction uses `VOICE_COPILOT_EXTRACTION_MODEL` or falls back to `OPS_COPILOT_OPENAI_MODEL`.
 
+`VOICE_LIVE_COPILOT_ENABLED=true` separately enables the human-in-the-loop dual-transcription and live-suggestion APIs. It defaults to disabled. `VOICE_COPILOT_SUGGESTION_MODEL` can override the Responses model used for live suggestions; otherwise the extraction model or `OPS_COPILOT_OPENAI_MODEL` is used. `VOICE_COPILOT_TRANSCRIPTION_MODEL` defaults to `gpt-realtime-whisper`.
+
 ## Activation order
 
 1. Deploy application code with `VOICE_COPILOT_KNOWLEDGE_ENABLED` unset or false.

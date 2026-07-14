@@ -2,6 +2,12 @@
 
 This is an engineering control record, not legal advice. German counsel or the responsible data-protection/legal owner must approve the final form wording and production rollout.
 
+## Human Live Copilot
+
+The human live-copilot path processes both participants' audio for live transcription even though it neither speaks nor stores a raw transcript. Engineering therefore treats active, informed consent as a mandatory gate. The operator must confirm consent before capture starts, stop immediately after withdrawal, and continue the call without the copilot. A passive opt-out or continued speaking is not accepted as consent.
+
+The exact spoken notice, employee participation rules, processor/data-transfer terms, and whether any transient processing is classified as recording must be approved by the legal/privacy owner before customer use.
+
 ## Current Primary-Source Constraints
 
 - German UWG section 7 requires prior express consent for consumer telephone advertising and for advertising using an automated calling machine: <https://www.gesetze-im-internet.de/uwg_2004/__7.html>

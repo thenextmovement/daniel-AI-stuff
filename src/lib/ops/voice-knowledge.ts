@@ -4,7 +4,7 @@ import { getOfferById, type OpsOfferSnapshot } from "@/lib/ops/offers";
 import { fetchOutlookGraphEvidenceForBoundCustomer } from "@/lib/ops/company-brain";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
-import type { VoiceCopilotMode } from "@/lib/ops/voice-copilot";
+import type { VoiceCopilotInteractionMode, VoiceCopilotMode } from "@/lib/ops/voice-copilot";
 
 export type VoiceKnowledgeStatus = "draft" | "review" | "approved" | "retired";
 export type VoiceKnowledgeRiskClass = "standard" | "sensitive" | "restricted";
@@ -586,6 +586,12 @@ export async function createVoiceCallSession(input: {
   context: VoiceCustomerContext | null;
   knowledgeMatches: VoiceKnowledgeMatch[];
   consentStatus?: unknown;
+  interactionMode?: VoiceCopilotInteractionMode;
+  consentEvidence?: {
+    method: "operator_attestation";
+    wordingVersion: string;
+    confirmedAt: string;
+  } | null;
 }) {
   const operatorName = requiredText(input.operatorName, "Operator", 120, 2);
   const consentStatus = input.mode === "internal_test"
@@ -613,6 +619,8 @@ export async function createVoiceCallSession(input: {
       status: "created",
       knowledge_version_ids: Array.from(new Set(input.knowledgeMatches.map((match) => match.versionId))),
       context_snapshot: {
+        interaction_mode: input.interactionMode || "voice_agent",
+        consent_evidence: input.consentEvidence || null,
         request_id: input.context?.requestId || null,
         offer_id: input.context?.offer?.offerId || null,
         source_status: input.context?.sourceStatus || null,
@@ -622,6 +630,41 @@ export async function createVoiceCallSession(input: {
   });
   if (!rows[0]) throw new Error("Voice call session could not be created.");
   return rows[0].id;
+}
+
+export async function getVoiceCallSessionBinding(sessionIdInput: unknown) {
+  const sessionId = requireUuid(sessionIdInput, "Session-ID");
+  const rows = await supabaseRequest<Array<{
+    id: string;
+    operator_name: string;
+    mode: VoiceCopilotMode;
+    bound_request_id?: string | null;
+    consent_status: string;
+    status: string;
+    context_snapshot: Record<string, unknown>;
+  }>>("voice_call_sessions", undefined, {
+    select: "id,operator_name,mode,bound_request_id,consent_status,status,context_snapshot",
+    id: `eq.${sessionId}`,
+    limit: 1,
+  });
+  const row = rows[0];
+  if (!row) throw new QuoteValidationError("Voice-Session wurde nicht gefunden.", ["voice_session_not_found"], 404);
+  if (row.status !== "live") {
+    throw new QuoteValidationError("Voice-Session ist nicht live.", ["voice_session_not_live"], 409);
+  }
+  if (row.context_snapshot?.interaction_mode !== "live_copilot") {
+    throw new QuoteValidationError("Voice-Session ist kein Live-Copilot.", ["invalid_voice_session_type"], 409);
+  }
+  if (row.mode !== "internal_test" && row.consent_status !== "confirmed") {
+    throw new QuoteValidationError("Einwilligung fuer Live-Transkription fehlt.", ["live_transcription_consent_required"], 409);
+  }
+  return {
+    id: row.id,
+    operatorName: row.operator_name,
+    mode: row.mode,
+    requestId: row.bound_request_id || null,
+    consentStatus: row.consent_status,
+  };
 }
 
 export async function updateVoiceCallSessionStatus(

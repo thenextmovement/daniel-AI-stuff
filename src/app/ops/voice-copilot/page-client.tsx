@@ -9,6 +9,7 @@ import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, opsPageContainerClass, opsPageShellClass, OpsStatCard } from "../ops-design";
 import { CustomerContextPanel } from "./customer-context-panel";
 import { KnowledgePanel } from "./knowledge-panel";
+import { LiveCallCopilot } from "./live-call-copilot";
 import { PostCallReview } from "./post-call-review";
 import { VoicePlatformPanel } from "./voice-platform-panel";
 
@@ -16,6 +17,7 @@ type VoiceCopilotClientProps = {
   initialHasSession: boolean;
   opsEnabled: boolean;
   localMode: boolean;
+  liveCopilotEnabled: boolean;
 };
 
 type SessionStatus = "idle" | "connecting" | "live" | "stopped" | "error";
@@ -90,7 +92,7 @@ function logLine(message: string) {
   return `${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} ${message}`;
 }
 
-export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopilotClientProps) {
+export function VoiceCopilotClient({ initialHasSession, opsEnabled, liveCopilotEnabled }: VoiceCopilotClientProps) {
   const operatorNameKey = "neontrip-voice-copilot-operator";
   const [hasSession, setHasSession] = useState(initialHasSession);
   const [operatorName, setOperatorName] = useState("");
@@ -101,7 +103,9 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
   const [events, setEvents] = useState<string[]>([]);
   const [requestSummary, setRequestSummary] = useState("");
   const [knownInterest, setKnownInterest] = useState("LED-Neonschild / Leuchtreklame");
-  const [activeView, setActiveView] = useState<"live" | "platform" | "knowledge">("live");
+  const [activeView, setActiveView] = useState<"assist" | "live" | "platform" | "knowledge">(
+    liveCopilotEnabled ? "assist" : "live",
+  );
   const [knowledgeEnabled, setKnowledgeEnabled] = useState<boolean | null>(null);
   const [selectedContext, setSelectedContext] = useState<VoiceCustomerContext | null>(null);
   const [consentStatus, setConsentStatus] = useState<"pending" | "confirmed" | "declined">("pending");
@@ -302,37 +306,46 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled }: VoiceCopil
           </div>
         </OpsPageIntro>
 
-        <div className="inline-flex w-fit rounded-lg border border-stone-200 bg-white p-1" role="tablist" aria-label="Voice Copilot Bereich">
+        <div className="flex w-full max-w-full overflow-x-auto rounded-lg border border-stone-200 bg-white p-1 sm:w-fit" role="tablist" aria-label="Voice Copilot Bereich">
           <button
             type="button"
             role="tab"
             aria-selected={activeView === "platform"}
             onClick={() => setActiveView("platform")}
-            className={`inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "platform" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+            className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "platform" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
           >
             <PhoneCall className="h-4 w-4" /> Plattform
           </button>
           <button
             type="button"
             role="tab"
+            aria-selected={activeView === "assist"}
+            onClick={() => setActiveView("assist")}
+            className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "assist" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+          >
+            <Headphones className="h-4 w-4" /> Mithoeren
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={activeView === "live"}
             onClick={() => setActiveView("live")}
-            className={`inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "live" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+            className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "live" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
           >
-            <Radio className="h-4 w-4" /> Live
+            <Radio className="h-4 w-4" /> Sprachagent
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={activeView === "knowledge"}
             onClick={() => setActiveView("knowledge")}
-            className={`inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "knowledge" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+            className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold ${activeView === "knowledge" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-stone-50"}`}
           >
             <BookOpen className="h-4 w-4" /> Wissen
           </button>
         </div>
 
-        {activeView === "live" ? <>
+        {activeView === "assist" ? <LiveCallCopilot operatorName={operatorName} knowledgeEnabled={knowledgeEnabled} enabled={liveCopilotEnabled} /> : activeView === "live" ? <>
         <section className="grid gap-4 md:grid-cols-3">
           <OpsStatCard label="Modus" value={selectedMode.label} tone="info" icon={<BrainCircuit className="h-5 w-5" />} detail={selectedMode.objective} />
           <OpsStatCard label="Modell" value="2.1" tone="success" icon={<CheckCircle2 className="h-5 w-5" />} detail="Direkter OpenAI Realtime WebRTC-Pfad" />
