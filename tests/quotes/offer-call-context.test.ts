@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { offerTaskReferenceKeys, selectPendingOfferCallTaskForOffer } from "@/lib/ops/offer-call-context";
+import { buildOfferCallTaskOnlyContexts, offerTaskReferenceKeys, selectPendingOfferCallTaskForOffer } from "@/lib/ops/offer-call-context";
 import type { CustomerInternalTask } from "@/lib/ops/customer-records";
 
 function task(overrides: Partial<CustomerInternalTask>): CustomerInternalTask {
@@ -78,4 +78,23 @@ test("offer call context uses the earliest matching due task", () => {
   ], { offerId: "offer_123" });
 
   assert.equal(selected?.id, "earlier");
+});
+
+test("offer call task summary resolves a whole offer list without customer-record searches", () => {
+  const contexts = buildOfferCallTaskOnlyContexts([
+    task({ id: "matching", sourceId: "offer_123:first-offer-sent" }),
+  ], [
+    { offerId: "offer_123", customerEmail: "kunde@example.com" },
+    { offerId: "offer_without_task", customerEmail: "andere@example.com" },
+  ]);
+
+  assert.equal(contexts[0]?.matched, true);
+  assert.equal(contexts[0]?.pendingOfferCallTask?.id, "matching");
+  assert.equal(contexts[0]?.customerRecordUrl, "/ops/customer-records?query=req_1");
+  assert.deepEqual(contexts[1], {
+    offerId: "offer_without_task",
+    matched: false,
+    matchedBy: "none",
+    pendingOfferCallTask: null,
+  });
 });

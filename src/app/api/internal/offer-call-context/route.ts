@@ -8,6 +8,7 @@ import {
   type CustomerSearchResult,
 } from "@/lib/ops/customer-records";
 import {
+  buildOfferCallTaskOnlyContexts,
   selectPendingOfferCallTaskForOffer,
   type OfferCallContextRequestEntry,
   type OfferCallTaskSummary,
@@ -19,6 +20,7 @@ type MatchType = "offer" | "trello" | "email" | "phone" | "none";
 
 const MAX_ENTRIES = 40;
 const SEARCH_TIMEOUT_MS = 12_000;
+const TASK_SUMMARY_TIMEOUT_MS = 3_500;
 
 function configuredInternalKeys() {
   return [
@@ -295,15 +297,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  let body: { offers?: OfferCallContextRequestEntry[] };
+  let body: { offers?: OfferCallContextRequestEntry[]; mode?: "full" | "task_summary" };
   try {
-    body = (await request.json()) as { offers?: OfferCallContextRequestEntry[] };
+    body = (await request.json()) as { offers?: OfferCallContextRequestEntry[]; mode?: "full" | "task_summary" };
   } catch {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
   }
 
   const offers = Array.isArray(body.offers) ? body.offers.slice(0, MAX_ENTRIES) : [];
   if (!offers.length) return NextResponse.json({ ok: true, contexts: [] });
+
+  if (body.mode === "task_summary") {
+    try {
+      const board = await withTimeout(
+        listCustomerInternalTasks({ includeDone: false, limit: 5000 }),
+        TASK_SUMMARY_TIMEOUT_MS,
+        "ops_context_task_summary_timeout",
+      );
+      return NextResponse.json({
+        ok: true,
+        mode: "task_summary",
+        contexts: buildOfferCallTaskOnlyContexts(board.tasks, offers),
+      });
+    } catch (error) {
+      console.warn("offer call task summary lookup failed", {
+        error: error instanceof Error ? error.message : "lookup_failed",
+      });
+      return NextResponse.json({
+        ok: true,
+        mode: "task_summary",
+        contexts: offers.map((entry) => ({
+          offerId: cleanText(entry.offerId),
+          matched: false,
+          matchedBy: "none",
+          error: error instanceof Error ? error.message : "ops_context_task_summary_failed",
+        })),
+      });
+    }
+  }
 
   let openTasksPromise: Promise<CustomerInternalTask[]> | null = null;
   const loadOpenTasks = () => {

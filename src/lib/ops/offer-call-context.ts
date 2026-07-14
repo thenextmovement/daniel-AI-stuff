@@ -19,6 +19,20 @@ export type OfferCallTaskSummary = {
   sourceId?: string | null;
 };
 
+export type OfferCallTaskOnlyContext = {
+  offerId: string | null;
+  matched: boolean;
+  matchedBy: "offer" | "none";
+  requestId?: string | null;
+  customerRecordUrl?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  lastTouchAt?: string | null;
+  lastTouchLabel?: string | null;
+  pendingOfferCallTask?: OfferCallTaskSummary | null;
+  error?: string;
+};
+
 function cleanText(value: unknown) {
   const normalized = String(value || "").trim();
   return normalized || null;
@@ -83,4 +97,37 @@ export function selectPendingOfferCallTaskForOffer(
     .sort(byDueDateThenRecentUpdate)[0] || null;
 
   return task ? taskSummary(task) : null;
+}
+
+export function buildOfferCallTaskOnlyContexts(
+  tasks: CustomerInternalTask[],
+  entries: OfferCallContextRequestEntry[],
+): OfferCallTaskOnlyContext[] {
+  return entries.map((entry) => {
+    const offerId = cleanText(entry.offerId);
+    if (!offerId) {
+      return { offerId: null, matched: false, matchedBy: "none", error: "missing_offer_id" };
+    }
+
+    const pendingOfferCallTask = selectPendingOfferCallTaskForOffer(tasks, entry);
+    if (!pendingOfferCallTask) {
+      return { offerId, matched: false, matchedBy: "none", pendingOfferCallTask: null };
+    }
+
+    const sourceTask = tasks.find((task) => task.id === pendingOfferCallTask.id) || null;
+    return {
+      offerId,
+      matched: true,
+      matchedBy: "offer",
+      requestId: sourceTask?.requestId || null,
+      customerRecordUrl: sourceTask?.requestId
+        ? `/ops/customer-records?query=${encodeURIComponent(sourceTask.requestId)}`
+        : null,
+      customerName: sourceTask?.customerName || null,
+      customerEmail: sourceTask?.customerEmail || null,
+      lastTouchAt: sourceTask?.updatedAt || null,
+      lastTouchLabel: "Offene Angebots-Call-Aufgabe",
+      pendingOfferCallTask,
+    };
+  });
 }
