@@ -399,6 +399,68 @@ test("searchCustomerRecords builds Outlook mail filters with raw email values", 
   assert.equal(url.searchParams.get("or")?.includes("%40"), false);
 });
 
+test("searchCustomerRecords handles master customers without request id", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const calls: URL[] = [];
+
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    calls.push(url);
+
+    if (url.pathname.endsWith("/rest/v1/master_customers") && url.searchParams.get("limit") === "10") {
+      return new Response(
+        JSON.stringify([
+          {
+            id: "customer_without_request",
+            request_id: null,
+            email: "anastasia.kaszuba@flatpay.de",
+            billing_email: null,
+            original_email: "anastasia.kaszuba@flatpay.de",
+            cc_emails: [],
+            first_name: "Anastasia",
+            last_name: "Kaszuba",
+            name: "Anastasia Kaszuba",
+            phone: null,
+            company: "Flatpay",
+            company_name: "Flatpay",
+            updated_at: "2026-03-29T20:00:31.312Z",
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const results = await searchCustomerRecords("anastasia.kaszuba@flatpay.de");
+
+    assert.equal(results.length, 1);
+    assert.equal(results[0]?.masterCustomerId, "customer_without_request");
+    assert.equal(results[0]?.requestId, null);
+    assert.equal(results[0]?.email, "anastasia.kaszuba@flatpay.de");
+    assert.equal(results[0]?.request, null);
+    assert.equal(calls.some((url) => [...url.searchParams.values()].some((value) => value.includes("eq.null"))), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) {
+      delete process.env.SUPABASE_URL;
+    } else {
+      process.env.SUPABASE_URL = originalUrl;
+    }
+    if (originalKey === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+    }
+  }
+});
+
 test("parseTrelloCardIdentifier extracts short links from Trello URLs", () => {
   assert.equal(
     parseTrelloCardIdentifier("https://trello.com/c/FYXcIQ9K/12910-led-flex-samuele-micacchioni"),

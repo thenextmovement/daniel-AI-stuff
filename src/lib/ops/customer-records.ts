@@ -4029,14 +4029,17 @@ async function fetchDownstreamRows(
   const { includeOfferTracking = true } = options;
   const { includeActivity = true } = options;
   const { includeRelated = true } = options;
+  const requestId = trimNullable(master.request_id);
   const emails = emailCandidates(master);
-  const requestRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
-    select:
-      "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
-    request_id: `eq.${master.request_id}`,
-    order: "updated_at.desc",
-    limit: 1,
-  });
+  const requestRows = requestId
+    ? await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+        select:
+          "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+        request_id: `eq.${requestId}`,
+        order: "updated_at.desc",
+        limit: 1,
+      })
+    : [];
   const request = requestRows[0] || null;
   const quoteEmailOr = buildOrFilter([
     ...emails.map((email) => emailEqualsClause("recipient_email", email)),
@@ -4047,7 +4050,7 @@ async function fetchDownstreamRows(
   const inboundEmailOr = buildOrFilter(emails.map((email) => emailEqualsClause("from_email", email)));
   const outlookMessageOr = buildOrFilter([
     ...(request?.id ? [`linked_request_id.eq.${encodeURIComponent(request.id)}`] : []),
-    `linked_request_id.eq.${encodeURIComponent(master.request_id)}`,
+    ...(requestId ? [`linked_request_id.eq.${encodeURIComponent(requestId)}`] : []),
     `linked_customer_id.eq.${master.id}`,
     ...emails.map((email) => emailEqualsClause("matched_email", email)),
     ...emails.map((email) => emailEqualsClause("from_email", email)),
@@ -4061,17 +4064,17 @@ async function fetchDownstreamRows(
   const ordersByEmailOr = buildOrFilter(emails.map((email) => emailEqualsClause("email", email)));
   const phone = trimNullable(master.phone);
   const crmSalesOr = buildOrFilter([
-    `request_id.eq.${master.request_id}`,
+    ...(requestId ? [`request_id.eq.${requestId}`] : []),
     ...emails.map((email) => emailEqualsClause("customer_email", email)),
   ]);
   const crmQuotesOr = buildOrFilter([
-    `request_id.eq.${master.request_id}`,
+    ...(requestId ? [`request_id.eq.${requestId}`] : []),
     `customer_id.eq.${master.id}`,
     ...emails.map((email) => emailEqualsClause("contact_email", email)),
     ...(phone ? [`contact_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
   const voiceCallsOr = buildOrFilter([
-    `request_id.eq.${master.request_id}`,
+    ...(requestId ? [`request_id.eq.${requestId}`] : []),
     ...(phone ? [`caller_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
   const relatedCustomersOr = buildOrFilter([
@@ -4082,16 +4085,18 @@ async function fetchDownstreamRows(
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
   const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, outlookMessages, inboundEmails, audits, caseStates, activeViews, latestSegmentRows] = await Promise.all([
-    supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
-      select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
-      request_id: `eq.${master.request_id}`,
-      order: "created_at.desc",
-      limit: 1,
-    }),
+    requestId
+      ? supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
+          select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
+          request_id: `eq.${requestId}`,
+          order: "created_at.desc",
+          limit: 1,
+        })
+      : Promise.resolve([]),
     supabaseRequest<MasterOrderRow[]>("master_orders", undefined, {
       select:
         "id,customer_id,request_id,shopify_order_id,shopify_order_number,status,fulfillment_status,order_value,currency,shipped_at,delivered_at,tracking_number,carrier,created_at,shopify_created_at,shipping_address,billing_address",
-      or: buildOrFilter([`customer_id.eq.${master.id}`, `request_id.eq.${master.request_id}`]),
+      or: buildOrFilter([`customer_id.eq.${master.id}`, ...(requestId ? [`request_id.eq.${requestId}`] : [])]),
       order: "created_at.desc",
       limit: 5,
     }),
@@ -4115,12 +4120,14 @@ async function fetchDownstreamRows(
       order: "created_at.desc",
       limit: 5,
     }),
-    supabaseRequest<CallLogRow[]>("call_logs", undefined, {
-      select: "id,request_id,called_at,caller,source,outcome,sentiment,summary,next_action_date,confidence,created_at",
-      request_id: `eq.${master.request_id}`,
-      order: "called_at.desc",
-      limit: 8,
-    }),
+    requestId
+      ? supabaseRequest<CallLogRow[]>("call_logs", undefined, {
+          select: "id,request_id,called_at,caller,source,outcome,sentiment,summary,next_action_date,confidence,created_at",
+          request_id: `eq.${requestId}`,
+          order: "called_at.desc",
+          limit: 8,
+        })
+      : Promise.resolve([]),
     supabaseRequest<VoiceAgentCallRow[]>("voice_agent_calls", undefined, {
       select:
         "id,request_id,created_at,direction,caller_phone,caller_name,duration_seconds,recording_url,summary,detected_intent,callback_needed,escalated,transfer_summary,company_name,human_transfer_completed",
@@ -4128,17 +4135,21 @@ async function fetchDownstreamRows(
       order: "created_at.desc",
       limit: 8,
     }),
-    supabaseRequest<FollowupQueueRow[]>("followup_queue", undefined, {
-      select:
-        "id,request_id,customer_email,customer_name,customer_company,followup_type,followup_number,email_subject,reply_subject,status,scheduled_for,sent_at,reply_detected_at,updated_at,mockup_url,mockup_url_2,mockup_url_3",
-      request_id: `eq.${master.request_id}`,
-      order: "scheduled_for.asc",
-    }),
-    supabaseRequest<LeadFollowupPlanRow[]>("lead_followup_plans", undefined, {
-      select: "id,request_id,customer_email,contactability_status,call_after,planning_reason",
-      request_id: `eq.${master.request_id}`,
-      order: "created_at.desc",
-    }),
+    requestId
+      ? supabaseRequest<FollowupQueueRow[]>("followup_queue", undefined, {
+          select:
+            "id,request_id,customer_email,customer_name,customer_company,followup_type,followup_number,email_subject,reply_subject,status,scheduled_for,sent_at,reply_detected_at,updated_at,mockup_url,mockup_url_2,mockup_url_3",
+          request_id: `eq.${requestId}`,
+          order: "scheduled_for.asc",
+        })
+      : Promise.resolve([]),
+    requestId
+      ? supabaseRequest<LeadFollowupPlanRow[]>("lead_followup_plans", undefined, {
+          select: "id,request_id,customer_email,contactability_status,call_after,planning_reason",
+          request_id: `eq.${requestId}`,
+          order: "created_at.desc",
+        })
+      : Promise.resolve([]),
     supabaseRequest<DocumentJourneyRow[]>("document_journey", undefined, {
       select: "id,customer_id,customer_email,current_status,document_name,pandadoc_link,total_value,sent_at,first_viewed_at,completed_at,reminder_1_sent,reminder_2_sent,reminder_3_sent,reply_detected_at,reply_classification,updated_at",
       ...(documentJourneyOr ? { or: documentJourneyOr } : {}),
@@ -4147,7 +4158,7 @@ async function fetchDownstreamRows(
     includeActivity
       ? supabaseRequest<MasterCommunicationRow[]>("master_communications", undefined, {
           select: "id,type,direction,subject,content,status,created_at",
-          or: `(request_id.eq.${master.request_id},customer_id.eq.${master.id})`,
+          or: buildOrFilter([...(requestId ? [`request_id.eq.${requestId}`] : []), `customer_id.eq.${master.id}`]),
           order: "created_at.desc",
           limit: 6,
         })
@@ -4178,7 +4189,7 @@ async function fetchDownstreamRows(
           order: "updated_at.desc",
           limit: 12,
         },
-        { requestId: master.request_id, customerId: master.id },
+        { requestId, customerId: master.id },
       )
       : Promise.resolve([]),
     includeActivity
@@ -4190,25 +4201,31 @@ async function fetchDownstreamRows(
         })
       : Promise.resolve([]),
     includeActivity
-      ? supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
-          select: "id,document_id,workflow_name,action,status,error_message,metadata,created_at",
-          document_id: `eq.${master.request_id}`,
-          order: "created_at.desc",
-          limit: 40,
+      ? requestId
+        ? supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+            select: "id,document_id,workflow_name,action,status,error_message,metadata,created_at",
+            document_id: `eq.${requestId}`,
+            order: "created_at.desc",
+            limit: 40,
+          })
+        : Promise.resolve([])
+      : Promise.resolve([]),
+    requestId
+      ? supabaseRequest<CustomerCaseStateRow[]>("customer_case_state", undefined, {
+          select: "request_id,state,snoozed_until,reason,updated_by,source_action,metadata,created_at,updated_at",
+          request_id: `eq.${requestId}`,
+          limit: 1,
         })
       : Promise.resolve([]),
-    supabaseRequest<CustomerCaseStateRow[]>("customer_case_state", undefined, {
-      select: "request_id,state,snoozed_until,reason,updated_by,source_action,metadata,created_at,updated_at",
-      request_id: `eq.${master.request_id}`,
-      limit: 1,
-    }),
-    supabaseRequest<CustomerCardViewRow[]>("ops_card_views", undefined, {
-      select: "request_id,viewer_key,operator_name,last_seen_at,user_agent,created_at,updated_at",
-      request_id: `eq.${master.request_id}`,
-      last_seen_at: `gte.${activeViewerCutoffIso()}`,
-      order: "last_seen_at.desc",
-      limit: 8,
-    }),
+    requestId
+      ? supabaseRequest<CustomerCardViewRow[]>("ops_card_views", undefined, {
+          select: "request_id,viewer_key,operator_name,last_seen_at,user_agent,created_at,updated_at",
+          request_id: `eq.${requestId}`,
+          last_seen_at: `gte.${activeViewerCutoffIso()}`,
+          order: "last_seen_at.desc",
+          limit: 8,
+        })
+      : Promise.resolve([]),
     request?.id
       ? supabaseRequest<LatestSegmentClassificationRow[]>("request_segmentation_latest_classification", undefined, {
           select: "request_id,status,segment,s_kategorie,confidence,policy_version,created_at",
@@ -4292,23 +4309,25 @@ async function fetchDownstreamRows(
     : [];
   const trelloCardIdHint = parseTrelloCardIdFromNotes(crmQuotes[0]?.notes_internal);
   const offerTracking = includeOfferTracking
-    ? await fetchOfferTrackingRollup({
-        requestId: master.request_id,
-        request,
-        crmQuotes: crmQuotes || [],
-        trelloCardIdHint,
-      })
+    ? requestId
+      ? await fetchOfferTrackingRollup({
+          requestId,
+          request,
+          crmQuotes: crmQuotes || [],
+          trelloCardIdHint,
+        })
+      : null
     : null;
   let trello: CustomerTrelloContext | null = null;
-  if (includeTrello) {
+  if (includeTrello && requestId) {
     try {
-      trello = await fetchTrelloContext(master.request_id, request?.trello_card_url, [
+      trello = await fetchTrelloContext(requestId, request?.trello_card_url, [
         request?.title,
         master.name,
         [master.first_name, master.last_name].filter(Boolean).join(" "),
       ], trelloCardIdHint);
     } catch (error) {
-      console.warn("customer records trello context unavailable", { requestId: master.request_id, error });
+      console.warn("customer records trello context unavailable", { requestId, error });
     }
   }
 
@@ -4334,7 +4353,7 @@ async function fetchDownstreamRows(
     latestSegmentClassification: latestSegmentRows[0] || null,
     quote: quoteRows[0] || null,
     order:
-      mergedOrders.find((row) => trimNullable(row.request_id) === master.request_id) ||
+      mergedOrders.find((row) => trimNullable(row.request_id) === requestId) ||
       mergedOrders[0] ||
       null,
     orderHistory: mergedOrders,
