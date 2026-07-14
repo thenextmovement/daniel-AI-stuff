@@ -70,7 +70,6 @@ async function createEnrichmentToken(secret, leadId) {
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
   return `${expiresAt}.${base64Url(signature)}`;
 }
-
 // Fire-and-forget error beacon to the same-origin fail-report endpoint.
 // Uses ctx.waitUntil so the response returns immediately but the log finishes.
 function reportFailure(ctx, origin, payload) {
@@ -155,7 +154,6 @@ async function handlePost(request, ctx) {
     : crypto.randomUUID();
   formData.set("request_id", leadId);
   formData.set("nt_client_submit_id", leadId);
-
   // Synthetic deploy smoke test. Verifies that the Pages Function exists,
   // accepts multipart FormData and returns JSON without creating a real lead.
   if (formData.get("nt_dry_run") === "1") {
@@ -166,11 +164,13 @@ async function handlePost(request, ctx) {
     );
   }
 
+  // Cloudflare request metadata is used both by the honeypot false-positive
+  // alert and by the eventual upstream n8n forward.
+  const cf = request.cf || {};
   // ─── Honeypot: serverside spam filter ───
   // Direct bot posts that fill "website" are filtered. If the payload also
   // contains real contact fields, treat it as likely mobile/password-manager
   // autofill and forward it instead of silently losing a possible lead.
-  const cf = request.cf || {};
   const honeypot = formData.get("website");
   if (honeypot) {
     const hasContact =

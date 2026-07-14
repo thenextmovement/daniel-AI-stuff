@@ -1,0 +1,511 @@
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/assets/fonts/inter-latin.woff2") format("woff2");
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", Arial, Helvetica, sans-serif;
+}
+
+.quote-shell,
+.quote-shell * {
+  box-sizing: border-box;
+}
+
+.quote-shell {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: #f6f4ef;
+  color: #171717;
+}
+
+.quote-shell > header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  background: #fff;
+}
+
+.quote-shell > header > div,
+.quote-shell > section,
+.quote-shell > div,
+.quote-shell > footer > div {
+  width: min(100%, 1280px);
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+.quote-shell > header > div {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  padding-block: 42px 34px;
+}
+
+.quote-shell header img {
+  width: auto;
+  height: 36px;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.quote-shell header h1 {
+  max-width: 720px;
+  margin: 10px 0 0;
+  font-size: clamp(38px, 5vw, 64px);
+  font-weight: 720;
+  line-height: 1.03;
+  text-wrap: balance;
+}
+
+.quote-shell header p {
+  margin: 32px 0 0;
+  color: #fa31a2;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.quote-shell dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: 430px;
+  max-width: 100%;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #f8f8f8;
+  font-size: 14px;
+}
+
+.quote-shell dl > div {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.quote-shell dt {
+  color: #737373;
+  font-weight: 700;
+}
+
+.quote-shell dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.quote-shell > section {
+  padding-block: 28px;
+}
+
+.quote-shell section > .rounded-lg,
+.quote-shell article,
+.quote-shell fieldset,
+.quote-shell aside {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.quote-shell > section > div {
+  padding: 28px;
+}
+
+.quote-shell p {
+  line-height: 1.6;
+}
+
+.quote-shell > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 28px;
+  padding-bottom: 56px;
+}
+
+.quote-shell > div > div:first-child {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.quote-shell > div > div:first-child > section:not([aria-label="Mockup Bilder"]) {
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.quote-shell > div > div:first-child > section:not([aria-label="Mockup Bilder"]) > div:first-child {
+  padding: 24px 26px 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.quote-shell > div > div:first-child > section:not([aria-label="Mockup Bilder"]) > div:first-child p {
+  margin: 8px 0 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.quote-shell [aria-label="Mockup Bilder"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.quote-shell figure {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.quote-shell figure img {
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  object-fit: cover;
+}
+
+.quote-shell h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 760;
+}
+
+.quote-shell article {
+  margin: 0;
+  padding: 20px 24px;
+  border-width: 0 0 1px;
+  border-color: rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.quote-shell article:last-child {
+  border-bottom: 0;
+}
+
+.quote-shell article > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, auto);
+  gap: 24px;
+  align-items: center;
+}
+
+.quote-shell article label {
+  display: flex;
+  gap: 14px;
+  cursor: pointer;
+}
+
+.quote-shell article label > span {
+  display: block;
+}
+
+.quote-shell article label > span > span:first-child {
+  display: block;
+  font-weight: 760;
+}
+
+.quote-shell article label > span > span:last-child {
+  display: block;
+  margin-top: 6px;
+  color: #5f5f5f;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.quote-shell article input[type="checkbox"],
+.quote-shell article input[type="radio"],
+.quote-shell label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #fa31a2;
+}
+
+.quote-shell article > div > div:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.quote-shell article strong {
+  min-width: 92px;
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 800;
+}
+
+.quote-shell article button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: #f1f1f1;
+  cursor: pointer;
+}
+
+.quote-shell article input[type="number"] {
+  width: 58px;
+  height: 34px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  text-align: center;
+}
+
+.quote-shell label {
+  min-width: 0;
+}
+
+.quote-shell input,
+.quote-shell button {
+  font: inherit;
+}
+
+.quote-shell input[type="text"],
+.quote-shell input[type="number"],
+.quote-shell fieldset input:not([type]) {
+  min-height: 42px;
+}
+
+.quote-shell fieldset {
+  padding: 22px;
+  border-radius: 10px;
+}
+
+.quote-shell legend {
+  padding-inline: 4px;
+  font-size: 16px;
+  font-weight: 760;
+}
+
+.quote-shell fieldset > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quote-shell fieldset label {
+  display: grid;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.quote-shell fieldset input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.quote-shell aside {
+  position: sticky;
+  top: 20px;
+  padding: 22px;
+  background: #111;
+  color: #fff;
+  border-color: #111;
+  border-radius: 10px;
+}
+
+.quote-shell aside strong {
+  font-size: 20px;
+}
+
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(2),
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(3),
+.quote-shell > div > div:first-child > section:last-child > label,
+.quote-shell > div > div:first-child > section:last-child > button {
+  margin-inline: 24px;
+}
+
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(2) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(2) > div {
+  display: grid;
+  gap: 12px;
+}
+
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(2) > div > label,
+.quote-shell > div > div:first-child > section:last-child > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fafafa;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(3) {
+  margin-top: 20px;
+}
+
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(3) > p {
+  margin: 0 0 8px;
+  font-weight: 760;
+}
+
+.quote-shell > div > div:first-child > section:last-child > div:nth-of-type(3) button {
+  width: 100%;
+  min-height: 128px;
+  border: 1px dashed rgba(0, 0, 0, 0.28);
+  border-radius: 10px;
+  background: #f7f7f7;
+  cursor: pointer;
+}
+
+.quote-shell > div > div:first-child > section:last-child > label {
+  margin-top: 18px;
+}
+
+.quote-shell > div > div:first-child > section:last-child > button {
+  width: calc(100% - 48px);
+  min-height: 48px;
+  margin-top: 18px;
+  margin-bottom: 24px;
+  border: 0;
+  border-radius: 8px;
+  background: #fa31a2;
+  color: #fff;
+  font-weight: 780;
+}
+
+.quote-shell > div > div:first-child > section:last-child > button:disabled {
+  background: #d4d4d4;
+  color: #777;
+  cursor: not-allowed;
+}
+
+.quote-shell footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  background: #fff;
+}
+
+.quote-shell footer > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  padding-block: 32px;
+}
+
+@media (max-width: 900px) {
+  .quote-shell > header > div,
+  .quote-shell > div,
+  .quote-shell [aria-label="Mockup Bilder"],
+  .quote-shell footer > div {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-shell > header > div {
+    display: grid;
+    align-items: start;
+  }
+
+  .quote-shell > div {
+    display: grid;
+  }
+
+  .quote-shell aside {
+    position: static;
+  }
+}
+
+@media (max-width: 520px) {
+  .quote-shell > header > div,
+  .quote-shell > section,
+  .quote-shell > div,
+  .quote-shell > footer > div {
+    padding-inline: 16px;
+  }
+
+  .quote-shell header img {
+    height: 28px;
+    max-width: 150px;
+  }
+
+  .quote-shell header h1 {
+    font-size: 31px;
+  }
+
+  .quote-shell dl,
+  .quote-shell fieldset > div,
+  .quote-shell article > div {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-shell > header > div {
+    padding-block: 24px;
+  }
+
+  .quote-shell > section {
+    padding-block: 18px;
+  }
+
+  .quote-shell > section > div,
+  .quote-shell > div > div:first-child > section:not([aria-label="Mockup Bilder"]) > div:first-child,
+  .quote-shell article,
+  .quote-shell fieldset,
+  .quote-shell aside {
+    padding: 18px;
+  }
+
+  .quote-shell > div > div:first-child > section:last-child > div:nth-of-type(2) {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-shell > div > div:first-child > section:last-child > div:nth-of-type(2),
+  .quote-shell > div > div:first-child > section:last-child > div:nth-of-type(3),
+  .quote-shell > div > div:first-child > section:last-child > label,
+  .quote-shell > div > div:first-child > section:last-child > button {
+    margin-inline: 18px;
+  }
+
+  .quote-shell > div > div:first-child > section:last-child > button {
+    width: calc(100% - 36px);
+  }
+
+  .quote-shell article > div > div:last-child {
+    justify-content: space-between;
+  }
+
+  .quote-shell figure img {
+    min-height: 230px;
+  }
+}

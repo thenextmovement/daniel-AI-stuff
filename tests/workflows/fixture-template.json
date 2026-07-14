@@ -1,0 +1,16 @@
+{
+  "name": "fixture-template",
+  "description": "NEONTRIP workflow fixture template for deterministic tests.",
+  "input": {
+    "event_id": "fixture-event-id",
+    "source": "fixture-source",
+    "occurred_at": "2026-04-27T00:00:00Z",
+    "payload": {}
+  },
+  "expected": {
+    "validation": "pass",
+    "idempotency_key": "fixture-event-id",
+    "side_effects": [],
+    "logs": []
+  }
+}

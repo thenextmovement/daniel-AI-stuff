@@ -12,3 +12,10 @@ audits/chrome-landingpages-*/
 # Temporary files
 *.tmp
 *.log
+
+# Secrets — DEPLOY.md contains live Cloudflare API token
+DEPLOY.md
+.env
+.env.*
+!.env.example
+!.env.ops.example
