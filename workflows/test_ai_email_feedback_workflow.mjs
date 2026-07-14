@@ -40,7 +40,7 @@ assert.equal(feedback.length, 1);
 assert.equal(feedback[0].json.p_source_message_id, 'source-1');
 assert.equal(feedback[0].json.p_sent_message_id, 'sent-1');
 assert.ok(feedback[0].json.p_edit_ratio <= 0.02);
-assert.equal(feedback[0].json.p_edit_summary.collector_version, 'email-feedback-v1.1');
+assert.equal(feedback[0].json.p_edit_summary.collector_version, 'email-feedback-v1.2');
 
 const mobileReplyFeedback = executeCode('Build Review Feedback', {
   $input: { all: () => [{ json: { body: { value: [{
@@ -69,6 +69,17 @@ const emptyDraftFeedback = executeCode('Build Review Feedback', {
   } }] : [] }),
 });
 assert.equal(emptyDraftFeedback.length, 0);
+
+const priorSentFeedback = executeCode('Build Review Feedback', {
+  $input: { all: () => [{ json: { body: { value: [{
+    id: 'sent-before-draft',
+    conversationId: 'conversation-1',
+    sentDateTime: '2026-07-14T09:59:00Z',
+    body: { content: '<p>Earlier reply in the same conversation</p>' },
+  }] } } }] },
+  $: (name) => ({ all: () => name === 'Expand Pending Reviews' ? pendingRows.map((json) => ({ json })) : [] }),
+});
+assert.equal(priorSentFeedback.length, 0);
 
 assert.equal(workflow.nodes.length, 6);
 assert.equal(workflow.nodes.filter((entry) => /send(?:Mail)?/i.test(String(entry.parameters?.url || ''))).length, 0);

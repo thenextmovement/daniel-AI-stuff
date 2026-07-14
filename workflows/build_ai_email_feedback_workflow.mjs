@@ -129,7 +129,7 @@ for (let index = 0; index < responseItems.length; index += 1) {
   const sent = messages
     .filter((message) => {
       const sentAt = Date.parse(message.sentDateTime || 0);
-      return !Number.isFinite(createdAt) || !Number.isFinite(sentAt) || sentAt >= createdAt - 10 * 60 * 1000;
+      return Number.isFinite(createdAt) && Number.isFinite(sentAt) && sentAt >= createdAt - 30 * 1000;
     })
     .sort((left, right) => Date.parse(left.sentDateTime || 0) - Date.parse(right.sentDateTime || 0))[0];
   if (!sent?.id) continue;
@@ -149,7 +149,7 @@ for (let index = 0; index < responseItems.length; index += 1) {
       sent_characters: sentText.length,
       draft_words: normalize(draftText).split(/\s+/).filter(Boolean).length,
       sent_words: normalize(sentText).split(/\s+/).filter(Boolean).length,
-      collector_version: 'email-feedback-v1.1',
+      collector_version: 'email-feedback-v1.2',
     },
   } });
 }
