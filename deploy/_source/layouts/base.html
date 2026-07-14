@@ -153,6 +153,13 @@
     html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     body { font-family: 'Inter', sans-serif; }
 
+    /* Cookiebot inherits the brand pink, but its 12px white CTA needs a darker
+       background to meet WCAG AA on the live consent dialog. */
+    #CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll {
+      background-color: #b91f6f !important;
+      border-color: #b91f6f !important;
+    }
+
     /* Shared shell for the intent-specific project and FAQ overrides. */
     :root { --nt-pink:#fa31a2; --nt-pink-dark:#c5286e; --nt-ink:#0a0a0a; --nt-muted:#62626b; --nt-line:#e8e8ec; --nt-soft:#f7f7f8; --nt-radius:24px; }
     .nt-container { width:min(100% - 48px,1160px); margin-inline:auto; }
