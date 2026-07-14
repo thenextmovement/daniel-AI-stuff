@@ -70,6 +70,151 @@ function category(text) {
   return [...new Set(result)].join(', ');
 }
 
+function impactRecommendations(item) {
+  const text = (item.title + ' ' + item.summary + ' ' + item.category).toLowerCase();
+  const isAudio = /audio|voice|speech|tts|realtime|transcrib|music/.test(text);
+  const isImage = /image|vision|imagen|dall|nano banana/.test(text);
+  const isVideo = /video|sora|veo/.test(text);
+  const isEmbedding = /embedding|vector|retrieval|file search|multimodal search/.test(text);
+  const isGeneralOpenAiModel = /gpt|chatgpt|\bo\d(?:\b|-)/.test(text);
+  const isRetirement = /deprecat|retir|sunset|shut down|end.of.life/.test(text);
+  const migrationPrefix = isRetirement ? 'Migration zeitnah planen; ' : '';
+  const result = [];
+  const add = (entry) => result.push({ provider: item.provider, trigger: item.title, ...entry });
+
+  if (item.provider === 'Anthropic') {
+    add({
+      key: 'anthropic-ai-email-agent', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Direkt betroffen',
+      target: 'AI Email Agent v2 — Draft Only', location: 'n8n · ET6R8SAOjAquCpaH · Analyze Attachments Safely / Draft Reply JSON',
+      action: migrationPrefix + 'neues Claude-Modell zuerst gegen gespeicherte Mail- und Attachment-Evals im Draft-only-Modus vergleichen.',
+      chance: 'Bessere Anhangserkennung, stabilere JSON-Entwürfe und möglicherweise geringere Laufzeit oder Kosten.',
+      risk: 'Prompt- und JSON-Drift kann falsche Aussagen, Zusagen oder unvollständige Anhanganalyse erzeugen.',
+      guardrail: 'Keine Auto-Sends; JSON-Schema, Promise-Blocker und Human Review unverändert lassen.',
+    });
+    add({
+      key: 'anthropic-followup-processor', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Direkt betroffen',
+      target: 'NEONTRIP Follow-up Queue Processor v3.6', location: 'n8n · CS4jhqo9tdd0cPe4 · Claude / Claude Retry / Classify Reply / Classify EC',
+      action: migrationPrefix + 'Shadow-Auswertung auf historischen Antworten durchführen, bevor Klassifikation oder Retry-Modell geändert wird.',
+      chance: 'Genauere Erkennung von Antwort, Absage und Terminwunsch; weniger unnötige Follow-ups.',
+      risk: 'Fehlklassifikation kann Follow-ups stoppen oder Reschedule/Cancel-Aktionen falsch vorbereiten.',
+      guardrail: 'Bestehende Parser, deterministische Action-Switches und Datenbank-Idempotenz nicht umgehen.',
+    });
+  }
+
+  if (item.provider === 'OpenAI' && !isAudio && ((!isImage && !isVideo) || isGeneralOpenAiModel)) {
+    add({
+      key: 'openai-request-segmenter', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Direkt betroffen',
+      target: 'NEONTRIP Request Segmenter v1.0 (SHADOW)', location: 'n8n · ELpwCfdWOCRZ22gy · OpenAI Structured Segment Classifier',
+      action: migrationPrefix + 'neues GPT-Modell im vorhandenen Shadow-Betrieb gegen die aktuelle Segment-Taxonomie testen.',
+      chance: 'Höhere Klassifikationsqualität bei geringerem Tokenverbrauch und bessere strukturierte Outputs.',
+      risk: 'Taxonomie-Drift oder andere JSON-Details können Routing und nachgelagerte Automationen verschieben.',
+      guardrail: 'Nur validiertes Schema speichern; Trello bleibt Projektion und darf keine Klassifikationsquelle werden.',
+    });
+    add({
+      key: 'openai-unstructured-requests', priority: isRetirement ? 'HOCH' : 'NIEDRIG', match: 'Direkt betroffen',
+      target: 'RH | Unstruktuierte Anfragen Aktiv', location: 'n8n · AcYSau5MGsAxeAqL · Übersetzung / Message a model',
+      action: migrationPrefix + 'Deutsch/Englisch/Chinesisch-Evals sowie Feldvollständigkeit vor einem Modellwechsel vergleichen.',
+      chance: 'Bessere Mehrsprachigkeit und robustere Extraktion aus unstrukturierten Anfragen.',
+      risk: 'Übersetzungsnuancen oder extrahierte Werte können sich ändern und operative Daten verfälschen.',
+      guardrail: 'Preise, Termine und Zusagen weiterhin ausschließlich deterministisch validieren.',
+    });
+  }
+
+  if (item.provider === 'OpenAI' && isAudio) {
+    add({
+      key: 'openai-voice-runtime', priority: isRetirement ? 'HOCH' : 'HOCH', match: 'Direkt betroffen',
+      target: 'NEONTRIP Voice Runtime', location: 'Ops-Software · services/voice-runtime · OpenAI Realtime/SIP; Eval-Suite in src/lib/ops/voice-platform-evals.ts',
+      action: migrationPrefix + 'neues Realtime-/Audio-Modell nur im internal_test-Modus gegen die bestehende 50+-Szenarien-Eval-Suite testen.',
+      chance: 'Natürlichere Gespräche, geringere Latenz, bessere Unterbrechungserkennung und günstigere Calls.',
+      risk: 'Turn-Taking, Tool Calls, Gesprächskosten, Disclosure und Human Handoff können regressieren.',
+      guardrail: 'Kein Produktionswechsel ohne Consent-, Handoff-, Safety- und Kostenvergleich; keine Audio-/Transcript-Persistenz ergänzen.',
+    });
+    add({
+      key: 'openai-voice-poller', priority: 'NIEDRIG', match: 'Indirekt betroffen',
+      target: 'Voice Agent — Call Status Poller v1.0', location: 'n8n · PsymhpsiEs8Qj6vN · Vapi-Status und Supabase-Outcomes',
+      action: 'Status- und Failure-Mapping prüfen, falls der Voice-Provider oder das Realtime-Modell neue Endzustände liefert.',
+      chance: 'Präzisere Outcome-Erkennung und weniger hängenbleibende Reminder.',
+      risk: 'Neue Statuswerte könnten als unbekannt behandelt werden und Recovery verhindern.',
+      guardrail: 'Postgres bleibt Source of Truth; Statusänderungen idempotent halten.',
+    });
+  }
+
+  if (item.provider === 'Gemini' && isVideo) {
+    add({
+      key: 'gemini-video-qc', priority: isRetirement ? 'HOCH' : 'HOCH', match: 'Direkt betroffen',
+      target: 'KI-Video Generator — Video Content QC', location: 'n8n · 9FoJMH6OUdsi36FB · Analyze Video Content QC (Gemini)',
+      action: migrationPrefix + 'neues Gemini-Modell parallel auf akzeptierten und abgelehnten Videos evaluieren; Schwellenwerte nicht automatisch übernehmen.',
+      chance: 'Bessere Erkennung von falschem Inhalt, Artefakten und nicht passenden Neon-Mockups.',
+      risk: 'False Positives blockieren Angebote; False Negatives lassen unpassende Kundenvideos durch.',
+      guardrail: 'Bestehenden Watchdog, Review-Puffer und Failure-Pfad unverändert lassen.',
+    });
+    add({
+      key: 'gemini-veo-vs-runway', priority: 'MITTEL', match: 'Testkandidat, kein Direkt-Upgrade',
+      target: 'KI-Video Generator — Runway-Erzeugung', location: 'n8n · HIFQvcfBKPEK9oSN / 9FoJMH6OUdsi36FB · Build Runway Request / Submit to Runway',
+      action: 'Veo als separaten Provider-Adapter mit identischen Mockups testen; Runway nicht direkt ersetzen.',
+      chance: 'Möglicherweise bessere Bewegungsqualität, Prompttreue oder Preis-Leistung.',
+      risk: 'Andere Dauer, Seitenverhältnisse, Moderation, Latenz, Kosten und Download-Verträge.',
+      guardrail: 'Provider hinter Feature-Flag; bestehende Runway-Rollback-Route und Content-QC beibehalten.',
+    });
+  }
+
+  if (item.provider === 'Gemini' && !isVideo) {
+    add({
+      key: 'gemini-video-qc-compatibility', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Kompatibilität prüfen',
+      target: 'KI-Video Generator — Gemini Video Content QC', location: 'n8n · 9FoJMH6OUdsi36FB · Analyze Video Content QC',
+      action: migrationPrefix + 'prüfen, ob der verwendete Gemini-Modellname oder Alias betroffen ist; nur mit Video-QC-Evals umstellen.',
+      chance: 'Besseres multimodales Reasoning kann die Qualitätskontrolle der Angebotsvideos verbessern.',
+      risk: 'Ein allgemeines Gemini-Release muss nicht dieselben Videoeingaben oder dasselbe Ausgabeformat unterstützen.',
+      guardrail: 'Kompatibilität, Video-Input und Parser-Output vor jedem Wechsel deterministisch validieren.',
+    });
+  }
+
+  if (item.provider === 'OpenAI' && isVideo && !isGeneralOpenAiModel) {
+    add({
+      key: 'openai-video-vs-runway', priority: 'MITTEL', match: 'Testkandidat, kein Direkt-Upgrade',
+      target: 'KI-Video Generator — Runway-Erzeugung', location: 'n8n · HIFQvcfBKPEK9oSN / 9FoJMH6OUdsi36FB · Build Runway Request / Submit to Runway',
+      action: 'OpenAI-Videomodell als separaten Provider-Adapter mit denselben Neon-Mockups benchmarken; Runway nicht direkt ersetzen.',
+      chance: 'Möglicherweise bessere Prompttreue, integriertes Audio oder attraktivere Kosten.',
+      risk: 'Andere API-Verträge, Dauer, Auflösung, Moderation und asynchrone Statuswerte können den bestehenden Flow brechen.',
+      guardrail: 'Feature-Flag, isolierte Storage-Pfade, Content-QC und sofortige Rückschaltung auf Runway.',
+    });
+  }
+
+  if ((item.provider === 'Gemini' || item.provider === 'OpenAI') && isImage) {
+    add({
+      key: item.provider.toLowerCase() + '-image-mockups', priority: 'MITTEL', match: 'Testkandidat, kein Direkt-Upgrade',
+      target: 'Mockup-/Design-Erzeugung', location: 'Ops-Software · design-generation-worker sowie sichere Mockup-Eingänge des KI-Video Generators',
+      action: 'Neues Bildmodell in einem separaten Testpfad für Neon-Mockups, Varianten und Headerbilder benchmarken.',
+      chance: 'Bessere Texttreue, realistischere Neon-Darstellung und weniger manuelle Korrekturen.',
+      risk: 'Logo-/Schriftfehler, falsche Farben oder Geometrien können ungeprüft in Angebote gelangen.',
+      guardrail: 'Keine automatische Kundenauslieferung; visuelle Freigabe und Originaldatei-Abgleich verpflichtend.',
+    });
+  }
+
+  if (isEmbedding) {
+    add({
+      key: item.provider.toLowerCase() + '-knowledge-embeddings', priority: 'MITTEL', match: 'Architektur-Kandidat',
+      target: 'NEONTRIP Wissensbasis / Pinecone-RAG', location: 'n8n · Google Drive → Pinecone Sync und AI Email Agent Knowledge Retrieval',
+      action: 'Neues Embedding-Modell nur in einem neuen Index testen; bestehenden Index niemals in-place mischen.',
+      chance: 'Bessere mehrsprachige und multimodale Suche in Dokumenten, Bildern und Supportwissen.',
+      risk: 'Dimensions- oder Vektorraumwechsel macht bestehende Einbettungen inkompatibel und verschlechtert Retrieval still.',
+      guardrail: 'Vollständiger Reindex, Recall-Evals und atomarer Alias-Switch mit Rollback.',
+    });
+  }
+
+  if (!result.length) {
+    add({
+      key: item.provider.toLowerCase() + '-observe-only', priority: isRetirement ? 'HOCH' : 'NIEDRIG', match: 'Kein direkter Einsatz gefunden',
+      target: 'NEONTRIP Modell-Radar', location: 'Kein aktuell identifizierter produktiver Modellknoten',
+      action: migrationPrefix + 'Release beobachten und erst bei klarer Prozesspassung einen isolierten Benchmark anlegen.',
+      chance: 'Frühe Kenntnis ohne unnötigen Migrationsaufwand.',
+      risk: 'Ein Modellwechsel ohne konkreten Use Case erzeugt Kosten und Regressionen ohne messbaren Nutzen.',
+      guardrail: 'Keine produktive Änderung allein aufgrund einer Release-Ankündigung.',
+    });
+  }
+  return result;
+}
+
 function makeCandidate(provider, title, date, url, summary, identity) {
   const cleanTitle = decode(title).slice(0, 220);
   const cleanSummary = decode(summary).slice(0, 650);
@@ -180,6 +325,17 @@ const keysToMark = (initialized ? fresh : candidates).map(item => item.key);
 
 const providerOrder = { OpenAI: 1, Anthropic: 2, Gemini: 3 };
 fresh.sort((a, b) => (providerOrder[a.provider] || 9) - (providerOrder[b.provider] || 9));
+const impactMap = new Map();
+for (const item of fresh) {
+  for (const impact of impactRecommendations(item)) {
+    const existing = impactMap.get(impact.key);
+    if (!existing) impactMap.set(impact.key, { ...impact, triggers: [item.title] });
+    else if (!existing.triggers.includes(item.title)) existing.triggers.push(item.title);
+  }
+}
+const impacts = [...impactMap.values()]
+  .sort((a, b) => ({ HOCH: 1, MITTEL: 2, NIEDRIG: 3 }[a.priority] - ({ HOCH: 1, MITTEL: 2, NIEDRIG: 3 }[b.priority])))
+  .slice(0, 10);
 
 const correlationId = 'ai-model-updates-' + $execution.id;
 const nowBerlin = $now.setZone('Europe/Berlin').toFormat('dd.MM.yyyy HH:mm');
@@ -200,12 +356,27 @@ if (fresh.length) {
     ).join('');
     return '<h2 style="font-size:18px;margin:22px 0 8px">' + esc(provider) + '</h2>' + cards;
   }).join('');
+  const impactHtml = impacts.length ?
+    '<h2 style="font-size:20px;margin:28px 0 8px">NEONTRIP Impact-Check</h2>' +
+    '<p style="font-size:13px;color:#4b5563;margin:0 0 10px">Vorschläge sind intern und lösen keine automatische Modelländerung aus.</p>' +
+    impacts.map(impact => {
+      const color = impact.priority === 'HOCH' ? '#b91c1c' : impact.priority === 'MITTEL' ? '#b45309' : '#374151';
+      return '<div style="border:1px solid #d1d5db;border-left:5px solid ' + color + ';border-radius:8px;padding:14px;margin:10px 0">' +
+        '<div style="font-size:12px;font-weight:700;color:' + color + '">' + esc(impact.priority) + ' · ' + esc(impact.match) + '</div>' +
+        '<div style="font-size:16px;font-weight:700;margin:5px 0">' + esc(impact.target) + '</div>' +
+        '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">' + esc(impact.location) + '</div>' +
+        '<div style="font-size:14px;margin:4px 0"><strong>Empfehlung:</strong> ' + esc(impact.action) + '</div>' +
+        '<div style="font-size:14px;margin:4px 0"><strong>Chance:</strong> ' + esc(impact.chance) + '</div>' +
+        '<div style="font-size:14px;margin:4px 0"><strong>Risiko:</strong> ' + esc(impact.risk) + '</div>' +
+        '<div style="font-size:14px;margin:4px 0"><strong>Schutzmaßnahme:</strong> ' + esc(impact.guardrail) + '</div>' +
+        '</div>';
+    }).join('') : '';
   emailSubject = '[KI-Modell-Update] ' + fresh.length + ' neue Meldung' + (fresh.length === 1 ? '' : 'en') + ': ' + Object.keys(groups).join(', ');
   emailHtml = '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;color:#111827;max-width:720px;line-height:1.45">' +
     '<div style="background:#111827;color:white;border-radius:9px;padding:16px 18px">' +
     '<div style="font-size:19px;font-weight:700">Neue KI-Modell-Updates</div>' +
     '<div style="font-size:13px;color:#d1d5db;margin-top:4px">Text, Sprache/Audio, Bild und Video · nur offizielle Quellen</div></div>' +
-    sections +
+    sections + impactHtml +
     '<p style="font-size:12px;color:#6b7280;margin-top:24px">Automatischer NEONTRIP-Monitor · ' + esc(nowBerlin) + ' (Europe/Berlin)<br>Correlation ID: ' + esc(correlationId) + '</p>' +
     '</div>';
 }
@@ -215,6 +386,7 @@ return [{ json: {
   mode: initialized ? (fresh.length ? 'notify' : 'nochange') : 'seed',
   candidateCount: candidates.length,
   newCount: fresh.length,
+  impactCount: impacts.length,
   keysToMark,
   emailTo: 'info@neontrip.de',
   emailSubject,

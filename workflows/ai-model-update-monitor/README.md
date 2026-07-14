@@ -9,8 +9,18 @@ Production n8n workflow for deterministic email alerts about model updates from 
 3. `Updates analysieren` validates every source, extracts model-related changes, categorizes Text/Multimodal, Audio, Image, and Video, and checks durable workflow static data.
 4. `Neue Updates?` routes only unseen updates to Outlook.
 5. Outlook sends at most one aggregate HTML email per run to `info@neontrip.de`.
-6. The idempotency keys are persisted only after successful delivery. The no-change branch initializes or refreshes the baseline.
-7. Runtime failures stop the workflow and are routed through `NEONTRIP Error Alerting v1.0`.
+6. A deterministic NEONTRIP impact map adds affected workflows/software, recommended action, opportunity, risk, and a required guardrail. It never changes a model automatically.
+7. The idempotency keys are persisted only after successful delivery. The no-change branch initializes or refreshes the baseline.
+8. Runtime failures stop the workflow and are routed through `NEONTRIP Error Alerting v1.0`.
+
+## NEONTRIP impact inventory
+
+- Anthropic: `AI Email Agent v2 — Draft Only` and `NEONTRIP Follow-up Queue Processor v3.6`.
+- OpenAI text: `NEONTRIP Request Segmenter v1.0 (SHADOW)` and `RH | Unstruktuierte Anfragen Aktiv`.
+- OpenAI audio/realtime: `services/voice-runtime`, the voice eval suite, and the Vapi call-status projection.
+- Gemini video: active video-content QC in `KI-Video Generator`.
+- Gemini/OpenAI image and video: isolated provider tests for the design/mockup pipeline and Runway-based video generation.
+- Embeddings: isolated-index evaluation for the Pinecone knowledge base; never mix embedding spaces in place.
 
 ## Official sources
 

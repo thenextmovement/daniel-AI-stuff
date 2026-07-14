@@ -37,10 +37,17 @@ if (changed[0].json.mode !== 'notify' || changed[0].json.newCount !== 1) {
 if (changed[0].json.emailTo !== 'info@neontrip.de' || !changed[0].json.emailHtml.includes('Offizielle Quelle')) {
   throw new Error('Email payload validation failed');
 }
+if (changed[0].json.impactCount < 1 || !changed[0].json.emailHtml.includes('NEONTRIP Impact-Check')) {
+  throw new Error('NEONTRIP impact recommendations missing');
+}
+if (!/Chance:<\/strong>|Risiko:<\/strong>|Schutzmaßnahme:<\/strong>/.test(changed[0].json.emailHtml)) {
+  throw new Error('Impact chance/risk/guardrail content missing');
+}
 
 process.stdout.write(JSON.stringify({
   baselineCandidates: output[0].json.candidateCount,
   unchangedMode: unchanged[0].json.mode,
   simulatedNewCount: changed[0].json.newCount,
+  simulatedImpactCount: changed[0].json.impactCount,
   simulatedSubject: changed[0].json.emailSubject,
 }, null, 2));
