@@ -3770,9 +3770,12 @@ export function buildActionProposals(input: {
   const failedAutomation = input.trelloFailureDiagnosis.rootCauseKey === "sent"
     ? null
     : workflowAutomationRuns.find((run) => isAutomationFailure(run)) || null;
+  const videoQcAutomation = workflowAutomationRuns.find((run) =>
+    run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
+  ) || null;
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
-  const retryTaskAllowed = retry.status === "ready" || retry.status === "needs_fix";
+  const retryTaskAllowed = (retry.status === "ready" || retry.status === "needs_fix") && !videoQcAutomation;
   const retryBlockerText = `${retry.summary} ${retry.blockers.join(" ")} ${retry.safeFixes.join(" ")}`;
   const emailCorrectionAllowed = retry.status === "needs_fix" &&
     /e-mail|email|empfänger|postfach|bounce|zustell|adresse|kunden-e-mail|ungültig|unvollständig/i.test(retryBlockerText);
@@ -3974,7 +3977,9 @@ export function buildActionProposals(input: {
       riskLevel: "medium",
       approvalRequired: true,
       enabled: Boolean(primaryRecord && primaryOffer && retryTaskAllowed && !offerRetryPrepared && !guardedRetrySent),
-      summary: retryTaskSummary(),
+      summary: videoQcAutomation
+        ? "Keinen Angebots-Retry vorbereiten: Zuerst den automatischen Video-Zweitversuch abwarten oder nach erneutem Video-QC-Fehler das Mockup prüfen."
+        : retryTaskSummary(),
       confirmationText: "Retry nur vorbereiten; Versand bleibt separat freigabepflichtig.",
       href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
       payloadPreview: [
@@ -4034,9 +4039,11 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "high",
       approvalRequired: true,
-      enabled: retry.canSendWithConfirmation && !guardedRetrySent,
+      enabled: retry.canSendWithConfirmation && !guardedRetrySent && !videoQcAutomation,
       summary: guardedRetrySent
         ? `Guarded Retry wurde bereits protokolliert.${fixRunSuffix(guardedRetrySent)} Kein erneuter Versand auslösen.`
+        : videoQcAutomation
+          ? "Direkter Angebotsversand bleibt blockiert, solange die Video-Inhaltsprüfung nicht bestanden ist."
         : retry.canSendWithConfirmation
         ? "Sendet erst nach serverseitigem Duplicate-, Bounce- und Empfängercheck. Kundenkontakt nur nach Freigabe."
         : retry.summary,
@@ -4077,15 +4084,27 @@ export function buildActionProposals(input: {
     },
     {
       key: "collect_design_assets",
-      label: "Design-Assets sammeln",
+      label: videoQcAutomation ? "Mockup für Video prüfen" : "Design-Assets sammeln",
       type: "manual_check",
-      riskLevel: input.assets.length ? "low" : "medium",
+      riskLevel: videoQcAutomation ? "medium" : input.assets.length ? "low" : "medium",
       approvalRequired: false,
       enabled: true,
-      summary: input.assets.length ? `${input.assets.length} Asset(s) im Inventar.` : "Keine Assets im Inventar; Trello/Angebot/Outlook-Anhänge prüfen.",
-      confirmationText: "Keine Kundenaussage über Designs treffen, solange relevante Anhänge fehlen.",
-      href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
-      payloadPreview: input.assets.length
+      summary: videoQcAutomation
+        ? "Öffnet die Trello-Karte zur Prüfung des verwendeten Mockups. Nach dem automatischen Zweitversuch ist bei erneutem Fehler ein neues oder korrigiertes Mockup erforderlich."
+        : input.assets.length ? `${input.assets.length} Asset(s) im Inventar.` : "Keine Assets im Inventar; Trello/Angebot/Outlook-Anhänge prüfen.",
+      confirmationText: videoQcAutomation
+        ? "Logoform, Schrift, Proportionen und Farben prüfen; keinen direkten Angebotsversand auslösen."
+        : "Keine Kundenaussage über Designs treffen, solange relevante Anhänge fehlen.",
+      href: videoQcAutomation
+        ? input.trelloFailureDiagnosis.card?.url || primaryRecord?.trelloCardUrl || null
+        : primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
+      payloadPreview: videoQcAutomation
+        ? [
+            `Fehler: ${videoQcAutomation.summary || videoQcAutomation.error || "Video-QC abgelehnt"}`,
+            videoQcAutomation.executionId ? `Execution: ${videoQcAutomation.executionId}` : null,
+            videoQcAutomation.safeFix ? `Sicherer Schritt: ${videoQcAutomation.safeFix}` : "Mockup prüfen oder ersetzen; danach Fall neu laden.",
+          ].filter(Boolean) as string[]
+        : input.assets.length
         ? input.assets.slice(0, 5).map((asset) => `${asset.kind}: ${asset.label}`)
         : ["Trello-Referenzbild, Mockups, Angebotsbilder und Outlook-Anhänge prüfen."],
     },

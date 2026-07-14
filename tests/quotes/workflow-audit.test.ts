@@ -195,6 +195,24 @@ test("workflow audit marks n8n workflow hard errors as blocked", () => {
   assert.match(String(event.metadata.automation_issue_recommended_fix), /n8n-Execution/);
 });
 
+test("workflow audit keeps structured video QC failures visible to Company Brain", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflow_name: "ki_video_generator_v1",
+    action: "create_and_send_offer",
+    status: "error",
+    reason: "KI-Video hat die Inhaltspruefung nicht bestanden (DESIGN_MORPH). Versand wurde gestoppt.",
+    request_id: "REQ-VIDEO-QC",
+    execution_id: "3097709",
+    failed_node: "Analyze Video Content QC",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.metadata.automation_issue_key, "video_content_qc_failed");
+  assert.match(String(event.metadata.automation_issue_root_cause), /DESIGN_MORPH/);
+  assert.match(String(event.metadata.automation_issue_retry_safety), /Genau ein automatischer Video-Neuversuch/);
+  assert.equal(event.metadata.customer_communication_sent, false);
+});
+
 test("workflow audit marks Outlook Graph auth failures as blocked", () => {
   const event = normalizeWorkflowAuditEvent({
     workflow_name: "NEONTRIP Quote Ready SIMPLE v1.1",

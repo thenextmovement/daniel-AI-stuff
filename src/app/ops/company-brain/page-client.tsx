@@ -399,7 +399,7 @@ function buildOperatorDecision(result: CompanyBrainResolveResult) {
 }
 
 function buildCaseRoute(result: CompanyBrainResolveResult) {
-  const dataFixPriority = ["correct_customer_email", "prepare_email_correction", "repair_trello_projection", "post_trello_status_comment", "create_internal_task", "save_case_note"];
+  const dataFixPriority = ["correct_customer_email", "prepare_email_correction", "collect_design_assets", "repair_trello_projection", "post_trello_status_comment", "create_internal_task", "save_case_note"];
   const dataFix = dataFixPriority
     .map((key) => result.actionProposals.find((action) => action.enabled && action.key === key))
     .find((action): action is CompanyBrainActionProposalView => Boolean(action));
@@ -600,7 +600,7 @@ function buildFailedCardCapability(result: CompanyBrainResolveResult, readyActio
     result.automationRuns.find((run) => !isCompanyBrainFixRun(run)) ||
     null;
   const dataFixAction = readyActions.find((action) =>
-    ["correct_customer_email", "prepare_email_correction", "repair_trello_projection", "post_trello_status_comment", "create_internal_task"].includes(action.key),
+    ["correct_customer_email", "prepare_email_correction", "collect_design_assets", "repair_trello_projection", "post_trello_status_comment", "create_internal_task"].includes(action.key),
   ) || null;
   const customerAction = result.actionProposals.find((action) => action.key === "guarded_offer_resend");
   const hasLiveExecution = Boolean(failedAutomation?.executionId && (failedAutomation.issueKey || failedAutomation.failedNode || failedAutomation.error));

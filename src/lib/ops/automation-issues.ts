@@ -7,6 +7,8 @@ export type AutomationIssueKey =
   | "outlook_auth_failed"
   | "offer_api_failed"
   | "source_mapping_conflict"
+  | "video_content_qc_failed"
+  | "video_content_qc_unavailable"
   | "asset_processing_failed"
   | "workflow_hard_error"
   | "duplicate_guard"
@@ -130,6 +132,31 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
       recommendedFix: "Offer-Bridge, Request-ID und Trello-Card-ID in Postgres prüfen und korrigieren; keinen E-Mail-Fix oder Angebots-Resend auslösen.",
       safeFix: "Source-of-Truth-Verknüpfung in Postgres/Offer-Bridge reparieren und Fall neu laden.",
       retrySafety: "Retry blockiert, bis Angebot, Kundenakte und Trello-Projektion eindeutig demselben Fall zugeordnet sind.",
+    };
+  }
+  if (
+    /video_content_qc_unavailable|ki-?video.{0,100}(konnte nicht sicher gepr[uü]ft|pr[uü]fung.{0,40}(nicht verf[uü]gbar|unavailable|fehlgeschlagen))|video.{0,60}qc.{0,60}(unavailable|parse|invalid|timeout)/i.test(text)
+  ) {
+    return {
+      key: "video_content_qc_unavailable",
+      rootCause: "Die Video-Inhaltsprüfung konnte kein belastbares Ergebnis liefern. Der Angebotsversand wurde vorsorglich gestoppt.",
+      recommendedFix: "Genau einen automatischen Video-QC-Neuversuch zulassen. Bleibt die Prüfung unklar, Mockup und Video intern prüfen und keinen Kundenversand freigeben.",
+      safeFix: "Automatischen Zweitversuch abwarten; danach Mockup und Video manuell prüfen.",
+      retrySafety: "Ein automatischer Video-Neuversuch vor dem Versand ist zulässig; danach bleibt der Versand blockiert.",
+    };
+  }
+  if (
+    /video_content_qc_failed|design_morph|color_shift|invented_text|invented_object|unwanted_branding|sign_disappears|floating_sign|bad_crop|ki-?video.{0,120}(inhaltspr[uü]fung|qualit[aä]tspr[uü]fung).{0,80}(nicht bestanden|abgelehnt|failed|reject)/i.test(text)
+  ) {
+    const issue = text.match(/\b(DESIGN_MORPH|COLOR_SHIFT|INVENTED_TEXT|INVENTED_OBJECT|UNWANTED_BRANDING|SIGN_DISAPPEARS|FLOATING_SIGN|BAD_CROP|OTHER)\b/i)?.[1]?.toUpperCase();
+    return {
+      key: "video_content_qc_failed",
+      rootCause: issue
+        ? `Die Video-Inhaltsprüfung hat das erzeugte Video wegen ${issue} abgelehnt. Das Angebot wurde nicht versendet.`
+        : "Die Video-Inhaltsprüfung hat das erzeugte Video abgelehnt. Das Angebot wurde nicht versendet.",
+      recommendedFix: "Einen automatischen Zweitversuch mit demselben geprüften Mockup zulassen. Scheitert er erneut, Mockup/Logo prüfen oder neu erzeugen und erst danach einen neuen Video-Lauf freigeben.",
+      safeFix: "Automatischen Zweitversuch abwarten; bei erneutem Fehler das verwendete Mockup auf Form-, Schrift- und Farbabweichungen prüfen.",
+      retrySafety: "Genau ein automatischer Video-Neuversuch vor jedem Kundenversand; danach Retry blockieren, bis das Mockup geprüft oder ersetzt wurde.",
     };
   }
   if (

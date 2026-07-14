@@ -154,6 +154,27 @@ test("company brain classifies missing asset processing failures", () => {
   assert.match(hint.retrySafety, /Retry blockiert/);
 });
 
+test("company brain classifies rejected video content QC with an actionable bounded retry", () => {
+  const hint = classifyAutomationIssueText(
+    "KI-Video hat die Inhaltspruefung nicht bestanden (DESIGN_MORPH). Versand wurde gestoppt. failureType=video_content_qc_failed",
+  );
+
+  assert.equal(hint.key, "video_content_qc_failed");
+  assert.match(hint.rootCause, /DESIGN_MORPH/);
+  assert.match(hint.recommendedFix, /Zweitversuch/);
+  assert.match(hint.retrySafety, /Genau ein automatischer Video-Neuversuch/);
+});
+
+test("company brain classifies unavailable video QC separately from a content rejection", () => {
+  const hint = classifyAutomationIssueText(
+    "video_content_qc_unavailable: KI-Video konnte nicht sicher geprueft werden. Versand wurde vorsorglich gestoppt.",
+  );
+
+  assert.equal(hint.key, "video_content_qc_unavailable");
+  assert.match(hint.rootCause, /kein belastbares Ergebnis/);
+  assert.match(hint.recommendedFix, /genau einen automatischen Video-QC-Neuversuch/i);
+});
+
 test("company brain classifies n8n workflow hard errors", () => {
   const hint = classifyAutomationIssueText("workflow_hard_error: Outlook: E-Mail senden failed in execution 2770420");
 
@@ -1997,6 +2018,55 @@ test("company brain action proposals link failed n8n executions read-only", () =
   assert.ok(inspect?.payloadPreview.some((line) => line.includes("Execution-Link: https://n8n.neontrip.de/execution/2770420")));
   assert.ok(inspect?.payloadPreview.some((line) => line.includes("Issue: outlook_auth_failed")));
   assert.ok(inspect?.payloadPreview.some((line) => line.includes("Empfohlener Fix: Graph App und Mail.Send-Berechtigung prüfen.")));
+});
+
+test("company brain routes video QC failures to mockup review and blocks direct resend", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "ready",
+    label: "Guarded Retry bereit",
+    summary: "Kein Versandbeleg vorhanden.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: "retry-video-qc",
+    canSendWithConfirmation: true,
+    blockers: [],
+    safeFixes: [],
+  };
+  const actions = actionProposalFixture({
+    retry,
+    automationRuns: [{
+      id: "video-qc-run",
+      workflowName: "ki_video_generator_v1",
+      action: "create_and_send_offer",
+      status: "error",
+      error: "KI-Video hat die Inhaltspruefung nicht bestanden (DESIGN_MORPH).",
+      createdAt: "2026-07-14T09:32:00.000Z",
+      requestId: "REQ-ACTIONS",
+      executionId: "3097709",
+      executionUrl: "https://n8n.example/execution/3097709",
+      correlationId: "card-actions",
+      sourceEventId: null,
+      targetRecordId: null,
+      failedNode: "Analyze Video Content QC",
+      idempotencyKey: "video-qc:card-actions",
+      retrySafety: "automatic_retry_once",
+      summary: "Das Video wurde wegen DESIGN_MORPH abgelehnt.",
+      issueKey: "video_content_qc_failed",
+      safeFix: "Mockup prüfen oder ersetzen.",
+    }],
+  });
+
+  const mockupReview = actions.find((action) => action.key === "collect_design_assets");
+  const guardedResend = actions.find((action) => action.key === "guarded_offer_resend");
+  const retryTask = actions.find((action) => action.key === "prepare_offer_retry");
+
+  assert.equal(mockupReview?.label, "Mockup für Video prüfen");
+  assert.equal(mockupReview?.enabled, true);
+  assert.equal(mockupReview?.href, "https://trello.com/c/actions");
+  assert.equal(guardedResend?.enabled, false);
+  assert.match(guardedResend?.summary || "", /Video-Inhaltsprüfung/);
+  assert.equal(retryTask?.enabled, false);
 });
 
 test("company brain action proposals block duplicate retry actions after guarded resend audit", () => {
