@@ -44,7 +44,7 @@
 
 ## Release result
 
-- Final repository commit: `1aeaa7f3b48a968e15da2278d3bb4d069a757ffc`
+- Final runtime-code commit: `1aeaa7f3b48a968e15da2278d3bb4d069a757ffc`
 - `codex-predeploy ops` approved that exact commit before the final workflow update.
 - Main regression suite: 141 checks passed.
 - Feedback collector regression suite: passed, including empty legacy rows, Outlook mobile quotes, and pre-draft sent messages.
