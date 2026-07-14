@@ -2144,7 +2144,7 @@ test("company brain routes video QC failures to mockup review and blocks direct 
       problemType: "offer_not_sent",
       label: "Angebot nicht raus",
       severity: "critical",
-      confidence: "strong",
+      confidence: "high",
       specialCaseKind: "open_question",
       rootCause: "Video-QC fehlgeschlagen.",
       recommendedResolution: "Mockup prüfen.",
