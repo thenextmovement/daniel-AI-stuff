@@ -143,22 +143,15 @@
     /* Cookiebot-Branding (by Usercentrics) verstecken — höhere Spezifität für Override */
     #CybotCookiebotDialog #CybotCookiebotDialogPoweredbyCybot,
     #CybotCookiebotDialog #CybotCookiebotDialogPoweredByCybot { display: none !important; }
-    /* "Alle zulassen" Button auf Brand-Pink */
+    /* "Alle zulassen" in einem WCAG-AA-tauglichen Brand-Pink */
     #CybotCookiebotDialog #CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll,
-    #CybotCookiebotDialog #CybotCookiebotDialogBodyButtonAccept { background: #fa31a2 !important; border-color: #fa31a2 !important; color: #fff !important; }
+    #CybotCookiebotDialog #CybotCookiebotDialogBodyButtonAccept { background: #b91f6f !important; border-color: #b91f6f !important; color: #fff !important; }
     #CybotCookiebotDialog #CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll:hover,
-    #CybotCookiebotDialog #CybotCookiebotDialogBodyButtonAccept:hover { background: #e02b91 !important; border-color: #e02b91 !important; }
+    #CybotCookiebotDialog #CybotCookiebotDialogBodyButtonAccept:hover { background: #9f195e !important; border-color: #9f195e !important; }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     body { font-family: 'Inter', sans-serif; }
-
-    /* Cookiebot inherits the brand pink, but its 12px white CTA needs a darker
-       background to meet WCAG AA on the live consent dialog. */
-    #CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll {
-      background-color: #b91f6f !important;
-      border-color: #b91f6f !important;
-    }
 
     /* Shared shell for the intent-specific project and FAQ overrides. */
     :root { --nt-pink:#fa31a2; --nt-pink-dark:#c5286e; --nt-ink:#0a0a0a; --nt-muted:#62626b; --nt-line:#e8e8ec; --nt-soft:#f7f7f8; --nt-radius:24px; }
