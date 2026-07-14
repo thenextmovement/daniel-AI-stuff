@@ -1131,6 +1131,79 @@ test("company brain treats later send proof as resolved automation failure", () 
   assert.ok(diagnosis.safeFixes.some((fix) => /keinen erneuten Versand/.test(fix)));
 });
 
+test("company brain keeps handled video QC failures open despite a later offer send proof", () => {
+  const diagnosis = buildTrelloFailureDiagnosis({
+    requested: true,
+    context: {
+      card: {
+        id: "card-video-qc",
+        shortLink: "videoqc",
+        name: "FEHLER - 3D Backlit",
+        desc: "Request-ID: REQ-VIDEO-QC",
+        idBoard: null,
+        idList: null,
+        currentListName: "Quote Ready",
+        url: "https://trello.com/c/videoqc",
+        shortUrl: "https://trello.com/c/videoqc",
+        closed: false,
+        dateLastActivity: "2026-07-14T09:40:00.000Z",
+        createdAt: null,
+        customFields: {},
+        attachmentsCount: 2,
+      },
+      actions: [{
+        id: "action-video-qc",
+        type: "updateCard",
+        date: "2026-07-14T09:40:00.000Z",
+        text: "FEHLER: Video-QC DESIGN_MORPH. Execution: 3097709",
+        fromListId: null,
+        fromListName: "Neue Angebote schicken + KI-Video",
+        toListId: null,
+        toListName: "Quote Ready",
+      }],
+    },
+    diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: null, count: 1 },
+    records: [],
+    offers: [],
+    crossChecks: [{
+      key: "offer_sent",
+      label: "Angebotsversand",
+      status: "pass",
+      severity: "info",
+      expected: "Versandbeleg",
+      actual: "2026-07-14T09:41:00.000Z",
+      summary: "Ein späterer Angebotsversand ist belegt.",
+      evidenceIds: [],
+    }],
+    automationRuns: [{
+      id: "n8n-live-3097709",
+      workflowName: "KI-Video Generator v1.0",
+      action: "offer_send",
+      status: "success",
+      error: "KI-Video hat die Inhaltsprüfung wegen DESIGN_MORPH nicht bestanden.",
+      createdAt: "2026-07-14T09:40:00.000Z",
+      requestId: "REQ-VIDEO-QC",
+      executionId: "3097709",
+      correlationId: "card-video-qc",
+      sourceEventId: "action-video-qc",
+      targetRecordId: null,
+      failedNode: "Analyze Video Content QC",
+      idempotencyKey: "video-qc:card-video-qc",
+      retrySafety: "automatic_retry_once",
+      summary: "Das Video wurde wegen DESIGN_MORPH abgelehnt.",
+      issueKey: "video_content_qc_failed",
+      safeFix: "Mockup prüfen oder ersetzen.",
+    }],
+    question: "Warum wurden Video und Angebot nicht versendet?",
+    problemType: "offer_not_sent",
+  });
+
+  assert.equal(diagnosis.rootCauseKey, "automation_failed");
+  assert.equal(diagnosis.severity, "critical");
+  assert.match(diagnosis.rootCause, /DESIGN_MORPH/);
+  assert.match(diagnosis.recommendedFix, /automatischen Zweitversuch/i);
+});
+
 test("company brain retry assessment blocks resend after current recipient bounce", () => {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-BOUNCE",
@@ -2033,29 +2106,27 @@ test("company brain routes video QC failures to mockup review and blocks direct 
     blockers: [],
     safeFixes: [],
   };
-  const actions = actionProposalFixture({
-    retry,
-    automationRuns: [{
-      id: "video-qc-run",
-      workflowName: "ki_video_generator_v1",
-      action: "create_and_send_offer",
-      status: "error",
-      error: "KI-Video hat die Inhaltspruefung nicht bestanden (DESIGN_MORPH).",
-      createdAt: "2026-07-14T09:32:00.000Z",
-      requestId: "REQ-ACTIONS",
-      executionId: "3097709",
-      executionUrl: "https://n8n.example/execution/3097709",
-      correlationId: "card-actions",
-      sourceEventId: null,
-      targetRecordId: null,
-      failedNode: "Analyze Video Content QC",
-      idempotencyKey: "video-qc:card-actions",
-      retrySafety: "automatic_retry_once",
-      summary: "Das Video wurde wegen DESIGN_MORPH abgelehnt.",
-      issueKey: "video_content_qc_failed",
-      safeFix: "Mockup prüfen oder ersetzen.",
-    }],
-  });
+  const videoQcRun: CompanyBrainAutomationRun = {
+    id: "video-qc-run",
+    workflowName: "ki_video_generator_v1",
+    action: "create_and_send_offer",
+    status: "error",
+    error: "KI-Video hat die Inhaltspruefung nicht bestanden (DESIGN_MORPH).",
+    createdAt: "2026-07-14T09:32:00.000Z",
+    requestId: "REQ-ACTIONS",
+    executionId: "3097709",
+    executionUrl: "https://n8n.example/execution/3097709",
+    correlationId: "card-actions",
+    sourceEventId: null,
+    targetRecordId: null,
+    failedNode: "Analyze Video Content QC",
+    idempotencyKey: "video-qc:card-actions",
+    retrySafety: "automatic_retry_once",
+    summary: "Das Video wurde wegen DESIGN_MORPH abgelehnt.",
+    issueKey: "video_content_qc_failed",
+    safeFix: "Mockup prüfen oder ersetzen.",
+  };
+  const actions = actionProposalFixture({ retry, automationRuns: [videoQcRun] });
 
   const mockupReview = actions.find((action) => action.key === "collect_design_assets");
   const guardedResend = actions.find((action) => action.key === "guarded_offer_resend");
@@ -2067,6 +2138,41 @@ test("company brain routes video QC failures to mockup review and blocks direct 
   assert.equal(guardedResend?.enabled, false);
   assert.match(guardedResend?.summary || "", /Video-Inhaltsprüfung/);
   assert.equal(retryTask?.enabled, false);
+
+  const guidance = buildCompanyBrainEmployeeGuidance({
+    problemResolution: {
+      problemType: "offer_not_sent",
+      label: "Angebot nicht raus",
+      severity: "critical",
+      confidence: "strong",
+      specialCaseKind: "open_question",
+      rootCause: "Video-QC fehlgeschlagen.",
+      recommendedResolution: "Mockup prüfen.",
+      internalTaskTitle: "Video-QC prüfen",
+      internalTaskDescription: "Test",
+      customerReplyPolicy: [],
+      escalationPath: [],
+      requiredEvidence: [],
+      missingEvidence: [],
+    },
+    retryAssessment: retry,
+    evidenceScore: { status: "medium", score: 72, summary: "Video-QC belegt.", safeToAnswerCustomer: false, reasons: [] },
+    actionProposals: actions,
+    trelloFailureDiagnosis: {
+      ...retryDiagnosis(),
+      rootCause: "Video-QC hat das Video wegen DESIGN_MORPH abgelehnt.",
+    },
+    automationRuns: [videoQcRun],
+    sourceHealth: [],
+    crossChecks: [],
+    records: [],
+    offers: [],
+  });
+
+  assert.equal(guidance.rootCauseCode, "video_content_qc_failed");
+  assert.equal(guidance.nextBestActionKey, "collect_design_assets");
+  assert.equal(guidance.nextBestActionLabel, "Mockup für Video prüfen");
+  assert.match(guidance.plainLanguageSummary, /DESIGN_MORPH/);
 });
 
 test("company brain action proposals block duplicate retry actions after guarded resend audit", () => {

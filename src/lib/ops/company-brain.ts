@@ -2710,11 +2710,18 @@ function timestampMs(value: string | null | undefined) {
 }
 
 function isAutomationFailure(run: CompanyBrainAutomationRun | null | undefined) {
-  return Boolean(run && /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`));
+  return Boolean(
+    run && (
+      /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`) ||
+      run.issueKey === "video_content_qc_failed" ||
+      run.issueKey === "video_content_qc_unavailable"
+    )
+  );
 }
 
 function isAutomationFailureResolvedBySendProof(run: CompanyBrainAutomationRun | null | undefined, offerSentCheck: CompanyBrainCrossCheck | null | undefined) {
   if (!isAutomationFailure(run) || offerSentCheck?.status !== "pass") return false;
+  if (run?.issueKey === "video_content_qc_failed" || run?.issueKey === "video_content_qc_unavailable") return false;
   const proofTime = timestampMs(offerSentCheck.actual);
   const failureTime = timestampMs(run?.createdAt);
   if (!proofTime) return true;
@@ -4188,7 +4195,14 @@ export function buildCompanyBrainEmployeeGuidance(input: {
   const readyActions = input.actionProposals
     .filter((action) => action.enabled)
     .sort((left, right) => guidanceActionPriority(left, input.retryAssessment.status) - guidanceActionPriority(right, input.retryAssessment.status));
-  const nextBestAction = readyActions.find((action) =>
+  const videoQcAutomation = input.automationRuns.find((run) =>
+    run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
+  ) || null;
+  const nextBestAction = (
+    videoQcAutomation
+      ? readyActions.find((action) => action.key === "collect_design_assets")
+      : null
+  ) || readyActions.find((action) =>
     action.key === "guarded_offer_resend" ||
     GUIDANCE_DATA_FIX_ACTIONS.includes(action.key) ||
     action.key === "inspect_n8n_run" ||
