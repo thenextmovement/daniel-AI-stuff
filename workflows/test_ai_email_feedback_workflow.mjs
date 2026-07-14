@@ -42,9 +42,40 @@ assert.equal(feedback[0].json.p_sent_message_id, 'sent-1');
 assert.ok(feedback[0].json.p_edit_ratio <= 0.02);
 assert.equal(feedback[0].json.p_edit_summary.collector_version, 'email-feedback-v1');
 
+const mobileReplyFeedback = executeCode('Build Review Feedback', {
+  $input: { all: () => [{ json: { body: { value: [{
+    id: 'sent-2',
+    conversationId: 'conversation-1',
+    sentDateTime: '2026-07-14T10:05:00Z',
+    body: { content: '<p>Hallo Anna,</p><p>danke für die Klarstellung.</p><p>Viele Grüße</p><p>Fabienne Trapp</p><div id="mail-editor-reference-message-container">quoted mobile history</div>' },
+  }] } } }] },
+  $: (name) => ({ all: () => name === 'Expand Pending Reviews' ? pendingRows.map((json) => ({ json })) : [] }),
+});
+assert.equal(mobileReplyFeedback.length, 1);
+assert.ok(mobileReplyFeedback[0].json.p_edit_ratio <= 0.02);
+
+const emptyDraftFeedback = executeCode('Build Review Feedback', {
+  $input: { all: () => [{ json: { body: { value: [{
+    id: 'sent-3',
+    conversationId: 'conversation-2',
+    sentDateTime: '2026-07-14T10:05:00Z',
+    body: { content: '<p>Unrelated sent message</p>' },
+  }] } } }] },
+  $: (name) => ({ all: () => name === 'Expand Pending Reviews' ? [{ json: {
+    message_id: 'legacy-source',
+    conversation_id: 'conversation-2',
+    draft_body_text: null,
+    created_at: '2026-07-14T10:00:00Z',
+  } }] : [] }),
+});
+assert.equal(emptyDraftFeedback.length, 0);
+
 assert.equal(workflow.nodes.length, 6);
 assert.equal(workflow.nodes.filter((entry) => /send(?:Mail)?/i.test(String(entry.parameters?.url || ''))).length, 0);
 assert.match(byName.get('Record Review Feedback').parameters.url, /rpc\/record_email_agent_feedback$/);
-assert.match(byName.get('Fetch Pending Draft Reviews').parameters.queryParameters.parameters.find((entry) => entry.name === 'select').value, /draft_body_text/);
+const pendingFilters = new Map(byName.get('Fetch Pending Draft Reviews').parameters.queryParameters.parameters.map((entry) => [entry.name, entry.value]));
+assert.match(pendingFilters.get('select'), /draft_body_text/);
+assert.equal(pendingFilters.get('draft_body_text'), 'not.is.null');
+assert.equal(pendingFilters.get('request_id'), 'not.is.null');
 
 console.log(JSON.stringify({ ok: true, nodes: workflow.nodes.length, sendActions: 0 }));

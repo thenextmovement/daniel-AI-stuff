@@ -36,6 +36,7 @@ const buildFeedbackCode = String.raw`function textFromHtml(value) {
   const html = String(value || '');
   const markers = [
     /<div[^>]+id=["']divRplyFwdMsg["'][^>]*>/i,
+    /<div[^>]+id=["']mail-editor-reference-message-container["'][^>]*>/i,
     /<div[^>]+class=["'][^"']*gmail_quote[^"']*["'][^>]*>/i,
     /<blockquote[^>]*(?:type=["']cite["'])?[^>]*>/i,
   ];
@@ -119,6 +120,8 @@ const output = [];
 
 for (let index = 0; index < responseItems.length; index += 1) {
   const pending = pendingRows[index] || {};
+  const draftText = String(pending.draft_body_text || '').trim();
+  if (!draftText) continue;
   const response = responseItems[index]?.json || {};
   const payload = response.body ?? response;
   const messages = Array.isArray(payload?.value) ? payload.value : [];
@@ -131,7 +134,6 @@ for (let index = 0; index < responseItems.length; index += 1) {
     .sort((left, right) => Date.parse(left.sentDateTime || 0) - Date.parse(right.sentDateTime || 0))[0];
   if (!sent?.id) continue;
 
-  const draftText = String(pending.draft_body_text || '');
   const sentText = withoutSignature(textFromHtml(sent.body?.content || sent.bodyPreview || ''));
   const ratio = editRatio(draftText, sentText);
   output.push({ json: {
@@ -167,6 +169,8 @@ const nodes = [
     queryParameters: { parameters: [
       { name: 'review_status', value: 'eq.pending_review' },
       { name: 'draft_created', value: 'eq.true' },
+      { name: 'request_id', value: 'not.is.null' },
+      { name: 'draft_body_text', value: 'not.is.null' },
       { name: 'created_at', value: "={{ 'gte.' + new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}" },
       { name: 'select', value: 'message_id,conversation_id,draft_id,draft_body_hash,draft_body_text,created_at' },
       { name: 'order', value: 'created_at.asc' },
