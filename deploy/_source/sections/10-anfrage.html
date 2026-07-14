@@ -7,12 +7,12 @@
     <div class="relative z-10 max-w-[1400px] mx-auto px-5 md:px-8 w-full">
       <!-- Centered Header -->
       <div class="reveal text-center mb-4">
-        <h2 class="text-[36px] md:text-[100px] font-semibold leading-[0.92] tracking-tighter text-white neon-glow mb-3">Produkte.</h2>
-        <p class="text-sm md:text-base font-medium text-white/50 tracking-tight mb-2">Neon Schilder, LED Schriftzüge & mehr — klicken Sie für Beispiele und direkte Anfrage.</p>
+        <h2 class="text-[36px] md:text-[72px] font-semibold leading-[0.96] tracking-tighter text-white neon-glow mb-3">{{PRODUCT_SECTION_TITLE}}</h2>
+        <p class="text-sm md:text-base font-medium text-white/60 tracking-tight mb-2">{{PRODUCT_SECTION_LEAD}}</p>
       </div>
 
       <!-- Product Grid - All products visible at once -->
-      <div class="reveal grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-1.5 md:gap-2 mb-3">
+      <div class="reveal grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2 md:gap-2 mb-3" data-featured-product="{{STICKY_PRODUKT}}">
 
         <!-- LED Neonschild -->
         <button onclick="openProductGallery('neonschild')" class="product-tile group cursor-pointer text-center" data-product="neonschild">
@@ -22,8 +22,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">LED Neonschild</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 299€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">LED Neonschild</h3>
+          <p class="text-white/60 text-xs mt-1">ab 299€</p>
         </button>
 
         <!-- 3D Buchstaben (Front) -->
@@ -34,8 +34,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">3D Buchstaben (Front)</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">3D Buchstaben (Front)</h3>
+          <p class="text-white/60 text-xs mt-1">ab 499€</p>
         </button>
 
         <!-- 3D Buchstaben (Rückbeleuchtet) -->
@@ -46,8 +46,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">3D Buchstaben (Rückbeleuchtet)</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">3D Buchstaben (Rückbeleuchtet)</h3>
+          <p class="text-white/60 text-xs mt-1">ab 499€</p>
         </button>
 
         <!-- Leuchtkasten -->
@@ -58,8 +58,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Leuchtkasten</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">Leuchtkasten</h3>
+          <p class="text-white/60 text-xs mt-1">ab 499€</p>
         </button>
 
         <!-- Marquee-Buchstaben -->
@@ -70,8 +70,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Marquee-Buchstaben</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 299€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">Marquee-Buchstaben</h3>
+          <p class="text-white/60 text-xs mt-1">ab 299€</p>
         </button>
 
         <!-- Neon-Halo -->
@@ -82,8 +82,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Neon-Halo</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 399€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">Neon-Halo</h3>
+          <p class="text-white/60 text-xs mt-1">ab 399€</p>
         </button>
 
         <!-- Vollflächig beleuchtet -->
@@ -94,8 +94,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Vollflächig beleuchtet</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 499€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">Vollflächig beleuchtet</h3>
+          <p class="text-white/60 text-xs mt-1">ab 499€</p>
         </button>
 
         <!-- Unbeleuchtet -->
@@ -106,8 +106,8 @@
               <span class="inline-flex items-center gap-1 bg-white text-dark text-[10px] font-semibold px-3 py-1.5 rounded-full">Anfragen <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
             </span>
           </div>
-          <h3 class="text-white text-[10px] sm:text-xs font-semibold leading-tight mt-2">Unbeleuchtet</h3>
-          <p class="text-white/50 text-[9px] sm:text-[10px] mt-0.5">ab 299€</p>
+          <h3 class="text-white text-xs sm:text-sm font-semibold leading-tight mt-2">Unbeleuchtet</h3>
+          <p class="text-white/60 text-xs mt-1">ab 299€</p>
         </button>
 
       </div>
@@ -140,4 +140,13 @@
       </div>
     </div>
   </section>
+  <script>
+  (function(){
+    var grid = document.querySelector('#anfrage [data-featured-product]');
+    if (!grid) return;
+    var key = grid.getAttribute('data-featured-product');
+    var featured = key && grid.querySelector('[data-product="' + key + '"]');
+    if (featured && featured !== grid.firstElementChild) grid.insertBefore(featured, grid.firstElementChild);
+  })();
+  </script>
 <!-- ===== /SECTION: anfrage ===== -->

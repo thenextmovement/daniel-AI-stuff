@@ -153,6 +153,19 @@
     html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     body { font-family: 'Inter', sans-serif; }
 
+    /* Shared shell for the intent-specific project and FAQ overrides. */
+    :root { --nt-pink:#fa31a2; --nt-pink-dark:#c5286e; --nt-ink:#0a0a0a; --nt-muted:#62626b; --nt-line:#e8e8ec; --nt-soft:#f7f7f8; --nt-radius:24px; }
+    .nt-container { width:min(100% - 48px,1160px); margin-inline:auto; }
+    .nt-section { padding:96px 0; }
+    .nt-section--soft { background:var(--nt-soft); }
+    .nt-section--dark { background:var(--nt-ink); color:#fff; }
+    .nt-kicker { margin:0 0 12px; color:var(--nt-pink-dark); font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+    .nt-section-title { max-width:830px; margin:0; font-size:clamp(34px,5vw,58px); font-weight:670; line-height:1.05; letter-spacing:-.045em; }
+    .nt-section-lead { max-width:720px; margin:18px 0 0; color:var(--nt-muted); font-size:clamp(16px,2vw,20px); line-height:1.65; }
+    .nt-card { border:1px solid var(--nt-line); border-radius:var(--nt-radius); background:#fff; box-shadow:0 2px 0 rgba(10,10,10,.02); }
+    .nt-button { display:inline-flex; align-items:center; justify-content:center; min-height:52px; padding:14px 22px; border-radius:999px; background:linear-gradient(180deg,var(--nt-pink),var(--nt-pink-dark)); color:#fff; font-size:14px; font-weight:780; text-decoration:none; box-shadow:0 10px 30px rgba(250,49,162,.27); }
+    @media (max-width:767px) { .nt-container { width:min(100% - 28px,560px); } .nt-section { padding:68px 0; } }
+
     /* Scroll reveal */
     .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
     .reveal.visible { opacity: 1; transform: translateY(0); }
@@ -442,7 +455,7 @@
     @media (min-width: 768px) { section#hero h1 { font-size: 80px !important; } }
 
     /* Noise overlay for card-in-card dark sections */
-    .noise-overlay { background-image: url('../assets/images/grain-texture.png'); background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
+    .noise-overlay { background-image:radial-gradient(circle at 20% 30%,rgba(255,255,255,.08) 0 1px,transparent 1.5px); background-size:7px 7px; opacity:.18; pointer-events:none; }
 
     /* Grain texture overlay for dark sections — adds depth */
     .grain { position: relative; }
@@ -557,7 +570,7 @@
 <body class="bg-white text-dark">
 
 <!-- Announcement Bar -->
-<div id="announcement-bar" style="background:#fa31a2;color:white;text-align:center;font-size:12px;font-weight:600;letter-spacing:0.02em;overflow:hidden;height:28px;line-height:28px">
+<div id="announcement-bar" style="background:#b91f6f;color:white;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.02em;overflow:hidden;height:28px;line-height:28px">
   <div id="announcement-track" style="display:flex;white-space:nowrap;animation:marquee 12s linear infinite;width:max-content">
     <span class="announcement-item" style="display:flex;align-items:center;gap:40px;padding-right:40px"><span id="announcement-text">25% Rabatt auf alle Anfragen</span><span style="opacity:0.5">✦</span></span>
     <span class="announcement-item" style="display:flex;align-items:center;gap:40px;padding-right:40px"><span id="announcement-text-2">25% Rabatt auf alle Anfragen</span><span style="opacity:0.5">✦</span></span>
@@ -636,6 +649,8 @@
             setHiddenField(form, 'current_page_url', currentPageUrl);
             setHiddenField(form, 'referrer', referrer);
             setHiddenField(form, '_referrer', referrer);
+            setHiddenField(form, 'lp_intent', '{{INTENT_ID}}');
+            setHiddenField(form, 'lp_variant', '{{LP_VARIANT}}');
           } catch(e) {}
           form.dataset.trackingInjected = 'true';
         });
@@ -654,6 +669,16 @@
           fd.delete('website');
         }
         return fd;
+      };
+      window.ntTrack = window.ntTrack || function(eventName, eventParams) {
+        var params = eventParams || {};
+        try {
+          if (typeof window.gtag === 'function') window.gtag('event', eventName, params);
+          else {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push(Object.assign({ event: eventName }, params));
+          }
+        } catch(e) {}
       };
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() { injectTrackingFields(); });
@@ -1498,7 +1523,7 @@
         const formData = window.ntPrepareSubmit ? window.ntPrepareSubmit(quickAnfrageForm, 'quick_anfrage_form') : new FormData(quickAnfrageForm);
         // Optimistic: fire conversion + show success immediately, upload in background
         fireEnhancedConversion('quick_anfrage', formData.get('email'), formData.get('telefon'), formData.get('name'));
-        quickAnfrageForm.innerHTML = '<div class="text-center py-6"><svg class="w-14 h-14 text-green-500 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><h3 class="text-2xl font-semibold text-dark mb-2 tracking-tight">Anfrage erhalten!</h3><p class="text-sm text-dark/50 tracking-tight mb-6">Ihre 3D-Vorschau wird vorbereitet.</p><div class="flex items-center gap-3 bg-light rounded-xl p-4 mb-4"><img src="../assets/images/fabienne-trapp.png" class="w-10 h-10 rounded-full object-cover shrink-0" alt="Fabienne Trapp"><div class="text-left"><p class="text-sm font-semibold text-dark tracking-tight">Fabienne meldet sich bei Ihnen</p><p class="text-xs text-dark/40">Innerhalb von 24h mit Angebot + 3D-Vorschau</p></div></div><a href="tel:+4921154257240" class="inline-flex items-center gap-2 text-sm font-medium text-dark/50 hover:text-dark transition-colors"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Dringend? Jetzt anrufen</a></div>';
+        quickAnfrageForm.innerHTML = '<div class="text-center py-6"><svg class="w-14 h-14 text-green-500 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><h3 class="text-2xl font-semibold text-dark mb-2 tracking-tight">Anfrage erhalten!</h3><p class="text-sm text-dark/50 tracking-tight mb-6">Ihre 3D-Vorschau wird vorbereitet.</p><div class="flex items-center gap-3 bg-light rounded-xl p-4 mb-4"><span class="w-10 h-10 rounded-full shrink-0 inline-flex items-center justify-center bg-accent text-white text-xs font-bold" aria-hidden="true">FT</span><div class="text-left"><p class="text-sm font-semibold text-dark tracking-tight">Fabienne meldet sich bei Ihnen</p><p class="text-xs text-dark/40">Innerhalb von 24h mit Angebot + 3D-Vorschau</p></div></div><a href="tel:+4921154257240" class="inline-flex items-center gap-2 text-sm font-medium text-dark/50 hover:text-dark transition-colors"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0022 16.92z"/></svg>Dringend? Jetzt anrufen</a></div>';
         fetch(quickAnfrageForm.action, { method: 'POST', body: formData })
           .then(window.ntCheckSubmitResponse)
           .catch((err) => {
@@ -2309,9 +2334,8 @@ if (window.innerWidth < 768) {
 <!-- Mobile Sticky CTA -->
 <div id="mobile-sticky-cta" class="mobile-sticky-cta md:hidden">
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(0,0,0,0.06);padding:14px 16px;padding-bottom:max(14px, env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.08)">
-    <!-- Fabienne Photo -->
-    <div style="width:42px;height:42px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:42px;height:42px;border-radius:50%;object-fit:cover" width="42" height="42" loading="lazy">
+    <!-- Fabienne Avatar -->
+    <div aria-hidden="true" style="width:42px;height:42px;flex-shrink:0;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#fa31a2,#6d28d9);color:#fff;font-size:11px;font-weight:800">FT
     </div>
     <!-- Text -->
     <div style="flex:1;min-width:0">
@@ -2322,7 +2346,7 @@ if (window.innerWidth < 768) {
       </p>
     </div>
     <!-- CTA Button -->
-    <a href="#hero" style="flex-shrink:0;background:#fa31a2;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)">
+    <a href="#hero-form-desktop" style="flex-shrink:0;background:#b91f6f;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(185,31,111,0.3)" onclick="typeof gtag==='function'&&gtag('event','sticky_cta_click',{event_category:'engagement',event_label:window.location.pathname})">
       Anfrage starten
     </a>
     <!-- WhatsApp Button -->
@@ -2335,8 +2359,7 @@ if (window.innerWidth < 768) {
 <!-- Sticky CTA (Desktop only, hidden on mobile via CSS) -->
 <div class="contact-sticky" id="contact-sticky">
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,0.08);padding:12px 14px;display:flex;align-items:center;gap:12px;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,0.12)">
-    <div style="width:44px;height:44px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:44px;height:44px;border-radius:50%;object-fit:cover" width="44" height="44" loading="lazy">
+    <div aria-hidden="true" style="width:44px;height:44px;flex-shrink:0;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#fa31a2,#6d28d9);color:#fff;font-size:11px;font-weight:800">FT
     </div>
     <div style="min-width:0">
       <p style="font-size:13px;font-weight:600;color:#0A0A0A;line-height:1.2;margin:0">Fabienne berät Sie</p>
@@ -2345,7 +2368,7 @@ if (window.innerWidth < 768) {
         Jetzt online
       </p>
     </div>
-    <a href="#hero" style="flex-shrink:0;background:#fa31a2;color:white;font-size:13px;font-weight:700;padding:10px 18px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)" onclick="typeof gtag==='function'&&gtag('event','sticky_cta_click',{event_category:'engagement',event_label:window.location.pathname})">
+    <a href="#hero-form-desktop" style="flex-shrink:0;background:#b91f6f;color:white;font-size:13px;font-weight:700;padding:10px 18px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(185,31,111,0.3)" onclick="typeof gtag==='function'&&gtag('event','sticky_cta_click',{event_category:'engagement',event_label:window.location.pathname})">
       Anfrage starten
     </a>
     <a href="https://wa.me/4915209507826?text=Hallo%2C%20ich%20interessiere%20mich%20f%C3%BCr%20ein%20individuelles%20Neonschild.%20K%C3%B6nnen%20Sie%20mich%20beraten%3F" target="_blank" rel="noopener" aria-label="WhatsApp" style="flex-shrink:0;width:44px;height:44px;background:#25D366;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none">
@@ -2378,6 +2401,6 @@ document.addEventListener('click',function(e){var card=e.target.closest('.projec
 </script>
 
 <!-- Cloudflare Web Analytics -->
-<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "92bd73acc6e245f1a17f6c36b00927ef"}'></script>
+<script>(function(){if(/^(localhost|127\.0\.0\.1|::1)$/.test(location.hostname))return;var script=document.createElement('script');script.defer=true;script.src='https://static.cloudflareinsights.com/beacon.min.js';script.setAttribute('data-cf-beacon','{"token":"92bd73acc6e245f1a17f6c36b00927ef"}');document.body.appendChild(script)})();</script>
 </body>
 </html>

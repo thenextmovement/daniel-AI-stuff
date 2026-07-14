@@ -26,6 +26,7 @@ const SECTION_FILES = {
   'stats-bar':     '03-stats-bar.html',
   'process':       '03-process.html',
   'projekte':      '04-projekte.html',
+  'intent-guide':  '04-intent-guide.html',
   'events':        '05-events.html',
   'anfrage-quick': '06-anfrage-quick.html',
   'bewertungen':   '07-bewertungen.html',
@@ -133,7 +134,9 @@ function generateDkiScript(config) {
   const accentTerms = Array.isArray(config.dki_accent_terms)
     ? config.dki_accent_terms.map(term => String(term).replace(/'/g, "\\'"))
     : [];
-  const syncFormTitle = config.dki_sync_form_title !== false;
+  // Keep the offer-led form title stable. DKI belongs in the H1; duplicating a
+  // long search phrase inside the compact form hurts clarity and mobile fit.
+  const syncFormTitle = config.dki_sync_form_title === true;
 
   return `<!-- Dynamic Text Replacement (Google Ads Keyword Mapping) -->
   <script>
@@ -230,6 +233,17 @@ function replaceVariables(html, config) {
     '{{PRICE_ANCHOR}}': config.price_anchor || 'LED Neon ab 299 € · 3D Buchstaben ab 499 € · Leuchtkästen ab 499 €',
     '{{PRICE_ANCHOR_DESKTOP}}': config.price_anchor_desktop || 'LED Neon Schilder ab 199 EUR',
     '{{STICKY_PRODUKT}}': config.sticky_produkt || 'neonschild',
+    '{{PRODUCT_SECTION_TITLE}}': config.product_section_title || 'Welche Umsetzung passt zu Ihrem Projekt?',
+    '{{PRODUCT_SECTION_LEAD}}': config.product_section_lead || 'Produkte vergleichen, Beispiele ansehen und direkt die passende Ausführung anfragen.',
+    '{{INTENT_GUIDE_EYEBROW}}': config.intent_guide_eyebrow || 'Orientierung vor der Anfrage',
+    '{{INTENT_GUIDE_TITLE}}': config.intent_guide_title || 'Worauf es bei der passenden Lichtwerbung ankommt',
+    '{{INTENT_GUIDE_LEAD}}': config.intent_guide_lead || 'Bauart, Einsatzort und gewünschte Wirkung entscheiden gemeinsam über die passende Umsetzung.',
+    '{{INTENT_GUIDE_CARD_1_TITLE}}': config.intent_guide_card_1_title || 'Wirkung und Lesbarkeit',
+    '{{INTENT_GUIDE_CARD_1_BODY}}': config.intent_guide_card_1_body || 'Betrachtungsabstand, Kontrast und Umgebung bestimmen, wie klar das Motiv später wirkt.',
+    '{{INTENT_GUIDE_CARD_2_TITLE}}': config.intent_guide_card_2_title || 'Technik und Material',
+    '{{INTENT_GUIDE_CARD_2_BODY}}': config.intent_guide_card_2_body || 'Wir wählen Bauart und Material passend zu Motiv, Montagefläche und gewünschter Lichtwirkung.',
+    '{{INTENT_GUIDE_CARD_3_TITLE}}': config.intent_guide_card_3_title || 'Visualisierung im Umfeld',
+    '{{INTENT_GUIDE_CARD_3_BODY}}': config.intent_guide_card_3_body || 'Mit Logo und Einsatzort entsteht eine Vorschau, die Proportion und Wirkung besser einschätzbar macht.',
   };
 
   let result = html;

@@ -76,6 +76,9 @@ assertIncludes('deploy/_source/layouts/base.html', '_landing_page_url', 'landing
 assertIncludes('deploy/_source/layouts/base.html', 'current_page_url', 'current_page_url capture');
 assertIncludes('deploy/_source/layouts/base.html', 'referrer', 'referrer capture');
 assertIncludes('deploy/_source/layouts/base.html', '_referrer', 'referrer mirror');
+assertIncludes('deploy/_source/layouts/base.html', 'lp_intent', 'landing-page intent capture');
+assertIncludes('deploy/_source/layouts/base.html', 'lp_variant', 'landing-page variant capture');
+assertIncludes('deploy/_source/layouts/base.html', 'window.ntTrack', 'funnel event helper');
 assertIncludes('deploy/_source/layouts/base.html', 'ntReportSubmitFailure', 'fail-loud reporter');
 assertIncludes('deploy/_source/layouts/base.html', '/api/r', 'fail endpoint');
 assertNotMatches(
@@ -104,11 +107,33 @@ for (const page of generatedPages) {
   if (!html.includes('_referrer')) fail(`${page} missing referrer mirror tracking`);
 }
 
-for (const slug of ['logo', 'firmenlogo-beleuchtet', 'firmenschilder']) {
+const paidLandingPages = [
+  'neon-schilder',
+  'leuchtbuchstaben',
+  'leuchtkaesten',
+  'firmenschilder',
+  'led-schriftzuege',
+  'leuchtreklame',
+  'messe-event',
+  'logo',
+  'firmenlogo-beleuchtet',
+];
+
+for (const slug of paidLandingPages) {
   const page = `deploy/${slug}/index.html`;
   assertIncludes(page, '/api/e', `${slug} enrichment endpoint`);
   assertIncludes(page, 'enrichment_token', `${slug} signed enrichment token`);
   assertIncludes(page, 'qualification_submitted', `${slug} qualification tracking`);
+  assertIncludes(page, 'data-nt-custom-hero', `${slug} upload-first hero`);
+  assertIncludes(page, 'data-featured-product=', `${slug} product selector`);
+  assertIncludes(page, 'intent-guide-title', `${slug} visible intent guidance`);
+  assertIncludes(page, 'href="#hero-form-desktop"', `${slug} direct form anchor`);
+  assertNotMatches(page, /data-ai-citable/, `${slug} hidden generic AI copy`);
+  assertNotMatches(page, /\{\{[A-Z0-9_]+\}\}/, `${slug} unresolved template variable`);
+
+  const html = read(page);
+  const heroFormCount = (html.match(/id="hero-form-desktop"/g) || []).length;
+  if (heroFormCount !== 1) fail(`${page} expected exactly one hero form, found ${heroFormCount}`);
 }
 
 for (const slug of ['test', 'test2']) {
