@@ -768,6 +768,33 @@ test("offer size ladder uses the 2.3 customer factor", async () => {
   assert.equal(minimum?.customerUnitPriceNet, 460);
 });
 
+test("quote ready size ladder lets Trello NT-Number override the 2.3 default", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardFactorOverride",
+    idBoard: "board-1",
+    name: "LED Flex factor override",
+    desc: "Neon Flex",
+    customFields: {
+      "NT-Number": "2,6",
+      Size_1: "100x50cm",
+      Production_1: "100",
+      Shipping_1: "100",
+      Product_1: "LED Flex",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "cardFactorOverride",
+    customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+    maxLongSideCm: 120,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.designs.length, 1);
+  assert.equal(result.designs[0]?.sizeLadder.customerFactor, 2.6);
+  assert.equal(result.designs[0]?.sizeLadder.options.find((option) => option.isDefault)?.customerUnitPriceNet, 520);
+});
+
 test("offer size ladder reflects design area, not only one dimension", async () => {
   const narrow = await generateOfferSizeLadder({
     trelloCardId: "cardNarrow1",
@@ -1549,6 +1576,7 @@ test("offer size ladder from Trello uses the canonical card id for offer lookup"
           { idCustomField: "size-3", value: { text: "250x150cm" } },
           { idCustomField: "prod-3", value: { text: "480" } },
           { idCustomField: "ship-3", value: { text: "520" } },
+          { idCustomField: "factor", value: { text: "2.6" } },
         ],
         attachments: [],
         actions: [],
@@ -1566,6 +1594,7 @@ test("offer size ladder from Trello uses the canonical card id for offer lookup"
         { id: "size-3", name: "Size_3", type: "text" },
         { id: "prod-3", name: "Production_3", type: "text" },
         { id: "ship-3", name: "Shipping_3", type: "text" },
+        { id: "factor", name: "NT-Number", type: "text" },
       ]), { status: 200 });
     }
 
@@ -1578,10 +1607,12 @@ test("offer size ladder from Trello uses the canonical card id for offer lookup"
       persist: false,
       stepCm: 10,
       maxLongSideCm: 250,
+      customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
     });
 
     assert.equal(result.trelloCardId, "65f000000000000000000123");
     assert.equal(result.trelloCardUrl, "https://trello.com/c/shortLisa1/32831-led-flex-lisa");
+    assert.equal(result.customerFactor, 2.6);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;

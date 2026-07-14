@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { addTrelloCardComment, createTrelloBoardCustomField, getTrelloCard, updateTrelloCustomField } from "@/lib/quotes/trello";
 import type { CustomFieldMap, TrelloCardData, TrelloEditableCustomField } from "@/lib/quotes/types";
-import { roundDownToFive } from "@/lib/quotes/pricing";
+import { getFactorOverride, roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import {
@@ -1539,6 +1539,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   const sourceMockupGroups = groupQuoteReadySourceMockups(sourceMockups, structure.sourceMockupsPerDesign);
   const expectedDesignCount = sourceMockupGroups.length;
   const indexedAnchors = extractIndexedTrelloAnchors(card.customFields || {}, warnings);
+  const customerFactor = getFactorOverride(card.customFields || {}) ?? input.customerFactor;
 
   if (!sourceMockups.length) issues.push("source_mockups_missing");
   if (sourceMockups.length % structure.sourceMockupsPerDesign !== 0) {
@@ -1583,7 +1584,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
       sourceText,
       stepCm: input.stepCm,
       maxLongSideCm: input.maxLongSideCm,
-      customerFactor: input.customerFactor,
+      customerFactor,
       createdBy: input.createdBy,
       persist: input.persist === true,
       anchors,
@@ -2329,6 +2330,7 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
   const card = await getTrelloCard(trelloCardId);
   const canonicalTrelloCardId = card.id || trelloCardId;
   const extraction = extractOfferSizeLadderAnchorsFromTrelloFields(card.customFields || {});
+  const customerFactor = getFactorOverride(card.customFields || {}) ?? input.customerFactor;
   if (extraction.anchors.length < 1) {
     throw new QuoteValidationError(
       "Mindestens ein Trello-Anker konnte nicht vollständig gelesen werden.",
@@ -2354,6 +2356,7 @@ export async function generateOfferSizeLadderFromTrello(input: OfferSizeLadderTr
       : `https://trello.com/c/${trelloCardId}`,
     productModel: input.productModel || detectOfferSizeLadderProductModel(sourceText),
     sourceText,
+    customerFactor,
     anchors: extraction.anchors,
   };
   const generated = await generateOfferSizeLadder(generateInput);

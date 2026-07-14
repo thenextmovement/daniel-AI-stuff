@@ -1666,7 +1666,7 @@ export function SupplierPriceReviewClient({
             sourceText: sizeLadderSourceText || null,
             stepCm: 10,
             maxLongSideCm: 250,
-            customerFactor: OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
+            customerFactor: sizeLadderResult?.customerFactor ?? OFFER_SIZE_LADDER_CUSTOMER_FACTOR_CLIENT,
             anchors: currentSizeLadderAnchorPayload(),
             optionOverrides: sizeLadderOptionOverrides(),
             dryRun,

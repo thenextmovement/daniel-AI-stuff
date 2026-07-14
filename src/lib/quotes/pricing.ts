@@ -24,13 +24,17 @@ export function parsePrice(value: unknown) {
 }
 
 export function getFactor(customFields: CustomFieldMap) {
+  return getFactorOverride(customFields) ?? DEFAULT_PRICE_FACTOR;
+}
+
+export function getFactorOverride(customFields: CustomFieldMap) {
   const raw =
     customFields["NT-Number"] ??
     customFields["NT_Number"] ??
     customFields["nt_number"] ??
     customFields["nt-number"];
   const parsed = parsePrice(raw);
-  return parsed && parsed > 0 ? parsed : DEFAULT_PRICE_FACTOR;
+  return parsed && parsed > 0 ? parsed : null;
 }
 
 export function calculateSalePrice(basePrice: number, factor: number) {
