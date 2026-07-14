@@ -1204,6 +1204,78 @@ test("company brain keeps handled video QC failures open despite a later offer s
   assert.match(diagnosis.recommendedFix, /automatischen Zweitversuch/i);
 });
 
+test("company brain stops suggesting another video retry after attempt two", () => {
+  const diagnosis = buildTrelloFailureDiagnosis({
+    requested: true,
+    context: {
+      card: {
+        id: "card-video-qc-final",
+        shortLink: "videoqcfinal",
+        name: "FEHLER - 3D Backlit",
+        desc: "Request-ID: REQ-VIDEO-QC-FINAL",
+        idBoard: null,
+        idList: null,
+        currentListName: "Quote Ready",
+        url: "https://trello.com/c/videoqcfinal",
+        shortUrl: "https://trello.com/c/videoqcfinal",
+        closed: false,
+        dateLastActivity: "2026-07-14T10:43:03.000Z",
+        createdAt: null,
+        customFields: {},
+        attachmentsCount: 7,
+      },
+      actions: [{
+        id: "action-video-qc-final",
+        type: "updateCard",
+        date: "2026-07-14T10:43:03.000Z",
+        text: "FEHLER: Video-QC DESIGN_MORPH. Execution: 3100049",
+        fromListId: null,
+        fromListName: "Neue Angebote schicken + KI-Video",
+        toListId: null,
+        toListName: "Quote Ready",
+      }],
+    },
+    diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: null, count: 1 },
+    records: [],
+    offers: [],
+    crossChecks: [],
+    automationRuns: [{
+      id: "n8n-live-3100049",
+      workflowName: "KI-Video Generator v1.0",
+      action: "offer_send",
+      status: "success",
+      error: "KI-Video hat die Inhaltsprüfung wegen DESIGN_MORPH nicht bestanden.",
+      createdAt: "2026-07-14T10:43:02.000Z",
+      requestId: "REQ-VIDEO-QC-FINAL",
+      executionId: "3100049",
+      correlationId: "card-video-qc-final",
+      sourceEventId: "action-video-qc-final",
+      targetRecordId: null,
+      failedNode: "Analyze Video Content QC",
+      idempotencyKey: "video-qc:card-video-qc-final",
+      retrySafety: "blocked",
+      summary: "Das Video wurde wegen DESIGN_MORPH abgelehnt.",
+      issueKey: "video_content_qc_failed",
+      safeFix: "Automatischen Zweitversuch abwarten.",
+      currentAttempt: 2,
+      nextAttempt: null,
+      automaticVideoAttemptLimit: 2,
+      retryPlanned: false,
+      videoQcConfidence: 0.8,
+      videoQcIssues: ["DESIGN_MORPH"],
+    }],
+    question: "Warum ist der zweite Versuch wieder fehlgeschlagen?",
+    problemType: "automation_failed",
+  });
+
+  assert.equal(diagnosis.rootCauseKey, "automation_failed");
+  assert.match(diagnosis.rootCause, /Versuch 2\/2/);
+  assert.match(diagnosis.rootCause, /QC-Konfidenz 0\.8/);
+  assert.match(diagnosis.recommendedFix, /Keinen weiteren Lauf mit unverändertem Mockup/);
+  assert.doesNotMatch(diagnosis.recommendedFix, /Zweitversuch.*zulassen/i);
+  assert.ok(diagnosis.safeFixes.some((fix) => /keinen weiteren Video-Lauf mit unverändertem Input/.test(fix)));
+});
+
 test("company brain retry assessment blocks resend after current recipient bounce", () => {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-BOUNCE",

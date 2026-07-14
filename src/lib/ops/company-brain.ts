@@ -342,6 +342,14 @@ export type CompanyBrainAutomationRun = {
   issueKey?: string | null;
   recommendedFix?: string | null;
   safeFix?: string | null;
+  workflowId?: string | null;
+  currentAttempt?: number | null;
+  nextAttempt?: number | null;
+  automaticVideoAttemptLimit?: number | null;
+  retryPlanned?: boolean | null;
+  videoQcConfidence?: number | null;
+  videoQcIssues?: string[];
+  videoGenerationMode?: string | null;
 };
 
 export type CompanyBrainTrelloFailureDiagnosis = {
@@ -548,6 +556,33 @@ function metadataText(metadata: Record<string, unknown> | null | undefined, keys
     }
   }
   return null;
+}
+
+function metadataNumber(metadata: Record<string, unknown> | null | undefined, keys: string[]) {
+  const value = metadataText(metadata, keys);
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function metadataBoolean(metadata: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!metadata) return null;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "boolean") return value;
+    if (value === "true" || value === 1 || value === "1") return true;
+    if (value === "false" || value === 0 || value === "0") return false;
+  }
+  return null;
+}
+
+function metadataStringArray(metadata: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!metadata) return [];
+  for (const key of keys) {
+    const value = metadata[key];
+    if (Array.isArray(value)) return uniqueStrings(value.map((entry) => cleanText(entry)));
+  }
+  return [];
 }
 
 function pushIdentifier(
@@ -1036,14 +1071,22 @@ function trelloActionFailureSummary(action: TrelloFailureContextAction) {
   return previewText(text.replace(/\\n/g, " "), 220) || "Trello-Historie meldet einen Automation-Fehler.";
 }
 
-function n8nExecutionUrl(executionId: string | null | undefined, explicitUrl?: string | null) {
-  const direct = cleanText(explicitUrl).slice(0, 500);
-  if (/^https?:\/\//i.test(direct)) return direct;
+function n8nExecutionUrl(
+  executionId: string | null | undefined,
+  explicitUrl?: string | null,
+  workflowId?: string | null,
+) {
   const id = cleanText(executionId).slice(0, 120);
   if (!id) return null;
   const rawBaseUrl = cleanText(process.env.N8N_BASE_URL || process.env.N8N_API_URL || "").slice(0, 500)
     .replace(/\/api\/v1$/i, "")
     .replace(/\/+$/, "");
+  const normalizedWorkflowId = cleanText(workflowId).slice(0, 120);
+  if (/^https?:\/\//i.test(rawBaseUrl) && normalizedWorkflowId) {
+    return `${rawBaseUrl}/workflow/${encodeURIComponent(normalizedWorkflowId)}/executions/${encodeURIComponent(id)}`;
+  }
+  const direct = cleanText(explicitUrl).slice(0, 500);
+  if (/^https?:\/\//i.test(direct)) return direct;
   if (!/^https?:\/\//i.test(rawBaseUrl)) return null;
   return `${rawBaseUrl}/execution/${encodeURIComponent(id)}`;
 }
@@ -1661,6 +1704,7 @@ async function fetchN8nLiveRuns(
       const fallback = fallbackByExecutionId.get(executionId) || null;
       const status = n8nExecutionStatus(execution);
       const error = n8nExecutionError(execution);
+      const workflowId = cleanText(execution.workflowId) || fallback?.workflowId || null;
       const issueHint = classifyAutomationIssueText(`${error || ""} ${fallback?.error || ""} ${fallback?.summary || ""}`);
       const issueFailedNode = issueHint.key === "video_content_qc_failed" || issueHint.key === "video_content_qc_unavailable"
         ? "Analyze Video Content QC"
@@ -1674,7 +1718,7 @@ async function fetchN8nLiveRuns(
         createdAt: execution.stoppedAt || execution.startedAt || execution.createdAt || fallback?.createdAt || null,
         requestId: fallback?.requestId || null,
         executionId,
-        executionUrl: fallback?.executionUrl || n8nExecutionUrl(executionId),
+        executionUrl: n8nExecutionUrl(executionId, null, workflowId) || fallback?.executionUrl || null,
         correlationId: fallback?.correlationId || null,
         sourceEventId: fallback?.sourceEventId || null,
         targetRecordId: fallback?.targetRecordId || null,
@@ -1685,6 +1729,14 @@ async function fetchN8nLiveRuns(
         issueKey: issueHint.key !== "unknown" ? issueHint.key : fallback?.issueKey || null,
         recommendedFix: issueHint.key !== "unknown" ? issueHint.recommendedFix : fallback?.recommendedFix || null,
         safeFix: issueHint.key !== "unknown" ? issueHint.safeFix : fallback?.safeFix || null,
+        workflowId,
+        currentAttempt: fallback?.currentAttempt ?? null,
+        nextAttempt: fallback?.nextAttempt ?? null,
+        automaticVideoAttemptLimit: fallback?.automaticVideoAttemptLimit ?? null,
+        retryPlanned: fallback?.retryPlanned ?? null,
+        videoQcConfidence: fallback?.videoQcConfidence ?? null,
+        videoQcIssues: fallback?.videoQcIssues || [],
+        videoGenerationMode: fallback?.videoGenerationMode || null,
       });
     } catch (error) {
       errors.push(`${executionId}: ${errorMessage(error)}`);
@@ -1757,6 +1809,7 @@ async function fetchAutomationRuns(
       executionUrl: n8nExecutionUrl(
         metadataText(row.metadata, ["execution_id", "n8n_execution_id", "workflow_execution_id"]),
         metadataText(row.metadata, ["n8n_execution_url", "execution_url", "workflow_execution_url"]),
+        metadataText(row.metadata, ["workflow_id", "workflowId"]),
       ),
       correlationId: metadataText(row.metadata, ["correlation_id", "request_correlation_id", "idempotency_key"]),
       sourceEventId: metadataText(row.metadata, ["source_event_id", "event_id", "message_id", "offer_event_id"]),
@@ -1768,6 +1821,14 @@ async function fetchAutomationRuns(
       issueKey: metadataText(row.metadata, ["automation_issue_key", "issue_key", "error_code", "error_type"]),
       recommendedFix: metadataText(row.metadata, ["automation_issue_recommended_fix", "recommended_fix", "fix_recommendation"]),
       safeFix: metadataText(row.metadata, ["automation_issue_safe_fix", "safe_fix"]),
+      workflowId: metadataText(row.metadata, ["workflow_id", "workflowId"]),
+      currentAttempt: metadataNumber(row.metadata, ["current_attempt", "currentAttempt"]),
+      nextAttempt: metadataNumber(row.metadata, ["next_attempt", "nextAttempt"]),
+      automaticVideoAttemptLimit: metadataNumber(row.metadata, ["automatic_video_attempt_limit", "automaticVideoAttemptLimit"]),
+      retryPlanned: metadataBoolean(row.metadata, ["retry_planned", "automatic_retry_planned", "retryPlanned"]),
+      videoQcConfidence: metadataNumber(row.metadata, ["video_qc_confidence", "videoQcConfidence"]),
+      videoQcIssues: metadataStringArray(row.metadata, ["video_qc_issues", "videoQcIssues"]),
+      videoGenerationMode: metadataText(row.metadata, ["video_generation_mode", "videoGenerationMode"]),
     }));
     return {
       runs,
@@ -2722,6 +2783,20 @@ function isAutomationFailure(run: CompanyBrainAutomationRun | null | undefined) 
   );
 }
 
+function isVideoQcFailure(run: CompanyBrainAutomationRun | null | undefined) {
+  return run?.issueKey === "video_content_qc_failed" || run?.issueKey === "video_content_qc_unavailable";
+}
+
+function isVideoQcRetryExhausted(run: CompanyBrainAutomationRun | null | undefined) {
+  if (!isVideoQcFailure(run)) return false;
+  if (run?.retryPlanned === false && run.currentAttempt !== null && run.currentAttempt !== undefined) return true;
+  return Boolean(
+    run?.currentAttempt &&
+    run.automaticVideoAttemptLimit &&
+    run.currentAttempt >= run.automaticVideoAttemptLimit,
+  );
+}
+
 function isAutomationFailureResolvedBySendProof(run: CompanyBrainAutomationRun | null | undefined, offerSentCheck: CompanyBrainCrossCheck | null | undefined) {
   if (!isAutomationFailure(run) || offerSentCheck?.status !== "pass") return false;
   if (run?.issueKey === "video_content_qc_failed" || run?.issueKey === "video_content_qc_unavailable") return false;
@@ -3328,6 +3403,7 @@ export function buildTrelloFailureDiagnosis(input: {
   const triggerMove = latestTrelloMove(input.context.actions);
   const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent");
   const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
+  const videoQcRetryExhausted = isVideoQcRetryExhausted(failedAutomation);
   const failedAutomationHint = failedAutomation
     ? classifyAutomationIssueText([
         failedAutomation.issueKey,
@@ -3360,11 +3436,21 @@ export function buildTrelloFailureDiagnosis(input: {
     rootCause = failedAutomationHint && failedAutomationHint.key !== "unknown"
       ? `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen. ${failedAutomationHint.rootCause}`
       : `${failedAutomation.workflowName || "Workflow"} ist${failedAutomation.failedNode ? ` bei Node "${failedAutomation.failedNode}"` : ""} fehlgeschlagen: ${failedAutomation.error || failedAutomation.summary || failedAutomation.status || "Fehlerstatus"}.`;
-    recommendedFix = failedAutomation.recommendedFix || (failedAutomationHint && failedAutomationHint.key !== "unknown"
-      ? failedAutomationHint.recommendedFix
-      : failedAutomation.idempotencyKey
-        ? `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "ohne ID"} prüfen. Retry nur mit Idempotency-Key ${failedAutomation.idempotencyKey} und nach Duplicate-Mail-Check freigeben.`
-        : `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "mit Correlation-ID"} prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.`);
+    if (videoQcRetryExhausted) {
+      const attempts = failedAutomation.currentAttempt || failedAutomation.automaticVideoAttemptLimit || 2;
+      const limit = failedAutomation.automaticVideoAttemptLimit || attempts;
+      const confidence = failedAutomation.videoQcConfidence !== null && failedAutomation.videoQcConfidence !== undefined
+        ? `, QC-Konfidenz ${failedAutomation.videoQcConfidence}`
+        : "";
+      rootCause += ` Der automatische Video-Retry ist mit Versuch ${attempts}/${limit} ausgeschöpft${confidence}.`;
+      recommendedFix = "Keinen weiteren Lauf mit unverändertem Mockup starten. Mockup/Logo auf Form, Schrift, Farbe und Perspektive prüfen oder ersetzen; erst danach einen neuen Video-Lauf freigeben.";
+    } else {
+      recommendedFix = failedAutomation.recommendedFix || (failedAutomationHint && failedAutomationHint.key !== "unknown"
+        ? failedAutomationHint.recommendedFix
+        : failedAutomation.idempotencyKey
+          ? `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "ohne ID"} prüfen. Retry nur mit Idempotency-Key ${failedAutomation.idempotencyKey} und nach Duplicate-Mail-Check freigeben.`
+          : `n8n-Execution ${failedAutomation.executionId || failedAutomation.correlationId || "mit Correlation-ID"} prüfen. Retry nur idempotent und nach Duplicate-Mail-Check freigeben.`);
+    }
     severity = "critical";
   } else if (!triggerMove) {
     rootCauseKey = "no_trigger_move";
@@ -3406,16 +3492,18 @@ export function buildTrelloFailureDiagnosis(input: {
   const duplicateRisk: CompanyBrainTrelloFailureDiagnosis["duplicateRisk"] =
     expectedAction === "offer_send" && !offerSent ? "high" : expectedAction === "unknown" ? "medium" : "low";
   const safeFixes = [
-    !automationResolvedBySendProof && failedAutomation?.safeFix ? failedAutomation.safeFix : null,
-    !automationResolvedBySendProof && failedAutomationHint && failedAutomationHint.key !== "unknown" ? failedAutomationHint.safeFix : null,
+    videoQcRetryExhausted ? "Mockup/Logo prüfen oder ersetzen; keinen weiteren Video-Lauf mit unverändertem Input starten." : null,
+    !videoQcRetryExhausted && !automationResolvedBySendProof && failedAutomation?.safeFix ? failedAutomation.safeFix : null,
+    !videoQcRetryExhausted && !automationResolvedBySendProof && failedAutomationHint && failedAutomationHint.key !== "unknown" ? failedAutomationHint.safeFix : null,
     hasRecord ? "Interne Problemfall-Aufgabe mit Trello-Card-ID und Befund anlegen." : null,
     rootCauseKey === "no_source_record" ? "Karte manuell mit Request-ID/Kundenakte verknüpfen." : null,
     rootCauseKey === "sent" ? "Status-/Trello-Projektion nachziehen, keinen erneuten Versand auslösen." : null,
-    ["automation_failed", "automation_missing", "offer_exists_no_send_proof"].includes(rootCauseKey)
+    !videoQcRetryExhausted && ["automation_failed", "automation_missing", "offer_exists_no_send_proof"].includes(rootCauseKey)
       ? "Idempotenten Retry vorbereiten, aber erst nach Versand-Duplicate-Check freigeben."
       : null,
   ].filter(Boolean) as string[];
   const blockedFixes = [
+    videoQcRetryExhausted ? "Automatischer Video-Retry 2/2 ausgeschöpft; unveränderten Input nicht erneut verarbeiten." : null,
     !automationResolvedBySendProof && failedAutomationHint && isBlockingAutomationIssueKey(failedAutomationHint.key)
       ? failedAutomationHint.retrySafety
       : null,
@@ -3783,6 +3871,7 @@ export function buildActionProposals(input: {
   const videoQcAutomation = workflowAutomationRuns.find((run) =>
     run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
   ) || null;
+  const videoQcRetryExhausted = isVideoQcRetryExhausted(videoQcAutomation);
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
   const retryTaskAllowed = (retry.status === "ready" || retry.status === "needs_fix") && !videoQcAutomation;
@@ -3988,7 +4077,9 @@ export function buildActionProposals(input: {
       approvalRequired: true,
       enabled: Boolean(primaryRecord && primaryOffer && retryTaskAllowed && !offerRetryPrepared && !guardedRetrySent),
       summary: videoQcAutomation
-        ? "Keinen Angebots-Retry vorbereiten: Zuerst den automatischen Video-Zweitversuch abwarten oder nach erneutem Video-QC-Fehler das Mockup prüfen."
+        ? videoQcRetryExhausted
+          ? "Keinen Angebots-Retry vorbereiten: Video-Versuch 2/2 ist ausgeschöpft. Zuerst das Mockup korrigieren oder ersetzen."
+          : "Keinen Angebots-Retry vorbereiten: Zuerst den automatischen Video-Zweitversuch abwarten."
         : retryTaskSummary(),
       confirmationText: "Retry nur vorbereiten; Versand bleibt separat freigabepflichtig.",
       href: primaryRecord ? `/ops/tasks?requestId=${encodeURIComponent(primaryRecord.requestId)}` : "/ops/tasks",
@@ -4100,7 +4191,9 @@ export function buildActionProposals(input: {
       approvalRequired: false,
       enabled: true,
       summary: videoQcAutomation
-        ? "Öffnet die Trello-Karte zur Prüfung des verwendeten Mockups. Nach dem automatischen Zweitversuch ist bei erneutem Fehler ein neues oder korrigiertes Mockup erforderlich."
+        ? videoQcRetryExhausted
+          ? "Video-Versuch 2/2 ist ausgeschöpft. Öffnet die Trello-Karte; das Mockup muss vor einem neuen Lauf korrigiert oder ersetzt werden."
+          : "Öffnet die Trello-Karte zur Prüfung des verwendeten Mockups. Der automatische Zweitversuch steht noch aus."
         : input.assets.length ? `${input.assets.length} Asset(s) im Inventar.` : "Keine Assets im Inventar; Trello/Angebot/Outlook-Anhänge prüfen.",
       confirmationText: videoQcAutomation
         ? "Logoform, Schrift, Proportionen und Farben prüfen; keinen direkten Angebotsversand auslösen."
@@ -4112,7 +4205,15 @@ export function buildActionProposals(input: {
         ? [
             `Fehler: ${videoQcAutomation.summary || videoQcAutomation.error || "Video-QC abgelehnt"}`,
             videoQcAutomation.executionId ? `Execution: ${videoQcAutomation.executionId}` : null,
-            videoQcAutomation.safeFix ? `Sicherer Schritt: ${videoQcAutomation.safeFix}` : "Mockup prüfen oder ersetzen; danach Fall neu laden.",
+            videoQcAutomation.currentAttempt && videoQcAutomation.automaticVideoAttemptLimit
+              ? `Versuch: ${videoQcAutomation.currentAttempt}/${videoQcAutomation.automaticVideoAttemptLimit}`
+              : null,
+            videoQcAutomation.videoQcConfidence !== null && videoQcAutomation.videoQcConfidence !== undefined
+              ? `QC-Konfidenz: ${videoQcAutomation.videoQcConfidence}`
+              : null,
+            videoQcRetryExhausted
+              ? "Sicherer Schritt: Mockup korrigieren oder ersetzen; unveränderten Input nicht erneut starten."
+              : videoQcAutomation.safeFix ? `Sicherer Schritt: ${videoQcAutomation.safeFix}` : "Mockup prüfen; danach Fall neu laden.",
           ].filter(Boolean) as string[]
         : input.assets.length
         ? input.assets.slice(0, 5).map((asset) => `${asset.kind}: ${asset.label}`)

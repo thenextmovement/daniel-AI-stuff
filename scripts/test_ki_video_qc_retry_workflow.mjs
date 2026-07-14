@@ -122,9 +122,18 @@ const auditBody = node("Audit: Company Brain Offer Failure").parameters.jsonBody
 assert.match(auditBody, /status: 'error'/);
 assert.match(auditBody, /automation_issue_key: failureType/);
 assert.match(auditBody, /retry_safety: failure\.retryable \? 'automatic_retry_once' : 'blocked'/);
+assert.match(auditBody, /video_generation_mode/);
+assert.match(auditBody, /workflow_id/);
 
 const finishBody = node("Supabase: Finish Preview Delivery Job").parameters.jsonBody;
 assert.match(finishBody, /video_generation_fingerprint/);
+assert.match(finishBody, /video_generation_mode/);
 assert.match(finishBody, /company_brain_audit_write_ok/);
+
+const generationCode = node("Build Runway Request").parameters.jsCode;
+assert.match(generationCode, /isAutomaticVideoRetry/);
+assert.match(generationCode, /locked_static_retry/);
+assert.match(generationCode, /Keep the camera fully static/);
+assert.match(generationCode, /no dolly, no zoom, no pan, no orbit/);
 
 console.log("KI video QC retry workflow contract: PASS");
