@@ -10,6 +10,7 @@ import {
   buildOutlookGraphSearchTerms,
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
+  dedupeAutomationRuns,
   extractCompanyBrainIdentifiers,
   extractCompanyBrainLooseRequestIds,
   extractCompanyBrainSignals,
@@ -66,6 +67,46 @@ test("company brain extracts exact Trello lookup hints", () => {
   const identifiers = extractCompanyBrainIdentifiers("Bitte Trello 64b7f9e2aabbccddeeff0011 prüfen");
   assert.equal(identifiers[0]?.type, "trello_card_id");
   assert.equal(identifiers[0]?.value, "64b7f9e2aabbccddeeff0011");
+});
+
+test("company brain keeps the richer audit fallback for duplicate n8n executions", () => {
+  const auditRun: CompanyBrainAutomationRun = {
+    id: "audit-3100049",
+    workflowName: "KI-Video Generator v1.0",
+    action: "offer_send",
+    status: "error",
+    error: "DESIGN_MORPH",
+    createdAt: "2026-07-14T10:43:02.000Z",
+    requestId: "REQ-VIDEO-QC",
+    executionId: "3100049",
+    correlationId: "card-video-qc",
+    sourceEventId: null,
+    targetRecordId: null,
+    failedNode: "Analyze Video Content QC",
+    idempotencyKey: "video-qc:card-video-qc",
+    retrySafety: "blocked",
+    summary: "Video-QC abgelehnt.",
+    issueKey: "video_content_qc_failed",
+    currentAttempt: 2,
+    automaticVideoAttemptLimit: 2,
+    retryPlanned: false,
+    videoQcConfidence: 0.8,
+  };
+  const trelloFallback: CompanyBrainAutomationRun = {
+    ...auditRun,
+    id: "trello-action-3100049",
+    currentAttempt: null,
+    automaticVideoAttemptLimit: null,
+    retryPlanned: null,
+    videoQcConfidence: null,
+  };
+
+  const deduped = dedupeAutomationRuns([auditRun, trelloFallback]);
+
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0]?.id, "audit-3100049");
+  assert.equal(deduped[0]?.currentAttempt, 2);
+  assert.equal(deduped[0]?.videoQcConfidence, 0.8);
 });
 
 test("company brain extracts multiple request ids from dirty alias fields", () => {

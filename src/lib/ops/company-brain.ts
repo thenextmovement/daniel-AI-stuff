@@ -1123,7 +1123,7 @@ export function buildTrelloAutomationRuns(context: TrelloFailureContext | null):
     });
 }
 
-function dedupeAutomationRuns(runs: CompanyBrainAutomationRun[]) {
+export function dedupeAutomationRuns(runs: CompanyBrainAutomationRun[]) {
   const seen = new Set<string>();
   const deduped: CompanyBrainAutomationRun[] = [];
   for (const run of runs) {
@@ -1687,7 +1687,7 @@ async function fetchN8nLiveRuns(
   const ids = uniqueStrings(executionIds).slice(0, 5);
   if (!ids.length || !config) return { runs: [], diagnostic: null };
   const fallbackByExecutionId = new Map(
-    fallbackRuns
+    dedupeAutomationRuns(fallbackRuns)
       .filter((run) => run.executionId)
       .map((run) => [run.executionId as string, run] as const),
   );
