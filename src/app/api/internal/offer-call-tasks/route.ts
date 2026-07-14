@@ -258,27 +258,34 @@ async function createCallTask(body: OfferCallTaskRequest, request: NextRequest) 
 
 async function createShopifySyncFailureTask(body: OfferCallTaskRequest, request: NextRequest) {
   const actor = automationActor(request, body.operatorName);
-  const record = await resolveCustomerRecord(body);
-  const offerId = trimNullable(body.offer?.offerId) || trimNullable(body.offer?.documentReference) || record.requestId;
+  const offer = body.offer || {};
+  const offerId = trimNullable(offer.offerId) || trimNullable(offer.documentReference);
+  if (!offerId) throw new QuoteValidationError("Bitte eine Angebots-ID angeben.");
   const failureDetail = trimNullable(body.note);
-  const reason = [
+  const description = [
     "Ein abgeschlossenes Angebot konnte nicht als Shopify-Sale synchronisiert werden.",
     failureDetail ? `Fehler: ${failureDetail}` : null,
+    trimNullable(offer.customerName) || trimNullable(offer.customerCompany)
+      ? `Kunde: ${trimNullable(offer.customerName) || trimNullable(offer.customerCompany)}`
+      : null,
+    `Angebot: ${offerLabel(body)}`,
+    trimNullable(offer.publicUrl) ? `Link: ${trimNullable(offer.publicUrl)}` : null,
+    "Gemeinsame Aufgabe fuer Daniel und Fabienne; erledigt ist erledigt fuer beide.",
   ].filter(Boolean).join("\n");
   const task = await createCustomerInternalTask({
     title: "Shopify-Sale fehlt - sofort pruefen",
-    description: taskDescription(record, body, reason),
+    description: description.slice(0, 1200),
     assigneeName: SHARED_CALL_ASSIGNEE,
     dueAt: new Date().toISOString(),
     category: "problem_case",
     priority: "urgent",
-    requestId: record.requestId,
+    requestId: trimNullable(body.requestId),
     idempotencyKey: `ops-shopify-sync:offer:${offerId}`,
     sourceType: SHOPIFY_SYNC_SOURCE_TYPE,
     sourceId: offerId,
   }, actor);
 
-  return NextResponse.json({ ok: true, action: body.action, requestId: record.requestId, task });
+  return NextResponse.json({ ok: true, action: body.action, requestId: trimNullable(body.requestId), task });
 }
 
 export async function POST(request: NextRequest) {

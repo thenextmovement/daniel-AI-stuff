@@ -11,6 +11,11 @@ test("Shopify sync failures create one urgent Ops problem task per offer", () =>
   assert.match(route, /priority: "urgent"/);
   assert.match(route, /idempotencyKey: `ops-shopify-sync:offer:\$\{offerId\}`/);
   assert.match(route, /sourceType: SHOPIFY_SYNC_SOURCE_TYPE/);
+  const handler = route.slice(
+    route.indexOf("async function createShopifySyncFailureTask"),
+    route.indexOf("export async function POST"),
+  );
+  assert.doesNotMatch(handler, /resolveCustomerRecord/);
 });
 
 test("Shopify sync failure task remains behind internal route authorization", () => {
