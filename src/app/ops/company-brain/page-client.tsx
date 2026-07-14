@@ -259,6 +259,7 @@ function retryAssessmentLabel(status: string) {
 }
 
 function guidanceResolutionClass(status: string) {
+  if (status === "resolved") return "border-emerald-300 bg-emerald-50 text-emerald-950";
   if (status === "self_service") return "border-emerald-300 bg-emerald-50 text-emerald-950";
   if (status === "needs_data_fix") return "border-amber-300 bg-amber-50 text-amber-950";
   if (status === "blocked") return "border-rose-300 bg-rose-50 text-rose-950";
@@ -346,6 +347,17 @@ function buildOperatorDecision(result: CompanyBrainResolveResult) {
     ["customer_records", "outlook_mirror", "workflow_audit"].includes(source.key) && source.status !== "ok",
   );
 
+  if (result.trelloFailureDiagnosis.rootCauseKey === "sent") {
+    return {
+      tone: "success" as const,
+      title: "Bereits erfolgreich versendet",
+      summary: "Ein späterer erfolgreicher Zustellungs-Audit löst die älteren Fehler für denselben Fall auf. Kein erneuter Versand und keine Mockup-Korrektur nötig.",
+      steps: result.actionProposals.some((action) => action.key === "repair_trello_projection" && action.enabled)
+        ? ["Trello-Projektion bereinigen.", "Danach Fall neu laden."]
+        : ["Kein weiterer Schritt nötig."],
+    };
+  }
+
   if (result.retryAssessment.canSendWithConfirmation) {
     return {
       tone: "success" as const,
@@ -399,10 +411,13 @@ function buildOperatorDecision(result: CompanyBrainResolveResult) {
 }
 
 function buildCaseRoute(result: CompanyBrainResolveResult) {
+  const resolved = result.trelloFailureDiagnosis.rootCauseKey === "sent";
   const dataFixPriority = ["correct_customer_email", "prepare_email_correction", "collect_design_assets", "repair_trello_projection", "post_trello_status_comment", "create_internal_task", "save_case_note"];
-  const dataFix = dataFixPriority
-    .map((key) => result.actionProposals.find((action) => action.enabled && action.key === key))
-    .find((action): action is CompanyBrainActionProposalView => Boolean(action));
+  const dataFix = resolved
+    ? result.actionProposals.find((action) => action.enabled && action.key === "repair_trello_projection")
+    : dataFixPriority
+        .map((key) => result.actionProposals.find((action) => action.enabled && action.key === key))
+        .find((action): action is CompanyBrainActionProposalView => Boolean(action));
   const customerAction = result.actionProposals.find((action) => action.key === "guarded_offer_resend");
   const automationRun = result.automationRuns
     .filter((run) => !isCompanyBrainFixRun(run))
@@ -411,7 +426,7 @@ function buildCaseRoute(result: CompanyBrainResolveResult) {
     ? result.trelloFailureDiagnosis.status === "loaded" ? "ok" : routeStepToneFromSeverity(result.trelloFailureDiagnosis.severity)
     : "neutral";
   const causeTone: "ok" | "warning" | "blocked" | "neutral" =
-    result.evidenceScore.status === "strong"
+    resolved || result.evidenceScore.status === "strong"
       ? "ok"
       : result.evidenceScore.status === "conflicting"
         ? "blocked"
@@ -420,9 +435,11 @@ function buildCaseRoute(result: CompanyBrainResolveResult) {
           : "neutral";
   const dataTone: "ok" | "warning" | "blocked" | "neutral" = dataFix
     ? dataFix.riskLevel === "high" ? "warning" : "ok"
-    : result.retryAssessment.blockers.length ? "blocked" : "neutral";
-  const sendTone: "ok" | "warning" | "blocked" | "neutral" = result.retryAssessment.canSendWithConfirmation
+    : resolved ? "ok" : result.retryAssessment.blockers.length ? "blocked" : "neutral";
+  const sendTone: "ok" | "warning" | "blocked" | "neutral" = resolved
     ? "ok"
+    : result.retryAssessment.canSendWithConfirmation
+      ? "ok"
     : result.retryAssessment.status === "needs_fix"
       ? "warning"
       : result.retryAssessment.status === "blocked"
@@ -451,25 +468,28 @@ function buildCaseRoute(result: CompanyBrainResolveResult) {
     {
       key: "fix",
       label: "3. Datenfix",
-      title: dataFix?.label || "Kein direkter Datenfix",
-      detail: dataFix ? shortText(dataFix.summary, 120) : (result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution),
+      title: dataFix?.label || (resolved ? "Kein Datenfix nötig" : "Kein direkter Datenfix"),
+      detail: dataFix ? shortText(dataFix.summary, 120) : resolved ? "Der erfolgreiche Zustellungs-Audit ist maßgeblich." : (result.retryAssessment.safeFixes[0] || result.problemResolution.recommendedResolution),
       tone: dataTone,
     },
     {
       key: "send",
       label: "4. Versand",
-      title: result.retryAssessment.canSendWithConfirmation ? "Guarded Retry möglich" : "Kundenkontakt gesperrt",
-      detail: customerAction?.summary || result.retryAssessment.summary,
+      title: resolved ? "Versand belegt" : result.retryAssessment.canSendWithConfirmation ? "Guarded Retry möglich" : "Kundenkontakt gesperrt",
+      detail: resolved ? "Kein erneuter Versand nötig." : customerAction?.summary || result.retryAssessment.summary,
       tone: sendTone,
     },
   ];
 }
 
 function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: CompanyBrainActionProposalView[]) {
-  const primaryAction = readyActions[0] || null;
+  const resolved = result.trelloFailureDiagnosis.rootCauseKey === "sent";
+  const primaryAction = resolved
+    ? readyActions.find((action) => action.key === "repair_trello_projection") || null
+    : readyActions[0] || null;
   const criticalConflict = result.conflicts.find((finding) => finding.severity === "critical") || null;
   const firstGap = result.gaps.find((finding) => finding.severity !== "info") || null;
-  const firstBlocker = result.retryAssessment.blockers[0] || result.trelloFailureDiagnosis.blockedFixes[0] || criticalConflict?.detail || firstGap?.detail || null;
+  const firstBlocker = resolved ? null : result.retryAssessment.blockers[0] || result.trelloFailureDiagnosis.blockedFixes[0] || criticalConflict?.detail || firstGap?.detail || null;
   const sourceOfTruth = buildSourceOfTruthStatus(result);
   const primaryAutomationRun = result.automationRuns
     .filter((run) => !isCompanyBrainFixRun(run))
@@ -477,14 +497,18 @@ function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: Com
   const canSend = result.retryAssessment.canSendWithConfirmation;
   const needsFix = result.retryAssessment.status === "needs_fix";
   const blocked = result.retryAssessment.status === "blocked" || Boolean(criticalConflict);
-  const title = canSend
+  const title = resolved
+    ? "Bereits erfolgreich versendet"
+    : canSend
     ? "Lösbar nach Freigabe"
     : needsFix
       ? "Datenfix nötig"
       : blocked
         ? "Nicht automatisch lösen"
         : "Prüfung nötig";
-  const subtitle = canSend
+  const subtitle = resolved
+    ? "Der spätere Zustellungs-Audit ist maßgeblich. Alte QC-Fehler bleiben nur als Historie sichtbar."
+    : canSend
     ? "Company Brain hat genug Belege für eine guarded Aktion. Der Server prüft direkt vor Ausführung erneut."
     : needsFix
       ? "Der Fall ist erklärbar, aber ein Datenpunkt muss zuerst sauber korrigiert werden."
@@ -494,14 +518,14 @@ function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: Com
   const cause = result.trelloFailureDiagnosis.requested && result.trelloFailureDiagnosis.rootCauseKey !== "not_requested"
     ? result.trelloFailureDiagnosis.rootCause
     : result.problemResolution.rootCause;
-  const auditSafeFix = primaryAutomationRun?.safeFix || result.retryAssessment.safeFixes[0] || null;
-  const auditRecommendedFix = primaryAutomationRun?.recommendedFix || result.trelloFailureDiagnosis.recommendedFix || null;
+  const auditSafeFix = resolved ? null : primaryAutomationRun?.safeFix || result.retryAssessment.safeFixes[0] || null;
+  const auditRecommendedFix = resolved ? result.trelloFailureDiagnosis.recommendedFix : primaryAutomationRun?.recommendedFix || result.trelloFailureDiagnosis.recommendedFix || null;
   const nextStep = primaryAction
     ? primaryAction.label
-    : auditSafeFix || auditRecommendedFix || result.problemResolution.recommendedResolution || result.nextActions[0] || "Fall mit konkreter Frage neu prüfen";
+    : resolved ? "Kein weiterer Versand nötig" : auditSafeFix || auditRecommendedFix || result.problemResolution.recommendedResolution || result.nextActions[0] || "Fall mit konkreter Frage neu prüfen";
 
   return {
-    tone: canSend ? "success" as const : needsFix ? "warning" as const : blocked ? "danger" as const : "neutral" as const,
+    tone: resolved || canSend ? "success" as const : needsFix ? "warning" as const : blocked ? "danger" as const : "neutral" as const,
     title,
     subtitle,
     cause,
@@ -510,8 +534,8 @@ function buildOperatorBrief(result: CompanyBrainResolveResult, readyActions: Com
     primaryAction,
     evidenceLine: `${result.evidenceScore.score}/100 · ${evidenceScoreLabel(result.evidenceScore.status)}`,
     sourceLine: sourceOfTruth.title,
-    customerContactLine: canSend ? "Nur guarded nach Freigabe" : "Kein Kundenkontakt",
-    automationIssueKey: primaryAutomationRun?.issueKey || null,
+    customerContactLine: resolved ? "Kein erneuter Kundenkontakt" : canSend ? "Nur guarded nach Freigabe" : "Kein Kundenkontakt",
+    automationIssueKey: resolved ? null : primaryAutomationRun?.issueKey || null,
     automationExecutionLine: primaryAutomationRun?.executionId
       ? `n8n Execution ${primaryAutomationRun.executionId}`
       : primaryAutomationRun?.workflowName || null,
@@ -1605,8 +1629,8 @@ export function OpsCompanyBrainClient({
                     <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${evidenceScoreClass(result.evidenceScore.status)}`}>
                       {result.evidenceScore.score}/100 · {evidenceScoreLabel(result.evidenceScore.status)}
                     </span>
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${retryAssessmentClass(result.retryAssessment.status)}`}>
-                      {retryAssessmentLabel(result.retryAssessment.status)}
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${result.trelloFailureDiagnosis.rootCauseKey === "sent" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : retryAssessmentClass(result.retryAssessment.status)}`}>
+                      {result.trelloFailureDiagnosis.rootCauseKey === "sent" ? "Versand belegt" : retryAssessmentLabel(result.retryAssessment.status)}
                     </span>
                   </div>
                 </div>

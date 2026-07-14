@@ -282,7 +282,7 @@ export type CompanyBrainEmployeeGuidance = {
   playbookKey: CompanyBrainProblemType;
   playbookTitle: string;
   rootCauseCode: string;
-  resolutionStatus: "self_service" | "needs_data_fix" | "blocked" | "diagnose_only";
+  resolutionStatus: "resolved" | "self_service" | "needs_data_fix" | "blocked" | "diagnose_only";
   resolutionLabel: string;
   canEmployeeResolve: boolean;
   customerContactPolicy: "guarded_only" | "internal_only" | "no_customer_contact";
@@ -2837,12 +2837,90 @@ export function applyCaseVideoQcRetryState(runs: CompanyBrainAutomationRun[]): C
 
 function isAutomationFailureResolvedBySendProof(run: CompanyBrainAutomationRun | null | undefined, offerSentCheck: CompanyBrainCrossCheck | null | undefined) {
   if (!isAutomationFailure(run) || offerSentCheck?.status !== "pass") return false;
-  if (run?.issueKey === "video_content_qc_failed" || run?.issueKey === "video_content_qc_unavailable") return false;
   const proofTime = timestampMs(offerSentCheck.actual);
   const failureTime = timestampMs(run?.createdAt);
   if (!proofTime) return true;
   if (!failureTime) return true;
   return proofTime >= failureTime;
+}
+
+function isSuccessfulOfferDeliveryRun(run: CompanyBrainAutomationRun | null | undefined) {
+  if (!run || run.error) return false;
+  const action = cleanText(run.action).toLowerCase();
+  const status = cleanText(run.status).toLowerCase();
+  if (action === "initial_delivery_complete") return /^(success|sent|completed|ok)$/.test(status);
+  if (action === "guarded_offer_resend") return /^(success|sent|completed|duplicate|ok)$/.test(status);
+  return false;
+}
+
+function latestSuccessfulOfferDeliveryRun(
+  runs: CompanyBrainAutomationRun[],
+  caseIdentifiers?: { requestIds: string[]; offerIds: string[] },
+) {
+  const requestIds = new Set((caseIdentifiers?.requestIds || []).map((value) => cleanText(value).toLowerCase()).filter(Boolean));
+  const offerIds = new Set((caseIdentifiers?.offerIds || []).map((value) => cleanText(value).toLowerCase()).filter(Boolean));
+  const hasCaseIdentifiers = requestIds.size > 0 || offerIds.size > 0;
+  return runs
+    .filter((run) => {
+      if (!isSuccessfulOfferDeliveryRun(run)) return false;
+      if (!hasCaseIdentifiers) return true;
+      return Boolean(
+        (run.requestId && requestIds.has(cleanText(run.requestId).toLowerCase())) ||
+        (run.targetRecordId && offerIds.has(cleanText(run.targetRecordId).toLowerCase())),
+      );
+    })
+    .sort((left, right) => (timestampMs(right.createdAt) || 0) - (timestampMs(left.createdAt) || 0))[0] || null;
+}
+
+function successfulDeliveryRunAfterFailure(
+  failedRun: CompanyBrainAutomationRun | null | undefined,
+  runs: CompanyBrainAutomationRun[],
+  offerSentCheck: CompanyBrainCrossCheck | null | undefined,
+) {
+  if (!isAutomationFailure(failedRun) || offerSentCheck?.status === "fail") return null;
+  const failureTime = timestampMs(failedRun?.createdAt);
+  return runs
+    .filter((run) => {
+      if (!isSuccessfulOfferDeliveryRun(run) || !failedRun || !automationRunsBelongToSameCase(failedRun, run)) return false;
+      const deliveryTime = timestampMs(run.createdAt);
+      return !failureTime || !deliveryTime || deliveryTime >= failureTime;
+    })
+    .sort((left, right) => (timestampMs(right.createdAt) || 0) - (timestampMs(left.createdAt) || 0))[0] || null;
+}
+
+export function applyDeliveryAuditProofToCrossChecks(
+  crossChecks: CompanyBrainCrossCheck[],
+  automationRuns: CompanyBrainAutomationRun[],
+  caseIdentifiers?: { requestIds: string[]; offerIds: string[] },
+) {
+  const deliveryRun = latestSuccessfulOfferDeliveryRun(automationRuns, caseIdentifiers);
+  if (!deliveryRun) return crossChecks;
+
+  return crossChecks.map((check) => {
+    if (check.key === "offer_sent" && check.status !== "fail") {
+      return {
+        ...check,
+        status: "pass" as const,
+        severity: "info" as const,
+        actual: deliveryRun.createdAt,
+        summary: `Erfolgreiche Angebotszustellung ist im Workflow-Audit belegt${deliveryRun.executionId ? ` (Execution ${deliveryRun.executionId})` : ""}.`,
+      };
+    }
+    if (check.key !== "trello_projection" || check.status === "fail") return check;
+
+    const projectionText = `${check.actual || ""} ${check.summary}`;
+    const staleFailureTitle = /Titel:\s*FEHLER|veraltete Trello-Projektion/i.test(projectionText);
+    const hasSentTag = /Angebot gesendet/i.test(projectionText);
+    return {
+      ...check,
+      status: hasSentTag && !staleFailureTitle ? "pass" as const : "review" as const,
+      severity: hasSentTag && !staleFailureTitle ? "info" as const : "warning" as const,
+      actual: [check.actual, "Workflow-Audit: Versand belegt"].filter(Boolean).join(" · "),
+      summary: hasSentTag && !staleFailureTitle
+        ? "Trello-Tag und erfolgreicher Zustellungs-Audit passen zusammen."
+        : "Der Versand ist im Workflow-Audit belegt, aber die Trello-Projektion muss nachgezogen werden.",
+    };
+  });
 }
 
 function normalizeRetryEmail(value: string | null | undefined) {
@@ -3441,7 +3519,9 @@ export function buildTrelloFailureDiagnosis(input: {
   const triggerMove = latestTrelloMove(input.context.actions);
   const offerSentCheck = input.crossChecks.find((check) => check.key === "offer_sent");
   const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
-  const videoQcRetryExhausted = isVideoQcRetryExhausted(failedAutomation);
+  const laterDeliveryRun = successfulDeliveryRunAfterFailure(failedAutomation, input.automationRuns, offerSentCheck);
+  const automationResolvedByDeliveryProof = Boolean(laterDeliveryRun) || isAutomationFailureResolvedBySendProof(failedAutomation, offerSentCheck);
+  const videoQcRetryExhausted = isVideoQcRetryExhausted(failedAutomation) && !automationResolvedByDeliveryProof;
   const failedAutomationHint = failedAutomation
     ? classifyAutomationIssueText([
         failedAutomation.issueKey,
@@ -3456,18 +3536,20 @@ export function buildTrelloFailureDiagnosis(input: {
   const hasAutomation = input.automationRuns.length > 0;
   const hasRecord = input.records.length > 0;
   const hasOffer = input.offers.length > 0;
-  const offerSent = offerSentCheck?.status === "pass";
-  const automationResolvedBySendProof = isAutomationFailureResolvedBySendProof(failedAutomation, offerSentCheck);
+  const offerSent = offerSentCheck?.status === "pass" || Boolean(laterDeliveryRun);
   const offerIntentMove = trelloMoveMatchesOfferIntent(triggerMove);
   let rootCauseKey: CompanyBrainTrelloFailureDiagnosis["rootCauseKey"] = "undetermined";
   let rootCause = "Trello-Karte wurde geladen, aber die Ursache ist noch nicht eindeutig belegbar.";
   let recommendedFix = "Kartenbewegung, Source-of-Truth-Datensatz, Angebot, Versandbeleg und Workflow-Audit gemeinsam prüfen.";
   let severity: CompanyBrainTrelloFailureDiagnosis["severity"] = "warning";
 
-  if (automationResolvedBySendProof) {
+  if (automationResolvedByDeliveryProof) {
     rootCauseKey = "sent";
-    rootCause = `${failedAutomation?.workflowName || "Workflow"} hatte einen Fehler, aber ein späterer Versand-/Ausgangsbeleg ist vorhanden. Der ursprüngliche Versandfehler wirkt damit fachlich erledigt; offen ist höchstens Rückschreibung/Projektion.`;
-    recommendedFix = "Kein erneuter Versand. Status-Rückschreibung, Trello-Kommentar und interne Fallnotiz prüfen; nur bei fehlendem Beleg erneut in Outlook/quote_email_log gegenprüfen.";
+    const deliveryReference = laterDeliveryRun
+      ? `${laterDeliveryRun.action || "Zustellungs-Audit"}${laterDeliveryRun.executionId ? ` · Execution ${laterDeliveryRun.executionId}` : ""}${laterDeliveryRun.createdAt ? ` · ${laterDeliveryRun.createdAt}` : ""}`
+      : (offerSentCheck?.summary || offerSentCheck?.actual || "Versandbeleg").replace(/\.+$/, "");
+    rootCause = `${failedAutomation?.workflowName || "Workflow"} hatte zuvor einen Fehler. Ein späterer erfolgreicher Zustellungsbeleg für denselben Fall löst ihn auf: ${deliveryReference}. Das Angebot wurde versendet; offen ist höchstens eine veraltete Trello-Projektion.`;
+    recommendedFix = "Kein erneuter Versand und keine Mockup-Korrektur. Nur prüfen, ob Trello-Titel und Versand-Tags dem erfolgreichen Zustellungs-Audit entsprechen.";
     severity = "info";
   } else if (failedAutomation) {
     rootCauseKey = "automation_failed";
@@ -3531,9 +3613,9 @@ export function buildTrelloFailureDiagnosis(input: {
     expectedAction === "offer_send" && !offerSent ? "high" : expectedAction === "unknown" ? "medium" : "low";
   const safeFixes = [
     videoQcRetryExhausted ? "Mockup/Logo prüfen oder ersetzen; keinen weiteren Video-Lauf mit unverändertem Input starten." : null,
-    !videoQcRetryExhausted && !automationResolvedBySendProof && failedAutomation?.safeFix ? failedAutomation.safeFix : null,
-    !videoQcRetryExhausted && !automationResolvedBySendProof && failedAutomationHint && failedAutomationHint.key !== "unknown" ? failedAutomationHint.safeFix : null,
-    hasRecord ? "Interne Problemfall-Aufgabe mit Trello-Card-ID und Befund anlegen." : null,
+    !videoQcRetryExhausted && !automationResolvedByDeliveryProof && failedAutomation?.safeFix ? failedAutomation.safeFix : null,
+    !videoQcRetryExhausted && !automationResolvedByDeliveryProof && failedAutomationHint && failedAutomationHint.key !== "unknown" ? failedAutomationHint.safeFix : null,
+    hasRecord && rootCauseKey !== "sent" ? "Interne Problemfall-Aufgabe mit Trello-Card-ID und Befund anlegen." : null,
     rootCauseKey === "no_source_record" ? "Karte manuell mit Request-ID/Kundenakte verknüpfen." : null,
     rootCauseKey === "sent" ? "Status-/Trello-Projektion nachziehen, keinen erneuten Versand auslösen." : null,
     !videoQcRetryExhausted && ["automation_failed", "automation_missing", "offer_exists_no_send_proof"].includes(rootCauseKey)
@@ -3542,12 +3624,12 @@ export function buildTrelloFailureDiagnosis(input: {
   ].filter(Boolean) as string[];
   const blockedFixes = [
     videoQcRetryExhausted ? "Automatischer Video-Retry 2/2 ausgeschöpft; unveränderten Input nicht erneut verarbeiten." : null,
-    !automationResolvedBySendProof && failedAutomationHint && isBlockingAutomationIssueKey(failedAutomationHint.key)
+    !automationResolvedByDeliveryProof && failedAutomationHint && isBlockingAutomationIssueKey(failedAutomationHint.key)
       ? failedAutomationHint.retrySafety
       : null,
     expectedAction === "offer_send" && !offerSent ? "Kein automatischer Angebotsversand ohne Outlook-Duplicate-Check." : null,
-    "Kein n8n-Workflow-Change ohne Backup, Diff, Test und Rollback.",
-    "Trello-Listenwechsel allein reicht nicht als Source of Truth.",
+    rootCauseKey !== "sent" ? "Kein n8n-Workflow-Change ohne Backup, Diff, Test und Rollback." : null,
+    rootCauseKey !== "sent" ? "Trello-Listenwechsel allein reicht nicht als Source of Truth." : null,
   ].filter(Boolean) as string[];
 
   return {
@@ -3600,6 +3682,7 @@ export function buildTrelloFailureDiagnosis(input: {
       failedAutomation?.failedNode ? `Fehler-Node: ${failedAutomation.failedNode}` : null,
       failedAutomation?.idempotencyKey ? `Idempotency: ${failedAutomation.idempotencyKey}` : null,
       failedAutomation?.retrySafety ? `Retry-Sicherheit: ${failedAutomation.retrySafety}` : null,
+      laterDeliveryRun?.executionId ? `Spätere Erfolgs-Execution: ${laterDeliveryRun.executionId}` : null,
     ].filter(Boolean) as string[],
   };
 }
@@ -3903,12 +3986,15 @@ export function buildActionProposals(input: {
     .filter((run) => run.workflowName === "company_brain_fix_center")
     .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime());
   const workflowAutomationRuns = input.automationRuns.filter((run) => run.workflowName !== "company_brain_fix_center");
-  const failedAutomation = input.trelloFailureDiagnosis.rootCauseKey === "sent"
+  const caseResolvedByDeliveryProof = input.trelloFailureDiagnosis.rootCauseKey === "sent";
+  const failedAutomation = caseResolvedByDeliveryProof
     ? null
     : workflowAutomationRuns.find((run) => isAutomationFailure(run)) || null;
-  const videoQcAutomation = workflowAutomationRuns.find((run) =>
-    run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
-  ) || null;
+  const videoQcAutomation = caseResolvedByDeliveryProof
+    ? null
+    : workflowAutomationRuns.find((run) =>
+        run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
+      ) || null;
   const videoQcRetryExhausted = isVideoQcRetryExhausted(videoQcAutomation);
   const openWatcherTitles = input.watchers.filter((watcher) => watcher.status === "open").map((watcher) => watcher.title);
   const retry = input.retryAssessment;
@@ -3953,14 +4039,13 @@ export function buildActionProposals(input: {
   };
   const trelloProjectionCheck = (input.crossChecks || []).find((check) => check.key === "trello_projection") || null;
   const trelloProjectionText = `${trelloProjectionCheck?.summary || ""} ${trelloProjectionCheck?.actual || ""}`;
+  const trelloProjectionNeedsRepair = trelloProjectionCheck?.status === "review" &&
+    /FEHLER|veraltet|nachgezogen|fehlt/i.test(trelloProjectionText);
   const trelloProjectionRepairAllowed = Boolean(
     primaryRecord &&
     trelloCardId &&
     !trelloProjectionRepaired &&
-    (
-      input.trelloFailureDiagnosis.rootCauseKey === "sent" ||
-      /DB\/Mail: Versandbeleg|Versandbeleg vorhanden|veraltete Trello-Projektion|Tag 'Angebot gesendet' fehlt/i.test(trelloProjectionText)
-    ),
+    trelloProjectionNeedsRepair,
   );
 
   const actions: CompanyBrainActionProposal[] = [
@@ -3970,8 +4055,10 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: input.problemResolution.severity === "critical" ? "high" : input.problemResolution.severity === "warning" ? "medium" : "low",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord && !problemCaseOpened),
-      summary: problemCaseOpened
+      enabled: Boolean(primaryRecord && !problemCaseOpened && !caseResolvedByDeliveryProof),
+      summary: caseResolvedByDeliveryProof
+        ? "Kein Problemfall nötig: Die erfolgreiche Zustellung ist belegt."
+        : problemCaseOpened
         ? `Problemfall/Aufgabe wurde für diesen Fall bereits vorbereitet.${fixRunSuffix(problemCaseOpened)}`
         : "Legt nach Bestätigung einen Problemfall-Audit und eine interne Aufgabe an. Kein Kundenkontakt.",
       confirmationText: "Problemfall nur anlegen, wenn die Fallprüfung fachlich plausibel ist.",
@@ -3989,8 +4076,10 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "low",
       approvalRequired: true,
-      enabled: Boolean(primaryRecord),
-      summary: "Speichert die Fallanalyse als interne Notiz in der Kundenakte. Kein Kundenkontakt.",
+      enabled: Boolean(primaryRecord && !caseResolvedByDeliveryProof),
+      summary: caseResolvedByDeliveryProof
+        ? "Keine zusätzliche Fallnotiz nötig: Die erfolgreiche Zustellung ist bereits im Audit belegt."
+        : "Speichert die Fallanalyse als interne Notiz in der Kundenakte. Kein Kundenkontakt.",
       confirmationText: "Nur interne, belegbasierte Analyse speichern.",
       href: primaryRecord ? `/ops/customer-records?query=${encodeURIComponent(primaryRecord.requestId)}` : null,
       payloadPreview: [
@@ -4005,8 +4094,10 @@ export function buildActionProposals(input: {
       type: "copy",
       riskLevel: input.replyDraft.riskLevel,
       approvalRequired: true,
-      enabled: true,
-      summary: "Kopiert den internen Entwurf. Versand bleibt manuell und freigabepflichtig.",
+      enabled: !caseResolvedByDeliveryProof,
+      summary: caseResolvedByDeliveryProof
+        ? "Kein Kundenentwurf nötig: Der Versand ist bereits abgeschlossen."
+        : "Kopiert den internen Entwurf. Versand bleibt manuell und freigabepflichtig.",
       confirmationText: "Entwurf nur nach fachlicher Freigabe an Kunden senden.",
       href: null,
       payloadPreview: [`Betreff: ${input.replyDraft.subject}`, ...input.replyDraft.body.split("\n").slice(0, 6)],
@@ -4017,8 +4108,10 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: openWatcherTitles.length || retry.blockers.length ? "medium" : "low",
       approvalRequired: true,
-      enabled: Boolean((primaryRecord || trelloCardId) && !internalTaskCreated),
-      summary: internalTaskCreated
+      enabled: Boolean((primaryRecord || trelloCardId) && !internalTaskCreated && !caseResolvedByDeliveryProof),
+      summary: caseResolvedByDeliveryProof
+        ? "Keine interne Fehleraufgabe nötig: Die erfolgreiche Zustellung ist belegt."
+        : internalTaskCreated
         ? `Interne Aufgabe wurde bereits vorbereitet.${fixRunSuffix(internalTaskCreated)}`
         : !primaryRecord && trelloCardId
           ? "Legt nach Freigabe eine interne Automation-Fix-Aufgabe zur Trello-Karte an. Keine Kundenakte, kein Versand und keine Datenkorrektur."
@@ -4135,8 +4228,10 @@ export function buildActionProposals(input: {
       type: "prepared_task",
       riskLevel: "low",
       approvalRequired: true,
-      enabled: Boolean(trelloCardId && !trelloStatusPosted),
-      summary: trelloStatusPosted
+      enabled: Boolean(trelloCardId && !trelloStatusPosted && !caseResolvedByDeliveryProof),
+      summary: caseResolvedByDeliveryProof
+        ? "Kein zusätzlicher Diagnosekommentar nötig; nur eine nachweislich veraltete Projektion reparieren."
+        : trelloStatusPosted
         ? `Trello-Status wurde bereits kommentiert.${fixRunSuffix(trelloStatusPosted)}`
         : !primaryRecord
           ? "Schreibt eine kurze interne Diagnose auf die Trello-Karte. Keine Kundenakte, kein Versand und keine Datenkorrektur; Trello bleibt Projektion."
@@ -4227,8 +4322,10 @@ export function buildActionProposals(input: {
       type: "manual_check",
       riskLevel: videoQcAutomation ? "medium" : input.assets.length ? "low" : "medium",
       approvalRequired: false,
-      enabled: true,
-      summary: videoQcAutomation
+      enabled: !caseResolvedByDeliveryProof,
+      summary: caseResolvedByDeliveryProof
+        ? "Keine Mockup- oder Asset-Korrektur nötig: Die spätere Zustellung war erfolgreich."
+        : videoQcAutomation
         ? videoQcRetryExhausted
           ? "Video-Versuch 2/2 ist ausgeschöpft. Öffnet die Trello-Karte; das Mockup muss vor einem neuen Lauf korrigiert oder ersetzt werden."
           : "Öffnet die Trello-Karte zur Prüfung des verwendeten Mockups. Der automatische Zweitversuch steht noch aus."
@@ -4298,6 +4395,7 @@ function guidanceRootCauseCode(input: {
   retryAssessment: CompanyBrainRetryAssessment;
   crossChecks: CompanyBrainCrossCheck[];
 }) {
+  if (input.trelloFailureDiagnosis.rootCauseKey === "sent") return "sent";
   const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
   if (failedAutomation?.issueKey) return failedAutomation.issueKey;
   if (input.trelloFailureDiagnosis.rootCauseKey !== "not_requested") return input.trelloFailureDiagnosis.rootCauseKey;
@@ -4309,6 +4407,7 @@ function guidanceRootCauseCode(input: {
 }
 
 function guidanceResolutionLabel(status: CompanyBrainEmployeeGuidance["resolutionStatus"]) {
+  if (status === "resolved") return "Erfolgreich abgeschlossen";
   if (status === "self_service") return "Mitarbeiter kann nach Freigabe lösen";
   if (status === "needs_data_fix") return "Mitarbeiter kann Datenfix vorbereiten";
   if (status === "blocked") return "Nicht selbst lösen";
@@ -4334,27 +4433,37 @@ export function buildCompanyBrainEmployeeGuidance(input: {
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
 }): CompanyBrainEmployeeGuidance {
+  const caseResolvedByDeliveryProof = input.trelloFailureDiagnosis.rootCauseKey === "sent";
   const readyActions = input.actionProposals
     .filter((action) => action.enabled)
     .sort((left, right) => guidanceActionPriority(left, input.retryAssessment.status) - guidanceActionPriority(right, input.retryAssessment.status));
-  const videoQcAutomation = input.automationRuns.find((run) =>
-    run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
-  ) || null;
+  const videoQcAutomation = caseResolvedByDeliveryProof
+    ? null
+    : input.automationRuns.find((run) =>
+        run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
+      ) || null;
   const nextBestAction = (
-    videoQcAutomation
+    caseResolvedByDeliveryProof
+      ? readyActions.find((action) => action.key === "repair_trello_projection") || null
+      : videoQcAutomation
       ? readyActions.find((action) => action.key === "collect_design_assets")
       : null
-  ) || readyActions.find((action) =>
+  ) || (caseResolvedByDeliveryProof ? null : readyActions.find((action) =>
     action.key === "guarded_offer_resend" ||
     GUIDANCE_DATA_FIX_ACTIONS.includes(action.key) ||
     action.key === "inspect_n8n_run" ||
     action.key === "verify_live_outlook",
-  ) || readyActions[0] || null;
-  const dataFixAction = readyActions.find((action) => GUIDANCE_DATA_FIX_ACTIONS.includes(action.key)) || null;
+  ) || readyActions[0] || null);
+  const dataFixAction = caseResolvedByDeliveryProof
+    ? readyActions.find((action) => action.key === "repair_trello_projection") || null
+    : readyActions.find((action) => GUIDANCE_DATA_FIX_ACTIONS.includes(action.key)) || null;
   const guardedRetryAction = readyActions.find((action) => action.key === "guarded_offer_resend") || null;
   const hasSourceOfTruth = input.records.length > 0 || input.offers.length > 0;
   const hasTrello = input.trelloFailureDiagnosis.status === "loaded";
-  const failedAutomation = input.automationRuns.find((run) => isAutomationFailure(run)) || null;
+  const failedAutomation = caseResolvedByDeliveryProof
+    ? null
+    : input.automationRuns.find((run) => isAutomationFailure(run)) || null;
+  const successfulDeliveryRun = latestSuccessfulOfferDeliveryRun(input.automationRuns);
   const rootCauseCode = guidanceRootCauseCode({
     problemType: input.problemResolution.problemType,
     trelloFailureDiagnosis: input.trelloFailureDiagnosis,
@@ -4362,7 +4471,7 @@ export function buildCompanyBrainEmployeeGuidance(input: {
     retryAssessment: input.retryAssessment,
     crossChecks: input.crossChecks,
   });
-  const hardBlockers = uniqueStrings([
+  const hardBlockers = caseResolvedByDeliveryProof ? [] : uniqueStrings([
     ...input.retryAssessment.blockers,
     ...input.trelloFailureDiagnosis.blockedFixes,
     ...input.sourceHealth
@@ -4370,26 +4479,34 @@ export function buildCompanyBrainEmployeeGuidance(input: {
       .map((source) => `${source.label}: ${source.summary}`),
   ]).slice(0, 6);
   const resolutionStatus: CompanyBrainEmployeeGuidance["resolutionStatus"] =
-    input.retryAssessment.canSendWithConfirmation && guardedRetryAction
+    caseResolvedByDeliveryProof
+      ? "resolved"
+      : input.retryAssessment.canSendWithConfirmation && guardedRetryAction
       ? "self_service"
       : dataFixAction && hasSourceOfTruth && !input.retryAssessment.canSendWithConfirmation
         ? "needs_data_fix"
         : hardBlockers.length || input.retryAssessment.status === "blocked"
           ? "blocked"
           : "diagnose_only";
-  const customerContactPolicy: CompanyBrainEmployeeGuidance["customerContactPolicy"] =
-    input.retryAssessment.canSendWithConfirmation ? "guarded_only" : dataFixAction ? "internal_only" : "no_customer_contact";
-  const canEmployeeResolve = resolutionStatus === "self_service" || resolutionStatus === "needs_data_fix";
+  const customerContactPolicy: CompanyBrainEmployeeGuidance["customerContactPolicy"] = caseResolvedByDeliveryProof
+    ? "no_customer_contact"
+    : input.retryAssessment.canSendWithConfirmation ? "guarded_only" : dataFixAction ? "internal_only" : "no_customer_contact";
+  const canEmployeeResolve = resolutionStatus === "resolved" || resolutionStatus === "self_service" || resolutionStatus === "needs_data_fix";
   const cause = input.trelloFailureDiagnosis.rootCauseKey !== "not_requested"
     ? input.trelloFailureDiagnosis.rootCause
     : input.problemResolution.rootCause;
-  const nextStepText = nextBestAction
+  const nextStepText = caseResolvedByDeliveryProof && !nextBestAction
+    ? "Kein weiterer Versand nötig."
+    : nextBestAction
     ? `Nächster sicherer Schritt: ${nextBestAction.label}.`
     : input.retryAssessment.safeFixes[0] || input.problemResolution.recommendedResolution;
   const evidenceBullets = uniqueStrings([
     hasTrello ? `Trello-Karte gelesen: ${input.trelloFailureDiagnosis.card?.name || input.trelloFailureDiagnosis.card?.id || "unbekannt"}.` : null,
     failedAutomation
       ? `Automation-Beleg: ${failedAutomation.workflowName || "Workflow"}${failedAutomation.executionId ? ` · Execution ${failedAutomation.executionId}` : ""}${failedAutomation.failedNode ? ` · Node ${failedAutomation.failedNode}` : ""}.`
+      : null,
+    caseResolvedByDeliveryProof && successfulDeliveryRun
+      ? `Erfolgreicher Zustellungs-Audit: ${successfulDeliveryRun.action || "Zustellung"}${successfulDeliveryRun.executionId ? ` · Execution ${successfulDeliveryRun.executionId}` : ""}${successfulDeliveryRun.createdAt ? ` · ${successfulDeliveryRun.createdAt}` : ""}.`
       : null,
     input.records[0]?.requestId ? `Kundenakte: ${input.records[0].requestId}.` : null,
     input.offers[0] ? `Angebot: ${input.offers[0].offerNumber || input.offers[0].documentReference || input.offers[0].offerId} · Status ${input.offers[0].status}.` : null,
@@ -4401,7 +4518,9 @@ export function buildCompanyBrainEmployeeGuidance(input: {
   ]).slice(0, 6);
   const forbiddenActions = uniqueStrings([
     "Keine Kundenmail aus Company Brain ohne explizite Freigabe.",
-    input.retryAssessment.canSendWithConfirmation ? null : "Keinen Angebots-Resend starten.",
+    caseResolvedByDeliveryProof
+      ? "Keinen erneuten Versand auslösen; die Zustellung ist bereits belegt."
+      : input.retryAssessment.canSendWithConfirmation ? null : "Keinen Angebots-Resend starten.",
     "Trello nicht als Source of Truth verwenden.",
     "Keinen n8n-Workflow ohne Backup, Diff, Test und Rollback ändern.",
     input.evidenceScore.status === "conflicting" ? "Keine verbindliche Kundenaussage bei widersprüchlicher Beweislage." : null,
@@ -4425,6 +4544,7 @@ export function buildCompanyBrainEmployeeGuidance(input: {
       key: "prove_cause",
       label: "2. Ursache belegen",
       status: guidanceStepStatusClass(
+        caseResolvedByDeliveryProof ||
         input.evidenceScore.status === "strong" ||
           input.evidenceScore.status === "medium" ||
           input.trelloFailureDiagnosis.rootCauseKey === "automation_failed" ||
@@ -4438,9 +4558,11 @@ export function buildCompanyBrainEmployeeGuidance(input: {
     {
       key: "fix_data",
       label: "3. Daten/Projektion reparieren",
-      status: dataFixAction ? "ready" : hardBlockers.length ? "blocked" : "needs_review",
+      status: dataFixAction ? "ready" : caseResolvedByDeliveryProof ? "done" : hardBlockers.length ? "blocked" : "needs_review",
       summary: dataFixAction
         ? dataFixAction.summary
+        : caseResolvedByDeliveryProof
+          ? "Trello-Projektion entspricht dem erfolgreichen Zustellungsbeleg; kein Datenfix nötig."
         : hardBlockers[0] || input.retryAssessment.safeFixes[0] || input.problemResolution.recommendedResolution,
       actionKey: dataFixAction?.key || null,
       actionLabel: dataFixAction?.label || null,
@@ -4449,8 +4571,10 @@ export function buildCompanyBrainEmployeeGuidance(input: {
     {
       key: "clear_send",
       label: "4. Versand klären",
-      status: guardedRetryAction ? "ready" : input.retryAssessment.canSendWithConfirmation ? "needs_review" : "blocked",
-      summary: guardedRetryAction
+      status: caseResolvedByDeliveryProof ? "done" : guardedRetryAction ? "ready" : input.retryAssessment.canSendWithConfirmation ? "needs_review" : "blocked",
+      summary: caseResolvedByDeliveryProof
+        ? "Versand ist durch einen späteren erfolgreichen Zustellungs-Audit belegt. Kein Resend."
+        : guardedRetryAction
         ? guardedRetryAction.summary
         : input.retryAssessment.summary || "Versand bleibt gesperrt, bis Duplicate-, Empfänger- und Beleglage sauber sind.",
       actionKey: guardedRetryAction?.key || null,
@@ -4471,7 +4595,9 @@ export function buildCompanyBrainEmployeeGuidance(input: {
       `Problemtyp: ${input.problemResolution.label}.`,
       `Ursache: ${cause}`,
       nextStepText,
-      customerContactPolicy === "guarded_only"
+      caseResolvedByDeliveryProof
+        ? "Der Fall ist erledigt; kein erneuter Kundenkontakt auslösen."
+        : customerContactPolicy === "guarded_only"
         ? "Kundenkontakt ist nur über die guarded Aktion erlaubt."
         : customerContactPolicy === "internal_only"
           ? "Erst internen Datenfix ausführen; kein Kundenkontakt."
@@ -4977,10 +5103,6 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
   });
   const coolifyLive = await fetchCoolifyLiveDiagnostic();
   if (coolifyLive) diagnostics.push(coolifyLive);
-  const crossChecks = buildCompanyBrainCrossChecks({ records: recordSummaries, offers: offerSummaries, evidence, question });
-  const conflicts = buildConflicts(crossChecks);
-  const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics);
-  const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
   const trelloAutomationRuns = buildTrelloAutomationRuns(trelloContext);
   const automation = await fetchAutomationRuns(
     recordSummaries,
@@ -5010,6 +5132,28 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
       : { ...automation.diagnostic, count: automationRuns.length },
   );
   if (n8nLive.diagnostic) diagnostics.push(n8nLive.diagnostic);
+  const crossChecks = applyDeliveryAuditProofToCrossChecks(
+    buildCompanyBrainCrossChecks({ records: recordSummaries, offers: offerSummaries, evidence, question }),
+    automationRuns,
+    {
+      requestIds: uniqueStrings([
+        ...recordSummaries.map((record) => record.requestId),
+        ...offerSummaries.map((offer) => offer.requestId),
+      ].filter(Boolean)),
+      offerIds: uniqueStrings(offerSummaries.map((offer) => offer.offerId).filter(Boolean)),
+    },
+  );
+  const successfulDeliveryRun = latestSuccessfulOfferDeliveryRun(automationRuns, {
+    requestIds: uniqueStrings([
+      ...recordSummaries.map((record) => record.requestId),
+      ...offerSummaries.map((offer) => offer.requestId),
+    ].filter(Boolean)),
+    offerIds: uniqueStrings(offerSummaries.map((offer) => offer.offerId).filter(Boolean)),
+  });
+  const conflicts = buildConflicts(crossChecks);
+  const gaps = buildGaps(recordSummaries, offerSummaries, diagnostics)
+    .filter((gap) => !(successfulDeliveryRun && gap.title === "Kein Versandbeleg sichtbar"));
+  const checks = buildChecks(recordSummaries, offerSummaries, evidence, conflicts, question);
   const trelloFailureDiagnosis = buildTrelloFailureDiagnosis({
     requested: trelloRequested || Boolean(trelloContext),
     context: trelloContext,

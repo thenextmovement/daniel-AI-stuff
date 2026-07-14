@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildCompanyBrainAnswer,
   buildActionProposals,
+  applyDeliveryAuditProofToCrossChecks,
   applyCaseVideoQcRetryState,
   applyVideoQcRetryState,
   buildCompanyBrainCrossChecks,
@@ -1243,12 +1244,12 @@ test("company brain treats later send proof as resolved automation failure", () 
   assert.equal(diagnosis.rootCauseKey, "sent");
   assert.equal(diagnosis.severity, "info");
   assert.equal(diagnosis.duplicateRisk, "low");
-  assert.match(diagnosis.rootCause, /späterer Versand-\/Ausgangsbeleg/);
+  assert.match(diagnosis.rootCause, /späterer erfolgreicher Zustellungsbeleg/);
   assert.match(diagnosis.recommendedFix, /Kein erneuter Versand/);
   assert.ok(diagnosis.safeFixes.some((fix) => /keinen erneuten Versand/.test(fix)));
 });
 
-test("company brain keeps handled video QC failures open despite a later offer send proof", () => {
+test("company brain resolves handled video QC failures with a later offer send proof", () => {
   const diagnosis = buildTrelloFailureDiagnosis({
     requested: true,
     context: {
@@ -1315,10 +1316,146 @@ test("company brain keeps handled video QC failures open despite a later offer s
     problemType: "offer_not_sent",
   });
 
-  assert.equal(diagnosis.rootCauseKey, "automation_failed");
-  assert.equal(diagnosis.severity, "critical");
-  assert.match(diagnosis.rootCause, /DESIGN_MORPH/);
-  assert.match(diagnosis.recommendedFix, /automatischen Zweitversuch/i);
+  assert.equal(diagnosis.rootCauseKey, "sent");
+  assert.equal(diagnosis.severity, "info");
+  assert.match(diagnosis.rootCause, /späterer erfolgreicher Zustellungsbeleg/i);
+  assert.match(diagnosis.recommendedFix, /keine Mockup-Korrektur/i);
+  assert.ok(!diagnosis.safeFixes.some((fix) => /Mockup/i.test(fix)));
+  assert.ok(!diagnosis.blockedFixes.some((fix) => /Video-Retry/i.test(fix)));
+});
+
+test("company brain uses a later initial delivery audit to resolve an older video QC failure", () => {
+  const failedRun: CompanyBrainAutomationRun = {
+    id: "audit-3100049",
+    workflowName: "ki_video_generator_v1",
+    action: "video_content_qc",
+    status: "failed",
+    error: "KI-Video hat die Inhaltsprüfung wegen DESIGN_MORPH nicht bestanden.",
+    createdAt: "2026-07-14T10:43:02.000Z",
+    requestId: "000ff1ce-2fde-4129-8c30-de142f31de15",
+    executionId: "3100049",
+    correlationId: "6a55f38cb34bbcdc7a140559",
+    sourceEventId: null,
+    targetRecordId: "cmrkl1mg40000o43gn62tbyjq",
+    failedNode: "Analyze Video Content QC",
+    idempotencyKey: "video-qc:6a55f38cb34bbcdc7a140559",
+    retrySafety: "blocked",
+    summary: "Video-QC abgelehnt.",
+    issueKey: "video_content_qc_failed",
+    safeFix: "Mockup prüfen oder ersetzen.",
+    currentAttempt: 2,
+    automaticVideoAttemptLimit: 2,
+    retryPlanned: false,
+  };
+  const successfulDelivery: CompanyBrainAutomationRun = {
+    id: "audit-3101931",
+    workflowName: "ki_video_generator_v1",
+    action: "initial_delivery_complete",
+    status: "success",
+    error: null,
+    createdAt: "2026-07-14T11:47:37.200Z",
+    requestId: "000ff1ce-2fde-4129-8c30-de142f31de15",
+    executionId: "3101931",
+    correlationId: "offer:cmrkl1mg40000o43gn62tbyjq:initial-delivery:3101931",
+    sourceEventId: null,
+    targetRecordId: "cmrkl1mg40000o43gn62tbyjq",
+    failedNode: null,
+    idempotencyKey: "offer:cmrkl1mg40000o43gn62tbyjq:initial-delivery:v1",
+    retrySafety: "blocked",
+    summary: "Initiale Angebotszustellung wurde abgeschlossen.",
+  };
+  const crossChecks = applyDeliveryAuditProofToCrossChecks([{
+    key: "offer_sent",
+    label: "Angebotsversand",
+    status: "review",
+    severity: "warning",
+    expected: "Versandbeleg",
+    actual: null,
+    summary: "Angebot existiert, aber ein eindeutiger Versandbeleg fehlt.",
+    evidenceIds: [],
+  }], [failedRun, successfulDelivery]);
+
+  const diagnosis = buildTrelloFailureDiagnosis({
+    requested: true,
+    context: {
+      card: {
+        id: "6a55f38cb34bbcdc7a140559",
+        shortLink: "O4CNCCZW",
+        name: "3D Backlit · Nils Manthey",
+        desc: "Request-ID: 000ff1ce-2fde-4129-8c30-de142f31de15",
+        idBoard: null,
+        idList: null,
+        currentListName: "Quote Ready",
+        url: "https://trello.com/c/O4CNCCZW",
+        shortUrl: "https://trello.com/c/O4CNCCZW",
+        closed: false,
+        dateLastActivity: "2026-07-14T11:47:37.200Z",
+        createdAt: null,
+        customFields: {},
+        attachmentsCount: 7,
+      },
+      actions: [{
+        id: "action-qc-failed",
+        type: "updateCard",
+        date: "2026-07-14T10:43:02.000Z",
+        text: "FEHLER: Video-QC DESIGN_MORPH. Execution: 3100049",
+        fromListId: null,
+        fromListName: "Neue Angebote schicken + KI-Video",
+        toListId: null,
+        toListName: "Quote Ready",
+      }],
+    },
+    diagnostic: { source: "trello_live", ok: true, label: "Trello Live", detail: null, count: 1 },
+    records: [],
+    offers: [],
+    crossChecks,
+    automationRuns: [failedRun, successfulDelivery],
+    question: "Warum wurden Video und Angebot nicht versendet?",
+    problemType: "offer_not_sent",
+  });
+
+  assert.equal(crossChecks[0]?.status, "pass");
+  assert.match(crossChecks[0]?.summary || "", /Execution 3101931/);
+  assert.equal(diagnosis.rootCauseKey, "sent");
+  assert.equal(diagnosis.duplicateRisk, "low");
+  assert.match(diagnosis.rootCause, /Execution 3101931/);
+  assert.ok(!diagnosis.safeFixes.some((fix) => /Mockup/i.test(fix)));
+  assert.ok(!diagnosis.blockedFixes.some((fix) => /2\/2|Retry/i.test(fix)));
+});
+
+test("company brain does not override an Outlook delivery failure with workflow success", () => {
+  const failedDeliveryCheck = {
+    key: "offer_sent" as const,
+    label: "Angebotsversand",
+    status: "fail" as const,
+    severity: "critical" as const,
+    expected: "Versandbeleg",
+    actual: "2026-07-14T12:00:00.000Z",
+    summary: "Outlook meldet Unzustellbarkeit.",
+    evidenceIds: ["outlook:bounce"],
+  };
+  const successfulWorkflowRun: CompanyBrainAutomationRun = {
+    id: "delivery-success-before-bounce",
+    workflowName: "ki_video_generator_v1",
+    action: "initial_delivery_complete",
+    status: "success",
+    error: null,
+    createdAt: "2026-07-14T11:47:37.200Z",
+    requestId: "REQ-BOUNCE",
+    executionId: "3101931",
+    correlationId: null,
+    sourceEventId: null,
+    targetRecordId: "offer-bounce",
+    failedNode: null,
+    idempotencyKey: "offer:offer-bounce:initial-delivery:v1",
+    retrySafety: "blocked",
+    summary: "Initiale Angebotszustellung wurde abgeschlossen.",
+  };
+
+  const [result] = applyDeliveryAuditProofToCrossChecks([failedDeliveryCheck], [successfulWorkflowRun]);
+
+  assert.equal(result?.status, "fail");
+  assert.equal(result?.summary, "Outlook meldet Unzustellbarkeit.");
 });
 
 test("company brain stops suggesting another video retry after attempt two", () => {
@@ -2008,6 +2145,7 @@ function actionProposalFixture(options: {
   retry: ReturnType<typeof buildCompanyBrainRetryAssessment>;
   automationRuns?: CompanyBrainAutomationRun[];
   withoutRecord?: boolean;
+  trelloFailureDiagnosis?: CompanyBrainTrelloFailureDiagnosis;
 }) {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-ACTIONS",
@@ -2092,7 +2230,7 @@ function actionProposalFixture(options: {
     ],
     assets: [],
     retryAssessment: options.retry,
-    trelloFailureDiagnosis: retryDiagnosis(),
+    trelloFailureDiagnosis: options.trelloFailureDiagnosis || retryDiagnosis(),
   });
 }
 
@@ -2362,6 +2500,127 @@ test("company brain routes video QC failures to mockup review and blocks direct 
   assert.equal(guidance.nextBestActionKey, "collect_design_assets");
   assert.equal(guidance.nextBestActionLabel, "Mockup für Video prüfen");
   assert.match(guidance.plainLanguageSummary, /DESIGN_MORPH/);
+});
+
+test("company brain hides historical video QC fixes after successful delivery", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "blocked",
+    label: "Versand bereits belegt",
+    summary: "Ein erfolgreicher Zustellungs-Audit ist vorhanden.",
+    recipientEmail: "nils@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: "company-brain-offer-resend:offer-actions:nils@example.com",
+    canSendWithConfirmation: false,
+    blockers: ["Es gibt bereits einen Versand-/Ausgangsbeleg; keinen erneuten Versand auslösen."],
+    safeFixes: ["Status-/Trello-Projektion prüfen, aber keinen Resend starten."],
+  };
+  const historicalFailure: CompanyBrainAutomationRun = {
+    id: "video-qc-old",
+    workflowName: "ki_video_generator_v1",
+    action: "video_content_qc",
+    status: "failed",
+    error: "DESIGN_MORPH",
+    createdAt: "2026-07-14T10:43:02.000Z",
+    requestId: "REQ-ACTIONS",
+    executionId: "3100049",
+    correlationId: "card-actions",
+    sourceEventId: null,
+    targetRecordId: "offer-actions",
+    failedNode: "Analyze Video Content QC",
+    idempotencyKey: "video-qc:card-actions",
+    retrySafety: "blocked",
+    summary: "Video-QC abgelehnt.",
+    issueKey: "video_content_qc_failed",
+    safeFix: "Mockup prüfen oder ersetzen.",
+    currentAttempt: 2,
+    automaticVideoAttemptLimit: 2,
+    retryPlanned: false,
+  };
+  const successfulDelivery: CompanyBrainAutomationRun = {
+    id: "delivery-success",
+    workflowName: "ki_video_generator_v1",
+    action: "initial_delivery_complete",
+    status: "success",
+    error: null,
+    createdAt: "2026-07-14T11:47:37.200Z",
+    requestId: "REQ-ACTIONS",
+    executionId: "3101931",
+    correlationId: "offer:offer-actions:initial-delivery:3101931",
+    sourceEventId: null,
+    targetRecordId: "offer-actions",
+    failedNode: null,
+    idempotencyKey: "offer:offer-actions:initial-delivery:v1",
+    retrySafety: "blocked",
+    summary: "Initiale Angebotszustellung wurde abgeschlossen.",
+  };
+  const resolvedDiagnosis: CompanyBrainTrelloFailureDiagnosis = {
+    ...retryDiagnosis(),
+    severity: "info",
+    rootCauseKey: "sent",
+    rootCause: "Ein späterer erfolgreicher Zustellungs-Audit löst den alten Video-QC-Fehler auf.",
+    recommendedFix: "Kein erneuter Versand und keine Mockup-Korrektur.",
+    duplicateRisk: "low",
+    blockedFixes: [],
+  };
+  const actions = actionProposalFixture({
+    retry,
+    automationRuns: [historicalFailure, successfulDelivery],
+    trelloFailureDiagnosis: resolvedDiagnosis,
+  });
+
+  assert.equal(actions.find((action) => action.key === "inspect_n8n_run")?.enabled, false);
+  assert.equal(actions.find((action) => action.key === "guarded_offer_resend")?.enabled, false);
+  assert.equal(actions.find((action) => action.key === "open_problem_case")?.enabled, false);
+  assert.equal(actions.find((action) => action.key === "create_internal_task")?.enabled, false);
+  assert.equal(actions.find((action) => action.key === "collect_design_assets")?.label, "Design-Assets sammeln");
+  assert.equal(actions.find((action) => action.key === "collect_design_assets")?.enabled, false);
+  assert.ok(!actions.some((action) => action.enabled && action.label === "Mockup für Video prüfen"));
+
+  const guidance = buildCompanyBrainEmployeeGuidance({
+    problemResolution: {
+      problemType: "offer_not_sent",
+      label: "Angebot nicht raus",
+      severity: "warning",
+      confidence: "high",
+      specialCaseKind: "open_question",
+      rootCause: "Historischer Video-QC-Fehler.",
+      recommendedResolution: "Versandstatus prüfen.",
+      internalTaskTitle: "Versand prüfen",
+      internalTaskDescription: "Test",
+      customerReplyPolicy: [],
+      escalationPath: [],
+      requiredEvidence: [],
+      missingEvidence: [],
+    },
+    retryAssessment: retry,
+    evidenceScore: { status: "strong", score: 92, summary: "Zustellung belegt.", safeToAnswerCustomer: false, reasons: [] },
+    actionProposals: actions,
+    trelloFailureDiagnosis: resolvedDiagnosis,
+    automationRuns: [historicalFailure, successfulDelivery],
+    sourceHealth: [],
+    crossChecks: [{
+      key: "offer_sent",
+      label: "Angebotsversand",
+      status: "pass",
+      severity: "info",
+      expected: "Versandbeleg",
+      actual: successfulDelivery.createdAt,
+      summary: "Erfolgreiche Zustellung ist belegt.",
+      evidenceIds: [],
+    }],
+    records: [],
+    offers: [],
+  });
+
+  assert.equal(guidance.rootCauseCode, "sent");
+  assert.equal(guidance.resolutionStatus, "resolved");
+  assert.equal(guidance.resolutionLabel, "Erfolgreich abgeschlossen");
+  assert.equal(guidance.nextBestActionKey, null);
+  assert.equal(guidance.blockerBullets.length, 0);
+  assert.equal(guidance.steps.find((step) => step.key === "clear_send")?.status, "done");
+  assert.match(guidance.plainLanguageSummary, /Kein weiterer Versand nötig/);
+  assert.ok(!/Mockup prüfen/i.test(guidance.plainLanguageSummary));
 });
 
 test("company brain action proposals block duplicate retry actions after guarded resend audit", () => {
