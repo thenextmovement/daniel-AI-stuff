@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildCompanyBrainAnswer,
   buildActionProposals,
+  applyCaseVideoQcRetryState,
   applyVideoQcRetryState,
   buildCompanyBrainCrossChecks,
   buildIntegrationReadiness,
@@ -140,6 +141,48 @@ test("company brain removes stale second-retry advice from exhausted video QC ru
   assert.doesNotMatch(run.recommendedFix || "", /Zweitversuch.*zulassen/i);
   assert.match(run.retrySafety || "", /Retry blockiert/);
   assert.match(run.safeFix || "", /unveränderten Input nicht erneut starten/);
+});
+
+test("company brain marks earlier video retries as historical after attempt two", () => {
+  const baseRun: CompanyBrainAutomationRun = {
+    id: "n8n-live-3099960",
+    workflowName: "KI-Video Generator v1.0",
+    action: "offer_send",
+    status: "success",
+    error: "DESIGN_MORPH",
+    createdAt: "2026-07-14T10:39:00.000Z",
+    requestId: "REQ-VIDEO-QC",
+    executionId: "3099960",
+    correlationId: "card-video-qc",
+    sourceEventId: null,
+    targetRecordId: null,
+    failedNode: "Analyze Video Content QC",
+    idempotencyKey: "video-qc:card-video-qc",
+    retrySafety: "automatic_retry_once",
+    summary: "Video-QC abgelehnt.",
+    issueKey: "video_content_qc_failed",
+    recommendedFix: "Einen automatischen Zweitversuch zulassen.",
+    safeFix: "Automatischen Zweitversuch abwarten.",
+    currentAttempt: 1,
+    automaticVideoAttemptLimit: 2,
+    retryPlanned: true,
+    videoQcConfidence: 0.8,
+  };
+  const finalRun: CompanyBrainAutomationRun = {
+    ...baseRun,
+    id: "n8n-live-3100049",
+    executionId: "3100049",
+    createdAt: "2026-07-14T10:43:02.000Z",
+    currentAttempt: 2,
+    retryPlanned: false,
+  };
+
+  const contextualized = applyCaseVideoQcRetryState([finalRun, baseRun]);
+
+  assert.match(contextualized[0]?.recommendedFix || "", /Keinen weiteren Lauf mit unverändertem Mockup/);
+  assert.match(contextualized[1]?.recommendedFix || "", /Historischer Video-QC-Versuch/);
+  assert.doesNotMatch(contextualized[1]?.recommendedFix || "", /Zweitversuch.*zulassen/i);
+  assert.match(contextualized[1]?.retrySafety || "", /keinen Retry aus diesem früheren Lauf/);
 });
 
 test("company brain extracts multiple request ids from dirty alias fields", () => {

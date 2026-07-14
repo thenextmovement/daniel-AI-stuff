@@ -2808,6 +2808,33 @@ function isVideoQcRetryExhausted(run: CompanyBrainAutomationRun | null | undefin
   );
 }
 
+function automationRunsBelongToSameCase(left: CompanyBrainAutomationRun, right: CompanyBrainAutomationRun) {
+  return Boolean(
+    (left.requestId && right.requestId && left.requestId === right.requestId) ||
+    (left.targetRecordId && right.targetRecordId && left.targetRecordId === right.targetRecordId) ||
+    (left.correlationId && right.correlationId && left.correlationId === right.correlationId) ||
+    (left.idempotencyKey && right.idempotencyKey && left.idempotencyKey === right.idempotencyKey),
+  );
+}
+
+export function applyCaseVideoQcRetryState(runs: CompanyBrainAutomationRun[]): CompanyBrainAutomationRun[] {
+  const exhaustedRuns = runs.filter(isVideoQcRetryExhausted);
+  if (!exhaustedRuns.length) return runs;
+
+  return runs.map((run) => {
+    if (!isVideoQcFailure(run)) return run;
+    if (isVideoQcRetryExhausted(run)) return applyVideoQcRetryState(run);
+    if (!exhaustedRuns.some((exhausted) => automationRunsBelongToSameCase(run, exhausted))) return run;
+
+    return {
+      ...run,
+      retrySafety: "Historischer Beleg; keinen Retry aus diesem früheren Lauf starten.",
+      recommendedFix: "Historischer Video-QC-Versuch. Der automatische Zweitversuch ist bereits abgeschlossen; maßgeblich ist der jüngste Fallstatus. Keinen Retry aus diesem Alt-Beleg starten.",
+      safeFix: "Nur den jüngsten Video-QC-Run bewerten und das Mockup vor einem neuen Lauf korrigieren oder ersetzen.",
+    };
+  });
+}
+
 function isAutomationFailureResolvedBySendProof(run: CompanyBrainAutomationRun | null | undefined, offerSentCheck: CompanyBrainCrossCheck | null | undefined) {
   if (!isAutomationFailure(run) || offerSentCheck?.status !== "pass") return false;
   if (run?.issueKey === "video_content_qc_failed" || run?.issueKey === "video_content_qc_unavailable") return false;
@@ -4969,7 +4996,9 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     ].filter((value): value is string => Boolean(value))),
     [...automation.runs, ...trelloAutomationRuns],
   );
-  const automationRuns = dedupeAutomationRuns([...n8nLive.runs, ...automation.runs, ...trelloAutomationRuns]);
+  const automationRuns = applyCaseVideoQcRetryState(
+    dedupeAutomationRuns([...n8nLive.runs, ...automation.runs, ...trelloAutomationRuns]),
+  );
   diagnostics.push(
     trelloAutomationRuns.length && !automation.runs.length
       ? {
