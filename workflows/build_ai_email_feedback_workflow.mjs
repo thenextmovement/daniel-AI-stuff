@@ -149,7 +149,7 @@ for (let index = 0; index < responseItems.length; index += 1) {
       sent_characters: sentText.length,
       draft_words: normalize(draftText).split(/\s+/).filter(Boolean).length,
       sent_words: normalize(sentText).split(/\s+/).filter(Boolean).length,
-      collector_version: 'email-feedback-v1',
+      collector_version: 'email-feedback-v1.1',
     },
   } });
 }

@@ -40,7 +40,7 @@ assert.equal(feedback.length, 1);
 assert.equal(feedback[0].json.p_source_message_id, 'source-1');
 assert.equal(feedback[0].json.p_sent_message_id, 'sent-1');
 assert.ok(feedback[0].json.p_edit_ratio <= 0.02);
-assert.equal(feedback[0].json.p_edit_summary.collector_version, 'email-feedback-v1');
+assert.equal(feedback[0].json.p_edit_summary.collector_version, 'email-feedback-v1.1');
 
 const mobileReplyFeedback = executeCode('Build Review Feedback', {
   $input: { all: () => [{ json: { body: { value: [{
