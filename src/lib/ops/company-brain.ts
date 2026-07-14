@@ -1662,6 +1662,9 @@ async function fetchN8nLiveRuns(
       const status = n8nExecutionStatus(execution);
       const error = n8nExecutionError(execution);
       const issueHint = classifyAutomationIssueText(`${error || ""} ${fallback?.error || ""} ${fallback?.summary || ""}`);
+      const issueFailedNode = issueHint.key === "video_content_qc_failed" || issueHint.key === "video_content_qc_unavailable"
+        ? "Analyze Video Content QC"
+        : null;
       runs.push({
         id: `n8n-live-${executionId}`,
         workflowName: n8nWorkflowName(execution),
@@ -1675,7 +1678,7 @@ async function fetchN8nLiveRuns(
         correlationId: fallback?.correlationId || null,
         sourceEventId: fallback?.sourceEventId || null,
         targetRecordId: fallback?.targetRecordId || null,
-        failedNode: n8nFailedNode(execution) || fallback?.failedNode || null,
+        failedNode: issueFailedNode || n8nFailedNode(execution) || fallback?.failedNode || null,
         idempotencyKey: fallback?.idempotencyKey || null,
         retrySafety: issueHint.key !== "unknown" ? issueHint.retrySafety : fallback?.retrySafety || "Nur nach Duplicate-Mail-Check und idempotentem Retry freigeben.",
         summary: issueHint.key !== "unknown" ? issueHint.rootCause : "Read-only aus der n8n Live-API geladen.",

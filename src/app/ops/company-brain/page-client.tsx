@@ -716,6 +716,7 @@ function actionGroupKey(action: CompanyBrainActionProposalView): CompanyBrainAct
 
 function executableAction(actionKey: string) {
   return [
+    "collect_design_assets",
     "open_problem_case",
     "create_internal_task",
     "save_case_note",
@@ -747,9 +748,10 @@ function actionButtonLabel(action: CompanyBrainActionProposalView) {
   return "Mit Freigabe ausführen";
 }
 
-function operatorActionPriority(action: CompanyBrainActionProposalView, retryStatus?: string) {
+function operatorActionPriority(action: CompanyBrainActionProposalView, retryStatus?: string, prioritizeVideoQc = false) {
   const priorityByKey: Record<string, number> = {
     guarded_offer_resend: retryStatus === "ready" ? 0 : 6,
+    collect_design_assets: prioritizeVideoQc ? 0.5 : 12,
     correct_customer_email: 1,
     prepare_email_correction: 2,
     prepare_offer_retry: 3,
@@ -848,7 +850,8 @@ export function OpsCompanyBrainClient({
     const readyActions = result.actionProposals
       .filter((action) => action.enabled && executableAction(action.key))
       .sort((left, right) =>
-        operatorActionPriority(left, result.retryAssessment.status) - operatorActionPriority(right, result.retryAssessment.status),
+        operatorActionPriority(left, result.retryAssessment.status, result.employeeGuidance.rootCauseCode.startsWith("video_content_qc_")) -
+        operatorActionPriority(right, result.retryAssessment.status, result.employeeGuidance.rootCauseCode.startsWith("video_content_qc_")),
       )
       .slice(0, 3);
     const blockedFixes = uniqueStrings([
@@ -1631,16 +1634,31 @@ export function OpsCompanyBrainClient({
                     </div>
                     <div className="mt-3 grid gap-2">
                       {operatorView.readyActions.length ? operatorView.readyActions.map((action) => (
-                        <button
-                          key={`top-action-${action.key}`}
-                          type="button"
-                          onClick={() => startActionProposal(action.key)}
-                          disabled={!action.enabled || actionLoadingKey === action.key}
-                          className={`flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:brightness-95 disabled:opacity-50 ${riskClass(action.riskLevel)}`}
-                        >
-                          <span>{action.label}</span>
-                          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">{actionButtonLabel(action)}</span>
-                        </button>
+                        action.href && !action.approvalRequired ? (
+                          <a
+                            key={`top-action-${action.key}`}
+                            href={action.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:brightness-95 ${riskClass(action.riskLevel)}`}
+                          >
+                            <span>{action.label}</span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-current/20 px-2 py-0.5 text-[10px]">
+                              Öffnen <ExternalLink className="h-3 w-3" />
+                            </span>
+                          </a>
+                        ) : (
+                          <button
+                            key={`top-action-${action.key}`}
+                            type="button"
+                            onClick={() => startActionProposal(action.key)}
+                            disabled={!action.enabled || actionLoadingKey === action.key}
+                            className={`flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:brightness-95 disabled:opacity-50 ${riskClass(action.riskLevel)}`}
+                          >
+                            <span>{action.label}</span>
+                            <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">{actionButtonLabel(action)}</span>
+                          </button>
+                        )
                       )) : (
                         <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm leading-6 text-stone-600">Keine sichere Aktion. Erst Blocker in den Details klären.</p>
                       )}
@@ -1779,14 +1797,25 @@ export function OpsCompanyBrainClient({
                               <ClipboardCopy className="h-3.5 w-3.5" />
                               Paket
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => operatorView.brief?.primaryAction ? startActionProposal(operatorView.brief.primaryAction.key) : undefined}
-                              disabled={!operatorView.brief.primaryAction.enabled || actionLoadingKey === operatorView.brief.primaryAction.key}
-                              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-stone-950 px-2.5 text-[11px] font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
-                            >
-                              Freigeben
-                            </button>
+                            {operatorView.brief.primaryAction.href && !operatorView.brief.primaryAction.approvalRequired ? (
+                              <a
+                                href={operatorView.brief.primaryAction.href}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-stone-950 px-2.5 text-[11px] font-semibold text-white transition hover:bg-stone-800"
+                              >
+                                Öffnen <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => operatorView.brief?.primaryAction ? startActionProposal(operatorView.brief.primaryAction.key) : undefined}
+                                disabled={!operatorView.brief.primaryAction.enabled || actionLoadingKey === operatorView.brief.primaryAction.key}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-stone-950 px-2.5 text-[11px] font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                              >
+                                Freigeben
+                              </button>
+                            )}
                           </div>
                         </>
                       ) : (
