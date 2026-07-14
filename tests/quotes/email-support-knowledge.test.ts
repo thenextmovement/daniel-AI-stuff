@@ -10,6 +10,10 @@ const rollback = readFileSync(
   "supabase/rollbacks/20260714083929_enable_email_support_knowledge_rollback.sql",
   "utf8",
 );
+const searchMigration = readFileSync(
+  "supabase/migrations/20260714084703_improve_email_support_knowledge_search.sql",
+  "utf8",
+);
 
 test("email support knowledge is approved, bounded and private", () => {
   assert.match(migration, /'email_drafting'/);
@@ -36,4 +40,14 @@ test("knowledge usage is auditable and rollback disables email mode", () => {
   assert.match(rollback, /drop function if exists public\.search_approved_support_knowledge/);
   assert.match(rollback, /array_remove\(allowed_modes, 'email_drafting'\)/);
   assert.match(rollback, /then 'retired'/);
+});
+
+test("natural language retrieval uses bounded sanitized OR terms", () => {
+  assert.match(searchMigration, /lower\(left\(trim\(coalesce\(p_query, ''\)\), 240\)\)/);
+  assert.match(searchMigration, /\[\^\[:alnum:\]äöüß\]\+/);
+  assert.match(searchMigration, /where char_length\(token\) >= 3/);
+  assert.match(searchMigration, /limit 24/);
+  assert.match(searchMigration, /string_agg\(token, ' OR '/);
+  assert.match(searchMigration, /numnode\(search_query\.ts_query\) > 0/);
+  assert.match(searchMigration, /limit least\(greatest\(coalesce\(p_limit, 6\), 1\), 8\)/);
 });
