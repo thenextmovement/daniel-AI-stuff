@@ -366,6 +366,7 @@ type CustomerEmailMessageRow = {
   sent_at?: string | null;
   message_created_at?: string | null;
   created_at?: string | null;
+  match_scope?: "contact" | "organization";
 };
 
 type MasterCommunicationRow = {
@@ -1267,6 +1268,25 @@ export type CustomerSearchMode = "request_id" | "email" | "name" | "phone" | "de
 
 const INTERNAL_CUSTOMER_EMAIL_DOMAINS = new Set(["neontrip.de", "neontrip.com", "angebote.neontrip.de", "fuajob.online"]);
 const CUSTOMER_EMAIL_PLACEHOLDER_DOMAIN = "no-customer-email.invalid";
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "gmx.de",
+  "gmx.net",
+  "web.de",
+  "freenet.de",
+  "t-online.de",
+  "outlook.com",
+  "outlook.de",
+  "hotmail.com",
+  "hotmail.de",
+  "yahoo.com",
+  "yahoo.de",
+  "icloud.com",
+  "mail.de",
+  "proton.me",
+  "protonmail.com",
+]);
 
 function trimNullable(value: string | null | undefined) {
   const normalized = String(value || "").trim();
@@ -2368,6 +2388,12 @@ function emailCandidates(master: MasterCustomerRow) {
   return uniqueValues([master.email, master.billing_email, master.original_email, ...(master.cc_emails || [])])
     .map((email) => normalizeCustomerContactEmail(email))
     .filter(Boolean) as string[];
+}
+
+export function customerOrganizationEmailDomains(emailValues: Array<string | null | undefined>) {
+  return uniqueValues(
+    emailValues.map((value) => normalizeCustomerContactEmail(value)?.split("@")[1] || null),
+  ).filter((domain) => !PERSONAL_EMAIL_DOMAINS.has(domain) && !INTERNAL_CUSTOMER_EMAIL_DOMAINS.has(domain));
 }
 
 function emailArrayPreview(values: string[] | null | undefined) {
@@ -3554,9 +3580,9 @@ function mapOutlookCommunicationFeed(rows: CustomerEmailMessageRow[]): CustomerC
         occurredAt: emailMessageOccurredAt(row),
         href: null,
         direction,
-        messageId: trimNullable(row.internet_message_id) || trimNullable(row.message_id),
-        conversationId: trimNullable(row.conversation_id),
-        classification: null,
+      messageId: trimNullable(row.internet_message_id) || trimNullable(row.message_id),
+      conversationId: trimNullable(row.conversation_id),
+      classification: row.match_scope === "organization" ? "organization_domain" : null,
       } satisfies CustomerCommunicationEntry;
     })
     .sort((left, right) => {
@@ -4041,18 +4067,25 @@ async function fetchDownstreamRows(
   const { includeOfferTracking = true } = options;
   const { includeActivity = true } = options;
   const { includeRelated = true } = options;
-  const requestId = trimNullable(master.request_id);
+  const storedRequestId = trimNullable(master.request_id);
   const emails = emailCandidates(master);
-  const requestRows = requestId
+  const requestRows = storedRequestId
     ? await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
         select:
           "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
-        request_id: `eq.${requestId}`,
+        request_id: `eq.${storedRequestId}`,
         order: "updated_at.desc",
         limit: 1,
       })
-    : [];
+    : await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+        select:
+          "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+        customer_id: `eq.${master.id}`,
+        order: "updated_at.desc",
+        limit: 1,
+      });
   const request = requestRows[0] || null;
+  const requestId = storedRequestId || trimNullable(request?.request_id);
   const quoteEmailOr = buildOrFilter([
     ...emails.map((email) => emailEqualsClause("recipient_email", email)),
     ...(request?.trello_card_id ? [`card_id.eq.${encodeURIComponent(request.trello_card_id)}`] : []),
@@ -4096,7 +4129,7 @@ async function fetchDownstreamRows(
     ...emails.map((email) => emailArrayContainsClause("cc_emails", email)),
     ...(phone ? [`phone.eq.${encodeURIComponent(phone)}`, `original_phone.eq.${encodeURIComponent(phone)}`] : []),
   ]);
-  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, outlookMessages, inboundEmails, audits, caseStates, activeViews, latestSegmentRows] = await Promise.all([
+  const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, directOutlookMessages, inboundEmails, audits, caseStates, activeViews, latestSegmentRows] = await Promise.all([
     requestId
       ? supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
           select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
@@ -4246,6 +4279,26 @@ async function fetchDownstreamRows(
         })
       : Promise.resolve([]),
   ]);
+
+  const organizationDomains = customerOrganizationEmailDomains(emails);
+  const outlookMessages = directOutlookMessages.length || !includeActivity || !organizationDomains.length
+    ? directOutlookMessages.map((row) => ({ ...row, match_scope: "contact" as const }))
+    : (
+        await safeOptionalSupabaseRows<CustomerEmailMessageRow>(
+          "customer_email_messages",
+          {
+            select:
+              "id,message_id,internet_message_id,conversation_id,mailbox,direction,from_email,from_name,to_emails,cc_emails,matched_email,linked_request_id,linked_customer_id,subject,body_preview,received_at,sent_at,message_created_at,created_at",
+            or: buildOrFilter(organizationDomains.flatMap((domain) => [
+              `matched_email.ilike.*@${domain}`,
+              `from_email.ilike.*@${domain}`,
+            ])),
+            order: "updated_at.desc",
+            limit: 30,
+          },
+          { requestId, customerId: master.id, matchScope: "organization_domain" },
+        )
+      ).map((row) => ({ ...row, match_scope: "organization" as const }));
 
   const relatedCustomers =
     includeRelated && relatedCustomersOr
@@ -4435,7 +4488,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
 
   return {
     masterCustomerId: context.master.id,
-    requestId: context.master.request_id,
+    requestId: context.request?.request_id || context.master.request_id,
     email: snapshot.email,
     billingEmail: snapshot.billingEmail,
     ccEmails: snapshot.ccEmails,
@@ -5098,7 +5151,7 @@ export async function listCustomerRecordsByRequestIds(
   const normalizedRequestIds = uniqueValues(requestIds.map((requestId) => normalizeRequestSearch(requestId)));
   if (!normalizedRequestIds.length) return [];
 
-  const rowBatches = await mapWithConcurrency(
+  const directRowBatches = await mapWithConcurrency(
     chunkArray(normalizedRequestIds, 20),
     2,
     async (requestIdBatch) => selectMasterCustomerRows({
@@ -5107,7 +5160,45 @@ export async function listCustomerRecordsByRequestIds(
       limit: Math.max(requestIdBatch.length, 1),
     }),
   );
-  const rows = rowBatches.flat();
+  const directRows = directRowBatches.flat();
+  const directlyResolvedRequestIds = new Set(directRows.map((row) => trimNullable(row.request_id)).filter(Boolean));
+  const missingRequestIds = normalizedRequestIds.filter((requestId) => !directlyResolvedRequestIds.has(requestId));
+  const requestLinkBatches = missingRequestIds.length
+    ? await mapWithConcurrency(
+        chunkArray(missingRequestIds, 20),
+        2,
+        async (requestIdBatch) => supabaseRequest<Array<{ request_id: string; customer_id: string | null }>>(
+          "master_requests",
+          undefined,
+          {
+            select: "request_id,customer_id",
+            request_id: `in.(${requestIdBatch.join(",")})`,
+            order: "updated_at.desc",
+            limit: requestIdBatch.length,
+          },
+        ),
+      )
+    : [];
+  const requestLinks = requestLinkBatches.flat().filter((row) => trimNullable(row.customer_id));
+  const linkedCustomerIds = uniqueValues(requestLinks.map((row) => trimNullable(row.customer_id)));
+  const linkedCustomerBatches = linkedCustomerIds.length
+    ? await mapWithConcurrency(
+        chunkArray(linkedCustomerIds, 20),
+        2,
+        async (customerIdBatch) => selectMasterCustomerRows({
+          id: `in.(${customerIdBatch.join(",")})`,
+          order: "updated_at.desc",
+          limit: customerIdBatch.length,
+        }),
+      )
+    : [];
+  const linkedCustomersById = new Map(linkedCustomerBatches.flat().map((row) => [row.id, row] as const));
+  const linkedRows = requestLinks.flatMap((link) => {
+    const customerId = trimNullable(link.customer_id);
+    const customer = customerId ? linkedCustomersById.get(customerId) : null;
+    return customer ? [{ ...customer, request_id: link.request_id }] : [];
+  });
+  const rows = [...directRows, ...linkedRows];
   const contextConcurrency = options?.includeTrello
     ? 4
     : options?.includeActivity === false && options?.includeRelated === false

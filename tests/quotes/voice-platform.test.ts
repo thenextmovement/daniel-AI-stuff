@@ -37,6 +37,7 @@ test("outbound prompt discloses digital assistant after permission and blocks co
   assert.match(instructions, /KI-gestuetzter digitaler Telefonassistent[\s\S]+erst dann mit inhaltlicher Qualifikation/);
   assert.match(instructions, /Keine Preise, Rabatte, Liefertermine/);
   assert.match(instructions, /untrusted customer data/);
+  assert.match(instructions, /scope=organization/);
 });
 
 test("internal sandbox context is explicit and cannot masquerade as a customer inquiry", () => {

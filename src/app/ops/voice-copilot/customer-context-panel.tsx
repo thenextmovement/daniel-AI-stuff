@@ -86,7 +86,7 @@ export function CustomerContextPanel({ selected, disabled, onSelect }: CustomerC
             <span className="font-semibold">Outlook:</span>{" "}
             {selected.sourceStatus.outlook === "unavailable"
               ? "nicht erreichbar"
-              : `${selected.outlookMatchCount ?? selected.outlook.length} Nachrichten`}
+              : `${selected.outlookMatchCount ?? selected.outlook.length} Nachrichten${selected.outlookOrganizationMatchCount ? ` (${selected.outlookOrganizationMatchCount} Organisation)` : ""}`}
           </div>
         </div>
       </div>

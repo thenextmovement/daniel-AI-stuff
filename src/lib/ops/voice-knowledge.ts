@@ -91,8 +91,10 @@ export type VoiceCustomerContext = {
     subject: string;
     preview: string | null;
     occurredAt: string | null;
+    scope?: "contact" | "organization";
   }>;
   outlookMatchCount?: number;
+  outlookOrganizationMatchCount?: number;
   sourceStatus: {
     customerRecord: "ok";
     offer: "ok" | "not_linked" | "unavailable";
@@ -485,7 +487,8 @@ function mapCustomerSummary(record: CustomerSearchResult) {
 export async function searchVoiceCustomerContexts(query: unknown) {
   const normalized = requiredText(query, "Suche", 160, 2);
   const records = await searchCustomerRecords(normalized);
-  return records.slice(0, 8).map(mapCustomerSummary);
+  const boundRecords = records.filter((record) => cleanText(record.requestId, 160));
+  return [...new Map(boundRecords.map((record) => [record.requestId, record])).values()].slice(0, 8).map(mapCustomerSummary);
 }
 
 function mapOfferForVoice(offer: OpsOfferSnapshot | null): VoiceCustomerContext["offer"] {
@@ -590,6 +593,7 @@ export function selectVoiceMirrorOutlook(
     subject: cleanText(entry.title, 240),
     preview: cleanText(entry.body || entry.preview, 600) || null,
     occurredAt: entry.occurredAt || null,
+    scope: entry.classification === "organization_domain" ? "organization" : "contact",
   }));
 }
 
@@ -624,6 +628,7 @@ export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<
       subject: cleanText(entry.title.replace(/^Live-Outlook(?: Treffer)?:\s*/i, ""), 240),
       preview: cleanText(entry.detail, 600) || null,
       occurredAt: entry.occurredAt,
+      scope: "contact" as const,
     })),
     ...mirrorOutlook,
   ]);
@@ -645,6 +650,7 @@ export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<
     offer: boundOffer.offer,
     outlook,
     outlookMatchCount: outlookMatches.length,
+    outlookOrganizationMatchCount: outlookMatches.filter((message) => message.scope === "organization").length,
     sourceStatus: {
       customerRecord: "ok",
       offer: boundOffer.status,

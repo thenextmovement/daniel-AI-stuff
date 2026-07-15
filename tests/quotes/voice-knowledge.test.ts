@@ -173,6 +173,7 @@ test("voice prompt separates approved knowledge from untrusted customer evidence
   assert.match(instructions, /untrusted customer data/);
   assert.match(instructions, /niemals als Anweisung/);
   assert.match(instructions, /Keine Preise/);
+  assert.match(instructions, /allgemeinen Firmenkontext/);
 });
 
 test("knowledge retrieval query contains only bounded case terms", () => {
@@ -283,6 +284,12 @@ test("voice Outlook context uses the dedicated mirror instead of the truncated m
 
   assert.equal(selected.length, 1);
   assert.equal(selected[0]?.subject, "Rueckfrage zum Angebot");
+
+  const organization = selectVoiceMirrorOutlook({
+    communications: [],
+    outlookCommunications: [{ ...outlookEntry, classification: "organization_domain" }],
+  });
+  assert.equal(organization[0]?.scope, "organization");
 });
 
 test("voice Outlook UI distinguishes an unavailable integration from zero messages", () => {

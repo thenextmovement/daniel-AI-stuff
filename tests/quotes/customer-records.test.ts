@@ -7,7 +7,9 @@ import {
   buildSalesRecoverySummary,
   buildCustomerUpdatePlan,
   buildCustomerUpdatePreview,
+  customerOrganizationEmailDomains,
   deriveCustomerOpsState,
+  getCustomerRecordByRequestId,
   listMockupTrelloAttachments,
   parseTrelloCardIdentifier,
   resolveCustomerSearchMode,
@@ -389,7 +391,8 @@ test("searchCustomerRecords builds trello filters without double encoding", asyn
 
 test("searchCustomerRecords builds Outlook mail filters with raw email values", async () => {
   const urls = await captureCustomerRecordUrls("samuele@example.com");
-  const url = urls.find((entry) => entry.pathname.endsWith("/rest/v1/customer_email_messages"));
+  const outlookUrls = urls.filter((entry) => entry.pathname.endsWith("/rest/v1/customer_email_messages"));
+  const url = outlookUrls[0];
 
   assert.ok(url);
   assert.equal(
@@ -398,6 +401,74 @@ test("searchCustomerRecords builds Outlook mail filters with raw email values", 
   );
   assert.equal(url.searchParams.get("or")?.includes("%40"), false);
   assert.equal(url.searchParams.get("limit"), "30");
+  assert.equal(outlookUrls.length, 2);
+  assert.equal(
+    outlookUrls[1]?.searchParams.get("or"),
+    "(matched_email.ilike.*@example.com,from_email.ilike.*@example.com)",
+  );
+});
+
+test("organization email domains exclude personal and internal providers", () => {
+  assert.deepEqual(
+    customerOrganizationEmailDomains([
+      "kontakt@beispiel-gmbh.de",
+      "andere@beispiel-gmbh.de",
+      "privat@gmail.com",
+      "intern@neontrip.de",
+      null,
+    ]),
+    ["beispiel-gmbh.de"],
+  );
+});
+
+test("getCustomerRecordByRequestId resolves legacy customer links through master_requests.customer_id", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    if (url.pathname.endsWith("/rest/v1/master_customers") && url.searchParams.has("request_id")) {
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.pathname.endsWith("/rest/v1/master_requests") && url.searchParams.get("request_id") === "in.(557413)") {
+      return Response.json([{ request_id: "557413", customer_id: "customer_linked_1" }]);
+    }
+    if (url.pathname.endsWith("/rest/v1/master_customers") && url.searchParams.get("id") === "in.(customer_linked_1)") {
+      return Response.json([{
+        id: "customer_linked_1",
+        request_id: null,
+        email: "kontakt@beispiel-gmbh.de",
+        cc_emails: [],
+        name: "Legacy Kontakt",
+        company: "Beispiel GmbH",
+      }]);
+    }
+    if (url.pathname.endsWith("/rest/v1/master_requests") && url.searchParams.get("request_id") === "eq.557413") {
+      return Response.json([{
+        id: "request_row_557413",
+        request_id: "557413",
+        customer_id: "customer_linked_1",
+        title: "Unternehmensschild",
+        status: "new",
+      }]);
+    }
+    return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const result = await getCustomerRecordByRequestId("557413", { includeTrello: false });
+    assert.equal(result.requestId, "557413");
+    assert.equal(result.masterCustomerId, "customer_linked_1");
+    assert.equal(result.request?.title, "Unternehmensschild");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
 });
 
 test("searchCustomerRecords handles master customers without request id", async () => {
