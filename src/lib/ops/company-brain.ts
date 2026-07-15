@@ -22,6 +22,10 @@ import {
 } from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import {
+  searchActiveCompanyDecisions,
+  type ActiveCompanyDecision,
+} from "@/lib/ops/company-brain-foundation";
 
 export type CompanyBrainIdentifierType =
   | "request_id"
@@ -119,6 +123,7 @@ export type CompanyBrainDiagnostic = {
     | "integration_readiness"
     | "trello_live"
     | "trello_aliases"
+    | "company_decisions"
     | "outlook_live"
     | "coolify_live";
   ok: boolean;
@@ -313,6 +318,7 @@ export type CompanyBrainSourceHealth = {
     | "shopify"
     | "trello"
     | "trello_aliases"
+    | "company_decisions"
     | "evidence";
   label: string;
   status: "ok" | "partial" | "missing" | "error";
@@ -475,6 +481,7 @@ export type CompanyBrainResolveResult = {
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
   diagnostics: CompanyBrainDiagnostic[];
+  decisionContext: ActiveCompanyDecision[];
   nextActions: string[];
 };
 
@@ -1959,6 +1966,7 @@ function buildSourceHealth(
   const bridgeDiagnostics = diagnostics.filter((entry) => entry.source === "offer_bridge");
   const workflowDiagnostic = diagnosticBySource.get("workflow_audit");
   const trelloAliasDiagnostic = diagnosticBySource.get("trello_aliases");
+  const decisionDiagnostic = diagnosticBySource.get("company_decisions");
   const trelloAliasEvidence = evidence.filter((entry) => entry.source === "trello_aliases");
   const outlookMirrorEvidence = evidence.filter((entry) => entry.source === "customer_email_messages");
   const outlookLiveEvidence = evidence.filter((entry) => entry.source === "outlook_graph_live");
@@ -2059,6 +2067,21 @@ function buildSourceHealth(
       count: trelloAliasEvidence.length || trelloAliasDiagnostic?.count || 0,
       lastSeenAt: latestIso(trelloAliasEvidence.map((entry) => entry.occurredAt)),
       detail: trelloAliasDiagnostic?.detail || "Verknüpft kopierte Trello-Karten über Request-ID und Canonical Card.",
+    },
+    {
+      key: "company_decisions",
+      label: "Decision Logbook",
+      status: decisionDiagnostic?.ok
+        ? decisionDiagnostic.count > 0 ? "ok" : "partial"
+        : decisionDiagnostic ? "error" : "missing",
+      summary: decisionDiagnostic?.ok
+        ? decisionDiagnostic.count > 0
+          ? `${decisionDiagnostic.count} gültige Entscheidung(en) oder Policy(s) geladen.`
+          : "Keine passende gültige Entscheidung gefunden."
+        : "Decision Logbook nicht lesbar.",
+      count: decisionDiagnostic?.count || 0,
+      lastSeenAt: null,
+      detail: decisionDiagnostic?.detail || "Gültigkeit wird nach Scope und Zeitpunkt ausgewertet.",
     },
     {
       key: "evidence",
@@ -2543,6 +2566,7 @@ function buildDossier(input: {
   conflicts: CompanyBrainFinding[];
   gaps: CompanyBrainFinding[];
   evidence: CompanyBrainEvidence[];
+  decisionContext: ActiveCompanyDecision[];
 }): CompanyBrainDossier {
   const primaryRecord = input.records[0] || null;
   const title = primaryRecord
@@ -2575,6 +2599,19 @@ function buildDossier(input: {
             `Produkt/Farbe: ${offer.productHints.join(", ") || "unbekannt"} / ${offer.colorHints.join(", ") || "unbekannt"}`,
           ])
         : ["Kein Angebotssnapshot geladen."],
+    },
+    {
+      title: "Gültige Entscheidungen / Policies",
+      lines: input.decisionContext.length
+        ? input.decisionContext.map((decision) => [
+            `${decision.title} (${decision.decisionKey} v${decision.versionNumber})`,
+            `Geltung: ${decision.scopeType}:${decision.scopeKey}`,
+            decision.chosenOption ? `Entscheidung: ${decision.chosenOption}` : null,
+            decision.rationale ? `Warum: ${decision.rationale}` : null,
+            decision.guardrails.length ? `Guardrails: ${decision.guardrails.map((entry) => typeof entry === "string" ? entry : JSON.stringify(entry)).join("; ")}` : null,
+            `Review: ${decision.reviewAt}`,
+          ].filter(Boolean).join(" · "))
+        : ["Keine gültige Entscheidung oder Policy für diesen Fall geladen."],
     },
     {
       title: "Prüfmatrix",
@@ -5165,6 +5202,35 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     question,
     problemType: requestedProblemType,
   });
+  let decisionContext: ActiveCompanyDecision[] = [];
+  try {
+    const decisionScopes = [
+      { scopeType: "process", scopeKey: "company-brain" },
+      ...(requestedProblemType ? [{ scopeType: "process", scopeKey: requestedProblemType }] : []),
+      ...recordSummaries.map((record) => ({ scopeType: "entity", scopeKey: `request:${record.requestId}` })),
+      ...offerSummaries.map((offer) => ({ scopeType: "entity", scopeKey: `offer:${offer.offerId}` })),
+      ...automationRuns
+        .map((run) => run.workflowName)
+        .filter((name): name is string => Boolean(name))
+        .map((name) => ({ scopeType: "workflow", scopeKey: name })),
+    ];
+    decisionContext = await searchActiveCompanyDecisions({ scopes: decisionScopes, limit: 20 });
+    diagnostics.push({
+      source: "company_decisions",
+      ok: true,
+      label: "Decision Logbook",
+      detail: decisionContext.length ? "Gültige Entscheidungen und Policies wurden geladen." : "Keine passende Entscheidung gefunden.",
+      count: decisionContext.length,
+    });
+  } catch (error) {
+    diagnostics.push({
+      source: "company_decisions",
+      ok: false,
+      label: "Decision Logbook",
+      detail: errorMessage(error),
+      count: 0,
+    });
+  }
   const answer = buildCompanyBrainAnswer(recordSummaries, offerSummaries, evidence, gaps, conflicts, question, trelloFailureDiagnosis);
   const caseEvents = buildCaseEvents(evidence, automationRuns);
   const sourceHealth = buildSourceHealth(recordSummaries, offerSummaries, evidence, diagnostics, automationRuns, trelloFailureDiagnosis);
@@ -5269,6 +5335,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     conflicts,
     gaps,
     evidence,
+    decisionContext,
   });
 
   return {
@@ -5301,6 +5368,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     conflicts,
     gaps,
     diagnostics,
+    decisionContext,
     nextActions: nextActionsFor(gaps, conflicts, trelloFailureDiagnosis),
   };
 }
