@@ -537,20 +537,32 @@ insert into public.company_data_quality_issues (
 select
   'baseline:n8n:audit_missing_execution_id',
   'missing_correlation_identifier',
-  case when count(*) filter (where nullif(execution_id::text, '') is null) > 0 then 'critical' else 'info' end,
-  case when count(*) filter (where nullif(execution_id::text, '') is null) > 0 then 'open' else 'resolved' end,
+  case when count(*) filter (where nullif(coalesce(
+    metadata ->> 'execution_id', metadata ->> 'n8n_execution_id', metadata ->> 'workflow_execution_id', ''
+  ), '') is null) > 0 then 'critical' else 'info' end,
+  case when count(*) filter (where nullif(coalesce(
+    metadata ->> 'execution_id', metadata ->> 'n8n_execution_id', metadata ->> 'workflow_execution_id', ''
+  ), '') is null) > 0 then 'open' else 'resolved' end,
   'n8n',
   'Workflow-Audits ohne Execution-ID',
   format('%s von %s Workflow-Audits haben keine Execution-ID.',
-    count(*) filter (where nullif(execution_id::text, '') is null), count(*)),
+    count(*) filter (where nullif(coalesce(
+      metadata ->> 'execution_id', metadata ->> 'n8n_execution_id', metadata ->> 'workflow_execution_id', ''
+    ), '') is null), count(*)),
   'migration:20260715193000',
   now(),
   now(),
-  case when count(*) filter (where nullif(execution_id::text, '') is null) = 0 then now() else null end,
-  case when count(*) filter (where nullif(execution_id::text, '') is null) = 0 then 'migration:20260715193000' else null end,
+  case when count(*) filter (where nullif(coalesce(
+    metadata ->> 'execution_id', metadata ->> 'n8n_execution_id', metadata ->> 'workflow_execution_id', ''
+  ), '') is null) = 0 then now() else null end,
+  case when count(*) filter (where nullif(coalesce(
+    metadata ->> 'execution_id', metadata ->> 'n8n_execution_id', metadata ->> 'workflow_execution_id', ''
+  ), '') is null) = 0 then 'migration:20260715193000' else null end,
   jsonb_build_object(
     'total', count(*),
-    'missing_execution_id', count(*) filter (where nullif(execution_id::text, '') is null)
+    'missing_execution_id', count(*) filter (where nullif(coalesce(
+      metadata ->> 'execution_id', metadata ->> 'n8n_execution_id', metadata ->> 'workflow_execution_id', ''
+    ), '') is null)
   )
 from public.workflow_audit_log
 on conflict (issue_key) do update
