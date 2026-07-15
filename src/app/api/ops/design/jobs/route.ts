@@ -46,6 +46,9 @@ export async function POST(request: NextRequest) {
       offerId?: string | null;
       referenceAttachmentIds?: string[] | null;
       referenceAssetId?: string | null;
+      actionType?: "manual_edit" | "light_color" | "product_change" | "mockup_mode" | null;
+      actionValue?: string | null;
+      sourceFingerprint?: string | null;
     };
     const job = await createDesignJobDraft({
       idempotencyKey: String(body.idempotencyKey || ""),
@@ -56,6 +59,9 @@ export async function POST(request: NextRequest) {
       offerId: body.offerId || null,
       referenceAttachmentIds: Array.isArray(body.referenceAttachmentIds) ? body.referenceAttachmentIds.map(String) : [],
       referenceAssetId: body.referenceAssetId || null,
+      actionType: body.actionType || null,
+      actionValue: body.actionValue || null,
+      sourceFingerprint: body.sourceFingerprint || null,
     });
     return NextResponse.json({ ok: true, job });
   } catch (error) {
@@ -71,7 +77,8 @@ export async function GET(request: NextRequest) {
   try {
     const status = request.nextUrl.searchParams.get("status");
     const limit = Number(request.nextUrl.searchParams.get("limit") || 20);
-    const jobs = await listDesignJobs({ status, limit });
+    const trelloCardId = request.nextUrl.searchParams.get("trelloCardId");
+    const jobs = await listDesignJobs({ status, limit, trelloCardId });
     return NextResponse.json({ ok: true, jobs });
   } catch (error) {
     if (

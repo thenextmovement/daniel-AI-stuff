@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
 import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloList, renameTrelloCardAttachment, searchTrelloCards } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
-import { supabaseRequest } from "@/lib/quotes/supabase-rest";
-import { getOfferById, patchOfferById, type OpsOfferItem, type OpsOfferPatchInput, type OpsOfferPatchResult } from "@/lib/ops/offers";
+import { supabaseRequest, supabaseRpc, SupabaseRestError } from "@/lib/quotes/supabase-rest";
+import { getOfferById, getOfferByTrelloCardId, patchOfferById, type OpsOfferItem, type OpsOfferPatchInput, type OpsOfferPatchResult } from "@/lib/ops/offers";
 import {
   getCustomerRecordByRequestId,
   listCustomerRecordsByRequestIds,
@@ -14,6 +14,16 @@ import {
   type CustomerSearchResult,
 } from "@/lib/ops/customer-records";
 import { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
+import {
+  canonicalDesignActionValue,
+  designActionPrompt,
+  designLightColor,
+  designProductChange,
+  hasJpegMagicBytes,
+  isJpegMimeType,
+  type DesignActionType,
+  type DesignBatchActionType,
+} from "@/lib/ops/design-contract";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
@@ -122,6 +132,11 @@ export type DesignAssetSummary = {
   mimeType: string | null;
   width: number | null;
   height: number | null;
+  trelloCardId: string | null;
+  actionType: DesignActionType | null;
+  actionValue: string | null;
+  sourceAttachmentId: string | null;
+  sourceAttachmentName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -134,6 +149,10 @@ export type DesignJobSummary = {
   trelloCardId: string | null;
   offerId: string | null;
   sourceQuery: string | null;
+  actionType: DesignActionType | null;
+  actionValue: string | null;
+  sourceAttachmentId: string | null;
+  sourceAttachmentName: string | null;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
@@ -230,6 +249,15 @@ type DesignJobRow = {
   trello_card_url: string | null;
   offer_id: string | null;
   source_query: string | null;
+  action_type: DesignActionType | null;
+  action_value: string | null;
+  source_attachment_id: string | null;
+  source_attachment_name: string | null;
+  source_fingerprint: string | null;
+  attempt_count: number;
+  started_at: string | null;
+  heartbeat_at: string | null;
+  finished_at: string | null;
   status: string;
   prompt_version_id: string | null;
   operator_name: string | null;
@@ -379,7 +407,7 @@ type DesignReferenceAsset = {
 };
 
 const DESIGN_JOB_SELECT =
-  "id,job_key,request_id,trello_card_id,trello_card_url,offer_id,source_query,status,prompt_version_id,selected_asset_id,operator_name,created_by,error_message,metadata,created_at,updated_at";
+  "id,job_key,request_id,trello_card_id,trello_card_url,offer_id,source_query,action_type,action_value,source_attachment_id,source_attachment_name,source_fingerprint,attempt_count,started_at,heartbeat_at,finished_at,status,prompt_version_id,selected_asset_id,operator_name,created_by,error_message,metadata,created_at,updated_at";
 const DESIGN_PROMPT_VERSION_SELECT = "id,job_id,version_number,prompt_title,prompt_text,prompt_hash,source,edited_by,created_at";
 const DESIGN_ASSET_SELECT =
   "id,asset_key,job_id,prompt_version_id,request_id,trello_card_id,source,status,storage_bucket,storage_path,public_url,trello_attachment_id,name,mime_type,width,height,metadata,created_at,updated_at";
@@ -426,7 +454,7 @@ function isSafeVariantReference(value: string | null | undefined) {
 function normalizeDesignVariantValue(variantType: QuoteImageVariantType, value: string) {
   const normalized = trimNullable(value);
   if (!normalized) return null;
-  const label = variantType === "light_color" ? designColorActionLabel(normalized) || normalized : normalized;
+  const label = variantType === "light_color" ? designLightColor(normalized)?.label || normalized : normalized;
   return label
     .trim()
     .toLowerCase()
@@ -443,12 +471,20 @@ function assertEligibleAiMockupSourceName(name: string | null | undefined) {
   throw new QuoteValidationError("Nur JPG-Mockups mit Mockup und AI im Dateinamen dürfen als Ausgangsbild genutzt werden.");
 }
 
+function assertEligibleAiJpegSource(name: string | null | undefined, mimeType: string | null | undefined) {
+  assertEligibleAiMockupSourceName(name);
+  if (mimeType && !isJpegMimeType(mimeType)) {
+    throw new QuoteValidationError("Das Ausgangsbild muss auch technisch eine JPEG-Datei sein.");
+  }
+}
+
 export function quoteImageVariantKey(input: {
   quoteId: string;
   quoteImageId: string;
   quoteItemId?: string | null;
   variantType: QuoteImageVariantType;
   variantValue: string;
+  sourceFingerprint?: string | null;
 }) {
   const normalizedValue = normalizeDesignVariantValue(input.variantType, input.variantValue);
   if (!normalizedValue) throw new QuoteValidationError("Variant-Wert ist erforderlich.");
@@ -458,13 +494,15 @@ export function quoteImageVariantKey(input: {
     input.quoteItemId || null,
     input.variantType,
     normalizedValue,
-    "v1",
+    input.sourceFingerprint || null,
+    "v2",
   ]);
 }
 
 export function archiveMockupAttachmentName(name: string) {
   const normalized = String(name || "").trim();
   if (!normalized) return "alte_Vorschaubilder.png";
+  if (/^alte_Vorschaubilder/i.test(normalized)) return normalized;
   const archived = normalized
     .replace(/^mockup/i, "alte_Vorschaubilder")
     .replace(/^moc[\s_-]*ab/i, "alte_Vorschaubilder")
@@ -473,56 +511,29 @@ export function archiveMockupAttachmentName(name: string) {
   return `alte_Vorschaubilder_${normalized}`;
 }
 
-function designColorActionLabel(value: string | null) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return null;
-  if (/orange|amber/.test(normalized)) return "Orange";
-  if (/warmwei|warmweiss|warm white/.test(normalized)) return "Warmweiss";
-  if (/kaltwei|kaltweiss|cool white/.test(normalized)) return "Kaltweiss";
-  if (/rot|red/.test(normalized)) return "Rot";
-  if (/pink|magenta/.test(normalized)) return "Pink";
-  if (/blau|blue/.test(normalized)) return "Blau";
-  if (/gruen|grün|green/.test(normalized)) return "Gruen";
-  if (/rgb|farbverlauf/.test(normalized)) return "RGB";
-  return normalized
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .replace(/^./, (char) => char.toUpperCase()) || null;
-}
-
-function designActionLabelFromPrompt(promptText: string | null | undefined) {
-  const text = String(promptText || "");
-  const colorMatch =
-    text.match(/Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ([^\n.]+)/i) ||
-    text.match(/Leuchtfarbe\s*(?:ändern|aendern)?[\s\S]{0,180}?zu ([^\n.]+)/i);
-  const colorLabel = designColorActionLabel(trimNullable(colorMatch?.[1]));
-  if (colorLabel) return colorLabel;
-
-  const productMatch =
-    text.match(/\b3D\s*Frontlit\b/i) ||
-    text.match(/\b3D\s*Backlit\b/i) ||
-    text.match(/\bFrontlit\b/i) ||
-    text.match(/\bBacklit\b/i);
-  if (productMatch?.[0]) {
-    return productMatch[0].replace(/\s+/g, "_").replace(/^3Dfrontlit$/i, "3D_Frontlit").replace(/^3Dbacklit$/i, "3D_Backlit");
-  }
-  return null;
-}
-
 function stripExistingDesignActionPrefix(name: string) {
-  return name.replace(/^(?:Orange|Warmweiss|Kaltweiss|Rot|Pink|Blau|Gruen|RGB|3D_Frontlit|3D_Backlit|Frontlit|Backlit)_+/i, "");
+  return name.replace(/^(?:Kaltweiß|Kaltweiss|Warmweiß|Warmweiss|Grün|Gruen|Blau|Eisblau|Rot|Orange|Zitronengelb|Goldgelb|Pink|Lila|Türkis|Tuerkis|3D_Frontlit|3D_Backlit|Frontlit|Backlit)_+/i, "");
 }
 
-export function designActionAttachmentName(promptText: string | null | undefined, sourceName: string | null | undefined, fallbackName: string | null | undefined) {
-  const baseName = trimNullable(sourceName) || trimNullable(fallbackName) || "NEONTRIP Design Mockup";
-  const actionLabel = designActionLabelFromPrompt(promptText);
-  if (!actionLabel) return baseName;
-  const strippedBase = stripExistingDesignActionPrefix(baseName);
-  return `${actionLabel}_${strippedBase}`;
+export function structuredDesignActionAttachmentName(input: {
+  actionType: DesignActionType | null;
+  actionValue: string | null;
+  sourceName: string | null | undefined;
+  fallbackName?: string | null;
+}) {
+  const source = trimNullable(input.sourceName) || trimNullable(input.fallbackName) || "Mockup_AI_1.jpg";
+  const extensionMatch = source.match(/\.(jpe?g)$/i);
+  const extension = extensionMatch?.[1]?.toLowerCase() || "jpg";
+  let base = source.replace(/\.[a-z0-9]+$/i, "");
+  if (!/mockup/i.test(base)) base = `Mockup_${base}`;
+  if (!/(?:^|[\s_-])ai(?:[\s_-]|$)/i.test(base)) base = `${base}_AI_1`;
+  const actionLabel = input.actionType === "light_color"
+    ? designLightColor(input.actionValue)?.label || null
+    : input.actionType === "product_change"
+      ? designProductChange(input.actionValue)?.label.replace(/\s+/g, "_") || null
+      : null;
+  const strippedBase = stripExistingDesignActionPrefix(base);
+  return `${actionLabel ? `${actionLabel}_` : ""}${strippedBase}.${extension}`;
 }
 
 function slugPathPart(value: unknown, fallback: string) {
@@ -556,6 +567,49 @@ function openAiImageApiKey() {
   return key;
 }
 
+function fetchWithTimeout(input: string | URL, init: RequestInit = {}, timeoutMs = 120_000) {
+  return fetch(input, {
+    ...init,
+    signal: init.signal || AbortSignal.timeout(timeoutMs),
+  });
+}
+
+function assertAllowedDesignSourceUrl(rawUrl: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new QuoteValidationError("Referenzbild-URL ist ungueltig.");
+  }
+  if (parsed.protocol !== "https:") throw new QuoteValidationError("Referenzbild-URL muss HTTPS verwenden.");
+  const configuredHosts = String(process.env.DESIGN_SOURCE_IMAGE_HOSTS || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const inferredHosts = [process.env.SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEONTRIP_OFFERS_BASE_URL]
+    .map((value) => {
+      try {
+        return value ? new URL(value).hostname.toLowerCase() : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is string => Boolean(value));
+  const allowedHosts = new Set([...configuredHosts, ...inferredHosts, "offers.neontrip.de"]);
+  if (!allowedHosts.has(parsed.hostname.toLowerCase()) && !parsed.hostname.toLowerCase().endsWith(".supabase.co")) {
+    throw new QuoteValidationError("Referenzbild-Host ist nicht fuer Design-Edits freigegeben.");
+  }
+}
+
+function assertJpegOutput(bytes: Buffer, label: string) {
+  if (!hasJpegMagicBytes(bytes)) {
+    throw new QuoteValidationError(`${label} ist trotz JPEG-Anforderung kein echtes JPEG.`);
+  }
+  if (bytes.byteLength > 12 * 1024 * 1024) {
+    throw new QuoteValidationError(`${label} überschreitet das 12-MB-Limit.`);
+  }
+}
+
 function requestIdCandidate(value: string) {
   const direct = value.trim();
   if (/^[A-Za-z0-9][A-Za-z0-9_-]{5,80}$/.test(direct) && !direct.includes("trello.com")) return direct;
@@ -574,7 +628,7 @@ function classifyAttachment(attachment: TrelloAttachment, referenceId: string | 
 
 function attachmentProxyUrl(cardId: string, attachmentId: string, kind: DesignAttachmentKind) {
   if (!["mockup", "reference", "image", "video"].includes(kind)) return null;
-  const params = new URLSearchParams({ cardId, attachmentId });
+  const params = new URLSearchParams({ cardId, attachmentId, thumbnail: "1" });
   return `/api/ops/customer-records/trello-attachments?${params.toString()}`;
 }
 
@@ -651,8 +705,8 @@ function isQuoteReadyLikeList(listName: string | null | undefined) {
 }
 
 function cardPromptPriority(card: DesignCardSummary) {
-  if (!card.promptBlocks.imagePrompt) return 0;
-  return isQuoteReadyLikeList(card.listName) ? 100 : 80;
+  const eligibleCount = card.attachments.filter((attachment) => isEligibleAiMockupSourceName(attachment.name)).length;
+  return (isQuoteReadyLikeList(card.listName) ? 100 : 0) + Math.min(eligibleCount, 20);
 }
 
 function selectPrimaryDesignCard(cards: DesignCardSummary[]) {
@@ -785,7 +839,7 @@ export async function loadDesignWorkspace(query: string): Promise<DesignWorkspac
     await Promise.all(
       ids.map(async (cardId) => {
         try {
-          return await loadDesignCard(cardId, record?.request?.trelloCardUrl);
+          return await loadDesignCard(cardId);
         } catch (error) {
           console.warn("design card lookup failed", { cardId, error });
           return null;
@@ -795,7 +849,22 @@ export async function loadDesignWorkspace(query: string): Promise<DesignWorkspac
   ).filter((card): card is DesignCardSummary => Boolean(card));
 
   const primaryCard = selectPrimaryDesignCard(cards);
-  const offers = offerCandidates(record);
+  let offers = offerCandidates(record);
+  if (!offers.length && primaryCard?.cardId) {
+    const fallbackOffer = await getOfferByTrelloCardId(primaryCard.cardId).catch(() => null);
+    if (fallbackOffer) {
+      offers = [{
+        id: fallbackOffer.offerId,
+        label: fallbackOffer.offerNumber || fallbackOffer.documentReference || fallbackOffer.offerId,
+        status: fallbackOffer.status,
+        totalGross: typeof fallbackOffer.totals?.totalGross === "number" ? fallbackOffer.totals.totalGross : null,
+        acceptedAt: fallbackOffer.acceptedAt,
+        updatedAt: fallbackOffer.updatedAt,
+        locked: !fallbackOffer.lock.editable || fallbackOffer.lock.lockLevel === "hard",
+        imageCount: fallbackOffer.images.length,
+      }];
+    }
+  }
   const totalAttachments = cards.reduce((sum, card) => sum + card.attachments.length, 0);
   const mockups = cards.reduce((sum, card) => sum + card.attachments.filter((attachment) => attachment.kind === "mockup").length, 0);
 
@@ -840,6 +909,9 @@ export async function createDesignJobDraft(input: {
   offerId?: string | null;
   referenceAttachmentIds?: string[] | null;
   referenceAssetId?: string | null;
+  actionType?: DesignActionType | null;
+  actionValue?: string | null;
+  sourceFingerprint?: string | null;
 }) {
   const idempotencyKey = trimNullable(input.idempotencyKey);
   const promptText = trimNullable(input.promptText);
@@ -853,15 +925,16 @@ export async function createDesignJobDraft(input: {
     job_key: `eq.${idempotencyKey}`,
     limit: 1,
   });
-  if (existing[0]?.prompt_version_id) {
+  const existingJob = existing[0] || null;
+  if (existingJob?.prompt_version_id) {
     const versions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", undefined, {
       select: DESIGN_PROMPT_VERSION_SELECT,
-      id: `eq.${existing[0].prompt_version_id}`,
+      id: `eq.${existingJob.prompt_version_id}`,
       limit: 1,
     });
     const version = versions[0];
     if (!version) throw new QuoteValidationError("Bestehender Design-Job ist unvollständig.");
-    return mapDesignJobDraft(existing[0], version);
+    return mapDesignJobDraft(existingJob, version);
   }
 
   const workspace = await loadDesignWorkspace(query);
@@ -869,24 +942,41 @@ export async function createDesignJobDraft(input: {
   const requestId = workspace.record?.requestId || null;
   const operatorName = trimNullable(input.operatorName);
   const offerId = trimNullable(input.offerId);
+  const actionType = trimNullable(input.actionType) as DesignActionType | null;
+  if (actionType && !["manual_edit", "light_color", "product_change", "mockup_mode"].includes(actionType)) {
+    throw new QuoteValidationError("Design-Aktion ist ungueltig.");
+  }
+  let actionValue = trimNullable(input.actionValue);
+  if (actionType === "light_color" || actionType === "product_change") {
+    actionValue = canonicalDesignActionValue(actionType, actionValue || "");
+    if (!actionValue) throw new QuoteValidationError("Zielwert der Design-Aktion ist ungueltig.");
+  }
   const promptTitle = trimNullable(input.promptTitle) || workspace.promptPreview.title;
   const promptHash = stableHash(promptText);
   const referenceIds = uniqueValues(input.referenceAttachmentIds || []).slice(0, 4);
-  const referenceAttachments: DesignReferenceAttachment[] = workspace.cards.flatMap((card) =>
+  const selectedReferences = workspace.cards.flatMap((card) =>
     card.attachments
-      .filter((attachment) => referenceIds.includes(attachment.id) && ["mockup", "reference", "image"].includes(attachment.kind))
-      .map((attachment) => ({
-        cardId: card.cardId,
-        attachmentId: attachment.id,
-        name: attachment.name,
-        kind: attachment.kind,
-      })),
+      .filter((attachment) => referenceIds.includes(attachment.id))
+      .map((attachment) => ({ card, attachment })),
   );
+  for (const { attachment } of selectedReferences) {
+    assertEligibleAiJpegSource(attachment.name, attachment.mimeType);
+  }
+  const referenceAttachments: DesignReferenceAttachment[] = selectedReferences.map(({ card, attachment }) => ({
+    cardId: card.cardId,
+    attachmentId: attachment.id,
+    name: attachment.name,
+    kind: "mockup",
+  }));
+  if (referenceIds.length !== referenceAttachments.length) {
+    throw new QuoteValidationError("Mindestens ein ausgewaehltes Ausgangsbild ist kein zulaessiges Mockup + AI + JPG.");
+  }
   const referenceAssetId = trimNullable(input.referenceAssetId);
   const referenceAssets: DesignReferenceAsset[] = [];
   if (referenceAssetId) {
     const asset = await getDesignAsset(referenceAssetId);
     if (!asset.public_url) throw new QuoteValidationError("Ausgewaehltes generiertes Asset hat keine oeffentliche Bild-URL.");
+    assertEligibleAiJpegSource(asset.name, asset.mime_type);
     referenceAssets.push({
       assetId: asset.id,
       publicUrl: asset.public_url,
@@ -898,53 +988,117 @@ export async function createDesignJobDraft(input: {
     ? workspace.cards.find((card) => card.cardId === referenceAttachments[0]?.cardId) || null
     : null;
   const jobCard = referenceCard || primaryCard;
+  if (referenceAttachments.length + referenceAssets.length !== 1) {
+    throw new QuoteValidationError("Jeder Design-Job benötigt genau ein Ausgangs-Mockup mit Mockup und AI im Namen sowie echtem JPG-Format.");
+  }
+  const sourceReference = referenceAttachments[0] || null;
+  const sourceFingerprint = trimNullable(input.sourceFingerprint) || (sourceReference
+    ? stableHash([sourceReference.cardId, sourceReference.attachmentId, sourceReference.name].join("|"))
+    : referenceAssets[0]
+      ? stableHash([referenceAssets[0].assetId, referenceAssets[0].publicUrl, referenceAssets[0].name].join("|"))
+      : null);
 
-  const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", {
-    method: "POST",
-    body: JSON.stringify({
-      job_key: idempotencyKey,
-      request_id: requestId,
-      trello_card_id: jobCard?.cardId || null,
-      trello_card_url: jobCard?.cardUrl || null,
-      offer_id: offerId,
-      source_query: query,
-      status: "draft",
-      operator_name: operatorName,
-      created_by: operatorName,
-      metadata: {
-        source: "ops_design_ui",
-        attachment_count: workspace.stats.totalAttachments,
-        mockup_count: workspace.stats.mockups,
-        reference_attachments: referenceAttachments,
-        reference_assets: referenceAssets,
-      },
-    }),
-    headers: { Prefer: "return=representation" },
-  });
-  const job = jobs[0];
+  const jobBody = {
+    job_key: idempotencyKey,
+    request_id: requestId,
+    trello_card_id: jobCard?.cardId || null,
+    trello_card_url: jobCard?.cardUrl || null,
+    offer_id: offerId,
+    source_query: query,
+    action_type: actionType || "manual_edit",
+    action_value: actionValue,
+    source_attachment_id: sourceReference?.attachmentId || null,
+    source_attachment_name: sourceReference?.name || referenceAssets[0]?.name || null,
+    source_fingerprint: sourceFingerprint,
+    status: "draft",
+    operator_name: operatorName,
+    created_by: operatorName,
+    metadata: {
+      source: "ops_design_ui",
+      attachment_count: workspace.stats.totalAttachments,
+      mockup_count: workspace.stats.mockups,
+      reference_attachments: referenceAttachments,
+      reference_assets: referenceAssets,
+      action_type: actionType || "manual_edit",
+      action_value: actionValue,
+      source_fingerprint: sourceFingerprint,
+    },
+  };
+  let job = existingJob;
+  if (!job) {
+    try {
+      const jobs = await supabaseRequest<DesignJobRow[]>("design_jobs", {
+        method: "POST",
+        body: JSON.stringify(jobBody),
+        headers: { Prefer: "return=representation" },
+      });
+      job = jobs[0] || null;
+    } catch (error) {
+      if (!(error instanceof SupabaseRestError) || error.status !== 409) throw error;
+      const raced = await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, {
+        select: DESIGN_JOB_SELECT,
+        job_key: `eq.${idempotencyKey}`,
+        limit: 1,
+      });
+      job = raced[0] || null;
+    }
+  }
   if (!job) throw new QuoteValidationError("Design-Job konnte nicht erstellt werden.");
+  const sameJob =
+    job.source_query === query &&
+    job.trello_card_id === (jobCard?.cardId || null) &&
+    job.action_type === (actionType || "manual_edit") &&
+    job.action_value === actionValue &&
+    job.source_attachment_id === (sourceReference?.attachmentId || null) &&
+    job.source_fingerprint === sourceFingerprint;
+  if (!sameJob) throw new QuoteValidationError("Der Idempotency-Key gehört bereits zu einem anderen Design-Job.", [], 409);
 
-  const versions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", {
-    method: "POST",
-    body: JSON.stringify({
-      job_id: job.id,
-      version_number: 1,
-      prompt_title: promptTitle,
-      prompt_text: promptText,
-      prompt_hash: promptHash,
-      source: "manual",
-      edited_by: operatorName,
-      metadata: {
-        source: "ops_design_ui",
-        warnings: workspace.promptPreview.warnings,
-        reference_attachment_count: referenceAttachments.length,
-        reference_asset_count: referenceAssets.length,
-      },
-    }),
-    headers: { Prefer: "return=representation" },
+  const existingVersions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", undefined, {
+    select: DESIGN_PROMPT_VERSION_SELECT,
+    job_id: `eq.${job.id}`,
+    version_number: "eq.1",
+    limit: 1,
   });
-  const promptVersion = versions[0];
+  let promptVersion = existingVersions[0] || null;
+  if (promptVersion && promptVersion.prompt_hash !== promptHash) {
+    throw new QuoteValidationError("Der bestehende Design-Job enthält einen anderen Prompt.", [], 409);
+  }
+  const promptVersionBody = {
+    job_id: job.id,
+    version_number: 1,
+    prompt_title: promptTitle,
+    prompt_text: promptText,
+    prompt_hash: promptHash,
+    source: "manual",
+    edited_by: operatorName,
+    metadata: {
+      source: "ops_design_ui",
+      warnings: workspace.promptPreview.warnings,
+      reference_attachment_count: referenceAttachments.length,
+      reference_asset_count: referenceAssets.length,
+    },
+  };
+  if (!promptVersion) {
+    try {
+      const versions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", {
+        method: "POST",
+        body: JSON.stringify(promptVersionBody),
+        headers: { Prefer: "return=representation" },
+      });
+      promptVersion = versions[0] || null;
+    } catch (error) {
+      if (!(error instanceof SupabaseRestError) || error.status !== 409) throw error;
+      const racedVersions = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", undefined, {
+        select: DESIGN_PROMPT_VERSION_SELECT,
+        job_id: `eq.${job.id}`,
+        version_number: "eq.1",
+        limit: 1,
+      });
+      promptVersion = racedVersions[0] || null;
+    }
+  }
   if (!promptVersion) throw new QuoteValidationError("Prompt-Version konnte nicht erstellt werden.");
+  if (promptVersion.prompt_hash !== promptHash) throw new QuoteValidationError("Der bestehende Design-Job enthält einen anderen Prompt.", [], 409);
 
   const updatedJobs = await supabaseRequest<DesignJobRow[]>(
     "design_jobs",
@@ -1024,23 +1178,9 @@ function quoteImageVariantPrompt(input: {
   variantType: QuoteImageVariantType;
   variantValue: string;
 }) {
-  if (input.variantType === "light_color") {
-    return [
-      "Leuchtfarbe ändern:",
-      `Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ${input.variantValue}.`,
-      "Nutze das bereitgestellte Angebots-Mockup als Vorlage.",
-      "Erhalte Text, Logo, Buchstabenform, Position, Perspektive, Hintergrund, Montage, Größe, Material, Bildausschnitt und Kamerawinkel unverändert.",
-      "Keine neue Szene, kein neues Schild, keine neuen Wörter, keine zusätzlichen Logos und keine Änderungen außer der sichtbaren Licht-/LED-Farbe.",
-    ].join("\n");
-  }
-
-  return [
-    "Produktart ändern:",
-    `Ändere ausschließlich die Schildtechnik zu ${input.variantValue}.`,
-    "Nutze das bereitgestellte Angebots-Mockup als Vorlage.",
-    "Erhalte Text, Logo, Buchstabenform, Konturen, Größe, Position, Perspektive, Hintergrund, Wand, Montage, Bildausschnitt und Kamerawinkel unverändert.",
-    "Keine neue Szene, kein neues Logo, keine neuen Wörter, keine andere Marke, keine Dekoration und keine Preis- oder Lieferangaben.",
-  ].join("\n");
+  const prompt = designActionPrompt(input.variantType, input.variantValue);
+  if (!prompt) throw new QuoteValidationError("Variant-Wert ist nicht freigegeben.");
+  return prompt;
 }
 
 async function getQuoteImageForVariant(quoteId: string, quoteImageId: string) {
@@ -1098,10 +1238,31 @@ export async function prepareQuoteImageVariantDraft(input: {
   if (quoteItemId && !isSafeVariantReference(quoteItemId)) throw new QuoteValidationError("Quote-Item-ID ist ungueltig.");
   if (variantType !== "light_color" && variantType !== "product_change") throw new QuoteValidationError("Variant-Typ ist ungueltig.");
   if (!variantValue) throw new QuoteValidationError("Variant-Wert ist erforderlich.");
-  const variantValueNormalized = normalizeDesignVariantValue(variantType, variantValue);
+  const canonicalVariantValue = variantType === "light_color"
+    ? designLightColor(variantValue)?.label || null
+    : designProductChange(variantValue)?.label || null;
+  if (!canonicalVariantValue) throw new QuoteValidationError("Variant-Wert ist nicht freigegeben.");
+  const variantValueNormalized = normalizeDesignVariantValue(variantType, canonicalVariantValue);
   if (!variantValueNormalized) throw new QuoteValidationError("Variant-Wert ist ungueltig.");
 
-  const variantKey = quoteImageVariantKey({ quoteId, quoteImageId, quoteItemId, variantType, variantValue });
+  const directSourceImageUrl = trimNullable(input.sourceImageUrl);
+  if (directSourceImageUrl) {
+    throw new QuoteValidationError("Direkte Source-Image-URLs sind nicht zulässig. Das Ausgangsbild wird serverseitig über Quote- und Bild-ID aufgelöst.");
+  }
+  const resolvedSource = await getQuoteImageForVariant(quoteId, quoteImageId).then(({ image, sourceImageUrl }) => ({
+    sourceImageUrl,
+    imageLabel: trimNullable(image.label),
+  }));
+  const { sourceImageUrl, imageLabel } = resolvedSource;
+  const sourceFingerprint = stableHash(sourceImageUrl);
+  const variantKey = quoteImageVariantKey({
+    quoteId,
+    quoteImageId,
+    quoteItemId,
+    variantType,
+    variantValue: canonicalVariantValue,
+    sourceFingerprint,
+  });
   const existing = await getQuoteImageVariantByKey(variantKey);
   if (existing) {
     return {
@@ -1110,26 +1271,9 @@ export async function prepareQuoteImageVariantDraft(input: {
       cached: existing.status === "ready",
     };
   }
-
-  const directSourceImageUrl = trimNullable(input.sourceImageUrl);
-  const directSourceImageLabel = trimNullable(input.sourceImageLabel);
-  if (directSourceImageUrl && !/^https:\/\//i.test(directSourceImageUrl)) {
-    throw new QuoteValidationError("Source-Image-URL muss HTTPS sein.");
-  }
-  if (directSourceImageUrl) assertEligibleAiMockupSourceName(directSourceImageLabel);
-  const resolvedSource = directSourceImageUrl
-    ? {
-        sourceImageUrl: directSourceImageUrl,
-        imageLabel: directSourceImageLabel,
-      }
-    : await getQuoteImageForVariant(quoteId, quoteImageId).then(({ image, sourceImageUrl }) => ({
-        sourceImageUrl,
-        imageLabel: trimNullable(image.label),
-      }));
-  const { sourceImageUrl, imageLabel } = resolvedSource;
   const promptText = quoteImageVariantPrompt({
     variantType,
-    variantValue,
+    variantValue: canonicalVariantValue,
   });
   const promptHash = stableHash(promptText);
   const jobKey = trimNullable(input.idempotencyKey) || stableActionKey("quote-image-variant-job", [variantKey]);
@@ -1145,6 +1289,11 @@ export async function prepareQuoteImageVariantDraft(input: {
       trello_card_url: null,
       offer_id: quoteId,
       source_query: `quote:${quoteId}/image:${quoteImageId}/${variantType}:${variantValueNormalized}`,
+      action_type: variantType,
+      action_value: canonicalVariantValue,
+      source_attachment_id: quoteImageId,
+      source_attachment_name: imageLabel,
+      source_fingerprint: sourceFingerprint,
       status: "draft",
       operator_name: operatorName,
       created_by: operatorName,
@@ -1155,15 +1304,16 @@ export async function prepareQuoteImageVariantDraft(input: {
         quote_item_id: quoteItemId,
         quote_image_variant_key: variantKey,
         variant_type: variantType,
-        variant_value: variantValue,
+        variant_value: canonicalVariantValue,
         variant_value_normalized: variantValueNormalized,
+        source_fingerprint: sourceFingerprint,
         reference_assets: [
           {
             assetId: `quote-image:${quoteImageId}`,
             publicUrl: sourceImageUrl,
             name: imageLabel || `quote-image-${quoteImageId}`,
             mimeType: null,
-            source: directSourceImageUrl ? "validated_source_image_url" : "quote_image",
+            source: "quote_image",
           },
         ],
       },
@@ -1178,7 +1328,7 @@ export async function prepareQuoteImageVariantDraft(input: {
     body: JSON.stringify({
       job_id: job.id,
       version_number: 1,
-      prompt_title: `${variantType === "light_color" ? "Leuchtfarbe" : "Produktart"} ${variantValue} · ${imageLabel || "Angebots-Mockup"}`,
+      prompt_title: `${variantType === "light_color" ? "Leuchtfarbe" : "Produktart"} ${canonicalVariantValue} · ${imageLabel || "Angebots-Mockup"}`,
       prompt_text: promptText,
       prompt_hash: promptHash,
       source: "manual",
@@ -1223,7 +1373,7 @@ export async function prepareQuoteImageVariantDraft(input: {
       design_job_id: updatedJob.id,
       design_prompt_version_id: promptVersion.id,
       variant_type: variantType,
-      variant_value: variantValue,
+      variant_value: canonicalVariantValue,
       variant_value_normalized: variantValueNormalized,
       status: "pending",
       source_image_url: sourceImageUrl,
@@ -1232,7 +1382,8 @@ export async function prepareQuoteImageVariantDraft(input: {
         source: "quote_image_variant_engine",
         created_by: operatorName,
         source_quote_image_label: imageLabel,
-        source_image_url_mode: directSourceImageUrl ? "provided" : "quote_images_lookup",
+        source_image_url_mode: "quote_images_lookup",
+        source_fingerprint: sourceFingerprint,
       },
     }),
     headers: { Prefer: "return=representation" },
@@ -1477,6 +1628,7 @@ export async function queueDesignJob(input: {
         selected_asset_id: asset.id,
         updated_at: new Date().toISOString(),
         metadata: {
+          ...(job.metadata || {}),
           source: "ops_design_ui",
           queued_by: operatorName,
           queued_without_side_effects: true,
@@ -1559,6 +1711,7 @@ export async function prepareDesignRemovalPlan(input: {
 export async function listDesignJobs(input: {
   status?: string | null;
   limit?: number | null;
+  trelloCardId?: string | null;
 } = {}): Promise<DesignJobSummary[]> {
   const status = trimNullable(input.status);
   const limit = Math.max(1, Math.min(Number(input.limit || 20), 50));
@@ -1568,10 +1721,24 @@ export async function listDesignJobs(input: {
     limit,
   };
   if (status && status !== "all") query.status = `eq.${status}`;
+  const trelloCardId = trimNullable(input.trelloCardId);
+  if (trelloCardId) query.trello_card_id = `eq.${trelloCardId}`;
   const rows = await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, query);
   const summaries = rows.map(mapDesignJobSummary);
-  for (const summary of summaries) {
-    summary.assets = await listDesignAssetsForJob(summary.id);
+  if (summaries.length) {
+    const assetRows = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+      select: DESIGN_ASSET_SELECT,
+      job_id: `in.(${summaries.map((summary) => summary.id).join(",")})`,
+      order: "created_at.desc",
+      limit: Math.min(200, summaries.length * 10),
+    });
+    const assetsByJob = new Map<string, DesignAssetSummary[]>();
+    for (const asset of assetRows) {
+      const assets = assetsByJob.get(asset.job_id) || [];
+      if (assets.length < 20) assets.push(mapDesignAssetSummary(asset));
+      assetsByJob.set(asset.job_id, assets);
+    }
+    for (const summary of summaries) summary.assets = assetsByJob.get(summary.id) || [];
   }
   return summaries;
 }
@@ -1635,11 +1802,12 @@ export async function attachDesignAssetToTrello(input: {
   const replacementAttachment = replacementReference
     ? await getTrelloAttachment(replacementReference.cardId, replacementReference.attachmentId)
     : null;
-  const replacementName = replacementAttachment ? attachmentName(replacementAttachment) || replacementReference?.name || replacementAttachment.id : null;
+  const persistedOriginalName = trimNullable((asset.metadata || {}).trello_replacement_original_name);
+  const replacementName = persistedOriginalName || (replacementAttachment ? attachmentName(replacementAttachment) || replacementReference?.name || replacementAttachment.id : null);
   const archivedReplacementName = replacementName ? archiveMockupAttachmentName(replacementName) : null;
 
   if (asset.trello_attachment_id) {
-    if (replacementAttachment && archivedReplacementName) {
+    if (replacementAttachment && archivedReplacementName && attachmentName(replacementAttachment) !== archivedReplacementName) {
       await renameTrelloCardAttachment({
         cardId: replacementReference?.cardId || job.trello_card_id,
         attachmentId: replacementAttachment.id,
@@ -1656,20 +1824,48 @@ export async function attachDesignAssetToTrello(input: {
     };
   }
 
-  const attachmentNameForUpload = designActionAttachmentName(promptVersion?.prompt_text || null, replacementName, asset.name || "NEONTRIP Design Mockup");
+  const attachmentNameForUpload = structuredDesignActionAttachmentName({
+    actionType: job.action_type,
+    actionValue: job.action_value,
+    sourceName: replacementName || job.source_attachment_name,
+    fallbackName: asset.name || promptVersion?.prompt_title || "Mockup_AI_1.jpg",
+  });
   const attachment = await addTrelloCardAttachment({
     cardId: job.trello_card_id,
     url: asset.public_url,
     name: attachmentNameForUpload,
   });
-  if (replacementAttachment && archivedReplacementName) {
+  const now = new Date().toISOString();
+  const persistedAssets = await supabaseRequest<DesignAssetRow[]>(
+    "design_assets",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        trello_attachment_id: attachment.id,
+        name: attachmentNameForUpload,
+        updated_at: now,
+        metadata: {
+          ...(asset.metadata || {}),
+          trello_attach_state: replacementAttachment ? "uploaded_pending_archive" : "uploaded",
+          trello_attached_by: trimNullable(input.operatorName),
+          trello_attached_at: now,
+          trello_replacement_attachment_id: replacementAttachment?.id || null,
+          trello_replacement_original_name: replacementName,
+          trello_replacement_archived_name: archivedReplacementName,
+        },
+      }),
+      headers: { Prefer: "return=representation" },
+    },
+    { id: `eq.${asset.id}`, trello_attachment_id: "is.null" },
+  );
+  const persistedAsset = persistedAssets[0] || { ...asset, trello_attachment_id: attachment.id, name: attachmentNameForUpload };
+  if (replacementAttachment && archivedReplacementName && attachmentName(replacementAttachment) !== archivedReplacementName) {
     await renameTrelloCardAttachment({
       cardId: replacementReference?.cardId || job.trello_card_id,
       attachmentId: replacementAttachment.id,
       name: archivedReplacementName,
     });
   }
-  const now = new Date().toISOString();
   const updatedAssets = await supabaseRequest<DesignAssetRow[]>(
     "design_assets",
     {
@@ -1680,7 +1876,8 @@ export async function attachDesignAssetToTrello(input: {
         name: attachmentNameForUpload,
         updated_at: now,
         metadata: {
-          ...(asset.metadata || {}),
+          ...(persistedAsset.metadata || asset.metadata || {}),
+          trello_attach_state: "completed",
           trello_attached_by: trimNullable(input.operatorName),
           trello_attached_at: now,
           trello_replacement_attachment_id: replacementAttachment?.id || null,
@@ -1809,11 +2006,17 @@ export async function linkDesignAssetToOffer(input: {
   offerItemId?: string | null;
   lightColorLabel?: string | null;
   productChangeLabel?: string | null;
+  reviewedUnitPriceNet?: number | null;
+  priceReviewConfirmed?: boolean | null;
   expectedUpdatedAt?: string | null;
   operatorName?: string | null;
   dryRun?: boolean | null;
 }): Promise<DesignOfferLinkResult> {
   const asset = await getDesignAsset(input.assetId);
+  if (!asset.job_id) throw new QuoteValidationError("Design-Asset hat keinen gebundenen Design-Job.");
+  const assetJob = await getDesignJob(asset.job_id);
+  if (asset.trello_card_id !== assetJob.trello_card_id) throw new QuoteValidationError("Asset- und Job-Kartenbezug stimmen nicht überein.");
+  if (!asset.public_url || asset.mime_type !== "image/jpeg") throw new QuoteValidationError("Nur gespeicherte JPEG-Design-Assets können in Angebote übernommen werden.");
   const offerId = trimNullable(input.offerId);
   if (!offerId) throw new QuoteValidationError("Offer-ID ist erforderlich.");
 
@@ -1824,23 +2027,47 @@ export async function linkDesignAssetToOffer(input: {
 
   const offerImageId = trimNullable(input.offerImageId);
   const offerItemId = trimNullable(input.offerItemId);
-  const lightColorLabel = trimNullable(input.lightColorLabel);
-  const productChangeLabel = trimNullable(input.productChangeLabel);
+  if (offer.trelloCardId && asset.trello_card_id && offer.trelloCardId !== asset.trello_card_id) {
+    throw new QuoteValidationError("Design-Asset und Angebot gehören nicht zur selben Trello-Karte.", [], 409);
+  }
+  const lightColorLabel = assetJob.action_type === "light_color" ? designLightColor(assetJob.action_value)?.label || null : null;
+  const productChangeLabel = assetJob.action_type === "product_change" ? designProductChange(assetJob.action_value)?.label || null : null;
+  const requestedLightColor = trimNullable(input.lightColorLabel);
+  const requestedProductChange = trimNullable(input.productChangeLabel);
+  if (requestedLightColor && requestedLightColor !== lightColorLabel) throw new QuoteValidationError("UI-Farbe stimmt nicht mit dem erzeugten Asset überein.", [], 409);
+  if (requestedProductChange && requestedProductChange !== productChangeLabel) throw new QuoteValidationError("UI-Produktänderung stimmt nicht mit dem erzeugten Asset überein.", [], 409);
+  const reviewedUnitPriceNet = typeof input.reviewedUnitPriceNet === "number" ? input.reviewedUnitPriceNet : Number.NaN;
+  const hasReviewedPrice = Boolean(input.priceReviewConfirmed) && Number.isFinite(reviewedUnitPriceNet) && reviewedUnitPriceNet >= 0;
   const offerImage = offerImageId ? offer.images.find((image) => image.id === offerImageId) : null;
   const offerItem = offerItemId ? offer.items.find((item) => item.id === offerItemId) : null;
   if (offerImageId && !offerImage) throw new QuoteValidationError("Ausgewaehlter Bildslot existiert nicht im Angebot.");
   if (offerItemId && !offerItem) throw new QuoteValidationError("Ausgewaehltes Produkt existiert nicht im Angebot.");
+  const exactSourceImage = assetJob.source_attachment_id
+    ? offer.images.find((image) => image.trelloAttachmentId === assetJob.source_attachment_id) || null
+    : null;
+  if (exactSourceImage && offerImageId && exactSourceImage.id !== offerImageId) {
+    throw new QuoteValidationError("Der ausgewählte Bildslot gehört nicht zum Ausgangs-Mockup dieses Design-Assets.", [], 409);
+  }
+  const sortedOfferItems = [...offer.items].sort((left, right) => left.sortOrder - right.sortOrder || left.title.localeCompare(right.title, "de"));
+  const exactSourceItem = exactSourceImage?.linkedItemTitle
+    ? sortedOfferItems.find((item) => item.title === exactSourceImage.linkedItemTitle) || null
+    : typeof exactSourceImage?.linkedItemIndex === "number"
+      ? sortedOfferItems[exactSourceImage.linkedItemIndex] || null
+      : null;
+  if (exactSourceItem && offerItemId && exactSourceItem.id !== offerItemId) {
+    throw new QuoteValidationError("Das ausgewählte Produkt gehört nicht zum Ausgangs-Mockup dieses Design-Assets.", [], 409);
+  }
   if (lightColorLabel && !offerItem) throw new QuoteValidationError("Bitte eine Angebotsposition wählen, wenn die Leuchtfarbe im Angebot aktualisiert werden soll.");
   if (productChangeLabel && !offerItem) throw new QuoteValidationError("Bitte eine Angebotsposition wählen, wenn die Produktänderung im Angebot aktualisiert werden soll.");
   if (!asset.public_url) throw new QuoteValidationError("Design-Asset hat keine oeffentliche URL fuer die Angebotsanreicherung.");
 
-  const link = await getOrCreateOfferAssetLink({
-    asset,
-    offerId,
-    requestId: asset.request_id,
-    trelloCardId: asset.trello_card_id,
-    operatorName: trimNullable(input.operatorName),
-  });
+  const link = input.dryRun ? null : await getOrCreateOfferAssetLink({
+      asset,
+      offerId,
+      requestId: asset.request_id,
+      trelloCardId: asset.trello_card_id,
+      operatorName: trimNullable(input.operatorName),
+    });
 
   let offerPatch: OpsOfferPatchResult | null = null;
   const shouldPatchItem = Boolean(offerItem && (lightColorLabel || productChangeLabel));
@@ -1849,6 +2076,7 @@ export async function linkDesignAssetToOffer(input: {
       ? [
           {
             id: offerImage.id,
+            sourceUrl: asset.public_url,
             title: asset.name || offerImage.title || "Design Mockup",
             enabled: true,
             sortOrder: offerImage.sortOrder,
@@ -1866,6 +2094,7 @@ export async function linkDesignAssetToOffer(input: {
             ...patch,
             title: productChangeLabel ? applyProductChangeToTitle(item.title, productChangeLabel) : patch.title,
             description,
+            unitPriceNet: productChangeLabel && hasReviewedPrice ? reviewedUnitPriceNet : patch.unitPriceNet,
           };
         })
       : undefined;
@@ -1906,7 +2135,7 @@ export async function linkDesignAssetToOffer(input: {
       asset,
       itemIndex,
     });
-    const priceReviewRequired = Boolean(productChangeLabel);
+    const priceReviewRequired = Boolean(productChangeLabel && !hasReviewedPrice);
     const nextStatus = offerPatch && !priceReviewRequired ? "linked" : "needs_price_review";
     await supabaseRequest<DesignOfferAssetLinkRow[]>(
       "design_offer_asset_links",
@@ -1920,13 +2149,15 @@ export async function linkDesignAssetToOffer(input: {
           reviewed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           metadata: {
-            ...(link.metadata || {}),
+            ...(link?.metadata || {}),
             offer_image_id: offerImageId,
             offer_item_title: offerItem?.title || null,
             light_color_label: lightColorLabel,
             product_change_label: productChangeLabel,
             price_review_required: priceReviewRequired,
             price_review_reason: priceReviewRequired ? "product_change_requires_price_review" : null,
+            reviewed_unit_price_net: hasReviewedPrice ? reviewedUnitPriceNet : null,
+            price_review_confirmed: hasReviewedPrice,
             asset_public_url: asset.public_url,
             crm_quote_image_id: crmQuoteImage.id,
             crm_quote_version_id: crmQuoteImage.versionId,
@@ -1936,7 +2167,7 @@ export async function linkDesignAssetToOffer(input: {
         }),
         headers: { Prefer: "return=representation" },
       },
-      { id: `eq.${link.id}` },
+      { id: `eq.${link?.id || ""}` },
     );
 
     await supabaseRequest<DesignAssetRow[]>(
@@ -1968,13 +2199,26 @@ export async function linkDesignAssetToOffer(input: {
   }
 
   return {
-    status: input.dryRun ? "dry_run_ok" : offerPatch && !productChangeLabel ? "linked" : "needs_price_review",
+    status: input.dryRun ? "dry_run_ok" : offerPatch && !(productChangeLabel && !hasReviewedPrice) ? "linked" : "needs_price_review",
     offerId,
     assetId: asset.id,
     dryRun: Boolean(input.dryRun),
     crmQuoteImage,
     offerPatch,
   };
+}
+
+export async function designOfferSendBlock(offerId: string) {
+  const normalizedOfferId = trimNullable(offerId);
+  if (!normalizedOfferId) return null;
+  const rows = await supabaseRequest<DesignOfferAssetLinkRow[]>("design_offer_asset_links", undefined, {
+    select: "id,link_key,asset_id,offer_id,offer_item_id,offer_version_id,design_group_key,status,metadata,created_at,updated_at",
+    offer_id: `eq.${normalizedOfferId}`,
+    status: "eq.needs_price_review",
+    order: "updated_at.desc",
+    limit: 1,
+  });
+  return rows[0] || null;
 }
 
 export async function listQueuedDesignJobsForWorker(input: {
@@ -2010,7 +2254,7 @@ export async function markDesignJobGenerating(input: {
   workerRunId?: string | null;
 }) {
   const job = await getDesignJob(input.jobId);
-  if (job.status !== "queued" && job.status !== "generating") {
+  if (job.status !== "queued") {
     throw new QuoteValidationError("Nur queued Design-Jobs koennen gestartet werden.");
   }
   const updated = await supabaseRequest<DesignJobRow[]>(
@@ -2019,6 +2263,10 @@ export async function markDesignJobGenerating(input: {
       method: "PATCH",
       body: JSON.stringify({
         status: "generating",
+        attempt_count: Math.min(10, Number(job.attempt_count || 0) + 1),
+        started_at: job.started_at || new Date().toISOString(),
+        heartbeat_at: new Date().toISOString(),
+        finished_at: null,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(job.metadata || {}),
@@ -2028,9 +2276,10 @@ export async function markDesignJobGenerating(input: {
       }),
       headers: { Prefer: "return=representation" },
     },
-    { id: `eq.${job.id}` },
+    { id: `eq.${job.id}`, status: "eq.queued" },
   );
-  const nextJob = updated[0] || { ...job, status: "generating" };
+  const nextJob = updated[0];
+  if (!nextJob) throw new QuoteValidationError("Design-Job wurde bereits von einem anderen Worker übernommen.", [], 409);
   await markQuoteImageVariantGenerating(nextJob, trimNullable(input.workerRunId));
   return mapDesignJobSummary(nextJob);
 }
@@ -2122,6 +2371,10 @@ async function uploadDesignAssetToStorage(input: {
   contentType: string;
   extension: string;
 }) {
+  if (input.contentType !== "image/jpeg" || input.extension !== "jpg") {
+    throw new QuoteValidationError("Design-Assets dürfen nur als echtes JPEG gespeichert werden.");
+  }
+  assertJpegOutput(input.bytes, "Design-Asset");
   const bucket = designAssetBucket();
   const path = [
     slugPathPart(input.job.request_id, "no-request"),
@@ -2163,9 +2416,8 @@ async function uploadDesignAssetToStorage(input: {
 
 async function generateOpenAiDesignImage(promptText: string) {
   const model = String(process.env.OPS_OPENAI_IMAGE_MODEL || "gpt-image-1.5").trim() || "gpt-image-1.5";
-  const outputFormat = String(process.env.OPS_OPENAI_IMAGE_FORMAT || "webp").trim().toLowerCase();
-  const imageFormat = outputFormat === "png" || outputFormat === "jpeg" ? outputFormat : "webp";
-  const response = await fetch("https://api.openai.com/v1/images/generations", {
+  const imageFormat = "jpeg";
+  const response = await fetchWithTimeout("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${openAiImageApiKey()}`,
@@ -2179,7 +2431,7 @@ async function generateOpenAiDesignImage(promptText: string) {
       quality: "medium",
       output_format: imageFormat,
     }),
-  });
+  }, 150_000);
 
   const payload = (await response.json().catch(() => null)) as {
     data?: Array<{ b64_json?: string; url?: string }>;
@@ -2196,25 +2448,27 @@ async function generateOpenAiDesignImage(promptText: string) {
 
   const image = payload?.data?.[0] || null;
   if (image?.b64_json) {
+    const bytes = Buffer.from(image.b64_json, "base64");
+    assertJpegOutput(bytes, "OpenAI-Ausgabe");
     return {
       model,
-      bytes: Buffer.from(image.b64_json, "base64"),
-      contentType: imageFormat === "jpeg" ? "image/jpeg" : `image/${imageFormat}`,
-      extension: imageFormat === "jpeg" ? "jpg" : imageFormat,
+      bytes,
+      contentType: "image/jpeg",
+      extension: "jpg",
       remoteUrl: null as string | null,
     };
   }
 
   if (image?.url) {
-    const imageResponse = await fetch(image.url, { cache: "no-store" });
+    const imageResponse = await fetchWithTimeout(image.url, { cache: "no-store" }, 30_000);
     if (!imageResponse.ok) throw new QuoteValidationError(`OpenAI Bild-URL konnte nicht geladen werden (${imageResponse.status}).`);
-    const contentType = imageResponse.headers.get("content-type") || "image/png";
-    const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png";
+    const bytes = Buffer.from(await imageResponse.arrayBuffer());
+    assertJpegOutput(bytes, "OpenAI-Ausgabe");
     return {
       model,
-      bytes: Buffer.from(await imageResponse.arrayBuffer()),
-      contentType,
-      extension,
+      bytes,
+      contentType: "image/jpeg",
+      extension: "jpg",
       remoteUrl: image.url,
     };
   }
@@ -2256,7 +2510,7 @@ function referenceAssetsFromJob(job: DesignJobRow): DesignReferenceAsset[] {
     .slice(0, 4);
 }
 
-function promptForImageEdit(promptText: string) {
+export function promptForImageEdit(promptText: string) {
   const lightColorMatch = promptText.match(/Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ([^\n.]+)/i);
   const lightColor = trimNullable(lightColorMatch?.[1]);
   if (lightColor) {
@@ -2267,7 +2521,7 @@ function promptForImageEdit(promptText: string) {
     ].join("\n");
   }
 
-  const productChangeMatch = promptText.match(/Ändere ausschließlich die Schildtechnik zu ([^\n.]+)/i);
+  const productChangeMatch = promptText.match(/Ändere ausschließlich die Schildtechnik(?: des vorhandenen Schildes)? zu ([^\n.]+)/i);
   const productChange = trimNullable(productChangeMatch?.[1]);
   if (productChange) {
     const productInstruction = /3d\s*frontlit/i.test(productChange)
@@ -2315,29 +2569,31 @@ async function downloadDesignReferenceAttachments(job: DesignJobRow) {
   for (const reference of references) {
     const attachment = await getTrelloAttachment(reference.cardId, reference.attachmentId);
     const file = await downloadTrelloAttachment(attachment);
+    const body = Buffer.from(file.body);
     const contentType = referenceImageContentType(file.contentType, reference.name);
-    if (!contentType) {
-      throw new QuoteValidationError(`Referenzbild ${reference.name} ist kein unterstütztes Bildformat fuer Image-Edit.`);
-    }
+    assertEligibleAiJpegSource(reference.name, contentType);
+    assertJpegOutput(body, `Referenzbild ${reference.name}`);
     files.push({
       reference,
-      body: file.body,
-      contentType,
-      filename: safeImageFilename(reference.name, contentType),
+      body,
+      contentType: "image/jpeg",
+      filename: safeImageFilename(reference.name, "image/jpeg"),
     });
   }
   for (const reference of referenceAssetsFromJob(job)) {
-    const response = await fetch(reference.publicUrl, { cache: "no-store" });
+    assertAllowedDesignSourceUrl(reference.publicUrl);
+    assertEligibleAiJpegSource(reference.name, reference.mimeType);
+    const response = await fetchWithTimeout(reference.publicUrl, { cache: "no-store" }, 30_000);
     if (!response.ok) throw new QuoteValidationError(`Generiertes Referenzbild konnte nicht geladen werden (${response.status}).`);
+    const body = Buffer.from(await response.arrayBuffer());
     const contentType = referenceImageContentType(response.headers.get("content-type") || reference.mimeType, reference.name);
-    if (!contentType) {
-      throw new QuoteValidationError(`Generiertes Referenzbild ${reference.name} ist kein unterstütztes Bildformat fuer Image-Edit.`);
-    }
+    assertEligibleAiJpegSource(reference.name, contentType);
+    assertJpegOutput(body, `Generiertes Referenzbild ${reference.name}`);
     files.push({
       reference,
-      body: Buffer.from(await response.arrayBuffer()),
-      contentType,
-      filename: safeImageFilename(reference.name, contentType),
+      body,
+      contentType: "image/jpeg",
+      filename: safeImageFilename(reference.name, "image/jpeg"),
     });
   }
   return files;
@@ -2346,8 +2602,7 @@ async function downloadDesignReferenceAttachments(job: DesignJobRow) {
 async function generateOpenAiDesignImageEdit(promptText: string, referenceFiles: Awaited<ReturnType<typeof downloadDesignReferenceAttachments>>) {
   if (!referenceFiles.length) return generateOpenAiDesignImage(promptText);
   const model = String(process.env.OPS_OPENAI_IMAGE_EDIT_MODEL || process.env.OPS_OPENAI_IMAGE_MODEL || "gpt-image-1.5").trim() || "gpt-image-1.5";
-  const outputFormat = String(process.env.OPS_OPENAI_IMAGE_FORMAT || "webp").trim().toLowerCase();
-  const imageFormat = outputFormat === "png" || outputFormat === "jpeg" ? outputFormat : "webp";
+  const imageFormat = "jpeg";
   const form = new FormData();
   form.append("model", model);
   form.append("prompt", promptForImageEdit(promptText));
@@ -2360,13 +2615,13 @@ async function generateOpenAiDesignImageEdit(promptText: string, referenceFiles:
     form.append("image[]", new Blob([file.body], { type: file.contentType }), file.filename);
   }
 
-  const response = await fetch("https://api.openai.com/v1/images/edits", {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/images/edits", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${openAiImageApiKey()}`,
     },
     body: form,
-  });
+  }, 150_000);
 
   const payload = (await response.json().catch(() => null)) as {
     data?: Array<{ b64_json?: string; url?: string }>;
@@ -2383,25 +2638,27 @@ async function generateOpenAiDesignImageEdit(promptText: string, referenceFiles:
 
   const image = payload?.data?.[0] || null;
   if (image?.b64_json) {
+    const bytes = Buffer.from(image.b64_json, "base64");
+    assertJpegOutput(bytes, "OpenAI-Edit-Ausgabe");
     return {
       model,
-      bytes: Buffer.from(image.b64_json, "base64"),
-      contentType: imageFormat === "jpeg" ? "image/jpeg" : `image/${imageFormat}`,
-      extension: imageFormat === "jpeg" ? "jpg" : imageFormat,
+      bytes,
+      contentType: "image/jpeg",
+      extension: "jpg",
       remoteUrl: null as string | null,
     };
   }
 
   if (image?.url) {
-    const imageResponse = await fetch(image.url, { cache: "no-store" });
+    const imageResponse = await fetchWithTimeout(image.url, { cache: "no-store" }, 30_000);
     if (!imageResponse.ok) throw new QuoteValidationError(`OpenAI Bild-URL konnte nicht geladen werden (${imageResponse.status}).`);
-    const contentType = imageResponse.headers.get("content-type") || "image/png";
-    const extension = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png";
+    const bytes = Buffer.from(await imageResponse.arrayBuffer());
+    assertJpegOutput(bytes, "OpenAI-Edit-Ausgabe");
     return {
       model,
-      bytes: Buffer.from(await imageResponse.arrayBuffer()),
-      contentType,
-      extension,
+      bytes,
+      contentType: "image/jpeg",
+      extension: "jpg",
       remoteUrl: image.url,
     };
   }
@@ -2435,6 +2692,10 @@ export async function generateDesignJobNow(input: {
       method: "PATCH",
       body: JSON.stringify({
         status: "generating",
+        attempt_count: Math.min(10, Number(job.attempt_count || 0) + 1),
+        started_at: job.started_at || new Date().toISOString(),
+        heartbeat_at: new Date().toISOString(),
+        finished_at: null,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(job.metadata || {}),
@@ -2472,7 +2733,12 @@ export async function generateDesignJobNow(input: {
         storagePath: stored.path,
         publicUrl: stored.publicUrl,
         mimeType: generated.contentType,
-        name: promptVersion.prompt_title,
+        name: structuredDesignActionAttachmentName({
+          actionType: job.action_type,
+          actionValue: job.action_value,
+          sourceName: job.source_attachment_name,
+          fallbackName: promptVersion.prompt_title,
+        }),
       },
     });
     const asset = await latestGeneratedAssetForJob(job.id);
@@ -2526,6 +2792,8 @@ export async function applyDesignWorkerCallback(input: {
         body: JSON.stringify({
           status: "failed",
           error_message: trimNullable(input.errorMessage) || "Worker meldete einen Fehler.",
+          heartbeat_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           metadata: {
             ...(job.metadata || {}),
@@ -2542,6 +2810,13 @@ export async function applyDesignWorkerCallback(input: {
   }
 
   const assetInput = input.asset || {};
+  const assetMimeType = trimNullable(assetInput.mimeType);
+  if (!assetMimeType || !isJpegMimeType(assetMimeType)) {
+    throw new QuoteValidationError("Der Design-Worker muss ein JPEG-Asset liefern.");
+  }
+  if (!trimNullable(assetInput.storagePath) && !trimNullable(assetInput.publicUrl)) {
+    throw new QuoteValidationError("Der Design-Worker muss einen gespeicherten Asset-Pfad oder eine öffentliche URL liefern.");
+  }
   const assetKey = trimNullable(assetInput.assetKey) || stableActionKey("design-asset", [job.id, promptVersion.id, idempotencyKey]);
   const existing = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
     select: DESIGN_ASSET_SELECT,
@@ -2561,8 +2836,13 @@ export async function applyDesignWorkerCallback(input: {
     storage_path: trimNullable(assetInput.storagePath),
     public_url: trimNullable(assetInput.publicUrl),
     trello_attachment_id: trimNullable(assetInput.trelloAttachmentId),
-    name: trimNullable(assetInput.name) || promptVersion.prompt_title,
-    mime_type: trimNullable(assetInput.mimeType),
+    name: structuredDesignActionAttachmentName({
+      actionType: job.action_type,
+      actionValue: job.action_value,
+      sourceName: job.source_attachment_name,
+      fallbackName: trimNullable(assetInput.name) || promptVersion.prompt_title,
+    }),
+    mime_type: "image/jpeg",
     width: Number.isFinite(assetInput.width) ? Number(assetInput.width) : null,
     height: Number.isFinite(assetInput.height) ? Number(assetInput.height) : null,
     metadata: {
@@ -2570,6 +2850,11 @@ export async function applyDesignWorkerCallback(input: {
       worker_run_id: trimNullable(input.workerRunId),
       idempotency_key: idempotencyKey,
       prompt_hash: promptVersion.prompt_hash,
+      action_type: job.action_type,
+      action_value: job.action_value,
+      source_attachment_id: job.source_attachment_id,
+      source_attachment_name: job.source_attachment_name,
+      source_fingerprint: job.source_fingerprint,
     },
   };
   const assetRows = existing[0]
@@ -2599,6 +2884,8 @@ export async function applyDesignWorkerCallback(input: {
         status: "generated",
         selected_asset_id: asset.id,
         error_message: null,
+        heartbeat_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         metadata: {
           ...(job.metadata || {}),
@@ -2640,6 +2927,10 @@ function mapDesignJobSummary(job: DesignJobRow): DesignJobSummary {
     trelloCardId: job.trello_card_id,
     offerId: job.offer_id,
     sourceQuery: job.source_query,
+    actionType: job.action_type,
+    actionValue: job.action_value,
+    sourceAttachmentId: job.source_attachment_id,
+    sourceAttachmentName: job.source_attachment_name,
     errorMessage: job.error_message,
     createdAt: job.created_at,
     updatedAt: job.updated_at,
@@ -2647,6 +2938,7 @@ function mapDesignJobSummary(job: DesignJobRow): DesignJobSummary {
 }
 
 function mapDesignAssetSummary(asset: DesignAssetRow): DesignAssetSummary {
+  const metadata = asset.metadata || {};
   return {
     id: asset.id,
     assetKey: asset.asset_key,
@@ -2658,6 +2950,11 @@ function mapDesignAssetSummary(asset: DesignAssetRow): DesignAssetSummary {
     mimeType: asset.mime_type,
     width: asset.width,
     height: asset.height,
+    trelloCardId: asset.trello_card_id,
+    actionType: trimNullable(metadata.action_type) as DesignActionType | null,
+    actionValue: trimNullable(metadata.action_value),
+    sourceAttachmentId: trimNullable(metadata.source_attachment_id),
+    sourceAttachmentName: trimNullable(metadata.source_attachment_name),
     createdAt: asset.created_at,
     updatedAt: asset.updated_at,
   };

@@ -51,14 +51,20 @@ export async function GET(request: NextRequest) {
     assertTrelloId(attachmentId, "attachmentId");
 
     const attachment = await getTrelloAttachment(cardId, attachmentId);
-    const file = await downloadTrelloAttachment(attachment);
+    const thumbnail = request.nextUrl.searchParams.get("thumbnail") === "1";
+    const preview = thumbnail
+      ? [...(attachment.previews || [])]
+          .filter((candidate) => candidate.url && Number(candidate.width || 0) >= 300)
+          .sort((left, right) => Number(left.width || 0) - Number(right.width || 0))[0] || null
+      : null;
+    const file = await downloadTrelloAttachment(preview?.url ? { ...attachment, url: preview.url } : attachment);
     const filename = String(attachment.name || attachment.fileName || attachment.id).replace(/"/g, "");
 
     return new NextResponse(file.body, {
       headers: {
         "Content-Type": file.contentType,
         "Content-Disposition": `inline; filename="${filename}"`,
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
         "Vary": "Cookie, Cf-Access-Jwt-Assertion",
       },
     });

@@ -33,6 +33,8 @@ import type {
   DesignRemovalPlan,
   DesignWorkspace,
 } from "@/lib/ops/design";
+import type { DesignBatchSummary } from "@/lib/ops/design-batches";
+import { DESIGN_LIGHT_COLORS } from "@/lib/ops/design-contract";
 
 type DesignApiResponse = {
   ok: boolean;
@@ -41,6 +43,7 @@ type DesignApiResponse = {
   jobs?: DesignJobSummary[];
   removalPlan?: DesignRemovalPlan;
   offer?: OpsOfferSnapshot;
+  batch?: DesignBatchSummary;
   result?: {
     status?: string;
     asset?: DesignAssetSummary;
@@ -53,6 +56,8 @@ type DesignApiResponse = {
     deleted?: number;
     failed?: Array<{ attachmentId: string; error: string }>;
     dryRun?: boolean;
+    batch?: DesignBatchSummary;
+    processedItemId?: string | null;
   };
   sent?: boolean;
   duplicate?: boolean;
@@ -110,18 +115,14 @@ function kindTone(kind: DesignAttachment["kind"]) {
 
 const DESIGN_CONSTRAINT_START = "[[NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
 const DESIGN_CONSTRAINT_END = "[[/NEONTRIP_DESIGN_STUDIO_CONSTRAINT]]";
-const LIGHT_COLOR_PRESETS = {
+type LightColorPresetKey = "original" | (typeof DESIGN_LIGHT_COLORS)[number]["key"];
+type LightColorPreset = { label: string; value: string | null; swatch: string };
+const LIGHT_COLOR_PRESETS: Record<LightColorPresetKey, LightColorPreset> = {
   original: { label: "Original", value: null, swatch: "linear-gradient(135deg,#f8fafc,#d6d3d1)" },
-  warm_white: { label: "Warmweiß", value: "warmweiß", swatch: "#ffe7a3" },
-  cool_white: { label: "Kaltweiß", value: "kaltweiß", swatch: "#dbeafe" },
-  red: { label: "Rot", value: "rot", swatch: "#ef4444" },
-  pink: { label: "Pink", value: "pink / magenta", swatch: "#ec4899" },
-  blue: { label: "Blau", value: "blau", swatch: "#3b82f6" },
-  green: { label: "Grün", value: "grün", swatch: "#22c55e" },
-  amber: { label: "Orange", value: "orange", swatch: "#f97316" },
-  rgb: { label: "RGB", value: "RGB-Farbverlauf", swatch: "linear-gradient(135deg,#ef4444,#22c55e,#3b82f6)" },
-  custom: { label: "Eigene", value: null, swatch: "linear-gradient(135deg,#111827,#f8fafc)" },
-} as const;
+  ...Object.fromEntries(
+    DESIGN_LIGHT_COLORS.map((color) => [color.key, { label: color.label, value: color.promptValue, swatch: color.swatch }]),
+  ) as Record<(typeof DESIGN_LIGHT_COLORS)[number]["key"], LightColorPreset>,
+};
 const PRODUCT_CHANGE_PRESETS = {
   original: null,
   frontlit_3d: {
@@ -197,7 +198,6 @@ const MOCKUP_PRESETS = {
     ],
   },
 } as const;
-type LightColorPresetKey = keyof typeof LIGHT_COLOR_PRESETS;
 type ProductChangePresetKey = keyof typeof PRODUCT_CHANGE_PRESETS;
 type MockupPresetKey = keyof typeof MOCKUP_PRESETS;
 
@@ -219,15 +219,13 @@ function promptWithMockupConstraint(prompt: string, presetKey: Exclude<MockupPre
   return [base, constraint].filter(Boolean).join("\n\n");
 }
 
-function selectedLightColor(presetKey: LightColorPresetKey, customLightColor: string) {
+function selectedLightColor(presetKey: LightColorPresetKey) {
   if (presetKey === "original") return null;
-  if (presetKey === "custom") return customLightColor.trim() || null;
   return LIGHT_COLOR_PRESETS[presetKey].value;
 }
 
-function selectedLightColorLabel(presetKey: LightColorPresetKey, customLightColor: string) {
+function selectedLightColorLabel(presetKey: LightColorPresetKey) {
   if (presetKey === "original") return null;
-  if (presetKey === "custom") return customLightColor.trim() || null;
   return LIGHT_COLOR_PRESETS[presetKey].label;
 }
 
@@ -240,11 +238,10 @@ function promptWithStudioConstraints(
   prompt: string,
   presetKey: MockupPresetKey,
   lightColorKey: LightColorPresetKey,
-  customLightColor: string,
   productChangeKey: ProductChangePresetKey,
 ) {
   const base = removeDesignConstraint(prompt);
-  const lightColor = selectedLightColor(lightColorKey, customLightColor);
+  const lightColor = selectedLightColor(lightColorKey);
   const lines: string[] = [];
   if (presetKey !== "original") lines.push(...MOCKUP_PRESETS[presetKey].lines);
   if (productChangeKey !== "original") lines.push(...PRODUCT_CHANGE_PRESETS[productChangeKey].lines);
@@ -277,7 +274,6 @@ export function DesignOpsClient({
   const [promptPreset, setPromptPreset] = useState<MockupPresetKey>("original");
   const [lightColorPreset, setLightColorPreset] = useState<LightColorPresetKey>("original");
   const [productChangePreset, setProductChangePreset] = useState<ProductChangePresetKey>("original");
-  const [customLightColor, setCustomLightColor] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [offer, setOffer] = useState<OpsOfferSnapshot | null>(null);
@@ -306,30 +302,52 @@ export function DesignOpsClient({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [bulkRecolorProgress, setBulkRecolorProgress] = useState<BulkRecolorProgress | null>(null);
+  const [activeBatch, setActiveBatch] = useState<DesignBatchSummary | null>(null);
+  const [showAllAttachments, setShowAllAttachments] = useState(false);
+  const [reviewedUnitPriceNet, setReviewedUnitPriceNet] = useState("");
+  const [priceReviewConfirmed, setPriceReviewConfirmed] = useState(false);
+  const [offerPriceReviewRequired, setOfferPriceReviewRequired] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const generatedAssets = useMemo(
-    () => jobs.flatMap((item) => item.assets || []).filter((asset) => asset.publicUrl),
-    [jobs],
+    () => jobs
+      .flatMap((item) => item.assets || [])
+      .filter((asset) =>
+        asset.publicUrl &&
+        asset.trelloCardId === workspace?.primaryCard?.cardId &&
+        asset.mimeType === "image/jpeg" &&
+        isEligibleAiMockupSourceName(asset.name),
+      ),
+    [jobs, workspace?.primaryCard?.cardId],
   );
-  const selectedAsset = generatedAssets.find((asset) => asset.id === selectedAssetId) || generatedAssets[0] || null;
+  const selectedAsset = generatedAssets.find((asset) => asset.id === selectedAssetId) || null;
+  const selectedAssetLightColorLabel = selectedAsset?.actionType === "light_color" ? selectedAsset.actionValue : null;
+  const selectedAssetProductChangeLabel = selectedAsset?.actionType === "product_change" ? selectedAsset.actionValue : null;
+  const workspaceCardId = workspace?.primaryCard?.cardId || "";
 
   const loadRecentJobs = useCallback(async () => {
+    if (!workspaceCardId) {
+      setJobs([]);
+      return;
+    }
     setJobsLoading(true);
     try {
-      const response = await fetch("/api/ops/design/jobs?limit=18");
+      const params = new URLSearchParams({ limit: "30", trelloCardId: workspaceCardId });
+      const response = await fetch(`/api/ops/design/jobs?${params.toString()}`);
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
       if (response.ok && payload?.ok && payload.jobs) {
         setJobs(payload.jobs);
-        const nextAsset = payload.jobs.flatMap((item) => item.assets || []).find((asset) => asset.publicUrl);
-        if (nextAsset && !selectedAssetId) setSelectedAssetId(nextAsset.id);
+        const nextAssets = payload.jobs.flatMap((item) => item.assets || []).filter((asset) =>
+          asset.publicUrl && asset.trelloCardId === workspaceCardId && asset.mimeType === "image/jpeg" && isEligibleAiMockupSourceName(asset.name),
+        );
+        setSelectedAssetId((current) => nextAssets.some((asset) => asset.id === current) ? current : nextAssets[0]?.id || "");
       }
     } catch {
       setJobs([]);
     } finally {
       setJobsLoading(false);
     }
-  }, [selectedAssetId]);
+  }, [workspaceCardId]);
 
   useEffect(() => {
     try {
@@ -340,31 +358,54 @@ export function DesignOpsClient({
   }, []);
 
   useEffect(() => {
-    void loadRecentJobs();
+    if (workspaceCardId) void loadRecentJobs();
   }, [loadRecentJobs]);
+
+  useEffect(() => {
+    try {
+      const batchId = window.localStorage.getItem("neontrip-design-active-batch");
+      if (!batchId) return;
+      void fetch(`/api/ops/design/batches/${encodeURIComponent(batchId)}`)
+        .then((response) => response.json())
+        .then((payload: DesignApiResponse) => {
+          if (payload.ok && payload.batch && !["completed", "completed_with_errors", "cancelled"].includes(payload.batch.status)) {
+            setActiveBatch(payload.batch);
+            syncBatchProgress(payload.batch, "Wiederhergestellter Batch kann fortgesetzt werden");
+          } else {
+            window.localStorage.removeItem("neontrip-design-active-batch");
+          }
+        })
+        .catch(() => undefined);
+    } catch {
+      // Local storage is optional.
+    }
+  }, []);
 
   useEffect(() => {
     setPromptDraft(workspace?.promptPreview.prompt || "");
     setPromptPreset("original");
     setLightColorPreset("original");
     setProductChangePreset("original");
-    setCustomLightColor("");
     const nextOfferId = workspace?.offerCandidates.find((candidate) => !candidate.locked)?.id || "";
     setSelectedOfferId(nextOfferId);
     setOffer(null);
     setSelectedOfferImageId("");
     setSelectedOfferItemId("");
+    setReviewedUnitPriceNet("");
+    setPriceReviewConfirmed(false);
+    setOfferPriceReviewRequired(false);
     setSendRecipient(workspace?.record?.email || "");
     setSendCcOne("");
     setSendCcTwo("");
-    const defaultReference =
-      workspace?.primaryCard?.attachments.find((attachment) => attachment.kind === "mockup") ||
-      workspace?.primaryCard?.attachments.find((attachment) => attachment.kind === "reference" || attachment.kind === "image") ||
-      null;
+    const defaultReference = workspace?.primaryCard?.attachments.find((attachment) =>
+      isEligibleAiMockupSourceName(attachment.name) && (!attachment.mimeType || /^image\/jpe?g$/i.test(attachment.mimeType)),
+    ) || null;
     setSelectedReferenceAttachmentId(defaultReference?.id || "");
     setSelectedReferenceAssetId("");
     setSelectedAttachmentIds([]);
     setSelectedRecolorAttachmentIds([]);
+    setSelectedAssetId("");
+    setShowAllAttachments(false);
     setRemovalPlan(null);
     setJob(null);
   }, [workspace]);
@@ -377,28 +418,60 @@ export function DesignOpsClient({
     () => generatedAssets.find((asset) => asset.id === selectedReferenceAssetId) || null,
     [generatedAssets, selectedReferenceAssetId],
   );
-  const activeLightColorLabel = selectedLightColorLabel(lightColorPreset, customLightColor);
+  const activeLightColorLabel = selectedLightColorLabel(lightColorPreset);
   const activeProductChangeLabel = selectedProductChangeLabel(productChangePreset);
   const colorSelectableAttachmentIds = useMemo(() => {
     return new Set(
       (workspace?.cards || [])
         .flatMap((card) => card.attachments)
-        .filter((attachment) => isEligibleAiMockupSourceName(attachment.name))
+        .filter((attachment) => isEligibleAiMockupSourceName(attachment.name) && (!attachment.mimeType || /^image\/jpe?g$/i.test(attachment.mimeType)))
         .map((attachment) => attachment.id),
     );
   }, [workspace]);
   const selectedColorAttachmentIds = useMemo(() => {
-    const selected = new Set([...selectedAttachmentIds, ...selectedRecolorAttachmentIds]);
+    const selected = new Set(selectedRecolorAttachmentIds);
     return (workspace?.cards || [])
       .flatMap((card) => card.attachments)
       .filter((attachment) => colorSelectableAttachmentIds.has(attachment.id) && selected.has(attachment.id))
       .map((attachment) => attachment.id);
-  }, [colorSelectableAttachmentIds, selectedAttachmentIds, selectedRecolorAttachmentIds, workspace]);
+  }, [colorSelectableAttachmentIds, selectedRecolorAttachmentIds, workspace]);
+
+  useEffect(() => {
+    if (!selectedAssetProductChangeLabel || !offer || !selectedOfferItemId) return;
+    const item = offer.items.find((candidate) => candidate.id === selectedOfferItemId);
+    if (item) {
+      setReviewedUnitPriceNet(String(item.unitPriceNet));
+      setPriceReviewConfirmed(false);
+    }
+  }, [offer, selectedAssetProductChangeLabel, selectedOfferItemId]);
+
+  useEffect(() => {
+    if (!offer) return;
+    const exactSourceImage = selectedAsset?.sourceAttachmentId
+      ? offer.images.find((image) => image.trelloAttachmentId === selectedAsset.sourceAttachmentId) || null
+      : null;
+    const sortedItems = [...offer.items].sort((left, right) => left.sortOrder - right.sortOrder);
+    if (exactSourceImage) {
+      setSelectedOfferImageId(exactSourceImage.id);
+      const exactItem = exactSourceImage.linkedItemTitle
+        ? sortedItems.find((item) => item.title === exactSourceImage.linkedItemTitle) || null
+        : typeof exactSourceImage.linkedItemIndex === "number"
+          ? sortedItems[exactSourceImage.linkedItemIndex] || null
+          : null;
+      if (exactItem) setSelectedOfferItemId(exactItem.id);
+      return;
+    }
+    if (!selectedOfferItemId) return;
+    const itemIndex = sortedItems.findIndex((item) => item.id === selectedOfferItemId);
+    const item = sortedItems[itemIndex];
+    const matchingImage = offer.images.find((image) => image.linkedItemTitle && image.linkedItemTitle === item?.title) ||
+      offer.images.find((image) => image.linkedItemIndex === itemIndex) || null;
+    if (matchingImage) setSelectedOfferImageId(matchingImage.id);
+  }, [offer, selectedAsset?.sourceAttachmentId, selectedOfferItemId]);
 
   function applyPromptControls(
     nextPreset: MockupPresetKey,
     nextLightColorPreset: LightColorPresetKey,
-    nextCustomLightColor = customLightColor,
     nextProductChangePreset: ProductChangePresetKey = productChangePreset,
   ) {
     if (!workspace) return;
@@ -407,7 +480,7 @@ export function DesignOpsClient({
     setProductChangePreset(nextProductChangePreset);
     setJob(null);
     const basePrompt = removeDesignConstraint(promptDraft || workspace.promptPreview.prompt || "");
-    setPromptDraft(promptWithStudioConstraints(basePrompt, nextPreset, nextLightColorPreset, nextCustomLightColor, nextProductChangePreset));
+    setPromptDraft(promptWithStudioConstraints(basePrompt, nextPreset, nextLightColorPreset, nextProductChangePreset));
   }
 
   function selectReferenceAttachmentForEdit(attachmentId: string) {
@@ -427,16 +500,11 @@ export function DesignOpsClient({
   }
 
   function applyLightColorPreset(nextPreset: LightColorPresetKey) {
-    applyPromptControls(promptPreset, nextPreset, customLightColor, nextPreset === "original" ? productChangePreset : "original");
+    applyPromptControls(promptPreset, nextPreset, nextPreset === "original" ? productChangePreset : "original");
   }
 
   function applyProductChangePreset(nextPreset: ProductChangePresetKey) {
-    applyPromptControls(promptPreset, nextPreset === "original" ? lightColorPreset : "original", customLightColor, nextPreset);
-  }
-
-  function updateCustomLightColor(nextColor: string) {
-    setCustomLightColor(nextColor);
-    if (lightColorPreset === "custom") applyPromptControls(promptPreset, "custom", nextColor, "original");
+    applyPromptControls(promptPreset, nextPreset === "original" ? lightColorPreset : "original", nextPreset);
   }
 
   async function searchDesignWorkspace(nextQuery = query, options: { preserveStatus?: boolean } = {}) {
@@ -475,6 +543,14 @@ export function DesignOpsClient({
       return;
     }
     if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
+    const actionType = activeLightColorLabel
+      ? "light_color"
+      : activeProductChangeLabel
+        ? "product_change"
+        : promptPreset !== "original"
+          ? "mockup_mode"
+          : "manual_edit";
+    const actionValue = activeLightColorLabel || activeProductChangeLabel || (promptPreset !== "original" ? mockupPresetLabel(promptPreset) : null);
     const response = await fetch("/api/ops/design/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -487,6 +563,8 @@ export function DesignOpsClient({
         offerId: selectedOfferId || null,
         referenceAttachmentIds: selectedReferenceAssetId ? [] : selectedReferenceAttachmentId ? [selectedReferenceAttachmentId] : [],
         referenceAssetId: selectedReferenceAssetId || null,
+        actionType,
+        actionValue,
       }),
     });
     const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
@@ -563,6 +641,52 @@ export function DesignOpsClient({
     }
   }
 
+  function syncBatchProgress(batch: DesignBatchSummary, stage?: string) {
+    const currentItem = batch.items.find((item) => ["pending", "generating", "generated", "attaching"].includes(item.status)) ||
+      batch.items.find((item) => item.status === "failed" && item.attemptCount < 3) || null;
+    const terminalFailures = batch.items.filter((item) => item.status === "failed" && item.attemptCount >= 3).length;
+    setBulkRecolorProgress({
+      total: batch.totalCount,
+      current: batch.completedCount + terminalFailures,
+      currentName: currentItem?.sourceAttachmentName || null,
+      stage: stage || (batch.status === "running" ? "Server verarbeitet die ausgewählten Mockups" : "Batch abgeschlossen"),
+      generated: batch.items.filter((item) => Boolean(item.assetId)).length,
+      replaced: batch.items.filter((item) => Boolean(item.trelloNewAttachmentId)).length,
+      failures: batch.items.filter((item) => item.status === "failed").length,
+    });
+  }
+
+  async function runDesignBatch(initialBatch: DesignBatchSummary) {
+    let batch = initialBatch;
+    setActiveBatch(batch);
+    syncBatchProgress(batch);
+    try {
+      window.localStorage.setItem("neontrip-design-active-batch", batch.id);
+    } catch {
+      // Local storage is optional.
+    }
+    while (["pending", "running", "failed"].includes(batch.status) && (batch.completedCount + batch.failedCount < batch.totalCount || batch.retryableCount > 0)) {
+      const response = await fetch(`/api/ops/design/batches/${encodeURIComponent(batch.id)}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operatorName }),
+      });
+      const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
+      if (!response.ok || !payload?.ok || !payload.result?.batch) throw new Error(formatApiError(payload));
+      batch = payload.result.batch;
+      setActiveBatch(batch);
+      syncBatchProgress(batch);
+    }
+    try {
+      window.localStorage.removeItem("neontrip-design-active-batch");
+    } catch {
+      // Local storage is optional.
+    }
+    setActiveBatch(batch);
+    syncBatchProgress(batch, batch.failedCount ? "Mit Fehlern abgeschlossen" : "Abgeschlossen");
+    return batch;
+  }
+
   async function recolorSelectedAttachments(replaceTrelloAfterGenerate: boolean, actionKind: "color" | "product" = "color") {
     if (!workspace) return;
     const attachmentIds = [...selectedColorAttachmentIds];
@@ -570,7 +694,7 @@ export function DesignOpsClient({
       setError("Bitte mindestens ein Mockup für die Design-Aktion auswählen.");
       return;
     }
-    if (actionKind === "color" && !selectedLightColor(lightColorPreset, customLightColor)) {
+    if (actionKind === "color" && !selectedLightColor(lightColorPreset)) {
       setError("Bitte zuerst eine Leuchtfarbe wählen.");
       return;
     }
@@ -578,145 +702,47 @@ export function DesignOpsClient({
       setError("Bitte zuerst eine Produktänderung wählen.");
       return;
     }
-    const basePrompt = promptDraft.trim();
-    if (basePrompt.length < 40) {
-      setError("Prompt ist zu kurz.");
-      return;
-    }
     const actionLabel = actionKind === "product" ? `Produktänderung ${activeProductChangeLabel}` : "Bulk-Farbänderung";
 
     setBusy(true);
     setError(null);
     setMessage(`${replaceTrelloAfterGenerate ? `${actionLabel} mit Trello-Ersetzung` : actionLabel} gestartet: 0 von ${attachmentIds.length}. Bitte warten.`);
-    const attachmentsById = new Map(
-      workspace.cards
-        .flatMap((card) => card.attachments)
-        .map((attachment) => [attachment.id, attachment] as const),
-    );
-    setBulkRecolorProgress({
-      total: attachmentIds.length,
-      current: 0,
-      currentName: null,
-      stage: "Wartet auf Start",
-      generated: 0,
-      replaced: 0,
-      failures: 0,
-    });
-    let generatedCount = 0;
-    let replacedCount = 0;
-    const failures: string[] = [];
-    const failedAttachmentIds = new Set<string>();
     try {
       if (operatorName.trim()) window.localStorage.setItem("neontrip-design-operator", operatorName.trim());
-      for (const [index, attachmentId] of attachmentIds.entries()) {
-        const attachmentName = attachmentsById.get(attachmentId)?.name || attachmentId;
-        try {
-          setBulkRecolorProgress({
-            total: attachmentIds.length,
-            current: index + 1,
-            currentName: attachmentName,
-            stage: "Generiere Farbvariante",
-            generated: generatedCount,
-            replaced: replacedCount,
-            failures: failures.length,
-          });
-          const draftResponse = await fetch("/api/ops/design/jobs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              idempotencyKey: createClientActionId(),
-              query: workspace.query,
-              promptTitle: `${workspace.promptPreview.title} · ${actionKind === "product" ? activeProductChangeLabel : "Farbänderung"}`,
-              promptText: basePrompt,
-              operatorName,
-              offerId: null,
-              referenceAttachmentIds: [attachmentId],
-              referenceAssetId: null,
-            }),
-          });
-          const draftPayload = (await draftResponse.json().catch(() => null)) as DesignApiResponse | null;
-          if (!draftResponse.ok || !draftPayload?.ok || !draftPayload.job) throw new Error(formatApiError(draftPayload));
-
-          const generateResponse = await fetch(`/api/ops/design/jobs/${encodeURIComponent(draftPayload.job.id)}/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idempotencyKey: createClientActionId(), operatorName }),
-          });
-          const generatePayload = (await generateResponse.json().catch(() => null)) as DesignApiResponse | null;
-          if (!generateResponse.ok || !generatePayload?.ok || !generatePayload.result) throw new Error(formatApiError(generatePayload));
-          const generatedAssetId = generatePayload.result.asset?.id;
-          if (!generatedAssetId) throw new Error("OpenAI hat kein Design-Asset zurueckgegeben.");
-          generatedCount += 1;
-          setSelectedAssetId(generatedAssetId);
-
-          if (replaceTrelloAfterGenerate) {
-            setBulkRecolorProgress({
-              total: attachmentIds.length,
-              current: index + 1,
-              currentName: attachmentName,
-              stage: "Lade nach Trello hoch und benenne altes Mockup um",
-              generated: generatedCount,
-              replaced: replacedCount,
-              failures: failures.length,
-            });
-            const attachResponse = await fetch(`/api/ops/design/jobs/${encodeURIComponent(draftPayload.job.id)}/trello`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ assetId: generatedAssetId, operatorName, replacementAttachmentId: attachmentId }),
-            });
-            const attachPayload = (await attachResponse.json().catch(() => null)) as DesignApiResponse | null;
-            if (!attachResponse.ok || !attachPayload?.ok) throw new Error(formatApiError(attachPayload));
-            if (!attachPayload.result?.trelloAttachmentId) throw new Error("Trello hat keinen neuen Attachment-Nachweis zurueckgegeben.");
-            replacedCount += 1;
-          }
-          setBulkRecolorProgress({
-            total: attachmentIds.length,
-            current: index + 1,
-            currentName: attachmentName,
-            stage: "Bild abgeschlossen",
-            generated: generatedCount,
-            replaced: replacedCount,
-            failures: failures.length,
-          });
-        } catch (itemError) {
-          failedAttachmentIds.add(attachmentId);
-          failures.push(`${attachmentName}: ${itemError instanceof Error ? itemError.message : "Farbänderung fehlgeschlagen."}`);
-          setBulkRecolorProgress({
-            total: attachmentIds.length,
-            current: index + 1,
-            currentName: attachmentName,
-            stage: "Fehler bei diesem Bild, naechstes Bild wird versucht",
-            generated: generatedCount,
-            replaced: replacedCount,
-            failures: failures.length,
-          });
-        }
-      }
-
+      const createResponse = await fetch("/api/ops/design/batches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idempotencyKey: createClientActionId(),
+          query: workspace.query,
+          actionType: actionKind === "product" ? "product_change" : "light_color",
+          actionValue: actionKind === "product" ? activeProductChangeLabel : activeLightColorLabel,
+          attachmentIds,
+          replaceTrello: replaceTrelloAfterGenerate,
+          operatorName,
+        }),
+      });
+      const createPayload = (await createResponse.json().catch(() => null)) as DesignApiResponse | null;
+      if (!createResponse.ok || !createPayload?.ok || !createPayload.batch) throw new Error(formatApiError(createPayload));
+      const completedBatch = await runDesignBatch(createPayload.batch);
       void loadRecentJobs();
       if (replaceTrelloAfterGenerate) await searchDesignWorkspace(workspace.query, { preserveStatus: true });
-      setBulkRecolorProgress({
-        total: attachmentIds.length,
-        current: attachmentIds.length,
-        currentName: null,
-        stage: failures.length ? "Mit Fehlern abgeschlossen" : "Abgeschlossen",
-        generated: generatedCount,
-        replaced: replacedCount,
-        failures: failures.length,
-      });
+      const generatedCount = completedBatch.items.filter((item) => Boolean(item.assetId)).length;
+      const replacedCount = completedBatch.items.filter((item) => Boolean(item.trelloNewAttachmentId)).length;
       setMessage(
         replaceTrelloAfterGenerate
-          ? `${actionLabel} abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert, ${replacedCount}/${attachmentIds.length} in Trello ersetzt${failures.length ? `, ${failures.length} Fehler` : ""}.`
-          : `${actionLabel} abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert${failures.length ? `, ${failures.length} Fehler` : ""}.`,
+          ? `${actionLabel} abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert, ${replacedCount}/${attachmentIds.length} in Trello ersetzt${completedBatch.failedCount ? `, ${completedBatch.failedCount} Fehler` : ""}.`
+          : `${actionLabel} abgeschlossen: ${generatedCount}/${attachmentIds.length} generiert${completedBatch.failedCount ? `, ${completedBatch.failedCount} Fehler` : ""}.`,
       );
-      if (failures.length) {
-        setSelectedRecolorAttachmentIds((current) => current.filter((id) => failedAttachmentIds.has(id)));
-        setSelectedAttachmentIds((current) => current.filter((id) => failedAttachmentIds.has(id)));
+      if (completedBatch.failedCount) {
+        const failedIds = new Set(completedBatch.items.filter((item) => item.status === "failed").map((item) => item.sourceAttachmentId));
+        setSelectedRecolorAttachmentIds((current) => current.filter((id) => failedIds.has(id)));
+        setError(completedBatch.items.find((item) => item.errorMessage)?.errorMessage || "Einige Bilder konnten nicht verarbeitet werden.");
       } else {
         setSelectedRecolorAttachmentIds([]);
-        setSelectedAttachmentIds([]);
       }
-      if (failures.length) setError(failures.slice(0, 2).join(" "));
+    } catch (batchError) {
+      setError(batchError instanceof Error ? batchError.message : "Design-Batch konnte nicht verarbeitet werden.");
     } finally {
       setBusy(false);
     }
@@ -735,6 +761,7 @@ export function DesignOpsClient({
       setSelectedOfferImageId(payload.offer.images.find((image) => image.enabled)?.id || payload.offer.images[0]?.id || "");
       setSelectedOfferItemId(payload.offer.items.find((item) => item.selectedByDefault)?.id || payload.offer.items[0]?.id || "");
       setSendRecipient(payload.offer.offer.customerEmail || workspace?.record?.email || "");
+      setOfferPriceReviewRequired(false);
     } catch (offerError) {
       setOffer(null);
       setError(offerError instanceof Error ? offerError.message : "Angebot konnte nicht geladen werden.");
@@ -760,8 +787,8 @@ export function DesignOpsClient({
           offerId: selectedOfferId,
           offerImageId: selectedOfferImageId || null,
           offerItemId: selectedOfferItemId || null,
-          lightColorLabel: activeLightColorLabel,
-          productChangeLabel: activeProductChangeLabel,
+          reviewedUnitPriceNet: selectedAssetProductChangeLabel && reviewedUnitPriceNet.trim() !== "" ? Number(reviewedUnitPriceNet) : null,
+          priceReviewConfirmed: selectedAssetProductChangeLabel ? priceReviewConfirmed : false,
           expectedUpdatedAt: offer?.updatedAt || null,
           operatorName,
           dryRun,
@@ -770,11 +797,12 @@ export function DesignOpsClient({
       const payload = (await response.json().catch(() => null)) as DesignApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       if (payload.result?.offerPatch?.offer) setOffer(payload.result.offerPatch.offer);
+      setOfferPriceReviewRequired(payload.result?.status === "needs_price_review");
       setMessage(
         dryRun
           ? "Offer-Link geprüft. Du kannst ihn jetzt übernehmen."
-          : activeLightColorLabel || activeProductChangeLabel
-            ? `Angebot aktualisiert: Design-Bild${activeLightColorLabel ? `, Leuchtfarbe ${activeLightColorLabel}` : ""}${activeProductChangeLabel ? ` und Produkt ${activeProductChangeLabel}` : ""} übernommen.${activeProductChangeLabel ? " Preisprüfung bleibt erforderlich." : ""}`
+          : selectedAssetLightColorLabel || selectedAssetProductChangeLabel
+            ? `Angebot aktualisiert: Design-Bild${selectedAssetLightColorLabel ? `, Leuchtfarbe ${selectedAssetLightColorLabel}` : ""}${selectedAssetProductChangeLabel ? ` und Produkt ${selectedAssetProductChangeLabel}` : ""} übernommen.${payload.result?.status === "needs_price_review" ? " Preisprüfung bleibt erforderlich." : ""}`
             : "Design-Asset wurde mit Angebot und CRM-Bildkontext verknüpft.",
       );
       void loadRecentJobs();
@@ -993,34 +1021,11 @@ export function DesignOpsClient({
             </div>
           </section>
 
-          {error ? <div className="rounded-[14px] border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">{error}</div> : null}
-          {message ? <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">{message}</div> : null}
-          {bulkRecolorProgress ? (
-            <div className="rounded-[14px] border border-[#ded8d0] bg-white p-4 text-sm text-stone-800">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="font-semibold">
-                  Bulk-Farbänderung: {bulkRecolorProgress.current}/{bulkRecolorProgress.total}
-                </div>
-                <div className="text-xs font-semibold text-stone-500">
-                  {bulkRecolorProgress.generated} generiert · {bulkRecolorProgress.replaced} ersetzt · {bulkRecolorProgress.failures} Fehler
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-xs text-stone-600">
-                {busy ? <RefreshCcw className="h-3.5 w-3.5 animate-spin" /> : null}
-                <span>{bulkRecolorProgress.stage}</span>
-                {bulkRecolorProgress.currentName ? <span className="truncate font-medium text-stone-900">· {bulkRecolorProgress.currentName}</span> : null}
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-stone-100">
-                <div
-                  className="h-full rounded-full bg-stone-950 transition-all"
-                  style={{ width: `${bulkRecolorProgress.total ? Math.round((bulkRecolorProgress.current / bulkRecolorProgress.total) * 100) : 0}%` }}
-                />
-              </div>
-            </div>
-          ) : null}
+          {error ? <div role="alert" className="rounded-[14px] border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">{error}</div> : null}
+          {message ? <div role="status" aria-live="polite" className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">{message}</div> : null}
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_26rem]">
-            <div className="space-y-5">
+            <div className="order-2 min-w-0 space-y-5 xl:order-1">
               {!workspace ? (
                 <div className="rounded-[18px] border border-dashed border-[#d8d0c4] bg-white p-8 text-center">
                   <Palette className="mx-auto h-9 w-9 text-stone-400" />
@@ -1072,7 +1077,7 @@ export function DesignOpsClient({
                           </span>
                           {selectedColorAttachmentIds.length ? (
                             <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
-                              {selectedColorAttachmentIds.length} für Farbe gewählt
+                              {selectedColorAttachmentIds.length} für Design-Aktion gewählt
                             </span>
                           ) : null}
                         </div>
@@ -1080,8 +1085,26 @@ export function DesignOpsClient({
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
+                          onClick={() => setSelectedRecolorAttachmentIds(Array.from(colorSelectableAttachmentIds))}
+                          disabled={busy || !colorSelectableAttachmentIds.size}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
+                        >
+                          <CheckSquare className="h-4 w-4" />
+                          Alle KI-JPGs
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRecolorAttachmentIds([])}
+                          disabled={busy || !selectedRecolorAttachmentIds.length}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
+                        >
+                          <Square className="h-4 w-4" />
+                          Auswahl leeren
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => void recolorSelectedAttachments(false)}
-                          disabled={busy || !selectedColorAttachmentIds.length}
+                          disabled={busy || !selectedColorAttachmentIds.length || !activeLightColorLabel}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
@@ -1090,7 +1113,7 @@ export function DesignOpsClient({
                         <button
                           type="button"
                           onClick={() => void recolorSelectedAttachments(true)}
-                          disabled={busy || !selectedColorAttachmentIds.length}
+                          disabled={busy || !selectedColorAttachmentIds.length || !activeLightColorLabel}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
@@ -1127,7 +1150,7 @@ export function DesignOpsClient({
                     </div>
 
                     {bulkRecolorProgress ? (
-                      <div className="mt-4 rounded-[14px] border border-[#ded8d0] bg-white p-4 text-sm text-stone-800">
+                      <div role="status" aria-live="polite" className="mt-4 rounded-[14px] border border-[#ded8d0] bg-white p-4 text-sm text-stone-800">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="font-semibold">
                             Bulk läuft: {bulkRecolorProgress.current}/{bulkRecolorProgress.total}
@@ -1141,12 +1164,22 @@ export function DesignOpsClient({
                           <span>{bulkRecolorProgress.stage}</span>
                           {bulkRecolorProgress.currentName ? <span className="truncate font-medium text-stone-900">· {bulkRecolorProgress.currentName}</span> : null}
                         </div>
-                        {busy ? (
-                          <div className="mt-2 text-xs font-medium text-amber-800">
-                            Bitte warten und diese Seite nicht neu laden, bis der Bulk abgeschlossen ist.
-                          </div>
-                        ) : null}
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-stone-100">
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-stone-600">
+                          <span>Der Fortschritt ist gespeichert. Ein Neuladen verliert den Batch nicht.</span>
+                          {activeBatch && !busy && ["pending", "running", "failed"].includes(activeBatch.status) ? (
+                            <button type="button" onClick={() => void runDesignBatch(activeBatch)} className="inline-flex h-8 items-center gap-2 rounded-[0.55rem] border border-[#ded8d0] bg-white px-3 font-semibold text-stone-900">
+                              <RefreshCcw className="h-3.5 w-3.5" /> Fortsetzen
+                            </button>
+                          ) : null}
+                        </div>
+                        <div
+                          role="progressbar"
+                          aria-label="Design-Batch-Fortschritt"
+                          aria-valuemin={0}
+                          aria-valuemax={bulkRecolorProgress.total}
+                          aria-valuenow={bulkRecolorProgress.current}
+                          className="mt-3 h-2 overflow-hidden rounded-full bg-stone-100"
+                        >
                           <div
                             className="h-full rounded-full bg-stone-950 transition-all"
                             style={{ width: `${bulkRecolorProgress.total ? Math.round((bulkRecolorProgress.current / bulkRecolorProgress.total) * 100) : 0}%` }}
@@ -1164,7 +1197,7 @@ export function DesignOpsClient({
                               <div className="text-xs text-stone-500">{card.attachments.length} Anhänge · {card.listName || `Liste ${card.listId || "-"}`}</div>
                               {card.promptBlocks.hasMarkers ? (
                                 <div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
-                                  Prompt Marker
+                                  Trello-Prompt ignoriert
                                 </div>
                               ) : null}
                             </div>
@@ -1175,15 +1208,23 @@ export function DesignOpsClient({
                               </a>
                             ) : null}
                           </div>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <span className="text-xs text-stone-500">Standardmäßig werden nur bearbeitbare KI-JPGs geladen.</span>
+                            <button type="button" onClick={() => setShowAllAttachments((current) => !current)} className="h-8 rounded-[0.55rem] border border-[#ded8d0] bg-white px-3 text-xs font-semibold text-stone-800">
+                              {showAllAttachments ? "Nur KI-JPGs" : `Alle ${card.attachments.length} anzeigen`}
+                            </button>
+                          </div>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                            {card.attachments.map((asset) => {
-                              const aiJpgSource = isEligibleAiMockupSourceName(asset.name);
+                            {card.attachments.filter((asset) => showAllAttachments || colorSelectableAttachmentIds.has(asset.id)).map((asset) => {
+                              const aiJpgSource = colorSelectableAttachmentIds.has(asset.id);
                               return (
                               <div key={asset.id} className="overflow-hidden rounded-[14px] border border-[#ded8d0] bg-white">
                                 <div className="grid grid-cols-3 border-b border-[#ece6dc] bg-[#fffdf9] text-xs font-semibold text-stone-700">
                                   <button
                                     type="button"
                                     onClick={() => toggleAttachmentSelection(asset.id)}
+                                    aria-label={`${asset.name} für Löschung ${selectedAttachmentIds.includes(asset.id) ? "abwählen" : "auswählen"}`}
+                                    aria-pressed={selectedAttachmentIds.includes(asset.id)}
                                     className="flex items-center justify-between gap-2 border-r border-[#ece6dc] px-3 py-2 text-left"
                                   >
                                     <span>Bulk</span>
@@ -1192,7 +1233,9 @@ export function DesignOpsClient({
                                   <button
                                     type="button"
                                     onClick={() => selectReferenceAttachmentForEdit(asset.id)}
-                                    disabled={!["mockup", "reference", "image"].includes(asset.kind)}
+                                    disabled={!aiJpgSource}
+                                    aria-label={`${asset.name} als Ausgangsbild verwenden`}
+                                    aria-pressed={selectedReferenceAttachmentId === asset.id}
                                     className={`flex items-center justify-between gap-2 border-r border-[#ece6dc] px-3 py-2 text-left disabled:opacity-40 ${selectedReferenceAttachmentId === asset.id ? "bg-stone-950 text-white" : ""}`}
                                   >
                                     <span>Vorlage</span>
@@ -1203,6 +1246,8 @@ export function DesignOpsClient({
                                     onClick={() => selectAttachmentForRecolor(asset.id)}
                                     disabled={!aiJpgSource}
                                     title={aiJpgSource ? "Für Farb-/Produktänderung markieren" : "Nur JPG-Mockups mit Mockup und AI im Dateinamen"}
+                                    aria-label={`${asset.name} für Design-Änderung ${selectedRecolorAttachmentIds.includes(asset.id) ? "abwählen" : "auswählen"}`}
+                                    aria-pressed={selectedRecolorAttachmentIds.includes(asset.id)}
                                     className={`flex items-center justify-between gap-2 px-3 py-2 text-left disabled:opacity-40 ${selectedRecolorAttachmentIds.includes(asset.id) ? "bg-stone-950 text-white" : ""}`}
                                   >
                                     <span>{selectedRecolorAttachmentIds.includes(asset.id) ? "Gewählt" : "Design"}</span>
@@ -1210,7 +1255,7 @@ export function DesignOpsClient({
                                   </button>
                                 </div>
                                 {asset.proxyUrl && asset.kind !== "video" ? (
-                                  <img src={asset.proxyUrl} alt={asset.name} className="aspect-[4/3] w-full object-cover" />
+                                  <img src={asset.proxyUrl} alt={asset.name} loading="lazy" decoding="async" className="aspect-[4/3] w-full bg-stone-100 object-contain" />
                                 ) : (
                                   <div className="flex aspect-[4/3] items-center justify-center bg-stone-100 text-sm font-semibold text-stone-500">{kindLabel(asset.kind)}</div>
                                 )}
@@ -1279,16 +1324,30 @@ export function DesignOpsClient({
                       </div>
                       {item.assets?.length ? (
                         <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          {item.assets.map((asset) => (
+                          {item.assets.map((asset) => {
+                            const sourceAttachment = workspace?.cards
+                              .flatMap((card) => card.attachments)
+                              .find((attachment) => attachment.id === (asset.sourceAttachmentId || item.sourceAttachmentId)) || null;
+                            const eligibleAsset = asset.mimeType === "image/jpeg" && isEligibleAiMockupSourceName(asset.name);
+                            return (
                             <div key={asset.id} className="rounded-[12px] border border-[#ded8d0] bg-white p-3">
-                              {asset.publicUrl ? <img src={asset.publicUrl} alt={asset.name || "Design Asset"} className="aspect-[4/3] w-full rounded-[10px] object-cover" /> : null}
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <div className="mb-1 text-[0.65rem] font-bold uppercase text-stone-500">Vorher</div>
+                                  {sourceAttachment?.proxyUrl ? <img src={sourceAttachment.proxyUrl} alt={sourceAttachment.name} loading="lazy" decoding="async" className="aspect-[4/3] w-full rounded-[8px] bg-stone-100 object-contain" /> : <div className="flex aspect-[4/3] items-center justify-center rounded-[8px] bg-stone-100 text-xs text-stone-500">Quelle</div>}
+                                </div>
+                                <div>
+                                  <div className="mb-1 text-[0.65rem] font-bold uppercase text-stone-500">Nachher</div>
+                                  {asset.publicUrl ? <img src={asset.publicUrl} alt={asset.name || "Design Asset"} loading="lazy" decoding="async" className="aspect-[4/3] w-full rounded-[8px] bg-stone-100 object-contain" /> : null}
+                                </div>
+                              </div>
                               <div className="mt-2 text-sm font-semibold">{asset.name || asset.id.slice(0, 8)}</div>
-                              <div className="mt-1 text-xs text-stone-500">{asset.status} · {asset.trelloAttachmentId ? "Trello ok" : "nicht angehängt"}</div>
+                              <div className="mt-1 text-xs text-stone-500">{asset.actionValue || item.actionValue || "Manuelle Änderung"} · {asset.status} · {asset.trelloAttachmentId ? "Trello ok" : "nicht angehängt"}</div>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button type="button" onClick={() => setSelectedAssetId(asset.id)} className="rounded-full border border-[#ded8d0] px-3 py-1.5 text-xs font-semibold text-stone-700">
+                                <button type="button" disabled={!eligibleAsset} onClick={() => setSelectedAssetId(asset.id)} title={eligibleAsset ? "Für das aktuelle Angebot auswählen" : "Nur echte KI-JPG-Assets sind zulässig"} className="rounded-full border border-[#ded8d0] px-3 py-1.5 text-xs font-semibold text-stone-700 disabled:opacity-40">
                                   Für Offer wählen
                                 </button>
-                                {asset.publicUrl ? (
+                                {asset.publicUrl && eligibleAsset ? (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1307,7 +1366,8 @@ export function DesignOpsClient({
                                 ) : null}
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="mt-3 rounded-[12px] border border-dashed border-[#ded8d0] p-3 text-sm text-stone-500">Noch kein generiertes Asset für diesen Job.</div>
@@ -1320,7 +1380,7 @@ export function DesignOpsClient({
               </div>
             </div>
 
-            <aside className="space-y-5">
+            <aside className="order-1 min-w-0 space-y-5 xl:order-2">
               <div className="rounded-[18px] border border-[#ded8d0] bg-white p-5 shadow-[0_10px_30px_rgba(20,16,12,0.05)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1366,7 +1426,7 @@ export function DesignOpsClient({
                       {selectedReferenceAsset ? (
                         <div className="mt-2 flex items-center gap-3">
                           {selectedReferenceAsset.publicUrl ? (
-                            <img src={selectedReferenceAsset.publicUrl} alt={selectedReferenceAsset.name || "Generiertes Design Asset"} className="h-12 w-16 rounded-[8px] object-cover" />
+                            <img src={selectedReferenceAsset.publicUrl} alt={selectedReferenceAsset.name || "Generiertes Design Asset"} className="h-12 w-16 rounded-[8px] bg-stone-100 object-contain" />
                           ) : null}
                           <div className="min-w-0">
                             <div className="truncate text-sm font-semibold text-stone-900">{selectedReferenceAsset.name || selectedReferenceAsset.id.slice(0, 8)}</div>
@@ -1376,7 +1436,7 @@ export function DesignOpsClient({
                       ) : selectedReferenceAttachment ? (
                         <div className="mt-2 flex items-center gap-3">
                           {selectedReferenceAttachment.proxyUrl ? (
-                            <img src={selectedReferenceAttachment.proxyUrl} alt={selectedReferenceAttachment.name} className="h-12 w-16 rounded-[8px] object-cover" />
+                            <img src={selectedReferenceAttachment.proxyUrl} alt={selectedReferenceAttachment.name} className="h-12 w-16 rounded-[8px] bg-stone-100 object-contain" />
                           ) : null}
                           <div className="min-w-0">
                             <div className="truncate text-sm font-semibold text-stone-900">{selectedReferenceAttachment.name}</div>
@@ -1406,7 +1466,7 @@ export function DesignOpsClient({
                     </div>
 
                     <div>
-                      <div className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Leuchtfarbe</div>
+                      <div className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-stone-500">Leuchtfarbe · {DESIGN_LIGHT_COLORS.length} feste Farben</div>
                       <div className="grid grid-cols-2 gap-2 rounded-[12px] border border-[#ded8d0] bg-[#fffdf9] p-1 sm:grid-cols-3">
                         {(Object.keys(LIGHT_COLOR_PRESETS) as LightColorPresetKey[]).map((presetKey) => (
                           <button
@@ -1414,6 +1474,7 @@ export function DesignOpsClient({
                             type="button"
                             onClick={() => applyLightColorPreset(presetKey)}
                             disabled={!workspace.promptPreview.prompt}
+                            aria-pressed={lightColorPreset === presetKey}
                             className={`flex h-9 items-center justify-center gap-2 rounded-[0.55rem] px-2 text-xs font-semibold disabled:opacity-40 ${lightColorPreset === presetKey ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-white"}`}
                           >
                             <span
@@ -1425,14 +1486,6 @@ export function DesignOpsClient({
                           </button>
                         ))}
                       </div>
-                      {lightColorPreset === "custom" ? (
-                        <input
-                          value={customLightColor}
-                          onChange={(event) => updateCustomLightColor(event.target.value)}
-                          placeholder="z. B. Lavendel, Eisblau, Neon-Gelb"
-                          className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none focus:border-stone-950"
-                        />
-                      ) : null}
                     </div>
 
                     <div>
@@ -1492,7 +1545,13 @@ export function DesignOpsClient({
                   {workspace?.offerCandidates.length ? (
                     <label className="block">
                       <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Angebot</span>
-                      <select value={selectedOfferId} onChange={(event) => setSelectedOfferId(event.target.value)} className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none">
+                      <select value={selectedOfferId} onChange={(event) => {
+                        setSelectedOfferId(event.target.value);
+                        setOffer(null);
+                        setSelectedOfferImageId("");
+                        setSelectedOfferItemId("");
+                        setOfferPriceReviewRequired(false);
+                      }} className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none">
                         <option value="">Noch nicht zuordnen</option>
                         {workspace.offerCandidates.map((candidate) => (
                           <option key={candidate.id} value={candidate.id} disabled={candidate.locked}>
@@ -1524,14 +1583,14 @@ export function DesignOpsClient({
                           </a>
                         ) : null}
                       </div>
-                      {activeLightColorLabel ? (
+                      {selectedAssetLightColorLabel ? (
                         <div className="rounded-[12px] border border-orange-200 bg-orange-50 p-2 text-xs font-semibold text-orange-900">
-                          Wird beim Übernehmen als Leuchtfarbe im Produkt gespeichert: {activeLightColorLabel}
+                          Dieses Asset ändert die Leuchtfarbe im Produkt auf {selectedAssetLightColorLabel}.
                         </div>
                       ) : null}
-                      {activeProductChangeLabel ? (
+                      {selectedAssetProductChangeLabel ? (
                         <div className="rounded-[12px] border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
-                          Wird beim Übernehmen als Produktänderung im Angebot gespeichert: {activeProductChangeLabel}. Preisprüfung bleibt erforderlich.
+                          Dieses Asset ändert das Produkt auf {selectedAssetProductChangeLabel}. Der geprüfte neue Preis ist Pflicht.
                         </div>
                       ) : null}
                       <label className="block">
@@ -1543,6 +1602,34 @@ export function DesignOpsClient({
                           ))}
                         </select>
                       </label>
+                      {selectedAssetProductChangeLabel ? (
+                        <div className="space-y-2">
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Geprüfter neuer Nettopreis</span>
+                            <input
+                              value={reviewedUnitPriceNet}
+                              onChange={(event) => {
+                                setReviewedUnitPriceNet(event.target.value);
+                                setPriceReviewConfirmed(false);
+                              }}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              inputMode="decimal"
+                              className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none"
+                            />
+                          </label>
+                          <label className="flex items-start gap-2 rounded-[10px] border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-950">
+                            <input
+                              type="checkbox"
+                              checked={priceReviewConfirmed}
+                              onChange={(event) => setPriceReviewConfirmed(event.target.checked)}
+                              className="mt-0.5 h-4 w-4"
+                            />
+                            <span>Produktlogik und Nettopreis wurden geprüft.</span>
+                          </label>
+                        </div>
+                      ) : null}
                       <label className="block">
                         <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Bestehender Bildslot</span>
                         <select value={selectedOfferImageId} onChange={(event) => setSelectedOfferImageId(event.target.value)} className="mt-2 h-10 w-full rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm outline-none">
@@ -1564,12 +1651,12 @@ export function DesignOpsClient({
                       ))}
                     </select>
                   </label>
-                  {selectedAsset?.publicUrl ? <img src={selectedAsset.publicUrl} alt={selectedAsset.name || "Design Asset"} className="aspect-[4/3] w-full rounded-[14px] object-cover" /> : null}
+                  {selectedAsset?.publicUrl ? <img src={selectedAsset.publicUrl} alt={selectedAsset.name || "Design Asset"} className="aspect-[4/3] w-full rounded-[14px] bg-stone-100 object-contain" /> : null}
                   <div className="grid gap-2">
                     <button type="button" disabled={busy || !selectedAsset || !selectedOfferId} onClick={() => void linkOffer(true)} className="h-10 rounded-[0.65rem] border border-[#ded8d0] bg-white px-4 text-sm font-semibold text-stone-950 disabled:opacity-50">
                       Link prüfen
                     </button>
-                    <button type="button" disabled={busy || !selectedAsset || !selectedOfferId} onClick={() => void linkOffer(false)} className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-4 text-sm font-semibold text-white disabled:opacity-50">
+                    <button type="button" disabled={busy || !selectedAsset || !selectedOfferId || Boolean(selectedAssetProductChangeLabel && (reviewedUnitPriceNet.trim() === "" || !priceReviewConfirmed))} onClick={() => void linkOffer(false)} className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-4 text-sm font-semibold text-white disabled:opacity-50">
                       <ImagePlus className="h-4 w-4" />
                       In Angebot übernehmen
                     </button>
@@ -1602,7 +1689,12 @@ export function DesignOpsClient({
                         <span className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500">Nachricht</span>
                         <textarea value={sendMessage} onChange={(event) => setSendMessage(event.target.value)} rows={5} className="mt-2 w-full resize-y rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 py-2 text-sm outline-none" />
                       </label>
-                      <button type="button" disabled={sendingOffer || !sendRecipient.trim() || offer.lock.lockLevel === "hard"} onClick={() => void sendUpdatedOffer()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-4 text-sm font-semibold text-white disabled:opacity-50">
+                      {offerPriceReviewRequired ? (
+                        <div role="alert" className="rounded-[10px] border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+                          Versand gesperrt, bis der neue Produktpreis geprüft und übernommen wurde.
+                        </div>
+                      ) : null}
+                      <button type="button" disabled={sendingOffer || !sendRecipient.trim() || offer.lock.lockLevel === "hard" || offerPriceReviewRequired} onClick={() => void sendUpdatedOffer()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-4 text-sm font-semibold text-white disabled:opacity-50">
                         <Send className="h-4 w-4" />
                         {sendingOffer ? "Sendet..." : "Aktualisiertes Angebot senden"}
                       </button>

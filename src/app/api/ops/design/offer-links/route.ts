@@ -49,6 +49,8 @@ export async function POST(request: NextRequest) {
       offerItemId?: string | null;
       lightColorLabel?: string | null;
       productChangeLabel?: string | null;
+      reviewedUnitPriceNet?: number | null;
+      priceReviewConfirmed?: boolean | null;
       expectedUpdatedAt?: string | null;
       operatorName?: string | null;
       dryRun?: boolean | null;
@@ -60,6 +62,8 @@ export async function POST(request: NextRequest) {
       offerItemId: body.offerItemId || null,
       lightColorLabel: body.lightColorLabel || null,
       productChangeLabel: body.productChangeLabel || null,
+      reviewedUnitPriceNet: body.reviewedUnitPriceNet ?? null,
+      priceReviewConfirmed: Boolean(body.priceReviewConfirmed),
       expectedUpdatedAt: body.expectedUpdatedAt || null,
       operatorName: body.operatorName || null,
       dryRun: Boolean(body.dryRun),

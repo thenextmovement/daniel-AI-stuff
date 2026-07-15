@@ -25,12 +25,15 @@ export type OpsOfferItem = {
 
 export type OpsOfferImage = {
   id: string;
+  sourceUrl: string;
+  localUrl: string | null;
   title: string | null;
   enabled: boolean;
   sortOrder: number;
   kind: string;
   importStatus: string;
   trelloAttachmentId: string | null;
+  linkedItemIndex: number | null;
   linkedItemTitle: string | null;
 };
 
@@ -104,7 +107,7 @@ export type OpsOfferPatchInput = {
     projectTitle?: string | null;
   };
   items?: Array<Partial<Omit<OpsOfferItem, "selectedFinal">> & { id: string }>;
-  images?: Array<Partial<Pick<OpsOfferImage, "title" | "enabled" | "sortOrder">> & { id: string }>;
+  images?: Array<Partial<Pick<OpsOfferImage, "sourceUrl" | "title" | "enabled" | "sortOrder">> & { id: string }>;
 };
 
 export type OpsOfferPatchResult = {

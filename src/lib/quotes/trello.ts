@@ -342,7 +342,7 @@ export async function searchTrelloCards(query: string, boardIds: string[] = []) 
 
 export async function getTrelloAttachment(cardId: string, attachmentId: string): Promise<TrelloAttachment> {
   return trelloFetch<TrelloAttachment>(
-    `/cards/${encodeURIComponent(cardId)}/attachments/${encodeURIComponent(attachmentId)}?fields=id,name,fileName,url,mimeType`,
+    `/cards/${encodeURIComponent(cardId)}/attachments/${encodeURIComponent(attachmentId)}?fields=id,name,fileName,url,mimeType,previews`,
   );
 }
 

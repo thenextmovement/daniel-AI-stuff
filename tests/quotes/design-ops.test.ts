@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { archiveMockupAttachmentName, designActionAttachmentName, extractTrelloMockupPromptBlocks, isEligibleAiMockupSourceName, quoteImageVariantKey } from "@/lib/ops/design";
+import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks, isEligibleAiMockupSourceName, promptForImageEdit, quoteImageVariantKey, structuredDesignActionAttachmentName } from "@/lib/ops/design";
+import { DESIGN_LIGHT_COLORS, canonicalDesignActionValue, designActionPrompt, hasJpegMagicBytes } from "@/lib/ops/design-contract";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -16,6 +17,10 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   const trelloAttachRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/trello/route.ts", "utf8");
   const offerLinksRoute = readFileSync("src/app/api/ops/design/offer-links/route.ts", "utf8");
   const quoteImageVariantsRoute = readFileSync("src/app/api/ops/design/quote-image-variants/route.ts", "utf8");
+  const batchesRoute = readFileSync("src/app/api/ops/design/batches/route.ts", "utf8");
+  const batchProcessRoute = readFileSync("src/app/api/ops/design/batches/[batchId]/process/route.ts", "utf8");
+  const batchService = readFileSync("src/lib/ops/design-batches.ts", "utf8");
+  const designContract = readFileSync("src/lib/ops/design-contract.ts", "utf8");
   const workerJobsRoute = readFileSync("src/app/api/ops/design/worker/jobs/route.ts", "utf8");
   const workerCallbackRoute = readFileSync("src/app/api/ops/design/worker/callback/route.ts", "utf8");
   const service = readFileSync("src/lib/ops/design.ts", "utf8");
@@ -44,15 +49,18 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Outdoor/);
   assert.match(client, /Leuchtfarbe/);
   assert.match(client, /activeLightColorLabel/);
-  assert.match(client, /Warmweiß/);
-  assert.match(client, /Orange/);
-  assert.match(client, /RGB/);
+  assert.match(client, /DESIGN_LIGHT_COLORS\.map/);
+  assert.match(designContract, /Orange/);
+  assert.doesNotMatch(client, /RGB-Farbverlauf|label: "RGB"|label: "Eigene"/);
+  assert.match(client, /DESIGN_LIGHT_COLORS\.length/);
   assert.match(client, /PRODUCT_CHANGE_PRESETS/);
   assert.match(client, /Produktänderung/);
   assert.match(client, /3D Frontlit/);
   assert.match(client, /Produkt ändern \+ ersetzen/);
   assert.match(client, /activeProductChangeLabel/);
-  assert.match(client, /Preisprüfung bleibt erforderlich/);
+  assert.match(client, /Geprüfter neuer Nettopreis/);
+  assert.match(client, /Produktlogik und Nettopreis wurden geprüft/);
+  assert.match(client, /priceReviewConfirmed/);
   assert.match(client, /Ausgangsbild/);
   assert.match(client, /setSelectedReferenceAttachmentId/);
   assert.match(client, /setSelectedReferenceAssetId/);
@@ -68,7 +76,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /KI-JPG Quelle/);
   assert.match(client, /Nur JPG-Mockups mit Mockup und AI im Dateinamen/);
   assert.match(client, /Bulk läuft/);
-  assert.match(client, /diese Seite nicht neu laden/);
+  assert.match(client, /Ein Neuladen verliert den Batch nicht/);
   assert.match(client, /trelloAttachmentId/);
   assert.match(client, /toggleRecolorSelection/);
   assert.match(client, /selectAttachmentForRecolor/);
@@ -77,7 +85,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Als Vorlage/);
   assert.match(client, /Farbe ändern \+ ersetzen/);
   assert.match(client, /recolorSelectedAttachments/);
-  assert.match(client, /replacementAttachmentId/);
+  assert.match(batchService, /replacementAttachmentId/);
   assert.match(client, /Generiertes KI-Mockup wird als Image-Edit-Vorlage genutzt/);
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
@@ -133,6 +141,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(offerLinksRoute, /OpsOfferApiError/);
   assert.match(offerLinksRoute, /lightColorLabel/);
   assert.match(offerLinksRoute, /productChangeLabel/);
+  assert.match(offerLinksRoute, /priceReviewConfirmed/);
   assert.match(offerLinksRoute, /dryRun/);
 
   assert.match(quoteImageVariantsRoute, /prepareQuoteImageVariantDraft/);
@@ -141,6 +150,17 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(quoteImageVariantsRoute, /variantValue/);
   assert.match(quoteImageVariantsRoute, /sourceImageUrl/);
   assert.doesNotMatch(quoteImageVariantsRoute, /export async function (GET|PATCH|DELETE)/);
+
+  assert.match(batchesRoute, /createDesignBatch/);
+  assert.match(batchesRoute, /idempotencyKey/);
+  assert.match(batchProcessRoute, /processNextDesignBatchItem/);
+  assert.match(batchProcessRoute, /maxDuration = 180/);
+  assert.match(batchService, /claim_next_design_batch_item/);
+  assert.match(batchService, /retryableCount/);
+  assert.match(batchService, /replaceTrello/);
+  assert.match(batchService, /sourceFingerprint/);
+  assert.match(designContract, /DESIGN_LIGHT_COLORS/);
+  assert.match(designContract, /hasJpegMagicBytes/);
 
   assert.match(workerJobsRoute, /DESIGN_WORKER_API_KEY/);
   assert.match(workerJobsRoute, /listQueuedDesignJobsForWorker/);
@@ -173,7 +193,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /input_fidelity/);
   assert.match(service, /promptForImageEdit/);
   assert.match(service, /referenceImageContentType/);
-  assert.match(service, /unterstütztes Bildformat fuer Image-Edit/);
+  assert.match(service, /assertEligibleAiJpegSource/);
+  assert.match(service, /assertJpegOutput/);
   assert.match(service, /reference_attachments/);
   assert.match(service, /reference_assets/);
   assert.match(service, /referenceAssetsFromJob/);
@@ -184,7 +205,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /applyDesignRemovalPlan/);
   assert.match(service, /attachDesignAssetToTrello/);
   assert.match(service, /archiveMockupAttachmentName/);
-  assert.match(service, /designActionAttachmentName/);
+  assert.match(service, /structuredDesignActionAttachmentName/);
   assert.match(service, /renameTrelloCardAttachment/);
   assert.match(service, /trello_replacement_archived_name/);
   assert.match(service, /linkDesignAssetToOffer/);
@@ -193,8 +214,8 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /quote_image_variants/);
   assert.match(service, /markQuoteImageVariantReady/);
   assert.match(service, /quote_image_variant_engine/);
-  assert.match(service, /validated_source_image_url/);
-  assert.match(service, /Source-Image-URL muss HTTPS sein/);
+  assert.match(service, /Direkte Source-Image-URLs sind nicht zulässig/);
+  assert.match(service, /assertAllowedDesignSourceUrl/);
   assert.match(service, /isEligibleAiMockupSourceName/);
   assert.match(service, /Nur JPG-Mockups mit Mockup und AI im Dateinamen/);
   assert.match(service, /crm_quote_version_images/);
@@ -217,7 +238,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /ops_design_asset_and_light_color_link/);
   assert.match(service, /product_change_label/);
   assert.match(service, /product_change_requires_price_review/);
-  assert.match(service, /Ändere ausschließlich die Schildtechnik zu/);
+  assert.match(designContract, /Ändere ausschließlich die Schildtechnik/);
   assert.match(service, /dryRun/);
   assert.match(service, /manual_design_link_requires_price_review/);
 
@@ -266,6 +287,58 @@ test("design ops quote image variant cache keys normalize costly color variants"
       variantValue: "Kaltweiß",
     }),
   );
+
+  assert.notEqual(
+    quoteImageVariantKey({
+      quoteId,
+      quoteImageId,
+      variantType: "light_color",
+      variantValue: "Blau",
+      sourceFingerprint: "source-v1",
+    }),
+    quoteImageVariantKey({
+      quoteId,
+      quoteImageId,
+      variantType: "light_color",
+      variantValue: "Blau",
+      sourceFingerprint: "source-v2",
+    }),
+  );
+});
+
+test("design engine exposes exactly twelve canonical customer colors", () => {
+  assert.equal(DESIGN_LIGHT_COLORS.length, 12);
+  assert.deepEqual(DESIGN_LIGHT_COLORS.map((color) => color.label), [
+    "Kaltweiß",
+    "Warmweiß",
+    "Grün",
+    "Blau",
+    "Eisblau",
+    "Rot",
+    "Orange",
+    "Zitronengelb",
+    "Goldgelb",
+    "Pink",
+    "Lila",
+    "Türkis",
+  ]);
+  assert.equal(canonicalDesignActionValue("light_color", "orange"), "Orange");
+  assert.equal(canonicalDesignActionValue("light_color", "amber"), null);
+  assert.equal(canonicalDesignActionValue("light_color", "RGB"), null);
+  assert.match(designActionPrompt("light_color", "Kaltweiß") || "", /6000 Kelvin/);
+});
+
+test("design engine validates JPEG bytes and structured replacement names", () => {
+  assert.equal(hasJpegMagicBytes(new Uint8Array([0xff, 0xd8, 0xff, 0xe0])), true);
+  assert.equal(hasJpegMagicBytes(new Uint8Array([0x52, 0x49, 0x46, 0x46])), false);
+  assert.equal(
+    structuredDesignActionAttachmentName({
+      actionType: "light_color",
+      actionValue: "Orange",
+      sourceName: "Mockup4600_AI_1.jpeg",
+    }),
+    "Orange_Mockup4600_AI_1.jpeg",
+  );
 });
 
 test("design ops accepts only AI JPG mockups as customer variant sources", () => {
@@ -297,27 +370,32 @@ test("design ops archives replaced Trello mockup names outside mockup detection"
   assert.equal(archiveMockupAttachmentName("Mockup 02.webp"), "alte_Vorschaubilder 02.webp");
   assert.equal(archiveMockupAttachmentName("MOC AB 03.png"), "alte_Vorschaubilder 03.png");
   assert.equal(archiveMockupAttachmentName("Referenz.jpg"), "alte_Vorschaubilder_Referenz.jpg");
+  assert.equal(archiveMockupAttachmentName("alte_Vorschaubilder01.jpg"), "alte_Vorschaubilder01.jpg");
 });
 
 test("design ops names replacement uploads from action and source mockup", () => {
   assert.equal(
-    designActionAttachmentName(
-      "Leuchtfarbe ändern:\nÄndere ausschließlich die sichtbare Leuchtfarbe des Schildes zu orange.",
-      "Mockup4600_AI_1.jpeg",
-      "3D Backlit Brigitte Kries",
-    ),
+    structuredDesignActionAttachmentName({ actionType: "light_color", actionValue: "Orange", sourceName: "Mockup4600_AI_1.jpeg" }),
     "Orange_Mockup4600_AI_1.jpeg",
   );
   assert.equal(
-    designActionAttachmentName(
-      "Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu blau.",
-      "Orange_Mockup4600_AI_1.jpeg",
-      "3D Backlit Brigitte Kries",
-    ),
+    structuredDesignActionAttachmentName({ actionType: "light_color", actionValue: "Blau", sourceName: "Orange_Mockup4600_AI_1.jpeg" }),
     "Blau_Mockup4600_AI_1.jpeg",
   );
   assert.equal(
-    designActionAttachmentName("Bitte Schildtechnik auf 3D Frontlit ändern.", "Mockup4600_AI_1.jpeg", "Kartenname"),
+    structuredDesignActionAttachmentName({
+      actionType: "light_color",
+      actionValue: "Orange",
+      sourceName: "Eisblau_Mockup4600_AI_1.jpg",
+    }),
+    "Orange_Mockup4600_AI_1.jpg",
+  );
+  assert.match(
+    promptForImageEdit(designActionPrompt("product_change", "3D Frontlit") || ""),
+    /ausschließlich die Schildtechnik des vorhandenen Schildes zu 3D Frontlit/,
+  );
+  assert.equal(
+    structuredDesignActionAttachmentName({ actionType: "product_change", actionValue: "3D Frontlit", sourceName: "Mockup4600_AI_1.jpeg" }),
     "3D_Frontlit_Mockup4600_AI_1.jpeg",
   );
 });
@@ -360,6 +438,8 @@ test("design ops schema has source-of-truth tables, RLS and rollback", () => {
   const rollback = readFileSync("supabase/rollbacks/20260706102534_create_design_ops_tables_rollback.sql", "utf8");
   const variantMigration = readFileSync("supabase/migrations/20260708103749_create_quote_image_variants.sql", "utf8");
   const variantRollback = readFileSync("supabase/rollbacks/20260708103749_create_quote_image_variants_rollback.sql", "utf8");
+  const batchMigration = readFileSync("supabase/migrations/20260715211543_harden_design_engine_batches.sql", "utf8");
+  const batchRollback = readFileSync("supabase/rollbacks/20260715211543_harden_design_engine_batches_rollback.sql", "utf8");
 
   for (const table of [
     "design_jobs",
@@ -397,4 +477,14 @@ test("design ops schema has source-of-truth tables, RLS and rollback", () => {
   assert.doesNotMatch(variantMigration, /grant .* to anon/i);
   assert.doesNotMatch(variantMigration, /grant .* to authenticated/i);
   assert.match(variantRollback, /drop table if exists public\.quote_image_variants/);
+
+  for (const table of ["design_batches", "design_batch_items"]) {
+    assert.match(batchMigration, new RegExp(`create table if not exists public\\.${table}`));
+    assert.match(batchMigration, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(batchRollback, new RegExp(`drop table if exists public\\.${table}`));
+  }
+  assert.match(batchMigration, /for update of item skip locked/);
+  assert.match(batchMigration, /claim_next_design_batch_item/);
+  assert.match(batchMigration, /design_batch_items_asset_idx/);
+  assert.match(batchMigration, /refresh_design_batch_status/);
 });

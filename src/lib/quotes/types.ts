@@ -97,6 +97,12 @@ export type TrelloAttachment = {
   fileName?: string;
   url?: string;
   mimeType?: string;
+  previews?: Array<{
+    url?: string;
+    width?: number;
+    height?: number;
+    scaled?: boolean;
+  }>;
 };
 
 export type TrelloAction = {

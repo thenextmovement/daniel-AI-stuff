@@ -3,6 +3,7 @@ import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib
 import { recordOfferSentForSalesCalls } from "@/lib/ops/customer-call-module";
 import { recordQuoteEmailSentEvidence } from "@/lib/ops/offer-send-evidence";
 import { getOfferById, OpsOfferApiError, sendOfferUpdateMail, type OpsOfferSendInput } from "@/lib/ops/offers";
+import { designOfferSendBlock } from "@/lib/ops/design";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       trelloCardId?: string | null;
     };
     const offer = await getOfferById(decodedOfferId);
+    const designSendBlock = await designOfferSendBlock(decodedOfferId);
+    if (designSendBlock) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Versand blockiert: Eine Produktänderung aus dem Design Studio benötigt noch eine geprüfte Preisfreigabe.",
+          code: "design_price_review_required",
+        },
+        { status: 409 },
+      );
+    }
     const offerEmail = normalizeEmail(offer.offer.customerEmail);
     const recordEmail = normalizeEmail(body.recordEmail);
     const recipientEmail = normalizeEmail(body.recipientEmail);
