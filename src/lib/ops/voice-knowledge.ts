@@ -516,18 +516,55 @@ type VoiceOfferRecord = {
   offerTracking: Pick<NonNullable<CustomerSearchResult["offerTracking"]>, "offerId"> | null;
   quote: CustomerSearchResult["quote"];
 };
+type VoiceOfferTrelloAliasRow = {
+  request_id?: string | null;
+  alias_trello_card_id?: string | null;
+};
 type VoiceOfferLoaders = {
   byId: (offerId: string) => Promise<OpsOfferSnapshot>;
   byTrelloCardId: (trelloCardId: string) => Promise<OpsOfferSnapshot>;
+  trelloAliases?: (requestId: string) => Promise<string[]>;
 };
 
-export function isVoiceOfferBoundToRecord(record: Pick<VoiceOfferRecord, "requestId" | "request">, offer: OpsOfferSnapshot) {
+function uniqueVoiceTrelloCardIds(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => cleanText(value, 160)).filter(Boolean))];
+}
+
+async function loadVoiceOfferTrelloAliases(requestId: string) {
+  const rows = await supabaseRequest<VoiceOfferTrelloAliasRow[]>("trello_card_aliases", undefined, {
+    select: "request_id,alias_trello_card_id",
+    request_id: `eq.${encodeURIComponent(requestId)}`,
+    order: "updated_at.desc",
+    limit: 20,
+  });
+  return uniqueVoiceTrelloCardIds(
+    rows
+      .filter((row) => cleanText(row.request_id, 160) === requestId)
+      .map((row) => row.alias_trello_card_id),
+  );
+}
+
+const defaultVoiceOfferLoaders: VoiceOfferLoaders = {
+  byId: getOfferById,
+  byTrelloCardId: getOfferByTrelloCardId,
+  trelloAliases: loadVoiceOfferTrelloAliases,
+};
+
+export function isVoiceOfferBoundToRecord(
+  record: Pick<VoiceOfferRecord, "requestId" | "request">,
+  offer: OpsOfferSnapshot,
+  allowedTrelloCardIds: string[] = [],
+) {
   const offerRequestId = cleanText(offer.requestId || offer.request_id, 160);
-  const requestTrelloCardId = cleanText(record.request?.trelloCardId, 160);
   const offerTrelloCardId = cleanText(offer.trelloCardId, 160);
+  if (offerRequestId && offerRequestId !== record.requestId) return false;
+  const requestTrelloCardIds = new Set(uniqueVoiceTrelloCardIds([
+    record.request?.trelloCardId,
+    ...allowedTrelloCardIds,
+  ]));
   return Boolean(
     (offerRequestId && offerRequestId === record.requestId) ||
-    (requestTrelloCardId && offerTrelloCardId && requestTrelloCardId === offerTrelloCardId),
+    (offerTrelloCardId && requestTrelloCardIds.has(offerTrelloCardId)),
   );
 }
 
@@ -548,14 +585,27 @@ export function mapLegacyQuoteForVoice(record: Pick<VoiceOfferRecord, "requestId
 
 export async function resolveVoiceOffer(
   record: VoiceOfferRecord,
-  loaders: VoiceOfferLoaders = { byId: getOfferById, byTrelloCardId: getOfferByTrelloCardId },
+  loaders: VoiceOfferLoaders = defaultVoiceOfferLoaders,
 ): Promise<{ offer: VoiceCustomerContext["offer"]; status: VoiceCustomerContext["sourceStatus"]["offer"] }> {
   let modernOfferUnavailable = false;
+  const canonicalTrelloCardId = cleanText(record.request?.trelloCardId, 160);
+  let trelloCardIds = uniqueVoiceTrelloCardIds([canonicalTrelloCardId]);
+  if (loaders.trelloAliases) {
+    try {
+      trelloCardIds = uniqueVoiceTrelloCardIds([
+        ...trelloCardIds,
+        ...await loaders.trelloAliases(record.requestId),
+      ]);
+    } catch (error) {
+      console.warn("voice copilot Trello alias lookup unavailable", { requestId: record.requestId, error });
+    }
+  }
+
   const offerId = record.offerTracking?.offerId || null;
   if (offerId) {
     try {
       const offer = await loaders.byId(offerId);
-      if (isVoiceOfferBoundToRecord(record, offer)) return { offer: mapOfferForVoice(offer), status: "ok" };
+      if (isVoiceOfferBoundToRecord(record, offer, trelloCardIds)) return { offer: mapOfferForVoice(offer), status: "ok" };
       modernOfferUnavailable = true;
       console.warn("voice copilot rejected mismatched offer binding", { requestId: record.requestId, offerId });
     } catch (error) {
@@ -564,11 +614,10 @@ export async function resolveVoiceOffer(
     }
   }
 
-  const trelloCardId = cleanText(record.request?.trelloCardId, 160);
-  if (trelloCardId) {
+  for (const trelloCardId of trelloCardIds) {
     try {
       const offer = await loaders.byTrelloCardId(trelloCardId);
-      if (isVoiceOfferBoundToRecord(record, offer)) return { offer: mapOfferForVoice(offer), status: "ok" };
+      if (isVoiceOfferBoundToRecord(record, offer, trelloCardIds)) return { offer: mapOfferForVoice(offer), status: "ok" };
       modernOfferUnavailable = true;
       console.warn("voice copilot rejected mismatched Trello offer binding", { requestId: record.requestId, trelloCardId });
     } catch (error) {

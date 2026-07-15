@@ -217,6 +217,31 @@ test("voice offer resolution finds a modern offer without a tracking rollup via 
   assert.equal(result.offer?.offerNumber, "A/N 1");
 });
 
+test("voice offer resolution follows a request-bound Trello alias", async () => {
+  const requestedCards: string[] = [];
+  const result = await resolveVoiceOffer({
+    requestId: "REQ-ALIAS",
+    request: { title: "Leuchtschild", trelloCardId: "canonical-card" },
+    offerTracking: null,
+    quote: null,
+  }, {
+    byId: async () => { throw new Error("unexpected offer ID lookup"); },
+    byTrelloCardId: async (trelloCardId) => {
+      requestedCards.push(trelloCardId);
+      if (trelloCardId === "canonical-card") throw new Error("modern offer not found");
+      return voiceOfferSnapshot({ requestId: null, trelloCardId: "alias-card" });
+    },
+    trelloAliases: async (requestId) => {
+      assert.equal(requestId, "REQ-ALIAS");
+      return ["alias-card"];
+    },
+  });
+
+  assert.deepEqual(requestedCards, ["canonical-card", "alias-card"]);
+  assert.equal(result.status, "ok");
+  assert.equal(result.offer?.offerNumber, "A/N 1");
+});
+
 test("voice offer resolution uses the request-bound PandaDoc quote when no modern offer exists", async () => {
   const result = await resolveVoiceOffer({
     requestId: "REQ-LEGACY",
@@ -250,6 +275,16 @@ test("voice offer binding rejects a snapshot from another request and Trello car
   const bound = isVoiceOfferBoundToRecord(
     { requestId: "REQ-1", request: { title: "Leuchtschild", trelloCardId: "card-1" } },
     voiceOfferSnapshot({ requestId: "REQ-2", trelloCardId: "card-2" }),
+  );
+
+  assert.equal(bound, false);
+});
+
+test("voice offer binding rejects a conflicting request even when a Trello alias matches", () => {
+  const bound = isVoiceOfferBoundToRecord(
+    { requestId: "REQ-1", request: { title: "Leuchtschild", trelloCardId: "card-1" } },
+    voiceOfferSnapshot({ requestId: "REQ-2", trelloCardId: "alias-card" }),
+    ["alias-card"],
   );
 
   assert.equal(bound, false);
