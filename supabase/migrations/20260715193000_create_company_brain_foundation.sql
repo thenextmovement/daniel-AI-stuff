@@ -362,6 +362,7 @@ create index if not exists company_brain_eval_status_type_idx
 create or replace function public.touch_company_brain_updated_at()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   new.updated_at = now();

@@ -196,6 +196,7 @@ for each row execute function public.touch_company_brain_updated_at();
 create or replace function public.guard_company_decision_immutability()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   if old.status in ('approved', 'superseded', 'reversed', 'expired')
