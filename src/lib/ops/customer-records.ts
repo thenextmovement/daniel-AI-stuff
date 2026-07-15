@@ -1054,6 +1054,7 @@ export type CustomerSearchResult = {
   activeViewers: CustomerActiveViewer[];
   relatedRequests: CustomerRelatedRequest[];
   trello: CustomerTrelloContext | null;
+  outlookCommunications?: CustomerCommunicationEntry[];
   communications: CustomerCommunicationEntry[];
   timeline: CustomerTimelineEntry[];
   notes: CustomerOpsNote[];
@@ -3443,29 +3444,7 @@ function mapCommunicationFeed(context: CustomerContext): CustomerCommunicationEn
     });
   }
 
-  for (const row of context.outlookMessages) {
-    const direction = row.direction === "inbound" ? "inbound" : row.direction === "outbound" ? "outbound" : null;
-    const counterparty = emailMessageCounterparty(row);
-    entries.push({
-      id: `outlook-message-${row.id}`,
-      source: "customer_email_messages",
-      title: trimNullable(row.subject) || (direction === "inbound" ? "Outlook-Mail empfangen" : "Outlook-Mail gesendet"),
-      preview: trimNullable(row.body_preview) || counterparty,
-      body: [
-        counterparty ? `${direction === "inbound" ? "Von" : "An"}: ${counterparty}` : null,
-        trimNullable(row.body_preview),
-      ]
-        .filter(Boolean)
-        .join("\n") || null,
-      status: trimNullable(row.mailbox),
-      occurredAt: emailMessageOccurredAt(row),
-      href: null,
-      direction,
-      messageId: trimNullable(row.internet_message_id) || trimNullable(row.message_id),
-      conversationId: trimNullable(row.conversation_id),
-      classification: null,
-    });
-  }
+  entries.push(...mapOutlookCommunicationFeed(context.outlookMessages));
 
   for (const row of context.communications) {
     entries.push({
@@ -3553,6 +3532,38 @@ function mapCommunicationFeed(context: CustomerContext): CustomerCommunicationEn
       return rightTime - leftTime;
     })
     .slice(0, 10);
+}
+
+function mapOutlookCommunicationFeed(rows: CustomerEmailMessageRow[]): CustomerCommunicationEntry[] {
+  return rows
+    .map((row) => {
+      const direction = row.direction === "inbound" ? "inbound" : row.direction === "outbound" ? "outbound" : null;
+      const counterparty = emailMessageCounterparty(row);
+      return {
+        id: `outlook-message-${row.id}`,
+        source: "customer_email_messages",
+        title: trimNullable(row.subject) || (direction === "inbound" ? "Outlook-Mail empfangen" : "Outlook-Mail gesendet"),
+        preview: trimNullable(row.body_preview) || counterparty,
+        body: [
+          counterparty ? `${direction === "inbound" ? "Von" : "An"}: ${counterparty}` : null,
+          trimNullable(row.body_preview),
+        ]
+          .filter(Boolean)
+          .join("\n") || null,
+        status: trimNullable(row.mailbox),
+        occurredAt: emailMessageOccurredAt(row),
+        href: null,
+        direction,
+        messageId: trimNullable(row.internet_message_id) || trimNullable(row.message_id),
+        conversationId: trimNullable(row.conversation_id),
+        classification: null,
+      } satisfies CustomerCommunicationEntry;
+    })
+    .sort((left, right) => {
+      const leftTime = left.occurredAt ? new Date(left.occurredAt).getTime() : 0;
+      const rightTime = right.occurredAt ? new Date(right.occurredAt).getTime() : 0;
+      return rightTime - leftTime;
+    });
 }
 
 function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
@@ -4188,7 +4199,7 @@ async function fetchDownstreamRows(
             "id,message_id,internet_message_id,conversation_id,mailbox,direction,from_email,from_name,to_emails,cc_emails,matched_email,linked_request_id,linked_customer_id,subject,body_preview,received_at,sent_at,message_created_at,created_at",
           or: outlookMessageOr,
           order: "updated_at.desc",
-          limit: 12,
+          limit: 30,
         },
         { requestId, customerId: master.id },
       )
@@ -4604,6 +4615,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
       );
     }),
     trello: context.trello,
+    outlookCommunications: mapOutlookCommunicationFeed(context.outlookMessages).slice(0, 30),
     communications: mapCommunicationFeed(context),
     timeline: mapTimeline(context),
     notes: context.audits.filter((row) => row.action === CUSTOMER_RECORDS_NOTE_ACTION).map(mapNoteEntry),

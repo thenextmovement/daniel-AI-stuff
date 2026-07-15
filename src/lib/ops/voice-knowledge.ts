@@ -92,10 +92,11 @@ export type VoiceCustomerContext = {
     preview: string | null;
     occurredAt: string | null;
   }>;
+  outlookMatchCount?: number;
   sourceStatus: {
     customerRecord: "ok";
     offer: "ok" | "not_linked" | "unavailable";
-    outlook: "ok" | "empty";
+    outlook: "ok" | "empty" | "unavailable";
   };
 };
 
@@ -578,6 +579,32 @@ export async function resolveVoiceOffer(
   return { offer: null, status: modernOfferUnavailable ? "unavailable" : "not_linked" };
 }
 
+export function selectVoiceMirrorOutlook(
+  record: Pick<CustomerSearchResult, "communications" | "outlookCommunications">,
+): VoiceCustomerContext["outlook"] {
+  const entries = record.outlookCommunications?.length
+    ? record.outlookCommunications
+    : record.communications.filter((entry) => entry.source === "customer_email_messages");
+  return entries.slice(0, 30).map((entry) => ({
+    direction: cleanText(entry.direction, 30) || null,
+    subject: cleanText(entry.title, 240),
+    preview: cleanText(entry.body || entry.preview, 600) || null,
+    occurredAt: entry.occurredAt || null,
+  }));
+}
+
+function mergeVoiceOutlookMessages(messages: VoiceCustomerContext["outlook"]) {
+  const seen = new Set<string>();
+  return messages
+    .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
+    .filter((message) => {
+      const key = [message.direction, message.subject.toLowerCase(), message.occurredAt || ""].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<VoiceCustomerContext> {
   const requestId = requiredText(requestIdInput, "Request-ID", 160, 3);
   const record = await getCustomerRecordByRequestId(requestId, { includeTrello: false });
@@ -585,31 +612,22 @@ export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<
     throw new QuoteValidationError("Request-ID konnte nicht eindeutig gebunden werden.", ["request_binding_mismatch"], 409);
   }
   const boundOffer = await resolveVoiceOffer(record);
-  const mirrorOutlook = record.communications
-    .filter((entry) => entry.source === "customer_email_messages")
-    .slice(0, 6)
-    .map((entry) => ({
-      direction: cleanText(entry.direction, 30) || null,
-      subject: cleanText(entry.title, 240),
-      preview: cleanText(entry.body || entry.preview, 600) || null,
-      occurredAt: entry.occurredAt || null,
-    }));
+  const mirrorOutlook = selectVoiceMirrorOutlook(record);
   const liveOutlook = await fetchOutlookGraphEvidenceForBoundCustomer({
     requestId: record.requestId,
     customerEmail: record.email || null,
     offerNumber: boundOffer.offer?.offerNumber || null,
   });
-  const outlook = [
+  const outlookMatches = mergeVoiceOutlookMessages([
     ...liveOutlook.evidence.map((entry) => ({
       direction: entry.direction,
-      subject: cleanText(entry.title, 240),
+      subject: cleanText(entry.title.replace(/^Live-Outlook(?: Treffer)?:\s*/i, ""), 240),
       preview: cleanText(entry.detail, 600) || null,
       occurredAt: entry.occurredAt,
     })),
     ...mirrorOutlook,
-  ]
-    .sort((left, right) => new Date(right.occurredAt || 0).getTime() - new Date(left.occurredAt || 0).getTime())
-    .slice(0, 6);
+  ]);
+  const outlook = outlookMatches.slice(0, 6);
 
   return {
     requestId: record.requestId,
@@ -626,10 +644,11 @@ export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<
     },
     offer: boundOffer.offer,
     outlook,
+    outlookMatchCount: outlookMatches.length,
     sourceStatus: {
       customerRecord: "ok",
       offer: boundOffer.status,
-      outlook: outlook.length ? "ok" : "empty",
+      outlook: outlook.length ? "ok" : liveOutlook.diagnostic?.ok === true ? "empty" : "unavailable",
     },
   };
 }

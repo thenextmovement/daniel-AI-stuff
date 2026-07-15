@@ -9,8 +9,10 @@ import {
   chunkVoiceKnowledge,
   isVoiceOfferBoundToRecord,
   resolveVoiceOffer,
+  selectVoiceMirrorOutlook,
 } from "../../src/lib/ops/voice-knowledge";
 import type { OpsOfferSnapshot } from "../../src/lib/ops/offers";
+import type { CustomerCommunicationEntry } from "../../src/lib/ops/customer-records";
 
 function voiceOfferSnapshot(overrides: Partial<OpsOfferSnapshot> = {}): OpsOfferSnapshot {
   return {
@@ -250,6 +252,44 @@ test("voice offer binding rejects a snapshot from another request and Trello car
   );
 
   assert.equal(bound, false);
+});
+
+test("voice Outlook context uses the dedicated mirror instead of the truncated mixed communication feed", () => {
+  const outlookEntry: CustomerCommunicationEntry = {
+    id: "outlook-message-1",
+    source: "customer_email_messages",
+    title: "Rueckfrage zum Angebot",
+    preview: "Koennen Sie mich zurueckrufen?",
+    body: null,
+    status: "sales@neontrip.de",
+    occurredAt: "2026-07-14T05:39:28.000Z",
+    href: null,
+    direction: "inbound",
+    messageId: "message-1",
+    conversationId: "conversation-1",
+    classification: null,
+  };
+  const unrelated = Array.from({ length: 10 }, (_, index): CustomerCommunicationEntry => ({
+    ...outlookEntry,
+    id: `workflow-${index}`,
+    source: "workflow_audit_log",
+    title: `Workflow ${index}`,
+  }));
+
+  const selected = selectVoiceMirrorOutlook({
+    communications: unrelated,
+    outlookCommunications: [outlookEntry],
+  });
+
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0]?.subject, "Rueckfrage zum Angebot");
+});
+
+test("voice Outlook UI distinguishes an unavailable integration from zero messages", () => {
+  const panel = readFileSync("src/app/ops/voice-copilot/customer-context-panel.tsx", "utf8");
+  assert.match(panel, /sourceStatus\.outlook === "unavailable"/);
+  assert.match(panel, /nicht erreichbar/);
+  assert.match(panel, /outlookMatchCount/);
 });
 
 test("post-call analysis does not store model output or auto-publish knowledge", () => {
