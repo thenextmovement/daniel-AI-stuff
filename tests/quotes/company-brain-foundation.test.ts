@@ -17,9 +17,11 @@ test("foundation migrations stay private, append-only and reversible", () => {
   const foundation = readFileSync("supabase/migrations/20260715193000_create_company_brain_foundation.sql", "utf8");
   const decisions = readFileSync("supabase/migrations/20260715194500_create_company_decision_logbook.sql", "utf8");
   const functionHardening = readFileSync("supabase/migrations/20260715195500_harden_company_brain_function_search_path.sql", "utf8");
+  const foreignKeyIndexes = readFileSync("supabase/migrations/20260715196000_index_company_brain_foreign_keys.sql", "utf8");
   const foundationRollback = readFileSync("supabase/rollbacks/20260715193000_create_company_brain_foundation_rollback.sql", "utf8");
   const decisionRollback = readFileSync("supabase/rollbacks/20260715194500_create_company_decision_logbook_rollback.sql", "utf8");
   const functionHardeningRollback = readFileSync("supabase/rollbacks/20260715195500_harden_company_brain_function_search_path_rollback.sql", "utf8");
+  const foreignKeyIndexesRollback = readFileSync("supabase/rollbacks/20260715196000_index_company_brain_foreign_keys_rollback.sql", "utf8");
 
   assert.match(foundation, /alter table public\.company_events enable row level security/i);
   assert.match(foundation, /grant select, insert on table public\.company_events to service_role/i);
@@ -31,9 +33,11 @@ test("foundation migrations stay private, append-only and reversible", () => {
   assert.match(decisions, /guard_company_decision_immutability\(\)[\s\S]*set search_path = public/i);
   assert.match(functionHardening, /alter function public\.touch_company_brain_updated_at\(\)[\s\S]*set search_path = public/i);
   assert.match(functionHardening, /alter function public\.guard_company_decision_immutability\(\)[\s\S]*set search_path = public/i);
+  assert.equal((foreignKeyIndexes.match(/create index if not exists/g) || []).length, 12);
   assert.match(foundationRollback, /drop table if exists public\.company_source_registry/i);
   assert.match(decisionRollback, /drop table if exists public\.company_decisions/i);
   assert.match(functionHardeningRollback, /reset search_path/i);
+  assert.equal((foreignKeyIndexesRollback.match(/drop index if exists/g) || []).length, 12);
 });
 
 function json(data: unknown, status = 200) {

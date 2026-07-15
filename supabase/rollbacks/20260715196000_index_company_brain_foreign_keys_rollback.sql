@@ -1,0 +1,12 @@
+drop index if exists public.company_identity_resolution_source_idx;
+drop index if exists public.company_identity_resolution_entity_idx;
+drop index if exists public.company_evidence_event_idx;
+drop index if exists public.company_events_source_idx;
+drop index if exists public.company_entity_state_source_event_idx;
+drop index if exists public.company_entity_relations_to_entity_idx;
+drop index if exists public.company_entity_relations_evidence_idx;
+drop index if exists public.company_decisions_supersedes_idx;
+drop index if exists public.company_decision_evidence_source_idx;
+drop index if exists public.company_decision_evidence_evidence_idx;
+drop index if exists public.company_data_quality_issues_source_idx;
+drop index if exists public.company_data_quality_issues_entity_idx;
