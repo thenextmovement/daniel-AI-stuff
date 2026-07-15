@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Headphones, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -14,7 +14,8 @@ export type OpsAppKey =
   | "supplierSales"
   | "shipping"
   | "inboundShipping"
-  | "management";
+  | "management"
+  | "emailAgent";
 
 type OpsAppSwitcherProps = {
   active: OpsAppKey;
@@ -69,6 +70,13 @@ const OPS_APPS: Array<{
     helper: "Fälle & Belege",
     href: "/ops/company-brain",
     Icon: BrainCircuit,
+  },
+  {
+    key: "emailAgent",
+    label: "E-Mail Agent",
+    helper: "Entwürfe & Lernfreigabe",
+    href: "/ops/email-agent",
+    Icon: MailCheck,
   },
   {
     key: "design",
