@@ -15,7 +15,7 @@ import {
   openAiImageEditOutputSize,
   withoutDesignActionConstraint,
 } from "@/lib/ops/design-contract";
-import { designBatchItemKey } from "@/lib/ops/design-batches";
+import { designBatchItemKey, executeDesignBatchItem } from "@/lib/ops/design-batches";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -398,6 +398,123 @@ test("Trello replacement retries recover only the exact generated upload", () =>
     "generated",
   );
   assert.equal(findUploadedDesignAttachment(attachments, "Orange_Mockup4600_AI_1.jpeg", "https://assets.invalid/missing.jpeg"), null);
+});
+
+test("bulk execution keeps every generated image bound to its own selected source", async () => {
+  const createCalls: Array<Record<string, unknown>> = [];
+  const generateCalls: Array<Record<string, unknown>> = [];
+  const attachCalls: Array<Record<string, unknown>> = [];
+  const patches: Array<{ itemId: string; body: Record<string, unknown> }> = [];
+  const promptText = designBatchPrompt("light_color", "Orange") || "";
+  const batch = {
+    action_type: "light_color" as const,
+    action_value: "Orange",
+    operator_name: "Integration Test",
+    replace_trello: true,
+    source_query: "https://trello.com/c/non-3d-test",
+  };
+  const items = [
+    {
+      id: "item-a",
+      item_key: designBatchItemKey("batch-integration-123", "attachment-a"),
+      source_attachment_id: "attachment-a",
+      source_attachment_name: "Mockup4600_AI_1.jpeg",
+      source_fingerprint: "fingerprint-a",
+    },
+    {
+      id: "item-b",
+      item_key: designBatchItemKey("batch-integration-123", "attachment-b"),
+      source_attachment_id: "attachment-b",
+      source_attachment_name: "Mockup4600_AI_2.jpeg",
+      source_fingerprint: "fingerprint-b",
+    },
+  ];
+  const dependencies = {
+    createJobDraft: async (input: Record<string, unknown>) => {
+      createCalls.push(input);
+      return { id: `job-${String((input.referenceAttachmentIds as string[])[0])}` };
+    },
+    generateJobNow: async (input: Record<string, unknown>) => {
+      generateCalls.push(input);
+      return { asset: { id: `asset-${input.jobId}` } };
+    },
+    attachAssetToTrello: async (input: Record<string, unknown>) => {
+      attachCalls.push(input);
+      return {
+        trelloAttachmentId: `trello-${input.replacementAttachmentId}`,
+        archivedAttachmentName: `alte_Vorschaubilder_${input.replacementAttachmentId}.jpeg`,
+      };
+    },
+    patchItem: async (itemId: string, body: Record<string, unknown>) => {
+      patches.push({ itemId, body });
+      return null;
+    },
+    now: () => "2026-07-16T00:00:00.000Z",
+  };
+
+  const results = [];
+  for (const item of items) {
+    results.push(await executeDesignBatchItem({ batch, item, promptText }, dependencies));
+  }
+
+  assert.deepEqual(createCalls.map((call) => call.referenceAttachmentIds), [["attachment-a"], ["attachment-b"]]);
+  assert.deepEqual(createCalls.map((call) => call.idempotencyKey), items.map((item) => item.item_key));
+  assert.deepEqual(createCalls.map((call) => call.promptText), [promptText, promptText]);
+  assert.deepEqual(generateCalls.map((call) => call.jobId), ["job-attachment-a", "job-attachment-b"]);
+  assert.deepEqual(attachCalls.map((call) => call.replacementAttachmentId), ["attachment-a", "attachment-b"]);
+  assert.deepEqual(results.map((result) => result.assetId), ["asset-job-attachment-a", "asset-job-attachment-b"]);
+  assert.deepEqual(
+    patches.map((patch) => [patch.itemId, patch.body.status]),
+    [
+      ["item-a", "generating"],
+      ["item-a", "attaching"],
+      ["item-a", "completed"],
+      ["item-b", "generating"],
+      ["item-b", "attaching"],
+      ["item-b", "completed"],
+    ],
+  );
+});
+
+test("bulk execution without replacement completes without a Trello side effect", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  let attachCalls = 0;
+  const promptText = designBatchPrompt("product_change", "3D Frontlit") || "";
+  const result = await executeDesignBatchItem({
+    batch: {
+      action_type: "product_change",
+      action_value: "3D Frontlit",
+      operator_name: null,
+      replace_trello: false,
+      source_query: "https://trello.com/c/non-3d-test",
+    },
+    item: {
+      id: "item-no-replace",
+      item_key: designBatchItemKey("batch-no-replace-123", "attachment-no-replace"),
+      source_attachment_id: "attachment-no-replace",
+      source_attachment_name: "Mockup100_AI_1.jpg",
+      source_fingerprint: "fingerprint-no-replace",
+    },
+    promptText,
+  }, {
+    createJobDraft: async () => ({ id: "job-no-replace" }),
+    generateJobNow: async () => ({ asset: { id: "asset-no-replace" } }),
+    attachAssetToTrello: async () => {
+      attachCalls += 1;
+      return { trelloAttachmentId: "unexpected" };
+    },
+    patchItem: async (_itemId, body) => {
+      patches.push(body);
+      return null;
+    },
+    now: () => "2026-07-16T00:00:00.000Z",
+  });
+
+  assert.equal(result.assetId, "asset-no-replace");
+  assert.equal(result.trelloResult, null);
+  assert.equal(attachCalls, 0);
+  assert.deepEqual(patches.map((patch) => patch.status), ["generating", "completed"]);
+  assert.equal(patches[1]?.finished_at, "2026-07-16T00:00:00.000Z");
 });
 
 test("design ops accepts only AI JPG mockups as customer variant sources", () => {

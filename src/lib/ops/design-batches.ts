@@ -341,6 +341,87 @@ async function refreshBatch(batchId: string) {
   return getDesignBatch(batchId);
 }
 
+type DesignBatchExecutionInput = {
+  batch: Pick<DesignBatchRow, "action_type" | "action_value" | "operator_name" | "replace_trello" | "source_query">;
+  item: Pick<DesignBatchItemRow, "id" | "item_key" | "source_attachment_id" | "source_attachment_name" | "source_fingerprint">;
+  promptText: string;
+  operatorName?: string | null;
+};
+
+type DesignBatchExecutionDependencies = {
+  createJobDraft: (input: Parameters<typeof createDesignJobDraft>[0]) => Promise<{ id: string }>;
+  generateJobNow: (input: Parameters<typeof generateDesignJobNow>[0]) => Promise<{ asset?: { id: string } | null }>;
+  attachAssetToTrello: (input: Parameters<typeof attachDesignAssetToTrello>[0]) => Promise<{
+    trelloAttachmentId: string;
+    archivedAttachmentName?: string | null;
+  }>;
+  patchItem: (itemId: string, body: Record<string, unknown>) => Promise<unknown>;
+  now: () => string;
+};
+
+const designBatchExecutionDependencies: DesignBatchExecutionDependencies = {
+  createJobDraft: createDesignJobDraft,
+  generateJobNow: generateDesignJobNow,
+  attachAssetToTrello: attachDesignAssetToTrello,
+  patchItem: patchBatchItem,
+  now: () => new Date().toISOString(),
+};
+
+export async function executeDesignBatchItem(
+  input: DesignBatchExecutionInput,
+  dependencyOverrides: Partial<DesignBatchExecutionDependencies> = {},
+) {
+  const dependencies = { ...designBatchExecutionDependencies, ...dependencyOverrides };
+  const operatorName = text(input.operatorName) || input.batch.operator_name;
+  const job = await dependencies.createJobDraft({
+    idempotencyKey: input.item.item_key,
+    query: input.batch.source_query,
+    promptTitle: `${input.batch.action_value} · ${input.item.source_attachment_name}`,
+    promptText: input.promptText,
+    operatorName,
+    referenceAttachmentIds: [input.item.source_attachment_id],
+    actionType: input.batch.action_type,
+    actionValue: input.batch.action_value,
+    sourceFingerprint: input.item.source_fingerprint,
+  });
+  await dependencies.patchItem(input.item.id, { job_id: job.id, status: "generating" });
+  const generated = await dependencies.generateJobNow({
+    jobId: job.id,
+    idempotencyKey: input.item.item_key,
+    operatorName,
+  });
+  if (!generated.asset) throw new QuoteValidationError("Design-Job lieferte kein Asset.");
+
+  if (!input.batch.replace_trello) {
+    await dependencies.patchItem(input.item.id, {
+      asset_id: generated.asset.id,
+      status: "completed",
+      error_message: null,
+      trello_original_name: input.item.source_attachment_name,
+      finished_at: dependencies.now(),
+    });
+    return { jobId: job.id, assetId: generated.asset.id, trelloResult: null };
+  }
+
+  await dependencies.patchItem(input.item.id, { asset_id: generated.asset.id, status: "attaching" });
+  const trelloResult = await dependencies.attachAssetToTrello({
+    jobId: job.id,
+    assetId: generated.asset.id,
+    replacementAttachmentId: input.item.source_attachment_id,
+    operatorName,
+  });
+  await dependencies.patchItem(input.item.id, {
+    asset_id: generated.asset.id,
+    status: "completed",
+    error_message: null,
+    trello_new_attachment_id: trelloResult.trelloAttachmentId,
+    trello_original_name: input.item.source_attachment_name,
+    trello_archived_name: trelloResult.archivedAttachmentName || null,
+    finished_at: dependencies.now(),
+  });
+  return { jobId: job.id, assetId: generated.asset.id, trelloResult };
+}
+
 export async function processNextDesignBatchItem(input: {
   batchId: string;
   operatorName?: string | null;
@@ -365,50 +446,11 @@ export async function processNextDesignBatchItem(input: {
     if (!designBatchPromptMatchesAction(batch.action_type, batch.action_value, promptText)) {
       throw new QuoteValidationError("Gespeicherter Prompt passt nicht zur Batch-Aktion.");
     }
-    const job = await createDesignJobDraft({
-      idempotencyKey: item.item_key,
-      query: batch.source_query,
-      promptTitle: `${batch.action_value} · ${item.source_attachment_name}`,
+    await executeDesignBatchItem({
+      batch,
+      item,
       promptText,
-      operatorName: text(input.operatorName) || batch.operator_name,
-      referenceAttachmentIds: [item.source_attachment_id],
-      actionType: batch.action_type,
-      actionValue: batch.action_value,
-      sourceFingerprint: item.source_fingerprint,
-    });
-    await patchBatchItem(item.id, { job_id: job.id, status: "generating" });
-    const generated = await generateDesignJobNow({
-      jobId: job.id,
-      idempotencyKey: item.item_key,
-      operatorName: text(input.operatorName) || batch.operator_name,
-    });
-    if (!generated.asset) throw new QuoteValidationError("Design-Job lieferte kein Asset.");
-    if (!batch.replace_trello) {
-      await patchBatchItem(item.id, {
-        asset_id: generated.asset.id,
-        status: "completed",
-        error_message: null,
-        trello_original_name: item.source_attachment_name,
-        finished_at: new Date().toISOString(),
-      });
-      return { batch: await refreshBatch(batch.id), processedItemId: item.id };
-    }
-    await patchBatchItem(item.id, { asset_id: generated.asset.id, status: "attaching" });
-    let trelloResult: Awaited<ReturnType<typeof attachDesignAssetToTrello>> | null = null;
-    trelloResult = await attachDesignAssetToTrello({
-      jobId: job.id,
-      assetId: generated.asset.id,
-      replacementAttachmentId: item.source_attachment_id,
-      operatorName: text(input.operatorName) || batch.operator_name,
-    });
-    await patchBatchItem(item.id, {
-      asset_id: generated.asset.id,
-      status: "completed",
-      error_message: null,
-      trello_new_attachment_id: trelloResult?.trelloAttachmentId || null,
-      trello_original_name: item.source_attachment_name,
-      trello_archived_name: trelloResult?.archivedAttachmentName || null,
-      finished_at: new Date().toISOString(),
+      operatorName: input.operatorName,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Design-Batch-Item ist fehlgeschlagen.";
