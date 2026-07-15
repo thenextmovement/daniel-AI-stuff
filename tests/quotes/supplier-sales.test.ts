@@ -528,9 +528,10 @@ test("shopify order payload extracts NEONTRIP offer references from note attribu
 });
 
 test("shopify order title helper prefixes once and replaces stale order prefixes", () => {
-  assert.equal(buildShopifyOrderTrelloTitle("Check Info Ada", "#NEONT4426"), "#NEONT4426 Check Info Ada");
-  assert.equal(buildShopifyOrderTrelloTitle("#NEONT4426 Check Info Ada", "#NEONT4426"), "#NEONT4426 Check Info Ada");
-  assert.equal(buildShopifyOrderTrelloTitle("#NEONT4000 Check Info Ada", "#NEONT4426"), "#NEONT4426 Check Info Ada");
+  assert.equal(buildShopifyOrderTrelloTitle("Check Info Ada", "#NEONT4426"), "#NEONT4426 | Check Info Ada");
+  assert.equal(buildShopifyOrderTrelloTitle("#NEONT4426 | Check Info Ada", "#NEONT4426"), "#NEONT4426 | Check Info Ada");
+  assert.equal(buildShopifyOrderTrelloTitle("#NEONT4426 Check Info Ada", "#NEONT4426"), "#NEONT4426 | Check Info Ada");
+  assert.equal(buildShopifyOrderTrelloTitle("#NEONT4000 Check Info Ada", "#NEONT4426"), "#NEONT4426 | Check Info Ada");
 });
 
 test("shopify sale upsert prefixes all source Trello cards sharing the Nerdyforms request id", async () => {
@@ -613,7 +614,8 @@ test("shopify sale upsert prefixes all source Trello cards sharing the Nerdyform
   });
 
   assert.deepEqual(trelloUpdates, [
-    { cardId: "carda1234", name: "#NEONT4426 Check Info Ada" },
+    { cardId: "carda1234", name: "#NEONT4426 | Check Info Ada" },
+    { cardId: "cardb1234", name: "#NEONT4426 | Check Info Ada Update" },
   ]);
   assert.ok(eventTypes.includes("source_trello_order_title_synced"));
 });

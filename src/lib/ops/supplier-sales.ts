@@ -2623,7 +2623,7 @@ function escapeRegExp(value: string) {
 }
 
 function removeLeadingShopifyOrderTitlePrefix(title: string, prefix: string) {
-  const exactPrefix = new RegExp(`^${escapeRegExp(prefix)}(?:\\s+|\\s*[-:|]\\s*)?`, "i");
+  const exactPrefix = new RegExp(`^${escapeRegExp(prefix)}\\s*(?:[-:|]\\s*)?`, "i");
   const withoutExact = title.replace(exactPrefix, "").trim();
   if (withoutExact !== title.trim()) return withoutExact;
   return title.replace(/^#(?:NEON[-\s]?T|NT)?\d+\s*(?:[-:|]\s*)?/i, "").trim();
@@ -2634,7 +2634,7 @@ export function buildShopifyOrderTrelloTitle(currentTitle: unknown, shopifyOrder
   if (!prefix) return null;
   const title = cleanText(currentTitle, 1000);
   const baseTitle = removeLeadingShopifyOrderTitlePrefix(title, prefix);
-  return baseTitle ? `${prefix} ${baseTitle}`.slice(0, 500) : prefix;
+  return baseTitle ? `${prefix} | ${baseTitle}`.slice(0, 500) : prefix;
 }
 
 async function listRequestTrelloCardIds(requestId: string | null, fallbackCardId: string | null) {
