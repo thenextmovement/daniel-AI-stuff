@@ -1,8 +1,21 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks, isEligibleAiMockupSourceName, promptForImageEdit, quoteImageVariantKey, structuredDesignActionAttachmentName } from "@/lib/ops/design";
-import { DESIGN_LIGHT_COLORS, canonicalDesignActionValue, designActionPrompt, hasJpegMagicBytes } from "@/lib/ops/design-contract";
+import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks, findUploadedDesignAttachment, isEligibleAiMockupSourceName, promptForImageEdit, quoteImageVariantKey, structuredDesignActionAttachmentName } from "@/lib/ops/design";
+import {
+  DESIGN_ACTION_CONSTRAINT_END,
+  DESIGN_ACTION_CONSTRAINT_START,
+  DESIGN_LIGHT_COLORS,
+  MAX_DESIGN_BATCH_ITEMS,
+  canonicalDesignActionValue,
+  designActionPrompt,
+  designBatchPrompt,
+  designBatchPromptMatchesAction,
+  hasJpegMagicBytes,
+  openAiImageEditOutputSize,
+  withoutDesignActionConstraint,
+} from "@/lib/ops/design-contract";
+import { designBatchItemKey } from "@/lib/ops/design-batches";
 
 test("ops design module is visible and destructive actions stay guarded", () => {
   const nav = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
@@ -339,6 +352,52 @@ test("design engine validates JPEG bytes and structured replacement names", () =
     }),
     "Orange_Mockup4600_AI_1.jpeg",
   );
+});
+
+test("design batches preserve editable notes while enforcing the canonical action prompt", () => {
+  const orangePrompt = designBatchPrompt("light_color", "Orange", "Nur das Schild links im Bild bearbeiten.");
+  assert.ok(orangePrompt);
+  assert.match(orangePrompt, /Nur das Schild links im Bild bearbeiten/);
+  assert.match(orangePrompt, new RegExp(DESIGN_ACTION_CONSTRAINT_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(orangePrompt, /sichtbare Leuchtfarbe.*orange/i);
+  assert.match(orangePrompt, new RegExp(DESIGN_ACTION_CONSTRAINT_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const bluePrompt = designBatchPrompt("light_color", "Blau", orangePrompt);
+  assert.ok(bluePrompt);
+  assert.match(bluePrompt, /Nur das Schild links im Bild bearbeiten/);
+  assert.match(bluePrompt, /sichtbare Leuchtfarbe.*blau/i);
+  assert.doesNotMatch(bluePrompt, /sichtbare Leuchtfarbe.*orange/i);
+  assert.equal(bluePrompt.match(/\[\[NEONTRIP_DESIGN_ACTION\]\]/g)?.length, 1);
+  assert.equal(withoutDesignActionConstraint(bluePrompt), "Nur das Schild links im Bild bearbeiten.");
+  assert.equal(designBatchPromptMatchesAction("light_color", "Blau", bluePrompt), true);
+  assert.equal(designBatchPromptMatchesAction("light_color", "Orange", bluePrompt), false);
+  assert.equal(designBatchPromptMatchesAction("product_change", "3D Frontlit", "Nur die Technik zu 3D Frontlit ändern."), true);
+});
+
+test("image edits use the visible saved prompt and automatic output size", () => {
+  const prompt = designBatchPrompt("product_change", "3D Frontlit", "Die vorhandene Wortmarke exakt beibehalten.") || "";
+  assert.equal(promptForImageEdit(`  ${prompt}  `), prompt);
+  assert.equal(openAiImageEditOutputSize(), "auto");
+});
+
+test("bulk item keys stay unique per selected source and the limit is explicit", () => {
+  const batchKey = "batch-1234567890";
+  assert.notEqual(designBatchItemKey(batchKey, "attachment-a"), designBatchItemKey(batchKey, "attachment-b"));
+  assert.equal(designBatchItemKey(batchKey, "attachment-a"), designBatchItemKey(batchKey, "attachment-a"));
+  assert.equal(MAX_DESIGN_BATCH_ITEMS, 50);
+});
+
+test("Trello replacement retries recover only the exact generated upload", () => {
+  const attachments = [
+    { id: "source", name: "Mockup4600_AI_1.jpeg", url: "https://source.invalid/mockup.jpeg" },
+    { id: "older", name: "Orange_Mockup4600_AI_1.jpeg", url: "https://assets.invalid/older.jpeg" },
+    { id: "generated", name: "Orange_Mockup4600_AI_1.jpeg", url: "https://assets.invalid/generated.jpeg/" },
+  ];
+  assert.equal(
+    findUploadedDesignAttachment(attachments, "Orange_Mockup4600_AI_1.jpeg", "https://assets.invalid/generated.jpeg", "source")?.id,
+    "generated",
+  );
+  assert.equal(findUploadedDesignAttachment(attachments, "Orange_Mockup4600_AI_1.jpeg", "https://assets.invalid/missing.jpeg"), null);
 });
 
 test("design ops accepts only AI JPG mockups as customer variant sources", () => {

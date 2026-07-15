@@ -34,7 +34,7 @@ import type {
   DesignWorkspace,
 } from "@/lib/ops/design";
 import type { DesignBatchSummary } from "@/lib/ops/design-batches";
-import { DESIGN_LIGHT_COLORS } from "@/lib/ops/design-contract";
+import { designBatchPrompt, DESIGN_LIGHT_COLORS, MAX_DESIGN_BATCH_ITEMS, withoutDesignActionConstraint } from "@/lib/ops/design-contract";
 
 type DesignApiResponse = {
   ok: boolean;
@@ -479,7 +479,17 @@ export function DesignOpsClient({
     setLightColorPreset(nextLightColorPreset);
     setProductChangePreset(nextProductChangePreset);
     setJob(null);
-    const basePrompt = removeDesignConstraint(promptDraft || workspace.promptPreview.prompt || "");
+    if (nextLightColorPreset !== "original") {
+      const label = selectedLightColorLabel(nextLightColorPreset);
+      setPromptDraft(label ? designBatchPrompt("light_color", label) || "" : "");
+      return;
+    }
+    if (nextProductChangePreset !== "original") {
+      const label = selectedProductChangeLabel(nextProductChangePreset);
+      setPromptDraft(label ? designBatchPrompt("product_change", label) || "" : "");
+      return;
+    }
+    const basePrompt = removeDesignConstraint(withoutDesignActionConstraint(promptDraft || workspace.promptPreview.prompt || ""));
     setPromptDraft(promptWithStudioConstraints(basePrompt, nextPreset, nextLightColorPreset, nextProductChangePreset));
   }
 
@@ -717,6 +727,7 @@ export function DesignOpsClient({
           query: workspace.query,
           actionType: actionKind === "product" ? "product_change" : "light_color",
           actionValue: actionKind === "product" ? activeProductChangeLabel : activeLightColorLabel,
+          promptText: promptDraft,
           attachmentIds,
           replaceTrello: replaceTrelloAfterGenerate,
           operatorName,
@@ -934,9 +945,14 @@ export function DesignOpsClient({
   }
 
   function toggleRecolorSelection(attachmentId: string) {
-    setSelectedRecolorAttachmentIds((current) =>
-      current.includes(attachmentId) ? current.filter((id) => id !== attachmentId) : [...current, attachmentId],
-    );
+    setSelectedRecolorAttachmentIds((current) => {
+      if (current.includes(attachmentId)) return current.filter((id) => id !== attachmentId);
+      if (current.length >= MAX_DESIGN_BATCH_ITEMS) {
+        setError(`Maximal ${MAX_DESIGN_BATCH_ITEMS} KI-JPGs sind pro Batch erlaubt.`);
+        return current;
+      }
+      return [...current, attachmentId];
+    });
   }
 
   function selectAttachmentForRecolor(attachmentId: string) {
@@ -1085,7 +1101,11 @@ export function DesignOpsClient({
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => setSelectedRecolorAttachmentIds(Array.from(colorSelectableAttachmentIds))}
+                          onClick={() => {
+                            const ids = Array.from(colorSelectableAttachmentIds);
+                            setSelectedRecolorAttachmentIds(ids.slice(0, MAX_DESIGN_BATCH_ITEMS));
+                            if (ids.length > MAX_DESIGN_BATCH_ITEMS) setError(`Maximal ${MAX_DESIGN_BATCH_ITEMS} von ${ids.length} KI-JPGs wurden gewählt.`);
+                          }}
                           disabled={busy || !colorSelectableAttachmentIds.size}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >

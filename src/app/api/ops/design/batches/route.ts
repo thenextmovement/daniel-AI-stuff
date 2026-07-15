@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       query?: string;
       actionType?: "light_color" | "product_change";
       actionValue?: string;
+      promptText?: string | null;
       attachmentIds?: string[];
       replaceTrello?: boolean;
       operatorName?: string | null;
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
       query: String(body.query || ""),
       actionType: body.actionType as "light_color" | "product_change",
       actionValue: String(body.actionValue || ""),
+      promptText: body.promptText || null,
       attachmentIds: Array.isArray(body.attachmentIds) ? body.attachmentIds.map(String) : [],
       replaceTrello: Boolean(body.replaceTrello),
       operatorName: body.operatorName || null,

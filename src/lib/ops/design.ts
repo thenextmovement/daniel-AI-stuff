@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
-import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloList, renameTrelloCardAttachment, searchTrelloCards } from "@/lib/quotes/trello";
+import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloCardVisuals, getTrelloList, renameTrelloCardAttachment, searchTrelloCards } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
 import { supabaseRequest, supabaseRpc, SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { getOfferById, getOfferByTrelloCardId, patchOfferById, type OpsOfferItem, type OpsOfferPatchInput, type OpsOfferPatchResult } from "@/lib/ops/offers";
@@ -17,6 +17,7 @@ import { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
 import {
   canonicalDesignActionValue,
   designActionPrompt,
+  openAiImageEditOutputSize,
   designLightColor,
   designProductChange,
   hasJpegMagicBytes,
@@ -534,6 +535,24 @@ export function structuredDesignActionAttachmentName(input: {
       : null;
   const strippedBase = stripExistingDesignActionPrefix(base);
   return `${actionLabel ? `${actionLabel}_` : ""}${strippedBase}.${extension}`;
+}
+
+function comparableExternalUrl(value: string | null | undefined) {
+  return String(value || "").trim().replace(/\/$/, "");
+}
+
+export function findUploadedDesignAttachment(
+  attachments: TrelloAttachment[],
+  expectedName: string,
+  expectedUrl: string,
+  excludedAttachmentId?: string | null,
+) {
+  const url = comparableExternalUrl(expectedUrl);
+  return attachments.find((attachment) =>
+    attachment.id !== excludedAttachmentId &&
+    attachmentName(attachment) === expectedName &&
+    comparableExternalUrl(attachment.url) === url,
+  ) || null;
 }
 
 function slugPathPart(value: unknown, fallback: string) {
@@ -1830,11 +1849,18 @@ export async function attachDesignAssetToTrello(input: {
     sourceName: replacementName || job.source_attachment_name,
     fallbackName: asset.name || promptVersion?.prompt_title || "Mockup_AI_1.jpg",
   });
-  const attachment = await addTrelloCardAttachment({
-    cardId: job.trello_card_id,
-    url: asset.public_url,
-    name: attachmentNameForUpload,
-  });
+  const cardVisuals = await getTrelloCardVisuals(job.trello_card_id);
+  const recoveredAttachment = findUploadedDesignAttachment(
+    cardVisuals.attachments || [],
+    attachmentNameForUpload,
+    asset.public_url,
+    replacementAttachment?.id,
+  );
+  const attachment = recoveredAttachment || await addTrelloCardAttachment({
+      cardId: job.trello_card_id,
+      url: asset.public_url,
+      name: attachmentNameForUpload,
+    });
   const now = new Date().toISOString();
   const persistedAssets = await supabaseRequest<DesignAssetRow[]>(
     "design_assets",
@@ -2511,39 +2537,7 @@ function referenceAssetsFromJob(job: DesignJobRow): DesignReferenceAsset[] {
 }
 
 export function promptForImageEdit(promptText: string) {
-  const lightColorMatch = promptText.match(/Ändere ausschließlich die sichtbare Leuchtfarbe des Schildes zu ([^\n.]+)/i);
-  const lightColor = trimNullable(lightColorMatch?.[1]);
-  if (lightColor) {
-    return [
-      `Ändere in dem bereitgestellten Bild ausschließlich die sichtbare Leuchtfarbe des vorhandenen Schildes zu ${lightColor}.`,
-      "Erhalte exakt dasselbe Motiv: Text, Logo, Buchstabenform, Position, Perspektive, Hintergrund, Montage, Größe, Material, Bildausschnitt und Kamerawinkel unverändert.",
-      "Keine neue Szene, kein neues Schild, keine neuen Wörter, keine zusätzlichen Logos, keine Dekoration und keine Änderungen an Helligkeit oder Umgebung außer der Lichtfarbe.",
-    ].join("\n");
-  }
-
-  const productChangeMatch = promptText.match(/Ändere ausschließlich die Schildtechnik(?: des vorhandenen Schildes)? zu ([^\n.]+)/i);
-  const productChange = trimNullable(productChangeMatch?.[1]);
-  if (productChange) {
-    const productInstruction = /3d\s*frontlit/i.test(productChange)
-      ? "Wandle vorhandene Backlit-, Rueckleuchter- oder non-lit-cut-to-board-Anmutung in ein glaubwuerdiges 3D-Frontlit-Schild mit nach vorne sichtbarer Lichtwirkung um."
-      : /3d\s*backlit/i.test(productChange)
-        ? "Wandle vorhandene Frontlit- oder unbeleuchtete Anmutung in ein glaubwuerdiges 3D-Backlit-Schild mit indirektem Halo-/Rueckleucht-Effekt um."
-        : `Wandle die vorhandene Schildtechnik in ${productChange} um.`;
-    return [
-      `Ändere in dem bereitgestellten Bild ausschließlich die Schildtechnik des vorhandenen Schildes zu ${productChange}.`,
-      productInstruction,
-      "Erhalte exakt dasselbe Motiv: Text, Logo, Buchstabenform, Konturen, Größe, Position, Perspektive, Hintergrund, Wand, Montage, Bildausschnitt und Kamerawinkel unverändert.",
-      "Keine neue Szene, kein neues Logo, keine neuen Wörter, keine andere Marke, keine Dekoration und keine Preis- oder Lieferangaben hinzufügen.",
-    ].join("\n");
-  }
-
-  return [
-    "Bearbeite das bereitgestellte Ausgangsbild. Erhalte Layout, Perspektive, Hintergrund, Produktform, Text, Logo-/Schriftanmutung, Materialwirkung und Komposition so weit wie technisch möglich.",
-    "Nimm nur die im Prompt beschriebene Änderung vor. Bei Leuchtfarbenänderungen darf ausschließlich die sichtbare Licht-/LED-Farbe verändert werden.",
-    "Keine neuen Wörter, Logos, Produkte, Räume, Preisangaben oder Designelemente hinzufügen.",
-    "",
-    promptText,
-  ].join("\n");
+  return String(promptText || "").trim();
 }
 
 function safeImageFilename(name: string, contentType: string) {
@@ -2607,7 +2601,7 @@ async function generateOpenAiDesignImageEdit(promptText: string, referenceFiles:
   form.append("model", model);
   form.append("prompt", promptForImageEdit(promptText));
   form.append("n", "1");
-  form.append("size", "1024x1024");
+  form.append("size", openAiImageEditOutputSize());
   form.append("quality", "medium");
   form.append("output_format", imageFormat);
   if (!/^gpt-image-2/i.test(model) && !/mini/i.test(model)) form.append("input_fidelity", "high");

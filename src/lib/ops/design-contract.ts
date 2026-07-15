@@ -21,6 +21,11 @@ export const DESIGN_PRODUCT_CHANGES = [
 export type DesignActionType = "manual_edit" | "light_color" | "product_change" | "mockup_mode";
 export type DesignBatchActionType = Extract<DesignActionType, "light_color" | "product_change">;
 
+export const DESIGN_ACTION_CONSTRAINT_START = "[[NEONTRIP_DESIGN_ACTION]]";
+export const DESIGN_ACTION_CONSTRAINT_END = "[[/NEONTRIP_DESIGN_ACTION]]";
+export const MAX_DESIGN_BATCH_ITEMS = 50;
+export const MAX_DESIGN_PROMPT_LENGTH = 12_000;
+
 function normalizedLabel(value: string) {
   return value
     .trim()
@@ -75,6 +80,35 @@ export function designActionPrompt(actionType: DesignBatchActionType, value: str
     "Erhalte Text, Logo, Buchstabenform, Konturen, Größe, Position, Perspektive, Hintergrund, Wand, Montage, Bildausschnitt und Kamerawinkel unverändert.",
     "Keine neue Szene, kein neues Logo, keine neuen Wörter, keine andere Marke, keine Dekoration und keine Preis- oder Lieferangaben.",
   ].join("\n");
+}
+
+export function withoutDesignActionConstraint(value: string) {
+  const escapedStart = DESIGN_ACTION_CONSTRAINT_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedEnd = DESIGN_ACTION_CONSTRAINT_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(new RegExp(`\\n*${escapedStart}[\\s\\S]*?${escapedEnd}\\n*`, "g"), "\n").trim();
+}
+
+export function designBatchPrompt(actionType: DesignBatchActionType, value: string, editablePrompt?: string | null) {
+  const canonicalPrompt = designActionPrompt(actionType, value);
+  if (!canonicalPrompt) return null;
+  const editable = withoutDesignActionConstraint(String(editablePrompt || ""));
+  const constraint = [DESIGN_ACTION_CONSTRAINT_START, canonicalPrompt, DESIGN_ACTION_CONSTRAINT_END].join("\n");
+  return [editable, constraint].filter(Boolean).join("\n\n");
+}
+
+export function designBatchPromptMatchesAction(actionType: DesignBatchActionType, value: string, promptText: string) {
+  const prompt = normalizedLabel(String(promptText || ""));
+  if (!prompt) return false;
+  if (actionType === "light_color") {
+    const color = designLightColor(value);
+    return Boolean(color && [color.label, color.promptValue].some((candidate) => prompt.includes(normalizedLabel(candidate))));
+  }
+  const product = designProductChange(value);
+  return Boolean(product && prompt.includes(normalizedLabel(product.label)));
+}
+
+export function openAiImageEditOutputSize() {
+  return "auto" as const;
 }
 
 export function isJpegMimeType(value: string | null | undefined) {

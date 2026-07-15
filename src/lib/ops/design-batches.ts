@@ -1,6 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createDesignJobDraft, generateDesignJobNow, attachDesignAssetToTrello, loadDesignWorkspace } from "@/lib/ops/design";
-import { canonicalDesignActionValue, designActionPrompt, isJpegMimeType, type DesignBatchActionType } from "@/lib/ops/design-contract";
+import {
+  canonicalDesignActionValue,
+  designBatchPrompt,
+  designBatchPromptMatchesAction,
+  isJpegMimeType,
+  MAX_DESIGN_BATCH_ITEMS,
+  MAX_DESIGN_PROMPT_LENGTH,
+  type DesignBatchActionType,
+} from "@/lib/ops/design-contract";
 import { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
 import { supabaseRequest, supabaseRpc, SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -34,6 +42,7 @@ export type DesignBatchSummary = {
   trelloCardUrl: string | null;
   actionType: DesignBatchActionType;
   actionValue: string;
+  promptText: string;
   replaceTrello: boolean;
   status: string;
   operatorName: string | null;
@@ -109,6 +118,10 @@ function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export function designBatchItemKey(batchKey: string, attachmentId: string) {
+  return `design-batch-item:${hash(`${batchKey}|${attachmentId}`).slice(0, 32)}`;
+}
+
 function batchItem(row: DesignBatchItemRow): DesignBatchItemSummary {
   return {
     id: row.id,
@@ -147,6 +160,7 @@ async function batchSummary(row: DesignBatchRow): Promise<DesignBatchSummary> {
     trelloCardUrl: row.trello_card_url,
     actionType: row.action_type,
     actionValue: row.action_value,
+    promptText: text(row.metadata?.prompt_text) || designBatchPrompt(row.action_type, row.action_value) || "",
     replaceTrello: row.replace_trello,
     status: row.status,
     operatorName: row.operator_name,
@@ -183,6 +197,7 @@ export async function createDesignBatch(input: {
   query: string;
   actionType: DesignBatchActionType;
   actionValue: string;
+  promptText?: string | null;
   attachmentIds: string[];
   replaceTrello?: boolean | null;
   operatorName?: string | null;
@@ -194,8 +209,20 @@ export async function createDesignBatch(input: {
   if (input.actionType !== "light_color" && input.actionType !== "product_change") throw new QuoteValidationError("Batch-Aktion ist ungueltig.");
   const actionValue = canonicalDesignActionValue(input.actionType, input.actionValue);
   if (!actionValue) throw new QuoteValidationError("Zielwert der Batch-Aktion ist nicht freigegeben.");
-  const attachmentIds = Array.from(new Set(input.attachmentIds.map(String).map((value) => value.trim()).filter(Boolean))).slice(0, 20);
+  const attachmentIds = Array.from(new Set(input.attachmentIds.map(String).map((value) => value.trim()).filter(Boolean)));
   if (!attachmentIds.length) throw new QuoteValidationError("Mindestens ein Ausgangs-Mockup ist erforderlich.");
+  if (attachmentIds.length > MAX_DESIGN_BATCH_ITEMS) {
+    throw new QuoteValidationError(`Maximal ${MAX_DESIGN_BATCH_ITEMS} Ausgangs-Mockups sind pro Batch erlaubt.`);
+  }
+  const promptText = text(input.promptText) || designBatchPrompt(input.actionType, actionValue);
+  if (!promptText) throw new QuoteValidationError("Prompt der Batch-Aktion konnte nicht erstellt werden.");
+  if (promptText.length > MAX_DESIGN_PROMPT_LENGTH) {
+    throw new QuoteValidationError(`Prompt darf maximal ${MAX_DESIGN_PROMPT_LENGTH} Zeichen lang sein.`);
+  }
+  if (!designBatchPromptMatchesAction(input.actionType, actionValue, promptText)) {
+    throw new QuoteValidationError(`Prompt muss den Zielwert ${actionValue} enthalten.`);
+  }
+  const promptHash = hash(promptText);
 
   const existing = await supabaseRequest<DesignBatchRow[]>("design_batches", undefined, {
     select: BATCH_SELECT,
@@ -234,7 +261,7 @@ export async function createDesignBatch(input: {
           status: "pending",
           operator_name: operatorName,
           total_count: selected.length,
-          metadata: { source: "ops_design_ui", contract_version: 2 },
+          metadata: { source: "ops_design_ui", contract_version: 3, prompt_text: promptText, prompt_hash: promptHash },
         }),
         headers: { Prefer: "return=representation" },
       });
@@ -258,21 +285,16 @@ export async function createDesignBatch(input: {
     batch.action_type !== input.actionType ||
     batch.action_value !== actionValue ||
     batch.replace_trello !== Boolean(input.replaceTrello) ||
-    batch.total_count !== selected.length
+    batch.total_count !== selected.length ||
+    (text(batch.metadata?.prompt_hash) && text(batch.metadata?.prompt_hash) !== promptHash)
   ) {
     throw new QuoteValidationError("Der Idempotency-Key gehört bereits zu einem anderen Design-Batch.", [], 409);
-  }
-
-  const current = await batchSummary(batch);
-  if (current.items.length === selected.length) return current;
-  if (current.items.length > 0) {
-    throw new QuoteValidationError("Design-Batch ist unvollständig und muss administrativ geprüft werden.", [], 409);
   }
 
   const itemRows = selected.map(({ card, attachment }, index) => {
       const fingerprint = hash([card.cardId, attachment.id, attachment.name, attachment.mimeType || "unknown"].join("|"));
       return {
-        item_key: `design-batch-item:${hash(`${batchKey}|${attachment.id}`).slice(0, 32)}`,
+        item_key: designBatchItemKey(batchKey, attachment.id),
         batch_id: batch.id,
         sequence_number: index,
         source_card_id: card.cardId,
@@ -284,14 +306,19 @@ export async function createDesignBatch(input: {
         metadata: { source: "ops_design_ui", action_type: input.actionType, action_value: actionValue },
       };
     });
-  try {
+  const current = await batchSummary(batch);
+  const expectedIds = new Set(itemRows.map((item) => item.source_attachment_id));
+  if (current.items.some((item) => !expectedIds.has(item.sourceAttachmentId))) {
+    throw new QuoteValidationError("Der bestehende Batch enthält ein anderes Ausgangs-Mockup.", [], 409);
+  }
+  const currentIds = new Set(current.items.map((item) => item.sourceAttachmentId));
+  const missingRows = itemRows.filter((item) => !currentIds.has(item.source_attachment_id));
+  if (missingRows.length) {
     await supabaseRequest<DesignBatchItemRow[]>("design_batch_items", {
       method: "POST",
-      body: JSON.stringify(itemRows),
-      headers: { Prefer: "return=representation" },
-    });
-  } catch (error) {
-    if (!(error instanceof SupabaseRestError) || error.status !== 409) throw error;
+      body: JSON.stringify(missingRows),
+      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+    }, { on_conflict: "item_key" });
   }
   const result = await getDesignBatch(batch.id);
   if (result.items.length !== selected.length) {
@@ -333,8 +360,11 @@ export async function processNextDesignBatchItem(input: {
   if (!item) return { batch: await refreshBatch(batch.id), processedItemId: null };
 
   try {
-    const promptText = designActionPrompt(batch.action_type, batch.action_value);
+    const promptText = text(batch.metadata?.prompt_text) || designBatchPrompt(batch.action_type, batch.action_value);
     if (!promptText) throw new QuoteValidationError("Gespeicherte Batch-Aktion ist nicht mehr gueltig.");
+    if (!designBatchPromptMatchesAction(batch.action_type, batch.action_value, promptText)) {
+      throw new QuoteValidationError("Gespeicherter Prompt passt nicht zur Batch-Aktion.");
+    }
     const job = await createDesignJobDraft({
       idempotencyKey: item.item_key,
       query: batch.source_query,
@@ -353,16 +383,24 @@ export async function processNextDesignBatchItem(input: {
       operatorName: text(input.operatorName) || batch.operator_name,
     });
     if (!generated.asset) throw new QuoteValidationError("Design-Job lieferte kein Asset.");
-    await patchBatchItem(item.id, { asset_id: generated.asset.id, status: batch.replace_trello ? "attaching" : "generated" });
-    let trelloResult: Awaited<ReturnType<typeof attachDesignAssetToTrello>> | null = null;
-    if (batch.replace_trello) {
-      trelloResult = await attachDesignAssetToTrello({
-        jobId: job.id,
-        assetId: generated.asset.id,
-        replacementAttachmentId: item.source_attachment_id,
-        operatorName: text(input.operatorName) || batch.operator_name,
+    if (!batch.replace_trello) {
+      await patchBatchItem(item.id, {
+        asset_id: generated.asset.id,
+        status: "completed",
+        error_message: null,
+        trello_original_name: item.source_attachment_name,
+        finished_at: new Date().toISOString(),
       });
+      return { batch: await refreshBatch(batch.id), processedItemId: item.id };
     }
+    await patchBatchItem(item.id, { asset_id: generated.asset.id, status: "attaching" });
+    let trelloResult: Awaited<ReturnType<typeof attachDesignAssetToTrello>> | null = null;
+    trelloResult = await attachDesignAssetToTrello({
+      jobId: job.id,
+      assetId: generated.asset.id,
+      replacementAttachmentId: item.source_attachment_id,
+      operatorName: text(input.operatorName) || batch.operator_name,
+    });
     await patchBatchItem(item.id, {
       asset_id: generated.asset.id,
       status: "completed",
