@@ -81,7 +81,7 @@ export function CustomerContextPanel({ selected, disabled, onSelect }: CustomerC
         </div>
         <div className="grid gap-2 text-xs text-emerald-900 sm:grid-cols-3">
           <div><span className="font-semibold">Anfrage:</span> {selected.request.title || "Ohne Titel"}</div>
-          <div><span className="font-semibold">Angebot:</span> {selected.offer?.offerNumber || "nicht verknuepft"}</div>
+          <div><span className="font-semibold">Angebot:</span> {selected.offer?.offerNumber || selected.offer?.label || "nicht verknuepft"}</div>
           <div><span className="font-semibold">Outlook:</span> {selected.outlook.length} Nachrichten</div>
         </div>
       </div>

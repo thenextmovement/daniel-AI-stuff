@@ -86,7 +86,7 @@ test("call eligibility rejects inactive requests and completed follow-up offers"
   };
   assert.doesNotThrow(() => assertActiveVoiceInquiry(base, "lead_qualification"));
   assert.throws(() => assertActiveVoiceInquiry({ ...base, request: { ...base.request, status: "closed" } }, "lead_qualification"), /nicht aktiv/);
-  assert.throws(() => assertActiveVoiceInquiry({ ...base, offer: { offerId: "O-1", offerNumber: "A-1", status: "accepted", viewedAt: null, acceptedAt: null, projectTitle: null, items: [] } }, "follow_up"), /abgeschlossen/);
+  assert.throws(() => assertActiveVoiceInquiry({ ...base, offer: { source: "offers", offerId: "O-1", offerNumber: "A-1", label: "A-1", status: "accepted", viewedAt: null, acceptedAt: null, projectTitle: null, items: [] } }, "follow_up"), /abgeschlossen/);
 });
 
 test("runtime bearer and Twilio callback signatures are constant-time verified", () => {

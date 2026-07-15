@@ -669,6 +669,7 @@ export type CustomerRequestSummary = {
 };
 
 export type CustomerQuoteSummary = {
+  quoteId?: string | null;
   status: string | null;
   totalValue: number | null;
   currency: string | null;
@@ -4487,6 +4488,7 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
       : null,
     quote: context.quote
       ? {
+          quoteId: context.quote.id,
           status: trimNullable(context.quote.pandadoc_status),
           totalValue: numericValue(context.quote.total_value),
           currency: trimNullable(context.quote.currency),

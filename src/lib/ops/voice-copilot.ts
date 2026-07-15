@@ -122,7 +122,7 @@ function buildBoundCustomerLines(context: VoiceCustomerContext | null | undefine
     optionalContext("Groesse", request.size),
     request.colors.length ? `Farben: ${request.colors.join(", ")}` : "",
     optionalContext("Einsatz", request.application),
-    offer ? `Angebot: ${offer.offerNumber} (${offer.status})` : "",
+    offer ? `Angebot: ${offer.offerNumber || offer.label} (${offer.status})` : "",
     offer?.projectTitle ? `Angebotsprojekt: ${offer.projectTitle}` : "",
     ...(offer?.items || []).slice(0, 12).map((item) =>
       `Angebotsposition: ${item.title}${item.description ? ` - ${item.description}` : ""} (Menge ${item.quantity})`

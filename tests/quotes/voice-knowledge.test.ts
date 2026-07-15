@@ -4,7 +4,48 @@ import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { GET as getKnowledge } from "../../src/app/api/ops/voice-copilot/knowledge/route";
 import { buildVoiceCopilotInstructions } from "../../src/lib/ops/voice-copilot";
-import { buildVoiceKnowledgeQuery, chunkVoiceKnowledge } from "../../src/lib/ops/voice-knowledge";
+import {
+  buildVoiceKnowledgeQuery,
+  chunkVoiceKnowledge,
+  isVoiceOfferBoundToRecord,
+  resolveVoiceOffer,
+} from "../../src/lib/ops/voice-knowledge";
+import type { OpsOfferSnapshot } from "../../src/lib/ops/offers";
+
+function voiceOfferSnapshot(overrides: Partial<OpsOfferSnapshot> = {}): OpsOfferSnapshot {
+  return {
+    offerId: "offer-1",
+    requestId: "REQ-1",
+    offerNumber: "A/N 1",
+    documentReference: "A/N 1",
+    trelloCardId: "card-1",
+    publicUrl: "https://example.test/offer/1",
+    status: "sent",
+    updatedAt: "2026-07-15T10:00:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none", lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: null,
+      customerLastName: null,
+      customerEmail: null,
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: "Leuchtschild",
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [],
+    images: [],
+    totals: {},
+    ...overrides,
+  };
+}
 
 test("voice knowledge migration is private, reviewable and time bounded", () => {
   const migration = readFileSync("supabase/migrations/20260713105150_create_voice_copilot_knowledge.sql", "utf8");
@@ -155,6 +196,60 @@ test("knowledge retrieval query contains only bounded case terms", () => {
   assert.match(query, /Leuchtschrift fuer Empfang/);
   assert.doesNotMatch(query, /Nicht fuer Retrieval verwenden/);
   assert.ok(query.length <= 240);
+});
+
+test("voice offer resolution finds a modern offer without a tracking rollup via exact Trello binding", async () => {
+  const result = await resolveVoiceOffer({
+    requestId: "REQ-1",
+    request: { title: "Leuchtschild", trelloCardId: "card-1" },
+    offerTracking: null,
+    quote: null,
+  }, {
+    byId: async () => { throw new Error("unexpected offer ID lookup"); },
+    byTrelloCardId: async () => voiceOfferSnapshot(),
+  });
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.offer?.source, "offers");
+  assert.equal(result.offer?.offerNumber, "A/N 1");
+});
+
+test("voice offer resolution uses the request-bound PandaDoc quote when no modern offer exists", async () => {
+  const result = await resolveVoiceOffer({
+    requestId: "REQ-LEGACY",
+    request: { title: "PandaDoc Projekt", trelloCardId: "legacy-card" },
+    offerTracking: null,
+    quote: {
+      quoteId: "quote-1",
+      status: "viewed",
+      totalValue: 2255.05,
+      currency: "EUR",
+      shareLink: null,
+      editLink: null,
+      sentAt: "2026-05-12T13:04:39.829Z",
+      viewedAt: "2026-06-03T08:56:59.947Z",
+      signedAt: null,
+      whatsappSentAt: null,
+    },
+  }, {
+    byId: async () => { throw new Error("unexpected offer ID lookup"); },
+    byTrelloCardId: async () => { throw new Error("modern offer not found"); },
+  });
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.offer?.source, "pandadoc");
+  assert.equal(result.offer?.label, "PandaDoc-Angebot");
+  assert.equal(result.offer?.offerId, "quote-1");
+  assert.equal(result.offer?.status, "viewed");
+});
+
+test("voice offer binding rejects a snapshot from another request and Trello card", () => {
+  const bound = isVoiceOfferBoundToRecord(
+    { requestId: "REQ-1", request: { title: "Leuchtschild", trelloCardId: "card-1" } },
+    voiceOfferSnapshot({ requestId: "REQ-2", trelloCardId: "card-2" }),
+  );
+
+  assert.equal(bound, false);
 });
 
 test("post-call analysis does not store model output or auto-publish knowledge", () => {

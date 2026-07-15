@@ -298,7 +298,7 @@ function customerContextLines(context: VoiceCustomerContext) {
     context.request.application ? `Einsatz: ${context.request.application}` : null,
     context.request.size ? `Groesse: ${context.request.size}` : null,
     context.request.colors.length ? `Farben: ${context.request.colors.join(", ")}` : null,
-    context.offer?.offerNumber ? `Angebot: ${context.offer.offerNumber} (${context.offer.status})` : null,
+    context.offer ? `Angebot: ${context.offer.offerNumber || context.offer.label} (${context.offer.status})` : null,
     ...(context.offer?.items || []).slice(0, 12).map((item) =>
       `Angebotsposition: ${item.title}${item.description ? ` - ${item.description}` : ""}; Menge ${item.quantity}`),
   ].filter(Boolean);

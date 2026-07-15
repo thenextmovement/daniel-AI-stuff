@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getCustomerRecordByRequestId, searchCustomerRecords, type CustomerSearchResult } from "@/lib/ops/customer-records";
-import { getOfferById, type OpsOfferSnapshot } from "@/lib/ops/offers";
+import { getOfferById, getOfferByTrelloCardId, type OpsOfferSnapshot } from "@/lib/ops/offers";
 import { fetchOutlookGraphEvidenceForBoundCustomer } from "@/lib/ops/company-brain";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -76,8 +76,10 @@ export type VoiceCustomerContext = {
     deliveryTime: string | null;
   };
   offer: {
-    offerId: string;
-    offerNumber: string;
+    source: "offers" | "pandadoc";
+    offerId: string | null;
+    offerNumber: string | null;
+    label: string;
     status: string;
     viewedAt: string | null;
     acceptedAt: string | null;
@@ -475,7 +477,7 @@ function mapCustomerSummary(record: CustomerSearchResult) {
     company: record.company,
     requestTitle: record.request?.title || null,
     requestStatus: record.request?.status || null,
-    offerId: record.offerTracking?.offerId || null,
+    offerId: record.offerTracking?.offerId || record.quote?.quoteId || null,
   };
 }
 
@@ -485,22 +487,13 @@ export async function searchVoiceCustomerContexts(query: unknown) {
   return records.slice(0, 8).map(mapCustomerSummary);
 }
 
-async function loadBoundOffer(record: CustomerSearchResult) {
-  const offerId = record.offerTracking?.offerId || null;
-  if (!offerId) return { offer: null, status: "not_linked" as const };
-  try {
-    return { offer: await getOfferById(offerId), status: "ok" as const };
-  } catch (error) {
-    console.warn("voice copilot bound offer unavailable", { requestId: record.requestId, offerId, error });
-    return { offer: null, status: "unavailable" as const };
-  }
-}
-
 function mapOfferForVoice(offer: OpsOfferSnapshot | null): VoiceCustomerContext["offer"] {
   if (!offer) return null;
   return {
+    source: "offers",
     offerId: offer.offerId,
     offerNumber: offer.offerNumber,
+    label: offer.offerNumber || offer.documentReference || "Angebot",
     status: offer.status,
     viewedAt: offer.viewedAt,
     acceptedAt: offer.acceptedAt,
@@ -513,13 +506,85 @@ function mapOfferForVoice(offer: OpsOfferSnapshot | null): VoiceCustomerContext[
   };
 }
 
+type VoiceOfferRecord = {
+  requestId: string;
+  request: Pick<NonNullable<CustomerSearchResult["request"]>, "title" | "trelloCardId"> | null;
+  offerTracking: Pick<NonNullable<CustomerSearchResult["offerTracking"]>, "offerId"> | null;
+  quote: CustomerSearchResult["quote"];
+};
+type VoiceOfferLoaders = {
+  byId: (offerId: string) => Promise<OpsOfferSnapshot>;
+  byTrelloCardId: (trelloCardId: string) => Promise<OpsOfferSnapshot>;
+};
+
+export function isVoiceOfferBoundToRecord(record: Pick<VoiceOfferRecord, "requestId" | "request">, offer: OpsOfferSnapshot) {
+  const offerRequestId = cleanText(offer.requestId || offer.request_id, 160);
+  const requestTrelloCardId = cleanText(record.request?.trelloCardId, 160);
+  const offerTrelloCardId = cleanText(offer.trelloCardId, 160);
+  return Boolean(
+    (offerRequestId && offerRequestId === record.requestId) ||
+    (requestTrelloCardId && offerTrelloCardId && requestTrelloCardId === offerTrelloCardId),
+  );
+}
+
+export function mapLegacyQuoteForVoice(record: Pick<VoiceOfferRecord, "requestId" | "request" | "quote">): VoiceCustomerContext["offer"] {
+  if (!record.quote) return null;
+  return {
+    source: "pandadoc",
+    offerId: record.quote.quoteId || null,
+    offerNumber: null,
+    label: "PandaDoc-Angebot",
+    status: record.quote.status || "unknown",
+    viewedAt: record.quote.viewedAt,
+    acceptedAt: record.quote.signedAt,
+    projectTitle: record.request?.title || null,
+    items: [],
+  };
+}
+
+export async function resolveVoiceOffer(
+  record: VoiceOfferRecord,
+  loaders: VoiceOfferLoaders = { byId: getOfferById, byTrelloCardId: getOfferByTrelloCardId },
+): Promise<{ offer: VoiceCustomerContext["offer"]; status: VoiceCustomerContext["sourceStatus"]["offer"] }> {
+  let modernOfferUnavailable = false;
+  const offerId = record.offerTracking?.offerId || null;
+  if (offerId) {
+    try {
+      const offer = await loaders.byId(offerId);
+      if (isVoiceOfferBoundToRecord(record, offer)) return { offer: mapOfferForVoice(offer), status: "ok" };
+      modernOfferUnavailable = true;
+      console.warn("voice copilot rejected mismatched offer binding", { requestId: record.requestId, offerId });
+    } catch (error) {
+      modernOfferUnavailable = true;
+      console.warn("voice copilot bound offer unavailable", { requestId: record.requestId, offerId, error });
+    }
+  }
+
+  const trelloCardId = cleanText(record.request?.trelloCardId, 160);
+  if (trelloCardId) {
+    try {
+      const offer = await loaders.byTrelloCardId(trelloCardId);
+      if (isVoiceOfferBoundToRecord(record, offer)) return { offer: mapOfferForVoice(offer), status: "ok" };
+      modernOfferUnavailable = true;
+      console.warn("voice copilot rejected mismatched Trello offer binding", { requestId: record.requestId, trelloCardId });
+    } catch (error) {
+      modernOfferUnavailable = true;
+      console.warn("voice copilot Trello-bound offer unavailable", { requestId: record.requestId, trelloCardId, error });
+    }
+  }
+
+  const legacyOffer = mapLegacyQuoteForVoice(record);
+  if (legacyOffer) return { offer: legacyOffer, status: "ok" };
+  return { offer: null, status: modernOfferUnavailable ? "unavailable" : "not_linked" };
+}
+
 export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<VoiceCustomerContext> {
   const requestId = requiredText(requestIdInput, "Request-ID", 160, 3);
   const record = await getCustomerRecordByRequestId(requestId, { includeTrello: false });
   if (record.requestId !== requestId) {
     throw new QuoteValidationError("Request-ID konnte nicht eindeutig gebunden werden.", ["request_binding_mismatch"], 409);
   }
-  const boundOffer = await loadBoundOffer(record);
+  const boundOffer = await resolveVoiceOffer(record);
   const mirrorOutlook = record.communications
     .filter((entry) => entry.source === "customer_email_messages")
     .slice(0, 6)
@@ -559,7 +624,7 @@ export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<
       application: record.request?.application || null,
       deliveryTime: record.request?.deliveryTime || null,
     },
-    offer: mapOfferForVoice(boundOffer.offer),
+    offer: boundOffer.offer,
     outlook,
     sourceStatus: {
       customerRecord: "ok",
