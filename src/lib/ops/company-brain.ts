@@ -3873,7 +3873,7 @@ function buildEvidenceScore(input: {
   };
 }
 
-function buildProblemResolution(input: {
+export function buildProblemResolution(input: {
   problemType: CompanyBrainProblemType;
   records: CompanyBrainRecordSummary[];
   offers: CompanyBrainOfferSummary[];
@@ -3881,6 +3881,7 @@ function buildProblemResolution(input: {
   watchers: CompanyBrainWatcher[];
   evidenceScore: CompanyBrainEvidenceScore;
   assets: CompanyBrainAsset[];
+  trelloFailureDiagnosis?: CompanyBrainTrelloFailureDiagnosis;
 }): CompanyBrainProblemResolution {
   const primaryRecord = input.records[0] || null;
   const primaryOffer = input.offers[0] || null;
@@ -3888,13 +3889,20 @@ function buildProblemResolution(input: {
   const failedChecks = input.crossChecks.filter((check) => check.status === "fail");
   const reviewChecks = input.crossChecks.filter((check) => check.status === "review");
   const failedOfferSentCheck = input.crossChecks.find((check) => check.key === "offer_sent" && check.status === "fail") || null;
+  const resolvedByDeliveryProof = input.trelloFailureDiagnosis?.rootCauseKey === "sent" &&
+    (input.problemType === "offer_not_sent" || input.problemType === "automation_failed");
+  const unresolvedReviewChecks = resolvedByDeliveryProof
+    ? reviewChecks.filter((check) => check.key !== "offer_sent")
+    : reviewChecks;
   const missingEvidence = [
     input.assets.length ? null : "Design-/Anhang-Assets prüfen",
     input.evidenceScore.status === "weak" ? "Weitere Belege aus Kundenakte/Outlook/Angebot laden" : null,
-    ...reviewChecks.map((check) => `${check.label} klären`),
+    ...unresolvedReviewChecks.map((check) => `${check.label} klären`),
   ].filter(Boolean) as string[];
   const severity: CompanyBrainProblemResolution["severity"] =
-    failedChecks.length || openWatchers.some((watcher) => watcher.severity === "critical")
+    resolvedByDeliveryProof && !failedChecks.length
+      ? "info"
+      : failedChecks.length || openWatchers.some((watcher) => watcher.severity === "critical")
       ? "critical"
       : openWatchers.length || input.evidenceScore.status !== "strong"
         ? "warning"
@@ -3971,7 +3979,14 @@ function buildProblemResolution(input: {
       escalation: ["Ops Owner setzt konkreten Problemtyp"],
     },
   };
-  const playbook = playbooks[input.problemType];
+  const playbook = resolvedByDeliveryProof
+    ? {
+        rootCause: input.trelloFailureDiagnosis?.rootCause || "Ein späterer erfolgreicher Zustellungsbeleg löst den früheren Fehler auf.",
+        resolution: input.trelloFailureDiagnosis?.recommendedFix || "Kein erneuter Versand; nur eine veraltete Trello-Projektion bereinigen.",
+        required: ["Erfolgreicher Zustellungsbeleg nach dem früheren Fehler"],
+        escalation: [],
+      }
+    : playbooks[input.problemType];
   const taskTitle = `${label}: ${baseRef}`;
   const taskDescription = [
     `Problemfall: ${label}`,
@@ -4771,11 +4786,16 @@ export function buildCompanyBrainAnswer(
   const latestOffer = offers[0] || null;
   const lowerQuestion = (question || "").toLowerCase();
   const liveTrelloCard = trelloFailureDiagnosis?.card || null;
+  const resolvedByDeliveryProof = trelloFailureDiagnosis?.rootCauseKey === "sent";
 
   if (liveTrelloCard) {
     if (trelloFailureDiagnosis?.rootCauseKey === "automation_failed") {
       bullets.push(`Automation-Fehler erkannt: ${trelloFailureDiagnosis.rootCause}`);
       bullets.push(`Sicherer nächster Schritt: ${trelloFailureDiagnosis.recommendedFix}`);
+    }
+    if (resolvedByDeliveryProof) {
+      bullets.push(`Späterer Zustellungsbeleg gefunden: ${trelloFailureDiagnosis?.rootCause}`);
+      bullets.push(`Sicherer nächster Schritt: ${trelloFailureDiagnosis?.recommendedFix}`);
     }
     bullets.push(`Trello-Karte gelesen: ${liveTrelloCard.name || liveTrelloCard.id}${liveTrelloCard.currentListName ? ` · Liste: ${liveTrelloCard.currentListName}` : ""}.`);
     if (trelloFailureDiagnosis?.triggerMove) {
@@ -4813,17 +4833,23 @@ export function buildCompanyBrainAnswer(
   }
   if (lowerQuestion.includes("mail") || lowerQuestion.includes("email") || lowerQuestion.includes("raus") || lowerQuestion.includes("gesendet")) {
     const outbound = evidence.find((entry) => entry.direction === "outbound" && /angebot|mail|e-mail|follow-up/i.test(entry.title));
-    bullets.push(outbound ? `Versandbeleg gefunden: ${outbound.title}${outbound.occurredAt ? ` am ${outbound.occurredAt}` : ""}.` : "Kein eindeutiger Versandbeleg gefunden.");
+    if (!resolvedByDeliveryProof) {
+      bullets.push(outbound ? `Versandbeleg gefunden: ${outbound.title}${outbound.occurredAt ? ` am ${outbound.occurredAt}` : ""}.` : "Kein eindeutiger Versandbeleg gefunden.");
+    }
   }
   if (conflicts.length) bullets.push(`Konflikt: ${conflicts[0].detail}`);
   if (!bullets.length) bullets.push("Keine belastbare Aussage möglich, weil keine verknüpften Daten gefunden wurden.");
 
-  const verdict = records.length || offers.length
+  const verdict = resolvedByDeliveryProof
+    ? "found"
+    : records.length || offers.length
     ? (gaps.some((gap) => gap.severity !== "info") ? "partial" : "found")
     : liveTrelloCard
       ? "partial"
       : "not_found";
-  const confidence = conflicts.length || gaps.some((gap) => gap.severity === "warning")
+  const confidence = resolvedByDeliveryProof
+    ? trelloFailureDiagnosis?.evidenceStrength === "strong" ? "high" : "medium"
+    : conflicts.length || gaps.some((gap) => gap.severity === "warning")
     ? "medium"
     : verdict === "found"
       ? "high"
@@ -4835,7 +4861,9 @@ export function buildCompanyBrainAnswer(
     verdict,
     confidence,
     headline:
-      verdict === "found"
+      resolvedByDeliveryProof
+        ? "Früherer Fehler gelöst; späterer Angebotsversand ist belegt."
+        : verdict === "found"
         ? "Fall gefunden, Belege geladen."
         : trelloFailureDiagnosis?.rootCauseKey === "automation_failed"
           ? "Automation-Fehler erkannt; Retry nur nach Duplicate-Check."
@@ -5277,6 +5305,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     watchers,
     evidenceScore,
     assets,
+    trelloFailureDiagnosis,
   });
   const retryAssessment = buildCompanyBrainRetryAssessment({
     records: recordSummaries,

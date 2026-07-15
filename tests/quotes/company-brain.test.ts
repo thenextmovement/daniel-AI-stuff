@@ -10,6 +10,7 @@ import {
   buildIntegrationReadiness,
   buildCompanyBrainRetryAssessment,
   buildCompanyBrainEmployeeGuidance,
+  buildProblemResolution,
   buildOutlookGraphSearchTerms,
   buildTrelloAutomationRuns,
   buildTrelloFailureDiagnosis,
@@ -1247,6 +1248,65 @@ test("company brain treats later send proof as resolved automation failure", () 
   assert.match(diagnosis.rootCause, /späterer erfolgreicher Zustellungsbeleg/);
   assert.match(diagnosis.recommendedFix, /Kein erneuter Versand/);
   assert.ok(diagnosis.safeFixes.some((fix) => /keinen erneuten Versand/.test(fix)));
+});
+
+test("company brain keeps answer and resolution consistent after later delivery proof", () => {
+  const diagnosis: CompanyBrainTrelloFailureDiagnosis = {
+    ...retryDiagnosis(),
+    severity: "info",
+    rootCauseKey: "sent",
+    rootCause: "Ein späterer erfolgreicher Zustellungsbeleg löst den alten Fehler auf.",
+    recommendedFix: "Kein erneuter Versand; nur die Trello-Projektion prüfen.",
+    duplicateRisk: "low",
+    card: {
+      id: "card-resolved-without-offer",
+      shortLink: "resolved-without-offer",
+      name: "FEHLER - 3D Backlit",
+      descriptionPreview: "Request-ID: REQ-RESOLVED-WITHOUT-OFFER",
+      url: "https://trello.com/c/resolved-without-offer",
+      currentListName: "Quote Ready",
+      dateLastActivity: "2026-07-14T11:47:37.200Z",
+      attachmentsCount: 2,
+      customFields: [],
+    },
+  };
+  const answer = buildCompanyBrainAnswer(
+    [],
+    [],
+    [],
+    [{ severity: "warning", source: "offers", title: "Angebot fehlt", detail: "Kein Snapshot geladen." }],
+    [],
+    "Warum ging das Angebot nicht raus?",
+    diagnosis,
+  );
+  const resolution = buildProblemResolution({
+    problemType: "offer_not_sent",
+    records: [],
+    offers: [],
+    crossChecks: [{
+      key: "offer_sent",
+      label: "Angebotsversand",
+      status: "review",
+      severity: "warning",
+      expected: "Versandbeleg",
+      actual: null,
+      summary: "Angebotssnapshot fehlt.",
+      evidenceIds: [],
+    }],
+    watchers: [],
+    evidenceScore: { status: "medium", score: 65, summary: "Audit vorhanden.", safeToAnswerCustomer: false, reasons: [] },
+    assets: [],
+    trelloFailureDiagnosis: diagnosis,
+  });
+
+  assert.equal(answer.verdict, "found");
+  assert.equal(answer.confidence, "high");
+  assert.match(answer.headline, /späterer Angebotsversand ist belegt/i);
+  assert.ok(!answer.bullets.some((bullet) => /Kein eindeutiger Versandbeleg/.test(bullet)));
+  assert.equal(resolution.severity, "info");
+  assert.equal(resolution.rootCause, diagnosis.rootCause);
+  assert.equal(resolution.recommendedResolution, diagnosis.recommendedFix);
+  assert.ok(!resolution.missingEvidence.some((entry) => /Angebotsversand klären/.test(entry)));
 });
 
 test("company brain resolves handled video QC failures with a later offer send proof", () => {
