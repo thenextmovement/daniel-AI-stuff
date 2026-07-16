@@ -70,6 +70,13 @@ test("governance migration keeps action and identity control tables private and 
   assert.match(rollback, /drop table if exists public\.company_identity_review_queue/i);
 });
 
+test("Coolify deployment inspection redacts credential-shaped fields before logging", () => {
+  const workflow = readFileSync(".github/workflows/coolify-secret-sync.yml", "utf8");
+  assert.match(workflow, /function redactSensitiveFields\(value\)/);
+  assert.match(workflow, /password\|secret\|token\|private\[_-\]\?key\|webhook/i);
+  assert.match(workflow, /body: redactSensitiveFields\(await coolify\(path\)\)/);
+});
+
 test("action proposals freeze server-owned payloads and deduplicate by input hash", async () => {
   let insertedBody: Record<string, unknown> | null = null;
   await withSupabaseMock(async (url, init) => {
