@@ -150,6 +150,24 @@ const foundation = {
 };
 
 async function setupRoutes(page) {
+  await page.route("**/api/ops/tasks**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        tasks: [{
+          id: "overdue-task-1",
+          title: "Überfällige Testaufgabe",
+          status: "open",
+          priority: "urgent",
+          assigneeLabel: null,
+          dueAt: "2026-07-01T08:00:00.000Z",
+          updatedAt: "2026-07-16T08:00:00.000Z",
+        }],
+      }),
+    });
+  });
   await page.route("**/api/ops/company-brain/foundation", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, result: foundation }) });
   });
@@ -226,6 +244,8 @@ async function runViewport(browser, viewport, label) {
   await page.goto(`${target}/ops/company-brain/governance`, { waitUntil: "networkidle" });
 
   await page.getByRole("heading", { name: "Wissen, das Entscheidungen erklärt." }).waitFor();
+  await page.getByRole("button", { name: "1 Aufgaben prüfen" }).waitFor();
+  assert(await page.getByRole("heading", { name: "Aufgaben überfällig" }).count() === 0, `${label}: overdue task drawer opened automatically`);
   await page.getByText("Angebotsversand absichern", { exact: true }).waitFor();
   await page.getByText("Outlook-Spiegel eindeutig verknüpfen", { exact: true }).waitFor();
   await assertNoHorizontalOverflow(page, `${label}: initial`);

@@ -229,7 +229,6 @@ export function OpsTaskNotifier() {
 
   useEffect(() => {
     if (!currentKey || currentKey === dismissedKey) return;
-    setOpen(true);
 
     if ("Notification" in window && Notification.permission === "granted" && currentKey !== latestBrowserNotificationKey.current) {
       latestBrowserNotificationKey.current = currentKey;
@@ -247,7 +246,7 @@ export function OpsTaskNotifier() {
   if (!attentionTasks.length && !lastError) return null;
 
   return (
-    <div className="fixed bottom-2 left-2 z-[80] max-w-[calc(100vw-1rem)] text-stone-950 sm:bottom-5 sm:left-auto sm:right-5 sm:max-w-[calc(100vw-2.5rem)]">
+    <div className="fixed bottom-2 left-14 z-[80] max-w-[calc(100vw-4rem)] text-stone-950 sm:bottom-5 sm:left-auto sm:right-5 sm:max-w-[calc(100vw-2.5rem)]">
       {!open ? (
         <button
           type="button"

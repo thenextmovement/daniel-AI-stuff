@@ -119,3 +119,14 @@ test("company brain fix center groups risky actions and avoids browser prompts",
   assert.match(source, /keine Secret-Werte/);
   assert.doesNotMatch(source, /window\.prompt/);
 });
+
+test("global task notifier stays collapsed until an employee opens it", () => {
+  const source = readFileSync("src/app/ops/ops-task-notifier.tsx", "utf8");
+
+  assert.doesNotMatch(
+    source,
+    /if \(!currentKey \|\| currentKey === dismissedKey\) return;\s*setOpen\(true\);/,
+  );
+  assert.match(source, /onClick=\{\(\) => setOpen\(true\)\}/);
+  assert.match(source, /new Notification\(/);
+});
