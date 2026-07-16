@@ -29,6 +29,8 @@ import type {
   CompanySourceRegistryEntry,
   CompanyWorkflowRegistryEntry,
 } from "@/lib/ops/company-brain-foundation";
+import type { CompanyBrainActionRun } from "@/lib/ops/company-brain-action-governance";
+import type { CompanyIdentityReviewItem } from "@/lib/ops/company-brain-identity";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
@@ -51,6 +53,14 @@ type FoundationResponse = { ok?: boolean; result?: FoundationOverview; error?: s
 type DecisionsResponse = { ok?: boolean; decisions?: CompanyDecision[]; error?: string; issues?: string[] };
 type DecisionResponse = { ok?: boolean; decision?: CompanyDecision; error?: string; issues?: string[] };
 type OutcomesResponse = { ok?: boolean; outcomes?: CompanyDecisionOutcome[]; outcome?: CompanyDecisionOutcome; error?: string; issues?: string[] };
+type ActionRunsResponse = {
+  ok?: boolean;
+  runs?: CompanyBrainActionRun[];
+  actor?: { email: string; roles: string[] };
+  error?: string;
+  issues?: string[];
+};
+type IdentityReviewsResponse = { ok?: boolean; reviews?: CompanyIdentityReviewItem[]; error?: string; issues?: string[] };
 
 type DecisionForm = {
   decisionKey: string;
@@ -234,6 +244,20 @@ function severityClass(severity: CompanyDataQualityIssue["severity"]) {
   return "border-sky-200 bg-sky-50 text-sky-900";
 }
 
+function actionRunClass(status: CompanyBrainActionRun["status"]) {
+  if (status === "awaiting_approval") return "border-amber-200 bg-amber-50 text-amber-950";
+  if (status === "executing") return "border-sky-200 bg-sky-50 text-sky-950";
+  return "border-rose-200 bg-rose-50 text-rose-950";
+}
+
+function actionRunStatusLabel(status: CompanyBrainActionRun["status"]) {
+  if (status === "awaiting_approval") return "Freigabe offen";
+  if (status === "executing") return "Ausführung läuft";
+  if (status === "blocked") return "Blockiert";
+  if (status === "failed") return "Fehlgeschlagen";
+  return status;
+}
+
 function outcomeStatusLabel(status: CompanyDecisionOutcome["evaluationStatus"]) {
   if (status === "met") return "Ziel erreicht";
   if (status === "missed") return "Ziel verfehlt";
@@ -402,9 +426,12 @@ export function CompanyBrainGovernanceClient({
   const [operatorName, setOperatorName] = useState("");
   const [foundation, setFoundation] = useState<FoundationOverview | null>(null);
   const [decisions, setDecisions] = useState<CompanyDecision[]>([]);
+  const [actionRuns, setActionRuns] = useState<CompanyBrainActionRun[]>([]);
+  const [identityReviews, setIdentityReviews] = useState<CompanyIdentityReviewItem[]>([]);
+  const [actorContext, setActorContext] = useState<{ email: string; roles: string[] } | null>(null);
   const [statusFilter, setStatusFilter] = useState<CompanyDecisionStatus | "all">("all");
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"decisions" | "health">("decisions");
+  const [view, setView] = useState<"decisions" | "operations" | "health">("decisions");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -421,12 +448,16 @@ export function CompanyBrainGovernanceClient({
     setLoading(true);
     setError(null);
     try {
-      const [foundationResponse, decisionsResponse] = await Promise.all([
+      const [foundationResponse, decisionsResponse, actionRunsResponse, identityReviewsResponse] = await Promise.all([
         fetch("/api/ops/company-brain/foundation", { cache: "no-store" }),
         fetch("/api/ops/company-brain/decisions", { cache: "no-store" }),
+        fetch("/api/ops/company-brain/action-runs?limit=50", { cache: "no-store" }),
+        fetch("/api/ops/company-brain/identity/reviews?status=open&limit=50", { cache: "no-store" }),
       ]);
       const foundationPayload = (await foundationResponse.json().catch(() => null)) as FoundationResponse | null;
       const decisionsPayload = (await decisionsResponse.json().catch(() => null)) as DecisionsResponse | null;
+      const actionRunsPayload = (await actionRunsResponse.json().catch(() => null)) as ActionRunsResponse | null;
+      const identityReviewsPayload = (await identityReviewsResponse.json().catch(() => null)) as IdentityReviewsResponse | null;
       if (!foundationResponse.ok || !foundationPayload?.ok || !foundationPayload.result) {
         throw new Error(apiError(foundationPayload, "Wissensstatus konnte nicht geladen werden."));
       }
@@ -435,6 +466,15 @@ export function CompanyBrainGovernanceClient({
       }
       setFoundation(foundationPayload.result);
       setDecisions(decisionsPayload.decisions);
+      if (actionRunsResponse.ok && actionRunsPayload?.ok) {
+        setActionRuns((actionRunsPayload.runs || []).filter((run) =>
+          ["awaiting_approval", "executing", "blocked", "failed"].includes(run.status),
+        ));
+        setActorContext(actionRunsPayload.actor || null);
+      }
+      if (identityReviewsResponse.ok && identityReviewsPayload?.ok) {
+        setIdentityReviews(identityReviewsPayload.reviews || []);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Wissen konnte nicht geladen werden.");
     } finally {
@@ -462,7 +502,9 @@ export function CompanyBrainGovernanceClient({
     approved: decisions.filter((entry) => entry.status === "approved").length,
     drafts: decisions.filter((entry) => entry.status === "draft").length,
     criticalIssues: foundation?.dataQualityIssues.filter((entry) => entry.severity === "critical").length || 0,
-  }), [decisions, foundation]);
+    approvals: actionRuns.length,
+    identityReviews: identityReviews.length,
+  }), [actionRuns.length, decisions, foundation, identityReviews.length]);
 
   const visibleDecisions = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -662,6 +704,57 @@ export function CompanyBrainGovernanceClient({
     }
   }
 
+  async function approveActionRun(run: CompanyBrainActionRun) {
+    if (!window.confirm(`Aktion "${run.actionKey}" wirklich als zweite Person freigeben und ausführen?`)) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/ops/company-brain/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approvalRunId: run.id,
+          approvalNote: "Im Company-Brain Governance Center geprüft.",
+          confirmed: true,
+          confirmationText: "Freigabe",
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; issues?: string[]; blockers?: string[] } | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.blockers?.join(" ") || apiError(payload, "Freigabe konnte nicht ausgeführt werden."));
+      }
+      setMessage(`Aktion "${run.actionKey}" wurde freigegeben und ausgeführt.`);
+      await loadAll();
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "Freigabe konnte nicht ausgeführt werden.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function decideIdentityReview(review: CompanyIdentityReviewItem, decision: "confirmed" | "rejected") {
+    const verb = decision === "confirmed" ? "bestätigen" : "ablehnen";
+    if (!window.confirm(`Identitätszuordnung wirklich ${verb}?`)) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/ops/company-brain/identity/reviews/${review.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, note: "Im Governance Center geprüft." }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; issues?: string[] } | null;
+      if (!response.ok || !payload?.ok) throw new Error(apiError(payload, "Identitätsprüfung konnte nicht gespeichert werden."));
+      setMessage(`Identitätsprüfung wurde ${decision === "confirmed" ? "bestätigt" : "abgelehnt"}.`);
+      await loadAll();
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : "Identitätsprüfung konnte nicht gespeichert werden.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!opsEnabled) {
     return <div className="min-h-screen bg-stone-100 p-8 text-stone-700">Ops Portal ist nicht konfiguriert.</div>;
   }
@@ -685,7 +778,7 @@ export function CompanyBrainGovernanceClient({
 
   return (
     <main className={opsPageShellClass}>
-      <div className={`${opsPageContainerClass} px-4 py-4 md:px-6 md:py-6`}>
+      <div className={`${opsPageContainerClass} box-border px-4 py-4 md:px-6 md:py-6`}>
         <OpsPageHeader active="companyKnowledge" label="Wissen · Regeln, Entscheidungen und Systemgesundheit" />
 
         <div className="mt-4 grid gap-4">
@@ -710,9 +803,10 @@ export function CompanyBrainGovernanceClient({
           </section>
 
           <section className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="inline-flex w-fit rounded-xl border border-stone-200 bg-stone-50 p-1" aria-label="Wissensansicht">
-              <button type="button" onClick={() => setView("decisions")} className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${view === "decisions" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Entscheidungen</button>
-              <button type="button" onClick={() => setView("health")} className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${view === "health" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Systemwissen</button>
+            <div className="grid w-full min-w-0 grid-cols-3 rounded-xl border border-stone-200 bg-stone-50 p-1 sm:inline-grid sm:w-fit" aria-label="Wissensansicht">
+              <button type="button" onClick={() => setView("decisions")} className={`min-w-0 rounded-lg px-2 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "decisions" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Entscheidungen</button>
+              <button type="button" onClick={() => setView("operations")} className={`min-w-0 rounded-lg px-2 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "operations" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Freigaben {stats.approvals + stats.identityReviews ? `(${stats.approvals + stats.identityReviews})` : ""}</button>
+              <button type="button" onClick={() => setView("health")} className={`min-w-0 rounded-lg px-2 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "health" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Systemwissen</button>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => void loadAll()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-xl border border-stone-300 bg-white px-3.5 text-xs font-semibold text-stone-800 transition hover:bg-stone-50 disabled:opacity-50">
@@ -880,7 +974,7 @@ export function CompanyBrainGovernanceClient({
                 </div>
               )}
             </>
-          ) : (
+          ) : view === "health" ? (
             <section className="grid gap-4">
               <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                 <section className="rounded-[22px] border border-stone-200 bg-white p-5">
@@ -981,6 +1075,91 @@ export function CompanyBrainGovernanceClient({
                   ))}
                 </div>
               </section>
+            </section>
+          ) : (
+            <section className="grid gap-4 xl:grid-cols-2">
+              <article className="rounded-[22px] border border-stone-200 bg-white p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Vier Augen</p>
+                    <h2 className="mt-2 text-xl font-semibold text-stone-950">Offene Aktionen</h2>
+                    <p className="mt-1 text-sm text-stone-500">Freigaben, laufende Ausführungen und Fehler bleiben hier sichtbar, bis sie geklärt sind.</p>
+                  </div>
+                  <ShieldCheck className="h-5 w-5 text-stone-400" />
+                </div>
+                {actorContext ? <p className="mt-3 text-xs text-stone-500">Angemeldet: {actorContext.email} · {actorContext.roles.join(", ")}</p> : null}
+                <div className="mt-4 grid gap-3">
+                  {actionRuns.length ? actionRuns.map((run) => {
+                    const sameActor = actorContext?.email === run.proposedBy;
+                    const awaitingApproval = run.status === "awaiting_approval";
+                    return (
+                      <div key={run.id} className={`rounded-xl border p-4 ${actionRunClass(run.status)}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold">{run.actionKey}</p>
+                            <p className="mt-1 text-xs opacity-70">{run.caseKey} · vorgeschlagen von {run.proposedBy}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold">{actionRunStatusLabel(run.status)}</span>
+                            <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold">{run.riskLevel}</span>
+                          </div>
+                        </div>
+                        <dl className="mt-3 grid gap-1 text-xs">
+                          {Object.entries(run.preview).filter(([, value]) => value !== null && value !== "").slice(0, 6).map(([key, value]) => (
+                            <div key={key} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-2">
+                              <dt className="font-medium opacity-65">{key}</dt>
+                              <dd className="break-words">{String(value)}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                        {run.failureDetail ? <p className="mt-3 text-xs leading-5"><span className="font-semibold">Fehler:</span> {run.failureDetail}</p> : null}
+                        {awaitingApproval ? (
+                          <button
+                            type="button"
+                            onClick={() => void approveActionRun(run)}
+                            disabled={saving || sameActor}
+                            className="mt-4 h-10 rounded-xl bg-stone-950 px-4 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {sameActor ? "Zweite Person erforderlich" : "Prüfen und ausführen"}
+                          </button>
+                        ) : (
+                          <p className="mt-4 text-xs font-semibold">
+                            {run.status === "executing"
+                              ? `Seit ${formatDateTime(run.executionStartedAt)} in Ausführung. Bei Stillstand technisch prüfen.`
+                              : "Nicht erneut ausführen. Ursache prüfen und danach einen neuen, geänderten Vorschlag anlegen."}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }) : <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium text-emerald-900">Keine offene oder fehlgeschlagene Aktion vorhanden.</p>}
+                </div>
+              </article>
+
+              <article className="rounded-[22px] border border-stone-200 bg-white p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Identität</p>
+                    <h2 className="mt-2 text-xl font-semibold text-stone-950">Unklare Fallzuordnungen</h2>
+                    <p className="mt-1 text-sm text-stone-500">Nur mehrdeutige oder widersprüchliche Verknüpfungen erscheinen hier.</p>
+                  </div>
+                  <CircleDot className="h-5 w-5 text-stone-400" />
+                </div>
+                <div className="mt-4 grid gap-3">
+                  {identityReviews.length ? identityReviews.map((review) => (
+                    <div key={review.id} className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-950">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-sm font-semibold">{review.summary}</p>
+                        <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold">{review.reasonCode}</span>
+                      </div>
+                      <p className="mt-2 text-xs opacity-70">{review.sourceKey} · {review.aliasType} · {review.candidateEntityIds.length} Kandidaten</p>
+                      <div className="mt-4 flex gap-2">
+                        <button type="button" onClick={() => void decideIdentityReview(review, "confirmed")} disabled={saving || !review.proposedEntityId} className="h-9 rounded-lg bg-stone-950 px-3 text-xs font-semibold text-white disabled:opacity-40">Zuordnung bestätigen</button>
+                        <button type="button" onClick={() => void decideIdentityReview(review, "rejected")} disabled={saving} className="h-9 rounded-lg border border-current/20 bg-white px-3 text-xs font-semibold">Ablehnen</button>
+                      </div>
+                    </div>
+                  )) : <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium text-emerald-900">Keine unklare Fallzuordnung offen.</p>}
+                </div>
+              </article>
             </section>
           )}
         </div>

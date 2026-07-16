@@ -1327,9 +1327,36 @@ export function OpsCompanyBrainClient({
           trelloComment?: { id?: string } | null;
         } | null;
         auditWarning?: string | null;
+        actionRunWarning?: string | null;
+        approvalRequired?: boolean;
+        alreadyCompleted?: boolean;
+        actionRun?: {
+          id?: string;
+          proposedBy?: string;
+          status?: string;
+        };
       } | null;
       if (!response.ok || !payload?.ok) {
         setActionResultMessage(payload?.blockers?.length ? payload.blockers.join(" ") : formatApiError(payload));
+        return;
+      }
+      if (payload.approvalRequired && payload.actionRun?.id) {
+        setActionResultMessage(
+          `Freigabeauftrag erstellt. Eine zweite berechtigte Person muss ihn unter Wissen & Governance > Freigaben prüfen. Auftrag: ${payload.actionRun.id}`,
+        );
+        cancelActionProposal();
+        return;
+      }
+      if (payload.alreadyCompleted) {
+        const successMessage = "Diese identische Aktion wurde bereits erfolgreich abgeschlossen. Es wurde nichts erneut ausgeführt.";
+        cancelActionProposal();
+        const refreshed = await resolveWith(
+          { query, question, problemType },
+          { actionResultMessage: `${successMessage} Fall neu geladen.` },
+        );
+        if (!refreshed) {
+          setActionResultMessage(`${successMessage} Fall konnte nicht automatisch neu geladen werden.`);
+        }
         return;
       }
       const created = [
@@ -1345,6 +1372,7 @@ export function OpsCompanyBrainClient({
       const successMessage = [
         created ? `Ausgeführt: ${created}.` : "Aktion ausgeführt.",
         payload.auditWarning || null,
+        payload.actionRunWarning || null,
       ].filter(Boolean).join(" ");
       cancelActionProposal();
       const refreshed = await resolveWith(

@@ -1,16 +1,17 @@
 import { NextRequest } from "next/server";
-import { authorizeCompanyBrainRequest, companyBrainApiFailure, companyBrainJson, requireIdentifiedCompanyBrainActor } from "@/lib/ops/company-brain-api";
+import { authorizeCompanyBrainActor, requireCompanyBrainRole } from "@/lib/ops/company-brain-access";
+import { companyBrainApiFailure, companyBrainJson } from "@/lib/ops/company-brain-api";
 import { syncN8nWorkflowRegistry } from "@/lib/ops/company-brain-foundation";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const auth = await authorizeCompanyBrainRequest(request);
-  if (!auth.ok) return auth.response;
-  const actorError = requireIdentifiedCompanyBrainActor(auth);
-  if (actorError) return actorError;
+  const access = await authorizeCompanyBrainActor(request);
+  if (!access.ok) return access.response;
+  const roleError = requireCompanyBrainRole(access.actor, ["automation_admin"]);
+  if (roleError) return roleError;
   try {
-    const result = await syncN8nWorkflowRegistry({ ...(await request.json()), actor: auth.actor });
+    const result = await syncN8nWorkflowRegistry({ ...(await request.json()), actor: access.actor.email });
     return companyBrainJson({ ok: true, result });
   } catch (error) {
     return companyBrainApiFailure(error, "workflow-registry-sync");

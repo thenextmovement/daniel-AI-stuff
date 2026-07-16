@@ -23,6 +23,12 @@ export function companyBrainJson(body: unknown, init?: ResponseInit) {
   });
 }
 
+export type CompanyBrainAuthorization = {
+  ok: true;
+  actor: string;
+  actorIdentified: boolean;
+};
+
 export async function authorizeCompanyBrainRequest(request: NextRequest) {
   const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
   if (!isOpsPortalConfigured(host)) {

@@ -1,6 +1,17 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
+import { isOpsPortalBypassed } from "@/lib/ops/auth";
+import {
+  authorizeCompanyBrainActor,
+  requireCompanyBrainRole,
+} from "@/lib/ops/company-brain-access";
+import {
+  actorMeetsPolicy,
+  approveAndClaimCompanyBrainActionRun,
+  completeCompanyBrainActionRun,
+  getCompanyBrainActionPolicy,
+  proposeCompanyBrainActionRun,
+} from "@/lib/ops/company-brain-action-governance";
 import {
   addCustomerOpsNote,
   getCustomerRecordByRequestId,
@@ -84,6 +95,8 @@ type CompanyBrainActionInput = {
   idempotencyKey?: string | null;
   newCustomerEmail?: string | null;
   trelloCommentText?: string | null;
+  approvalRunId?: string | null;
+  approvalNote?: string | null;
 };
 
 type QuoteEmailGuardRow = {
@@ -129,14 +142,6 @@ const ALLOWED_SPECIAL_CASE_KINDS: CustomerSpecialCaseKind[] = [
   "other",
 ];
 
-function unauthorized() {
-  return jsonResponse({ ok: false, error: "unauthorized" }, { status: 401 });
-}
-
-function notConfigured() {
-  return jsonResponse({ ok: false, error: "ops_not_configured" }, { status: 503 });
-}
-
 function failureResponse(error: unknown) {
   if (error instanceof OpsOfferApiError) {
     return jsonResponse(
@@ -152,19 +157,6 @@ function failureResponse(error: unknown) {
   }
   console.error("ops company-brain action route failed", error);
   return jsonResponse({ ok: false, error: "internal_error" }, { status: 500 });
-}
-
-function getOpsHost(request: NextRequest) {
-  return request.headers.get("x-forwarded-host") || request.headers.get("host");
-}
-
-async function authorize(request: NextRequest) {
-  const host = getOpsHost(request);
-  if (!isOpsPortalConfigured(host)) return { ok: false as const, response: notConfigured(), host };
-  if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) {
-    return { ok: false as const, response: unauthorized(), host };
-  }
-  return { ok: true as const, host };
 }
 
 function cleanText(value: unknown, maxLength = 1000) {
@@ -445,23 +437,105 @@ async function recordCompanyBrainInternalAudit(input: {
   });
 }
 
-export async function POST(request: NextRequest) {
-  const access = await authorize(request);
-  if (!access.ok) return access.response;
-
+async function finalizeActionRunSafely(
+  runId: string | null,
+  input: Omit<Parameters<typeof completeCompanyBrainActionRun>[0], "runId">,
+) {
+  if (!runId) return null;
   try {
-    const body = (await request.json()) as CompanyBrainActionInput;
+    await completeCompanyBrainActionRun({ runId, ...input });
+    return null;
+  } catch (error) {
+    console.error("company brain action run finalization failed", error);
+    return "Die fachliche Aktion wurde ausgeführt, aber der Governance-Status konnte nicht abschließend gespeichert werden.";
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const access = await authorizeCompanyBrainActor(request);
+  if (!access.ok) return access.response;
+  const roleError = requireCompanyBrainRole(access.actor, ["operator"]);
+  if (roleError) return roleError;
+
+  let activeActionRunId: string | null = null;
+  try {
+    let body = (await request.json()) as CompanyBrainActionInput;
     requireConfirmation(body);
+
+    const approvalRunId = cleanText(body.approvalRunId, 60) || null;
+    if (approvalRunId) {
+      const claimed = await approveAndClaimCompanyBrainActionRun({
+        runId: approvalRunId,
+        actor: access.actor,
+        note: body.approvalNote,
+      });
+      activeActionRunId = claimed.run.id;
+      body = claimed.run.frozenInput as CompanyBrainActionInput;
+    }
 
     const actionKey = normalizeActionKey(body.actionKey);
     const requestId = cleanText(body.requestId, 160);
     const problemType = normalizeCompanyBrainProblemType(body.problemType || null);
     const specialCaseKind = normalizeSpecialCaseKind(body.specialCaseKind);
-    const operatorName = cleanText(body.operatorName, 120) || null;
-    const actor = actorFor(access.host, request, operatorName);
+    const operatorName = access.actor.email;
+    const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+    const actor = actorFor(host, request, operatorName);
     const offerId = cleanText(body.offerId, 180) || null;
     const offerNumber = normalizeOfferNumber(body.offerNumber) || null;
     const trelloCardIdInput = cleanText(body.trelloCardId, 180) || null;
+
+    if (!activeActionRunId && !access.actor.local && (actionKey === "correct_customer_email" || actionKey === "guarded_offer_resend")) {
+      const policy = await getCompanyBrainActionPolicy(actionKey);
+      if (!actorMeetsPolicy(access.actor, policy)) {
+        return jsonResponse(
+          { ok: false, error: "forbidden", requiredRole: policy.minimumRole, actorRoles: access.actor.roles },
+          { status: 403 },
+        );
+      }
+      const proposed = await proposeCompanyBrainActionRun({
+        policy,
+        actor: access.actor,
+        caseKey: requestId ? `request:${requestId}` : trelloCardIdInput ? `trello:${trelloCardIdInput}` : `action:${actionKey}`,
+        requestId,
+        frozenInput: body as Record<string, unknown>,
+        preview: {
+          actionKey,
+          requestId: requestId || null,
+          offerId,
+          offerNumber,
+          trelloCardId: trelloCardIdInput,
+          recipientEmail: normalizeEmail(body.recipientEmail) || null,
+          newCustomerEmail: normalizeEmail(body.newCustomerEmail) || null,
+        },
+      });
+      if (proposed.duplicate && proposed.run.status === "resolved") {
+        return jsonResponse({
+          ok: true,
+          actionKey,
+          approvalRequired: false,
+          alreadyCompleted: true,
+          actionRun: proposed.run,
+          duplicate: true,
+          customerCommunicationSent: false,
+        });
+      }
+      if (proposed.duplicate && proposed.run.status !== "awaiting_approval") {
+        return jsonResponse({
+          ok: false,
+          code: "action_run_not_reproposable",
+          error: `Die identische Aktion ist bereits im Status "${proposed.run.status}" und kann nicht erneut vorgeschlagen werden.`,
+          actionRun: proposed.run,
+        }, { status: 409 });
+      }
+      return jsonResponse({
+        ok: true,
+        actionKey,
+        approvalRequired: true,
+        actionRun: proposed.run,
+        duplicate: proposed.duplicate,
+        customerCommunicationSent: false,
+      }, { status: 202 });
+    }
 
     if (!requestId && (actionKey === "create_internal_task" || actionKey === "post_trello_status_comment")) {
       if (!trelloCardIdInput) {
@@ -772,6 +846,19 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const actionRunWarning = await finalizeActionRunSafely(activeActionRunId, {
+        status: "resolved",
+        result: {
+          changedTables: updateResult.changedTables,
+          previousEmail: currentEmail || null,
+          newEmail: newCustomerEmail,
+          customerCommunicationSent: false,
+        },
+        verification: {
+          recordRequestId: updateResult.record.requestId,
+          persistedEmail: updateResult.record.email,
+        },
+      });
       return jsonResponse({
         ok: true,
         actionKey,
@@ -779,6 +866,7 @@ export async function POST(request: NextRequest) {
         record: updateResult.record,
         changedTables: updateResult.changedTables,
         audit: retryAudit,
+        actionRunWarning,
         customerCommunicationSent: false,
       });
     }
@@ -1141,6 +1229,12 @@ export async function POST(request: NextRequest) {
           errorMessage: blockers.join(" "),
           blockers,
         });
+        const actionRunWarning = await finalizeActionRunSafely(activeActionRunId, {
+          status: "blocked",
+          result: { blockers, customerCommunicationSent: false },
+          failureCode: "company_brain_retry_blocked",
+          failureDetail: blockers.join(" "),
+        });
         return jsonResponse(
           {
             ok: false,
@@ -1150,6 +1244,7 @@ export async function POST(request: NextRequest) {
             code: "company_brain_retry_blocked",
             blockers,
             audit: retryAudit,
+            actionRunWarning,
             customerCommunicationSent: false,
           },
           { status: 409 },
@@ -1225,6 +1320,20 @@ export async function POST(request: NextRequest) {
         eventId: sendResult.eventId,
       });
 
+      const actionRunWarning = await finalizeActionRunSafely(activeActionRunId, {
+        status: "resolved",
+        result: {
+          sent: sendResult.sent,
+          duplicate: sendResult.duplicate,
+          eventId: sendResult.eventId,
+          customerCommunicationSent: true,
+        },
+        verification: {
+          quoteEmailEvidence,
+          opsSync,
+          auditRecorded: Boolean(retryAudit),
+        },
+      });
       return jsonResponse({
         ok: true,
         actionKey,
@@ -1235,6 +1344,7 @@ export async function POST(request: NextRequest) {
         opsSync,
         quoteEmailEvidence,
         audit: retryAudit,
+        actionRunWarning,
         customerCommunicationSent: true,
       });
     }
@@ -1278,6 +1388,18 @@ export async function POST(request: NextRequest) {
       customerCommunicationSent: false,
     });
   } catch (error) {
+    if (activeActionRunId) {
+      try {
+        await completeCompanyBrainActionRun({
+          runId: activeActionRunId,
+          status: "failed",
+          failureCode: error instanceof QuoteValidationError ? "validation_failed" : "execution_failed",
+          failureDetail: errorMessage(error),
+        });
+      } catch (completionError) {
+        console.error("company brain action run failure finalization failed", completionError);
+      }
+    }
     return failureResponse(error);
   }
 }

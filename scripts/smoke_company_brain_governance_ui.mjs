@@ -149,6 +149,62 @@ const foundation = {
   ],
 };
 
+const pendingActionRun = {
+  id: "423e4567-e89b-42d3-a456-426614174000",
+  actionKey: "guarded_offer_resend",
+  caseKey: "request:REQ-SMOKE",
+  requestId: "REQ-SMOKE",
+  riskLevel: "critical",
+  status: "awaiting_approval",
+  proposedBy: "employee@neontrip.de",
+  approvedBy: null,
+  idempotencyKey: "company-brain-action:smoke",
+  inputHash: "smoke-hash",
+  frozenInput: {},
+  preview: {
+    offerNumber: "14427",
+    recipientEmail: "customer@example.com",
+  },
+  failureCode: null,
+  failureDetail: null,
+  proposedAt: "2026-07-16T09:00:00.000Z",
+  approvedAt: null,
+  executionStartedAt: null,
+  completedAt: null,
+};
+
+const executingActionRun = {
+  ...pendingActionRun,
+  id: "623e4567-e89b-42d3-a456-426614174000",
+  actionKey: "correct_customer_email",
+  idempotencyKey: "company-brain-action:executing-smoke",
+  status: "executing",
+  proposedBy: "other@neontrip.de",
+  approvedBy: "approver@neontrip.de",
+  preview: { newCustomerEmail: "corrected@example.com" },
+  approvedAt: "2026-07-16T09:04:00.000Z",
+  executionStartedAt: "2026-07-16T09:04:00.000Z",
+};
+
+const pendingIdentityReview = {
+  id: "523e4567-e89b-42d3-a456-426614174000",
+  status: "open",
+  sourceKey: "trello",
+  aliasType: "trello_card_id",
+  candidateEntityIds: ["entity-old", "entity-new"],
+  proposedEntityId: "entity-new",
+  confidence: 0.5,
+  reasonCode: "alias_points_to_different_entity",
+  summary: "Trello-Alias zeigt auf einen anderen kanonischen Fall.",
+  evidenceRefs: [],
+  proposedResolution: {},
+  correlationId: "smoke-correlation",
+  reviewedBy: null,
+  reviewNote: null,
+  reviewedAt: null,
+  createdAt: "2026-07-16T09:00:00.000Z",
+};
+
 async function setupRoutes(page) {
   await page.route("**/api/ops/tasks**", async (route) => {
     await route.fulfill({
@@ -170,6 +226,24 @@ async function setupRoutes(page) {
   });
   await page.route("**/api/ops/company-brain/foundation", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, result: foundation }) });
+  });
+  await page.route("**/api/ops/company-brain/action-runs**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        actor: { email: "approver@neontrip.de", roles: ["viewer", "operator", "approver"] },
+        runs: [pendingActionRun, executingActionRun],
+      }),
+    });
+  });
+  await page.route("**/api/ops/company-brain/identity/reviews**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, reviews: [pendingIdentityReview] }),
+    });
   });
   await page.route("**/api/ops/company-brain/decisions", async (route) => {
     if (route.request().method() === "POST") {
@@ -249,6 +323,16 @@ async function runViewport(browser, viewport, label) {
   await page.getByText("Angebotsversand absichern", { exact: true }).waitFor();
   await page.getByText("Outlook-Spiegel eindeutig verknüpfen", { exact: true }).waitFor();
   await assertNoHorizontalOverflow(page, `${label}: initial`);
+
+  await page.getByRole("button", { name: "Freigaben (3)" }).click();
+  await page.getByRole("heading", { name: "Offene Aktionen" }).waitFor();
+  await page.getByText("guarded_offer_resend", { exact: true }).waitFor();
+  await page.getByText("Ausführung läuft", { exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Unklare Fallzuordnungen" }).waitFor();
+  await page.getByText("Trello-Alias zeigt auf einen anderen kanonischen Fall.", { exact: true }).waitFor();
+  await assertNoHorizontalOverflow(page, `${label}: approvals`);
+  await page.screenshot({ path: `/tmp/company-brain-governance-approvals-${label}.png`, fullPage: true });
+  await page.getByRole("button", { name: "Entscheidungen" }).click();
 
   await page.getByRole("button", { name: "Neue Entscheidung" }).click();
   await page.getByRole("heading", { name: "Entscheidung dokumentieren" }).waitFor();

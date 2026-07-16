@@ -1,65 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
+import { NextRequest } from "next/server";
+import { authorizeCompanyBrainActor, requireCompanyBrainRole } from "@/lib/ops/company-brain-access";
+import { companyBrainApiFailure, companyBrainJson } from "@/lib/ops/company-brain-api";
 import {
   listCompanyBrainTrelloAliasRepairs,
   repairCompanyBrainTrelloAlias,
   type CompanyBrainAliasRepairInput,
 } from "@/lib/ops/company-brain-alias-repair";
-import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
-
-const NO_STORE_HEADERS = {
-  "Cache-Control": "private, no-store, max-age=0",
-  "Vary": "Cookie, Cf-Access-Jwt-Assertion",
-};
 
 type AliasRepairPostBody = CompanyBrainAliasRepairInput & {
   confirmed?: boolean;
   confirmationText?: string | null;
 };
 
-function jsonResponse(body: unknown, init?: ResponseInit) {
-  return NextResponse.json(body, {
-    ...init,
-    headers: {
-      ...NO_STORE_HEADERS,
-      ...(init?.headers || {}),
-    },
-  });
-}
-
-function unauthorized() {
-  return jsonResponse({ ok: false, error: "unauthorized" }, { status: 401 });
-}
-
-function notConfigured() {
-  return jsonResponse({ ok: false, error: "ops_not_configured" }, { status: 503 });
-}
-
 function failureResponse(error: unknown) {
   if (error instanceof QuoteValidationError) {
-    return jsonResponse({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
+    return companyBrainJson({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
   }
-  if (error instanceof SupabaseRestError) {
-    return jsonResponse({ ok: false, error: error.message, code: "supabase_error" }, { status: error.status });
-  }
-  console.error("ops company-brain trello-alias route failed", error);
-  return jsonResponse({ ok: false, error: "internal_error" }, { status: 500 });
-}
-
-function getOpsHost(request: NextRequest) {
-  return request.headers.get("x-forwarded-host") || request.headers.get("host");
-}
-
-async function authorize(request: NextRequest) {
-  const host = getOpsHost(request);
-  if (!isOpsPortalConfigured(host)) return { ok: false as const, response: notConfigured(), host };
-  if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) {
-    return { ok: false as const, response: unauthorized(), host };
-  }
-  return { ok: true as const, host };
+  return companyBrainApiFailure(error, "trello-alias");
 }
 
 function cleanText(value: unknown, maxLength = 1000) {
@@ -78,11 +38,13 @@ function requireConfirmation(body: AliasRepairPostBody) {
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await authorize(request);
-    if (!auth.ok) return auth.response;
+    const access = await authorizeCompanyBrainActor(request);
+    if (!access.ok) return access.response;
+    const roleError = requireCompanyBrainRole(access.actor, ["operator"]);
+    if (roleError) return roleError;
     const limit = Number(request.nextUrl.searchParams.get("limit") || 50);
     const items = await listCompanyBrainTrelloAliasRepairs(Number.isFinite(limit) ? limit : 50);
-    return jsonResponse({ ok: true, items, generatedAt: new Date().toISOString() });
+    return companyBrainJson({ ok: true, items, generatedAt: new Date().toISOString() });
   } catch (error) {
     return failureResponse(error);
   }
@@ -90,12 +52,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await authorize(request);
-    if (!auth.ok) return auth.response;
+    const access = await authorizeCompanyBrainActor(request);
+    if (!access.ok) return access.response;
+    const roleError = requireCompanyBrainRole(access.actor, ["approver"]);
+    if (roleError) return roleError;
     const body = await request.json().catch(() => ({})) as AliasRepairPostBody;
     requireConfirmation(body);
-    const repair = await repairCompanyBrainTrelloAlias(body);
-    return jsonResponse({
+    const repair = await repairCompanyBrainTrelloAlias({ ...body, operatorName: access.actor.email });
+    return companyBrainJson({
       ok: true,
       repair,
       customerCommunicationSent: false,
