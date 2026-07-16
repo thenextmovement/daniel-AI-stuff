@@ -60,7 +60,11 @@ const evidenceBackedFailure = parseQc({
   evidence: [{ code: "DESIGN_MORPH", timestamps: [1.2, 2.8], description: "The customer logo changes shape visibly." }],
 }, 2);
 assert.equal(evidenceBackedFailure.videoContentQcDecision, "reject");
-assert.equal(evidenceBackedFailure.videoContentQcFallbackWithoutVideo, false);
+assert.equal(evidenceBackedFailure.videoContentQcFallbackWithoutVideo, true);
+assert.equal(
+  evidenceBackedFailure.videoContentQcFallbackReason,
+  "content_rejected_after_two_video_attempts",
+);
 assert.equal(evidenceBackedFailure.failureType, "video_content_qc_failed");
 
 const unsupportedRejection = parseQc({
