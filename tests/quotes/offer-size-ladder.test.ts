@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
+import { POST as internalQuoteReadySizeLadderPOST } from "../../src/app/api/internal/quote-ready-size-ladder/route";
 import { POST as pricePredictionsPOST } from "../../src/app/api/ops/customer-records/price-predictions/route";
 import {
   applyOfferSizeLadderToOffer,
@@ -732,7 +733,7 @@ test("quote ready size ladder routes accept scoped internal automation keys", as
   }) as typeof fetch;
 
   try {
-    const response = await pricePredictionsPOST(new NextRequest("https://ops.neontrip.de/api/ops/customer-records/price-predictions", {
+    const response = await internalQuoteReadySizeLadderPOST(new NextRequest("https://ops.neontrip.de/api/internal/quote-ready-size-ladder", {
       method: "POST",
       headers: {
         "content-type": "application/json",
