@@ -760,7 +760,7 @@ function SaleCard({
       : null;
 
   return (
-    <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : priorPaidPriority ? "border-cyan-300 ring-2 ring-cyan-100" : "border-stone-200"}`}>
+    <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : priorPaidPriority ? "border-amber-300 ring-2 ring-amber-100" : "border-stone-200"}`}>
       <div className="grid gap-4 lg:grid-cols-[7rem_minmax(0,1fr)_minmax(20rem,0.78fr)]">
         <div className="h-28 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100">
           {sale.primaryImageUrl ? (
@@ -781,18 +781,18 @@ function SaleCard({
             </div>
           ) : null}
           {priorPaidPriority ? (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[0.5rem] border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-950">
-              <BadgeCheck className="h-4 w-4 text-cyan-700" />
-              Bestandskunde: frueher bereits bezahlt
-              <span className="text-xs font-medium text-cyan-800">
-                {sale.priorPaidCustomer.lastPaidOrderName ? `letzte Zahlung ${sale.priorPaidCustomer.lastPaidOrderName}` : "ggf. frueher freigeben"} · Match: {priorPaidCustomerBasisLabel(sale)}
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[0.5rem] border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">
+              <BadgeCheck className="h-4 w-4 text-amber-700" />
+              Bestandskunde - frueher bezahlt, ggf. vor Zahlung freigeben
+              <span className="text-xs font-medium text-amber-900">
+                {sale.priorPaidCustomer.lastPaidOrderName ? `Beleg: ${sale.priorPaidCustomer.lastPaidOrderName}` : "Bezahlte Historie gefunden"} · Match: {priorPaidCustomerBasisLabel(sale)}
               </span>
               {sale.priorPaidCustomer.lastPaidOrderUrl ? (
                 <a
                   href={sale.priorPaidCustomer.lastPaidOrderUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded-[0.5rem] border border-cyan-300 bg-white px-2.5 py-1 text-xs font-semibold text-cyan-900 hover:border-cyan-700"
+                  className="inline-flex items-center gap-1 rounded-[0.5rem] border border-amber-400 bg-white px-2.5 py-1 text-xs font-semibold text-amber-950 hover:border-amber-700"
                 >
                   Shopify-Beleg
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -831,9 +831,9 @@ function SaleCard({
               </span>
             ) : null}
             {priorPaidPriority ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-medium text-cyan-900">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-950">
                 <BadgeCheck className="h-3.5 w-3.5" />
-                schon bezahlt gehabt
+                Bestandskunde bezahlt
               </span>
             ) : null}
             {reviewBadge ? (

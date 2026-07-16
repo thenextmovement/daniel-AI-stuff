@@ -1910,32 +1910,29 @@ function markPriorPaidCustomers(saleRows: SupplierSaleRow[], paidHistoryRows: Su
 }
 
 async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
-  const emails = Array.from(new Set(
-    saleRows
-      .filter((row) => !hasPaidCustomerSignal(row) && !["assigned", "in_production", "completed", "canceled"].includes(row.assignment_status))
-      .map((row) => lowerNullable(row.customer_email, 260))
-      .filter((value): value is string => Boolean(value)),
-  ));
-  if (!emails.length) return [];
+  const { emails, domains, names } = priorPaidLookupKeys(saleRows);
+  if (!emails.length && !domains.length && !names.length) return [];
   const select = [
     "id",
     "customer_email",
+    "customer_name",
+    "shopify_order_id",
     "shopify_order_name",
+    "shopify_order_url",
     "offer_number",
     "document_reference",
     "shopify_payment_status",
     "payment_decision_status",
+    "assignment_status",
     "created_at",
     "updated_at",
     "metadata",
     "raw_shopify",
     "offer_snapshot",
   ].join(",");
-  const batches: string[][] = [];
-  for (let index = 0; index < emails.length; index += 75) {
-    batches.push(emails.slice(index, index + 75));
-  }
-  const rows = await Promise.all(batches.map((batch) =>
+  const rows: SupplierSaleRow[] = [];
+
+  const exactEmailRows = await Promise.all(batchesOf(emails, 75).map((batch) =>
     supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
       select,
       customer_email: inList(batch),
@@ -1944,7 +1941,35 @@ async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
       limit: Math.min(Math.max(batch.length * 20, 100), 1500),
     }),
   ));
-  return rows.flat();
+  rows.push(...exactEmailRows.flat());
+
+  for (const batch of batchesOf(domains, 50)) {
+    const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
+    if (!or) continue;
+    const domainRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select,
+      or,
+      order: "created_at.desc,updated_at.desc",
+      limit: Math.min(Math.max(batch.length * 30, 100), 1500),
+    });
+    rows.push(...domainRows.filter(hasPaidCustomerSignal));
+  }
+
+  for (const batch of batchesOf(names, 50)) {
+    const or = exactIlikeAnyFilter("customer_name", batch);
+    if (!or) continue;
+    const nameRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select,
+      or,
+      order: "created_at.desc,updated_at.desc",
+      limit: Math.min(Math.max(batch.length * 20, 100), 1500),
+    });
+    rows.push(...nameRows.filter(hasPaidCustomerSignal));
+  }
+
+  const deduped = new Map<string, SupplierSaleRow>();
+  for (const row of rows) deduped.set(row.id, row);
+  return Array.from(deduped.values());
 }
 
 function priorPaidLookupKeys(saleRows: SupplierSaleRow[]) {

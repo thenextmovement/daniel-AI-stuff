@@ -1213,6 +1213,87 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
   });
 });
 
+test("supplier sales board uses internal paid history by business domain and customer name", async () => {
+  const businessOpenRow = saleRow({
+    id: "sale-internal-business-open",
+    sale_key: "offer:internal-business-open",
+    customer_email: "buyer@company.test",
+    customer_name: "Business Buyer",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-24T10:00:00.000Z",
+    updated_at: "2026-06-24T10:00:00.000Z",
+  });
+  const nameOpenRow = saleRow({
+    id: "sale-internal-name-open",
+    sale_key: "offer:internal-name-open",
+    customer_email: null,
+    customer_name: "Filippo Melena",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-06-23T10:00:00.000Z",
+    updated_at: "2026-06-23T10:00:00.000Z",
+  });
+  const paidDomainRow = saleRow({
+    id: "sale-internal-business-paid-before",
+    sale_key: "shopify:order:internal-business-before",
+    customer_email: "finance@company.test",
+    customer_name: "Company Finance",
+    shopify_order_id: "9002",
+    shopify_order_name: "#9002",
+    shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/9002",
+    shopify_payment_status: "paid",
+    payment_decision_status: "paid_confirmed",
+    assignment_status: "completed",
+    created_at: "2026-05-20T10:00:00.000Z",
+    updated_at: "2026-05-20T10:00:00.000Z",
+  });
+  const paidNameRow = saleRow({
+    id: "sale-internal-name-paid-before",
+    sale_key: "shopify:order:internal-name-before",
+    customer_email: "old.email@example.test",
+    customer_name: "Filippo Melena",
+    shopify_order_id: "9003",
+    shopify_order_name: "#9003",
+    shopify_order_url: "https://galaxybuzzdk.myshopify.com/admin/orders/9003",
+    shopify_payment_status: "paid",
+    payment_decision_status: "paid_confirmed",
+    assignment_status: "completed",
+    created_at: "2026-05-21T10:00:00.000Z",
+    updated_at: "2026-05-21T10:00:00.000Z",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      const or = url.searchParams.get("or") || "";
+      if (or.includes("customer_email.ilike")) return Response.json([paidDomainRow]);
+      if (or.includes("customer_name.ilike")) return Response.json([paidNameRow]);
+      if (or === "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)") return Response.json([]);
+      return Response.json([businessOpenRow, nameOpenRow]);
+    }
+    if (url.pathname.endsWith("/v_orders_by_email") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/crm_sales") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    const byId = new Map(board.items.map((item) => [item.id, item]));
+    assert.equal(byId.get("sale-internal-business-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(byId.get("sale-internal-business-open")?.priorPaidCustomer.matchBasis, "company_domain");
+    assert.equal(byId.get("sale-internal-business-open")?.priorPaidCustomer.lastPaidOrderName, "#9002");
+    assert.equal(byId.get("sale-internal-business-open")?.priorPaidCustomer.lastPaidOrderUrl, "https://galaxybuzzdk.myshopify.com/admin/orders/9002");
+    assert.equal(byId.get("sale-internal-name-open")?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(byId.get("sale-internal-name-open")?.priorPaidCustomer.matchBasis, "customer_name");
+    assert.equal(byId.get("sale-internal-name-open")?.priorPaidCustomer.lastPaidOrderName, "#9003");
+    assert.equal(board.counts.priorPaidCustomerOpen, 2);
+  });
+});
+
 test("supplier sales board uses Shopify paid history by business domain, exact private email and name", async () => {
   const businessOpenRow = saleRow({
     id: "sale-business-open",
