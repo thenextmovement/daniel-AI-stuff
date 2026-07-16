@@ -97,6 +97,27 @@ export type CompanyDecision = {
   updatedAt: string;
 };
 
+export type CompanyDecisionOutcome = {
+  id: string;
+  decisionId: string;
+  outcomeKey: string;
+  metricKey: string | null;
+  baselineValue: number | null;
+  targetValue: number | null;
+  actualValue: number | null;
+  unit: string | null;
+  evaluationStatus: "pending" | "met" | "missed" | "inconclusive" | "cancelled";
+  evaluationStart: string | null;
+  evaluationEnd: string;
+  observedAt: string | null;
+  finding: string | null;
+  lessonsLearned: string | null;
+  evidenceRefs: unknown[];
+  recordedBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ActiveCompanyDecision = Pick<
   CompanyDecision,
   | "id"
@@ -214,6 +235,27 @@ type DecisionRow = {
   review_note?: string | null;
   created_at?: string;
   updated_at?: string;
+};
+
+type DecisionOutcomeRow = {
+  id: string;
+  decision_id: string;
+  outcome_key: string;
+  metric_key?: string | null;
+  baseline_value?: number | string | null;
+  target_value?: number | string | null;
+  actual_value?: number | string | null;
+  unit?: string | null;
+  evaluation_status: CompanyDecisionOutcome["evaluationStatus"];
+  evaluation_start?: string | null;
+  evaluation_end: string;
+  observed_at?: string | null;
+  finding?: string | null;
+  lessons_learned?: string | null;
+  evidence_refs?: unknown;
+  recorded_by: string;
+  created_at: string;
+  updated_at: string;
 };
 
 const DECISION_SELECT = [
@@ -385,6 +427,29 @@ function mapDecision(row: DecisionRow): CompanyDecision {
     reviewNote: row.review_note || null,
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
+  };
+}
+
+function mapDecisionOutcome(row: DecisionOutcomeRow): CompanyDecisionOutcome {
+  return {
+    id: row.id,
+    decisionId: row.decision_id,
+    outcomeKey: row.outcome_key,
+    metricKey: row.metric_key || null,
+    baselineValue: row.baseline_value == null ? null : Number(row.baseline_value),
+    targetValue: row.target_value == null ? null : Number(row.target_value),
+    actualValue: row.actual_value == null ? null : Number(row.actual_value),
+    unit: row.unit || null,
+    evaluationStatus: row.evaluation_status,
+    evaluationStart: row.evaluation_start || null,
+    evaluationEnd: row.evaluation_end,
+    observedAt: row.observed_at || null,
+    finding: row.finding || null,
+    lessonsLearned: row.lessons_learned || null,
+    evidenceRefs: parseArray(row.evidence_refs),
+    recordedBy: row.recorded_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -579,6 +644,21 @@ export async function listCompanyDecisions(statusInput?: unknown) {
   return rows.map(mapDecision);
 }
 
+export async function listCompanyDecisionOutcomes(decisionIdInput: unknown) {
+  const decisionId = requireUuid(decisionIdInput, "Decision ID");
+  const rows = await supabaseRequest<DecisionOutcomeRow[]>("company_decision_outcomes", undefined, {
+    select: [
+      "id", "decision_id", "outcome_key", "metric_key", "baseline_value", "target_value", "actual_value", "unit",
+      "evaluation_status", "evaluation_start", "evaluation_end", "observed_at", "finding", "lessons_learned",
+      "evidence_refs", "recorded_by", "created_at", "updated_at",
+    ].join(","),
+    decision_id: `eq.${decisionId}`,
+    order: "evaluation_end.desc,created_at.desc",
+    limit: 100,
+  });
+  return rows.map(mapDecisionOutcome);
+}
+
 export async function createCompanyDecisionDraft(input: Record<string, unknown>) {
   const decisionKey = requiredText(input.decisionKey, "Decision Key", 120, 3).toLowerCase();
   if (!/^[a-z0-9][a-z0-9_.-]{2,119}$/.test(decisionKey)) {
@@ -723,7 +803,7 @@ export async function recordCompanyDecisionOutcome(input: Record<string, unknown
   if (evaluationStatus !== "pending" && (!observedAt || !finding)) {
     throw new QuoteValidationError("Bewertete Outcomes brauchen Zeitpunkt und Ergebnis.", ["outcome_result_required"], 422);
   }
-  const rows = await supabaseRequest<Array<Record<string, unknown>>>("company_decision_outcomes", {
+  const rows = await supabaseRequest<DecisionOutcomeRow[]>("company_decision_outcomes", {
     method: "POST",
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({
@@ -744,5 +824,5 @@ export async function recordCompanyDecisionOutcome(input: Record<string, unknown
       recorded_by: requiredText(input.recordedBy, "Erfasst von", 160),
     }),
   });
-  return rows[0] || null;
+  return rows[0] ? mapDecisionOutcome(rows[0]) : null;
 }

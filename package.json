@@ -13,6 +13,7 @@
     "go-live:ops": "node scripts/go_live_customer_records_ops.mjs",
     "smoke:ops": "node scripts/smoke_customer_records_ops.mjs",
     "smoke:company-brain-ui": "node scripts/smoke_company_brain_ui.mjs",
+    "smoke:company-brain-governance-ui": "node scripts/smoke_company_brain_governance_ui.mjs",
     "smoke:sales-vergabe-ui": "node scripts/smoke_sales_vergabe_ui.mjs",
     "start": "next start",
     "lint": "next lint",

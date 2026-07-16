@@ -6,6 +6,7 @@ import { GET as GET_FOUNDATION, POST as POST_ALIAS } from "@/app/api/ops/company
 import { POST as POST_DECISION } from "@/app/api/ops/company-brain/decisions/route";
 import {
   createCompanyDecisionDraft,
+  listCompanyDecisionOutcomes,
   reviewCompanyDecision,
   searchActiveCompanyDecisions,
   syncN8nWorkflowRegistry,
@@ -166,6 +167,39 @@ test("review actions use the atomic decision RPC", async () => {
   });
   assert.equal(rpcBodies[0]?.p_decision_id, DECISION_ID);
   assert.equal(rpcBodies[0]?.p_correlation_id, "decision:test:approve");
+});
+
+test("decision outcomes are listed as typed, newest-first records", async () => {
+  await withSupabaseMock(async (url) => {
+    assert.equal(url.pathname, "/rest/v1/company_decision_outcomes");
+    assert.equal(url.searchParams.get("decision_id"), `eq.${DECISION_ID}`);
+    assert.equal(url.searchParams.get("order"), "evaluation_end.desc,created_at.desc");
+    return json([{
+      id: "223e4567-e89b-42d3-a456-426614174000",
+      decision_id: DECISION_ID,
+      outcome_key: "quote-send-success",
+      metric_key: "quote_send_success_rate",
+      baseline_value: "92.5",
+      target_value: "98",
+      actual_value: "99.1",
+      unit: "%",
+      evaluation_status: "met",
+      evaluation_start: "2026-07-16T00:00:00.000Z",
+      evaluation_end: "2026-08-16T00:00:00.000Z",
+      observed_at: "2026-08-16T08:00:00.000Z",
+      finding: "Ziel erreicht.",
+      lessons_learned: "Guarded Send beibehalten.",
+      evidence_refs: ["metric:quote_send_success_rate"],
+      recorded_by: "daniel@neontrip.de",
+      created_at: "2026-08-16T08:00:00.000Z",
+      updated_at: "2026-08-16T08:00:00.000Z",
+    }]);
+  }, async () => {
+    const result = await listCompanyDecisionOutcomes(DECISION_ID);
+    assert.equal(result[0]?.evaluationStatus, "met");
+    assert.equal(result[0]?.actualValue, 99.1);
+    assert.deepEqual(result[0]?.evidenceRefs, ["metric:quote_send_success_rate"]);
+  });
 });
 
 test("active decision retrieval preserves guardrails and scope", async () => {

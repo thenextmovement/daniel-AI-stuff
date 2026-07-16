@@ -115,6 +115,7 @@ Decision retrieval is exact and temporal. Semantic search may later find explana
 - `POST /api/ops/company-brain/decisions`: create a draft
 - `POST /api/ops/company-brain/decisions/context`: retrieve active decisions for exact scopes
 - `POST /api/ops/company-brain/decisions/:id/review`: submit, approve or request changes
+- `GET /api/ops/company-brain/decisions/:id/outcomes`: list recorded outcome checks
 - `POST /api/ops/company-brain/decisions/:id/outcomes`: record an outcome
 
 All routes require the existing Ops session, derive the audit actor from Cloudflare Access, return private `no-store` responses and use the server-side Supabase service role. Client-provided actor fields are ignored. Decision writes and workflow-registry sync fail closed when no individual actor identity is available. Local development uses the explicit `local_ops` actor. No table is granted to `anon` or `authenticated`.
@@ -133,6 +134,19 @@ Example request body:
 ```
 
 The sync does not activate, deactivate or change any n8n workflow.
+
+## Employee interface
+
+`/ops/company-brain/governance` exposes the governed knowledge layer as an employee workflow instead of a raw data dump:
+
+1. `Entscheidungen` shows concise cards with status, scope, owner and review date.
+2. Employees can create drafts, prepare a new version, submit a draft and request changes.
+3. Approval requires an explicit `FREIGABE` confirmation and atomically replaces the previous active version.
+4. Approved decisions can receive measured outcomes and lessons learned.
+5. `Systemwissen` shows critical data-quality gaps, the n8n workflow inventory and source authority.
+6. The n8n inventory action is explicitly confirmed and read-only. It never changes workflow state.
+
+The interface is available as `Wissen` in the Ops application menu and from the Company Brain case screen. It does not send customer communication, retry offers, modify production workflows or deploy code.
 
 ## Evaluation gates
 

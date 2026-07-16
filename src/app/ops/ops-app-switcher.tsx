@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BarChart3, BookOpenCheck, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -9,6 +9,7 @@ export type OpsAppKey =
   | "calls"
   | "tasks"
   | "companyBrain"
+  | "companyKnowledge"
   | "design"
   | "offers"
   | "supplierSales"
@@ -70,6 +71,13 @@ const OPS_APPS: Array<{
     helper: "Fälle & Belege",
     href: "/ops/company-brain",
     Icon: BrainCircuit,
+  },
+  {
+    key: "companyKnowledge",
+    label: "Wissen",
+    helper: "Regeln & Entscheidungen",
+    href: "/ops/company-brain/governance",
+    Icon: BookOpenCheck,
   },
   {
     key: "emailAgent",

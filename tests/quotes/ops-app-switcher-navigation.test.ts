@@ -11,6 +11,7 @@ test("ops app switcher exposes the complete internal software menu", () => {
     "Anrufe",
     "Aufgaben",
     "Company Brain",
+    "Wissen",
     "Design",
     "Angebote",
     "Sales-Vergabe",
@@ -25,6 +26,7 @@ test("ops app switcher exposes the complete internal software menu", () => {
     "/ops/customer-records/calls",
     "/ops/tasks",
     "/ops/company-brain",
+    "/ops/company-brain/governance",
     "/ops/design",
     "/ops/offers",
     "/ops/sales-vergabe",
@@ -67,6 +69,7 @@ test("secondary ops entry points expose Company Brain", () => {
   assert.match(companyBrainSource, /new URLSearchParams\(window\.location\.search\)/);
   assert.match(companyBrainSource, /params\.get\("query"\)/);
   assert.match(companyBrainSource, /params\.get\("auto"\) === "1"/);
+  assert.match(companyBrainSource, /\/ops\/company-brain\/governance/);
 });
 
 test("company brain fix center groups risky actions and avoids browser prompts", () => {

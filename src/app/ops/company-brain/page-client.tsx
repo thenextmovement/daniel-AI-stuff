@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bell,
+  BookOpenCheck,
   BrainCircuit,
   CheckCircle2,
   ClipboardList,
@@ -1387,6 +1388,13 @@ export function OpsCompanyBrainClient({
           title="Company Brain"
           description="Kundenakte, Angebote, Outlook-Spiegel und operative Timeline in einer read-only Prüfung."
         >
+          <a
+            href="/ops/company-brain/governance"
+            className="inline-flex h-12 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 text-sm font-medium text-white transition hover:bg-white/15"
+          >
+            <BookOpenCheck className="h-4 w-4" />
+            Wissen & Entscheidungen
+          </a>
           <input
             value={operatorName}
             onChange={(event) => setOperatorName(event.target.value)}
