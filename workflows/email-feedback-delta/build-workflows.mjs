@@ -137,11 +137,11 @@ if (httpStatus >= 200 && httpStatus < 300) {
     throw new Error("Microsoft Graph delta response did not contain a nextLink or deltaLink.");
   }
 
-  const cursor = new URL(cursorUrl);
+  const graphDeltaPattern = /^https:\/\/graph[.]microsoft[.]com\/v1[.]0\/[^?#\s\\]+\/messages\/delta(?:[?]|$)/i;
   if (
-    cursor.protocol !== "https:"
-    || cursor.hostname !== "graph.microsoft.com"
-    || !cursor.pathname.toLowerCase().includes("/messages/delta")
+    !graphDeltaPattern.test(cursorUrl)
+    || /[\u0000-\u001f\u007f]/.test(cursorUrl)
+    || cursorUrl.includes("\\")
   ) {
     throw new Error("Rejected an invalid Microsoft Graph cursor URL.");
   }
@@ -474,18 +474,16 @@ if (!requestUrl) {
     + "&$filter=" + encodeURIComponent("receivedDateTime ge " + since);
 }
 
-const parsed = new URL(requestUrl);
+const graphDeltaPattern = /^https:\/\/graph[.]microsoft[.]com\/v1[.]0\/[^?#\s\\]+\/messages\/delta(?:[?]|$)/i;
 if (
-  parsed.protocol !== "https:"
-  || parsed.hostname !== "graph.microsoft.com"
-  || !parsed.pathname.toLowerCase().includes("/messages/delta")
-  || parsed.username
-  || parsed.password
+  !graphDeltaPattern.test(requestUrl)
+  || /[\u0000-\u001f\u007f]/.test(requestUrl)
+  || requestUrl.includes("\\")
 ) {
   throw new Error("Rejected an invalid Microsoft Graph delta request URL.");
 }
 
-return [{ json: { ...state, request_url: parsed.toString() } }];
+return [{ json: { ...state, request_url: requestUrl } }];
 `,
       },
     },

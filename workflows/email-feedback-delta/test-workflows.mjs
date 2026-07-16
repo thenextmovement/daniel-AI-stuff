@@ -41,9 +41,33 @@ assert.match(JSON.stringify(reviewMatcherWorkflow), /get_email_agent_feedback_ca
 assert.match(JSON.stringify(reviewMatcherWorkflow), /record_email_agent_feedback_from_index_v1/);
 assert.match(buildFeedbackCode, /auto_prompt_update_allowed:\s*false/);
 assert.match(buildFeedbackCode, /human_review_required_for_learning:\s*true/);
+assert.doesNotMatch(JSON.stringify(sentDeltaWorkflow), /\bnew URL\s*\(/);
 
-const normalizeDelta = new Function("$input", "$", normalizeSentDeltaCode);
-const deltaLink = "https://graph.microsoft.com/v1.0/me/mailFolders('sentitems')/messages/delta?$deltatoken=test";
+const buildDeltaNode = sentDeltaWorkflow.nodes.find((node) => node.name === "Build Delta Request");
+const buildDeltaRequest = new Function("$input", "URL", buildDeltaNode.parameters.jsCode);
+const builtRequest = buildDeltaRequest(
+  {
+    first: () => ({
+      json: {
+        should_request: true,
+        mailbox_key: "support@neontrip.de",
+        execution_id: "test-build",
+        correlation_id: "email-sent-delta:test-build",
+        cursor_kind: "initial",
+        cursor_url: null,
+        initial_since: "2026-07-02T10:00:00.000Z",
+      },
+    }),
+  },
+  undefined,
+);
+assert.match(
+  builtRequest[0].json.request_url,
+  /^https:\/\/graph[.]microsoft[.]com\/v1[.]0\/me\/mailFolders\/sentitems\/messages\/delta[?]/,
+);
+
+const normalizeDelta = new Function("$input", "$", "URL", normalizeSentDeltaCode);
+const deltaLink = "https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=test";
 const normalized = normalizeDelta(
   {
     first: () => ({
@@ -77,6 +101,7 @@ const normalized = normalizeDelta(
       },
     }),
   }),
+  undefined,
 );
 assert.equal(normalized.length, 1);
 assert.equal(normalized[0].json.p_http_status, 200);
@@ -85,7 +110,7 @@ assert.equal(normalized[0].json.p_messages.length, 1);
 assert.doesNotMatch(normalized[0].json.p_messages[0].response_body_text, /Fabienne Trapp|NEONTRIP/);
 assert.match(normalized[0].json.p_messages[0].response_body_text, /Viele Grüße/);
 
-const normalizeThrottle = new Function("$input", "$", normalizeSentDeltaCode);
+const normalizeThrottle = new Function("$input", "$", "URL", normalizeSentDeltaCode);
 const throttled = normalizeThrottle(
   {
     first: () => ({
@@ -105,6 +130,7 @@ const throttled = normalizeThrottle(
       },
     }),
   }),
+  undefined,
 );
 assert.equal(throttled[0].json.p_http_status, 429);
 assert.equal(throttled[0].json.p_retry_after_seconds, 180);
