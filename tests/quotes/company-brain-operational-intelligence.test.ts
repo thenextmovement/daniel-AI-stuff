@@ -145,6 +145,8 @@ function incidentRow(overrides: Record<string, unknown> = {}) {
 test("operational intelligence migration is private, scheduled, append-only and reversible", () => {
   const migration = readFileSync("supabase/migrations/20260717073542_company_brain_operational_intelligence.sql", "utf8");
   const rollback = readFileSync("supabase/rollbacks/20260717073542_company_brain_operational_intelligence_rollback.sql", "utf8");
+  const indexCleanup = readFileSync("supabase/migrations/20260717100630_remove_duplicate_workflow_audit_index.sql", "utf8");
+  const indexCleanupRollback = readFileSync("supabase/rollbacks/20260717100630_remove_duplicate_workflow_audit_index_rollback.sql", "utf8");
   const apiBoundary = readFileSync("src/lib/ops/company-brain-api.ts", "utf8");
   assert.match(migration, /company_brain_operational_incidents enable row level security/i);
   assert.match(migration, /company_brain_incident_events_are_append_only/i);
@@ -154,6 +156,8 @@ test("operational intelligence migration is private, scheduled, append-only and 
   assert.match(migration, /later successful workflow evidence|späterer erfolgreicher workflow-beleg/i);
   assert.match(migration, /should_reopen := p_reopen and current_row\.status = 'resolved'/i);
   assert.match(migration, /workflow_audit_log_created_at_desc_idx/i);
+  assert.match(indexCleanup, /drop index if exists public\.workflow_audit_log_created_at_desc_idx/i);
+  assert.match(indexCleanupRollback, /create index if not exists workflow_audit_log_created_at_desc_idx/i);
   assert.match(rollback, /cron\.unschedule/i);
   assert.match(rollback, /drop table if exists public\.company_brain_operational_incidents/i);
   assert.doesNotMatch(apiBoundary, /details:\s*error\.details/);

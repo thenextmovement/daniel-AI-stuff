@@ -103,6 +103,10 @@ Die Datenbank-Rücknahme liegt unter:
 
 `supabase/rollbacks/20260717073542_company_brain_operational_intelligence_rollback.sql`
 
+Die nachgelagerte Bereinigung eines redundanten Audit-Zeitindex besitzt einen eigenen Rollback:
+
+`supabase/rollbacks/20260717100630_remove_duplicate_workflow_audit_index_rollback.sql`
+
 Vor dem Schema-Rollback muss zuerst eine App-Version ohne Zugriff auf die neuen Tabellen und RPCs ausgerollt werden. Der Rollback entfernt den Cron-Job, Funktionen, Tabellen, Index und Rollen-Ablaufspalte. Incident-Historie wird dabei gelöscht und muss bei notwendiger Aufbewahrung vorher exportiert werden.
 
 ## Bewusste Restgrenzen
