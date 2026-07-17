@@ -50,6 +50,30 @@ export type EmailAgentRolloutGate = {
   rollout_ready: boolean;
 };
 
+export type EmailAgentRetryHealth = {
+  version: "email-agent-retry-health-v1";
+  due_retry_count: number;
+  scheduled_retry_count: number;
+  stale_processing_count: number;
+  failed_final_count: number;
+  oldest_due_at: string | null;
+  recovered_24h: number;
+  retry_failures_24h: number;
+  automatic_send_allowed: false;
+  human_approval_required: true;
+};
+
+export type EmailAgentOperationalQuality = EmailAgentRolloutGate & {
+  retry_health: EmailAgentRetryHealth;
+};
+
 export async function getEmailAgentRolloutGate() {
-  return supabaseRpc<EmailAgentRolloutGate>("get_email_agent_rollout_gate_v1");
+  const [rollout, retryHealth] = await Promise.all([
+    supabaseRpc<EmailAgentRolloutGate>("get_email_agent_rollout_gate_v1"),
+    supabaseRpc<EmailAgentRetryHealth>("get_email_agent_retry_health"),
+  ]);
+  return {
+    ...rollout,
+    retry_health: retryHealth,
+  } satisfies EmailAgentOperationalQuality;
 }

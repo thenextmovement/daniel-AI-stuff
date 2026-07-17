@@ -22,7 +22,10 @@ import type {
   EmailAgentReviewFilter,
   EmailAgentReviewPriority,
 } from "@/lib/ops/email-agent-review";
-import type { EmailAgentRolloutGate } from "@/lib/ops/email-agent-quality";
+import type {
+  EmailAgentOperationalQuality,
+  EmailAgentRolloutGate,
+} from "@/lib/ops/email-agent-quality";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -36,7 +39,7 @@ type ReviewsResponse = {
 
 type QualityResponse = {
   ok: boolean;
-  quality?: EmailAgentRolloutGate;
+  quality?: EmailAgentOperationalQuality;
   error?: string;
 };
 
@@ -132,9 +135,11 @@ function rolloutStageLabel(value: EmailAgentRolloutGate["effective_stage"]) {
   return "Entwürfe mit Pflichtprüfung";
 }
 
-function QualityGatePanel({ quality }: { quality: EmailAgentRolloutGate }) {
+function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }) {
   const decision = quality.decision_gate;
   const drafts = quality.draft_quality_gate;
+  const retry = quality.retry_health;
+  const retryOpen = retry.due_retry_count + retry.stale_processing_count;
   const decisionTone = decision.passed ? "border-emerald-200 bg-emerald-50" : "border-amber-300 bg-amber-50";
   const draftTone = drafts.passed
     ? "border-emerald-200 bg-emerald-50"
@@ -143,7 +148,7 @@ function QualityGatePanel({ quality }: { quality: EmailAgentRolloutGate }) {
       : "border-rose-200 bg-rose-50";
 
   return (
-    <section className="grid gap-3 xl:grid-cols-[1.1fr_1fr_1fr]">
+    <section className="grid gap-3 xl:grid-cols-[1.1fr_1fr_1fr_1fr]">
       <div className="rounded-[22px] border border-stone-900 bg-stone-950 p-5 text-white">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Produktionsstufe</p>
         <div className="mt-3 flex items-start gap-3">
@@ -178,6 +183,17 @@ function QualityGatePanel({ quality }: { quality: EmailAgentRolloutGate }) {
         </div>
         <p className="mt-2 text-sm leading-6 text-stone-700">
           Faktenkorrekturen {drafts.safety_correction_count} · starke Umschreibungen {drafts.manual_rewrite_count}
+        </p>
+      </div>
+
+      <div className={`rounded-[22px] border p-5 ${retryOpen ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Fehler-Wiederholung</p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-stone-950">{retryOpen ? "Wiederholung läuft" : "Bereit"}</h2>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-stone-800">{retryOpen} fällig</span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-stone-700">
+          Letzte 24 h gerettet {retry.recovered_24h} · endgültig gesperrt {retry.failed_final_count}
         </p>
       </div>
     </section>
@@ -397,7 +413,7 @@ export function EmailAgentReviewClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [items, setItems] = useState<EmailAgentReviewCase[]>([]);
-  const [quality, setQuality] = useState<EmailAgentRolloutGate | null>(null);
+  const [quality, setQuality] = useState<EmailAgentOperationalQuality | null>(null);
   const [filter, setFilter] = useState<EmailAgentReviewFilter>("pending");
   const [priority, setPriority] = useState<EmailAgentReviewPriority | "all">("all");
   const [notes, setNotes] = useState<Record<number, string>>({});

@@ -1,0 +1,99 @@
+{
+  "source_workflow_id": "aE1v0KxbgXbWjUm8",
+  "source_active_version_id": "6091f279-3941-4755-bae4-f401264a3b6b",
+  "source_version_created_at": "2026-07-17T08:25:34.403Z",
+  "retry_workflow_version": "email-agent-retry-recovery-v1",
+  "core_nodes": [
+    {
+      "name": "Aggregate Downloaded Attachments",
+      "sha256": "9d86f75e54aa5dad3de85b8165bb8f7cacf26e37dddcdda6aed21c993333af97"
+    },
+    {
+      "name": "Analyze Attachments Safely",
+      "sha256": "97bf54b6c1da2a3ef569add0327c73459fca96fda1165185863ef9c8168813e5"
+    },
+    {
+      "name": "Apply Approved Style Profile",
+      "sha256": "71d0a07fde5ad0eb08b8b9107de210e3baaff28e63ca7def4cdec9515f27461f"
+    },
+    {
+      "name": "Build Draft Prompt",
+      "sha256": "ac37953ef0f1d9bf971f6f3a7b2d8d4ba4de3171b2589c8ba0bfc351aaa1bb0a"
+    },
+    {
+      "name": "Build Evidence Request",
+      "sha256": "0ca92f9e9344181a9034444337690830c795d7e077b44bd5d5dbef8d05a58cd9"
+    },
+    {
+      "name": "Create Reply Draft",
+      "sha256": "19167fecd58afecd0f6b645bb8f4227c69c7aa71cef5483ff1c76213fb1a0095"
+    },
+    {
+      "name": "Download Selected Attachments",
+      "sha256": "f76d5fd63b42fa72a6254f923609be80df9a675e46d21770c922b923995fc7d5"
+    },
+    {
+      "name": "Draft Reply JSON",
+      "sha256": "7fe5715c07738b52cbae1af83547a5fc1111ed920adff276ed09b17875a23179"
+    },
+    {
+      "name": "Fetch Approved Knowledge",
+      "sha256": "d7f901e53862ca8ad667adcab11f6bceb4e93c61e2c522fe31eb75a63f2217ef"
+    },
+    {
+      "name": "Fetch Approved Style Profile",
+      "sha256": "b7b0923bb551ea486a8022537dd0813a924556f452c84d49122eaecd477faa0b"
+    },
+    {
+      "name": "Fetch Attachment Metadata",
+      "sha256": "8ef7c3ffee15ce0240618428f3ae9814e9649e25ad0910c267e3a53eb65bf7a1"
+    },
+    {
+      "name": "Fetch Current Message",
+      "sha256": "7e0157acb87ddf94f367c91280a1013f1c62b1a0a6f07a9fb0167fc007e2346e"
+    },
+    {
+      "name": "Fetch Organization Messages",
+      "sha256": "d5236600c6448189ddfc667ba881bf3996b36a7e42ca25212414ca078db2c01f"
+    },
+    {
+      "name": "Has Readable Attachment?",
+      "sha256": "0514476fa694858cf94744bc6512de77ee4846915a48417e2cb93ccca5d6648e"
+    },
+    {
+      "name": "Log Failure",
+      "sha256": "582aab97a186342b715e4878a56bd9d1b5c81cbd9a8b2beda4e334832c03dc82"
+    },
+    {
+      "name": "Parse Attachment Analysis",
+      "sha256": "516143698d545b10700e183632e0c71c8513dbd50bbc27195751e04dfacb9459"
+    },
+    {
+      "name": "Prepare Attachment Requests",
+      "sha256": "9bb0b512dc05d757b385a20b24b73ee6a8754f140a11e3130fb12ed09a0e917d"
+    },
+    {
+      "name": "Resolve Commerce Evidence",
+      "sha256": "be37ffdf8d9fd4bd157edf3dfc14f4875c03e13261e8e276f9a102bec7046cb8"
+    },
+    {
+      "name": "Resolve Customer Context",
+      "sha256": "ebc8c1897c16a43fc81a7f1fbec89c138c9be8eef7ba49478ab7829ad8620f66"
+    },
+    {
+      "name": "Stop With Observable Error",
+      "sha256": "615e19df76ab5ecc17d088f8ad5d5006e0550ac4149c19181740d9bfe6fb5fa4"
+    },
+    {
+      "name": "Validate and Render",
+      "sha256": "bbe39c4dc60717ccfa1643937085287d87098ef2135e92f219994bec78f8d97a"
+    }
+  ],
+  "intentionally_patched_nodes": [
+    "Normalize Email",
+    "Build Failure Record",
+    "Log Success"
+  ],
+  "automatic_send_allowed": false,
+  "human_approval_required": true
+}
