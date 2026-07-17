@@ -1,0 +1,348 @@
+{
+  "name": "AI Email Commerce Evidence Resolver v2 — Read Only",
+  "nodes": [
+    {
+      "id": "evidence-trigger",
+      "name": "Evidence Resolver Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "validate-case",
+      "name": "Validate Case Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst input = $input.first().json || {};\n\nfunction normalizeEmail(value) {\n  const candidate = String(value || '').trim().toLowerCase();\n  return /^[a-z0-9.!#$%&'*+/=?^_{|}~-]+@[a-z0-9.-]+\\.[a-z]{2,}$/i.test(candidate) ? candidate : '';\n}\n\nfunction normalizePhone(value) {\n  const raw = String(value || '').trim();\n  const digits = raw.replace(/\\D/g, '');\n  if (!digits) return '';\n  if (raw.startsWith('+')) return '+' + digits;\n  if (digits.startsWith('00')) return '+' + digits.slice(2);\n  if (digits.startsWith('0')) return '+49' + digits.slice(1);\n  if (digits.startsWith('49')) return '+' + digits;\n  return '+' + digits;\n}\n\nfunction validDomain(value) {\n  const domain = String(value || '').trim().toLowerCase();\n  return /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\\.[a-z]{2,}$/i.test(domain) ? domain : '';\n}\n\nconst customerEmailCandidate = normalizeEmail(input.customerEmail || input.fromEmail);\nconst customerEmail = customerEmailCandidate\n  && !customerEmailCandidate.endsWith('@neontrip.de')\n  && !customerEmailCandidate.endsWith('@relay.neontrip.invalid')\n  ? customerEmailCandidate\n  : '';\nconst customerPhone = normalizePhone(input.customerPhone || '');\nconst phoneDigits = customerPhone.replace(/\\D/g, '');\nconst contextSince = /^\\d{4}-\\d{2}-\\d{2}T/.test(String(input.contextSince || ''))\n  ? String(input.contextSince)\n  : new Date(Date.now() - 15 * 30 * 86400000).toISOString();\nconst organizationDomain = validDomain(input.organizationDomain);\nconst organizationLookupEnabled = input.organizationLookupEnabled === true && Boolean(organizationDomain);\nconst relatedEmails = [...new Set([\n  customerEmail,\n  ...(Array.isArray(input.relatedEmails) ? input.relatedEmails : []),\n].map(normalizeEmail).filter((email) => email && !email.endsWith('@neontrip.de')))].slice(0, 16);\n\nconst filters = [];\nfor (const email of relatedEmails) {\n  filters.push('email.eq.' + email, 'kunde_email.eq.' + email);\n}\nif (organizationLookupEnabled) {\n  filters.push('email.ilike.*@' + organizationDomain, 'kunde_email.ilike.*@' + organizationDomain);\n}\nif (phoneDigits.length >= 9) filters.push('phone.ilike.*' + phoneDigits.slice(-11) + '*');\n\nreturn [{ json: {\n  ...input,\n  customerEmail,\n  customerPhone,\n  phoneDigits,\n  contextSince,\n  organizationDomain,\n  organizationLookupEnabled,\n  relatedEmails,\n  shopifyIndexOrFilter: '(' + (filters.length ? filters.join(',') : 'shopify_order_id.eq.__no_match__') + ')',\n} }];\n"
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "lookup-index",
+      "name": "Lookup Shopify Index",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/shopify_orders",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "or",
+              "value": "={{ $json.shopifyIndexOrFilter }}"
+            },
+            {
+              "name": "created_at",
+              "value": "={{ 'gte.' + $json.contextSince }}"
+            },
+            {
+              "name": "select",
+              "value": "shopify_order_id,name,financial_status,fulfillment_status,total_price,total_outstanding,subtotal_price,currency,email,kunde_email,created_at,phone,ship_address,bill_address"
+            },
+            {
+              "name": "order",
+              "value": "created_at.desc"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "build-shopify-query",
+      "name": "Build Shopify Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst input = $('Validate Case Input').first().json;\nconst response = $input.first().json || {};\nconst payload = response.body ?? response;\nif (!Array.isArray(payload)) throw new Error('Shopify index returned an invalid payload');\nconst indexOrders = payload.slice(0, 50);\nconst messages = [\n  input.subject,\n  input.currentText,\n  ...(Array.isArray(input.threadMessages) ? input.threadMessages.map((m) => m?.body?.content || m?.bodyPreview || '') : []),\n].map((v) => String(v || '')).join('\\n');\n\nconst orderMatch = messages.match(/#?(NEONT\\d{3,})/i);\nconst explicitOrderNumber = orderMatch ? '#' + orderMatch[1].toUpperCase() : '';\nconst offerMatch = messages.match(/\\bA\\/N\\s*(\\d{3,})\\b/i);\nconst explicitOfferNumber = offerMatch ? 'A/N ' + offerMatch[1] : '';\nconst dateFloor = String(input.contextSince || '').slice(0, 10);\nconst ids = indexOrders\n  .map((row) => String(row.shopify_order_id || '').replace(/\\D/g, ''))\n  .filter(Boolean)\n  .slice(0, 20);\n\nlet shopifySearchQuery = '';\nlet shopifySearchBasis = '';\nif (explicitOrderNumber) {\n  shopifySearchQuery = 'name:' + explicitOrderNumber;\n  shopifySearchBasis = 'explicit_order_number';\n} else if (ids.length) {\n  shopifySearchQuery = '(' + ids.map((id) => 'id:' + id).join(' OR ') + ')';\n  shopifySearchBasis = input.organizationLookupEnabled ? 'organization_index_ids' : 'customer_index_ids';\n} else if (input.relatedEmails.length) {\n  shopifySearchQuery = '(' + input.relatedEmails.slice(0, 8)\n    .map((email) => 'email:\\\"' + email.replace(/\\\"/g, '') + '\\\"')\n    .join(' OR ') + ')';\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(dateFloor)) shopifySearchQuery += ' created_at:>=' + dateFloor;\n  shopifySearchBasis = 'verified_related_emails';\n} else {\n  shopifySearchQuery = 'id:0';\n  shopifySearchBasis = 'no_identity_match';\n}\n\nreturn [{ json: {\n  ...input,\n  indexOrders,\n  explicitOrderNumber,\n  explicitOfferNumber,\n  shopifySearchQuery,\n  shopifySearchBasis,\n} }];\n"
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "fetch-shopify",
+      "name": "Fetch Shopify Evidence",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: \"query ResolveOrderEvidence($query: String!, $first: Int!) {\\n  orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {\\n    nodes {\\n      id\\n      name\\n      createdAt\\n      displayFinancialStatus\\n      note\\n      totalPriceSet { shopMoney { amount currencyCode } }\\n      customAttributes { key value }\\n    }\\n  }\\n}\", variables: { query: $json.shopifySearchQuery, first: 20 } }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "resolve-shopify",
+      "name": "Resolve Shopify Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst base = $('Build Shopify Query').first().json;\nconst response = $input.first().json || {};\nconst payload = response.body ?? response;\nif (Array.isArray(payload?.errors) && payload.errors.length) {\n  throw new Error('Shopify GraphQL returned errors');\n}\nconst liveOrders = payload?.data?.orders?.nodes;\nif (!Array.isArray(liveOrders)) throw new Error('Shopify GraphQL orders payload missing');\nconst indexOrders = Array.isArray(base.indexOrders) ? base.indexOrders : [];\n\nfunction legacyId(gid) {\n  return String(gid || '').split('/').pop().replace(/\\D/g, '');\n}\nfunction attrs(list) {\n  const out = {};\n  for (const entry of Array.isArray(list) ? list : []) {\n    const key = String(entry?.key || '').trim();\n    if (key) out[key] = String(entry?.value || '').trim();\n  }\n  return out;\n}\nfunction parseMoney(raw) {\n  let value = String(raw || '').trim().replace(/\\s/g, '');\n  if (!value) return NaN;\n  if (value.includes(',') && value.includes('.')) {\n    value = value.lastIndexOf(',') > value.lastIndexOf('.')\n      ? value.replace(/\\./g, '').replace(',', '.')\n      : value.replace(/,/g, '');\n  } else if (value.includes(',')) {\n    value = value.replace(',', '.');\n  }\n  return Number(value);\n}\nfunction moneyValues(text) {\n  return Array.from(String(text || '').matchAll(/\\b(\\d{1,6}(?:[.,]\\d{2}))\\s*(?:€|EUR)/gi))\n    .map((match) => parseMoney(match[1]))\n    .filter(Number.isFinite);\n}\nfunction trustedOfferUrl(text) {\n  const match = String(text || '').match(/https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[A-Za-z0-9_-]{12,}/i);\n  return match ? match[0] : '';\n}\nfunction trustedSnapshotUrl(text) {\n  const match = String(text || '').match(/https:\\/\\/(?:angebote\\.neontrip\\.de|[^/]+\\.supabase\\.co)\\/[^\\s<>\\\"]+/i);\n  return match ? match[0].replace(/[),.;]+$/, '') : '';\n}\n\nconst currentCorpus = [\n  base.subject,\n  base.currentText,\n  ...(Array.isArray(base.threadMessages) ? base.threadMessages.map((m) => m?.body?.content || m?.bodyPreview || '') : []),\n].join('\\n');\nconst mentionedAmounts = moneyValues(currentCorpus);\n\nconst combined = liveOrders.map((live) => {\n  const id = legacyId(live.id);\n  const index = indexOrders.find((row) =>\n    String(row.shopify_order_id || '').replace(/\\D/g, '') === id\n    || String(row.name || '').toUpperCase() === String(live.name || '').toUpperCase()\n  ) || {};\n  const attributes = attrs(live.customAttributes);\n  const note = String(live.note || '');\n  const offerUrl = trustedOfferUrl(attributes['NEONTRIP Offer URL']) || trustedOfferUrl(note);\n  const pdfSnapshotUrl = trustedSnapshotUrl(attributes['NEONTRIP PDF Snapshot'])\n    || trustedSnapshotUrl(note);\n  const offerNumber = String(attributes['NEONTRIP Offer Number'] || (note.match(/\\bA\\/N\\s*\\d{3,}\\b/i)?.[0] || '')).trim();\n  const offerId = String(attributes['NEONTRIP Offer ID'] || '').trim();\n  const liveMoney = live?.totalPriceSet?.shopMoney || {};\n  const totalPrice = Number(liveMoney.amount ?? index.total_price);\n  const liveFinancialStatus = String(live.displayFinancialStatus || '').trim().toLowerCase();\n  return {\n    shopify_order_id: id,\n    order_number: String(live.name || index.name || ''),\n    email: String(index.email || index.kunde_email || '').toLowerCase(),\n    created_at: live.createdAt || index.created_at || null,\n    financial_status: liveFinancialStatus || index.financial_status || null,\n    fulfillment_status: index.fulfillment_status || null,\n    total_price: Number.isFinite(totalPrice) ? totalPrice : null,\n    total_outstanding: Number.isFinite(Number(index.total_outstanding)) ? Number(index.total_outstanding) : null,\n    currency: liveMoney.currencyCode || index.currency || 'EUR',\n    phone: index.phone || '',\n    shipping_address: index.ship_address || null,\n    billing_address: index.bill_address || null,\n    offer_id: offerId,\n    offer_number: offerNumber,\n    offer_url: offerUrl,\n    pdf_snapshot_url: pdfSnapshotUrl,\n    offer_reference_source: offerUrl || pdfSnapshotUrl || offerNumber\n      ? (Object.keys(attributes).length ? 'shopify_custom_attributes' : 'shopify_order_note')\n      : '',\n    evidence_source: 'shopify_admin',\n  };\n});\n\nlet selected = null;\nlet selectionBasis = '';\nif (base.explicitOrderNumber) {\n  const matches = combined.filter((row) => row.order_number.toUpperCase() === base.explicitOrderNumber.toUpperCase());\n  if (matches.length === 1) {\n    selected = matches[0];\n    selectionBasis = 'explicit_order_number';\n  }\n}\nif (!selected && base.explicitOfferNumber) {\n  const offerMatches = combined.filter((row) => row.offer_number.toUpperCase() === base.explicitOfferNumber.toUpperCase());\n  if (offerMatches.length === 1) {\n    selected = offerMatches[0];\n    selectionBasis = 'explicit_offer_number';\n  } else if (offerMatches.length > 1 && mentionedAmounts.length) {\n    const paidOfferMatches = offerMatches.filter((row) =>\n      String(row.financial_status || '').toLowerCase() === 'paid'\n      && Number.isFinite(row.total_price)\n      && mentionedAmounts.some((amount) => Math.abs(amount - row.total_price) < 0.005)\n    );\n    if (paidOfferMatches.length === 1) {\n      selected = paidOfferMatches[0];\n      selectionBasis = 'explicit_offer_and_paid_amount';\n    }\n  }\n}\nif (!selected && mentionedAmounts.length) {\n  const amountMatches = combined.filter((row) =>\n    Number.isFinite(row.total_price) && mentionedAmounts.some((amount) => Math.abs(amount - row.total_price) < 0.005)\n  );\n  const paidAmountMatches = amountMatches.filter((row) => String(row.financial_status || '').toLowerCase() === 'paid');\n  if (paidAmountMatches.length === 1) {\n    selected = paidAmountMatches[0];\n    selectionBasis = 'exact_paid_amount_in_thread';\n  } else if (amountMatches.length === 1) {\n    selected = amountMatches[0];\n    selectionBasis = 'exact_amount_in_thread';\n  }\n}\nif (!selected) {\n  const directMatches = combined.filter((row) => row.email && row.email === base.customerEmail);\n  if (directMatches.length === 1) {\n    selected = directMatches[0];\n    selectionBasis = 'single_exact_customer_order';\n  }\n}\n\nconst ambiguous = !selected && combined.length > 0;\nconst tokenMatch = String(selected?.offer_url || selected?.pdf_snapshot_url || '').match(/\\/offer\\/([A-Za-z0-9_-]{12,})/);\nconst offerToken = tokenMatch ? tokenMatch[1] : '';\n\nreturn [{ json: {\n  ...base,\n  shopifyOrders: combined,\n  selectedShopifyOrder: selected,\n  selectionBasis,\n  commerceAmbiguous: ambiguous,\n  offerToken,\n  hasOffer: Boolean(offerToken),\n} }];\n"
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "has-offer",
+      "name": "Has Signed Offer Reference?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-offer-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.hasOffer === true }}",
+              "rightValue": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fetch-offer",
+      "name": "Fetch Signed Offer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1540,
+        -120
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://angebote.neontrip.de/api/public/offers/' + encodeURIComponent($json.offerToken) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "build-evidence",
+      "name": "Build Facts Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst resolved = $('Resolve Shopify Evidence').first().json;\nlet offerResponse = null;\ntry {\n  const response = $('Fetch Signed Offer').first().json;\n  offerResponse = response.body ?? response;\n} catch (error) {}\nconst offer = offerResponse?.offer || null;\n\nfunction stripHtml(value) {\n  return String(value || '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\nfunction cents(value) {\n  const number = Number(value);\n  return Number.isFinite(number) ? Math.round(number * 100) : null;\n}\nfunction parseMoney(value) {\n  let text = String(value || '').trim().replace(/\\s/g, '');\n  if (!text) return null;\n  if (text.includes(',') && text.includes('.')) {\n    text = text.lastIndexOf(',') > text.lastIndexOf('.')\n      ? text.replace(/\\./g, '').replace(',', '.')\n      : text.replace(/,/g, '');\n  } else if (text.includes(',')) {\n    text = text.replace(',', '.');\n  }\n  return cents(Number(text));\n}\nfunction formatEur(value) {\n  return (Number(value || 0) / 100).toFixed(2).replace('.', ',') + ' €';\n}\nfunction fromAddress(message) {\n  return String(message?.from?.emailAddress?.address || '').trim().toLowerCase();\n}\nfunction safeText(value, max) {\n  return String(value || '').trim().slice(0, max);\n}\n\nconst threadMessages = Array.isArray(resolved.threadMessages) ? resolved.threadMessages : [];\nconst internalText = threadMessages\n  .filter((message) => fromAddress(message).endsWith('@neontrip.de'))\n  .map((message) => stripHtml(message?.body?.content || message?.bodyPreview || ''))\n  .join('\\n');\nconst allText = [\n  resolved.subject,\n  resolved.currentText,\n  ...threadMessages.map((message) => stripHtml(message?.body?.content || message?.bodyPreview || '')),\n].join('\\n');\n\nconst acceptance = offer?.acceptance && typeof offer.acceptance === 'object' ? offer.acceptance : null;\nconst totals = acceptance?.totalsSnapshot && typeof acceptance.totalsSnapshot === 'object'\n  ? acceptance.totalsSnapshot\n  : null;\nconst selectedSnapshot = Array.isArray(acceptance?.selectedItemsSnapshot)\n  ? acceptance.selectedItemsSnapshot.filter((item) => item?.selected !== false)\n  : [];\nconst signedNetCents = cents(totals?.subtotalNet);\nconst signedGrossCents = cents(totals?.totalGross);\nconst vatRate = Number(totals?.vatRate ?? offer?.vatRate);\nconst taxExempt = totals?.taxExempt === true;\nconst primaryLines = selectedSnapshot.filter((item) =>\n  !/(zusatz|option|versand|shipping|montage|zubehör|accessor)/i.test(String(item?.section || ''))\n);\nconst primaryLine = primaryLines.length === 1 ? primaryLines[0] : null;\nconst originalMainNetCents = primaryLine ? cents(primaryLine.lineNet ?? primaryLine.unitPriceNet) : null;\n\nconst correctionPatterns = [\n  /(?:tatsächliche[nr]?|korrekte[nr]?|richtige[nr]?)\\s+(?:netto(?:preis)?|schildpreis)[^0-9]{0,120}(\\d{1,3}(?:[.\\s]\\d{3})+(?:,\\d{1,2})?|\\d{1,6}(?:[.,]\\d{1,2})?)\\s*(?:€|EUR)?[^.\\n]{0,40}\\bnetto\\b/gi,\n  /(?:netto(?:preis)?|schildpreis)[^0-9]{0,120}(?:beträgt|liegt bei|ist)\\s*(\\d{1,3}(?:[.\\s]\\d{3})+(?:,\\d{1,2})?|\\d{1,6}(?:[.,]\\d{1,2})?)\\s*(?:€|EUR)?[^.\\n]{0,40}\\bnetto\\b/gi,\n  /\\bnetto(?:preis)?\\b[^0-9.\\n]{0,120}(\\d{1,3}(?:[.\\s]\\d{3})+(?:,\\d{1,2})?|\\d{1,6}(?:[.,]\\d{1,2})?)\\s*(?:€|EUR)?/gi,\n];\nconst correctionValues = [];\nfor (const pattern of correctionPatterns) {\n  for (const match of internalText.matchAll(pattern)) {\n    const value = parseMoney(match[1]);\n    if (Number.isFinite(value)) correctionValues.push(value);\n  }\n}\nconst uniqueCorrectionValues = [...new Set(correctionValues)];\nconst correctedMainNetCents = uniqueCorrectionValues.length === 1 ? uniqueCorrectionValues[0] : null;\nconst correctionConflict = uniqueCorrectionValues.length > 1;\n\nconst selectedOrder = resolved.selectedShopifyOrder;\nconst paidCents = String(selectedOrder?.financial_status || '').toLowerCase() === 'paid'\n  ? cents(selectedOrder.total_price)\n  : null;\nconst optionsNetCents = originalMainNetCents === null || signedNetCents === null\n  ? null\n  : signedNetCents - originalMainNetCents;\nconst correctedNetCents = correctedMainNetCents === null || optionsNetCents === null\n  ? null\n  : correctedMainNetCents + optionsNetCents;\nconst correctedGrossCents = correctedNetCents === null || (!taxExempt && !Number.isFinite(vatRate))\n  ? null\n  : (taxExempt ? correctedNetCents : Math.round(correctedNetCents * (1 + vatRate / 100)));\nconst differenceCents = correctedGrossCents === null || paidCents === null\n  ? null\n  : correctedGrossCents - paidCents;\n\nconst invoiceAmounts = Array.from(internalText.matchAll(/(?:rechnung|invoice)[^\\d€]{0,100}(\\d{1,3}(?:[.\\s]\\d{3})+(?:,\\d{2})?|\\d{1,6}(?:[.,]\\d{2}))\\s*(?:€|EUR)?/gi))\n  .map((match) => parseMoney(match[1]))\n  .filter((value) => Number.isFinite(value));\nconst relatedAdditionalOrder = differenceCents === null ? null : (resolved.shopifyOrders || []).find((order) =>\n  order?.order_number !== selectedOrder?.order_number\n  && selectedOrder?.offer_id\n  && String(order?.offer_id || '') === String(selectedOrder.offer_id)\n  && Number.isFinite(Number(order?.total_price))\n  && Math.abs(cents(order.total_price) - differenceCents) <= 1\n);\nconst invoiceMatchesDifference = differenceCents !== null\n  && (invoiceAmounts.some((value) => Math.abs(value - differenceCents) <= 1) || Boolean(relatedAdditionalOrder));\nconst balanced = Boolean(\n  acceptance\n  && acceptance.finalPdfHash\n  && selectedOrder\n  && !resolved.commerceAmbiguous\n  && signedGrossCents !== null\n  && signedNetCents !== null\n  && originalMainNetCents !== null\n  && paidCents !== null\n  && correctedMainNetCents !== null\n  && correctedGrossCents !== null\n  && differenceCents > 0\n  && Math.abs(signedGrossCents - paidCents) <= 1\n  && invoiceMatchesDifference\n  && !correctionConflict\n);\n\nconst conflicts = [];\nif (resolved.commerceAmbiguous) conflicts.push('commerce_selection_ambiguous');\nif (correctionConflict) conflicts.push('multiple_corrected_net_prices');\nif (primaryLines.length > 1) conflicts.push('multiple_primary_signed_lines');\nconst missing = [];\nif (selectedOrder && !offer) missing.push('signed_offer_snapshot');\nif (/\\b(preis|teuer|rechnung|differenz)\\b/i.test(allText) && correctedMainNetCents === null) missing.push('unique_corrected_net_price');\nif (differenceCents !== null && !invoiceMatchesDifference) missing.push('matching_invoice_or_additional_order');\n\nconst financialReconciliation = {\n  status: balanced ? 'balanced' : (differenceCents !== null ? 'calculated_unconfirmed' : 'not_applicable'),\n  high_risk: /\\b(rechnung|invoice|preis|teuer|bezahlt|zahlung|differenz)\\b/i.test(allText),\n  calculation_version: 'financial-reconciliation-v2',\n  selection_basis: resolved.selectionBasis || '',\n  offer_number: selectedOrder?.offer_number || offer?.offerNumber || '',\n  order_number: selectedOrder?.order_number || '',\n  signed_net_cents: signedNetCents,\n  signed_gross_cents: signedGrossCents,\n  original_main_net_cents: originalMainNetCents,\n  corrected_main_net_cents: correctedMainNetCents,\n  corrected_net_cents: correctedNetCents,\n  corrected_gross_cents: correctedGrossCents,\n  paid_cents: paidCents,\n  difference_cents: differenceCents,\n  observed_invoice_cents: invoiceMatchesDifference ? differenceCents : null,\n  equation_verified: balanced,\n  requires_human_approval: true,\n  conflicts,\n  missing,\n  evidence_sources: [\n    selectedOrder ? 'shopify_order' : null,\n    acceptance?.finalPdfHash ? 'signed_offer_snapshot' : null,\n    correctedMainNetCents !== null ? 'internal_email_thread' : null,\n    relatedAdditionalOrder ? 'shopify_additional_charge' : (invoiceMatchesDifference ? 'internal_invoice_reference' : null),\n  ].filter(Boolean),\n};\n\nconst facts = [];\nfunction addFact(id, kind, value, source, evidenceRef, customerSafe, confidence) {\n  if (value === null || value === undefined || value === '') return;\n  facts.push({ id, kind, value, source, evidence_ref: evidenceRef, customer_safe: customerSafe === true, confidence });\n}\nif (selectedOrder) {\n  addFact('shopify.order.number', 'order_number', safeText(selectedOrder.order_number, 120), 'shopify_admin', 'order:' + safeText(selectedOrder.shopify_order_id, 80), true, 'authoritative');\n  addFact('shopify.order.created_at', 'timestamp', selectedOrder.created_at, 'shopify_admin', 'order:' + safeText(selectedOrder.shopify_order_id, 80), true, 'authoritative');\n  addFact('shopify.order.financial_status', 'status', safeText(selectedOrder.financial_status, 80), 'shopify_admin', 'order:' + safeText(selectedOrder.shopify_order_id, 80), true, 'authoritative');\n  addFact('shopify.order.total_cents', 'money_cents', cents(selectedOrder.total_price), 'shopify_admin', 'order:' + safeText(selectedOrder.shopify_order_id, 80), true, 'authoritative');\n  addFact('shopify.order.shipping_address', 'address', selectedOrder.shipping_address, 'shopify_index', 'order:' + safeText(selectedOrder.shopify_order_id, 80), false, 'authoritative');\n  addFact('shopify.order.billing_address', 'address', selectedOrder.billing_address, 'shopify_index', 'order:' + safeText(selectedOrder.shopify_order_id, 80), false, 'authoritative');\n}\nif (offer) {\n  addFact('offer.number', 'offer_number', safeText(offer.offerNumber, 120), 'offer_software', 'offer:' + safeText(offer.id, 120), true, 'authoritative');\n  addFact('offer.status', 'status', safeText(offer.status, 80), 'offer_software', 'offer:' + safeText(offer.id, 120), true, 'authoritative');\n  addFact('offer.signed_at', 'timestamp', acceptance?.signedAt || null, 'signed_offer_snapshot', 'pdf_hash:' + safeText(acceptance?.finalPdfHash, 160), true, 'signed_snapshot');\n  addFact('offer.signed_net_cents', 'money_cents', signedNetCents, 'signed_offer_snapshot', 'pdf_hash:' + safeText(acceptance?.finalPdfHash, 160), true, 'signed_snapshot');\n  addFact('offer.signed_gross_cents', 'money_cents', signedGrossCents, 'signed_offer_snapshot', 'pdf_hash:' + safeText(acceptance?.finalPdfHash, 160), true, 'signed_snapshot');\n  selectedSnapshot.slice(0, 30).forEach((item, index) => {\n    addFact('offer.signed_item.' + index, 'signed_line_item', {\n      title: safeText(item?.title, 240),\n      section: safeText(item?.section, 180),\n      description: safeText(item?.description, 500),\n      quantity: Number(item?.normalizedQuantity || 1),\n      line_net_cents: cents(item?.lineNet),\n      line_gross_cents: cents(item?.lineGross),\n    }, 'signed_offer_snapshot', 'pdf_hash:' + safeText(acceptance?.finalPdfHash, 160), true, 'signed_snapshot');\n  });\n}\naddFact('reconciliation.corrected_main_net_cents', 'money_cents', correctedMainNetCents, 'internal_email_thread', 'unique_explicit_net_price', balanced, 'corroborated');\naddFact('reconciliation.corrected_gross_cents', 'money_cents', correctedGrossCents, 'deterministic_calculation', 'financial-reconciliation-v2', balanced, 'calculated');\naddFact('reconciliation.paid_cents', 'money_cents', paidCents, 'shopify_admin', 'selected_paid_order', balanced, 'authoritative');\naddFact('reconciliation.difference_cents', 'money_cents', differenceCents, 'deterministic_calculation', 'financial-reconciliation-v2', balanced, 'calculated');\n\nconst factsPackage = {\n  version: 'commerce-facts-package-v2',\n  generated_at: new Date().toISOString(),\n  selection: {\n    status: selectedOrder ? 'selected' : (resolved.commerceAmbiguous ? 'ambiguous' : 'not_found'),\n    basis: resolved.selectionBasis || '',\n    candidate_count: Array.isArray(resolved.shopifyOrders) ? resolved.shopifyOrders.length : 0,\n    search_basis: resolved.shopifySearchBasis || '',\n    organization_lookup: Boolean(resolved.organizationLookupEnabled),\n  },\n  facts,\n  conflicts,\n  missing,\n  provenance: [\n    { source: 'shopify_index', authority: 'correlation_only', read_only: true },\n    { source: 'shopify_admin', authority: 'authoritative', read_only: true },\n    { source: 'offer_software', authority: 'authoritative', read_only: true },\n    { source: 'signed_offer_snapshot', authority: 'signed_snapshot', read_only: true },\n    { source: 'internal_email_thread', authority: 'corroborating', read_only: true },\n  ],\n  risk_gates: {\n    human_approval_required: true,\n    financial_claims_allowed: Boolean(\n      selectedOrder\n      && acceptance?.finalPdfHash\n      && signedNetCents !== null\n      && signedGrossCents !== null\n      && !resolved.commerceAmbiguous\n    ),\n    reconciliation_claims_allowed: balanced,\n    address_claims_allowed: false,\n    automatic_send_allowed: false,\n  },\n};\n\nconst verifiedFacts = facts\n  .filter((fact) => fact.customer_safe)\n  .slice(0, 40)\n  .map((fact) => {\n    if (fact.kind === 'money_cents') return fact.id + ': ' + formatEur(fact.value);\n    if (typeof fact.value === 'object') return fact.id + ': ' + JSON.stringify(fact.value);\n    return fact.id + ': ' + String(fact.value);\n  });\n\nreturn [{ json: {\n  shopifyOrders: resolved.shopifyOrders,\n  selectedShopifyOrder: selectedOrder,\n  signedOffer: offer,\n  offerSearchResults: [],\n  commerceAmbiguous: resolved.commerceAmbiguous,\n  financialReconciliation,\n  verifiedFacts,\n  factsPackage,\n  evidenceResolverVersion: 'commerce-evidence-v2',\n} }];\n"
+      },
+      "onError": "stopWorkflow"
+    }
+  ],
+  "connections": {
+    "Evidence Resolver Input": {
+      "main": [
+        [
+          {
+            "node": "Validate Case Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Case Input": {
+      "main": [
+        [
+          {
+            "node": "Lookup Shopify Index",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Shopify Index": {
+      "main": [
+        [
+          {
+            "node": "Build Shopify Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Shopify Query": {
+      "main": [
+        [
+          {
+            "node": "Fetch Shopify Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Shopify Evidence": {
+      "main": [
+        [
+          {
+            "node": "Resolve Shopify Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Shopify Evidence": {
+      "main": [
+        [
+          {
+            "node": "Has Signed Offer Reference?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Signed Offer Reference?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Signed Offer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Facts Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Signed Offer": {
+      "main": [
+        [
+          {
+            "node": "Build Facts Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "executionTimeout": 180
+  }
+}
