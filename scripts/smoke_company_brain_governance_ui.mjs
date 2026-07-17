@@ -205,7 +205,55 @@ const pendingIdentityReview = {
   createdAt: "2026-07-16T09:00:00.000Z",
 };
 
-async function setupRoutes(page) {
+const operationalPlaybook = {
+  key: "video_content_qc_failed",
+  version: 1,
+  title: "Video-Inhaltsprüfung abgelehnt",
+  category: "video",
+  ownerTeam: "design",
+  purpose: "Abweichende Videos vor Kundenkontakt stoppen.",
+  triggerCodes: ["video_content_qc_failed"],
+  defaultSeverity: "warning",
+  diagnosisSteps: ["QC-Code, Mockup und verwendete Assets vergleichen."],
+  safeActions: ["Mockup und Video intern prüfen."],
+  blockedActions: ["Kein Versand ohne positiven QC-Beleg."],
+  escalationSteps: ["Design nach ausgeschöpftem Retry übernehmen."],
+  verificationSteps: ["QC bestanden und richtigem Angebot zugeordnet."],
+};
+
+const operationalIncident = {
+  id: "723e4567-e89b-42d3-a456-426614174000",
+  fingerprint: "workflow_failure:smoke",
+  incidentType: "workflow_failure",
+  severity: "critical",
+  status: "open",
+  title: "KI-Video Generator: create_and_send_offer",
+  detail: "Video-Inhaltsprüfung hat DESIGN_MORPH erkannt und den Versand gestoppt.",
+  rootCauseCode: "video_content_qc_failed",
+  playbookKey: "video_content_qc_failed",
+  playbookVersion: 1,
+  caseKey: "request:REQ-SMOKE",
+  requestId: "REQ-SMOKE",
+  trelloCardId: "BiP93WuG",
+  offerId: "offer-smoke",
+  workflowExecutionId: "2770420",
+  sourceKey: "n8n",
+  sourceRef: "workflow_audit:smoke",
+  evidenceRefs: ["workflow_audit:smoke"],
+  ownerTeam: "design",
+  assignedTo: null,
+  firstSeenAt: "2026-07-16T09:00:00.000Z",
+  lastSeenAt: "2026-07-16T09:05:00.000Z",
+  acknowledgedAt: null,
+  acknowledgedBy: null,
+  resolvedAt: null,
+  resolvedBy: null,
+  resolutionNote: null,
+  metadata: {},
+};
+
+async function setupRoutes(page, { incidentsFail = false } = {}) {
+  let incident = { ...operationalIncident };
   await page.route("**/api/ops/tasks**", async (route) => {
     await route.fulfill({
       status: 200,
@@ -243,6 +291,33 @@ async function setupRoutes(page) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true, reviews: [pendingIdentityReview] }),
+    });
+  });
+  await page.route("**/api/ops/company-brain/incidents**", async (route) => {
+    if (incidentsFail) {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, error: "incident_source_unavailable" }) });
+      return;
+    }
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith(`/${operationalIncident.id}`)) {
+      const body = route.request().postDataJSON();
+      incident = {
+        ...incident,
+        status: body.status,
+        assignedTo: body.status === "acknowledged" ? "approver@neontrip.de" : incident.assignedTo,
+        resolutionNote: body.note || null,
+      };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, incident }) });
+      return;
+    }
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, scan: { detected: 1, resolved: 0 }, incidents: [incident] }) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, incidents: [incident], playbooks: [operationalPlaybook] }),
     });
   });
   await page.route("**/api/ops/company-brain/decisions", async (route) => {
@@ -317,14 +392,28 @@ async function runViewport(browser, viewport, label) {
   await setupRoutes(page);
   await page.goto(`${target}/ops/company-brain/governance`, { waitUntil: "networkidle" });
 
-  await page.getByRole("heading", { name: "Wissen, das Entscheidungen erklärt." }).waitFor();
+  await page.getByRole("heading", { name: "Probleme erkennen, verstehen und kontrolliert lösen." }).waitFor();
   await page.getByRole("button", { name: "1 Aufgaben prüfen" }).waitFor();
   assert(await page.getByRole("heading", { name: "Aufgaben überfällig" }).count() === 0, `${label}: overdue task drawer opened automatically`);
+  await page.getByRole("heading", { name: "Was muss als Nächstes gelöst werden?" }).waitFor();
+  await page.getByText("KI-Video Generator: create_and_send_offer", { exact: true }).waitFor();
+  await page.getByText("Lösungsweg: Video-Inhaltsprüfung abgelehnt", { exact: true }).click();
+  await page.getByText("QC-Code, Mockup und verwendete Assets vergleichen.", { exact: true }).waitFor();
+  await assertNoHorizontalOverflow(page, `${label}: cockpit`);
+  await page.screenshot({ path: `/tmp/company-brain-governance-cockpit-${label}.png`, fullPage: true });
+  await page.getByRole("button", { name: "Übernehmen" }).click();
+  await page.getByText("Problem wurde übernommen.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Als gelöst prüfen" }).click();
+  await page.getByRole("heading", { name: "Problem wirklich gelöst?" }).waitFor();
+  await page.getByLabel("Prüfbeleg").fill("QC-Beleg und richtiger Angebotsfall wurden geprüft.");
+  await page.getByRole("button", { name: "Geprüft abschließen" }).click();
+  await page.getByText("Problem mit Prüfnotiz abgeschlossen.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: /^(Entscheidungen|Regeln)$/ }).click();
   await page.getByText("Angebotsversand absichern", { exact: true }).waitFor();
   await page.getByText("Outlook-Spiegel eindeutig verknüpfen", { exact: true }).waitFor();
   await assertNoHorizontalOverflow(page, `${label}: initial`);
 
-  await page.getByRole("button", { name: "Freigaben (3)" }).click();
+  await page.getByRole("button", { name: /^Freigaben/ }).click();
   await page.getByRole("heading", { name: "Offene Aktionen" }).waitFor();
   await page.getByText("guarded_offer_resend", { exact: true }).waitFor();
   await page.getByText("Ausführung läuft", { exact: true }).waitFor();
@@ -332,7 +421,7 @@ async function runViewport(browser, viewport, label) {
   await page.getByText("Trello-Alias zeigt auf einen anderen kanonischen Fall.", { exact: true }).waitFor();
   await assertNoHorizontalOverflow(page, `${label}: approvals`);
   await page.screenshot({ path: `/tmp/company-brain-governance-approvals-${label}.png`, fullPage: true });
-  await page.getByRole("button", { name: "Entscheidungen" }).click();
+  await page.getByRole("button", { name: /^(Entscheidungen|Regeln)$/ }).click();
 
   await page.getByRole("button", { name: "Neue Entscheidung" }).click();
   await page.getByRole("heading", { name: "Entscheidung dokumentieren" }).waitFor();
@@ -354,7 +443,9 @@ async function runViewport(browser, viewport, label) {
   await page.getByRole("button", { name: "Bestätigen" }).click();
   await page.getByText(/wurde zur Prüfung eingereicht/).waitFor();
 
-  await page.getByRole("button", { name: "Systemwissen" }).click();
+  const systemTab = page.getByRole("button", { name: /^(Systemwissen|System)$/ });
+  await systemTab.click();
+  assert((await systemTab.getAttribute("class"))?.includes("bg-stone-950"), `${label}: system tab is not visibly active`);
   await page.getByRole("heading", { name: "Offene Wissenslücken" }).waitFor();
   await page.getByText("Outlook-Nachrichten ohne Kundenakte", { exact: true }).waitFor();
   await page.getByRole("heading", { name: "Automationen im Überblick" }).waitFor();
@@ -366,11 +457,23 @@ async function runViewport(browser, viewport, label) {
   await page.close();
 }
 
+async function runUnavailableState(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await setupRoutes(page, { incidentsFail: true });
+  await page.goto(`${target}/ops/company-brain/governance`, { waitUntil: "networkidle" });
+  await page.getByRole("heading", { name: "Problemqueue nicht verfügbar" }).waitFor();
+  assert(await page.getByRole("heading", { name: "Keine aktiven Probleme" }).count() === 0, "failure state shows a false all-clear");
+  await assertNoHorizontalOverflow(page, "incident source unavailable");
+  await page.screenshot({ path: "/tmp/company-brain-governance-unavailable-mobile.png", fullPage: true });
+  await page.close();
+}
+
 const browser = await chromium.launch({ headless: true });
 try {
   await runViewport(browser, { width: 1440, height: 1000 }, "desktop");
   await runViewport(browser, { width: 820, height: 1180 }, "tablet");
   await runViewport(browser, { width: 390, height: 844 }, "mobile");
+  await runUnavailableState(browser);
   console.log("Company Brain governance UI smoke passed.");
 } finally {
   await browser.close();

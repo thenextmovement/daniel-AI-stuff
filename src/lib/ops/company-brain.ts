@@ -439,6 +439,26 @@ export type CompanyBrainReplyDraft = {
   sourceEvidenceIds: string[];
 };
 
+export type CompanyBrainIntelligenceBrief = {
+  status: "generated" | "fallback" | "disabled";
+  headline: string;
+  diagnosis: string;
+  why: string[];
+  uncertainties: string[];
+  evidenceIds: string[];
+  nextAction: {
+    key: CompanyBrainActionProposal["key"];
+    label: string;
+    summary: string;
+    riskLevel: CompanyBrainActionProposal["riskLevel"];
+    approvalRequired: boolean;
+  } | null;
+  customerContactPolicy: CompanyBrainEmployeeGuidance["customerContactPolicy"];
+  model: string | null;
+  generatedAt: string;
+  warning: string | null;
+};
+
 export type CompanyBrainResolveInput = {
   query: string;
   question?: string | null;
@@ -483,6 +503,7 @@ export type CompanyBrainResolveResult = {
   diagnostics: CompanyBrainDiagnostic[];
   decisionContext: ActiveCompanyDecision[];
   nextActions: string[];
+  intelligenceBrief?: CompanyBrainIntelligenceBrief;
 };
 
 const MAX_QUERY_LENGTH = 240;

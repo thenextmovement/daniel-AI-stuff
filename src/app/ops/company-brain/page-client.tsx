@@ -1414,7 +1414,7 @@ export function OpsCompanyBrainClient({
         <OpsPageIntro
           eyebrow="Fallprüfung"
           title="Company Brain"
-          description="Kundenakte, Angebote, Outlook-Spiegel und operative Timeline in einer read-only Prüfung."
+          description="Belegbasierte Fallprüfung mit kontrollierten internen Fixes und freigabepflichtigem Kundenkontakt."
         >
           <a
             href="/ops/company-brain/governance"
@@ -1679,19 +1679,30 @@ export function OpsCompanyBrainClient({
               <div className="border-b border-stone-200 bg-white px-5 py-5 md:px-6">
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.8fr)_minmax(300px,0.85fr)]">
                   <div className={`rounded-2xl border px-4 py-3 ${operatorDecisionClass(operatorView.brief?.tone || "neutral")}`}>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Kurzantwort</p>
-                    <h3 className="mt-2 text-xl font-semibold leading-tight">{operatorView.brief?.title || result.employeeGuidance.resolutionLabel}</h3>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Interne Kurzdiagnose</p>
+                      <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold opacity-70">
+                        {result.intelligenceBrief?.status === "generated" ? "KI-verdichtet" : "Regelbasiert"}
+                      </span>
+                    </div>
+                    <h3 className="mt-2 text-xl font-semibold leading-tight">{result.intelligenceBrief?.headline || operatorView.brief?.title || result.employeeGuidance.resolutionLabel}</h3>
                     <p className="mt-2 text-sm leading-6 opacity-85">
-                      {shortText(operatorView.brief?.cause || result.problemResolution.rootCause || result.answer.headline, 260)}
+                      {shortText(result.intelligenceBrief?.diagnosis || operatorView.brief?.cause || result.problemResolution.rootCause || result.answer.headline, 360)}
                     </p>
+                    {result.intelligenceBrief?.why.length ? (
+                      <div className="mt-3 grid gap-1 border-t border-current/10 pt-3">
+                        {result.intelligenceBrief.why.slice(0, 2).map((entry) => <p key={entry} className="text-xs leading-5 opacity-75">{entry}</p>)}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Nächster Schritt</p>
                     <p className="mt-2 text-base font-semibold leading-6 text-stone-950">
-                      {operatorView.brief?.nextStep || result.employeeGuidance.nextBestActionLabel || result.nextActions[0] || "Fall erneut prüfen"}
+                      {result.intelligenceBrief?.nextAction?.label || operatorView.brief?.nextStep || result.employeeGuidance.nextBestActionLabel || result.nextActions[0] || "Fall erneut prüfen"}
                     </p>
                     <p className="mt-2 text-xs leading-5 text-stone-500">
-                      {result.retryAssessment.canSendWithConfirmation ? "Versand nur guarded nach Freigabe." : customerContactPolicyLabel(result.employeeGuidance.customerContactPolicy)}
+                      {result.intelligenceBrief?.uncertainties[0]
+                        || (result.retryAssessment.canSendWithConfirmation ? "Versand nur guarded nach Freigabe." : customerContactPolicyLabel(result.employeeGuidance.customerContactPolicy))}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">

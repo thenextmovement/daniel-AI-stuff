@@ -31,6 +31,10 @@ import type {
 } from "@/lib/ops/company-brain-foundation";
 import type { CompanyBrainActionRun } from "@/lib/ops/company-brain-action-governance";
 import type { CompanyIdentityReviewItem } from "@/lib/ops/company-brain-identity";
+import type {
+  CompanyBrainOperationalIncident,
+  CompanyBrainPlaybook,
+} from "@/lib/ops/company-brain-operational-intelligence";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
@@ -61,6 +65,20 @@ type ActionRunsResponse = {
   issues?: string[];
 };
 type IdentityReviewsResponse = { ok?: boolean; reviews?: CompanyIdentityReviewItem[]; error?: string; issues?: string[] };
+type IncidentsResponse = {
+  ok?: boolean;
+  incidents?: CompanyBrainOperationalIncident[];
+  playbooks?: CompanyBrainPlaybook[];
+  scan?: { detected: number; resolved: number };
+  incident?: CompanyBrainOperationalIncident;
+  error?: string;
+  issues?: string[];
+};
+
+type IncidentDialog = {
+  incident: CompanyBrainOperationalIncident;
+  note: string;
+};
 
 type DecisionForm = {
   decisionKey: string;
@@ -258,6 +276,21 @@ function actionRunStatusLabel(status: CompanyBrainActionRun["status"]) {
   return status;
 }
 
+function incidentStatusLabel(status: CompanyBrainOperationalIncident["status"]) {
+  if (status === "acknowledged") return "Übernommen";
+  if (status === "resolved") return "Gelöst";
+  if (status === "ignored") return "Ignoriert";
+  return "Offen";
+}
+
+function incidentCaseHref(incident: CompanyBrainOperationalIncident) {
+  const query = incident.trelloCardId
+    ? `https://trello.com/c/${incident.trelloCardId}`
+    : incident.requestId || incident.offerId || incident.caseKey;
+  if (!query) return null;
+  return `/ops/company-brain?query=${encodeURIComponent(query)}&question=${encodeURIComponent("Was ist die belegte Ursache und welcher sichere Fix ist jetzt möglich?")}&auto=1`;
+}
+
 function outcomeStatusLabel(status: CompanyDecisionOutcome["evaluationStatus"]) {
   if (status === "met") return "Ziel erreicht";
   if (status === "missed") return "Ziel verfehlt";
@@ -428,10 +461,13 @@ export function CompanyBrainGovernanceClient({
   const [decisions, setDecisions] = useState<CompanyDecision[]>([]);
   const [actionRuns, setActionRuns] = useState<CompanyBrainActionRun[]>([]);
   const [identityReviews, setIdentityReviews] = useState<CompanyIdentityReviewItem[]>([]);
+  const [incidents, setIncidents] = useState<CompanyBrainOperationalIncident[]>([]);
+  const [playbooks, setPlaybooks] = useState<CompanyBrainPlaybook[]>([]);
+  const [incidentLoadState, setIncidentLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [actorContext, setActorContext] = useState<{ email: string; roles: string[] } | null>(null);
   const [statusFilter, setStatusFilter] = useState<CompanyDecisionStatus | "all">("all");
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"decisions" | "operations" | "health">("decisions");
+  const [view, setView] = useState<"cockpit" | "decisions" | "operations" | "health">("cockpit");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -443,39 +479,60 @@ export function CompanyBrainGovernanceClient({
   const [outcomeDialog, setOutcomeDialog] = useState<OutcomeDialog | null>(null);
   const [outcomes, setOutcomes] = useState<Record<string, CompanyDecisionOutcome[]>>({});
   const [outcomesLoading, setOutcomesLoading] = useState<string | null>(null);
+  const [incidentDialog, setIncidentDialog] = useState<IncidentDialog | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setIncidentLoadState("loading");
     try {
-      const [foundationResponse, decisionsResponse, actionRunsResponse, identityReviewsResponse] = await Promise.all([
+      const [foundationResponse, decisionsResponse, actionRunsResponse, identityReviewsResponse, incidentsResponse] = await Promise.all([
         fetch("/api/ops/company-brain/foundation", { cache: "no-store" }),
         fetch("/api/ops/company-brain/decisions", { cache: "no-store" }),
         fetch("/api/ops/company-brain/action-runs?limit=50", { cache: "no-store" }),
         fetch("/api/ops/company-brain/identity/reviews?status=open&limit=50", { cache: "no-store" }),
+        fetch("/api/ops/company-brain/incidents?status=active&limit=200", { cache: "no-store" }),
       ]);
       const foundationPayload = (await foundationResponse.json().catch(() => null)) as FoundationResponse | null;
       const decisionsPayload = (await decisionsResponse.json().catch(() => null)) as DecisionsResponse | null;
       const actionRunsPayload = (await actionRunsResponse.json().catch(() => null)) as ActionRunsResponse | null;
       const identityReviewsPayload = (await identityReviewsResponse.json().catch(() => null)) as IdentityReviewsResponse | null;
-      if (!foundationResponse.ok || !foundationPayload?.ok || !foundationPayload.result) {
-        throw new Error(apiError(foundationPayload, "Wissensstatus konnte nicht geladen werden."));
+      const incidentsPayload = (await incidentsResponse.json().catch(() => null)) as IncidentsResponse | null;
+      const loadErrors: string[] = [];
+      if (foundationResponse.ok && foundationPayload?.ok && foundationPayload.result) {
+        setFoundation(foundationPayload.result);
+      } else {
+        loadErrors.push(apiError(foundationPayload, "Wissensstatus konnte nicht geladen werden."));
       }
-      if (!decisionsResponse.ok || !decisionsPayload?.ok || !decisionsPayload.decisions) {
-        throw new Error(apiError(decisionsPayload, "Entscheidungen konnten nicht geladen werden."));
+      if (decisionsResponse.ok && decisionsPayload?.ok && decisionsPayload.decisions) {
+        setDecisions(decisionsPayload.decisions);
+      } else {
+        loadErrors.push(apiError(decisionsPayload, "Entscheidungen konnten nicht geladen werden."));
       }
-      setFoundation(foundationPayload.result);
-      setDecisions(decisionsPayload.decisions);
       if (actionRunsResponse.ok && actionRunsPayload?.ok) {
         setActionRuns((actionRunsPayload.runs || []).filter((run) =>
           ["awaiting_approval", "executing", "blocked", "failed"].includes(run.status),
         ));
         setActorContext(actionRunsPayload.actor || null);
+      } else {
+        loadErrors.push(apiError(actionRunsPayload, "Freigaben konnten nicht geladen werden."));
       }
       if (identityReviewsResponse.ok && identityReviewsPayload?.ok) {
         setIdentityReviews(identityReviewsPayload.reviews || []);
+      } else {
+        loadErrors.push(apiError(identityReviewsPayload, "Fallzuordnungen konnten nicht geladen werden."));
       }
+      if (incidentsResponse.ok && incidentsPayload?.ok) {
+        setIncidents(incidentsPayload.incidents || []);
+        setPlaybooks(incidentsPayload.playbooks || []);
+        setIncidentLoadState("ready");
+      } else {
+        setIncidentLoadState("error");
+        loadErrors.push(apiError(incidentsPayload, "Problemqueue konnte nicht geladen werden."));
+      }
+      if (loadErrors.length) setError([...new Set(loadErrors)].join(" "));
     } catch (loadError) {
+      setIncidentLoadState("error");
       setError(loadError instanceof Error ? loadError.message : "Wissen konnte nicht geladen werden.");
     } finally {
       setLoading(false);
@@ -487,15 +544,16 @@ export function CompanyBrainGovernanceClient({
   }, [hasSession, localMode, loadAll]);
 
   useEffect(() => {
-    if (!reviewDialog && !outcomeDialog) return;
+    if (!reviewDialog && !outcomeDialog && !incidentDialog) return;
     function closeDialog(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       setReviewDialog(null);
       setOutcomeDialog(null);
+      setIncidentDialog(null);
     }
     window.addEventListener("keydown", closeDialog);
     return () => window.removeEventListener("keydown", closeDialog);
-  }, [outcomeDialog, reviewDialog]);
+  }, [incidentDialog, outcomeDialog, reviewDialog]);
 
   const stats = useMemo(() => ({
     review: decisions.filter((entry) => entry.status === "review").length,
@@ -504,7 +562,15 @@ export function CompanyBrainGovernanceClient({
     criticalIssues: foundation?.dataQualityIssues.filter((entry) => entry.severity === "critical").length || 0,
     approvals: actionRuns.length,
     identityReviews: identityReviews.length,
-  }), [actionRuns.length, decisions, foundation, identityReviews.length]);
+    activeIncidents: incidents.length,
+    criticalIncidents: incidents.filter((entry) => entry.severity === "critical").length,
+    assignedIncidents: incidents.filter((entry) => entry.status === "acknowledged").length,
+  }), [actionRuns.length, decisions, foundation, identityReviews.length, incidents]);
+
+  const playbookByKey = useMemo(
+    () => new Map(playbooks.map((playbook) => [playbook.key, playbook])),
+    [playbooks],
+  );
 
   const visibleDecisions = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -755,6 +821,52 @@ export function CompanyBrainGovernanceClient({
     }
   }
 
+  async function scanIncidents() {
+    setSyncing(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/ops/company-brain/incidents", { method: "POST" });
+      const payload = (await response.json().catch(() => null)) as IncidentsResponse | null;
+      if (!response.ok || !payload?.ok) throw new Error(apiError(payload, "Problem-Scan konnte nicht ausgeführt werden."));
+      setIncidents(payload.incidents || []);
+      setIncidentLoadState("ready");
+      setMessage(`Scan abgeschlossen: ${payload.scan?.detected || 0} aktive Signale geprüft, ${payload.scan?.resolved || 0} automatisch geschlossen.`);
+    } catch (scanError) {
+      setIncidentLoadState("error");
+      setError(scanError instanceof Error ? scanError.message : "Problem-Scan konnte nicht ausgeführt werden.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function transitionIncident(
+    incident: CompanyBrainOperationalIncident,
+    status: "acknowledged" | "resolved",
+    note?: string,
+  ) {
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/ops/company-brain/incidents/${incident.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, note: note || null }),
+      });
+      const payload = (await response.json().catch(() => null)) as IncidentsResponse | null;
+      if (!response.ok || !payload?.ok || !payload.incident) throw new Error(apiError(payload, "Problemstatus konnte nicht gespeichert werden."));
+      if (status === "resolved") setIncidents((current) => current.filter((entry) => entry.id !== incident.id));
+      else setIncidents((current) => current.map((entry) => entry.id === incident.id ? payload.incident! : entry));
+      setIncidentDialog(null);
+      setMessage(status === "resolved" ? "Problem mit Prüfnotiz abgeschlossen." : "Problem wurde übernommen.");
+    } catch (transitionError) {
+      setError(transitionError instanceof Error ? transitionError.message : "Problemstatus konnte nicht gespeichert werden.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!opsEnabled) {
     return <div className="min-h-screen bg-stone-100 p-8 text-stone-700">Ops Portal ist nicht konfiguriert.</div>;
   }
@@ -784,8 +896,8 @@ export function CompanyBrainGovernanceClient({
         <div className="mt-4 grid gap-4">
           <OpsPageIntro
             eyebrow="Company Brain"
-            title="Wissen, das Entscheidungen erklärt."
-            description="Hier stehen gültige Regeln, offene Prüfungen und die Gründe hinter wichtigen Entscheidungen. Entwürfe werden erst nach einer bewussten Prüfung wirksam."
+            title="Probleme erkennen, verstehen und kontrolliert lösen."
+            description="Das Cockpit bündelt offene Automationsfehler, Fallkonflikte, Freigaben und die dazu gültigen Lösungswege. Kundenkontakt und produktive Retries bleiben geschützt."
           >
             <a href="/ops/company-brain" className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15">
               Fall prüfen <ArrowRight className="h-4 w-4" />
@@ -796,17 +908,18 @@ export function CompanyBrainGovernanceClient({
           </OpsPageIntro>
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <OpsStatCard label="Prüfung offen" value={stats.review} tone={stats.review ? "warning" : "success"} icon={<GitPullRequest className="h-5 w-5" />} detail="Entscheidungen warten auf Freigabe" />
-            <OpsStatCard label="Gültige Regeln" value={stats.approved} tone="success" icon={<ShieldCheck className="h-5 w-5" />} detail="Aktiv im Company-Brain-Kontext" />
-            <OpsStatCard label="Entwürfe" value={stats.drafts} tone="neutral" icon={<BookOpenCheck className="h-5 w-5" />} detail="Noch nicht zur Prüfung eingereicht" />
-            <OpsStatCard label="Kritische Datenlücken" value={stats.criticalIssues} tone={stats.criticalIssues ? "danger" : "success"} icon={<AlertTriangle className="h-5 w-5" />} detail="Offene Qualitätsprobleme" />
+            <OpsStatCard label="Kritische Probleme" value={incidentLoadState === "ready" ? stats.criticalIncidents : "–"} tone={incidentLoadState === "ready" ? (stats.criticalIncidents ? "danger" : "success") : "neutral"} icon={<AlertTriangle className="h-5 w-5" />} detail={incidentLoadState === "ready" ? "Brauchen sofortige Klärung" : "Problemqueue wird geprüft"} />
+            <OpsStatCard label="Offene Probleme" value={incidentLoadState === "ready" ? stats.activeIncidents : "–"} tone={incidentLoadState === "ready" ? (stats.activeIncidents ? "warning" : "success") : "neutral"} icon={<CircleDot className="h-5 w-5" />} detail={incidentLoadState === "ready" ? `${stats.assignedIncidents} bereits übernommen` : "Keine Entwarnung ohne Quelle"} />
+            <OpsStatCard label="Freigaben" value={stats.approvals} tone={stats.approvals ? "warning" : "success"} icon={<ShieldCheck className="h-5 w-5" />} detail="Aktionen mit Governance-Status" />
+            <OpsStatCard label="Fallzuordnungen" value={stats.identityReviews} tone={stats.identityReviews ? "danger" : "success"} icon={<GitPullRequest className="h-5 w-5" />} detail="Mehrdeutige Identitäten" />
           </section>
 
           <section className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="grid w-full min-w-0 grid-cols-3 rounded-xl border border-stone-200 bg-stone-50 p-1 sm:inline-grid sm:w-fit" aria-label="Wissensansicht">
-              <button type="button" onClick={() => setView("decisions")} className={`min-w-0 rounded-lg px-2 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "decisions" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Entscheidungen</button>
-              <button type="button" onClick={() => setView("operations")} className={`min-w-0 rounded-lg px-2 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "operations" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Freigaben {stats.approvals + stats.identityReviews ? `(${stats.approvals + stats.identityReviews})` : ""}</button>
-              <button type="button" onClick={() => setView("health")} className={`min-w-0 rounded-lg px-2 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "health" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Systemwissen</button>
+            <div className="grid w-full min-w-0 grid-cols-4 rounded-xl border border-stone-200 bg-stone-50 p-1 sm:inline-grid sm:w-fit" aria-label="Wissensansicht">
+              <button type="button" onClick={() => setView("cockpit")} className={`min-w-0 rounded-lg px-1 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "cockpit" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Probleme <span className="hidden sm:inline">{stats.activeIncidents ? `(${stats.activeIncidents})` : ""}</span></button>
+              <button type="button" onClick={() => setView("decisions")} className={`min-w-0 rounded-lg px-1 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "decisions" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}><span className="sm:hidden">Regeln</span><span className="hidden sm:inline">Entscheidungen</span></button>
+              <button type="button" onClick={() => setView("operations")} className={`min-w-0 rounded-lg px-1 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "operations" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}>Freigaben <span className="hidden sm:inline">{stats.approvals + stats.identityReviews ? `(${stats.approvals + stats.identityReviews})` : ""}</span></button>
+              <button type="button" onClick={() => setView("health")} className={`min-w-0 rounded-lg px-1 py-2 text-[11px] font-semibold transition sm:px-4 sm:text-xs ${view === "health" ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}><span className="sm:hidden">System</span><span className="hidden sm:inline">Systemwissen</span></button>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => void loadAll()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-xl border border-stone-300 bg-white px-3.5 text-xs font-semibold text-stone-800 transition hover:bg-stone-50 disabled:opacity-50">
@@ -815,6 +928,11 @@ export function CompanyBrainGovernanceClient({
               {view === "health" ? (
                 <button type="button" onClick={() => void syncWorkflows()} disabled={syncing} className="inline-flex h-10 items-center gap-2 rounded-xl bg-stone-950 px-3.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50">
                   <Workflow className={`h-4 w-4 ${syncing ? "animate-pulse" : ""}`} /> n8n-Inventar lesen
+                </button>
+              ) : null}
+              {view === "cockpit" ? (
+                <button type="button" onClick={() => void scanIncidents()} disabled={syncing} className="inline-flex h-10 items-center gap-2 rounded-xl bg-stone-950 px-3.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50">
+                  <RefreshCcw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Jetzt prüfen
                 </button>
               ) : null}
             </div>
@@ -930,7 +1048,120 @@ export function CompanyBrainGovernanceClient({
             </form>
           ) : null}
 
-          {view === "decisions" ? (
+          {view === "cockpit" ? (
+            <section className="grid gap-4">
+              <div className="flex flex-col gap-3 rounded-[22px] border border-stone-200 bg-white p-5 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Operative Problemqueue</p>
+                  <h2 className="mt-2 text-xl font-semibold text-stone-950">Was muss als Nächstes gelöst werden?</h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-500">Nach Schwere und Aktualität priorisiert. Ein späterer Erfolgsbeleg schließt den passenden Workflow-Fehler automatisch.</p>
+                </div>
+                <p className="text-sm font-semibold text-stone-700">{incidentLoadState === "ready" ? `${incidents.length} aktiv · ${stats.assignedIncidents} übernommen` : "Status unbekannt"}</p>
+              </div>
+
+              {incidentLoadState === "loading" ? (
+                <div className="rounded-[22px] border border-stone-200 bg-white px-6 py-10 text-center text-stone-700">
+                  <RefreshCcw className="mx-auto h-8 w-8 animate-spin" />
+                  <h2 className="mt-3 text-lg font-semibold">Problemqueue wird geladen</h2>
+                </div>
+              ) : incidentLoadState === "error" ? (
+                <div className="rounded-[22px] border border-rose-200 bg-rose-50 px-6 py-10 text-center text-rose-950">
+                  <AlertTriangle className="mx-auto h-8 w-8" />
+                  <h2 className="mt-3 text-lg font-semibold">Problemqueue nicht verfügbar</h2>
+                  <p className="mt-1 text-sm">Es wird bewusst keine Entwarnung angezeigt. Bitte erneut aktualisieren.</p>
+                </div>
+              ) : incidents.length ? (
+                <div className="grid gap-3">
+                  {incidents.map((incident) => {
+                    const playbook = incident.playbookKey ? playbookByKey.get(incident.playbookKey) : null;
+                    const caseHref = incidentCaseHref(incident);
+                    return (
+                      <article key={incident.id} className={`overflow-hidden rounded-[22px] border bg-white ${incident.severity === "critical" ? "border-rose-300" : incident.severity === "warning" ? "border-amber-300" : "border-sky-300"}`}>
+                        <div className="p-5">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 max-w-4xl">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${severityClass(incident.severity)}`}>
+                                  {incident.severity === "critical" ? "Kritisch" : incident.severity === "warning" ? "Warnung" : "Hinweis"}
+                                </span>
+                                <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-semibold text-stone-700">{incidentStatusLabel(incident.status)}</span>
+                                <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-500">{incident.rootCauseCode}</span>
+                              </div>
+                              <h3 className="mt-3 text-lg font-semibold leading-7 text-stone-950">{incident.title}</h3>
+                              <p className="mt-2 text-sm leading-6 text-stone-700">{incident.detail}</p>
+                              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+                                <span>Owner: {playbook?.ownerTeam || incident.ownerTeam}</span>
+                                <span>Zuletzt: {formatDateTime(incident.lastSeenAt)}</span>
+                                {incident.workflowExecutionId ? <span>Execution {incident.workflowExecutionId}</span> : null}
+                                {incident.assignedTo || incident.acknowledgedBy ? <span>Übernommen von {incident.assignedTo || incident.acknowledgedBy}</span> : null}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                              {caseHref ? (
+                                <a href={caseHref} className="inline-flex h-10 items-center gap-2 rounded-xl border border-stone-300 bg-white px-3.5 text-xs font-semibold text-stone-800 transition hover:bg-stone-50">
+                                  Fall prüfen <ArrowRight className="h-4 w-4" />
+                                </a>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => void transitionIncident(incident, "acknowledged")}
+                                disabled={saving || incident.status === "acknowledged"}
+                                className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 text-xs font-semibold text-sky-900 transition hover:bg-sky-100 disabled:opacity-50"
+                              >
+                                <CircleDot className="h-4 w-4" /> {incident.status === "acknowledged" ? "Übernommen" : "Übernehmen"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIncidentDialog({ incident, note: "" })}
+                                disabled={saving}
+                                className="inline-flex h-10 items-center gap-2 rounded-xl bg-stone-950 px-3.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                              >
+                                <CheckCircle2 className="h-4 w-4" /> Als gelöst prüfen
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <details className="group border-t border-stone-200 bg-stone-50/70">
+                          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-sm font-semibold text-stone-700 marker:hidden">
+                            <span>{playbook ? `Lösungsweg: ${playbook.title}` : "Belege und Lösungsweg"}</span>
+                            <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+                          </summary>
+                          <div className="grid gap-5 border-t border-stone-200 px-5 py-5 lg:grid-cols-3">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Prüfen</p>
+                              <div className="mt-2 grid gap-2 text-sm leading-6 text-stone-700">
+                                {(playbook?.diagnosisSteps || ["Quelldatensatz und Incident-Beleg gemeinsam prüfen."]).slice(0, 4).map((step) => <p key={step}>{step}</p>)}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Sicher möglich</p>
+                              <div className="mt-2 grid gap-2 text-sm leading-6 text-stone-700">
+                                {(playbook?.safeActions || ["Fall öffnen und internen nächsten Schritt belegen."]).slice(0, 4).map((step) => <p key={step}>{step}</p>)}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700">Vor Abschluss belegen</p>
+                              <div className="mt-2 grid gap-2 text-sm leading-6 text-stone-700">
+                                {(playbook?.verificationSteps || ["Erfolg in der Source of Truth verifizieren."]).slice(0, 4).map((step) => <p key={step}>{step}</p>)}
+                              </div>
+                              <p className="mt-3 text-xs text-stone-500">{incident.evidenceRefs.length} Belegreferenz(en) · Quelle {incident.sourceKey || "intern"}</p>
+                            </div>
+                          </div>
+                        </details>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-6 py-10 text-center text-emerald-950">
+                  <CheckCircle2 className="mx-auto h-8 w-8" />
+                  <h2 className="mt-3 text-lg font-semibold">Keine aktiven Probleme</h2>
+                  <p className="mt-1 text-sm">Der automatische Scanner hat aktuell keinen offenen Incident.</p>
+                </div>
+              )}
+            </section>
+          ) : view === "decisions" ? (
             <>
               <section className="grid gap-3 rounded-2xl border border-stone-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_15rem_auto] lg:items-end">
                 <label className="grid gap-1.5 text-xs font-semibold text-stone-700">
@@ -1164,6 +1395,44 @@ export function CompanyBrainGovernanceClient({
           )}
         </div>
       </div>
+
+      {incidentDialog ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="incident-resolution-title" className="w-full max-w-lg rounded-[22px] border border-stone-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Abschlussprüfung</p>
+                <h2 id="incident-resolution-title" className="mt-2 text-xl font-semibold text-stone-950">Problem wirklich gelöst?</h2>
+                <p className="mt-2 text-sm leading-6 text-stone-600">{incidentDialog.incident.title}</p>
+              </div>
+              <button type="button" onClick={() => setIncidentDialog(null)} aria-label="Dialog schließen" className="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100"><X className="h-4 w-4" /></button>
+            </div>
+            <label className="mt-5 grid gap-1.5 text-xs font-semibold text-stone-700">
+              Prüfbeleg
+              <textarea
+                autoFocus
+                rows={4}
+                value={incidentDialog.note}
+                onChange={(event) => setIncidentDialog((current) => current ? { ...current, note: event.target.value } : current)}
+                className="resize-y rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-normal leading-6 outline-none focus:border-stone-700 focus:ring-2 focus:ring-stone-200"
+                placeholder="Was wurde geprüft und welcher Erfolgsbeleg liegt jetzt vor?"
+              />
+              <span className="font-normal leading-5 text-stone-500">Mindestens zehn Zeichen. Ein neuer widersprechender Beleg öffnet den Incident wieder.</span>
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setIncidentDialog(null)} className="h-10 rounded-xl border border-stone-300 bg-white px-4 text-xs font-semibold text-stone-700">Abbrechen</button>
+              <button
+                type="button"
+                onClick={() => void transitionIncident(incidentDialog.incident, "resolved", incidentDialog.note)}
+                disabled={saving || incidentDialog.note.trim().length < 10}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-stone-950 px-4 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-4 w-4" /> {saving ? "Speichert..." : "Geprüft abschließen"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {reviewDialog ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" role="presentation">

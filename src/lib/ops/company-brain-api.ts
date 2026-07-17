@@ -59,7 +59,7 @@ export function companyBrainApiFailure(error: unknown, operation: string) {
   }
   if (error instanceof SupabaseRestError) {
     return companyBrainJson(
-      { ok: false, error: error.message, code: "supabase_error", details: error.details },
+      { ok: false, error: error.message, code: "supabase_error" },
       { status: error.status },
     );
   }

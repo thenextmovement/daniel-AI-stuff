@@ -24,6 +24,7 @@ type ActorRoleRow = {
   actor_email: string;
   role: CompanyBrainRole;
   active: boolean;
+  expires_at?: string | null;
 };
 
 const ROLE_IMPLICATIONS: Record<CompanyBrainRole, CompanyBrainRole[]> = {
@@ -70,12 +71,16 @@ export async function resolveCompanyBrainActor(auth: CompanyBrainAuthorization):
 
   const email = normalizeActor(auth.actor);
   const rows = await supabaseRequest<ActorRoleRow[]>("company_brain_actor_roles", undefined, {
-    select: "actor_email,role,active",
+    select: "actor_email,role,active,expires_at",
     actor_email: `eq.${email}`,
     active: "eq.true",
     limit: 20,
   });
-  const explicitRoles = rows.map((row) => row.role).filter((role) => Boolean(ROLE_IMPLICATIONS[role]));
+  const now = Date.now();
+  const explicitRoles = rows
+    .filter((row) => !row.expires_at || new Date(row.expires_at).getTime() > now)
+    .map((row) => row.role)
+    .filter((role) => Boolean(ROLE_IMPLICATIONS[role]));
   return {
     email,
     roles: expandRoles(explicitRoles.length ? explicitRoles : defaultVerifiedRoles()),
