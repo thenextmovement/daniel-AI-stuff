@@ -178,18 +178,22 @@ export async function listEmailAgentReviewCases(input: {
 export async function reviewEmailAgentFeedback(input: {
   feedbackId: number;
   decision: Exclude<EmailAgentLearningStatus, "pending">;
-  note?: string | null;
-  reviewer?: string | null;
+  note: string;
+  reviewer: string;
+  idempotencyKey: string;
 }) {
   return supabaseRpc<{
     updated: boolean;
+    idempotent_replay: boolean;
     feedback_id: number;
     learning_status: EmailAgentLearningStatus;
     human_reviewed_at: string;
-  }>("review_email_agent_feedback", {
+    audit_id: string;
+  }>("review_email_agent_feedback_v2", {
     p_feedback_id: input.feedbackId,
     p_decision: input.decision,
-    p_note: input.note || null,
-    p_reviewer: input.reviewer || null,
+    p_note: input.note,
+    p_reviewer: input.reviewer,
+    p_idempotency_key: input.idempotencyKey,
   });
 }

@@ -10,6 +10,8 @@ export type VoiceKnowledgeStatus = "draft" | "review" | "approved" | "retired";
 export type VoiceKnowledgeRiskClass = "standard" | "sensitive" | "restricted";
 export type VoiceKnowledgeReviewDecision = "approve" | "request_changes" | "retire";
 export type VoiceKnowledgeCandidateDecision = "promote" | "rejected";
+export type VoiceKnowledgeAllowedMode = VoiceCopilotMode | "email_drafting";
+export type EmailKnowledgeReviewStatus = "pending" | "approved" | "rejected" | "retired";
 
 export type VoiceKnowledgeSourceRef = {
   label: string;
@@ -24,12 +26,16 @@ export type VoiceKnowledgeEntry = {
   title: string;
   content: string;
   status: VoiceKnowledgeStatus;
-  allowedModes: VoiceCopilotMode[];
+  allowedModes: VoiceKnowledgeAllowedMode[];
   riskClass: VoiceKnowledgeRiskClass;
   sourceRefs: VoiceKnowledgeSourceRef[];
   authoredBy: string;
   reviewedBy: string | null;
   reviewedAt: string | null;
+  emailReviewStatus: EmailKnowledgeReviewStatus;
+  emailReviewedBy: string | null;
+  emailReviewedAt: string | null;
+  emailReviewNote: string | null;
   updatedAt: string;
 };
 
@@ -109,14 +115,18 @@ type VoiceKnowledgeVersionRow = {
   title: string;
   content: string;
   status: VoiceKnowledgeStatus;
-  allowed_modes: VoiceCopilotMode[];
+  allowed_modes: VoiceKnowledgeAllowedMode[];
   risk_class: VoiceKnowledgeRiskClass;
   source_refs: unknown;
   authored_by: string;
   reviewed_by?: string | null;
   reviewed_at?: string | null;
+  slug?: string;
+  email_review_status?: EmailKnowledgeReviewStatus | null;
+  email_reviewed_by?: string | null;
+  email_reviewed_at?: string | null;
+  email_review_note?: string | null;
   updated_at: string;
-  article?: { id: string; slug: string } | Array<{ id: string; slug: string }>;
 };
 
 type VoiceKnowledgeCandidateRow = {
@@ -136,6 +146,12 @@ type VoiceKnowledgeCandidateRow = {
 };
 
 const ALLOWED_MODES = new Set<VoiceCopilotMode>(["internal_test", "lead_qualification", "follow_up"]);
+const ALLOWED_KNOWLEDGE_MODES = new Set<VoiceKnowledgeAllowedMode>([
+  "internal_test",
+  "lead_qualification",
+  "follow_up",
+  "email_drafting",
+]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function cleanText(value: unknown, maxLength = 500) {
@@ -156,9 +172,10 @@ function requireUuid(value: unknown, label: string) {
   return id;
 }
 
-function normalizeModes(value: unknown): VoiceCopilotMode[] {
+function normalizeModes(value: unknown): VoiceKnowledgeAllowedMode[] {
   const values = Array.isArray(value) ? value : [];
-  const modes = Array.from(new Set(values.map((entry) => cleanText(entry, 40) as VoiceCopilotMode))).filter((mode) => ALLOWED_MODES.has(mode));
+  const modes = Array.from(new Set(values.map((entry) => cleanText(entry, 40) as VoiceKnowledgeAllowedMode)))
+    .filter((mode) => ALLOWED_KNOWLEDGE_MODES.has(mode));
   if (!modes.length) throw new QuoteValidationError("Mindestens ein erlaubter Modus ist erforderlich.", ["invalid_allowed_modes"], 422);
   return modes;
 }
@@ -233,11 +250,10 @@ export function chunkVoiceKnowledge(contentInput: unknown) {
 }
 
 function mapKnowledgeVersion(row: VoiceKnowledgeVersionRow): VoiceKnowledgeEntry {
-  const article = Array.isArray(row.article) ? row.article[0] : row.article;
   return {
     articleId: row.article_id,
     versionId: row.id,
-    slug: article?.slug || "unknown",
+    slug: row.slug || "unknown",
     versionNumber: Number(row.version_number),
     title: row.title,
     content: row.content,
@@ -248,13 +264,17 @@ function mapKnowledgeVersion(row: VoiceKnowledgeVersionRow): VoiceKnowledgeEntry
     authoredBy: row.authored_by,
     reviewedBy: row.reviewed_by || null,
     reviewedAt: row.reviewed_at || null,
+    emailReviewStatus: row.email_review_status || "pending",
+    emailReviewedBy: row.email_reviewed_by || null,
+    emailReviewedAt: row.email_reviewed_at || null,
+    emailReviewNote: row.email_review_note || null,
     updatedAt: row.updated_at,
   };
 }
 
 export async function listVoiceKnowledge(status?: VoiceKnowledgeStatus) {
-  const rows = await supabaseRequest<VoiceKnowledgeVersionRow[]>("voice_knowledge_versions", undefined, {
-    select: "id,article_id,version_number,title,content,status,allowed_modes,risk_class,source_refs,authored_by,reviewed_by,reviewed_at,updated_at,article:voice_knowledge_articles(id,slug)",
+  const rows = await supabaseRequest<VoiceKnowledgeVersionRow[]>("voice_knowledge_review_overview", undefined, {
+    select: "id,article_id,slug,version_number,title,content,status,allowed_modes,risk_class,source_refs,authored_by,reviewed_by,reviewed_at,updated_at,email_review_status,email_reviewed_by,email_reviewed_at,email_review_note",
     ...(status ? { status: `eq.${status}` } : {}),
     order: "updated_at.desc",
     limit: 100,
@@ -310,6 +330,8 @@ export async function reviewVoiceKnowledgeVersion(input: {
   versionId?: unknown;
   decision?: unknown;
   reviewer?: unknown;
+  reviewNote?: unknown;
+  idempotencyKey?: unknown;
 }) {
   const versionId = requireUuid(input.versionId, "Version-ID");
   const decision = cleanText(input.decision, 40) as VoiceKnowledgeReviewDecision;
@@ -317,13 +339,63 @@ export async function reviewVoiceKnowledgeVersion(input: {
     throw new QuoteValidationError("Review-Entscheidung ist ungueltig.", ["invalid_review_decision"], 422);
   }
   const reviewer = requiredText(input.reviewer, "Reviewer", 120, 2);
-  const rows = await supabaseRpc<Array<{ version_id: string; article_id: string; status: VoiceKnowledgeStatus }>>(
-    "review_voice_knowledge_version",
-    { p_version_id: versionId, p_decision: decision, p_reviewer: reviewer },
+  const reviewNote = requiredText(input.reviewNote, "Review-Notiz", 2000, 8);
+  const idempotencyKey = requireUuid(input.idempotencyKey, "Idempotenz-ID");
+  const rows = await supabaseRpc<Array<{
+    version_id: string;
+    article_id: string;
+    status: VoiceKnowledgeStatus;
+    audit_id: string;
+    idempotent_replay: boolean;
+  }>>(
+    "review_voice_knowledge_version_v2",
+    {
+      p_version_id: versionId,
+      p_decision: decision,
+      p_reviewer: reviewer,
+      p_note: reviewNote,
+      p_idempotency_key: idempotencyKey,
+    },
   );
   const result = rows[0];
   if (!result) throw new QuoteValidationError("Wissensversion wurde nicht gefunden.", ["version_not_found"], 404);
-  return { versionId: result.version_id, articleId: result.article_id, status: result.status };
+  return {
+    versionId: result.version_id,
+    articleId: result.article_id,
+    status: result.status,
+    auditId: result.audit_id,
+    idempotentReplay: result.idempotent_replay,
+  };
+}
+
+export async function reviewEmailSupportKnowledge(input: {
+  versionId?: unknown;
+  decision?: unknown;
+  reviewer?: unknown;
+  reviewNote?: unknown;
+  idempotencyKey?: unknown;
+}) {
+  const versionId = requireUuid(input.versionId, "Version-ID");
+  const decision = cleanText(input.decision, 40);
+  if (!["approve", "reject", "retire"].includes(decision)) {
+    throw new QuoteValidationError("E-Mail-Wissensentscheidung ist ungueltig.", ["invalid_email_review_decision"], 422);
+  }
+  const reviewer = requiredText(input.reviewer, "Reviewer", 120, 2);
+  const reviewNote = requiredText(input.reviewNote, "Review-Notiz", 2000, 8);
+  const idempotencyKey = requireUuid(input.idempotencyKey, "Idempotenz-ID");
+  return supabaseRpc<{
+    updated: boolean;
+    idempotent_replay: boolean;
+    version_id: string;
+    email_review_status: EmailKnowledgeReviewStatus;
+    audit_id: string;
+  }>("review_email_support_knowledge_v1", {
+    p_version_id: versionId,
+    p_decision: decision,
+    p_reviewer: reviewer,
+    p_note: reviewNote,
+    p_idempotency_key: idempotencyKey,
+  });
 }
 
 export async function searchApprovedVoiceKnowledge(query: unknown, mode: unknown, limit = 4) {

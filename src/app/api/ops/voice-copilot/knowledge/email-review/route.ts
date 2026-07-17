@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeVoiceCopilotApi, resolveVoiceCopilotActor, voiceCopilotApiFailure } from "@/lib/ops/voice-copilot-api";
-import { isVoiceKnowledgeEnabled, reviewVoiceKnowledgeVersion } from "@/lib/ops/voice-knowledge";
+import { isVoiceKnowledgeEnabled, reviewEmailSupportKnowledge } from "@/lib/ops/voice-knowledge";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +17,12 @@ export async function POST(request: NextRequest) {
     if (operatorName.length < 2) {
       return NextResponse.json({ ok: false, error: "reviewer_identity_required" }, { status: 400 });
     }
-    const result = await reviewVoiceKnowledgeVersion({
+    const result = await reviewEmailSupportKnowledge({
       ...input,
       reviewer: `${authenticatedActor}:${operatorName}`.slice(0, 120),
     });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
-    return voiceCopilotApiFailure(error, "knowledge-review");
+    return voiceCopilotApiFailure(error, "email-knowledge-review");
   }
 }

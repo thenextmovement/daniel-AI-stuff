@@ -69,8 +69,21 @@ export async function POST(request: NextRequest) {
     decision?: EmailAgentLearningStatus;
     note?: string | null;
     operatorName?: string | null;
+    idempotencyKey?: string | null;
   } | null;
-  if (!body || !Number.isInteger(body.feedbackId) || !["approved", "rejected", "ignored"].includes(body.decision || "")) {
+  const note = body?.note?.trim() || "";
+  const operatorName = body?.operatorName?.trim() || "";
+  const idempotencyKey = body?.idempotencyKey?.trim() || "";
+  if (
+    !body
+    || !Number.isInteger(body.feedbackId)
+    || !["approved", "rejected", "ignored"].includes(body.decision || "")
+    || note.length < 8
+    || note.length > 2000
+    || operatorName.length < 2
+    || operatorName.length > 160
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)
+  ) {
     return NextResponse.json({ ok: false, error: "invalid_request" }, { status: 400 });
   }
 
@@ -78,10 +91,9 @@ export async function POST(request: NextRequest) {
     const result = await reviewEmailAgentFeedback({
       feedbackId: body.feedbackId!,
       decision: body.decision as Exclude<EmailAgentLearningStatus, "pending">,
-      note: body.note,
-      reviewer: access.actor === "ops-session" && body.operatorName?.trim()
-        ? `ops-session:${body.operatorName.trim().slice(0, 160)}`
-        : access.actor,
+      note,
+      reviewer: `${access.actor}:${operatorName}`.slice(0, 200),
+      idempotencyKey,
     });
     return NextResponse.json({ ok: true, result });
   } catch (error) {

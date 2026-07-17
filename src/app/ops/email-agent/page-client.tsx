@@ -231,6 +231,7 @@ function ReviewCard({
 }) {
   const percent = item.editRatio === null ? null : Math.round(item.editRatio * 100);
   const learningReady = item.feedbackId !== null;
+  const reviewReady = operatorName.trim().length >= 2 && note.trim().length >= 8;
 
   return (
     <article className="overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_14px_40px_rgba(24,20,16,0.07)]">
@@ -286,22 +287,22 @@ function ReviewCard({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
               <label className="flex-1 text-xs font-semibold text-stone-700">
                 Interne Lernnotiz
-                <textarea value={note} onChange={(event) => onNoteChange(event.target.value)} maxLength={2000} rows={2} placeholder="Optional: Was soll der Agent daraus lernen?" className="mt-2 w-full resize-y rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none transition focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
+                <textarea value={note} onChange={(event) => onNoteChange(event.target.value)} maxLength={2000} rows={2} placeholder="Pflicht: Warum ist diese Entscheidung richtig?" className="mt-2 w-full resize-y rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none transition focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
               </label>
               <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={saving} onClick={() => void onDecision("approved")} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" disabled={saving || !reviewReady} onClick={() => void onDecision("approved")} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50">
                   <Check className="h-4 w-4" /> Zum Lernen freigeben
                 </button>
-                <button type="button" disabled={saving} onClick={() => void onDecision("rejected")} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-900 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" disabled={saving || !reviewReady} onClick={() => void onDecision("rejected")} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-900 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50">
                   <X className="h-4 w-4" /> Nicht lernen
                 </button>
-                <button type="button" disabled={saving} onClick={() => void onDecision("ignored")} className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" disabled={saving || !reviewReady} onClick={() => void onDecision("ignored")} className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50">
                   Ignorieren
                 </button>
               </div>
             </div>
             <p className="mt-3 text-xs leading-5 text-stone-500">
-              Freigaben ändern niemals automatisch den Prompt. Sie werden nur als geprüfte Stilstatistik verwendet; Kundenfakten, Beträge und Namen werden nicht übernommen. {operatorName ? `Prüfer: ${operatorName}` : ""}
+              Freigaben ändern niemals automatisch den Prompt. Sie werden nur als geprüfte Stilstatistik verwendet; Kundenfakten, Beträge und Namen werden nicht übernommen. Prüfer und Begründung sind Pflicht und werden revisionssicher protokolliert. {operatorName ? `Prüfer: ${operatorName}` : "Bitte oben erneut mit Prüfername anmelden."}
             </p>
           </section>
         ) : (
@@ -416,6 +417,7 @@ export function EmailAgentReviewClient({
           decision,
           note: notes[item.feedbackId] || null,
           operatorName: operatorName || null,
+          idempotencyKey: crypto.randomUUID(),
         }),
       });
       const payload = (await response.json().catch(() => null)) as ReviewsResponse | null;
@@ -490,6 +492,10 @@ export function EmailAgentReviewClient({
                   <option value="normal">Normal</option>
                   <option value="low">Niedrig</option>
                 </select>
+              </label>
+              <label className="text-xs font-semibold text-stone-700">
+                Prüfername
+                <input value={operatorName} onChange={(event) => setOperatorName(event.target.value.slice(0, 160))} placeholder="Vor- und Nachname" className="mt-1.5 w-full min-w-52 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
               </label>
             </div>
             <div className="text-sm text-stone-500">{visibleItems.length} Fälle sichtbar</div>
