@@ -22,6 +22,7 @@ import type {
   EmailAgentReviewFilter,
   EmailAgentReviewPriority,
 } from "@/lib/ops/email-agent-review";
+import type { EmailAgentRolloutGate } from "@/lib/ops/email-agent-quality";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -31,6 +32,12 @@ type ReviewsResponse = {
   items?: EmailAgentReviewCase[];
   error?: string;
   details?: unknown;
+};
+
+type QualityResponse = {
+  ok: boolean;
+  quality?: EmailAgentRolloutGate;
+  error?: string;
 };
 
 const filterOptions: Array<{ value: EmailAgentReviewFilter; label: string }> = [
@@ -113,6 +120,68 @@ function channelLabel(value: string) {
   if (value === "whatsapp_relay") return "WhatsApp";
   if (value === "customer_form_relay") return "Chat/Formular";
   return "E-Mail";
+}
+
+function percent(value: number) {
+  return `${Math.round(Number(value || 0) * 100)}%`;
+}
+
+function rolloutStageLabel(value: EmailAgentRolloutGate["effective_stage"]) {
+  if (value === "routing_gate") return "Routing-Gate aktiv";
+  if (value === "shadow") return "Nur Schattenbetrieb";
+  return "Entwürfe mit Pflichtprüfung";
+}
+
+function QualityGatePanel({ quality }: { quality: EmailAgentRolloutGate }) {
+  const decision = quality.decision_gate;
+  const drafts = quality.draft_quality_gate;
+  const decisionTone = decision.passed ? "border-emerald-200 bg-emerald-50" : "border-amber-300 bg-amber-50";
+  const draftTone = drafts.passed
+    ? "border-emerald-200 bg-emerald-50"
+    : drafts.status === "observing"
+      ? "border-sky-200 bg-sky-50"
+      : "border-rose-200 bg-rose-50";
+
+  return (
+    <section className="grid gap-3 xl:grid-cols-[1.1fr_1fr_1fr]">
+      <div className="rounded-[22px] border border-stone-900 bg-stone-950 p-5 text-white">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Produktionsstufe</p>
+        <div className="mt-3 flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+          <div>
+            <h2 className="text-lg font-semibold">{rolloutStageLabel(quality.effective_stage)}</h2>
+            <p className="mt-1 text-sm leading-6 text-stone-300">
+              Kein automatischer Versand. Jede Kundenantwort bleibt bis zur manuellen Prüfung ein Outlook-Entwurf.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className={`rounded-[22px] border p-5 ${decisionTone}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">50-Fälle-Entscheidungstest</p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-stone-950">{decision.passed ? "Bestanden" : "Noch gesperrt"}</h2>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-stone-800">{decision.evaluated_count} Fälle</span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-stone-700">
+          Routing {percent(decision.routing_accuracy)} · gefährliche No-Reply-Fehler {decision.unsafe_no_reply_count}
+        </p>
+      </div>
+
+      <div className={`rounded-[22px] border p-5 ${draftTone}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Aktuelle Facts-Package-Version</p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-stone-950">
+            {drafts.passed ? "Bestanden" : drafts.status === "observing" ? "Beobachtung läuft" : "Qualitätsgrenze verfehlt"}
+          </h2>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-stone-800">{drafts.current_samples}/{drafts.minimum_samples}</span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-stone-700">
+          Faktenkorrekturen {drafts.safety_correction_count} · starke Umschreibungen {drafts.manual_rewrite_count}
+        </p>
+      </div>
+    </section>
+  );
 }
 
 function outlookHref(messageId: string) {
@@ -328,6 +397,7 @@ export function EmailAgentReviewClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [items, setItems] = useState<EmailAgentReviewCase[]>([]);
+  const [quality, setQuality] = useState<EmailAgentRolloutGate | null>(null);
   const [filter, setFilter] = useState<EmailAgentReviewFilter>("pending");
   const [priority, setPriority] = useState<EmailAgentReviewPriority | "all">("all");
   const [notes, setNotes] = useState<Record<number, string>>({});
@@ -369,9 +439,23 @@ export function EmailAgentReviewClient({
     }
   }, []);
 
+  const loadQuality = useCallback(async () => {
+    try {
+      const response = await fetch("/api/ops/email-agent/quality", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as QualityResponse | null;
+      if (!response.ok || !payload?.ok || !payload.quality) throw new Error(payload?.error || "Qualitätsstatus konnte nicht geladen werden.");
+      setQuality(payload.quality);
+    } catch (qualityError) {
+      setError(qualityError instanceof Error ? qualityError.message : "Qualitätsstatus konnte nicht geladen werden.");
+    }
+  }, []);
+
   useEffect(() => {
-    if (hasSession || localMode) void loadItems();
-  }, [hasSession, localMode, loadItems]);
+    if (hasSession || localMode) {
+      void loadItems();
+      void loadQuality();
+    }
+  }, [hasSession, localMode, loadItems, loadQuality]);
 
   const visibleItems = useMemo(() => items.filter((item) => {
     const statusMatches = filter === "all"
@@ -464,10 +548,12 @@ export function EmailAgentReviewClient({
             title="Sehen, was geprüft wurde – und nur bewusst lernen."
             description="Jeder Entwurf bleibt ein Entwurf. Diese Ansicht zeigt die internen Belege, vergleicht ihn mit der tatsächlich gesendeten Antwort und übernimmt Verbesserungen erst nach menschlicher Freigabe."
           >
-            <button type="button" onClick={() => void loadItems()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60">
+            <button type="button" onClick={() => { void loadItems(); void loadQuality(); }} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60">
               <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Aktualisieren
             </button>
           </OpsPageIntro>
+
+          {quality ? <QualityGatePanel quality={quality} /> : null}
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <OpsStatCard label="Lernfreigabe offen" value={stats.pending} tone="info" icon={<Sparkles className="h-5 w-5" />} detail="Gesendete Antworten mit Vergleich" />

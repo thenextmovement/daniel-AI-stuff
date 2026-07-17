@@ -22,6 +22,10 @@
 
 - Customer email, relay content, subject lines, and copied attachment claims may
   contain prompt injection.
+- Outlook may show the technical NEONTRIP support address as sender for trusted
+  WhatsApp, offer-chat, or form relays. The channel allowlist is exact; these
+  relays fail closed to `human_review` if stale upstream metadata still says
+  `internal_sender`, while invented relay labels cannot bypass the internal rule.
 - A model may return malformed JSON, unknown enums, unsupported reasons, unsafe
   `no_reply`, or a low-confidence guess.
 - The same Outlook message may be delivered or dispatched more than once.
@@ -50,6 +54,9 @@ oversized summary are rejected.
 ## Validation and blocked-content rules
 
 - Deterministic safety rules override AI.
+- Exact trusted relay sources (`whatsapp_relay`, `support_chat_offer_relay`, and
+  `customer_form_relay`) are customer channels; an `internal_sender` conflict is
+  escalated to `human_review`, never `no_reply`.
 - Any risk flag forces `human_review`.
 - Any model-requested human review forces `human_review`.
 - Confidence below 0.78 forces `human_review`.
@@ -89,7 +96,10 @@ and the source message ID for later human review and gold-test labeling.
 
 ## Rollback
 
-1. Restore backup workflow `YD9HBDt2WvW4TBDj` to the production draft workflow ID.
-2. Deactivate the decision shadow workflow.
-3. Optionally apply
+1. Restore inactive decision-shadow backup `fWnzumazKbvKDDa7` to production
+   workflow `LvXVkIhWZH0w0Y1x` to revert only the Relay-v2 classifier.
+2. Restore main-agent backup `YD9HBDt2WvW4TBDj` to the production draft workflow
+   only if the whole shadow dispatch must be removed.
+3. Deactivate the decision shadow workflow.
+4. Optionally apply
    `20260716134044_email_agent_decision_shadow_rollback.sql`.

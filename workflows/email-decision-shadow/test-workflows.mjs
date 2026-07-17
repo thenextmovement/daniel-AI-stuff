@@ -12,6 +12,7 @@ assert.ok(shadowWorkflow.nodes.length <= 30);
 assert.doesNotMatch(JSON.stringify(shadowWorkflow), /graph[.]microsoft[.]com/i);
 assert.doesNotMatch(JSON.stringify(shadowWorkflow), /createReply|sendMail|replyAll/i);
 assert.match(JSON.stringify(shadowWorkflow), /record_email_agent_decision_shadow_v1/);
+assert.equal(shadowWorkflow.name, "AI Email Agent — Decision Shadow v2");
 
 for (const node of shadowWorkflow.nodes.filter((entry) => entry.type === "n8n-nodes-base.httpRequest")) {
   assert.ok(node.credentials);
@@ -46,6 +47,55 @@ const automated = build({
 assert.equal(automated.needs_ai, false);
 assert.equal(automated.deterministic_decision, "no_reply");
 assert.deepEqual(automated.deterministic_reason_codes, ["automated_notification"]);
+
+const internalMessage = build({
+  messageId: "internal-1",
+  conversationId: "conversation-internal",
+  subject: "Interne Notiz",
+  sourceFromEmail: "support@neontrip.de",
+  latestMessageText: "Bitte intern prüfen.",
+  messageSource: "external_email",
+  shouldProcess: false,
+  skipReason: "internal_sender",
+});
+assert.equal(internalMessage.needs_ai, false);
+assert.equal(internalMessage.deterministic_decision, "no_reply");
+
+for (const messageSource of [
+  "whatsapp_relay",
+  "support_chat_offer_relay",
+  "customer_form_relay",
+]) {
+  const relay = build({
+    messageId: `relay-${messageSource}`,
+    conversationId: `conversation-${messageSource}`,
+    subject: "Weitergeleitete Kundennachricht",
+    sourceFromEmail: "support@neontrip.de",
+    latestMessageText: "Kann ich das Angebot noch anpassen?",
+    messageSource,
+    shouldProcess: false,
+    skipReason: "internal_sender",
+  });
+  assert.equal(relay.trusted_customer_relay, true);
+  assert.equal(relay.needs_ai, false);
+  assert.equal(relay.deterministic_decision, "human_review");
+  assert.deepEqual(relay.deterministic_reason_codes, ["requires_system_lookup"]);
+  assert.deepEqual(relay.deterministic_risk_flags, ["identity_or_authority"]);
+  assert.equal(relay.classifier_version, "email-decision-shadow-v2");
+}
+
+const untrustedRelayLabel = build({
+  messageId: "relay-untrusted-label",
+  conversationId: "conversation-untrusted-label",
+  subject: "Interne Notiz",
+  sourceFromEmail: "support@neontrip.de",
+  latestMessageText: "Interne Testnachricht.",
+  messageSource: "invented_relay",
+  shouldProcess: false,
+  skipReason: "internal_sender",
+});
+assert.equal(untrustedRelayLabel.trusted_customer_relay, false);
+assert.equal(untrustedRelayLabel.deterministic_decision, "no_reply");
 
 const acknowledgement = build({
   messageId: "ack-1",

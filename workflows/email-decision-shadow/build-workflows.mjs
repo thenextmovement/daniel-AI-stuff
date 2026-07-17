@@ -36,6 +36,13 @@ const skipReasons = String(input.skipReason || "").split(",").map((value) => val
 const bodyText = String(input.latestMessageText || input.triggerBodyPreview || "").trim().slice(0, 4000);
 const subject = String(input.subject || "(kein Betreff)").trim().slice(0, 500);
 const fromEmail = String(input.fromEmail || input.sourceFromEmail || "").trim().toLowerCase().slice(0, 320);
+const messageSource = String(input.messageSource || "external_email").trim().toLowerCase().slice(0, 80);
+const trustedCustomerRelaySources = new Set([
+  "whatsapp_relay",
+  "support_chat_offer_relay",
+  "customer_form_relay",
+]);
+const trustedCustomerRelay = trustedCustomerRelaySources.has(messageSource);
 const combined = (subject + "\n" + bodyText).toLowerCase();
 const highRiskPattern = /\b(anwalt|rechtsanwalt|klage|mahnung|widerruf|stornier\w*|kündig\w*|reklamation\w*|beschwerde\w*|schaden|haftung|frist|datenschutz|dsgvo|rückerstatt\w*|erstatt\w*|gutschrift\w*|chargeback|paypal konflikt|rechnung falsch|umsatzsteuer|vat)\b/i;
 const injectionPattern = /(ignore (?:all|previous) instructions|system prompt|developer message|jailbreak|ignoriere\s+(?:alle\s+)?(?:vorherigen\s+)?anweisungen|versteckte anweisung)/i;
@@ -67,6 +74,11 @@ if (!messageId || skipReasons.includes("missing_conversation_id") || skipReasons
   deterministicDecision = "no_reply";
   deterministicConfidence = 1;
   deterministicReasons = ["automated_notification"];
+} else if (skipReasons.includes("internal_sender") && trustedCustomerRelay) {
+  deterministicDecision = "human_review";
+  deterministicConfidence = 1;
+  deterministicReasons = ["requires_system_lookup"];
+  deterministicRisks = ["identity_or_authority"];
 } else if (skipReasons.includes("internal_sender")) {
   deterministicDecision = "no_reply";
   deterministicConfidence = 1;
@@ -119,7 +131,7 @@ const promptUser = [
     from_email: fromEmail,
     subject,
     body: bodyText,
-    message_source: input.messageSource || "external_email",
+    message_source: messageSource,
   }),
   "</UNTRUSTED_MESSAGE>",
   "<CURRENT_FILTER_DATA>",
@@ -142,7 +154,8 @@ return [{
     received_at: input.receivedAt || null,
     from_email: fromEmail,
     subject,
-    message_source: String(input.messageSource || "external_email").slice(0, 80),
+    message_source: messageSource,
+    trusted_customer_relay: trustedCustomerRelay,
     body_preview: bodyText.slice(0, 1000),
     body_hash: stableHash(bodyText),
     existing_should_process: input.shouldProcess === true,
@@ -154,7 +167,7 @@ return [{
     deterministic_reason_codes: deterministicReasons,
     deterministic_risk_flags: deterministicRisks,
     needs_ai: deterministicDecision === null,
-    classifier_version: "email-decision-shadow-v1",
+    classifier_version: "email-decision-shadow-v2",
     model_name: deterministicDecision === null ? "claude-sonnet-4-6" : null,
     prompt_system: systemPrompt,
     prompt_user: promptUser,
@@ -337,7 +350,7 @@ return [{
 `;
 
 export const shadowWorkflow = {
-  name: "AI Email Agent — Decision Shadow v1",
+  name: "AI Email Agent — Decision Shadow v2",
   nodes: [
     {
       id: "decision-shadow-input",
