@@ -1,5 +1,5 @@
 {
-  "name": "NEONTRIP Archive DHL Mail After Label Print v0.4 (INACTIVE)",
+  "name": "NEONTRIP Archive DHL Mail After Label Print v0.5 (INACTIVE)",
   "active": false,
   "nodes": [
     {
@@ -14,7 +14,7 @@
       "parameters": {
         "width": 940,
         "height": 220,
-        "content": "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Cloudflare Access and the Ops bearer token are both required. Pre-dispatch errors may retry; any uncertainty after move dispatch becomes manual review and never auto-retries. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable the database archive setting."
+        "content": "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Cloudflare Access and the Ops bearer token are both required. Pre-dispatch errors may retry; any uncertainty after move dispatch becomes manual review and never auto-retries. Execution payloads are not persisted because the HTTP credential carries security headers; Postgres is the audit source of truth. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable the database archive setting."
       }
     },
     {
@@ -129,12 +129,12 @@
   "settings": {
     "executionOrder": "v1",
     "timezone": "Europe/Berlin",
-    "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
     "executionTimeout": 90,
     "errorWorkflow": "ArT3LN25Mb1PAuBE"
   },
-  "versionId": "arrival-outlook-archive-after-print-v0-4",
+  "versionId": "arrival-outlook-archive-after-print-v0-5",
   "meta": {
     "templateCredsSetupCompleted": true
   },

@@ -67,6 +67,8 @@ const archiveRequests = archiveWorkflow.nodes.filter((node) => node.type === "n8
 assert.equal(archiveWorkflow.active, false);
 assert.equal(archiveWorkflow.settings.timezone, "Europe/Berlin");
 assert.equal(archiveWorkflow.settings.errorWorkflow, "ArT3LN25Mb1PAuBE");
+assert.equal(archiveWorkflow.settings.saveDataErrorExecution, "none");
+assert.equal(archiveWorkflow.settings.saveDataSuccessExecution, "none");
 assert.equal(archiveTriggers.length, 1);
 assert.equal(archiveRequests.length, 1);
 assert.equal(archiveRequests[0].retryOnFail, undefined, "move processor request must not retry automatically");
