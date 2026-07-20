@@ -1,0 +1,186 @@
+{
+  "id": "M4uG1HAtN9Zggxww",
+  "name": "Error Notification → info@NeonTrip.de",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all"
+  },
+  "createdAt": "2026-02-05T13:37:22.020Z",
+  "updatedAt": "2026-05-29T16:20:45.746Z",
+  "activeVersionId": "c9e8e613-191e-4230-9200-14642f1001d3",
+  "versionCreatedAt": "2026-05-29T16:20:45.749Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "loop-prevention",
+      "name": "Loop Prevention?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "check-reviewer",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.workflow.id }}",
+              "rightValue": "SH5HK6TqLCyaitXu"
+            },
+            {
+              "id": "check-self",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.workflow.id }}",
+              "rightValue": "M4uG1HAtN9Zggxww"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "send-error-email",
+      "name": "Send Error Email (Fallback)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        700,
+        -200
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "info@NeonTrip.de",
+        "subject": "=N8N Fehler",
+        "bodyContent": "=<h2>Workflow Fehler aufgetreten</h2>\n<table style=\"border-collapse:collapse;width:100%;font-family:Arial,sans-serif;\">\n<tr style=\"background:#f44336;color:white;\"><td style=\"padding:10px;\" colspan=\"2\"><strong>Fehlerbericht</strong></td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;width:150px;\"><strong>Workflow</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">{{ $json.workflow.name }}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Execution ID</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">{{ $json.execution.id }}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Fehlermeldung</strong></td><td style=\"padding:8px;border:1px solid #ddd;color:#d32f2f;\">{{ $json.execution.error.message }}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Beschreibung</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">{{ $json.execution.error.description }}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Execution Link</strong></td><td style=\"padding:8px;border:1px solid #ddd;\"><a href=\"{{ $json.execution.url }}\">{{ $json.execution.url }}</a></td></tr>\n</table>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "b6021100-486a-4ecb-9ab8-ac9f829127fd",
+      "retryOnFail": true,
+      "maxTries": 6,
+      "waitBetweenTries": 60000,
+      "onError": "continueRegularOutput",
+      "disabled": true
+    },
+    {
+      "id": "prepare-alert",
+      "name": "Prepare Alert Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const errorData = $input.first().json;\n\nconst workflowName = errorData.workflow?.name || 'Unknown Workflow';\nconst executionId = errorData.execution?.id || 'N/A';\nconst errorMessage = errorData.execution?.error?.message || 'Unbekannter Fehler';\nconst errorDescription = errorData.execution?.error?.description || '';\nconst executionUrl = errorData.execution?.url || '';\nconst workflowId = errorData.workflow?.id || 'unknown';\n\nconst bodyHtml = `<h2>Workflow Fehler aufgetreten</h2>\n<table style=\"border-collapse:collapse;width:100%;font-family:Arial,sans-serif;\">\n<tr style=\"background:#f44336;color:white;\"><td style=\"padding:10px;\" colspan=\"2\"><strong>Fehlerbericht</strong></td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;width:150px;\"><strong>Workflow</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${workflowName}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Execution ID</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${executionId}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Fehlermeldung</strong></td><td style=\"padding:8px;border:1px solid #ddd;color:#d32f2f;\">${errorMessage}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Beschreibung</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${errorDescription || 'Keine Beschreibung'}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Execution Link</strong></td><td style=\"padding:8px;border:1px solid #ddd;\"><a href=\"${executionUrl}\">${executionUrl}</a></td></tr>\n</table>`;\n\nreturn [{\n  json: {\n    alert_type: 'error',\n    severity_hint: 'warning',\n    source_workflow_id: workflowId,\n    source_workflow_name: workflowName,\n    subject: `N8N Fehler: ${workflowName}`,\n    body_html: bodyHtml,\n    metadata: {\n      execution_id: executionId,\n      execution_url: executionUrl,\n      error_message: errorMessage,\n      error_description: errorDescription\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "send-prepared-error-email",
+      "name": "Send Prepared Alert Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "info@NeonTrip.de",
+        "subject": "={{ $json.subject || 'N8N Fehler' }}",
+        "bodyContent": "={{ $json.body_html || '<h2>N8N Fehler</h2><pre>' + JSON.stringify($json, null, 2) + '</pre>' }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "6be6c87d-23c8-4b7a-a7e4-3e8a40b7ddbe",
+      "retryOnFail": true,
+      "maxTries": 6,
+      "waitBetweenTries": 60000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Loop Prevention?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Prevention?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Prepare Alert Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Alert Data": {
+      "main": [
+        [
+          {
+            "node": "Send Prepared Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

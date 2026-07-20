@@ -1,0 +1,158 @@
+{
+  "name": "NEONTRIP Internal Alert Router v1 — SHADOW",
+  "active": false,
+  "nodes": [
+    {
+      "id": "internal-alert-input",
+      "name": "Internal Alert Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "normalize-redact-fingerprint",
+      "name": "Normalize, Redact & Fingerprint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nfunction text(value, maxLength) {\n  return String(value ?? \"\").trim().slice(0, maxLength);\n}\n\nfunction redact(value) {\n  return text(value, 2000)\n    .replace(/bearer\\s+[a-z0-9._~+\\/-]+=*/gi, \"[redacted-token]\")\n    .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}/gi, \"[redacted-email]\")\n    .replace(/https?:\\/\\/[^\\s\"'<>]+/gi, \"[redacted-url]\")\n    .replace(/\\+?[0-9][0-9() ./-]{7,}[0-9]/g, \"[redacted-phone]\")\n    .replace(/\\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\b/gi, \"[redacted-uuid]\")\n    .replace(/\\b[0-9a-f]{24,}\\b/gi, \"[redacted-token]\")\n    .replace(/\\b\\d{6,}\\b/g, \"[redacted-number]\")\n    .replace(/\\s+/g, \" \")\n    .trim();\n}\n\nfunction normalizeForFingerprint(value) {\n  return redact(value)\n    .toLowerCase()\n    .replace(/\\bexecution(?: id)?[: #=-]*\\d+\\b/gi, \"execution [id]\")\n    .replace(/\\b(?:attempt|retry)[: #=-]*\\d+\\b/gi, \"attempt [n]\")\n    .replace(/\\b\\d+(?:\\.\\d+)?\\s*(?:ms|milliseconds?|seconds?|secs?|s)\\b/gi, \"[duration]\")\n    .replace(/\\s+/g, \" \")\n    .trim()\n    .slice(0, 1000);\n}\n\nfunction fnv1a(value, seed) {\n  let hash = seed >>> 0;\n  for (let index = 0; index < value.length; index += 1) {\n    hash ^= value.charCodeAt(index);\n    hash = Math.imul(hash, 16777619);\n  }\n  return (\"00000000\" + (hash >>> 0).toString(16)).slice(-8);\n}\n\nfunction classifyRootCause(message) {\n  if (/invalid_grant|refresh token|expired|revoked|unauthori[sz]ed|oauth|authentication/.test(message)) return \"credential_or_auth\";\n  if (/forbidden|permission[_ ]denied|access denied|insufficient privilege/.test(message)) return \"permission\";\n  if (/429|rate limit|quota exceeded|too many requests/.test(message)) return \"rate_limit\";\n  if (/timeout|timed out|etimedout|econnrefused|enotfound|socket hang up/.test(message)) return \"dependency_unavailable\";\n  if (/cannot read|undefined|null|typeerror|referenceerror|schema|validation/.test(message)) return \"data_shape_or_validation\";\n  if (/5\\d\\d|bad gateway|service unavailable|upstream/.test(message)) return \"external_service\";\n  return \"unclassified_workflow_error\";\n}\n\nconst input = $input.first().json || {};\nconst metadata = input.metadata && typeof input.metadata === \"object\" ? input.metadata : {};\nconst workflowId = text(input.source_workflow_id || input.workflowId || input.workflow?.id, 200);\nconst workflowName = text(input.source_workflow_name || input.workflowName || input.workflow?.name || \"Unknown Workflow\", 300);\nconst executionId = text(metadata.execution_id || input.executionId || input.execution?.id, 200);\nconst executionUrl = text(metadata.execution_url || input.executionUrl || input.execution?.url, 1000);\nconst lastNode = text(metadata.last_node || input.lastNode || input.execution?.lastNodeExecuted || \"unknown\", 300);\nconst rawError = text(metadata.error_message || input.errorMessage || input.execution?.error?.message || input.subject || \"unknown error\", 2000);\n\nif (!workflowId || !workflowName) {\n  throw new Error(\"internal_alert_router_invalid_source_identity\");\n}\n\nconst normalizedError = normalizeForFingerprint(rawError) || \"unknown error\";\nconst rootCause = classifyRootCause(normalizedError);\nconst signatureSource = [workflowId.toLowerCase(), lastNode.toLowerCase(), rootCause, normalizedError].join(\"|\");\nconst signature = fnv1a(signatureSource, 2166136261) + fnv1a(signatureSource, 3339675911);\nconst fingerprint = (\"n8n-alert:\" + workflowId.toLowerCase() + \":\" + signature).slice(0, 500);\nconst requestedSeverity = text(input.severity_hint || \"warning\", 20).toLowerCase();\nconst severity = [\"info\", \"warning\", \"critical\"].includes(requestedSeverity) ? requestedSeverity : \"warning\";\nconst alertType = text(input.alert_type || \"error\", 80).toLowerCase().replace(/[^a-z0-9_-]+/g, \"_\") || \"error\";\nconst redactedPreview = redact(rawError).slice(0, 500);\n\nreturn [{\n  json: {\n    router_mode: \"shadow\",\n    router_version: \"internal-alert-router-v1\",\n    fingerprint,\n    signature,\n    rpc_payload: {\n      p_fingerprint: fingerprint,\n      p_incident_type: \"n8n_\" + alertType,\n      p_severity: severity,\n      p_title: (\"n8n: \" + workflowName + \" failed\").slice(0, 500),\n      p_detail: [\n        \"Workflow: \" + workflowName,\n        \"Node: \" + lastNode,\n        \"Cause: \" + rootCause,\n        \"Redacted error: \" + redactedPreview,\n        \"Signature: \" + signature,\n      ].join(\"\\n\").slice(0, 5000),\n      p_root_cause_code: rootCause,\n      p_workflow_execution_id: executionId || null,\n      p_source_key: \"n8n\",\n      p_source_ref: executionUrl || null,\n      p_evidence_refs: executionId ? [{ type: \"n8n_execution\", id: executionId }] : [],\n      p_owner_team: \"operations\",\n      p_metadata: {\n        router_mode: \"shadow\",\n        router_version: \"internal-alert-router-v1\",\n        source_workflow_id: workflowId,\n        source_workflow_name: workflowName,\n        last_node: lastNode,\n        error_signature: signature,\n        error_preview_redacted: redactedPreview,\n      },\n      p_actor: \"n8n-internal-alert-router\",\n      p_reopen: true,\n    },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "upsert-company-brain-incident",
+      "name": "Upsert Company Brain Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        580,
+        200
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/upsert_company_brain_incident",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rpc_payload) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "shadow-write-ok",
+      "name": "Shadow Write OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst request = $(\"Normalize, Redact & Fingerprint\").first().json;\nreturn [{\n  json: {\n    shadow_write: \"ok\",\n    router_mode: request.router_mode,\n    router_version: request.router_version,\n    fingerprint: request.fingerprint,\n    signature: request.signature,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "shadow-write-failed",
+      "name": "Shadow Write Failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst request = $(\"Normalize, Redact & Fingerprint\").first().json;\nconst failure = $input.first().json || {};\nreturn [{\n  json: {\n    shadow_write: \"failed\",\n    router_mode: request.router_mode,\n    router_version: request.router_version,\n    fingerprint: request.fingerprint,\n    signature: request.signature,\n    failure_type: String(failure.error?.name || failure.name || \"supabase_write_failed\").slice(0, 120),\n  },\n}];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Internal Alert Input": {
+      "main": [
+        [
+          {
+            "node": "Normalize, Redact & Fingerprint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize, Redact & Fingerprint": {
+      "main": [
+        [
+          {
+            "node": "Upsert Company Brain Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Company Brain Incident": {
+      "main": [
+        [
+          {
+            "node": "Shadow Write OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shadow Write Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

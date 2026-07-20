@@ -1,0 +1,230 @@
+{
+  "name": "NEONTRIP Error Alerting v1.0",
+  "active": true,
+  "nodes": [
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "whatsapp-number",
+              "name": "whatsappNumber",
+              "type": "string",
+              "value": "+49XXXXXXXXXXX"
+            },
+            {
+              "id": "email-recipient",
+              "name": "emailRecipient",
+              "type": "string",
+              "value": "support@neontrip.de,rh@neontrip.de"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "format-error",
+      "name": "Format Error Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst errorData = $('Error Trigger').first().json;\nconst config = $('Config').first().json;\n\nconst workflowName = (errorData.workflow && errorData.workflow.name) || 'Unknown Workflow';\nconst workflowId = (errorData.workflow && errorData.workflow.id) || '';\nconst errorMessage = (errorData.execution && errorData.execution.error && errorData.execution.error.message) || 'Unknown error';\nconst lastNode = (errorData.execution && errorData.execution.lastNodeExecuted) || 'Unknown node';\nconst executionUrl = (errorData.execution && errorData.execution.url) || ('https://fuajob.online/workflow/' + workflowId);\nconst executionId = (errorData.execution && errorData.execution.id) || '';\nconst timestamp = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });\n\n// Intelligent solution suggestion based on error pattern\nlet solution = '1. Execution-Log in n8n öffnen und Details prüfen';\nconst lower = errorMessage.toLowerCase();\nif (/invalid_grant|refresh token|expired|revoked|unauthorized|authorization grant/.test(lower)) {\n  solution = '1. n8n → Credentials öffnen\\n2. Betroffene Credential reconnecten / neu autorisieren\\n3. Anschließend Workflow erneut triggern';\n} else if (/forbidden|permission_denied|storage quota/.test(lower)) {\n  solution = '1. Service-Account-Berechtigungen prüfen (Drive-Folder mit Service-Account-Email sharen)\\n2. Falls Service-Account-Quota: zurück auf OAuth oder Workspace nutzen';\n} else if (/429|rate limit|quota exceeded/.test(lower)) {\n  solution = '1. Rate-Limit der API erreicht — kurz abwarten\\n2. Falls häufiger: Workflow-Frequenz reduzieren oder API-Quota erhöhen';\n} else if (/timeout|etimedout|econnrefused|enotfound/.test(lower)) {\n  solution = '1. Netzwerk / Ziel-API erreichbar? Manueller Test der URL\\n2. Falls Ziel down: warten und Workflow später re-triggern';\n} else if (/cannot read|undefined|null|typeerror|referenceerror/.test(lower)) {\n  solution = '1. Code-Node debuggen — sieht nach Daten-Shape-Problem aus\\n2. Upstream-Node-Output checken: hat das erwartete Feld geheißen wie erwartet?';\n}\n\nconst erklaerung = 'Der Workflow ist im Node „' + lastNode + '\" mit einem Fehler abgebrochen.';\n\nconst emailSubject = 'RH Fehler im Workflow (' + workflowName + ')';\nconst emailBody = [\n  '<div style=\"font-family:-apple-system,Arial,sans-serif;color:#222;line-height:1.5;\">',\n  '<h2 style=\"margin:0 0 16px;color:#c0392b\">⚠ ' + workflowName + ' — Fehler</h2>',\n  '<table style=\"border-collapse:collapse;width:100%;margin-bottom:16px;\">',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;width:160px;vertical-align:top\">Einfache Erläuterung</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\">' + erklaerung + '</td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Grund</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\"><code style=\"background:#fff5f5;padding:2px 4px;border-radius:3px;\">' + errorMessage + '</code></td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Lösung</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;white-space:pre-line;\">' + solution + '</td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Link zum Workflow</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\"><a href=\"' + executionUrl + '\">' + executionUrl + '</a></td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Zeit</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\">' + timestamp + '</td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Execution ID</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\">' + executionId + '</td></tr>',\n  '</table>',\n  '<p style=\"color:#666;font-size:12px;margin-top:24px;\">Automatischer Alert von n8n. Reply-to support@neontrip.de</p>',\n  '</div>'\n].join('');\n\nreturn [{ json: {\n  emailRecipient: config.emailRecipient,\n  emailSubject,\n  emailBody,\n  workflowName, errorMessage, lastNode, executionUrl, executionId, timestamp\n}}];\n"
+      }
+    },
+    {
+      "id": "send-whatsapp",
+      "name": "Send WhatsApp Alert",
+      "type": "n8n-nodes-whatsable.whatsAble",
+      "typeVersion": 1,
+      "position": [
+        700,
+        200
+      ],
+      "parameters": {
+        "productOperation": "sendNonTemplateMessage",
+        "nonTemplateRecipient": "={{ $json.whatsappNumber }}",
+        "enableLinkPreview": true,
+        "messageContent": "={{ $json.whatsappMessage }}"
+      },
+      "credentials": {
+        "whatsAbleApi": {
+          "id": "vBkMcLbcIp32O7D5",
+          "name": "WhatsAble account 2 whatsable API"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "id": "send-email",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        700,
+        400
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.emailRecipient }}",
+        "subject": "={{ $json.emailSubject }}",
+        "bodyContent": "={{ $json.emailBody }}",
+        "additionalFields": {
+          "bodyContentType": "HTML"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "44b0e37a-17c3-49b3-8823-032f507d2619",
+      "retryOnFail": true,
+      "maxTries": 6,
+      "waitBetweenTries": 60000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "sticky-note",
+      "name": "Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        100
+      ],
+      "parameters": {
+        "width": 350,
+        "height": 280,
+        "content": "## NEONTRIP Error Alerting v1.0\n\n**Funktion:**\nSendet Alerts wenn ein Workflow fehlschlaegt.\n\n**Setup:**\n1. WhatsApp-Nummer im Config Node eintragen\n2. Diesen Workflow als Error Workflow in anderen Workflows setzen\n\n**Alerts:**\n- WhatsApp: Sofort-Benachrichtigung\n- Email: Detaillierte Fehlerbeschreibung"
+      }
+    },
+    {
+      "id": "prepare-shadow-alert",
+      "name": "Prepare Shadow Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        560
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst input = $input.first().json || {};\nreturn [{\n  json: {\n    alert_type: \"error\",\n    severity_hint: \"warning\",\n    source_workflow_id: String(input.workflowId || \"\").slice(0, 200),\n    source_workflow_name: String(input.workflowName || \"Unknown Workflow\").slice(0, 300),\n    subject: String(input.emailSubject || (\"N8N Fehler: \" + (input.workflowName || \"Unknown Workflow\"))).slice(0, 500),\n    metadata: {\n      execution_id: String(input.executionId || \"\").slice(0, 200),\n      execution_url: String(input.executionUrl || \"\").slice(0, 1000),\n      error_message: String(input.errorMessage || \"Unknown error\").slice(0, 2000),\n      last_node: String(input.lastNode || \"unknown\").slice(0, 300),\n    },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "shadow-router-call",
+      "name": "Shadow: Record Company Brain Incident",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        980,
+        560
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "SH5HK6TqLCyaitXu",
+          "mode": "list",
+          "cachedResultName": "NEONTRIP Internal Alert Router v1 — SHADOW"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Format Error Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Data": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Shadow Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Shadow Alert": {
+      "main": [
+        [
+          {
+            "node": "Shadow: Record Company Brain Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

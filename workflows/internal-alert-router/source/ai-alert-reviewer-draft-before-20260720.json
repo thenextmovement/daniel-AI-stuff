@@ -1,0 +1,478 @@
+{
+  "updatedAt": "2026-03-26T09:54:18.541Z",
+  "createdAt": "2026-03-26T09:54:18.541Z",
+  "id": "SH5HK6TqLCyaitXu",
+  "name": "AI Alert Reviewer v1.0",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "trigger-1",
+      "name": "Alert Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "validate-1",
+      "name": "Validate & Prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nconst required = ['alert_type', 'source_workflow_id', 'source_workflow_name', 'subject'];\nfor (const field of required) {\n  if (!input[field]) {\n    throw new Error('Missing required field: ' + field);\n  }\n}\n\nconst bodyContent = (input.subject || '') + (input.body_html || '');\nlet hash = 5381;\nfor (let i = 0; i < bodyContent.length; i++) {\n  hash = ((hash << 5) + hash) + bodyContent.charCodeAt(i);\n  hash = hash & hash;\n}\nconst body_hash = Math.abs(hash).toString(16).padStart(8, '0');\n\nconst now = new Date();\nconst berlinTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));\nconst berlinHour = berlinTime.getHours();\nconst berlinDay = berlinTime.getDay();\nconst is_weekend = berlinDay === 0 || berlinDay === 6;\nconst isNight = berlinHour < 7 || berlinHour >= 22;\n\nlet time_context = 'business_hours';\nif (isNight && is_weekend) time_context = 'night_weekend';\nelse if (isNight) time_context = 'night';\nelse if (is_weekend) time_context = 'weekend';\n\nconst CRITICAL_WORKFLOWS = [\n  'CS4jhqo9tdd0cPe4', 'TLLSwYTcIRgtinVg', '6otS4c8KAuQKSdxz',\n  '2fRdyqdyVDMWwH4O', 'IdFouG1kp8Uo23W5'\n];\nconst is_critical_workflow = CRITICAL_WORKFLOWS.includes(input.source_workflow_id);\nconst force_send = input.severity_hint === 'critical' ||\n  (input.metadata && input.metadata.force_send === true);\n\nconst body_preview = (input.body_html || '')\n  .replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim().substring(0, 500);\n\nreturn {\n  json: {\n    alert_type: input.alert_type,\n    severity_hint: input.severity_hint || 'unknown',\n    source_workflow_id: input.source_workflow_id,\n    source_workflow_name: input.source_workflow_name,\n    subject: input.subject,\n    body_html: input.body_html || '',\n    body_preview,\n    body_hash,\n    metadata: input.metadata || {},\n    time_context,\n    is_weekend,\n    is_critical_workflow,\n    force_send\n  }\n};"
+      }
+    },
+    {
+      "id": "history-1",
+      "name": "Fetch Alert History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/count_similar_alerts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_hash\": \"{{ $json.body_hash }}\"}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "id": "context-1",
+      "name": "Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const alert = $('Validate & Prepare').first().json;\nconst historyData = $input.first().json;\nconst similar_alerts_24h = historyData.similar_count || 0;\n\nconst ai_prompt = 'Du bist ein Alert-Review-System fuer NEONTRIP (LED Neonschilder, E-Commerce + Produktion).\\n'\n  + 'Bewerte den folgenden System-Alert und entscheide was passieren soll.\\n\\n'\n  + 'ALERT:\\n'\n  + '- Typ: ' + alert.alert_type + '\\n'\n  + '- Severity: ' + alert.severity_hint + '\\n'\n  + '- Quelle: ' + alert.source_workflow_name + ' (' + alert.source_workflow_id + ')\\n'\n  + '- Betreff: ' + alert.subject + '\\n'\n  + '- Inhalt (Vorschau): ' + alert.body_preview + '\\n\\n'\n  + 'KONTEXT:\\n'\n  + '- Tageszeit: ' + alert.time_context + '\\n'\n  + '- Wochenende: ' + alert.is_weekend + '\\n'\n  + '- Identische Alerts in letzten 24h: ' + similar_alerts_24h + '\\n'\n  + '- Geschaeftskritischer Workflow: ' + alert.is_critical_workflow + '\\n\\n'\n  + 'ENTSCHEIDUNGSREGELN:\\n'\n  + '1. \"suppress\" - Duplikate (gleicher Alert <1h), harmlose Daily Summaries ohne Fehler, self-healing Patterns, >3 identische in 24h\\n'\n  + '2. \"email\" - Standard-Alerts, erstmaliges Auftreten, unsichere Faelle (DEFAULT im Zweifel)\\n'\n  + '3. \"escalate\" - Critical Severity, geschaeftskritische Workflow-Fehler, Mass-Cancellations, >5 Errors\\n\\n'\n  + 'EINSCHRAENKUNGEN:\\n'\n  + '- Geschaeftskritische Workflows (Follow-up Processor, Event Receiver, Reply Detector, Qonto, Shopify Orders) NIEMALS unterdruecken\\n'\n  + '- Nachts/Wochenende: aggressiver suppress bei nicht-kritischen Alerts\\n'\n  + '- Im Zweifel immer \"email\"\\n\\n'\n  + 'Antworte NUR mit diesem JSON (kein anderer Text):\\n'\n  + '{\"decision\": \"suppress|email|escalate\", \"confidence\": 0.0-1.0, \"reasoning\": \"Kurze Begruendung\"}';\n\nreturn {\n  json: {\n    ...alert,\n    similar_alerts_24h,\n    ai_prompt\n  }\n};"
+      }
+    },
+    {
+      "id": "force-check-1",
+      "name": "Force Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "force1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.force_send }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "force-decision-1",
+      "name": "Set Force Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const alert = $input.first().json;\nreturn {\n  json: {\n    ...alert,\n    ai_decision: 'email',\n    ai_confidence: 1.0,\n    ai_reasoning: 'Force send: Critical severity oder Force-Flag gesetzt',\n    ai_tokens_used: 0,\n    fallback_used: false\n  }\n};"
+      }
+    },
+    {
+      "id": "claude-model-1",
+      "name": "Claude Sonnet",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        1300,
+        700
+      ],
+      "parameters": {
+        "model": {
+          "mode": "id",
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514"
+        },
+        "options": {
+          "maxTokensToSample": 500,
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "kZCDxC1N8hTos1iS",
+          "name": "Anthropic account | droninehandel@gmail.com"
+        }
+      }
+    },
+    {
+      "id": "ai-review-1",
+      "name": "AI Review",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        1400,
+        500
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "parse-decision-1",
+      "name": "Parse Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        500
+      ],
+      "parameters": {
+        "jsCode": "const alert = $('Build Context').first().json;\nconst AUDIT_MODE = true;\n\nlet aiOutput = '';\nlet fallback_used = false;\nlet tokens_used = 0;\n\ntry {\n  const response = $input.first().json;\n  aiOutput = response.text || response.output || response.response || '';\n  if (response.tokenUsage) {\n    tokens_used = response.tokenUsage.totalTokens || 0;\n  }\n} catch (e) {\n  fallback_used = true;\n}\n\nlet decision = 'email';\nlet confidence = 0.5;\nlet reasoning = 'Fallback: AI-Antwort konnte nicht verarbeitet werden';\n\nif (!fallback_used && aiOutput) {\n  try {\n    const jsonMatch = aiOutput.match(/\\{[\\s\\S]*?\\}/);\n    if (jsonMatch) {\n      const parsed = JSON.parse(jsonMatch[0]);\n      decision = parsed.decision || 'email';\n      confidence = parseFloat(parsed.confidence) || 0.5;\n      reasoning = parsed.reasoning || 'Keine Begruendung';\n    } else {\n      fallback_used = true;\n    }\n  } catch (e) {\n    fallback_used = true;\n    reasoning = 'Fallback: Parse-Fehler - ' + e.message;\n  }\n}\n\nif (['escalate', 'email_and_telegram', 'telegram'].includes(decision)) {\n  reasoning += ' [Escalate -> Email (kein Telegram)]';\n  decision = 'email';\n}\n\nif (alert.severity_hint === 'critical' && decision === 'suppress') {\n  decision = 'email';\n  reasoning += ' [Override: Critical]';\n}\n\nif (alert.is_critical_workflow && decision === 'suppress') {\n  decision = 'email';\n  reasoning += ' [Override: Geschaeftskritisch]';\n}\n\nif (decision === 'suppress' && confidence < 0.6) {\n  decision = 'email';\n  reasoning += ' [Override: Confidence < 0.6]';\n}\n\nconst original_decision = decision;\nif (AUDIT_MODE && decision === 'suppress') {\n  decision = 'email';\n  reasoning += ' [AUDIT MODE: suppress -> email]';\n}\n\nreturn {\n  json: {\n    ...alert,\n    ai_decision: decision,\n    ai_decision_original: original_decision,\n    ai_confidence: confidence,\n    ai_reasoning: reasoning,\n    ai_tokens_used: tokens_used,\n    fallback_used\n  }\n};"
+      }
+    },
+    {
+      "id": "send-check-1",
+      "name": "Send Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1960,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "emailcheck1",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "leftValue": "={{ $json.ai_decision }}",
+              "rightValue": "suppress"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-email-1",
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        200
+      ],
+      "parameters": {
+        "toRecipients": "info@neontrip.de",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body_html || $json.body_preview }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "log-sent-1",
+      "name": "Log: Email Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2520,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/alert_review_log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"source_workflow_id\": \"{{ $json.source_workflow_id }}\",\n  \"source_workflow_name\": \"{{ $json.source_workflow_name }}\",\n  \"alert_type\": \"{{ $json.alert_type }}\",\n  \"severity_hint\": \"{{ $json.severity_hint }}\",\n  \"subject\": {{ JSON.stringify($json.subject) }},\n  \"body_preview\": {{ JSON.stringify($json.body_preview) }},\n  \"body_hash\": \"{{ $json.body_hash }}\",\n  \"ai_decision\": \"{{ $json.ai_decision }}\",\n  \"ai_confidence\": {{ $json.ai_confidence || 0 }},\n  \"ai_reasoning\": {{ JSON.stringify($json.ai_reasoning || \"\") }},\n  \"ai_tokens_used\": {{ $json.ai_tokens_used || 0 }},\n  \"email_sent\": true,\n  \"telegram_sent\": false,\n  \"suppressed\": false,\n  \"similar_alerts_24h\": {{ $json.similar_alerts_24h || 0 }},\n  \"time_context\": \"{{ $json.time_context }}\",\n  \"is_weekend\": {{ $json.is_weekend || false }},\n  \"fallback_used\": {{ $json.fallback_used || false }}\n}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "log-suppressed-1",
+      "name": "Log: Suppressed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/alert_review_log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"source_workflow_id\": \"{{ $json.source_workflow_id }}\",\n  \"source_workflow_name\": \"{{ $json.source_workflow_name }}\",\n  \"alert_type\": \"{{ $json.alert_type }}\",\n  \"severity_hint\": \"{{ $json.severity_hint }}\",\n  \"subject\": {{ JSON.stringify($json.subject) }},\n  \"body_preview\": {{ JSON.stringify($json.body_preview) }},\n  \"body_hash\": \"{{ $json.body_hash }}\",\n  \"ai_decision\": \"{{ $json.ai_decision }}\",\n  \"ai_confidence\": {{ $json.ai_confidence || 0 }},\n  \"ai_reasoning\": {{ JSON.stringify($json.ai_reasoning || \"\") }},\n  \"ai_tokens_used\": {{ $json.ai_tokens_used || 0 }},\n  \"email_sent\": false,\n  \"telegram_sent\": false,\n  \"suppressed\": true,\n  \"similar_alerts_24h\": {{ $json.similar_alerts_24h || 0 }},\n  \"time_context\": \"{{ $json.time_context }}\",\n  \"is_weekend\": {{ $json.is_weekend || false }},\n  \"fallback_used\": {{ $json.fallback_used || false }}\n}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Alert Input": {
+      "main": [
+        [
+          {
+            "node": "Validate & Prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Prepare": {
+      "main": [
+        [
+          {
+            "node": "Fetch Alert History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Alert History": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context": {
+      "main": [
+        [
+          {
+            "node": "Force Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Force Send?": {
+      "main": [
+        [
+          {
+            "node": "Set Force Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Force Decision": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Review",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Review": {
+      "main": [
+        [
+          {
+            "node": "Parse Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Decision": {
+      "main": [
+        [
+          {
+            "node": "Send Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email?": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log: Suppressed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alert Email": {
+      "main": [
+        [
+          {
+            "node": "Log: Email Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "82199959-b1ee-428f-b1ca-f0af34464e67",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "shared": [
+    {
+      "updatedAt": "2026-03-26T09:54:18.541Z",
+      "createdAt": "2026-03-26T09:54:18.541Z",
+      "role": "workflow:owner",
+      "workflowId": "SH5HK6TqLCyaitXu",
+      "projectId": "JauOm7m3X0at6YVL",
+      "project": {
+        "updatedAt": "2025-10-14T13:02:51.927Z",
+        "createdAt": "2025-10-14T12:19:34.360Z",
+        "id": "JauOm7m3X0at6YVL",
+        "name": "daniel klesse <support@neontrip.de>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "958e0b70-ca52-4189-81a2-581fe0f1d1b5"
+      }
+    }
+  ],
+  "tags": []
+}
