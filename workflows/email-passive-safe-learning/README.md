@@ -21,7 +21,7 @@ The email agent learns useful brevity and structure without relying on an employ
 5. A manual `rejected` or `ignored` decision always excludes the sample. A manual approval is still subject to the same v4 safety rules.
 6. Three safe examples activate the most specific available category/channel/reply-class profile. If that scope is too small, the function falls back through channel and global aggregate scopes.
 7. The profile exposes counts, median words, median paragraphs, a bounded closing choice, and style preference flags only. It contains no customer text, identity, facts, or source references.
-8. Main and retry workflows accept only `email-style-profile-v4-passive-safe` with all safety flags present. The profile cannot rewrite the base prompt or authorize sending.
+8. Main and retry workflows accept only `email-style-profile-v5-passive-safe`, backed by `email-feedback-analyzer-v5` and at least ten semantically safe samples. The profile cannot rewrite the base prompt or authorize sending.
 9. Manual review remains available only to correct an exceptional classification. It is not required for ordinary safe style learning.
 
 ## Initial production baseline

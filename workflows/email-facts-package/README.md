@@ -21,7 +21,7 @@ The nine-node commerce resolver performs:
    conflicts, missing evidence, and risk gates.
 
 The production draft agent keeps 30 nodes. Surgical patches make its existing
-`Build Draft Prompt` node assemble `email-facts-package-v1` from Outlook message
+`Build Draft Prompt` assembles `email-facts-package-v2` from Outlook message
 metadata, conversation and organization coverage, deterministic attachment
 presence, the commerce package, and approved knowledge version IDs.
 

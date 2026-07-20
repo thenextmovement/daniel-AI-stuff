@@ -164,12 +164,29 @@ function rolloutStageLabel(value: EmailAgentRolloutGate["effective_stage"]) {
   return "Entwürfe mit Pflichtprüfung";
 }
 
+const automaticDefectLabels: Record<string, string> = {
+  unnecessary_internal_deferral: "unnötige interne Rückfrage",
+  missing_customer_question: "notwendige Kundenfrage fehlt",
+  unnecessary_customer_question: "unnötige Kundenfrage",
+  attachment_missed: "Anhang übersehen",
+  attachment_reference_changed: "Anhang falsch zugeordnet",
+  price_or_offer_error: "Preis oder Angebot korrigiert",
+  date_or_timeline_error: "Termin korrigiert",
+  unsupported_commitment: "unbelegte Zusage",
+  internal_information_exposed: "interne Information entfernt",
+  factual_change: "Sachverhalt korrigiert",
+  large_rewrite_unclassified: "starke Umschreibung",
+  high_risk_change: "Änderung mit hohem Risiko",
+  invalid_feedback_match: "Vergleich nicht eindeutig",
+};
+
 function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }) {
   const decision = quality.decision_gate;
   const drafts = quality.draft_quality_gate;
   const retry = quality.retry_health;
   const retryOpen = retry.due_retry_count + retry.stale_processing_count;
   const learning = quality.learning_quality;
+  const topDefect = learning.automatic_analysis.top_defects[0];
   const decisionTone = decision.passed ? "border-emerald-200 bg-emerald-50" : "border-amber-300 bg-amber-50";
   const draftTone = drafts.passed
     ? "border-emerald-200 bg-emerald-50"
@@ -178,7 +195,7 @@ function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }
       : "border-rose-200 bg-rose-50";
 
   return (
-    <section className="grid gap-3 xl:grid-cols-5">
+    <section className="grid gap-3 xl:grid-cols-6">
       <div className="rounded-[22px] border border-stone-900 bg-stone-950 p-5 text-white">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Produktionsstufe</p>
         <div className="mt-3 flex items-start gap-3">
@@ -237,6 +254,21 @@ function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }
         </div>
         <p className="mt-2 text-sm leading-6 text-stone-700">
           {learning.passive_learning.automatic_samples} automatisch sicher · {learning.passive_learning.blocked_samples} vorsorglich ausgeschlossen
+        </p>
+      </div>
+
+      <div className={`rounded-[22px] border p-5 ${topDefect?.implementation_signal_ready ? "border-amber-300 bg-amber-50" : "border-stone-200 bg-stone-50"}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Automatische Fehleranalyse</p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-stone-950">
+            {topDefect ? automaticDefectLabels[topDefect.defect_code] || topDefect.defect_code : "Noch kein Muster"}
+          </h2>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-stone-800">
+            {topDefect?.occurrence_count || 0}×
+          </span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-stone-700">
+          {learning.automatic_analysis.evaluated} Änderungen automatisch ausgewertet · keine Kundeninhalte übernommen
         </p>
       </div>
     </section>

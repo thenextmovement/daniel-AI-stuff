@@ -32,8 +32,8 @@ test("v3 human review contract remains available as an audited exception path", 
   assert.match(migration, /'facts_or_customer_content_included', false/);
   assert.match(migration, /'fact_learning_allowed', false/);
   assert.match(migration, /'automatic_prompt_rewrite_allowed', false/);
-  assert.match(mainWorkflow, /get_email_agent_style_profile_v4/);
-  assert.match(mainWorkflow, /email-style-profile-v4-passive-safe/);
+  assert.match(mainWorkflow, /get_email_agent_style_profile_v5/);
+  assert.match(mainWorkflow, /email-style-profile-v5-passive-safe/);
   assert.match(mainWorkflow, /Apply Approved Style Profile/);
   assert.doesNotMatch(mainWorkflow, /rawProfile\.version === \\"email-style-profile-v1\\"/);
 });
@@ -55,7 +55,7 @@ test("reason-coded review separates style from factual and process improvements"
 });
 
 test("post-generation quality gate is logged and cannot send automatically", () => {
-  assert.match(mainWorkflow, /email-draft-quality-gate-v3/);
+  assert.match(mainWorkflow, /email-draft-quality-gate-v4/);
   assert.match(mainWorkflow, /no_vague_internal_deferral/);
   assert.match(mainWorkflow, /grounded_claims_only/);
   assert.match(mainWorkflow, /precise_customer_action_when_needed/);
@@ -69,7 +69,7 @@ test("quality metrics remain aggregate while the current UI treats review as opt
   assert.match(migration, /reason_counts/);
   assert.match(migration, /quality_gate_7d/);
   assert.match(migration, /'customer_content_stored', false/);
-  assert.match(qualityLibrary, /get_email_agent_learning_quality_v4/);
+  assert.match(qualityLibrary, /get_email_agent_learning_quality_v5/);
   assert.match(reviewUi, /Automatisches Stilprofil/);
   assert.match(matcherWorkflow, /email-feedback-delta-v2-structure/);
   assert.match(matcherWorkflow, /sent_paragraphs/);

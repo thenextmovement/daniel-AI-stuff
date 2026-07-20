@@ -264,7 +264,11 @@ for (const operation of mainWorkflowPatches) {
 }
 assert.match(
   patchedMain.nodes.find((entry) => entry.name === 'Build Draft Prompt').parameters.jsCode,
-  /email-facts-package-v1/,
+  /email-facts-package-v2/,
+);
+assert.match(
+  patchedMain.nodes.find((entry) => entry.name === 'Build Draft Prompt').parameters.jsCode,
+  /signed_customer_contract/,
 );
 assert.match(
   patchedMain.nodes.find((entry) => entry.name === 'Validate and Render').parameters.jsCode,

@@ -827,10 +827,38 @@ const missingAttachmentFacts = missingClaimedAttachmentRequests.map((entry) => (
   customer_safe: true,
   confidence: 'deterministic',
 }));
+function provenanceForFact(fact) {
+  const source = String(fact?.source || 'unknown');
+  const authority = source === 'signed_offer_snapshot'
+    ? 'signed_customer_contract'
+    : (source === 'shopify_admin'
+      ? 'authoritative_commerce_record'
+      : (source === 'neontrip_offer_software'
+        ? 'authoritative_offer_configuration'
+        : (source === 'outlook_graph'
+          ? 'authoritative_message_metadata'
+          : (source === 'deterministic_attachment_check'
+            ? 'deterministic_message_evidence'
+            : (source === 'approved_knowledge'
+              ? 'approved_policy_guidance'
+              : 'corroborating_internal_evidence')))));
+  return {
+    authority,
+    source,
+    evidence_ref: String(fact?.evidence_ref || '').slice(0, 500),
+    customer_claim_allowed: fact?.customer_safe === true,
+    model_observation_only: false,
+  };
+}
+const packagedFacts = [...commerceFacts, ...outlookFacts, ...attachmentFacts, ...missingAttachmentFacts]
+  .slice(0, 120)
+  .map((fact) => ({ ...fact, provenance: provenanceForFact(fact) }));
+const caseId = 'email-case-' + stableHash(normalized.messageId + ':' + normalized.conversationId);
 const factsPackage = {
-  version: 'email-facts-package-v1',
+  version: 'email-facts-package-v2',
   generated_at: new Date().toISOString(),
-  case_key: stableHash(normalized.messageId + ':' + normalized.conversationId),
+  case_id: caseId,
+  case_key: caseId,
   scope: {
     context_since: normalized.contextSince,
     context_window_reason: normalized.contextWindowReason,
@@ -847,7 +875,17 @@ const factsPackage = {
     signed_offer_snapshot: commerceFacts.some((fact) => fact.source === 'signed_offer_snapshot'),
     approved_knowledge_versions: knowledgeVersionIds.length,
   },
-  facts: [...commerceFacts, ...outlookFacts, ...attachmentFacts, ...missingAttachmentFacts].slice(0, 120),
+  source_authority: {
+    outlook_message_metadata: 'authoritative',
+    attachment_presence: 'authoritative',
+    attachment_model_summary: 'observation_only',
+    shopify_order: 'authoritative_commerce_record',
+    signed_offer_snapshot: 'signed_customer_contract',
+    offer_software: 'authoritative_offer_configuration',
+    organization_history: 'corroborating_only',
+    approved_knowledge: 'policy_only',
+  },
+  facts: packagedFacts,
   observations: {
     attachment_analysis: (Array.isArray(attachmentAnalysis.files) ? attachmentAnalysis.files : []).slice(0, 5).map((file) => ({
       name: String(file?.name || '').slice(0, 240),

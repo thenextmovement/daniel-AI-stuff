@@ -50,18 +50,20 @@ test("resolve-first agent blocks vague internal deferrals but keeps useful high-
   const prompt = String(getNode(workflow, "Build Draft Prompt").parameters.jsCode || "");
   const render = String(getNode(workflow, "Validate and Render").parameters.jsCode || "");
 
-  assert.equal(workflow.name, "AI Email Agent v6 — Passive Safe Learning — Draft Only");
+  assert.equal(workflow.name, "AI Email Agent v7 — Resolve First Quality v5 — Draft Only");
   assert.equal(workflow.nodes.length, 30);
   assert.equal(workflow.nodes.filter((node) => node.type.toLowerCase().includes("trigger")).length, 1);
   assert.equal(workflow.nodes.filter((node) => JSON.stringify(node).includes("createReply")).length, 1);
   assert.doesNotMatch(serialized, /sendMail|replyAll|"operation":"send"/i);
-  assert.match(prompt, /email-resolve-first-v1/);
+  assert.match(prompt, /email-resolve-first-v2/);
+  assert.match(prompt, /email-facts-package-v2/);
   assert.match(prompt, /before drafting, exhaust the current message/);
   assert.match(render, /unhelpful_internal_deferral/);
   assert.match(render, /INTERNAL_EVIDENCE_MISSING/);
-  assert.match(render, /email-draft-quality-gate-v3/);
+  assert.match(render, /email-draft-quality-gate-v4/);
+  assert.match(render, /deterministic_fallback_used/);
   assert.match(render, /Apply Approved Style Profile/);
-  assert.match(String(getNode(workflow, "Fetch Approved Style Profile").parameters.url || ""), /get_email_agent_style_profile_v4$/);
+  assert.match(String(getNode(workflow, "Fetch Approved Style Profile").parameters.url || ""), /get_email_agent_style_profile_v5$/);
   assert.doesNotMatch(render, /const highRiskBlocksDraft/);
   assert.doesNotMatch(render, /prüfen wir die Angaben noch einmal intern und melden uns anschließend/);
 
@@ -115,7 +117,7 @@ test("retry worker is regenerated from the same resolve-first core", async () =>
   const render = String(getNode(workflow, "Validate and Render").parameters.jsCode || "");
 
   assert.equal(workflow.nodes.length, 30);
-  assert.match(prompt, /email-resolve-first-v1/);
+  assert.match(prompt, /email-resolve-first-v2/);
   assert.match(render, /unhelpful_internal_deferral/);
   assert.doesNotMatch(render, /const highRiskBlocksDraft/);
 });

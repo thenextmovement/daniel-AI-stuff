@@ -18,6 +18,9 @@ export type EmailAgentDraftQualityGate = {
   current_version: string;
   current_samples: number;
   minimum_samples: number;
+  minimum_category_samples: number;
+  category_sample_counts: Record<string, number>;
+  category_coverage_passed: boolean;
   safety_correction_count: number;
   safety_correction_share: number;
   manual_rewrite_count: number;
@@ -31,7 +34,7 @@ export type EmailAgentDraftQualityGate = {
 };
 
 export type EmailAgentRolloutGate = {
-  version: "email-agent-rollout-gate-v1";
+  version: "email-agent-rollout-gate-v2";
   requested_stage: "shadow" | "review_only" | "routing_gate";
   effective_stage: "shadow" | "review_only" | "routing_gate";
   active_evaluation_version: string | null;
@@ -64,7 +67,7 @@ export type EmailAgentRetryHealth = {
 };
 
 export type EmailAgentLearningQuality = {
-  version: "email-agent-learning-quality-v4";
+  version: "email-agent-learning-quality-v5";
   feedback: {
     total: number;
     pending_manual_reviews: number;
@@ -74,7 +77,7 @@ export type EmailAgentLearningQuality = {
     manual_reviews_required_for_safe_style: false;
   };
   passive_learning: {
-    version: "email-auto-style-eligibility-v1";
+    version: "email-auto-style-eligibility-v2";
     evaluated: number;
     safe_samples: number;
     automatic_samples: number;
@@ -84,7 +87,8 @@ export type EmailAgentLearningQuality = {
     customer_content_stored: false;
   };
   style_profile: {
-    version: "email-style-profile-v4-passive-safe";
+    version: "email-style-profile-v5-passive-safe";
+    analyzer_version: "email-feedback-analyzer-v5";
     learning_mode: "passive_deterministic";
     eligible: boolean;
     safe_sample_count: number;
@@ -96,18 +100,34 @@ export type EmailAgentLearningQuality = {
     scope: "category" | "channel" | "global";
     length_specific: boolean;
   };
-  improvement_candidates: {
-    pending: number;
-    knowledge: number;
-    resolver: number;
-    policy: number;
-    manual_review: number;
+  automatic_analysis: {
+    version: "email-feedback-analyzer-v5";
+    evaluated: number;
+    style_safe: number;
+    resolver_gap: number;
+    policy_gap: number;
+    knowledge_gap: number;
+    unsafe_or_ambiguous: number;
+    top_defects: Array<{
+      candidate_type: "knowledge" | "resolver" | "policy" | "manual_review" | null;
+      defect_code: string;
+      occurrence_count: number;
+      implementation_signal_ready: boolean;
+    }>;
+    category_quality: Record<string, {
+      samples: number;
+      style_safe: number;
+      resolver_gaps: number;
+      policy_gaps: number;
+    }>;
     customer_content_stored: false;
+    automatic_prompt_rewrite_allowed: false;
   };
   quality_gate_7d: {
     evaluated: number;
     passed: number;
     soft_flagged: number;
+    deterministic_fallbacks: number;
   };
   automatic_prompt_rewrite_allowed: false;
   fact_learning_allowed: false;
@@ -123,9 +143,9 @@ export type EmailAgentOperationalQuality = EmailAgentRolloutGate & {
 
 export async function getEmailAgentRolloutGate() {
   const [rollout, retryHealth, learningQuality] = await Promise.all([
-    supabaseRpc<EmailAgentRolloutGate>("get_email_agent_rollout_gate_v1"),
+    supabaseRpc<EmailAgentRolloutGate>("get_email_agent_rollout_gate_v2"),
     supabaseRpc<EmailAgentRetryHealth>("get_email_agent_retry_health"),
-    supabaseRpc<EmailAgentLearningQuality>("get_email_agent_learning_quality_v4"),
+    supabaseRpc<EmailAgentLearningQuality>("get_email_agent_learning_quality_v5"),
   ]);
   return {
     ...rollout,

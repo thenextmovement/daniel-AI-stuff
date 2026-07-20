@@ -10,6 +10,10 @@ const rollback = readFileSync(
   "supabase/rollbacks/20260720164453_email_agent_passive_safe_learning_rollback.sql",
   "utf8",
 );
+const v5Migration = readFileSync(
+  "supabase/migrations/20260720185658_email_agent_resolve_first_quality_v5.sql",
+  "utf8",
+);
 const qualityLibrary = readFileSync("src/lib/ops/email-agent-quality.ts", "utf8");
 const reviewUi = readFileSync("src/app/ops/email-agent/page-client.tsx", "utf8");
 const mainWorkflow = readFileSync(
@@ -35,7 +39,7 @@ test("passive learning accepts only deterministic style-safe comparisons", () =>
   assert.match(migration, /learning_status in \('rejected', 'ignored'\)/);
 });
 
-test("v4 profile is aggregate-only, bounded, and cannot rewrite prompts or send", () => {
+test("v4 baseline and v5 profile are aggregate-only, bounded, and cannot rewrite prompts or send", () => {
   assert.match(migration, /get_email_agent_style_profile_v4/);
   assert.match(migration, /'minimum_safe_samples', 3/);
   assert.match(migration, /'facts_or_customer_content_included', false/);
@@ -43,24 +47,29 @@ test("v4 profile is aggregate-only, bounded, and cannot rewrite prompts or send"
   assert.match(migration, /'manual_review_required_for_safe_style', false/);
   assert.match(migration, /'customer_send_human_approval_required', true/);
   assert.match(migration, /'automatic_send_allowed', false/);
+  assert.match(v5Migration, /get_email_agent_style_profile_v5/);
+  assert.match(v5Migration, /'minimum_safe_samples', 10/);
+  assert.match(v5Migration, /email-feedback-analyzer-v5/);
   assert.doesNotMatch(mainWorkflow, /sendMail|replyAll|"operation":"send"/i);
   assert.doesNotMatch(retryWorkflow, /sendMail|replyAll|"operation":"send"/i);
 });
 
-test("both drafting paths require the exact passive-safe profile contract", () => {
+test("both drafting paths require the exact v5 passive-safe profile contract", () => {
   for (const workflow of [mainWorkflow, retryWorkflow]) {
-    assert.match(workflow, /get_email_agent_style_profile_v4/);
-    assert.match(workflow, /email-style-profile-v4-passive-safe/);
+    assert.match(workflow, /get_email_agent_style_profile_v5/);
+    assert.match(workflow, /email-style-profile-v5-passive-safe/);
+    assert.match(workflow, /email-feedback-analyzer-v5/);
     assert.match(workflow, /passive_deterministic/);
     assert.match(workflow, /safe_sample_count/);
     assert.match(workflow, /manual_review_required_for_safe_style/);
     assert.match(workflow, /customer_send_human_approval_required/);
-    assert.match(workflow, /email-context-v6/);
+    assert.match(workflow, /email-context-v7/);
   }
 });
 
 test("ops UI presents passive learning as normal and manual review as an exception", () => {
-  assert.match(qualityLibrary, /get_email_agent_learning_quality_v4/);
+  assert.match(qualityLibrary, /get_email_agent_learning_quality_v5/);
+  assert.match(reviewUi, /Automatische Fehleranalyse/);
   assert.match(reviewUi, /Lernt im Hintergrund/);
   assert.match(reviewUi, /Optionale Ausnahmeprüfung/);
   assert.match(reviewUi, /automatisch sicher/);

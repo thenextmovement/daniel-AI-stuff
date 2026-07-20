@@ -53,7 +53,7 @@ test("rollout fails closed and permanently prohibits automatic sending", () => {
 test("quality endpoint is authenticated and dashboard exposes both gates", () => {
   assert.match(qualityApi, /hasOpsSession/);
   assert.match(qualityApi, /getEmailAgentRolloutGate/);
-  assert.match(qualityLibrary, /get_email_agent_rollout_gate_v1/);
+  assert.match(qualityLibrary, /get_email_agent_rollout_gate_v2/);
   assert.match(reviewUi, /50-Fälle-Entscheidungstest/);
   assert.match(reviewUi, /Aktuelle Facts-Package-Version/);
   assert.match(reviewUi, /Kein automatischer Versand/);
