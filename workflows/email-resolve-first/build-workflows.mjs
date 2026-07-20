@@ -130,7 +130,7 @@ const verifiedContext = {`,
     render.parameters.jsCode,
     String.raw`if (/\b(angesehen|geöffnet|gelesen|aufgerufen|viewed|opened|read|accessed)\b/i.test(draftPlain)) validationReasons.push('internal_visibility_disclosure');`,
     String.raw`if (/\b(angesehen|geöffnet|gelesen|aufgerufen|viewed|opened|read|accessed)\b/i.test(draftPlain)) validationReasons.push('internal_visibility_disclosure');
-const vagueDeferralPattern = /\b(?:intern(?:e|en|er)?\s+(?:prüfen|klären|abklären|nachfragen|rücksprache)|(?:noch(?:mal| einmal)\s+)?(?:intern\s+)?(?:prüfen|klären)\s+(?:wir|ich)|wir\s+(?:prüfen|klären).{0,80}(?:melden uns|geben bescheid)|(?:wir|ich)\s+melden?\s+(?:uns|mich).{0,80}(?:anschließend|danach|später|wieder)|(?:review|check|clarify)\s+(?:this\s+)?internally|(?:we|i)\s+will\s+get\s+back\s+to\s+you)\b/i;
+const vagueDeferralPattern = /\b(?:intern(?:e|en|er)?\s+(?:prüfen|klären|abklären|nachfragen|rücksprache|geprüft|geklärt|abgeklärt|nachgefragt)|(?:muss|soll|wird|kann).{0,40}intern.{0,40}(?:geprüft|geklärt|abgeklärt|nachgefragt)|(?:noch(?:mal| einmal)\s+)?(?:intern\s+)?(?:prüfen|klären)\s+(?:wir|ich)|wir\s+(?:prüfen|klären).{0,80}(?:melden uns|geben bescheid)|(?:wir|ich)\s+melden?\s+(?:uns|mich).{0,80}(?:anschließend|danach|später|wieder)|(?:review|check|clarify)\s+(?:this\s+)?internally|(?:we|i)\s+will\s+get\s+back\s+to\s+you)\b/i;
 if (vagueDeferralPattern.test(draftPlain)) validationReasons.push('unhelpful_internal_deferral');`,
     "Validate and Render deferral block",
   );
@@ -140,14 +140,22 @@ if (vagueDeferralPattern.test(draftPlain)) validationReasons.push('unhelpful_int
   && !(financialVerified && !nonFinancialHighRisk);
 const forceFallback = validationReasons.length > 0 || highRiskBlocksDraft || meta.possiblePromptInjection;
 if (forceFallback) {`,
-    String.raw`const safeMissingInformation = Array.isArray(parsed.missing_information)
+    String.raw`const rawMissingInformation = Array.isArray(parsed.missing_information)
   ? parsed.missing_information
     .map((value) => String(value || '').replace(/[<>\r\n]/g, ' ').replace(/\s+/g, ' ').trim())
-    .filter((value) => value && value.length <= 180 && !vagueDeferralPattern.test(value))
+    .filter((value) => value && value.length <= 180)
     .slice(0, 2)
   : [];
+const internalOnlyMissingPattern = /\b(?:intern(?:e|en|er)?|muss\s+(?:intern\s+)?(?:geprüft|geklärt|ermittelt)|kann\s+nicht\s+(?:vom|von\s+der|durch\s+den)\s+kunden|cannot\s+be\s+(?:provided|supplied)\s+by\s+the\s+customer|internal-only)\b/i;
+const internalOnlyMissingInformation = rawMissingInformation.filter((value) => internalOnlyMissingPattern.test(value));
+const safeMissingInformation = rawMissingInformation.filter((value) => !vagueDeferralPattern.test(value) && !internalOnlyMissingPattern.test(value));
 const forceFallback = validationReasons.length > 0 || meta.possiblePromptInjection;
-if (forceFallback) {`,
+if (forceFallback) {
+  if (validationReasons.includes('unhelpful_internal_deferral')
+      && internalOnlyMissingInformation.length > 0
+      && meta.customerReferenceMissing !== true) {
+    throw new Error('INTERNAL_EVIDENCE_MISSING: ' + internalOnlyMissingInformation.join('; '));
+  }`,
     "Validate and Render high-risk useful draft gate",
   );
   render.parameters.jsCode = replaceOnce(
@@ -214,6 +222,31 @@ if (forceFallback) {`,
     }
     closing = 'Viele Grüße';`,
     "Validate and Render German useful fallback",
+  );
+
+  render.onError = "continueErrorOutput";
+  workflow.connections["Validate and Render"] = {
+    main: [
+      [{ node: "Create Reply Draft", type: "main", index: 0 }],
+      [{ node: "Build Failure Record", type: "main", index: 0 }],
+    ],
+  };
+
+  const buildFailure = findNode(workflow, "Build Failure Record");
+  buildFailure.parameters.jsCode = replaceOnce(
+    buildFailure.parameters.jsCode,
+    String.raw`const retryable = statusCode === 0
+  || statusCode === 404`,
+    String.raw`const nonRetryablePolicyBlock = /^INTERNAL_EVIDENCE_MISSING:/i.test(message);
+const retryable = !nonRetryablePolicyBlock && (statusCode === 0
+  || statusCode === 404`,
+    "Build Failure internal-only policy gate start",
+  );
+  buildFailure.parameters.jsCode = replaceOnce(
+    buildFailure.parameters.jsCode,
+    String.raw`  || /timeout|temporar|rate limit|resource .* not be found|socket|connection|econn/i.test(message);`,
+    String.raw`  || /timeout|temporar|rate limit|resource .* not be found|socket|connection|econn/i.test(message));`,
+    "Build Failure internal-only policy gate end",
   );
 
   const logSuccess = findNode(workflow, "Log Success");

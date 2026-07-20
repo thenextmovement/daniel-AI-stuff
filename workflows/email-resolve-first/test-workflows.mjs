@@ -57,6 +57,9 @@ assert.match(renderCode, /const forceFallback = validationReasons\.length > 0 \|
 assert.doesNotMatch(renderCode, /const highRiskBlocksDraft/);
 assert.doesNotMatch(renderCode, /prüfen wir die Angaben noch einmal intern und melden uns anschließend/);
 assert.doesNotMatch(renderCode, /review the details internally and get back to you afterwards/);
+assert.equal(node(main, "Validate and Render").onError, "continueErrorOutput");
+assert.equal(main.connections["Validate and Render"].main[1][0].node, "Build Failure Record");
+assert.match(node(main, "Build Failure Record").parameters.jsCode, /nonRetryablePolicyBlock/);
 assert.match(node(main, "Log Success").parameters.jsonBody, /email-context-v4/);
 assert.match(node(main, "Log Success").parameters.jsonBody, /resolve_first_policy/);
 
@@ -114,6 +117,22 @@ assert.equal(blockedDeferral.safeFallbackUsed, true);
 assert.ok(blockedDeferral.validationReasons.includes("unhelpful_internal_deferral"));
 assert.match(blockedDeferral.draftReplyText, /Bestellnummer oder Angebotsnummer/);
 assert.doesNotMatch(blockedDeferral.draftReplyText, /intern|melden uns/i);
+
+assert.throws(() => runCode(renderCode, {
+  text: JSON.stringify({
+    category: "order_status",
+    confidence: 0.7,
+    language: "de",
+    risk_level: "medium",
+    needs_human_approval: true,
+    greeting: "Guten Tag Anna,",
+    paragraphs: ["Wir müssen den aktuellen Produktionsstatus intern prüfen."],
+    closing: "Viele Grüße",
+    facts_used: [],
+    blocked_reasons: [],
+    missing_information: ["Aktueller Produktions- und Versandstatus – muss intern geprüft werden, kann nicht vom Kunden geliefert werden."],
+  }),
+}, { "Build Draft Prompt": baseMeta }), /INTERNAL_EVIDENCE_MISSING/);
 
 const backfillTriggers = openInboxBackfillWorkflow.nodes.filter((entry) => entry.type.toLowerCase().includes("trigger"));
 assert.equal(backfillTriggers.length, 1);

@@ -54,8 +54,14 @@ test("resolve-first agent blocks vague internal deferrals but keeps useful high-
   assert.match(prompt, /email-resolve-first-v1/);
   assert.match(prompt, /before drafting, exhaust the current message/);
   assert.match(render, /unhelpful_internal_deferral/);
+  assert.match(render, /INTERNAL_EVIDENCE_MISSING/);
   assert.doesNotMatch(render, /const highRiskBlocksDraft/);
   assert.doesNotMatch(render, /prüfen wir die Angaben noch einmal intern und melden uns anschließend/);
+
+  const renderNode = getNode(workflow, "Validate and Render");
+  assert.equal(renderNode.onError, "continueErrorOutput");
+  assert.equal(workflow.connections["Validate and Render"].main[1][0].node, "Build Failure Record");
+  assert.match(String(getNode(workflow, "Build Failure Record").parameters.jsCode || ""), /nonRetryablePolicyBlock/);
 });
 
 test("open-inbox scanner is bounded, reply-aware, idempotent, and draft-only", async () => {

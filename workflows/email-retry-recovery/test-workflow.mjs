@@ -67,6 +67,8 @@ assert.match(
   /retryRecoveryVersion: 'email-agent-retry-recovery-v1'/,
 );
 assert.match(nodeByName("Build Failure Record").parameters.jsCode, /retry_recovery/);
+assert.match(nodeByName("Build Failure Record").parameters.jsCode, /nonRetryablePolicyBlock/);
+assert.equal(nodeByName("Validate and Render").onError, "continueErrorOutput");
 assert.match(
   nodeByName("Log Success").parameters.url,
   /complete_email_agent_retry_message$/,
