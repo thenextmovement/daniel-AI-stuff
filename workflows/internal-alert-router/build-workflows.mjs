@@ -351,16 +351,18 @@ function buildInfoHandler() {
 
 const prepareAlertingShadowCode = String.raw`
 const input = $input.first().json || {};
+const executionUrl = String(input.executionUrl || "").slice(0, 1000);
+const workflowIdFromUrl = (executionUrl.match(/\/workflow\/([^/]+)(?:\/executions\/|$)/) || [])[1] || "";
 return [{
   json: {
     alert_type: "error",
     severity_hint: "warning",
-    source_workflow_id: String(input.workflowId || "").slice(0, 200),
+    source_workflow_id: String(input.workflowId || workflowIdFromUrl).slice(0, 200),
     source_workflow_name: String(input.workflowName || "Unknown Workflow").slice(0, 300),
     subject: String(input.emailSubject || ("N8N Fehler: " + (input.workflowName || "Unknown Workflow"))).slice(0, 500),
     metadata: {
       execution_id: String(input.executionId || "").slice(0, 200),
-      execution_url: String(input.executionUrl || "").slice(0, 1000),
+      execution_url: executionUrl,
       error_message: String(input.errorMessage || "Unknown error").slice(0, 2000),
       last_node: String(input.lastNode || "unknown").slice(0, 300),
     },

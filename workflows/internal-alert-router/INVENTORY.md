@@ -12,6 +12,16 @@ This is the pre-change snapshot used to select the consolidation scope.
 - Outlook inbox sample: 55 messages, of which 30 were self-sent internal messages.
 - One observed burst contained 20 workflow-error emails within roughly 90 seconds.
 
+## 30-day backtest
+
+- Period: 2026-06-20 through 2026-07-20.
+- Total mailbox messages inspected: 5,898.
+- Technical handler messages: 466 mailbox objects for 233 actual n8n executions.
+- Stable historical failure fingerprints: 43.
+- Immediate technical emails with a 24-hour fingerprint cooldown: 84.
+- Estimated reduction: 63.9%.
+- Custom or critical business warnings excluded from suppression: 52.
+
 ## Central error handlers
 
 | Workflow | ID | Active source workflows | Current recipient |

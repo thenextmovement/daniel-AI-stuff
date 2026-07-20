@@ -1,6 +1,21 @@
 {
+  "id": "ArT3LN25Mb1PAuBE",
   "name": "NEONTRIP Error Alerting v1.0",
   "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "createdAt": "2026-01-23T19:07:00.872Z",
+  "updatedAt": "2026-07-20T16:56:41.718Z",
+  "activeVersionId": "b5aed0fb-bc55-4dd1-93cf-6af469a53cd4",
+  "versionCreatedAt": "2026-07-20T16:56:41.719Z",
+  "versionName": null,
   "nodes": [
     {
       "id": "error-trigger",
@@ -136,7 +151,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst input = $input.first().json || {};\nconst executionUrl = String(input.executionUrl || \"\").slice(0, 1000);\nconst workflowIdFromUrl = (executionUrl.match(/\\/workflow\\/([^/]+)(?:\\/executions\\/|$)/) || [])[1] || \"\";\nreturn [{\n  json: {\n    alert_type: \"error\",\n    severity_hint: \"warning\",\n    source_workflow_id: String(input.workflowId || workflowIdFromUrl).slice(0, 200),\n    source_workflow_name: String(input.workflowName || \"Unknown Workflow\").slice(0, 300),\n    subject: String(input.emailSubject || (\"N8N Fehler: \" + (input.workflowName || \"Unknown Workflow\"))).slice(0, 500),\n    metadata: {\n      execution_id: String(input.executionId || \"\").slice(0, 200),\n      execution_url: executionUrl,\n      error_message: String(input.errorMessage || \"Unknown error\").slice(0, 2000),\n      last_node: String(input.lastNode || \"unknown\").slice(0, 300),\n    },\n  },\n}];\n"
+        "jsCode": "\nconst input = $input.first().json || {};\nreturn [{\n  json: {\n    alert_type: \"error\",\n    severity_hint: \"warning\",\n    source_workflow_id: String(input.workflowId || \"\").slice(0, 200),\n    source_workflow_name: String(input.workflowName || \"Unknown Workflow\").slice(0, 300),\n    subject: String(input.emailSubject || (\"N8N Fehler: \" + (input.workflowName || \"Unknown Workflow\"))).slice(0, 500),\n    metadata: {\n      execution_id: String(input.executionId || \"\").slice(0, 200),\n      execution_url: String(input.executionUrl || \"\").slice(0, 1000),\n      error_message: String(input.errorMessage || \"Unknown error\").slice(0, 2000),\n      last_node: String(input.lastNode || \"unknown\").slice(0, 300),\n    },\n  },\n}];\n"
       }
     },
     {
@@ -219,12 +234,5 @@
         ]
       ]
     }
-  },
-  "settings": {
-    "executionOrder": "v1",
-    "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "none",
-    "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": false
   }
 }

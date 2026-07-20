@@ -19,13 +19,9 @@ This bundle introduces a deterministic shadow router for internal n8n failures w
 1. Preserve the published handler graphs and the inactive reviewer draft in `source/`.
 2. Replace the inactive reviewer draft with the deterministic router, validate it, and publish the passive sub-workflow.
 3. Add one failure-isolated shadow branch to each live error handler. Do not remove or disable Outlook delivery.
-4. Observe for seven days:
-   - every old email has a corresponding router execution or documented write failure;
-   - no recursive alerts;
-   - Company Brain incidents update `last_seen_at` for repeated fingerprints;
-   - router write success is at least 99%;
-   - no raw credentials or customer message bodies appear in incident detail or metadata.
-5. Only after manual parity review may a separate change disable duplicate legacy email nodes. Critical alerts stay immediate. Status notifications move only after their own deterministic business-key review.
+4. Backtest the deterministic fingerprint and cooldown policy against 30 days of Outlook history.
+5. Run one live smoke test with a real source failure and confirm the Company Brain incident.
+6. Before disabling the legacy nodes, add a deterministic notification path that sends the first occurrence immediately, keeps critical business alerts unchanged, and suppresses only repeated fingerprints inside the approved cooldown.
 
 ## Generate and test
 
@@ -40,6 +36,7 @@ The live handlers have no n8n MCP version history. Rollback therefore uses the f
 
 - `error-notification-info-active-before-20260720.json`
 - `neontrip-error-alerting-active-before-20260720.json`
+- `neontrip-error-alerting-active-before-workflow-id-hotfix-20260720.json`
 - `ai-alert-reviewer-draft-before-20260720.json`
 
 Apply the original `name`, `nodes`, `connections`, and `settings` with a full workflow update. Do not change any of the 56 source workflows during this phase.

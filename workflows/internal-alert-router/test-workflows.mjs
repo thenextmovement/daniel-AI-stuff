@@ -136,4 +136,25 @@ assert.deepEqual(
   ["Shadow: Record Company Brain Incident"],
 );
 
+const prepareSupportShadow = node(support, "Prepare Shadow Alert").parameters.jsCode;
+const runPrepareSupportShadow = new Function("$input", prepareSupportShadow);
+const preparedSupportShadow = runPrepareSupportShadow({
+  first() {
+    return {
+      json: {
+        workflowName: "Fixture Support Workflow",
+        executionId: "3323085",
+        executionUrl: "https://fuajob.online/workflow/PllHsez3Tp1Q4MTN/executions/3323085",
+        errorMessage: "NEONTRIP_OPS_BASE_URL must use HTTPS [line 6]",
+        lastNode: "Validate Archive Worker Config",
+      },
+    };
+  },
+})[0].json;
+assert.equal(preparedSupportShadow.source_workflow_id, "PllHsez3Tp1Q4MTN");
+assert.equal(
+  preparedSupportShadow.metadata.execution_url,
+  "https://fuajob.online/workflow/PllHsez3Tp1Q4MTN/executions/3323085",
+);
+
 console.log("Internal alert router tests passed.");
