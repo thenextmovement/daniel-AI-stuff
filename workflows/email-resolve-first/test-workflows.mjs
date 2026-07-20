@@ -125,6 +125,10 @@ for (const httpNode of openInboxBackfillWorkflow.nodes.filter((entry) => entry.t
   assert.equal(httpNode.onError, "stopWorkflow");
   assert.ok(Number(httpNode.maxTries) >= 3);
 }
+const enqueueNode = openInboxBackfillWorkflow.nodes.find((entry) => entry.name === "Enqueue Open Inbox Candidate");
+assert.equal(enqueueNode.parameters.authentication, "genericCredentialType");
+assert.equal(enqueueNode.parameters.genericAuthType, "httpHeaderAuth");
+assert.equal(enqueueNode.credentials.httpHeaderAuth.id, "NTtNxoBGGzJCQi9u");
 
 const now = Date.now();
 const at = (minutesAgo) => new Date(now - minutesAgo * 60000).toISOString();

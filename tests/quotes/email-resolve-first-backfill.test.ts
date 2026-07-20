@@ -75,6 +75,11 @@ test("open-inbox scanner is bounded, reply-aware, idempotent, and draft-only", a
   assert.match(serialized, /enqueue_email_agent_open_inbox_candidate/);
   assert.doesNotMatch(serialized, /createReply|sendMail|replyAll|"operation":"send"/i);
 
+  const enqueueNode = getNode(workflow, "Enqueue Open Inbox Candidate");
+  assert.equal(enqueueNode.parameters.authentication, "genericCredentialType");
+  assert.equal(enqueueNode.parameters.genericAuthType, "httpHeaderAuth");
+  assert.equal(enqueueNode.credentials?.httpHeaderAuth?.id, "NTtNxoBGGzJCQi9u");
+
   for (const node of workflow.nodes.filter((entry) => entry.type === "n8n-nodes-base.httpRequest")) {
     assert.equal(node.retryOnFail, true);
     assert.equal(node.onError, "stopWorkflow");

@@ -423,6 +423,8 @@ export const openInboxBackfillWorkflow = {
       typeVersion: 4.4,
       position: [960, 80],
       parameters: {
+        authentication: "genericCredentialType",
+        genericAuthType: "httpHeaderAuth",
         method: "POST",
         url: "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/enqueue_email_agent_open_inbox_candidate",
         sendBody: true,
