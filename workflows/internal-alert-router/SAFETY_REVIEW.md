@@ -51,7 +51,7 @@ Restore all three workflows from the dated full JSON files under `source/`. No d
 
 ## Unrelated security advisory
 
-The Supabase security advisor reports RLS disabled on 11 public tables. This rollout does not change their policies because enabling RLS without an access-policy review could break production callers:
+The Supabase security advisor reports 13 independent ERROR findings: RLS is disabled on 11 public tables, and the views `v_easybill_invoice` and `v_orders_dash` are SECURITY DEFINER views. This rollout does not change them because an isolated access-policy and caller review is required:
 
 - `crm_customer_change_log`
 - `social_post_schedule`
