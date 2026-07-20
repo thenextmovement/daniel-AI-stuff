@@ -14,7 +14,7 @@
     },
     {
       "name": "Apply Approved Style Profile",
-      "sha256": "30cfe3aa83667777891eb6e65289cc222a11ea644b1ac18e69cac4c3a915dca1"
+      "sha256": "67c79f896d7c2fb576cbba4e05866ef3a1b5158e648d8846455885d1adbdefbe"
     },
     {
       "name": "Build Draft Prompt",
@@ -42,7 +42,7 @@
     },
     {
       "name": "Fetch Approved Style Profile",
-      "sha256": "9de542b38dc0808b4aeb13cb869ef50c7da768aa6aebd8f05db41a360c714cbf"
+      "sha256": "be3e4c3c6a6e166ce6a51e58c86529cca2756322f9b9a3d56c6d0508df4d0578"
     },
     {
       "name": "Fetch Attachment Metadata",

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   openInboxBackfillWorkflow,
-  applyApprovedStyleProfileV3Code,
+  applyPassiveSafeStyleProfileV4Code,
   patchResolveFirstMainWorkflow,
   selectOpenInboxCandidatesCode,
 } from "./build-workflows.mjs";
@@ -41,7 +41,7 @@ function runCode(code, input, nodeData = {}) {
 const mainTriggers = main.nodes.filter((entry) => entry.type.toLowerCase().includes("trigger"));
 assert.equal(mainTriggers.length, 1);
 assert.equal(main.nodes.length, 30);
-assert.equal(main.name, "AI Email Agent v5 — Human-Gated Learning — Draft Only");
+assert.equal(main.name, "AI Email Agent v6 — Passive Safe Learning — Draft Only");
 assert.equal(main.nodes.filter((entry) => JSON.stringify(entry).includes("createReply")).length, 1);
 assert.doesNotMatch(JSON.stringify(main), /sendMail|replyAll|\/send\b/i);
 
@@ -54,19 +54,23 @@ assert.doesNotMatch(promptCode, /If facts are missing, say that the matter will 
 assert.match(promptCode, /const styleCategory/);
 
 const fetchStyleNode = node(main, "Fetch Approved Style Profile");
-assert.match(fetchStyleNode.parameters.url, /get_email_agent_style_profile_v3$/);
+assert.match(fetchStyleNode.parameters.url, /get_email_agent_style_profile_v4$/);
 assert.match(fetchStyleNode.parameters.jsonBody, /styleCategory/);
-assert.equal(node(main, "Apply Approved Style Profile").parameters.jsCode, applyApprovedStyleProfileV3Code);
+assert.equal(node(main, "Apply Approved Style Profile").parameters.jsCode, applyPassiveSafeStyleProfileV4Code);
 
-const appliedStyle = runCode(applyApprovedStyleProfileV3Code, {
+const appliedStyle = runCode(applyPassiveSafeStyleProfileV4Code, {
   body: {
-    version: "email-style-profile-v3-human-gated",
+    version: "email-style-profile-v4-passive-safe",
+    learning_mode: "passive_deterministic",
     eligible: true,
     scope: "channel",
-    approved_sample_count: 7,
-    minimum_approved_samples: 5,
-    recommended_max_words: 72,
-    recommended_max_paragraphs: 2,
+    length_specific: true,
+    safe_sample_count: 4,
+    automatic_sample_count: 4,
+    human_sample_count: 0,
+    minimum_safe_samples: 3,
+    recommended_max_words: 83,
+    recommended_max_paragraphs: 1,
     preferred_closing: "Beste Grüße",
     prefer_shorter: true,
     prefer_direct_answer: true,
@@ -74,7 +78,9 @@ const appliedStyle = runCode(applyApprovedStyleProfileV3Code, {
     facts_or_customer_content_included: false,
     fact_learning_allowed: false,
     automatic_prompt_rewrite_allowed: false,
-    human_approval_required: true,
+    manual_review_required_for_safe_style: false,
+    customer_send_human_approval_required: true,
+    automatic_send_allowed: false,
   },
 }, {
   "Build Draft Prompt": {
@@ -86,12 +92,14 @@ const appliedStyle = runCode(applyApprovedStyleProfileV3Code, {
   },
 })[0].json;
 assert.equal(appliedStyle.approvedStyleProfile.eligible, true);
-assert.equal(appliedStyle.replyLengthLimits.max_paragraphs, 2);
+assert.equal(appliedStyle.approvedStyleProfile.automatic_sample_count, 4);
+assert.equal(appliedStyle.replyLengthLimits.max_paragraphs, 1);
 assert.match(appliedStyle.systemPrompt, /STYLE ONLY/);
+assert.match(appliedStyle.systemPrompt, /structurally safe human-sent comparisons/);
 assert.match(appliedStyle.systemPrompt, /direct answer/);
 assert.doesNotMatch(appliedStyle.systemPrompt, /customer-specific wording from prior replies[\s\S]*(?:copy|reuse)/i);
 
-const rejectedLegacyStyle = runCode(applyApprovedStyleProfileV3Code, {
+const rejectedLegacyStyle = runCode(applyPassiveSafeStyleProfileV4Code, {
   body: {
     version: "email-style-profile-v2-human-gated",
     eligible: true,
@@ -100,6 +108,26 @@ const rejectedLegacyStyle = runCode(applyApprovedStyleProfileV3Code, {
   },
 }, { "Build Draft Prompt": { systemPrompt: "BASE", userContext: "CONTEXT" } })[0].json;
 assert.equal(rejectedLegacyStyle.approvedStyleProfile.eligible, false);
+
+const rejectedUnsafePassiveStyle = runCode(applyPassiveSafeStyleProfileV4Code, {
+  body: {
+    version: "email-style-profile-v4-passive-safe",
+    learning_mode: "passive_deterministic",
+    eligible: true,
+    scope: "global",
+    safe_sample_count: 100,
+    minimum_safe_samples: 3,
+    recommended_max_words: 50,
+    recommended_max_paragraphs: 1,
+    facts_or_customer_content_included: false,
+    fact_learning_allowed: false,
+    automatic_prompt_rewrite_allowed: true,
+    manual_review_required_for_safe_style: false,
+    customer_send_human_approval_required: true,
+    automatic_send_allowed: false,
+  },
+}, { "Build Draft Prompt": { systemPrompt: "BASE", userContext: "CONTEXT" } })[0].json;
+assert.equal(rejectedUnsafePassiveStyle.approvedStyleProfile.eligible, false);
 
 const renderCode = node(main, "Validate and Render").parameters.jsCode;
 assert.match(renderCode, /unhelpful_internal_deferral/);
@@ -112,8 +140,9 @@ assert.doesNotMatch(renderCode, /review the details internally and get back to y
 assert.equal(node(main, "Validate and Render").onError, "continueErrorOutput");
 assert.equal(main.connections["Validate and Render"].main[1][0].node, "Build Failure Record");
 assert.match(node(main, "Build Failure Record").parameters.jsCode, /nonRetryablePolicyBlock/);
-assert.match(node(main, "Log Success").parameters.jsonBody, /email-context-v5/);
+assert.match(node(main, "Log Success").parameters.jsonBody, /email-context-v6/);
 assert.match(node(main, "Log Success").parameters.jsonBody, /resolve_first_policy/);
+assert.match(node(main, "Log Success").parameters.jsonBody, /manual_review_required_for_safe_style/);
 
 const baseMeta = {
   fromName: "Anna",

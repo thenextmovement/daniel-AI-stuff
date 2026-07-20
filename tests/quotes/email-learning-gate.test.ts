@@ -46,7 +46,8 @@ test("review UIs and APIs require identity, reason and idempotency", () => {
   assert.match(reviewApi, /operatorName\.length < 2/);
   assert.match(reviewApi, /idempotencyKey/);
   assert.match(emailReviewUi, /crypto\.randomUUID\(\)/);
-  assert.match(emailReviewUi, /Pflicht: Warum ist diese Entscheidung richtig/);
+  assert.match(emailReviewUi, /Nur für eine manuelle Ausnahme erforderlich/);
+  assert.match(emailReviewUi, /Für eine manuelle Ausnahme bleiben Prüfer, Grund und Notiz Pflicht/);
   assert.match(knowledgeUi, /reviewNote: reviewNotes\[versionId\]/);
   assert.match(knowledgeUi, /Für E-Mail-Entwürfe freigeben/);
   assert.match(knowledgeUi, /E-Mail-Freigabe entziehen/);

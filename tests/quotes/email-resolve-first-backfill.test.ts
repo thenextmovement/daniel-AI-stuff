@@ -50,7 +50,7 @@ test("resolve-first agent blocks vague internal deferrals but keeps useful high-
   const prompt = String(getNode(workflow, "Build Draft Prompt").parameters.jsCode || "");
   const render = String(getNode(workflow, "Validate and Render").parameters.jsCode || "");
 
-  assert.equal(workflow.name, "AI Email Agent v5 — Human-Gated Learning — Draft Only");
+  assert.equal(workflow.name, "AI Email Agent v6 — Passive Safe Learning — Draft Only");
   assert.equal(workflow.nodes.length, 30);
   assert.equal(workflow.nodes.filter((node) => node.type.toLowerCase().includes("trigger")).length, 1);
   assert.equal(workflow.nodes.filter((node) => JSON.stringify(node).includes("createReply")).length, 1);
@@ -61,7 +61,7 @@ test("resolve-first agent blocks vague internal deferrals but keeps useful high-
   assert.match(render, /INTERNAL_EVIDENCE_MISSING/);
   assert.match(render, /email-draft-quality-gate-v3/);
   assert.match(render, /Apply Approved Style Profile/);
-  assert.match(String(getNode(workflow, "Fetch Approved Style Profile").parameters.url || ""), /get_email_agent_style_profile_v3$/);
+  assert.match(String(getNode(workflow, "Fetch Approved Style Profile").parameters.url || ""), /get_email_agent_style_profile_v4$/);
   assert.doesNotMatch(render, /const highRiskBlocksDraft/);
   assert.doesNotMatch(render, /prüfen wir die Angaben noch einmal intern und melden uns anschließend/);
 

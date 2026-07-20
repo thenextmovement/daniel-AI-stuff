@@ -45,7 +45,7 @@ type QualityResponse = {
 };
 
 const filterOptions: Array<{ value: EmailAgentReviewFilter; label: string }> = [
-  { value: "pending", label: "Lernfreigabe offen" },
+  { value: "pending", label: "Vergleichsfälle" },
   { value: "awaiting_send", label: "Entwurf noch offen" },
   { value: "approved", label: "Freigegeben" },
   { value: "rejected", label: "Nicht lernen" },
@@ -134,10 +134,10 @@ function priorityClass(value: EmailAgentReviewPriority | null) {
 }
 
 function learningLabel(value: EmailAgentLearningStatus | null) {
-  if (value === "approved") return "Zum Lernen freigegeben";
-  if (value === "rejected") return "Nicht zum Lernen";
+  if (value === "approved") return "Als Ausnahme bestätigt";
+  if (value === "rejected") return "Vom Lernen ausgeschlossen";
   if (value === "ignored") return "Ignoriert";
-  if (value === "pending") return "Freigabe offen";
+  if (value === "pending") return "Automatisch eingeordnet";
   return "Noch nicht gesendet";
 }
 
@@ -228,15 +228,15 @@ function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }
       </div>
 
       <div className={`rounded-[22px] border p-5 ${learning.style_profile.eligible ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50"}`}>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Geprüftes Stilprofil</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Automatisches Stilprofil</p>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-stone-950">{learning.style_profile.eligible ? "Aktiv" : "Sammelt Freigaben"}</h2>
+          <h2 className="text-lg font-semibold text-stone-950">{learning.style_profile.eligible ? "Aktiv" : "Sammelt sichere Beispiele"}</h2>
           <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-stone-800">
-            {learning.style_profile.approved_sample_count}/{learning.style_profile.minimum_approved_samples}
+            {learning.style_profile.safe_sample_count}/{learning.style_profile.minimum_safe_samples}
           </span>
         </div>
         <p className="mt-2 text-sm leading-6 text-stone-700">
-          {learning.feedback.pending} Lernreviews offen · {learning.improvement_candidates.pending} Verbesserungen vorgemerkt
+          {learning.passive_learning.automatic_samples} automatisch sicher · {learning.passive_learning.blocked_samples} vorsorglich ausgeschlossen
         </p>
       </div>
     </section>
@@ -423,7 +423,7 @@ function ReviewCard({
         {learningReady ? (
           <section className="rounded-2xl border border-stone-200 bg-[#fffdf9] p-4">
             <div className="mb-4">
-              <p className="text-xs font-semibold text-stone-700">Was wurde verbessert? Mindestens einen Grund auswählen.</p>
+              <p className="text-xs font-semibold text-stone-700">Optionale Ausnahmeprüfung: Nur nutzen, wenn die automatische Einordnung falsch ist.</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {reviewReasonOptions.map((option) => {
                   const selected = selectedReasons.includes(option.code);
@@ -455,12 +455,12 @@ function ReviewCard({
             </div>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
               <label className="flex-1 text-xs font-semibold text-stone-700">
-                Interne Lernnotiz
-                <textarea value={note} onChange={(event) => onNoteChange(event.target.value)} maxLength={2000} rows={2} placeholder="Pflicht: Warum ist diese Entscheidung richtig?" className="mt-2 w-full resize-y rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none transition focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
+                Interne Ausnahmenotiz
+                <textarea value={note} onChange={(event) => onNoteChange(event.target.value)} maxLength={2000} rows={2} placeholder="Nur für eine manuelle Ausnahme erforderlich" className="mt-2 w-full resize-y rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none transition focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
               </label>
               <div className="flex flex-wrap gap-2">
                 <button type="button" disabled={saving || !reviewReady || containsImprovementReason} onClick={() => void onDecision("approved")} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50">
-                  <Check className="h-4 w-4" /> Zum Lernen freigeben
+                  <Check className="h-4 w-4" /> Stil ausdrücklich bestätigen
                 </button>
                 <button type="button" disabled={saving || !reviewReady} onClick={() => void onDecision("rejected")} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-900 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50">
                   <X className="h-4 w-4" /> Nicht lernen
@@ -471,12 +471,12 @@ function ReviewCard({
               </div>
             </div>
             <p className="mt-3 text-xs leading-5 text-stone-500">
-              Freigaben ändern niemals automatisch den Prompt. Sie werden nur als geprüfte Stilstatistik verwendet; Kundenfakten, Beträge und Namen werden nicht übernommen. Prüfer und Begründung sind Pflicht und werden revisionssicher protokolliert. {operatorName ? `Prüfer: ${operatorName}` : "Bitte oben erneut mit Prüfername anmelden."}
+              Sichere Stiländerungen lernt der Agent bereits automatisch als anonyme Statistik. Hier kann eine Person nur im Ausnahmefall bestätigen oder ausschließen; Kundenfakten, Beträge, Termine, Anhänge, Zusagen und Formulierungen werden nie übernommen. Für eine manuelle Ausnahme bleiben Prüfer, Grund und Notiz Pflicht. {operatorName ? `Prüfer: ${operatorName}` : "Bitte oben erneut mit Prüfername anmelden."}
             </p>
           </section>
         ) : (
           <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-            Der Entwurf ist noch offen oder wurde nicht als gesendete Antwort erkannt. Es wird noch nichts gelernt.
+            Der Entwurf ist noch offen oder wurde nicht als gesendete Antwort erkannt. Erst nach dem tatsächlichen Versand kann ein sicherer Stilvergleich entstehen.
           </div>
         )}
       </div>
@@ -643,13 +643,13 @@ export function EmailAgentReviewClient({
   return (
     <main className={opsPageShellClass}>
       <div className={`${opsPageContainerClass} px-4 py-4 md:px-6 md:py-6`}>
-        <OpsPageHeader active="emailAgent" label="E-Mail Agent · Entwürfe, Belege und Lernfreigabe" />
+        <OpsPageHeader active="emailAgent" label="E-Mail Agent · Entwürfe, Belege und sicheres Lernen" />
 
         <div className="mt-4 grid gap-4">
           <OpsPageIntro
-            eyebrow="Kontrollierter Lernkreislauf"
-            title="Sehen, was geprüft wurde – und nur bewusst lernen."
-            description="Jeder Entwurf bleibt ein Entwurf. Diese Ansicht zeigt die internen Belege, vergleicht ihn mit der tatsächlich gesendeten Antwort und übernimmt Verbesserungen erst nach menschlicher Freigabe."
+            eyebrow="Passiver, kontrollierter Lernkreislauf"
+            title="Lernt im Hintergrund – nur aus sicheren Stiländerungen."
+            description="Der Agent vergleicht Entwurf und tatsächlich gesendete Antwort automatisch. Er übernimmt ausschließlich anonyme Stilstatistiken wie Kürze und Absatzstruktur; Inhaltsänderungen werden ausgeschlossen. Jede Kundenantwort bleibt weiterhin ein Outlook-Entwurf mit menschlicher Versandprüfung."
           >
             <button type="button" onClick={() => { void loadItems(); void loadQuality(); }} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60">
               <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Aktualisieren
@@ -659,7 +659,7 @@ export function EmailAgentReviewClient({
           {quality ? <QualityGatePanel quality={quality} /> : null}
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <OpsStatCard label="Lernfreigabe offen" value={stats.pending} tone="info" icon={<Sparkles className="h-5 w-5" />} detail="Gesendete Antworten mit Vergleich" />
+            <OpsStatCard label="Automatisch ausgewertet" value={quality?.learning_quality.passive_learning.evaluated || stats.pending} tone="info" icon={<Sparkles className="h-5 w-5" />} detail="Gesendete Antworten mit sicherem Vergleich" />
             <OpsStatCard label="Wichtige Reviews" value={stats.high} tone={stats.high ? "danger" : "success"} icon={<AlertTriangle className="h-5 w-5" />} detail="Fakten, Beträge oder starke Änderungen" />
             <OpsStatCard label="Unverändert gesendet" value={stats.unchanged} tone="success" icon={<CheckCircle2 className="h-5 w-5" />} detail="Entwurf wurde praktisch übernommen" />
             <OpsStatCard label="Entwurf noch offen" value={stats.awaiting} tone="neutral" icon={<Clock3 className="h-5 w-5" />} detail="Noch kein gesendeter Vergleich" />
@@ -683,8 +683,8 @@ export function EmailAgentReviewClient({
                 </select>
               </label>
               <label className="text-xs font-semibold text-stone-700">
-                Prüfername
-                <input value={operatorName} onChange={(event) => setOperatorName(event.target.value.slice(0, 160))} placeholder="Vor- und Nachname" className="mt-1.5 w-full min-w-52 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
+                Prüfername (nur für Ausnahmen)
+                <input value={operatorName} onChange={(event) => setOperatorName(event.target.value.slice(0, 160))} placeholder="Optional, solange keine Ausnahme geprüft wird" className="mt-1.5 w-full min-w-52 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
               </label>
             </div>
             <div className="text-sm text-stone-500">{visibleItems.length} Fälle sichtbar</div>

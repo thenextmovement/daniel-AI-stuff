@@ -33,19 +33,24 @@ function replaceOnce(value, find, replacement, label) {
   return source.replace(find, replacement);
 }
 
-export const applyApprovedStyleProfileV3Code = String.raw`
+export const applyPassiveSafeStyleProfileV4Code = String.raw`
 const base = $("Build Draft Prompt").first().json;
 const response = $input.first().json || {};
 const rawProfile = response.body ?? response;
 const structurallySafe = rawProfile
-  && rawProfile.version === "email-style-profile-v3-human-gated"
+  && rawProfile.version === "email-style-profile-v4-passive-safe"
+  && rawProfile.learning_mode === "passive_deterministic"
   && rawProfile.facts_or_customer_content_included === false
   && rawProfile.fact_learning_allowed === false
   && rawProfile.automatic_prompt_rewrite_allowed === false
-  && rawProfile.human_approval_required === true
+  && rawProfile.manual_review_required_for_safe_style === false
+  && rawProfile.customer_send_human_approval_required === true
+  && rawProfile.automatic_send_allowed === false
   && ["category", "channel", "global"].includes(String(rawProfile.scope || ""));
-const approvedCount = structurallySafe ? Math.max(0, Number(rawProfile.approved_sample_count || 0)) : 0;
-const minimumApproved = structurallySafe ? Math.max(5, Number(rawProfile.minimum_approved_samples || 5)) : 5;
+const safeCount = structurallySafe ? Math.max(0, Number(rawProfile.safe_sample_count || 0)) : 0;
+const automaticCount = structurallySafe ? Math.max(0, Number(rawProfile.automatic_sample_count || 0)) : 0;
+const humanCount = structurallySafe ? Math.max(0, Number(rawProfile.human_sample_count || 0)) : 0;
+const minimumSafe = structurallySafe ? Math.max(3, Number(rawProfile.minimum_safe_samples || 3)) : 3;
 const recommendedWords = structurallySafe ? Number(rawProfile.recommended_max_words || 0) : 0;
 const recommendedParagraphs = structurallySafe ? Number(rawProfile.recommended_max_paragraphs || 0) : 0;
 const preferredClosing = structurallySafe && ["Viele Grüße", "Beste Grüße"].includes(rawProfile.preferred_closing)
@@ -53,7 +58,7 @@ const preferredClosing = structurallySafe && ["Viele Grüße", "Beste Grüße"].
   : null;
 const eligible = structurallySafe
   && rawProfile.eligible === true
-  && approvedCount >= minimumApproved
+  && safeCount >= minimumSafe
   && Number.isFinite(recommendedWords)
   && recommendedWords >= 8
   && recommendedWords <= 360
@@ -61,11 +66,15 @@ const eligible = structurallySafe
   && recommendedParagraphs >= 1
   && recommendedParagraphs <= 5;
 const approvedStyleProfile = {
-  version: "email-style-profile-v3-human-gated",
+  version: "email-style-profile-v4-passive-safe",
+  learning_mode: "passive_deterministic",
   eligible,
   scope: structurallySafe ? String(rawProfile.scope || "global") : "global",
-  approved_sample_count: approvedCount,
-  minimum_approved_samples: minimumApproved,
+  length_specific: structurallySafe && rawProfile.length_specific === true,
+  safe_sample_count: safeCount,
+  automatic_sample_count: automaticCount,
+  human_sample_count: humanCount,
+  minimum_safe_samples: minimumSafe,
   window_days: structurallySafe ? Number(rawProfile.window_days || 90) : 90,
   recommended_max_words: eligible ? Math.round(recommendedWords) : null,
   recommended_max_paragraphs: eligible ? Math.round(recommendedParagraphs) : null,
@@ -76,7 +85,9 @@ const approvedStyleProfile = {
   facts_or_customer_content_included: false,
   fact_learning_allowed: false,
   automatic_prompt_rewrite_allowed: false,
-  human_approval_required: true,
+  manual_review_required_for_safe_style: false,
+  customer_send_human_approval_required: true,
+  automatic_send_allowed: false,
 };
 if (!eligible) {
   return [{ json: { ...base, approvedStyleProfile } }];
@@ -94,8 +105,8 @@ const replyLengthLimits = {
 };
 const styleInstructions = [
   "",
-  "HUMAN-APPROVED STYLE PROFILE (STYLE ONLY):",
-  "This versioned profile is based on " + approvedCount + " explicitly approved comparisons and may control only structure, brevity, and greeting/closing style.",
+  "PASSIVE DETERMINISTIC STYLE PROFILE (STYLE ONLY):",
+  "This versioned profile is based on " + safeCount + " structurally safe human-sent comparisons (" + automaticCount + " automatic, " + humanCount + " manually approved) and may control only aggregate structure, brevity, and greeting/closing style.",
   "Use at most " + Math.round(recommendedWords) + " words and " + Math.round(recommendedParagraphs) + " body paragraphs unless a shorter complete answer is possible.",
   approvedStyleProfile.prefer_shorter ? "Prefer the shortest complete answer." : "Stay concise without omitting a required verified answer or precise customer question.",
   approvedStyleProfile.prefer_direct_answer ? "Put the direct answer or exact required customer action before background explanation." : "Answer directly and avoid generic preambles.",
@@ -105,9 +116,9 @@ const styleInstructions = [
 ].join("\n");
 const styleContext = [
   "",
-  "<HUMAN_APPROVED_STYLE_PROFILE>",
+  "<PASSIVE_SAFE_STYLE_PROFILE>",
   JSON.stringify(approvedStyleProfile),
-  "</HUMAN_APPROVED_STYLE_PROFILE>",
+  "</PASSIVE_SAFE_STYLE_PROFILE>",
 ].join("\n");
 
 return [{ json: {
@@ -121,7 +132,7 @@ return [{ json: {
 
 export function patchResolveFirstMainWorkflow(input) {
   const workflow = structuredClone(input);
-  workflow.name = "AI Email Agent v5 — Human-Gated Learning — Draft Only";
+  workflow.name = "AI Email Agent v6 — Passive Safe Learning — Draft Only";
 
   const prompt = findNode(workflow, "Build Draft Prompt");
   prompt.parameters.jsCode = replaceOnce(
@@ -239,11 +250,11 @@ const attachmentAnalysis = attachmentContext.attachmentAnalysis || { files: [], 
   );
 
   const fetchStyle = findNode(workflow, "Fetch Approved Style Profile");
-  fetchStyle.parameters.url = "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/get_email_agent_style_profile_v3";
+  fetchStyle.parameters.url = "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/get_email_agent_style_profile_v4";
   fetchStyle.parameters.jsonBody = '={{ JSON.stringify({ p_channel: $("Build Draft Prompt").first().json.messageSource || null, p_category: $("Build Draft Prompt").first().json.styleCategory || null, p_reply_length_class: $("Build Draft Prompt").first().json.replyLengthClass || null }) }}';
 
   const applyStyle = findNode(workflow, "Apply Approved Style Profile");
-  applyStyle.parameters.jsCode = applyApprovedStyleProfileV3Code;
+  applyStyle.parameters.jsCode = applyPassiveSafeStyleProfileV4Code;
 
   const render = findNode(workflow, "Validate and Render");
   render.parameters.jsCode = replaceOnce(
@@ -487,8 +498,18 @@ const retryable = !nonRetryablePolicyBlock && (statusCode === 0
   logSuccess.parameters.jsonBody = replaceOnce(
     logSuccess.parameters.jsonBody,
     String.raw`      profile_version: r.approvedStyleProfile?.version || "email-style-profile-v1",`,
-    String.raw`      profile_version: r.approvedStyleProfile?.version || "email-style-profile-v3-human-gated",`,
+    String.raw`      profile_version: r.approvedStyleProfile?.version || "email-style-profile-v4-passive-safe",`,
     "Log Success learning profile version",
+  );
+  logSuccess.parameters.jsonBody = replaceOnce(
+    logSuccess.parameters.jsonBody,
+    String.raw`      approved_sample_count: Number(r.approvedStyleProfile?.approved_sample_count || 0),`,
+    String.raw`      learning_mode: r.approvedStyleProfile?.learning_mode || "passive_deterministic",
+      safe_sample_count: Number(r.approvedStyleProfile?.safe_sample_count || 0),
+      automatic_sample_count: Number(r.approvedStyleProfile?.automatic_sample_count || 0),
+      human_sample_count: Number(r.approvedStyleProfile?.human_sample_count || 0),
+      manual_review_required_for_safe_style: false,`,
+    "Log Success passive learning metrics",
   );
   logSuccess.parameters.jsonBody = replaceOnce(
     logSuccess.parameters.jsonBody,
@@ -510,7 +531,7 @@ const retryable = !nonRetryablePolicyBlock && (statusCode === 0
   );
   logSuccess.parameters.jsonBody = logSuccess.parameters.jsonBody.replace(
     'snapshot_version: "email-context-v4"',
-    'snapshot_version: "email-context-v5"',
+    'snapshot_version: "email-context-v6"',
   );
 
   return workflow;

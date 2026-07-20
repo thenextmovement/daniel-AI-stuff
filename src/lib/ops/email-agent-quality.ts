@@ -64,23 +64,37 @@ export type EmailAgentRetryHealth = {
 };
 
 export type EmailAgentLearningQuality = {
-  version: "email-agent-learning-quality-v3";
+  version: "email-agent-learning-quality-v4";
   feedback: {
     total: number;
-    pending: number;
+    pending_manual_reviews: number;
     approved: number;
     rejected: number;
     ignored: number;
-    reason_counts: Record<string, number>;
+    manual_reviews_required_for_safe_style: false;
+  };
+  passive_learning: {
+    version: "email-auto-style-eligibility-v1";
+    evaluated: number;
+    safe_samples: number;
+    automatic_samples: number;
+    human_samples: number;
+    blocked_samples: number;
+    block_reason_counts: Record<string, number>;
+    customer_content_stored: false;
   };
   style_profile: {
-    version: "email-style-profile-v3-human-gated";
+    version: "email-style-profile-v4-passive-safe";
+    learning_mode: "passive_deterministic";
     eligible: boolean;
-    approved_sample_count: number;
-    minimum_approved_samples: number;
+    safe_sample_count: number;
+    automatic_sample_count: number;
+    human_sample_count: number;
+    minimum_safe_samples: number;
     recommended_max_words: number | null;
     recommended_max_paragraphs: number | null;
     scope: "category" | "channel" | "global";
+    length_specific: boolean;
   };
   improvement_candidates: {
     pending: number;
@@ -97,8 +111,9 @@ export type EmailAgentLearningQuality = {
   };
   automatic_prompt_rewrite_allowed: false;
   fact_learning_allowed: false;
+  manual_review_required_for_safe_style: false;
   automatic_send_allowed: false;
-  human_approval_required: true;
+  customer_send_human_approval_required: true;
 };
 
 export type EmailAgentOperationalQuality = EmailAgentRolloutGate & {
@@ -110,7 +125,7 @@ export async function getEmailAgentRolloutGate() {
   const [rollout, retryHealth, learningQuality] = await Promise.all([
     supabaseRpc<EmailAgentRolloutGate>("get_email_agent_rollout_gate_v1"),
     supabaseRpc<EmailAgentRetryHealth>("get_email_agent_retry_health"),
-    supabaseRpc<EmailAgentLearningQuality>("get_email_agent_learning_quality_v3"),
+    supabaseRpc<EmailAgentLearningQuality>("get_email_agent_learning_quality_v4"),
   ]);
   return {
     ...rollout,
