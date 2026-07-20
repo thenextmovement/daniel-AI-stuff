@@ -418,6 +418,7 @@ export function DesignOpsClient({
     () => generatedAssets.find((asset) => asset.id === selectedReferenceAssetId) || null,
     [generatedAssets, selectedReferenceAssetId],
   );
+  const selectedReferenceName = selectedReferenceAttachment?.name || selectedReferenceAsset?.name || null;
   const activeLightColorLabel = selectedLightColorLabel(lightColorPreset);
   const activeProductChangeLabel = selectedProductChangeLabel(productChangePreset);
   const colorSelectableAttachmentIds = useMemo(() => {
@@ -625,6 +626,7 @@ export function DesignOpsClient({
   async function generateSavedDraft() {
     if (!workspace) return;
     setBusy(true);
+    setBulkRecolorProgress(null);
     setError(null);
     setMessage(null);
     try {
@@ -1101,6 +1103,16 @@ export function DesignOpsClient({
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
+                          onClick={() => void generateSavedDraft()}
+                          disabled={busy || !workspace}
+                          title={selectedReferenceName ? `Aus ${selectedReferenceName} ein KI-Mockup generieren` : "Zuerst ein KI-JPG als Vorlage wählen"}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50"
+                        >
+                          {busy && !bulkRecolorProgress ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                          {busy && !bulkRecolorProgress ? "Generiert..." : "KI-Mockup generieren"}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             const ids = Array.from(colorSelectableAttachmentIds);
                             setSelectedRecolorAttachmentIds(ids.slice(0, MAX_DESIGN_BATCH_ITEMS));
@@ -1110,7 +1122,7 @@ export function DesignOpsClient({
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >
                           <CheckSquare className="h-4 w-4" />
-                          Alle KI-JPGs
+                          Alle für Änderung
                         </button>
                         <button
                           type="button"
@@ -1124,7 +1136,8 @@ export function DesignOpsClient({
                         <button
                           type="button"
                           onClick={() => void recolorSelectedAttachments(false)}
-                          disabled={busy || !selectedColorAttachmentIds.length || !activeLightColorLabel}
+                          disabled={busy || !workspace}
+                          title="Benötigt mindestens ein über Ändern gewähltes KI-JPG und eine Leuchtfarbe"
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
@@ -1133,7 +1146,8 @@ export function DesignOpsClient({
                         <button
                           type="button"
                           onClick={() => void recolorSelectedAttachments(true)}
-                          disabled={busy || !selectedColorAttachmentIds.length || !activeLightColorLabel}
+                          disabled={busy || !workspace}
+                          title="Generiert die Farbvarianten und ersetzt danach die gewählten Trello-Mockups"
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
@@ -1142,7 +1156,8 @@ export function DesignOpsClient({
                         <button
                           type="button"
                           onClick={() => void recolorSelectedAttachments(false, "product")}
-                          disabled={busy || !selectedColorAttachmentIds.length || !activeProductChangeLabel}
+                          disabled={busy || !workspace}
+                          title="Benötigt mindestens ein über Ändern gewähltes KI-JPG und eine Produktänderung"
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-white px-3 text-sm font-semibold text-stone-900 disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
@@ -1151,7 +1166,8 @@ export function DesignOpsClient({
                         <button
                           type="button"
                           onClick={() => void recolorSelectedAttachments(true, "product")}
-                          disabled={busy || !selectedColorAttachmentIds.length || !activeProductChangeLabel}
+                          disabled={busy || !workspace}
+                          title="Generiert die Produktvarianten und ersetzt danach die gewählten Trello-Mockups"
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-stone-950 px-3 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           {busy ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
@@ -1166,6 +1182,21 @@ export function DesignOpsClient({
                           <Trash2 className="h-4 w-4" />
                           Removal vorbereiten
                         </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3" aria-live="polite">
+                      <div className={`min-w-0 rounded-[10px] border px-3 py-2 ${selectedReferenceName ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                        <div className="font-bold">KI-Mockup</div>
+                        <div className="mt-0.5 truncate">{selectedReferenceName ? `Vorlage: ${selectedReferenceName}` : "Vorlage fehlt"}</div>
+                      </div>
+                      <div className={`min-w-0 rounded-[10px] border px-3 py-2 ${selectedColorAttachmentIds.length && activeLightColorLabel ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-stone-200 bg-stone-50 text-stone-700"}`}>
+                        <div className="font-bold">Farbänderung</div>
+                        <div className="mt-0.5 truncate">{selectedColorAttachmentIds.length ? `${selectedColorAttachmentIds.length} gewählt` : "Auswahl fehlt"} · {activeLightColorLabel || "Farbe fehlt"}</div>
+                      </div>
+                      <div className={`min-w-0 rounded-[10px] border px-3 py-2 ${selectedColorAttachmentIds.length && activeProductChangeLabel ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-stone-200 bg-stone-50 text-stone-700"}`}>
+                        <div className="font-bold">Produktänderung</div>
+                        <div className="mt-0.5 truncate">{selectedColorAttachmentIds.length ? `${selectedColorAttachmentIds.length} gewählt` : "Auswahl fehlt"} · {activeProductChangeLabel || "Produkt fehlt"}</div>
                       </div>
                     </div>
 
@@ -1247,7 +1278,7 @@ export function DesignOpsClient({
                                     aria-pressed={selectedAttachmentIds.includes(asset.id)}
                                     className="flex items-center justify-between gap-2 border-r border-[#ece6dc] px-3 py-2 text-left"
                                   >
-                                    <span>Bulk</span>
+                                    <span>Löschen</span>
                                     {selectedAttachmentIds.includes(asset.id) ? <CheckSquare className="h-4 w-4 text-rose-700" /> : <Square className="h-4 w-4 text-stone-400" />}
                                   </button>
                                   <button
@@ -1265,12 +1296,12 @@ export function DesignOpsClient({
                                     type="button"
                                     onClick={() => selectAttachmentForRecolor(asset.id)}
                                     disabled={!aiJpgSource}
-                                    title={aiJpgSource ? "Für Farb-/Produktänderung markieren" : "Nur JPG-Mockups mit Mockup und AI im Dateinamen"}
+                                    title={aiJpgSource ? "Für Farb- oder Produktänderung markieren" : "Nur JPG-Mockups mit Mockup und AI im Dateinamen"}
                                     aria-label={`${asset.name} für Design-Änderung ${selectedRecolorAttachmentIds.includes(asset.id) ? "abwählen" : "auswählen"}`}
                                     aria-pressed={selectedRecolorAttachmentIds.includes(asset.id)}
                                     className={`flex items-center justify-between gap-2 px-3 py-2 text-left disabled:opacity-40 ${selectedRecolorAttachmentIds.includes(asset.id) ? "bg-stone-950 text-white" : ""}`}
                                   >
-                                    <span>{selectedRecolorAttachmentIds.includes(asset.id) ? "Gewählt" : "Design"}</span>
+                                    <span>{selectedRecolorAttachmentIds.includes(asset.id) ? "Gewählt" : "Ändern"}</span>
                                     {selectedRecolorAttachmentIds.includes(asset.id) ? <CheckSquare className="h-4 w-4" /> : <Palette className="h-4 w-4" />}
                                   </button>
                                 </div>
@@ -1546,7 +1577,7 @@ export function DesignOpsClient({
                   </button>
                   <button type="button" onClick={() => void generateSavedDraft()} disabled={busy || !workspace} className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] border border-[#ded8d0] bg-[#fffdf9] px-4 text-sm font-semibold text-stone-950 disabled:opacity-50">
                     <ImagePlus className="h-4 w-4" />
-                    Jetzt generieren
+                    KI-Mockup aus Vorlage generieren
                   </button>
                 </div>
                 {job ? (

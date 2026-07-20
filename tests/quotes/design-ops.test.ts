@@ -103,7 +103,17 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /Offer Integration/);
   assert.match(client, /Draft speichern/);
   assert.match(client, /Generierung freigeben/);
-  assert.match(client, /Jetzt generieren/);
+  assert.match(client, /KI-Mockup generieren/);
+  assert.match(client, /KI-Mockup aus Vorlage generieren/);
+  assert.match(client, /Vorlage fehlt/);
+  assert.match(client, /Auswahl fehlt/);
+  assert.match(client, /Farbe fehlt/);
+  assert.match(client, /Produkt fehlt/);
+  assert.match(client, /Alle für Änderung/);
+  assert.match(client, /<span>Löschen<\/span>/);
+  assert.match(client, /"Ändern"/);
+  assert.doesNotMatch(client, /disabled=\{busy \|\| !selectedColorAttachmentIds\.length \|\| !activeLightColorLabel\}/);
+  assert.doesNotMatch(client, /disabled=\{busy \|\| !selectedColorAttachmentIds\.length \|\| !activeProductChangeLabel\}/);
   assert.match(client, /Removal vorbereiten/);
   assert.match(client, /Backup vor Delete/);
   assert.match(client, /ENTFERNEN/);
