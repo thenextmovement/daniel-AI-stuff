@@ -20,6 +20,49 @@ type ProductConfigRow = {
 type RunRow = { id: string; correlation_id: string };
 type CaseRow = { id: string; idempotency_key: string; status: string };
 
+export type ArrivalOutlookArchiveJobRow = {
+  id: string;
+  case_id: string;
+  print_job_id: string;
+  idempotency_key: string;
+  source_message_id: string;
+  source_message_id_sha256: string;
+  expected_tracking_number: string;
+  status: "pending" | "claimed" | "dispatching" | "archived" | "retryable_error" | "manual_review" | "cancelled";
+  attempts: number;
+  max_attempts: number;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  moved_message_id: string | null;
+  last_error: string | null;
+};
+
+export async function claimArrivalOutlookArchive(input: { workerId: string; leaseSeconds?: number }) {
+  const rows = await supabaseRpc<ArrivalOutlookArchiveJobRow[]>("arrival_labels_claim_outlook_archive", {
+    p_worker_id: input.workerId,
+    p_lease_seconds: input.leaseSeconds || 180,
+  });
+  return rows[0] || null;
+}
+
+export async function updateArrivalOutlookArchive(input: {
+  archiveJobId: string;
+  workerId: string;
+  result: "dispatching" | "archived" | "retryable_error" | "invalid_target" | "uncertain";
+  movedMessageId?: string | null;
+  error?: string | null;
+}) {
+  const rows = await supabaseRpc<ArrivalOutlookArchiveJobRow[]>("arrival_labels_update_outlook_archive", {
+    p_archive_job_id: input.archiveJobId,
+    p_worker_id: input.workerId,
+    p_result: input.result,
+    p_moved_message_id: input.movedMessageId || null,
+    p_error: input.error || null,
+  });
+  if (!rows[0]) throw new Error("Outlook-Archivstatus konnte nicht aktualisiert werden.");
+  return rows[0];
+}
+
 export type ArrivalReviewNotificationRow = {
   id: string;
   case_id: string;

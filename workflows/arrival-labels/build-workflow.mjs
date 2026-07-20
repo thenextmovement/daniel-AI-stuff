@@ -402,6 +402,92 @@ return { json: { dispatchReceiptId } };`,
   tags: [],
 };
 
+const outlookArchiveWorkflow = {
+  name: "NEONTRIP Archive DHL Mail After Label Print v0.1 (INACTIVE)",
+  active: false,
+  nodes: [
+    {
+      id: "archive-safety-notes",
+      name: "Safety Notes",
+      type: "n8n-nodes-base.stickyNote",
+      typeVersion: 1,
+      position: [0, 0],
+      parameters: {
+        width: 940,
+        height: 220,
+        content: "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Pre-dispatch errors may retry; any uncertainty after move dispatch becomes manual review and never auto-retries. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable the database archive setting.",
+      },
+    },
+    {
+      id: "archive-schedule",
+      name: "Archive Outbox Schedule",
+      type: "n8n-nodes-base.scheduleTrigger",
+      typeVersion: 1.3,
+      position: [0, 300],
+      parameters: { rule: { interval: [{ field: "cronExpression", expression: "* * * * *" }] } },
+    },
+    {
+      id: "archive-preflight",
+      name: "Validate Archive Worker Config",
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
+      position: [260, 300],
+      onError: "stopWorkflow",
+      parameters: {
+        mode: "runOnceForAllItems",
+        language: "javaScript",
+        jsCode: String.raw`const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(/\/$/, '');
+const token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');
+const workflowPart = String($workflow.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
+const executionPart = String($execution.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
+const workerId = ('n8n-outlook-archive:' + workflowPart + ':' + executionPart).slice(0, 96);
+if (!/^https:\/\//.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');
+if (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');
+if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(workerId)) throw new Error('Outlook archive worker id is invalid');
+return [{ json: { baseUrl, workerId } }];`,
+      },
+    },
+    {
+      id: "process-archive",
+      name: "Process One Exact DHL Archive",
+      type: "n8n-nodes-base.httpRequest",
+      typeVersion: 4.4,
+      position: [560, 300],
+      onError: "stopWorkflow",
+      parameters: {
+        method: "POST",
+        url: "={{ $json.baseUrl + '/api/internal/arrival-labels/outlook-archives/process' }}",
+        sendHeaders: true,
+        headerParameters: { parameters: [
+          { name: "Authorization", value: "={{ 'Bearer ' + $env.ARRIVAL_LABEL_AGENT_API_TOKEN }}" },
+          { name: "X-Neontrip-Outlook-Archive-Worker", value: "={{ $json.workerId }}" },
+          { name: "Content-Type", value: "application/json" },
+        ] },
+        sendBody: true,
+        contentType: "raw",
+        rawContentType: "application/json",
+        body: "={{ JSON.stringify({ workerId: $json.workerId }) }}",
+        options: { timeout: 60000, response: { response: { responseFormat: "json" } } },
+      },
+    },
+  ],
+  connections: {
+    "Archive Outbox Schedule": { main: [[{ node: "Validate Archive Worker Config", type: "main", index: 0 }]] },
+    "Validate Archive Worker Config": { main: [[{ node: "Process One Exact DHL Archive", type: "main", index: 0 }]] },
+  },
+  settings: {
+    executionOrder: "v1",
+    timezone: "Europe/Berlin",
+    saveDataErrorExecution: "all",
+    saveDataSuccessExecution: "all",
+    executionTimeout: 90,
+    errorWorkflow: "ArT3LN25Mb1PAuBE",
+  },
+  versionId: "arrival-outlook-archive-after-print-v0-1",
+  meta: { templateCredsSetupCompleted: false },
+  tags: [],
+};
+
 const output = path.resolve("workflows/arrival-labels/generated/dhl-dpd-arrival-dry-run.json");
 await mkdir(path.dirname(output), { recursive: true });
 await writeFile(output, `${JSON.stringify(workflow, null, 2)}\n`, "utf8");
@@ -409,4 +495,6 @@ const emailOutput = path.resolve("workflows/arrival-labels/generated/dhl-arrival
 await writeFile(emailOutput, `${JSON.stringify(emailWorkflow, null, 2)}\n`, "utf8");
 const reviewOutput = path.resolve("workflows/arrival-labels/generated/arrival-label-review-mail-outbox.json");
 await writeFile(reviewOutput, `${JSON.stringify(reviewWorkflow, null, 2)}\n`, "utf8");
-process.stdout.write(`${output}\n${emailOutput}\n${reviewOutput}\n`);
+const outlookArchiveOutput = path.resolve("workflows/arrival-labels/generated/arrival-label-outlook-archive-after-print.json");
+await writeFile(outlookArchiveOutput, `${JSON.stringify(outlookArchiveWorkflow, null, 2)}\n`, "utf8");
+process.stdout.write(`${output}\n${emailOutput}\n${reviewOutput}\n${outlookArchiveOutput}\n`);

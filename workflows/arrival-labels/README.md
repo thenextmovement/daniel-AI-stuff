@@ -1,6 +1,6 @@
 # NEONTRIP DHL Arrival Labels (inactive guarded workflows)
 
-These workflows invoke the tested Ops arrival-label service. One reacts to allowlisted DHL Outlook emails every minute, one performs the daily reconciliation, and one drains the deduplicated internal review-mail outbox. They deliberately contain no matching, EasyDPD, Shopify-mutation, PDF, or printing business logic.
+These workflows invoke the tested Ops arrival-label service. One reacts to allowlisted DHL Outlook emails every minute, one performs the daily reconciliation, one drains the deduplicated internal review-mail outbox, and one drains the exact-message Outlook archive outbox after a confirmed shipping-label print. They deliberately contain no matching, EasyDPD, Shopify-mutation, PDF, or printing business logic.
 
 ## Build and check
 
@@ -16,4 +16,4 @@ Runtime secrets stay in n8n environment variables:
 - `NEONTRIP_OPS_BASE_URL` (HTTPS)
 - `ARRIVAL_LABEL_AGENT_API_TOKEN` (at least 24 characters)
 
-All generated workflows are inactive. The two detector workflows send `mode=dry_run` and `persist=true`: persistence is limited to audited case decisions, events and review-mail outbox entries; it does not authorize carrier purchase or printing. The mail worker sends deterministic plain text only to `info@neontrip.de`, marks dispatch before Outlook, and never automatically resends an uncertain dispatch. They must not be activated until the Ops API deployment, database migration, shadow run and operator review are complete. Deactivation is the immediate workflow rollback.
+All generated workflows are inactive. The two detector workflows send `mode=dry_run` and `persist=true`: persistence is limited to audited case decisions, events and review-mail outbox entries; it does not authorize carrier purchase or printing. The mail worker sends deterministic plain text only to `info@neontrip.de`, marks dispatch before Outlook, and never automatically resends an uncertain dispatch. The Outlook archive worker invokes one server-side outbox item per minute without HTTP retry; the server revalidates the exact message ID, allowlisted DHL sender and full tracking number before a single move to the Archive folder. It also requires Microsoft Graph application permission `Mail.ReadWrite` and the fail-closed database archive setting to be enabled with a current activation timestamp. These workflows must not be activated until the Ops API deployment, database migration, shadow run and operator review are complete. Deactivation plus disabling the archive setting is the immediate archive rollback.

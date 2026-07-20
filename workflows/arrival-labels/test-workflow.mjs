@@ -5,6 +5,7 @@ const files = [
   new URL("./generated/dhl-dpd-arrival-dry-run.json", import.meta.url),
   new URL("./generated/dhl-arrival-email-dry-run.json", import.meta.url),
   new URL("./generated/arrival-label-review-mail-outbox.json", import.meta.url),
+  new URL("./generated/arrival-label-outlook-archive-after-print.json", import.meta.url),
 ];
 const workflows = await Promise.all(files.map(async (file) => JSON.parse(await readFile(file, "utf8"))));
 for (const workflow of workflows.slice(0, 2)) {
@@ -56,6 +57,26 @@ for (const request of reviewRequests) {
   assert.ok(request.parameters.options.timeout <= 30000);
 }
 for (const codeNode of reviewWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.code")) {
+  assert.doesNotThrow(() => new Function(codeNode.parameters.jsCode), `${codeNode.name} JavaScript must parse`);
+}
+
+const archiveWorkflow = workflows[3];
+const archiveSerialized = JSON.stringify(archiveWorkflow);
+const archiveTriggers = archiveWorkflow.nodes.filter((node) => node.type.endsWith("Trigger"));
+const archiveRequests = archiveWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.httpRequest");
+assert.equal(archiveWorkflow.active, false);
+assert.equal(archiveWorkflow.settings.timezone, "Europe/Berlin");
+assert.equal(archiveWorkflow.settings.errorWorkflow, "ArT3LN25Mb1PAuBE");
+assert.equal(archiveTriggers.length, 1);
+assert.equal(archiveRequests.length, 1);
+assert.equal(archiveRequests[0].retryOnFail, undefined, "move processor request must not retry automatically");
+assert.ok(archiveRequests[0].parameters.options.timeout <= 60000);
+assert.match(archiveSerialized, /outlook-archives\/process/);
+assert.match(archiveSerialized, /X-Neontrip-Outlook-Archive-Worker/);
+assert.match(archiveSerialized, /full tracking number/);
+assert.doesNotMatch(archiveSerialized, /EASYDPD|createLabel|ARRIVAL_LABEL_WRITES_ENABLED|print-jobs\/claim/);
+assert.ok(archiveWorkflow.nodes.length <= 5, "archive orchestration must stay small");
+for (const codeNode of archiveWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.code")) {
   assert.doesNotThrow(() => new Function(codeNode.parameters.jsCode), `${codeNode.name} JavaScript must parse`);
 }
 process.stdout.write("arrival-labels n8n workflow checks passed\n");

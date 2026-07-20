@@ -27,7 +27,7 @@ export class ArrivalIntegrationError extends Error {
   }
 }
 
-function requiredEnv(name: string) {
+export function requiredEnv(name: string) {
   const value = String(process.env[name] || "").trim();
   if (!value) throw new ArrivalIntegrationError(`${name} ist nicht konfiguriert.`, "configuration_missing");
   return value;
@@ -43,7 +43,7 @@ async function delay(milliseconds: number) {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function fetchWithRetry(url: string, init: RequestInit, options?: { attempts?: number; timeoutMs?: number }) {
+export async function fetchWithRetry(url: string, init: RequestInit, options?: { attempts?: number; timeoutMs?: number }) {
   const attempts = Math.min(Math.max(options?.attempts || 3, 1), 4);
   let lastError: unknown = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -75,7 +75,7 @@ export function berlinDayBounds(localDate: string) {
   return { startUtc: start.toInstant().toString(), endUtc: end.toInstant().toString() };
 }
 
-async function microsoftGraphToken() {
+export async function microsoftGraphToken() {
   const tenantId = requiredEnv("MICROSOFT_GRAPH_TENANT_ID");
   const clientId = requiredEnv("MICROSOFT_GRAPH_CLIENT_ID");
   const clientSecret = requiredEnv("MICROSOFT_GRAPH_CLIENT_SECRET");
