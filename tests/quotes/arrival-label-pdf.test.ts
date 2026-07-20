@@ -40,15 +40,15 @@ async function syntheticLabel() {
   return document.save({ useObjectStreams: false });
 }
 
-test("PDF annotation writes only 3486, preserves A6 and renders for visual QA", async () => {
+test("PDF annotation writes the last six digits, preserves A6 and renders for visual QA", async () => {
   const source = await syntheticLabel();
   const result = await annotateDpdLabelPdf(source, "2619113486", layout);
   assert.equal(result.qa.ok, true);
-  assert.equal(result.qa.overlayText, "3486");
+  assert.equal(result.qa.overlayText, "113486");
   assert.equal(result.qa.a6, true);
   assert.deepEqual(result.qa.protectedAreaIntersections, []);
   const text = await extractPdfText(result.pdf);
-  assert.match(text, /3486/);
+  assert.match(text, /113486/);
   assert.doesNotMatch(text, /DHL|DHL-IN/);
   const png = await renderPdfFirstPageToPng(result.pdf, 2);
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
@@ -83,7 +83,7 @@ test("processed artifacts use a controlled case directory and full DHL number", 
       rootDirectory: root,
     });
     assert.match(result.paths.annotatedPdf, /dhl_2619113486\/dpd-label-2619113486\.pdf$/);
-    assert.equal(result.qa.overlayText, "3486");
+    assert.equal(result.qa.overlayText, "113486");
     const qa = JSON.parse(await readFile(result.paths.qaJson, "utf8"));
     assert.equal(qa.ok, true);
     assert.ok((await readFile(result.paths.previewPng)).length > 1_000);

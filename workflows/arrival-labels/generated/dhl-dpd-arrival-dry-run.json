@@ -14,7 +14,7 @@
       "parameters": {
         "width": 760,
         "height": 220,
-        "content": "## DHL Arrival Labels – Dry Run only\n\nDaily read-only orchestration. The tested Ops service owns all matching and idempotency logic. This workflow cannot call EasyDPD and sends `mode=dry_run`, `persist=false`. It remains inactive until Ops review. Timezone: Europe/Berlin. Rollback: deactivate this workflow."
+        "content": "## DHL Arrival Labels – guarded shadow run\n\nThe tested Ops service owns matching and idempotency. This workflow cannot call EasyDPD or a printer and sends `mode=dry_run`, `persist=true` to store audit decisions and deduplicated internal-review outbox entries. It remains inactive until Ops review. Timezone: Europe/Berlin. Rollback: deactivate this workflow."
       }
     },
     {
@@ -50,7 +50,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(/\\/$/, '');\nconst token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');\nif (!/^https:\\/\\//.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');\nif (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');\nreturn [{ json: { url: baseUrl + '/api/internal/arrival-labels/run', mode: 'dry_run', persist: false, triggerType: 'n8n_schedule' } }];"
+        "jsCode": "const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(/\\/$/, '');\nconst token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');\nif (!/^https:\\/\\//.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');\nif (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');\nreturn [{ json: { url: baseUrl + '/api/internal/arrival-labels/run', mode: 'dry_run', persist: true, triggerType: 'n8n_schedule' } }];"
       }
     },
     {

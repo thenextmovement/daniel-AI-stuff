@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import type { ArrivalCaseDecision, DhlArrival, ExistingDpdEvidence, ProductConfig } from "./domain";
 import type { ArrivalDataClients } from "./clients";
+import type { ArrivalReviewNotification } from "./review-notifications";
 import { readBoundedResponseBytes } from "./printing";
 
 type ProductConfigRow = {
@@ -15,6 +16,62 @@ type ProductConfigRow = {
 
 type RunRow = { id: string; correlation_id: string };
 type CaseRow = { id: string; idempotency_key: string; status: string };
+
+export type ArrivalReviewNotificationRow = {
+  id: string;
+  case_id: string;
+  notification_key: string;
+  recipient_email: string;
+  subject: string;
+  body_text: string;
+  shopify_order_url: string | null;
+  status: "pending" | "claimed" | "dispatching" | "sent" | "retryable_error" | "manual_review" | "cancelled";
+  attempts: number;
+  max_attempts: number;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  dispatch_receipt_id: string | null;
+  last_error: string | null;
+};
+
+export async function enqueueArrivalReviewNotification(input: { caseId: string; notification: ArrivalReviewNotification }) {
+  const rows = await supabaseRpc<ArrivalReviewNotificationRow[]>("arrival_labels_enqueue_review_notification", {
+    p_case_id: input.caseId,
+    p_notification_key: input.notification.notificationKey,
+    p_recipient_email: input.notification.recipientEmail,
+    p_subject: input.notification.subject,
+    p_body_text: input.notification.bodyText,
+    p_shopify_order_url: input.notification.shopifyOrderUrl,
+  });
+  if (!rows[0]) throw new Error("Pruefmail konnte nicht in die Outbox eingereiht werden.");
+  return rows[0];
+}
+
+export async function claimArrivalReviewNotification(input: { workerId: string; leaseSeconds?: number }) {
+  const rows = await supabaseRpc<ArrivalReviewNotificationRow[]>("arrival_labels_claim_review_notification", {
+    p_worker_id: input.workerId,
+    p_lease_seconds: input.leaseSeconds || 180,
+  });
+  return rows[0] || null;
+}
+
+export async function updateArrivalReviewNotification(input: {
+  notificationId: string;
+  workerId: string;
+  result: "dispatching" | "sent" | "retryable_error" | "uncertain";
+  dispatchReceiptId?: string | null;
+  error?: string | null;
+}) {
+  const rows = await supabaseRpc<ArrivalReviewNotificationRow[]>("arrival_labels_update_review_notification", {
+    p_notification_id: input.notificationId,
+    p_worker_id: input.workerId,
+    p_result: input.result,
+    p_dispatch_receipt_id: input.dispatchReceiptId || null,
+    p_error: input.error || null,
+  });
+  if (!rows[0]) throw new Error("Pruefmail-Status konnte nicht aktualisiert werden.");
+  return rows[0];
+}
 
 export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
   const rows = await supabaseRequest<ProductConfigRow[]>("arrival_label_product_config", undefined, {
@@ -212,6 +269,8 @@ export async function upsertArrivalCase(input: {
       manual_review_reason: input.decision.manualReviewReason,
       source_snapshot: {
         reasons: input.decision.reasons,
+        shopifyAdminUrl: order?.adminUrl || null,
+        shopifyCustomAttributes: order?.customAttributes || [],
         shopifyTags: order?.tags || [],
         lineItems: order?.lineItems || [],
         shippingLines: order?.shippingLines || [],

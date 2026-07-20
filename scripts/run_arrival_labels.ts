@@ -66,7 +66,7 @@ async function main() {
   ]);
   process.stdout.write(report);
   process.stdout.write(`\nBericht: ${markdownPath}\nJSON: ${jsonPath}\n`);
-  if (result.summary.manualReview > 0) process.exitCode = 2;
+  if (result.summary.reviewNotifications > 0) process.exitCode = 2;
 }
 
 main().catch((error) => {

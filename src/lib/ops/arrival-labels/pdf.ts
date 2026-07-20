@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createCanvas, DOMMatrix, ImageData, Path2D } from "@napi-rs/canvas";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { lastFourOfTracking } from "./domain";
+import { lastSixOfTracking } from "./domain";
 
 export type PdfRect = { x: number; y: number; width: number; height: number };
 
@@ -72,7 +72,7 @@ export function validateA6Layout(width: number, height: number, layout: DpdPdfLa
 
 export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: string, layout: DpdPdfLayout) {
   if (!layout.version.trim()) throw new Error("PDF-Layoutversion fehlt.");
-  const overlayText = lastFourOfTracking(trackingNumber);
+  const overlayText = lastSixOfTracking(trackingNumber);
   const document = await PDFDocument.load(inputPdf, { updateMetadata: false });
   if (document.getPageCount() !== 1) throw new Error("DPD-Etikett muss genau eine PDF-Seite enthalten.");
   const page = document.getPage(0);
@@ -85,7 +85,7 @@ export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: 
   const maximumWidth = layout.safeArea.width * 0.9;
   const measured = font.widthOfTextAtSize(overlayText, requestedFontSize);
   const fontSize = measured <= maximumWidth ? requestedFontSize : requestedFontSize * (maximumWidth / measured);
-  if (fontSize < 12) throw new Error("Aufdruckflaeche ist fuer vier gut sichtbare Ziffern zu klein.");
+  if (fontSize < 12) throw new Error("Aufdruckflaeche ist fuer sechs gut sichtbare Ziffern zu klein.");
   const textWidth = font.widthOfTextAtSize(overlayText, fontSize);
   const textHeight = font.heightAtSize(fontSize, { descender: false });
   page.drawText(overlayText, {

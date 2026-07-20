@@ -13,14 +13,14 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
     `- Korrelations-ID: \`${result.correlationId}\``,
     `- Produktkonfiguration: ${result.configVersion ? `\`${result.configVersion}\`` : "nicht freigegeben"}`,
     "",
-    "| DHL-Sendung | Letzte 4 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde | Notiz / Änderung | Versandart | DPD-Produkt | DPD-Tracking | PDF | Druck | Status / Fehler |",
+    "| DHL-Sendung | Letzte 6 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde | Notiz / Änderung | Versandart | DPD-Produkt | DPD-Tracking | PDF | Druck | Status / Fehler |",
     "| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
 
   for (const entry of result.cases) {
     lines.push(`| ${[
       entry.trackingNumber,
-      entry.lastFour,
+      entry.lastSix,
       entry.expectedArrival,
       entry.trelloCard ? `[${cell(entry.trelloCard.name)}](${entry.trelloCard.url})` : "-",
       entry.shopifyOrder ? `${cell(entry.shopifyOrder.name)} / ${cell(entry.shopifyOrder.customerName)}` : "-",
@@ -36,7 +36,7 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
 
   lines.push(
     "",
-    `Ermittelt: ${result.summary.found}; geplant: ${result.summary.labelPlanned}; bestehend: ${result.summary.existingLabel}; manuell: ${result.summary.manualReview}; Sonderfälle: ${result.summary.specialCase}.`,
+    `Ermittelt: ${result.summary.found}; geplant: ${result.summary.labelPlanned}; bestehend: ${result.summary.existingLabel}; manuell: ${result.summary.manualReview}; Sonderfälle: ${result.summary.specialCase}; Prüfmail-Outbox: ${result.summary.reviewNotifications}.`,
   );
   return `${lines.join("\n")}\n`;
 }

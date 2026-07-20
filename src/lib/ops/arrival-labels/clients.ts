@@ -183,7 +183,7 @@ function shopifyConfig() {
   const domain = requiredEnv("SHOPIFY_SHOP_DOMAIN").replace(/^https?:\/\//i, "").replace(/\/+$/, "");
   const token = requiredEnv("SHOPIFY_ADMIN_API_ACCESS_TOKEN");
   const version = requiredEnv("SHOPIFY_ADMIN_API_VERSION");
-  if (!/^[a-z0-9.-]+$/i.test(domain)) throw new ArrivalIntegrationError("Shopify Shop-Domain ist ungueltig.", "shopify_domain_invalid");
+  if (!/^[a-z0-9-]+[.]myshopify[.]com$/i.test(domain)) throw new ArrivalIntegrationError("Shopify Shop-Domain ist ungueltig.", "shopify_domain_invalid");
   if (!/^\d{4}-\d{2}$/.test(version)) throw new ArrivalIntegrationError("Shopify API-Version ist ungueltig.", "shopify_version_invalid");
   return { domain, token, version };
 }
@@ -196,6 +196,7 @@ const ARRIVAL_ORDERS_QUERY = `
         name
         note
         tags
+        customAttributes { key value }
         customer { displayName }
         lineItems(first: 100) { nodes { title quantity } }
         shippingLines(first: 20) { nodes { title code } }
@@ -234,16 +235,17 @@ export function createShopifyClient(): ArrivalDataClients["shopify"] {
         queries.push(explicitNames.slice(index, index + 25).map((value) => `name:${value}`).join(" OR "));
       }
       const rawOrders = (await Promise.all(queries.map(execute))).flat();
-      const mapped = rawOrders.map((raw) => mapShopifyOrder(raw as JsonRecord)).filter((order): order is ShopifyOrderEvidence => Boolean(order));
+      const mapped = rawOrders.map((raw) => mapShopifyOrder(raw as JsonRecord, config.domain)).filter((order): order is ShopifyOrderEvidence => Boolean(order));
       return [...new Map(mapped.map((order) => [order.id, order])).values()];
     },
   };
 }
 
-function mapShopifyOrder(raw: JsonRecord): ShopifyOrderEvidence | null {
+function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvidence | null {
   const id = String(raw.id || "");
   const name = String(raw.name || "");
-  if (!id || !name) return null;
+  const numericId = id.match(/^gid:\/\/shopify\/Order\/(\d+)$/)?.[1];
+  if (!id || !name || !numericId) return null;
   const customer = raw.customer as JsonRecord | null | undefined;
   const lineItems = ((raw.lineItems as JsonRecord | undefined)?.nodes || []) as JsonRecord[];
   const shippingLines = ((raw.shippingLines as JsonRecord | undefined)?.nodes || []) as JsonRecord[];
@@ -251,8 +253,15 @@ function mapShopifyOrder(raw: JsonRecord): ShopifyOrderEvidence | null {
   return {
     id,
     name,
+    adminUrl: `https://${shopDomain}/admin/orders/${numericId}`,
     customerName: customer ? String(customer.displayName || "").trim() || null : null,
     note: String(raw.note || "").trim() || null,
+    customAttributes: Array.isArray(raw.customAttributes)
+      ? (raw.customAttributes as JsonRecord[]).map((attribute) => ({
+        key: String(attribute.key || "").trim(),
+        value: String(attribute.value || "").trim(),
+      }))
+      : [],
     tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [],
     lineItems: lineItems.map((item) => ({ title: String(item.title || ""), quantity: Number(item.quantity || 0) })),
     shippingLines: shippingLines.map((line) => ({ title: String(line.title || ""), code: String(line.code || "").trim() || null })),

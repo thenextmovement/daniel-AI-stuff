@@ -31,8 +31,10 @@
     {
       "id": "gid://shopify/Order/4498",
       "name": "#NEONT4498",
+      "adminUrl": "https://neontrip.myshopify.com/admin/orders/4498",
       "customerName": "Alexander Walden",
       "note": null,
+      "customAttributes": [],
       "tags": [],
       "lineItems": [{ "title": "Neonschild", "quantity": 1 }],
       "shippingLines": [{ "title": "Standard Versand", "code": "Standard" }],

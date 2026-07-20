@@ -68,7 +68,7 @@ create table if not exists public.arrival_label_cases (
   run_id uuid not null references public.arrival_label_runs(id) on delete cascade,
   idempotency_key text not null unique,
   incoming_dhl_tracking_number text not null,
-  incoming_dhl_last_four text generated always as (right(incoming_dhl_tracking_number, 4)) stored,
+  incoming_dhl_last_six text generated always as (right(incoming_dhl_tracking_number, 6)) stored,
   expected_arrival_at timestamptz null,
   outlook_message_ids text[] not null default '{}'::text[],
   outlook_delivery_state text not null default 'due_today',
@@ -226,6 +226,47 @@ create index if not exists arrival_label_print_jobs_reconcile_idx
   on public.arrival_label_print_jobs (printer_key, status, updated_at)
   where status in ('dispatching', 'submitted', 'manual_review');
 
+create table if not exists public.arrival_label_review_notifications (
+  id uuid primary key default gen_random_uuid(),
+  case_id uuid not null references public.arrival_label_cases(id) on delete cascade,
+  notification_key text not null unique,
+  recipient_email text not null default 'info@neontrip.de',
+  subject text not null,
+  body_text text not null,
+  shopify_order_url text null,
+  status text not null default 'pending',
+  attempts integer not null default 0,
+  max_attempts integer not null default 3,
+  lease_owner text null,
+  lease_expires_at timestamptz null,
+  dispatch_receipt_id text null,
+  last_error text null,
+  claimed_at timestamptz null,
+  dispatching_at timestamptz null,
+  sent_at timestamptz null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint arrival_label_review_notifications_key_check check (notification_key ~ '^arrival-review:[0-9a-f]{64}$'),
+  constraint arrival_label_review_notifications_recipient_check check (recipient_email = 'info@neontrip.de'),
+  constraint arrival_label_review_notifications_subject_check check (length(subject) between 20 and 200 and subject !~ E'[\\r\\n]'),
+  constraint arrival_label_review_notifications_body_check check (length(body_text) between 50 and 4000),
+  constraint arrival_label_review_notifications_shopify_url_check check (
+    shopify_order_url is null or shopify_order_url ~ '^https://[A-Za-z0-9-]+[.]myshopify[.]com/admin/orders/[0-9]+$'
+  ),
+  constraint arrival_label_review_notifications_status_check check (
+    status in ('pending', 'claimed', 'dispatching', 'sent', 'retryable_error', 'manual_review', 'cancelled')
+  ),
+  constraint arrival_label_review_notifications_attempts_check check (attempts >= 0 and max_attempts between 1 and 5)
+);
+
+create index if not exists arrival_label_review_notifications_claim_idx
+  on public.arrival_label_review_notifications (status, created_at)
+  where status in ('pending', 'claimed', 'retryable_error');
+
+create index if not exists arrival_label_review_notifications_reconcile_idx
+  on public.arrival_label_review_notifications (status, updated_at)
+  where status in ('dispatching', 'manual_review');
+
 alter table public.arrival_label_product_config enable row level security;
 alter table public.arrival_label_runs enable row level security;
 alter table public.arrival_label_cases enable row level security;
@@ -233,6 +274,7 @@ alter table public.arrival_label_run_cases enable row level security;
 alter table public.arrival_label_events enable row level security;
 alter table public.arrival_label_artifacts enable row level security;
 alter table public.arrival_label_print_jobs enable row level security;
+alter table public.arrival_label_review_notifications enable row level security;
 
 revoke all on table public.arrival_label_product_config from anon, authenticated;
 revoke all on table public.arrival_label_runs from anon, authenticated;
@@ -241,6 +283,7 @@ revoke all on table public.arrival_label_run_cases from anon, authenticated;
 revoke all on table public.arrival_label_events from anon, authenticated;
 revoke all on table public.arrival_label_artifacts from anon, authenticated;
 revoke all on table public.arrival_label_print_jobs from anon, authenticated;
+revoke all on table public.arrival_label_review_notifications from anon, authenticated;
 
 grant select, insert, update, delete on table public.arrival_label_product_config to service_role;
 grant select, insert, update, delete on table public.arrival_label_runs to service_role;
@@ -249,6 +292,7 @@ grant select, insert on table public.arrival_label_run_cases to service_role;
 grant select, insert on table public.arrival_label_events to service_role;
 grant select, insert on table public.arrival_label_artifacts to service_role;
 grant select, insert, update on table public.arrival_label_print_jobs to service_role;
+grant select, insert, update on table public.arrival_label_review_notifications to service_role;
 
 create or replace function public.arrival_labels_claim_case(
   p_case_id uuid,
@@ -587,9 +631,238 @@ grant execute on function public.arrival_labels_enqueue_print_job(uuid, uuid, te
 grant execute on function public.arrival_labels_claim_print_job(text, text, integer, timestamptz) to service_role;
 grant execute on function public.arrival_labels_update_print_job(uuid, text, text, text, text, timestamptz) to service_role;
 
+create or replace function public.arrival_labels_enqueue_review_notification(
+  p_case_id uuid,
+  p_notification_key text,
+  p_recipient_email text,
+  p_subject text,
+  p_body_text text,
+  p_shopify_order_url text default null
+)
+returns setof public.arrival_label_review_notifications
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_case public.arrival_label_cases%rowtype;
+  v_notification public.arrival_label_review_notifications%rowtype;
+begin
+  select * into v_case
+  from public.arrival_label_cases
+  where id = p_case_id
+  for share;
+  if not found then raise exception 'arrival label case not found'; end if;
+  if v_case.status not in ('manual_review', 'missing_data', 'ambiguous_match', 'conflicting_instructions', 'special_case')
+    or v_case.selected_dpd_product is not null then
+    raise exception 'only a blocked case without DPD product can enqueue a review notification';
+  end if;
+  if coalesce(p_notification_key, '') !~ '^arrival-review:[0-9a-f]{64}$' then raise exception 'invalid notification key'; end if;
+  if p_recipient_email <> 'info@neontrip.de' then raise exception 'review recipient is not allowlisted'; end if;
+  if length(coalesce(p_subject, '')) not between 20 and 200 or p_subject ~ E'[\\r\\n]' then raise exception 'invalid review subject'; end if;
+  if length(coalesce(p_body_text, '')) not between 50 and 4000 then raise exception 'invalid review body'; end if;
+  if p_shopify_order_url is not null
+    and p_shopify_order_url !~ '^https://[A-Za-z0-9-]+[.]myshopify[.]com/admin/orders/[0-9]+$' then
+    raise exception 'invalid Shopify order URL';
+  end if;
+
+  insert into public.arrival_label_review_notifications (
+    case_id, notification_key, recipient_email, subject, body_text, shopify_order_url
+  ) values (
+    p_case_id, p_notification_key, p_recipient_email, p_subject, p_body_text, p_shopify_order_url
+  )
+  on conflict (notification_key) do nothing
+  returning * into v_notification;
+
+  if not found then
+    select * into v_notification
+    from public.arrival_label_review_notifications
+    where notification_key = p_notification_key;
+    if v_notification.case_id <> p_case_id
+      or v_notification.recipient_email <> p_recipient_email
+      or v_notification.subject <> p_subject
+      or v_notification.body_text <> p_body_text
+      or v_notification.shopify_order_url is distinct from p_shopify_order_url then
+      raise exception 'review notification idempotency key belongs to different input';
+    end if;
+  end if;
+
+  insert into public.arrival_label_events (
+    run_id, case_id, event_key, event_type, severity, actor, payload
+  ) values (
+    v_case.run_id,
+    v_case.id,
+    'review:' || v_notification.id::text || ':queued',
+    'review_notification_queued',
+    'warning',
+    'arrival-label-review-outbox',
+    jsonb_build_object('notificationId', v_notification.id, 'recipient', v_notification.recipient_email)
+  ) on conflict (event_key) do nothing;
+
+  return next v_notification;
+end;
+$$;
+
+create or replace function public.arrival_labels_claim_review_notification(
+  p_worker_id text,
+  p_lease_seconds integer default 180,
+  p_now timestamptz default now()
+)
+returns setof public.arrival_label_review_notifications
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_notification public.arrival_label_review_notifications%rowtype;
+begin
+  if coalesce(p_worker_id, '') !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$' then raise exception 'invalid review worker id'; end if;
+  if p_lease_seconds < 60 or p_lease_seconds > 900 then raise exception 'review lease seconds must be between 60 and 900'; end if;
+
+  select * into v_notification
+  from public.arrival_label_review_notifications
+  where lease_owner = p_worker_id and status = 'claimed' and lease_expires_at > p_now
+  order by claimed_at desc limit 1 for update skip locked;
+  if found then return next v_notification; return; end if;
+
+  with uncertain as (
+    update public.arrival_label_review_notifications
+    set status = 'manual_review', lease_owner = null, lease_expires_at = null,
+        last_error = 'Mail dispatch began but completion is unknown; do not automatically resend.', updated_at = p_now
+    where status = 'dispatching' and lease_expires_at <= p_now
+    returning id, case_id
+  )
+  insert into public.arrival_label_events (run_id, case_id, event_key, event_type, severity, actor, payload)
+  select c.run_id, u.case_id, 'review:' || u.id::text || ':uncertain', 'review_notification_uncertain', 'warning',
+         'arrival-label-review-outbox', jsonb_build_object('notificationId', u.id, 'automaticResend', false)
+  from uncertain u join public.arrival_label_cases c on c.id = u.case_id
+  on conflict (event_key) do nothing;
+
+  with exhausted as (
+    update public.arrival_label_review_notifications
+    set status = 'manual_review', lease_owner = null, lease_expires_at = null,
+        last_error = 'Review notification exhausted safe retries before dispatch.', updated_at = p_now
+    where status in ('claimed', 'retryable_error') and attempts >= max_attempts
+      and (lease_expires_at is null or lease_expires_at <= p_now)
+    returning id, case_id
+  )
+  insert into public.arrival_label_events (run_id, case_id, event_key, event_type, severity, actor, payload)
+  select c.run_id, e.case_id, 'review:' || e.id::text || ':retry_exhausted', 'review_notification_retry_exhausted', 'warning',
+         'arrival-label-review-outbox', jsonb_build_object('notificationId', e.id)
+  from exhausted e join public.arrival_label_cases c on c.id = e.case_id
+  on conflict (event_key) do nothing;
+
+  select * into v_notification
+  from public.arrival_label_review_notifications
+  where status in ('pending', 'claimed', 'retryable_error') and attempts < max_attempts
+    and (lease_expires_at is null or lease_expires_at <= p_now)
+  order by created_at asc limit 1 for update skip locked;
+  if not found then return; end if;
+
+  update public.arrival_label_review_notifications
+  set status = 'claimed', attempts = attempts + 1, lease_owner = p_worker_id,
+      lease_expires_at = p_now + make_interval(secs => p_lease_seconds), claimed_at = p_now,
+      last_error = null, updated_at = p_now
+  where id = v_notification.id
+  returning * into v_notification;
+  return next v_notification;
+end;
+$$;
+
+create or replace function public.arrival_labels_update_review_notification(
+  p_notification_id uuid,
+  p_worker_id text,
+  p_result text,
+  p_dispatch_receipt_id text default null,
+  p_error text default null,
+  p_now timestamptz default now()
+)
+returns setof public.arrival_label_review_notifications
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_notification public.arrival_label_review_notifications%rowtype;
+  v_next_status text;
+  v_retry_exhausted boolean;
+  v_run_id uuid;
+begin
+  if p_result not in ('dispatching', 'sent', 'retryable_error', 'uncertain') then raise exception 'invalid review result'; end if;
+  select * into v_notification
+  from public.arrival_label_review_notifications
+  where id = p_notification_id
+    and (
+      lease_owner = p_worker_id
+      or (
+        status = 'sent'
+        and p_result = 'sent'
+        and (
+          nullif(btrim(p_dispatch_receipt_id), '') is null
+          or dispatch_receipt_id = nullif(btrim(p_dispatch_receipt_id), '')
+        )
+      )
+    )
+  for update;
+  if not found then raise exception 'review notification not owned by worker'; end if;
+  if p_result = 'sent' and coalesce(nullif(btrim(p_dispatch_receipt_id), ''), v_notification.dispatch_receipt_id, '') !~ '^[^[:cntrl:]]{1,500}$' then
+    raise exception 'dispatch receipt id is required';
+  end if;
+  if p_result = 'dispatching' and v_notification.status not in ('claimed', 'dispatching') then
+    raise exception 'invalid transition to review dispatching';
+  elsif p_result = 'sent' and v_notification.status not in ('dispatching', 'sent') then
+    raise exception 'invalid transition to review sent';
+  elsif p_result = 'retryable_error' and v_notification.status not in ('claimed', 'retryable_error', 'manual_review') then
+    raise exception 'review retry is safe only before mail dispatch';
+  elsif p_result = 'uncertain' and v_notification.status not in ('dispatching', 'manual_review') then
+    raise exception 'review uncertainty is valid only after mail dispatch';
+  end if;
+  v_retry_exhausted := p_result = 'retryable_error' and v_notification.attempts >= v_notification.max_attempts;
+  if p_result = 'retryable_error' and v_notification.status = 'manual_review' and not v_retry_exhausted then
+    raise exception 'review manual state cannot return to automatic retry';
+  end if;
+  v_next_status := case when p_result = 'uncertain' or v_retry_exhausted then 'manual_review' else p_result end;
+  update public.arrival_label_review_notifications
+  set status = v_next_status,
+      dispatch_receipt_id = coalesce(nullif(btrim(p_dispatch_receipt_id), ''), dispatch_receipt_id),
+      last_error = nullif(left(coalesce(p_error, ''), 500), ''),
+      dispatching_at = case when p_result = 'dispatching' then coalesce(dispatching_at, p_now) else dispatching_at end,
+      sent_at = case when p_result = 'sent' then coalesce(sent_at, p_now) else sent_at end,
+      lease_expires_at = case when p_result in ('sent', 'retryable_error', 'uncertain') or v_retry_exhausted then null else lease_expires_at end,
+      lease_owner = case when p_result in ('sent', 'retryable_error', 'uncertain') or v_retry_exhausted then null else lease_owner end,
+      updated_at = p_now
+  where id = p_notification_id
+  returning * into v_notification;
+
+  select run_id into v_run_id from public.arrival_label_cases where id = v_notification.case_id;
+  insert into public.arrival_label_events (run_id, case_id, event_key, event_type, severity, actor, payload)
+  values (
+    v_run_id, v_notification.case_id, 'review:' || v_notification.id::text || ':' || p_result,
+    'review_notification_' || p_result,
+    case when p_result in ('retryable_error', 'uncertain') then 'warning' else 'info' end,
+    'arrival-label-review-worker:' || left(p_worker_id, 96),
+    jsonb_build_object(
+      'notificationId', v_notification.id,
+      'dispatchReceiptId', v_notification.dispatch_receipt_id,
+      'attempts', v_notification.attempts,
+      'retryExhausted', v_retry_exhausted
+    )
+  ) on conflict (event_key) do nothing;
+  return next v_notification;
+end;
+$$;
+
+revoke execute on function public.arrival_labels_enqueue_review_notification(uuid, text, text, text, text, text) from public, anon, authenticated;
+revoke execute on function public.arrival_labels_claim_review_notification(text, integer, timestamptz) from public, anon, authenticated;
+revoke execute on function public.arrival_labels_update_review_notification(uuid, text, text, text, text, timestamptz) from public, anon, authenticated;
+grant execute on function public.arrival_labels_enqueue_review_notification(uuid, text, text, text, text, text) to service_role;
+grant execute on function public.arrival_labels_claim_review_notification(text, integer, timestamptz) to service_role;
+grant execute on function public.arrival_labels_update_review_notification(uuid, text, text, text, text, timestamptz) to service_role;
+
 comment on table public.arrival_label_runs is 'Audited runs for DHL arrival to DPD label automation. Dry-run is the default and does not authorize side effects.';
 comment on table public.arrival_label_cases is 'Postgres source of truth for one Shopify order plus inbound DHL shipment idempotency boundary.';
 comment on table public.arrival_label_run_cases is 'Immutable per-run projection of each case decision; arrival_label_cases holds the latest known case state.';
 comment on table public.arrival_label_product_config is 'Versioned, human-approved EasyDPD product and PDF layout mapping. No active default is seeded.';
 comment on table public.arrival_label_events is 'Append-only operational audit trail without secret values or raw PDF bodies.';
 comment on table public.arrival_label_print_jobs is 'Exactly-once-oriented local print spool. Dispatch uncertainty requires manual review and is never auto-reprinted.';
+comment on table public.arrival_label_review_notifications is 'Idempotent internal review-mail outbox. A dispatch uncertainty requires manual review and is never auto-resent.';

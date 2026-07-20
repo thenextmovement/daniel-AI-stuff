@@ -6,13 +6,14 @@ import { isArrivalLabelsRequestAuthorized, isArrivalPrintWorkerAuthorized } from
 import { berlinDayBounds, type ArrivalDataClients } from "../../src/lib/ops/arrival-labels/clients";
 import {
   arrivalsFromDhlMessages,
+  assessShopifyAutomationGate,
   buildIdempotencyKey,
   classifyShipping,
   decideArrivalCase,
   extractDhlTrackingNumbers,
   findTrelloCardForTracking,
   isDimmerSpecialCase,
-  lastFourOfTracking,
+  lastSixOfTracking,
   resolveShopifyOrder,
   selectDpdProduct,
   type DhlMailEvidence,
@@ -25,8 +26,10 @@ import { runArrivalLabels } from "../../src/lib/ops/arrival-labels/service";
 const standardOrder: ShopifyOrderEvidence = {
   id: "gid://shopify/Order/100",
   name: "#NEONT100",
+  adminUrl: "https://neontrip.myshopify.com/admin/orders/100",
   customerName: "Ada Beispiel",
   note: null,
+  customAttributes: [],
   tags: [],
   lineItems: [{ title: "Neonschild", quantity: 1 }],
   shippingLines: [{ title: "Standard Versand", code: "standard" }],
@@ -48,7 +51,7 @@ const config: ProductConfig = {
 function arrival(trackingNumber = "1234567890") {
   return {
     trackingNumber,
-    lastFour: trackingNumber.slice(-4),
+    lastSix: trackingNumber.slice(-6),
     localDate: "2026-07-20",
     deliveryState: "due_today" as const,
     expectedArrivalAt: null,
@@ -63,8 +66,9 @@ function card(name = "1234567890 | #NEONT100 | Ada Beispiel"): TrelloCardEvidenc
 test("DHL tracking extraction is contextual, complete and deduplicated", () => {
   const text = "DHL Express Sendungsnummer: 2619 113 486; Tracking number 2619113486; Rechnung 1234567890";
   assert.deepEqual(extractDhlTrackingNumbers(text), ["2619113486"]);
-  assert.equal(lastFourOfTracking("2619113486"), "3486");
-  assert.throws(() => lastFourOfTracking("123"), /mindestens vier/);
+  assert.equal(lastSixOfTracking("2619113486"), "113486");
+  assert.equal(lastSixOfTracking("2619000486"), "000486");
+  assert.throws(() => lastSixOfTracking("12345"), /mindestens sechs/);
 });
 
 test("today arrivals are deduplicated and retain all Outlook evidence", () => {
@@ -176,6 +180,62 @@ test("non-standard Shopify notes and missing product mapping fail to manual revi
   assert.match(noConfig.manualReviewReason || "", /DPD-Produkt/);
 });
 
+test("only the exact NEONTRIP offer note and attribute schema passes the Shopify gate", () => {
+  const offerId = "cmabc123456789";
+  const note = [
+    "NEONTRIP Angebot: A/N 14258",
+    `Angebotslink: https://angebote.neontrip.de/offer/${offerId}`,
+    `PDF Snapshot: https://angebote.neontrip.de/offer/${offerId}/pdf`,
+    "Netto: 903 / MwSt: 171.57 / Brutto: 1074.57",
+  ].join("\n");
+  const customAttributes = [
+    { key: "NEONTRIP Offer ID", value: offerId },
+    { key: "NEONTRIP Offer Number", value: "A/N 14258" },
+    { key: "NEONTRIP Offer URL", value: `https://angebote.neontrip.de/offer/${offerId}` },
+    { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/offer/${offerId}/pdf` },
+    { key: "Trello Card ID", value: "0123456789abcdef01234567" },
+    { key: "Idempotency Key", value: `offer:${offerId}:shopify-sale:v1` },
+    { key: "Invoice Mail Intended", value: "yes_private_email" },
+  ];
+  assert.equal(assessShopifyAutomationGate({ ...standardOrder, note, customAttributes }).blocked, false);
+  const extraLine = assessShopifyAutomationGate({ ...standardOrder, note: `${note}\nBitte hinten ablegen`, customAttributes });
+  assert.equal(extraLine.blocked, true);
+  assert.ok(extraLine.reasonCodes.includes("non_standard_shopify_note"));
+  const unknownAttribute = assessShopifyAutomationGate({
+    ...standardOrder,
+    note,
+    customAttributes: [...customAttributes, { key: "Abweichung", value: "manuell" }],
+  });
+  assert.equal(unknownAttribute.blocked, true);
+  assert.ok(unknownAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
+});
+
+test("pickup wording blocks label purchase and print even when a DPD label already exists", () => {
+  const order = {
+    ...standardOrder,
+    note: "Ladenlokal holt ab – nicht versenden",
+    fulfillments: [{
+      id: "gid://shopify/Fulfillment/1",
+      status: "SUCCESS",
+      trackingCompany: "DPD",
+      trackingNumber: "01476817678011",
+      trackingUrl: null,
+    }],
+  };
+  const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
+  assert.equal(decision.status, "manual_review");
+  assert.equal(decision.selectedDpdProduct, null);
+  assert.equal(decision.existingDpdTracking, "01476817678011");
+  assert.ok(decision.reasons.includes("pickup_instruction"));
+});
+
+test("common German and English pickup variants are recognized deterministically", () => {
+  for (const note of ["Abholer", "Selbstabholung", "zur Abholung bereit", "Kunde holt ab", "wird abgeholt", "Laden lokal", "vor Ort", "Local pickup"]) {
+    const gate = assessShopifyAutomationGate({ ...standardOrder, note });
+    assert.ok(gate.reasonCodes.includes("pickup_instruction"), note);
+  }
+});
+
 test("idempotency key uses Shopify order ID plus the full DHL tracking number", () => {
   const key = buildIdempotencyKey("gid://shopify/Order/4498", "2619113486");
   assert.equal(key, "shopify:gid://shopify/Order/4498:dhl:2619113486");
@@ -197,6 +257,25 @@ test("repeated dry runs produce the same decisions and idempotency keys", async 
   const second = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config });
   assert.deepEqual(first.cases, second.cases);
   assert.equal(first.cases[0].status, "label_planned");
+});
+
+test("a pickup order produces no label plan and one internal review notification preview", async () => {
+  const messages: DhlMailEvidence[] = [{
+    messageId: "mail-pickup", receivedAt: "2026-07-20T06:00:00Z", senderAddress: "DHL Express <tracking@example.invalid>",
+    subject: "DHL Express kommt HEUTE", bodyText: "Sendungsnummer: 1234567890",
+  }];
+  const clients: ArrivalDataClients = {
+    outlook: { async listMessagesForLocalDate() { return messages; } },
+    trello: { async listQuentinCards() { return [card()]; } },
+    shopify: { async listRecentOrders() { return [{ ...standardOrder, note: "Abholer – Ladenlokal" }]; } },
+    existingLabels: { async findForOrders() { return new Map(); } },
+  };
+  const result = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config });
+  assert.equal(result.cases[0].status, "manual_review");
+  assert.equal(result.cases[0].selectedDpdProduct, null);
+  assert.equal(result.summary.reviewNotifications, 1);
+  assert.equal(result.reviewNotifications[0].recipientEmail, "info@neontrip.de");
+  assert.equal(result.reviewNotifications[0].shopifyOrderUrl, standardOrder.adminUrl);
 });
 
 test("Berlin day bounds remain correct across daylight saving transitions", () => {

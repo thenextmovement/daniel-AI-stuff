@@ -12,12 +12,14 @@ import {
 } from "./domain";
 import {
   createDatabaseExistingLabelClient,
+  enqueueArrivalReviewNotification,
   finishArrivalRun,
   loadActiveProductConfig,
   recordArrivalEvent,
   startArrivalRun,
   upsertArrivalCase,
 } from "./repository";
+import { buildArrivalReviewNotification, type ArrivalReviewNotification } from "./review-notifications";
 
 export type ArrivalRunResult = {
   correlationId: string;
@@ -27,12 +29,14 @@ export type ArrivalRunResult = {
   timezone: typeof ARRIVAL_LABEL_TIMEZONE;
   configVersion: string | null;
   cases: ArrivalCaseDecision[];
+  reviewNotifications: ArrivalReviewNotification[];
   summary: {
     found: number;
     labelPlanned: number;
     existingLabel: number;
     manualReview: number;
     specialCase: number;
+    reviewNotifications: number;
   };
 };
 
@@ -56,7 +60,7 @@ function validateLocalDate(value: string) {
   return value;
 }
 
-function summarize(cases: ArrivalCaseDecision[]): ArrivalRunResult["summary"] {
+function summarize(cases: ArrivalCaseDecision[], reviewNotifications: ArrivalReviewNotification[]): ArrivalRunResult["summary"] {
   const reviewStatuses = new Set(["manual_review", "missing_data", "ambiguous_match", "conflicting_instructions"]);
   return {
     found: cases.length,
@@ -64,6 +68,7 @@ function summarize(cases: ArrivalCaseDecision[]): ArrivalRunResult["summary"] {
     existingLabel: cases.filter((entry) => entry.status === "existing_label").length,
     manualReview: cases.filter((entry) => reviewStatuses.has(entry.status)).length,
     specialCase: cases.filter((entry) => entry.status === "special_case").length,
+    reviewNotifications: reviewNotifications.length,
   };
 }
 
@@ -129,11 +134,16 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
         productConfig,
       });
     });
-    const summary = summarize(cases);
+    const reviewNotifications = cases
+      .map(buildArrivalReviewNotification)
+      .filter((notification): notification is ArrivalReviewNotification => Boolean(notification));
+    const summary = summarize(cases, reviewNotifications);
 
     if (run) {
       for (let index = 0; index < cases.length; index += 1) {
         const stored = await upsertArrivalCase({ runId: run.id, arrival: arrivals[index], decision: cases[index] });
+        const notification = buildArrivalReviewNotification(cases[index]);
+        if (notification) await enqueueArrivalReviewNotification({ caseId: stored.id, notification });
         await recordArrivalEvent({
           runId: run.id,
           caseId: stored.id,
@@ -149,7 +159,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       }
       await finishArrivalRun({
         runId: run.id,
-        status: summary.manualReview > 0 ? "completed_with_review" : "completed",
+        status: summary.reviewNotifications > 0 ? "completed_with_review" : "completed",
         summary,
       });
     }
@@ -162,6 +172,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       timezone: ARRIVAL_LABEL_TIMEZONE,
       configVersion: productConfig?.version || null,
       cases,
+      reviewNotifications,
       summary,
     };
   } catch (error) {

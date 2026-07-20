@@ -11,7 +11,7 @@ test("arrival-label schema enforces source-of-truth, RLS and idempotency boundar
   assert.match(sql, /express_product_mapping ->> 'express_09'/i);
   assert.match(sql, /express_product_mapping ->> 'express_12'/i);
   assert.match(sql, /unique index[\s\S]+shopify_order_id, incoming_dhl_tracking_number/i);
-  for (const table of ["product_config", "runs", "cases", "run_cases", "events", "artifacts", "print_jobs"]) {
+  for (const table of ["product_config", "runs", "cases", "run_cases", "events", "artifacts", "print_jobs", "review_notifications"]) {
     assert.match(sql, new RegExp(`arrival_label_${table} enable row level security`, "i"));
   }
   assert.match(sql, /for update skip locked/i);
@@ -28,6 +28,16 @@ test("arrival-label schema enforces source-of-truth, RLS and idempotency boundar
   assert.match(sql, /v_retry_exhausted := p_result = 'retryable_error' and v_job\.attempts >= v_job\.max_attempts/i);
   assert.match(sql, /maximale Anzahl sicherer Vorab-Versuche erreicht/i);
   assert.match(sql, /physisch pruefen und nicht automatisch erneut drucken/i);
+  assert.match(sql, /incoming_dhl_last_six text generated always as \(right\(incoming_dhl_tracking_number, 6\)\)/i);
+  assert.doesNotMatch(sql, /incoming_dhl_last_four/i);
+  assert.match(sql, /recipient_email = 'info@neontrip[.]de'/i);
+  assert.match(sql, /only a blocked case without DPD product can enqueue a review notification/i);
+  assert.match(sql, /review notification idempotency key belongs to different input/i);
+  assert.match(sql, /Mail dispatch began but completion is unknown; do not automatically resend/i);
+  assert.match(sql, /review retry is safe only before mail dispatch/i);
+  assert.match(sql, /status = 'sent'[\s\S]+and p_result = 'sent'/i);
+  assert.match(sql, /dispatch_receipt_id text null/i);
+  assert.match(sql, /dispatch receipt id is required/i);
 });
 
 test("rollback removes all arrival-label objects in dependency order", async () => {
@@ -35,6 +45,9 @@ test("rollback removes all arrival-label objects in dependency order", async () 
   assert.match(sql, /drop function if exists public\.arrival_labels_claim_case/i);
   assert.match(sql, /drop table if exists public\.arrival_label_run_cases/i);
   assert.match(sql, /drop table if exists public\.arrival_label_print_jobs/i);
+  assert.match(sql, /drop table if exists public\.arrival_label_review_notifications/i);
+  assert.match(sql, /drop function if exists public\.arrival_labels_claim_review_notification/i);
   assert.ok(sql.indexOf("arrival_label_print_jobs") < sql.indexOf("arrival_label_artifacts"));
+  assert.ok(sql.indexOf("arrival_label_review_notifications") < sql.indexOf("arrival_label_cases"));
   assert.ok(sql.indexOf("arrival_label_run_cases") < sql.indexOf("arrival_label_cases"));
 });
