@@ -403,7 +403,7 @@ return { json: { dispatchReceiptId } };`,
 };
 
 const outlookArchiveWorkflow = {
-  name: "NEONTRIP Archive DHL Mail After Label Print v0.2 (INACTIVE)",
+  name: "NEONTRIP Archive DHL Mail After Label Print v0.3 (INACTIVE)",
   active: false,
   nodes: [
     {
@@ -436,17 +436,10 @@ const outlookArchiveWorkflow = {
       parameters: {
         mode: "runOnceForAllItems",
         language: "javaScript",
-        jsCode: String.raw`const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(/\/$/, '');
-const token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');
-const cfAccessClientId = String($env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID || '');
-const cfAccessClientSecret = String($env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET || '');
+        jsCode: String.raw`const baseUrl = 'https://ops.neontrip.de';
 const workflowPart = String($workflow.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
 const executionPart = String($execution.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
 const workerId = ('n8n-outlook-archive:' + workflowPart + ':' + executionPart).slice(0, 96);
-if (!/^https:\/\//.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');
-if (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');
-if (cfAccessClientId.length < 16) throw new Error('ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID is missing or too short');
-if (cfAccessClientSecret.length < 24) throw new Error('ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET is missing or too short');
 if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(workerId)) throw new Error('Outlook archive worker id is invalid');
 return [{ json: { baseUrl, workerId } }];`,
       },
@@ -489,7 +482,7 @@ return [{ json: { baseUrl, workerId } }];`,
     executionTimeout: 90,
     errorWorkflow: "ArT3LN25Mb1PAuBE",
   },
-  versionId: "arrival-outlook-archive-after-print-v0-2",
+  versionId: "arrival-outlook-archive-after-print-v0-3",
   meta: { templateCredsSetupCompleted: false },
   tags: [],
 };

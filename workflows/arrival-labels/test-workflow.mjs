@@ -75,8 +75,7 @@ assert.match(archiveSerialized, /outlook-archives\/process/);
 assert.match(archiveSerialized, /X-Neontrip-Outlook-Archive-Worker/);
 assert.match(archiveSerialized, /CF-Access-Client-Id/);
 assert.match(archiveSerialized, /CF-Access-Client-Secret/);
-assert.match(archiveSerialized, /ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID is missing or too short/);
-assert.match(archiveSerialized, /ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET is missing or too short/);
+assert.match(archiveSerialized, /https:\/\/ops[.]neontrip[.]de/);
 assert.match(archiveSerialized, /full tracking number/);
 assert.doesNotMatch(
   archiveRequests[0].parameters.body,
@@ -87,5 +86,6 @@ assert.doesNotMatch(archiveSerialized, /EASYDPD|createLabel|ARRIVAL_LABEL_WRITES
 assert.ok(archiveWorkflow.nodes.length <= 5, "archive orchestration must stay small");
 for (const codeNode of archiveWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.code")) {
   assert.doesNotThrow(() => new Function(codeNode.parameters.jsCode), `${codeNode.name} JavaScript must parse`);
+  assert.doesNotMatch(codeNode.parameters.jsCode, /\$env|ARRIVAL_LABEL_/, "Code runner must not receive production secrets");
 }
 process.stdout.write("arrival-labels n8n workflow checks passed\n");
