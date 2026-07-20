@@ -403,7 +403,7 @@ return { json: { dispatchReceiptId } };`,
 };
 
 const outlookArchiveWorkflow = {
-  name: "NEONTRIP Archive DHL Mail After Label Print v0.3 (INACTIVE)",
+  name: "NEONTRIP Archive DHL Mail After Label Print v0.4 (INACTIVE)",
   active: false,
   nodes: [
     {
@@ -452,13 +452,12 @@ return [{ json: { baseUrl, workerId } }];`,
       position: [560, 300],
       onError: "stopWorkflow",
       parameters: {
+        authentication: "genericCredentialType",
+        genericAuthType: "httpCustomAuth",
         method: "POST",
         url: "={{ $json.baseUrl + '/api/internal/arrival-labels/outlook-archives/process' }}",
         sendHeaders: true,
         headerParameters: { parameters: [
-          { name: "Authorization", value: "={{ 'Bearer ' + $env.ARRIVAL_LABEL_AGENT_API_TOKEN }}" },
-          { name: "CF-Access-Client-Id", value: "={{ $env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID }}" },
-          { name: "CF-Access-Client-Secret", value: "={{ $env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET }}" },
           { name: "X-Neontrip-Outlook-Archive-Worker", value: "={{ $json.workerId }}" },
           { name: "Content-Type", value: "application/json" },
         ] },
@@ -467,6 +466,12 @@ return [{ json: { baseUrl, workerId } }];`,
         rawContentType: "application/json",
         body: "={{ JSON.stringify({ workerId: $json.workerId }) }}",
         options: { timeout: 60000, response: { response: { responseFormat: "json" } } },
+      },
+      credentials: {
+        httpCustomAuth: {
+          id: "HJHHkJXK8B7QCtCQ",
+          name: "NEONTRIP Ops Archive Worker",
+        },
       },
     },
   ],
@@ -482,8 +487,8 @@ return [{ json: { baseUrl, workerId } }];`,
     executionTimeout: 90,
     errorWorkflow: "ArT3LN25Mb1PAuBE",
   },
-  versionId: "arrival-outlook-archive-after-print-v0-3",
-  meta: { templateCredsSetupCompleted: false },
+  versionId: "arrival-outlook-archive-after-print-v0-4",
+  meta: { templateCredsSetupCompleted: true },
   tags: [],
 };
 
