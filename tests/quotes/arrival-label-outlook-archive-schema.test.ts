@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const migrationPath = "supabase/migrations/20260720184500_archive_dhl_outlook_after_label_print.sql";
+const pgcryptoFixMigrationPath = "supabase/migrations/20260720205000_fix_arrival_outlook_archive_pgcrypto_search_path.sql";
+const pgcryptoFixRollbackPath = "supabase/rollbacks/20260720205000_fix_arrival_outlook_archive_pgcrypto_search_path_rollback.sql";
 
 test("Outlook archive schema is fail-closed, exact-message idempotent and print-gated", async () => {
   const sql = await readFile(migrationPath, "utf8");
@@ -28,4 +30,15 @@ test("Outlook archive rollback removes trigger, functions and tables in dependen
   assert.ok(sql.indexOf("drop trigger") < sql.indexOf("drop function"));
   assert.ok(sql.indexOf("drop function") < sql.indexOf("drop table"));
   assert.ok(sql.indexOf("arrival_label_outlook_archive_jobs") < sql.lastIndexOf("arrival_label_outlook_archive_settings"));
+});
+
+test("Outlook archive runtime functions resolve pgcrypto from the managed extensions schema", async () => {
+  const migration = await readFile(pgcryptoFixMigrationPath, "utf8");
+  const rollback = await readFile(pgcryptoFixRollbackPath, "utf8");
+
+  assert.match(migration, /arrival_labels_enqueue_outlook_archives_for_print\(uuid, timestamptz\)[\s\S]+search_path = public, extensions, pg_temp/i);
+  assert.match(migration, /arrival_labels_claim_outlook_archive\(text, integer, timestamptz\)[\s\S]+search_path = public, extensions, pg_temp/i);
+  assert.match(rollback, /arrival_labels_enqueue_outlook_archives_for_print\(uuid, timestamptz\)[\s\S]+search_path = public, pg_temp/i);
+  assert.match(rollback, /arrival_labels_claim_outlook_archive\(text, integer, timestamptz\)[\s\S]+search_path = public, pg_temp/i);
+  assert.doesNotMatch(rollback, /extensions/i);
 });
