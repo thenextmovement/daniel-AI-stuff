@@ -86,7 +86,7 @@
     },
     {
       "name": "Validate and Render",
-      "sha256": "dd9fc33f0ed9621d8075aacd4d1aaf6a472ae3e2cb576f97f323467ff1fb7d67"
+      "sha256": "8667bee0dabf8c392af5d363b6429e41912a67998ef3d514a163439770658574"
     }
   ],
   "intentionally_patched_nodes": [

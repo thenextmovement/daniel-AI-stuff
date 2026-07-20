@@ -134,6 +134,27 @@ assert.throws(() => runCode(renderCode, {
   }),
 }, { "Build Draft Prompt": baseMeta }), /INTERNAL_EVIDENCE_MISSING/);
 
+for (const paragraph of [
+  "Damit wir dir weiterhelfen können, wird sich unser Team die Situation genau ansehen und eine passende Lösung finden.",
+  "Ihren Wunsch haben wir intern weitergeleitet. Die Entscheidung muss intern abgestimmt werden, anschließend setzt sich unser Team mit Ihnen in Verbindung.",
+]) {
+  assert.throws(() => runCode(renderCode, {
+    text: JSON.stringify({
+      category: "complaint",
+      confidence: 0.8,
+      language: "de",
+      risk_level: "high",
+      needs_human_approval: true,
+      greeting: "Guten Tag Anna,",
+      paragraphs: [paragraph],
+      closing: "Viele Grüße",
+      facts_used: [],
+      blocked_reasons: [],
+      missing_information: ["Interne Entscheidung über die konkrete Maßnahme ist erforderlich."],
+    }),
+  }, { "Build Draft Prompt": baseMeta }), /INTERNAL_EVIDENCE_MISSING/);
+}
+
 const backfillTriggers = openInboxBackfillWorkflow.nodes.filter((entry) => entry.type.toLowerCase().includes("trigger"));
 assert.equal(backfillTriggers.length, 1);
 assert.ok(openInboxBackfillWorkflow.nodes.length <= 30);
