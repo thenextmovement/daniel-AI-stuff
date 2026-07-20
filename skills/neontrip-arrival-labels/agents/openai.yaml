@@ -1,0 +1,4 @@
+interface:
+  display_name: "NEONTRIP Arrival Labels"
+  short_description: "Startet sichere DHL/DPD-Dry-Runs und fasst Fälle zusammen."
+  default_prompt: "Führe den NEONTRIP DHL/DPD Arrival-Labels Dry Run aus und fasse manuelle Prüffälle zusammen."
