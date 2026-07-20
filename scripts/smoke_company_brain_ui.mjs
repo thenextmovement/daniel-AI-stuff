@@ -82,6 +82,21 @@ function companyBrainPayload() {
       problemType: "offer_not_sent",
       generatedAt: "2026-07-07T10:30:00.000Z",
       mode: "deterministic_read_only",
+      operationalVerdict: {
+        status: "action_required",
+        headline: "Kunden-E-Mail ist ungültig",
+        cause: "Die Empfängeradresse praxis@kurswechsel ist unvollständig. Deshalb wurde kein Angebot verschickt.",
+        causeCode: "customer_email_invalid",
+        confidence: "high",
+        failedStep: "Offer Send",
+        executionId: "2770420",
+        executionUrl: null,
+        technicalDetail: "Empfänger: praxis@kurswechsel",
+        retryLabel: null,
+        nextActionKey: "correct_customer_email",
+        nextActionLabel: "Kunden-E-Mail korrigieren",
+        customerContactAllowed: false,
+      },
       identifiers: [{ type: "trello_card_id", label: "Trello-ID", value: "BiP93WuG", confidence: "high", href: null }],
       answer: {
         verdict: "found",
@@ -368,18 +383,20 @@ async function runViewport(browser, target, viewport, label) {
   const page = await browser.newPage({ viewport });
   await setupRoutes(page);
   await page.goto(`${target}/ops/company-brain`, { waitUntil: "networkidle" });
-  await page.getByLabel(/Fall, E-Mail, Angebotsnummer, Trello-ID/).fill("https://trello.com/c/BiP93WuG/smoke");
-  await page.getByRole("button", { name: "Suchen" }).click();
+  await page.waitForTimeout(250);
+  const queryInput = page.getByLabel(/Fall, E-Mail, Angebotsnummer, Trello-ID/);
+  await queryInput.click();
+  await queryInput.fill("https://trello.com/c/BiP93WuG/smoke");
+  await (await waitForEnabled(page.getByRole("button", { name: "Suchen" }), `${label}: search`)).click();
   await waitForBodyText(page, `${label}: compact summary`, [
-    "FALL-KOMMANDOSTAND",
-    "Kurzantwort und nächste Aktion",
-    "INTERNE KURZDIAGNOSE",
-    "KI-verdichtet",
-    "Lösbar nach Freigabe",
+    "ERGEBNIS",
+    "Ursache und nächster Schritt",
+    "URSACHE",
+    "Systembeleg",
+    "Kunden-E-Mail ist ungültig",
     "NÄCHSTER SCHRITT",
-    "DIREKTE AKTIONEN",
-    "Trello-Projektion bereinigen",
-    "Projektion freigeben",
+    "JETZT TUN",
+    "Kunden-E-Mail korrigieren",
     "Diagnoseweg, Belege und Quellen anzeigen",
     "FIX CENTER",
   ]);

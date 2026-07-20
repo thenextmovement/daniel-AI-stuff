@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildCompanyBrainAnswer,
   buildActionProposals,
+  buildCompanyBrainOperationalVerdict,
   applyDeliveryAuditProofToCrossChecks,
   applyCaseVideoQcRetryState,
   applyVideoQcRetryState,
@@ -18,12 +19,15 @@ import {
   extractCompanyBrainIdentifiers,
   extractCompanyBrainLooseRequestIds,
   extractCompanyBrainSignals,
+  extractAutomationAuditDiagnosis,
   findMissingOfferRequestIds,
+  inferCompanyBrainProblemType,
   mapOutlookGraphMessageToEvidence,
   normalizeCompanyBrainQuery,
   resolveCoolifyApiConfig,
   resolveN8nApiConfig,
   resolveOutlookGraphConfig,
+  selectN8nExecutionIdsForLiveFetch,
   type CompanyBrainAutomationRun,
   type CompanyBrainEvidence,
   type CompanyBrainFinding,
@@ -253,6 +257,230 @@ test("company brain classifies offer API failures before send", () => {
   assert.match(hint.rootCause, /Angebotsanlage/);
   assert.match(hint.recommendedFix, /Offer-API/);
   assert.match(hint.retrySafety, /Retry blockiert/);
+});
+
+test("company brain extracts exact invalid preview media cause from a real audit payload", () => {
+  const diagnosis = extractAutomationAuditDiagnosis({
+    errorMessage: "Die Offer-Erstellung ist fehlgeschlagen.",
+    metadata: {
+      execution_id: "3212929",
+      failed_node: "Create NEONTRIP Offer",
+      raw_error: JSON.stringify({
+        failureType: "neontrip_offer_failed",
+        failureCode: "validation_failed",
+        failureMessage: "Offer API request failed: 422 - validation error",
+        error: {
+          message: "422 - previewVideoUrl Invalid URL; previewVideoPosterUrl Invalid URL",
+        },
+      }),
+    },
+  });
+
+  assert.equal(diagnosis.hint.key, "preview_media_invalid");
+  assert.equal(diagnosis.httpStatus, 422);
+  assert.equal(diagnosis.diagnosticComplete, true);
+  assert.match(diagnosis.hint.rootCause, /Vorschau-Medien abgelehnt/);
+  assert.match(diagnosis.hint.rootCause, /previewVideoUrl/);
+  assert.match(diagnosis.technicalDetail || "", /HTTP 422/);
+  assert.match(diagnosis.technicalDetail || "", /previewVideoPosterUrl/);
+  assert.doesNotMatch(diagnosis.technicalDetail || "", /raw_error|stack|customer/i);
+});
+
+test("company brain exposes a bounded automatic video retry instead of a generic failure", () => {
+  const diagnosis = extractAutomationAuditDiagnosis({
+    errorMessage: "Video-Pruefung nicht eindeutig.",
+    metadata: {
+      failure_type: "video_content_qc_inconclusive",
+      current_attempt: 1,
+      next_attempt: 2,
+      automatic_video_attempt_limit: 2,
+      retry_planned: true,
+    },
+  });
+
+  assert.equal(diagnosis.hint.key, "video_content_qc_inconclusive");
+  assert.equal(diagnosis.diagnosticComplete, true);
+  assert.match(diagnosis.technicalDetail || "", /Versuch 1\/2/);
+  assert.match(diagnosis.technicalDetail || "", /Folgelauf geplant/);
+});
+
+test("company brain skips slow live n8n reads when the audit already proves the cause", () => {
+  const base: CompanyBrainAutomationRun = {
+    id: "audit-3212929",
+    workflowName: "KI-Video Generator",
+    action: "create_and_send_offer",
+    status: "error",
+    error: "Offer creation failed",
+    createdAt: "2026-07-20T08:00:00.000Z",
+    requestId: "REQ-1",
+    executionId: "3212929",
+    correlationId: null,
+    sourceEventId: null,
+    targetRecordId: null,
+    failedNode: "Create NEONTRIP Offer",
+    idempotencyKey: null,
+    retrySafety: "Kein unveraenderter Retry.",
+    summary: "Vorschau-Link ungueltig.",
+    issueKey: "preview_media_invalid",
+    diagnosticComplete: true,
+  };
+  const successful: CompanyBrainAutomationRun = {
+    ...base,
+    id: "audit-success",
+    action: "initial_delivery_complete",
+    status: "success",
+    error: null,
+    executionId: "3219384",
+    diagnosticComplete: false,
+  };
+  const unknown: CompanyBrainAutomationRun = {
+    ...base,
+    id: "audit-unknown",
+    status: "error",
+    executionId: "3219999",
+    issueKey: null,
+    summary: null,
+    technicalDetail: null,
+    diagnosticComplete: false,
+  };
+
+  assert.deepEqual(
+    selectN8nExecutionIdsForLiveFetch(["3212929", "3219384", "3219999"], [base, successful, unknown]),
+    ["3219999"],
+  );
+});
+
+test("company brain still asks live n8n for a generic audit error", () => {
+  const diagnosis = extractAutomationAuditDiagnosis({
+    errorMessage: "Die Offer-Erstellung ist fehlgeschlagen.",
+    metadata: { execution_id: "3219999" },
+  });
+
+  assert.equal(diagnosis.hint.key, "offer_api_failed");
+  assert.equal(diagnosis.diagnosticComplete, false);
+});
+
+test("company brain accepts structured raw errors stored as JSON objects", () => {
+  const diagnosis = extractAutomationAuditDiagnosis({
+    errorMessage: "Offer failed",
+    metadata: {
+      raw_error: {
+        error: { message: "422 - previewVideoUrl Invalid URL" },
+      },
+    },
+  });
+
+  assert.equal(diagnosis.hint.key, "preview_media_invalid");
+  assert.equal(diagnosis.httpStatus, 422);
+  assert.equal(diagnosis.diagnosticComplete, true);
+});
+
+test("company brain understands common wording for an unsent offer before color checks", () => {
+  const type = inferCompanyBrainProblemType({
+    requested: null,
+    question: "Warum wurde das Angebot nicht verschickt?",
+    crossChecks: [{
+      key: "color_match",
+      label: "Farbe",
+      status: "fail",
+      severity: "warning",
+      expected: "blau",
+      actual: "rot",
+      summary: "Farbkonflikt",
+      evidenceIds: [],
+    }],
+    watchers: [],
+  });
+
+  assert.equal(type, "offer_not_sent");
+});
+
+test("company brain operational verdict shows exact cause, retry and later success", () => {
+  const failure: CompanyBrainAutomationRun = {
+    id: "failure",
+    workflowName: "KI-Video Generator",
+    action: "create_and_send_offer",
+    status: "error",
+    error: "Offer creation failed",
+    createdAt: "2026-07-20T08:00:00.000Z",
+    requestId: "REQ-1",
+    executionId: "3212929",
+    executionUrl: "https://n8n.example/execution/3212929",
+    correlationId: null,
+    sourceEventId: null,
+    targetRecordId: null,
+    failedNode: "Create NEONTRIP Offer",
+    idempotencyKey: null,
+    retrySafety: "Kein unveraenderter Retry.",
+    summary: "Die Vorschau-URLs sind ungueltig; deshalb wurde nichts verschickt.",
+    issueKey: "preview_media_invalid",
+    safeFix: "Vorschau-URLs korrigieren.",
+    technicalDetail: "HTTP 422 · ungueltig: previewVideoUrl, previewVideoPosterUrl",
+    diagnosticComplete: true,
+  };
+  const action = {
+    key: "collect_design_assets" as const,
+    label: "Video-Link korrigieren",
+    type: "manual_check" as const,
+    riskLevel: "medium" as const,
+    approvalRequired: false,
+    enabled: true,
+    summary: "Vorschau-Link korrigieren.",
+    confirmationText: "Kein Versand.",
+    href: "https://trello.com/c/test",
+    payloadPreview: [],
+  };
+  const retryAssessment = {
+    status: "blocked" as const,
+    label: "Blockiert",
+    summary: "Payload fehlerhaft.",
+    recipientEmail: null,
+    offerId: null,
+    offerNumber: null,
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["Payload fehlerhaft."],
+    safeFixes: ["Vorschau-URLs korrigieren."],
+  };
+  const unresolved = buildCompanyBrainOperationalVerdict({
+    automationRuns: [failure],
+    trelloFailureDiagnosis: retryDiagnosis(),
+    actionProposals: [action],
+    retryAssessment,
+    fallbackCause: "Unbekannt",
+  });
+
+  assert.equal(unresolved.status, "action_required");
+  assert.equal(unresolved.headline, "Vorschau-Video-Link ist ungültig");
+  assert.equal(unresolved.nextActionKey, "collect_design_assets");
+  assert.equal(unresolved.executionId, "3212929");
+  assert.match(unresolved.technicalDetail || "", /HTTP 422/);
+
+  const delivered: CompanyBrainAutomationRun = {
+    ...failure,
+    id: "success",
+    action: "initial_delivery_complete",
+    status: "success",
+    error: null,
+    summary: "Angebot erfolgreich zugestellt.",
+    issueKey: null,
+    createdAt: "2026-07-20T08:05:00.000Z",
+    executionId: "3219384",
+    executionUrl: "https://n8n.example/execution/3219384",
+    diagnosticComplete: true,
+  };
+  const resolved = buildCompanyBrainOperationalVerdict({
+    automationRuns: [failure, delivered],
+    trelloFailureDiagnosis: retryDiagnosis(),
+    actionProposals: [],
+    retryAssessment,
+    fallbackCause: "Unbekannt",
+  });
+
+  assert.equal(resolved.status, "resolved");
+  assert.equal(resolved.executionId, "3219384");
+  assert.equal(resolved.nextActionLabel, "Nichts erneut senden");
+  assert.match(resolved.cause, /spätere erfolgreiche Zustellung/);
 });
 
 test("company brain classifies source mapping conflicts before retry", () => {

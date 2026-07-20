@@ -20,25 +20,42 @@ async function enrichResult(
   let canonicalCaseWarning = null;
   let incidentWarning = null;
   let incidents: Awaited<ReturnType<typeof persistCompanyBrainCaseIncidents>> = [];
-
-  const [canonicalOutcome, briefOutcome] = await Promise.allSettled([
-    correlateCompanyBrainResult(result, actor.email),
-    generateCompanyBrainIntelligenceBrief(result),
-  ]);
-  if (briefOutcome.status === "fulfilled") result.intelligenceBrief = briefOutcome.value;
-  else result.intelligenceBrief = {
-    status: "fallback",
-    headline: result.employeeGuidance.resolutionLabel,
-    diagnosis: result.problemResolution.rootCause,
-    why: result.employeeGuidance.evidenceBullets.slice(0, 4),
-    uncertainties: result.employeeGuidance.blockerBullets.slice(0, 4),
+  const deterministicAction = result.operationalVerdict.nextActionKey
+    ? result.actionProposals.find((action) => action.key === result.operationalVerdict.nextActionKey) || null
+    : null;
+  const deterministicBrief = {
+    status: "fallback" as const,
+    headline: result.operationalVerdict.headline,
+    diagnosis: result.operationalVerdict.cause,
+    why: [
+      result.operationalVerdict.executionId ? `n8n Execution ${result.operationalVerdict.executionId}` : null,
+      result.operationalVerdict.failedStep ? `Fehler in: ${result.operationalVerdict.failedStep}` : null,
+      result.operationalVerdict.technicalDetail,
+    ].filter((value): value is string => Boolean(value)),
+    uncertainties: result.operationalVerdict.confidence === "low" ? result.employeeGuidance.blockerBullets.slice(0, 3) : [],
     evidenceIds: [],
-    nextAction: null,
+    nextAction: deterministicAction ? {
+      key: deterministicAction.key,
+      label: deterministicAction.label,
+      summary: deterministicAction.summary,
+      riskLevel: deterministicAction.riskLevel,
+      approvalRequired: deterministicAction.approvalRequired,
+    } : null,
     customerContactPolicy: result.employeeGuidance.customerContactPolicy,
     model: null,
     generatedAt: new Date().toISOString(),
-    warning: "KI-Erklärung konnte nicht erzeugt werden; regelbasierte Diagnose bleibt maßgeblich.",
+    warning: null,
   };
+  const briefPromise = result.operationalVerdict.confidence === "high"
+    ? Promise.resolve(deterministicBrief)
+    : generateCompanyBrainIntelligenceBrief(result);
+
+  const [canonicalOutcome, briefOutcome] = await Promise.allSettled([
+    correlateCompanyBrainResult(result, actor.email),
+    briefPromise,
+  ]);
+  if (briefOutcome.status === "fulfilled") result.intelligenceBrief = briefOutcome.value;
+  else result.intelligenceBrief = { ...deterministicBrief, warning: "KI-Erklärung konnte nicht erzeugt werden; die belegbasierte Diagnose bleibt maßgeblich." };
 
   if (canonicalOutcome.status === "fulfilled") canonicalCase = canonicalOutcome.value;
   else {

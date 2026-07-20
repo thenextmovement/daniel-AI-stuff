@@ -207,9 +207,9 @@ function watcherPlaybook(result: CompanyBrainResolveResult, watcher: CompanyBrai
     if (issue === "customer_email_missing" || issue === "customer_email_invalid") return { rootCauseCode: issue, playbookKey: "customer_email_invalid", ownerTeam: "sales" };
     if (issue === "delivery_failure" || issue === "outlook_auth_failed" || issue === "send_guard_unavailable") return { rootCauseCode: issue, playbookKey: "delivery_failure", ownerTeam: "engineering" };
     if (issue === "source_mapping_conflict") return { rootCauseCode: issue, playbookKey: "source_mapping_conflict", ownerTeam: "operations" };
-    if (issue === "video_content_qc_failed" || issue === "video_content_qc_unavailable") return { rootCauseCode: issue, playbookKey: "video_content_qc_failed", ownerTeam: "design" };
-    if (issue === "asset_processing_failed") return { rootCauseCode: issue, playbookKey: "asset_processing_failed", ownerTeam: "design" };
-    if (issue === "offer_api_failed") return { rootCauseCode: issue, playbookKey: "offer_api_failed", ownerTeam: "engineering" };
+    if (["video_content_qc_failed", "video_content_qc_inconclusive", "video_content_qc_unavailable"].includes(issue || "")) return { rootCauseCode: issue!, playbookKey: "video_content_qc_failed", ownerTeam: "design" };
+    if (issue === "asset_processing_failed" || issue === "preview_media_invalid") return { rootCauseCode: issue, playbookKey: "asset_processing_failed", ownerTeam: "design" };
+    if (["offer_api_failed", "offer_service_unavailable", "source_changed_after_preflight", "size_ladder_validation_failed"].includes(issue || "")) return { rootCauseCode: issue!, playbookKey: "offer_api_failed", ownerTeam: "engineering" };
     return { rootCauseCode: issue || "workflow_hard_error", playbookKey: "workflow_hard_error", ownerTeam: "engineering" };
   }
   return { rootCauseCode: watcher.key, playbookKey: "workflow_hard_error", ownerTeam: "operations" };

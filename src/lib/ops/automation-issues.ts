@@ -5,9 +5,14 @@ export type AutomationIssueKey =
   | "send_guard_unavailable"
   | "ai_customer_copy_blocked"
   | "outlook_auth_failed"
+  | "preview_media_invalid"
+  | "offer_service_unavailable"
+  | "source_changed_after_preflight"
+  | "size_ladder_validation_failed"
   | "offer_api_failed"
   | "source_mapping_conflict"
   | "video_content_qc_failed"
+  | "video_content_qc_inconclusive"
   | "video_content_qc_unavailable"
   | "asset_processing_failed"
   | "workflow_hard_error"
@@ -113,6 +118,49 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
     };
   }
   if (
+    /(previewVideoUrl|previewVideoPosterUrl).{0,240}(invalid[_\s-]*format|invalid url|ung[uü]ltig)|invalid[_\s-]*(url|format).{0,240}(previewVideoUrl|previewVideoPosterUrl)/i.test(text)
+  ) {
+    const fields = uniqueStrings([
+      /previewVideoUrl/i.test(text) ? "previewVideoUrl" : null,
+      /previewVideoPosterUrl/i.test(text) ? "previewVideoPosterUrl" : null,
+    ]);
+    return {
+      key: "preview_media_invalid",
+      rootCause: `Die Offer-API hat die Vorschau-Medien abgelehnt, weil ${fields.join(" und ") || "eine Vorschau-URL"} keine gültige URL enthält. Deshalb wurde kein Angebot verschickt.`,
+      recommendedFix: "Ungültige Vorschau-Video-/Poster-URL entfernen oder durch eine gültige HTTPS-URL ersetzen; danach die Angebotserstellung mit frischem Preflight erneut starten.",
+      safeFix: "Vorschau-Medien auf der Trello-Karte bzw. im Offer-Payload korrigieren und erst danach neu verarbeiten.",
+      retrySafety: "Kein unveränderter Retry: Derselbe ungültige Medien-Payload würde erneut mit 422 abgelehnt.",
+    };
+  }
+  if (/database is not ready|service[_\s-]*unavailable|temporar(?:y|ily)|vor[uü]bergehende.{0,50}(api|netzwerk)|\b503\b/i.test(text)) {
+    return {
+      key: "offer_service_unavailable",
+      rootCause: "Die Offer-API bzw. ihre Datenbank war vorübergehend nicht verfügbar. Die Angebotserstellung konnte deshalb in diesem Versuch nicht abgeschlossen werden.",
+      recommendedFix: "Automatischen idempotenten Retry abwarten. Nur wenn kein Retry geplant oder dieser ebenfalls fehlgeschlagen ist, Service-Health prüfen und den Fall erneut freigeben.",
+      safeFix: "Retry-Status prüfen; bei weiterem 503 die Offer-API eskalieren, ohne eine Kundenmail manuell zu duplizieren.",
+      retrySafety: "Nur der vorhandene idempotente Retry ist zulässig; keinen parallelen manuellen Versand starten.",
+    };
+  }
+  if (/card_changed_after_preflight|trello-?karte.{0,100}(ge[aä]ndert|changed).{0,100}(preflight|pr[uü]fung)|preflight.{0,100}(stale|veraltet|changed)/i.test(text)) {
+    return {
+      key: "source_changed_after_preflight",
+      rootCause: "Die Trello-Karte wurde nach der Vorprüfung verändert. Der alte Payload wurde deshalb sicherheitshalber verworfen und nicht verschickt.",
+      recommendedFix: "Karte und Pflichtfelder prüfen und anschließend einen neuen Lauf mit frischem Preflight starten. Den alten Lauf nicht fortsetzen.",
+      safeFix: "Aktuellen Kartenstand prüfen und aus diesem Stand neu verarbeiten.",
+      retrySafety: "Nur ein neuer Lauf mit neuer Idempotency und frischem Preflight ist zulässig.",
+    };
+  }
+  if (/size_ladder_technical_validation_failed|technical_size_ladder_validation_failed|groessenleiter|gr[oö][sß]enleiter|anchor_count_|anchor_\d+_|offer_items_json_projection_failed/i.test(text)) {
+    const detail = text.match(/(?:failureMessage|failure_message)["':=\\\s]+([^"}]{12,500})/i)?.[1]?.trim();
+    return {
+      key: "size_ladder_validation_failed",
+      rootCause: detail || "Die Größenleiter hat eine technische Plausibilitätsprüfung nicht bestanden. Deshalb wurde kein Angebot erzeugt oder verschickt.",
+      recommendedFix: "Größenanker, Designanzahl, Preisreihenfolge und Trello-Projektionsgröße prüfen; erst nach bestandener Validierung neu verarbeiten.",
+      safeFix: "Größenleiter-Daten korrigieren und den technischen Preflight erneut ausführen.",
+      retrySafety: "Kein Retry mit unveränderten Größen-/Preisankern.",
+    };
+  }
+  if (
     /(offer|quote|angebot|angebote).{0,100}(api|endpoint|create|creation|erstell|snapshot|payload|validation|schema|http|500|timeout)|(?:api|endpoint|http|500|timeout).{0,80}(offer|quote|angebot).{0,80}(failed|error|timeout|500|schema|fehlgeschlagen|fehler)|offer_api_failed|quote_api_failed/i.test(text)
   ) {
     return {
@@ -132,6 +180,17 @@ export function classifyAutomationIssueText(value: unknown): AutomationIssueHint
       recommendedFix: "Offer-Bridge, Request-ID und Trello-Card-ID in Postgres prüfen und korrigieren; keinen E-Mail-Fix oder Angebots-Resend auslösen.",
       safeFix: "Source-of-Truth-Verknüpfung in Postgres/Offer-Bridge reparieren und Fall neu laden.",
       retrySafety: "Retry blockiert, bis Angebot, Kundenakte und Trello-Projektion eindeutig demselben Fall zugeordnet sind.",
+    };
+  }
+  if (
+    /video_content_qc_inconclusive|video.{0,100}(nicht eindeutig|inconclusive).{0,100}(zweiter|retry|versuch)|zweiter.{0,80}(statischer )?video-?versuch/i.test(text)
+  ) {
+    return {
+      key: "video_content_qc_inconclusive",
+      rootCause: "Die Video-Prüfung war nicht eindeutig. Der erste Versand wurde gestoppt und genau ein zweiter, statischer Video-Versuch eingeplant.",
+      recommendedFix: "Den geplanten zweiten Versuch abwarten. Scheitert auch Versuch 2, Mockup und Video prüfen oder das Angebot kontrolliert ohne Video erzeugen.",
+      safeFix: "Versuch 2 abwarten; keinen parallelen Retry oder manuellen Versand starten.",
+      retrySafety: "Genau ein automatischer Zweitversuch ist zulässig; danach bleibt der Versand bis zur Prüfung blockiert.",
     };
   }
   if (

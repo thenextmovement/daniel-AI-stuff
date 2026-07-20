@@ -259,6 +259,22 @@ function retryAssessmentLabel(status: string) {
   return "Nur prüfen";
 }
 
+function operationalVerdictClass(status: string) {
+  if (status === "resolved") return "border-emerald-300 bg-emerald-50 text-emerald-950";
+  if (status === "retry_running") return "border-sky-300 bg-sky-50 text-sky-950";
+  if (status === "action_required") return "border-amber-300 bg-amber-50 text-amber-950";
+  if (status === "blocked") return "border-rose-300 bg-rose-50 text-rose-950";
+  return "border-stone-300 bg-stone-50 text-stone-800";
+}
+
+function operationalVerdictLabel(status: string) {
+  if (status === "resolved") return "Erledigt";
+  if (status === "retry_running") return "Retry läuft";
+  if (status === "action_required") return "Aktion nötig";
+  if (status === "blocked") return "Blockiert";
+  return "Ursache unklar";
+}
+
 function guidanceResolutionClass(status: string) {
   if (status === "resolved") return "border-emerald-300 bg-emerald-50 text-emerald-950";
   if (status === "self_service") return "border-emerald-300 bg-emerald-50 text-emerald-950";
@@ -870,10 +886,11 @@ export function OpsCompanyBrainClient({
         failedCardCheck: null,
         sourceOfTruth: null,
         primaryRun: null,
+        primaryOperationalAction: null,
       };
     }
     const hasVideoQcFailure = result.automationRuns.some((run) =>
-      run.issueKey === "video_content_qc_failed" || run.issueKey === "video_content_qc_unavailable",
+      ["video_content_qc_failed", "video_content_qc_inconclusive", "video_content_qc_unavailable"].includes(run.issueKey || ""),
     );
     const readyActions = result.actionProposals
       .filter((action) => action.enabled && executableAction(action.key))
@@ -882,6 +899,9 @@ export function OpsCompanyBrainClient({
         operatorActionPriority(right, result.retryAssessment.status, hasVideoQcFailure),
       )
       .slice(0, 3);
+    const primaryOperationalAction = result.operationalVerdict.nextActionKey
+      ? readyActions.find((action) => action.key === result.operationalVerdict.nextActionKey) || null
+      : null;
     const blockedFixes = uniqueStrings([
       ...result.retryAssessment.blockers,
       ...result.trelloFailureDiagnosis.blockedFixes,
@@ -929,6 +949,7 @@ export function OpsCompanyBrainClient({
       failedCardCheck: buildFailedCardCapability(result, readyActions),
       sourceOfTruth: buildSourceOfTruthStatus(result),
       primaryRun,
+      primaryOperationalAction,
     };
   }, [result]);
   const actionGroups = useMemo(() => {
@@ -1654,91 +1675,88 @@ export function OpsCompanyBrainClient({
 
         {result ? (
           <>
-            <section className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-sm">
+            <section className="overflow-hidden border-y border-stone-200 bg-white">
               <div className="border-b border-stone-200 bg-stone-950 px-5 py-5 text-white md:px-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="max-w-4xl">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Fall-Kommandostand</p>
-                    <h2 className="mt-2 text-2xl font-semibold leading-tight">Kurzantwort und nächste Aktion</h2>
-                    <p className="mt-2 text-sm leading-6 text-white/70">Erst die Entscheidung, dann die Buttons. Details bleiben einklappbar.</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Ergebnis</p>
+                    <h2 className="mt-2 text-2xl font-semibold leading-tight">Ursache und nächster Schritt</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/70">Aus Trello, Kundenakte, Angebot und Automation belegt.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${verdictClass(result.answer.verdict)}`}>
-                      {result.answer.verdict === "found" ? "Belegt" : result.answer.verdict === "not_found" ? "Nicht gefunden" : "Prüfen"}
+                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${operationalVerdictClass(result.operationalVerdict.status)}`}>
+                      {operationalVerdictLabel(result.operationalVerdict.status)}
                     </span>
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${evidenceScoreClass(result.evidenceScore.status)}`}>
-                      {result.evidenceScore.score}/100 · {evidenceScoreLabel(result.evidenceScore.status)}
+                    <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white">
+                      {result.operationalVerdict.confidence === "high" ? "Ursache belegt" : result.operationalVerdict.confidence === "medium" ? "Ursache wahrscheinlich" : "Ursache unklar"}
                     </span>
-                    <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${result.trelloFailureDiagnosis.rootCauseKey === "sent" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : retryAssessmentClass(result.retryAssessment.status)}`}>
-                      {result.trelloFailureDiagnosis.rootCauseKey === "sent" ? "Versand belegt" : retryAssessmentLabel(result.retryAssessment.status)}
-                    </span>
+                    {result.operationalVerdict.retryLabel ? <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-950">{result.operationalVerdict.retryLabel}</span> : null}
                   </div>
                 </div>
               </div>
 
               <div className="border-b border-stone-200 bg-white px-5 py-5 md:px-6">
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.8fr)_minmax(300px,0.85fr)]">
-                  <div className={`rounded-2xl border px-4 py-3 ${operatorDecisionClass(operatorView.brief?.tone || "neutral")}`}>
+                  <div className={`rounded-2xl border px-4 py-3 ${operationalVerdictClass(result.operationalVerdict.status)}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Interne Kurzdiagnose</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-65">Ursache</p>
                       <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold opacity-70">
-                        {result.intelligenceBrief?.status === "generated" ? "KI-verdichtet" : "Regelbasiert"}
+                        Systembeleg
                       </span>
                     </div>
-                    <h3 className="mt-2 text-xl font-semibold leading-tight">{result.intelligenceBrief?.headline || operatorView.brief?.title || result.employeeGuidance.resolutionLabel}</h3>
+                    <h3 className="mt-2 text-xl font-semibold leading-tight">{result.operationalVerdict.headline}</h3>
                     <p className="mt-2 text-sm leading-6 opacity-85">
-                      {shortText(result.intelligenceBrief?.diagnosis || operatorView.brief?.cause || result.problemResolution.rootCause || result.answer.headline, 360)}
+                      {shortText(result.operationalVerdict.cause, 420)}
                     </p>
-                    {result.intelligenceBrief?.why.length ? (
-                      <div className="mt-3 grid gap-1 border-t border-current/10 pt-3">
-                        {result.intelligenceBrief.why.slice(0, 2).map((entry) => <p key={entry} className="text-xs leading-5 opacity-75">{entry}</p>)}
-                      </div>
-                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2 border-t border-current/10 pt-3 text-xs font-medium opacity-80">
+                      {result.operationalVerdict.executionId ? <span>Execution {result.operationalVerdict.executionId}</span> : null}
+                      {result.operationalVerdict.failedStep ? <span>Schritt: {result.operationalVerdict.failedStep}</span> : null}
+                      {result.operationalVerdict.technicalDetail ? <span>{result.operationalVerdict.technicalDetail}</span> : null}
+                    </div>
                   </div>
                   <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Nächster Schritt</p>
                     <p className="mt-2 text-base font-semibold leading-6 text-stone-950">
-                      {result.intelligenceBrief?.nextAction?.label || operatorView.brief?.nextStep || result.employeeGuidance.nextBestActionLabel || result.nextActions[0] || "Fall erneut prüfen"}
+                      {result.operationalVerdict.nextActionLabel}
                     </p>
                     <p className="mt-2 text-xs leading-5 text-stone-500">
-                      {result.intelligenceBrief?.uncertainties[0]
-                        || (result.retryAssessment.canSendWithConfirmation ? "Versand nur guarded nach Freigabe." : customerContactPolicyLabel(result.employeeGuidance.customerContactPolicy))}
+                      {result.operationalVerdict.customerContactAllowed
+                        ? "Kundenkontakt nur guarded und nach Freigabe."
+                        : result.operationalVerdict.status === "resolved" ? "Keinen erneuten Versand auslösen." : "Kundenkontakt bleibt bis zur Lösung blockiert."}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Direkte Aktionen</p>
-                      <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-500">{operatorView.readyActions.length}</span>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Jetzt tun</p>
+                      {operatorView.readyActions.length > 1 ? <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-stone-500">+{operatorView.readyActions.length - 1} in Details</span> : null}
                     </div>
                     <div className="mt-3 grid gap-2">
-                      {operatorView.readyActions.length ? operatorView.readyActions.map((action) => (
-                        action.href && !action.approvalRequired ? (
+                      {operatorView.primaryOperationalAction ? (
+                        operatorView.primaryOperationalAction.href && !operatorView.primaryOperationalAction.approvalRequired ? (
                           <a
-                            key={`top-action-${action.key}`}
-                            href={action.href}
+                            href={operatorView.primaryOperationalAction.href}
                             target="_blank"
                             rel="noreferrer"
-                            className={`flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:brightness-95 ${riskClass(action.riskLevel)}`}
+                            className={`flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition hover:brightness-95 ${riskClass(operatorView.primaryOperationalAction.riskLevel)}`}
                           >
-                            <span>{action.label}</span>
+                            <span>{operatorView.primaryOperationalAction.label}</span>
                             <span className="inline-flex items-center gap-1 rounded-full border border-current/20 px-2 py-0.5 text-[10px]">
                               Öffnen <ExternalLink className="h-3 w-3" />
                             </span>
                           </a>
                         ) : (
                           <button
-                            key={`top-action-${action.key}`}
                             type="button"
-                            onClick={() => startActionProposal(action.key)}
-                            disabled={!action.enabled || actionLoadingKey === action.key}
-                            className={`flex min-h-10 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:brightness-95 disabled:opacity-50 ${riskClass(action.riskLevel)}`}
+                            onClick={() => startActionProposal(operatorView.primaryOperationalAction!.key)}
+                            disabled={!operatorView.primaryOperationalAction.enabled || actionLoadingKey === operatorView.primaryOperationalAction.key}
+                            className={`flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition hover:brightness-95 disabled:opacity-50 ${riskClass(operatorView.primaryOperationalAction.riskLevel)}`}
                           >
-                            <span>{action.label}</span>
-                            <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">{actionButtonLabel(action)}</span>
+                            <span>{operatorView.primaryOperationalAction.label}</span>
+                            <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">{actionButtonLabel(operatorView.primaryOperationalAction)}</span>
                           </button>
                         )
-                      )) : (
-                        <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm leading-6 text-stone-600">Keine sichere Aktion. Erst Blocker in den Details klären.</p>
+                      ) : (
+                        <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm leading-6 text-stone-700">{result.operationalVerdict.nextActionLabel}</p>
                       )}
                     </div>
                   </div>

@@ -53,6 +53,14 @@ type AliasRow = {
   confidence: number | string;
 };
 
+type TrelloProjectionAliasRow = {
+  id: string;
+  request_id: string;
+  alias_trello_card_id: string;
+  alias_trello_card_url?: string | null;
+  canonical_trello_card_id?: string | null;
+};
+
 type ReviewRow = {
   id: string;
   status: CompanyIdentityReviewItem["status"];
@@ -269,6 +277,49 @@ async function upsertDeterministicAlias(input: {
   return { created: true, conflictEntityId: null };
 }
 
+async function learnTrelloProjectionAlias(result: CompanyBrainResolveResult, requestId: string) {
+  const card = result.trelloFailureDiagnosis.card;
+  if (!card?.id) return { created: false, conflictRequestId: null };
+  const existing = await supabaseRequest<TrelloProjectionAliasRow[]>("trello_card_aliases", undefined, {
+    select: "id,request_id,alias_trello_card_id,alias_trello_card_url,canonical_trello_card_id",
+    alias_trello_card_id: `eq.${card.id}`,
+    limit: 1,
+  });
+  if (existing[0]) {
+    return existing[0].request_id === requestId
+      ? { created: false, conflictRequestId: null }
+      : { created: false, conflictRequestId: existing[0].request_id };
+  }
+  const canonicalTrelloCardId = result.records
+    .map((record) => record.trelloCardId)
+    .find((value): value is string => Boolean(value && value !== card.id)) || null;
+  try {
+    await supabaseRequest("trello_card_aliases", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        request_id: requestId,
+        alias_trello_card_id: card.id,
+        alias_trello_card_url: card.url || null,
+        canonical_trello_card_id: canonicalTrelloCardId,
+        alias_type: "copied_card",
+        source: "company_brain_deterministic",
+        notes: "Automatisch gelernt: eindeutige Request-ID aus Kundenakte/Angebot und Trello-Karte.",
+      }),
+    });
+    return { created: true, conflictRequestId: null };
+  } catch {
+    const raced = await supabaseRequest<TrelloProjectionAliasRow[]>("trello_card_aliases", undefined, {
+      select: "id,request_id,alias_trello_card_id,alias_trello_card_url,canonical_trello_card_id",
+      alias_trello_card_id: `eq.${card.id}`,
+      limit: 1,
+    });
+    if (raced[0]?.request_id === requestId) return { created: false, conflictRequestId: null };
+    if (raced[0]?.request_id) return { created: false, conflictRequestId: raced[0].request_id };
+    throw new QuoteValidationError("Trello-Alias konnte nicht sicher gespeichert werden.", ["trello_alias_learning_failed"], 409);
+  }
+}
+
 async function createIdentityReview(input: {
   sourceKey: string;
   aliasType: string;
@@ -369,8 +420,10 @@ export async function correlateCompanyBrainResult(
     aliasType: string;
     aliasValue: string;
   }> = [];
-  for (const alias of deterministicAliases(result, requestId)) {
-    const outcome = await upsertDeterministicAlias({
+  const deterministicAliasInputs = deterministicAliases(result, requestId);
+  const deterministicAliasOutcomes = await Promise.all(deterministicAliasInputs.map(async (alias) => ({
+    alias,
+    outcome: await upsertDeterministicAlias({
       entityId: entity.id,
       sourceKey: alias.sourceKey,
       aliasType: alias.aliasType,
@@ -379,7 +432,9 @@ export async function correlateCompanyBrainResult(
       sourceRef: alias.sourceRef,
       actor,
       correlationId,
-    });
+    }),
+  })));
+  for (const { alias, outcome } of deterministicAliasOutcomes) {
     if (outcome.created) aliasesCreated += 1;
     if (outcome.conflictEntityId) {
       conflicts.push({
@@ -435,6 +490,56 @@ export async function correlateCompanyBrainResult(
       summary: review?.summary || "Alias-Konflikt muss geprüft werden.",
     };
   }
+
+  const projectionAlias = await learnTrelloProjectionAlias(result, requestId);
+  if (projectionAlias.conflictRequestId) {
+    const cardId = result.trelloFailureDiagnosis.card?.id || result.query;
+    const review = await createIdentityReview({
+      sourceKey: "trello",
+      aliasType: "trello_card_id",
+      aliasValue: cardId,
+      candidateEntityIds: [entity.id],
+      proposedEntityId: entity.id,
+      confidence: 0.5,
+      reasonCode: "trello_projection_alias_conflict",
+      summary: `Die Trello-Karte ist im alten Aliasregister mit einer anderen Request-ID verknüpft (${projectionAlias.conflictRequestId}). Keine automatische Überschreibung.`,
+      evidenceRefs: result.identifiers.map((entry) => ({ type: entry.type, valueHash: hash(entry.value).slice(0, 16) })),
+      proposedResolution: {
+        operation: "review_trello_projection_alias",
+        aliasValue: cardId,
+        currentRequestId: projectionAlias.conflictRequestId,
+        proposedRequestId: requestId,
+      },
+      correlationId,
+    });
+    await insertResolutionLog({
+      sourceKey: "trello",
+      aliasType: "trello_card_id",
+      aliasValue: cardId,
+      entityId: entity.id,
+      outcome: "ambiguous",
+      candidateEntityIds: [entity.id],
+      confidence: 0.5,
+      correlationId,
+      reasonCode: "trello_projection_alias_conflict",
+      metadata: {
+        current_request_id_hash: hash(projectionAlias.conflictRequestId).slice(0, 16),
+        proposed_request_id_hash: hash(requestId).slice(0, 16),
+      },
+    });
+    return {
+      status: "ambiguous",
+      entityId: entity.id,
+      canonicalKey: entity.canonical_key,
+      requestId,
+      confidence: 0.5,
+      resolverVersion: RESOLVER_VERSION,
+      aliasesCreated,
+      reviewId: review?.id || null,
+      summary: review?.summary || "Trello-Alias-Konflikt muss geprüft werden.",
+    };
+  }
+  if (projectionAlias.created) aliasesCreated += 1;
 
   await insertResolutionLog({
     sourceKey: "supabase",

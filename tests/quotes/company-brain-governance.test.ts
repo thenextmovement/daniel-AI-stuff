@@ -70,6 +70,25 @@ test("governance migration keeps action and identity control tables private and 
   assert.match(rollback, /drop table if exists public\.company_identity_review_queue/i);
 });
 
+test("workflow incident reconciliation is event driven, private and reversible", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260720162224_company_brain_workflow_incident_reconciliation.sql",
+    "utf8",
+  );
+  const rollback = readFileSync(
+    "supabase/rollbacks/20260720162224_company_brain_workflow_incident_reconciliation_rollback.sql",
+    "utf8",
+  );
+
+  assert.match(migration, /after insert on public\.workflow_audit_log/i);
+  assert.match(migration, /preview_media_invalid/i);
+  assert.match(migration, /initial_delivery_complete/i);
+  assert.match(migration, /preserve_company_brain_specific_workflow_cause/i);
+  assert.match(migration, /revoke all on function public\.reconcile_company_brain_workflow_incident_from_audit\(\) from public, anon, authenticated/i);
+  assert.match(rollback, /drop trigger if exists trg_reconcile_company_brain_workflow_incident/i);
+  assert.match(rollback, /drop function if exists public\.preserve_company_brain_specific_workflow_cause/i);
+});
+
 test("Coolify deployment inspection redacts credential-shaped fields before logging", () => {
   const workflow = readFileSync(".github/workflows/coolify-secret-sync.yml", "utf8");
   assert.match(workflow, /function redactSensitiveFields\(value\)/);
@@ -273,6 +292,7 @@ function minimalResolveResult(requestIds: string[]): CompanyBrainResolveResult {
 
 test("canonical correlation creates deterministic request and Trello aliases but never email aliases", async () => {
   const aliasBodies: Array<Record<string, unknown>> = [];
+  const trelloProjectionBodies: Array<Record<string, unknown>> = [];
   await withSupabaseMock(async (url, init) => {
     const table = url.pathname.split("/").pop();
     const method = String(init.method || "GET").toUpperCase();
@@ -282,6 +302,11 @@ test("canonical correlation creates deterministic request and Trello aliases but
     if (table === "company_entity_aliases" && method === "GET") return json([]);
     if (table === "company_entity_aliases" && method === "POST") {
       aliasBodies.push(JSON.parse(String(init.body)));
+      return new Response(null, { status: 204 });
+    }
+    if (table === "trello_card_aliases" && method === "GET") return json([]);
+    if (table === "trello_card_aliases" && method === "POST") {
+      trelloProjectionBodies.push(JSON.parse(String(init.body)));
       return new Response(null, { status: 204 });
     }
     if (table === "company_identity_resolution_log" && method === "POST") return new Response(null, { status: 204 });
@@ -294,6 +319,62 @@ test("canonical correlation creates deterministic request and Trello aliases but
   assert.equal(aliasBodies.some((body) => body.alias_type === "request_id"), true);
   assert.equal(aliasBodies.some((body) => body.alias_type === "trello_card_id"), true);
   assert.equal(aliasBodies.some((body) => body.alias_type === "email"), false);
+  assert.equal(trelloProjectionBodies.length, 1);
+  assert.equal(trelloProjectionBodies[0]?.request_id, "REQ-1");
+  assert.equal(trelloProjectionBodies[0]?.alias_trello_card_id, "TRELLO1");
+});
+
+test("canonical correlation never overwrites a copied Trello card alias from another request", async () => {
+  let projectionWrites = 0;
+  await withSupabaseMock(async (url, init) => {
+    const table = url.pathname.split("/").pop();
+    const method = String(init.method || "GET").toUpperCase();
+    if (table === "company_entity_registry" && method === "POST") {
+      return json([{ id: "entity-1", entity_type: "request", canonical_key: "request:REQ-1" }]);
+    }
+    if (table === "company_entity_aliases" && method === "GET") return json([]);
+    if (table === "company_entity_aliases" && method === "POST") return new Response(null, { status: 204 });
+    if (table === "trello_card_aliases" && method === "GET") {
+      return json([{
+        id: "legacy-alias",
+        request_id: "REQ-OTHER",
+        alias_trello_card_id: "TRELLO1",
+        alias_trello_card_url: "https://trello.com/c/TRELLO1",
+        canonical_trello_card_id: "TRELLO-OLD",
+      }]);
+    }
+    if (table === "trello_card_aliases" && method !== "GET") {
+      projectionWrites += 1;
+      return json({ error: "must not write" }, 500);
+    }
+    if (table === "company_identity_review_queue" && method === "POST") {
+      const body = JSON.parse(String(init.body));
+      return json([{
+        id: "review-trello-conflict",
+        status: "open",
+        source_key: body.source_key,
+        alias_type: body.alias_type,
+        candidate_entity_ids: body.candidate_entity_ids,
+        proposed_entity_id: body.proposed_entity_id,
+        confidence: body.confidence,
+        reason_code: body.reason_code,
+        summary: body.summary,
+        evidence_refs: body.evidence_refs,
+        proposed_resolution: body.proposed_resolution,
+        correlation_id: body.correlation_id,
+        created_at: "2026-07-20T12:00:00.000Z",
+      }]);
+    }
+    if (table === "company_identity_resolution_log" && method === "POST") return new Response(null, { status: 204 });
+    return json({ error: `unexpected ${method} ${table}` }, 500);
+  }, async () => {
+    const correlated = await correlateCompanyBrainResult(minimalResolveResult(["REQ-1"]), "resolver@test");
+    assert.equal(correlated.status, "ambiguous");
+    assert.equal(correlated.reviewId, "review-trello-conflict");
+    assert.match(correlated.summary, /anderen Request-ID/);
+  });
+
+  assert.equal(projectionWrites, 0);
 });
 
 test("ambiguous request ids create a review instead of merging entities", async () => {
