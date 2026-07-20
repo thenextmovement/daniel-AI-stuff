@@ -25,10 +25,14 @@ const rollbackPath = new URL(
 
 type Workflow = {
   name: string;
+  connections: Record<string, {
+    main: Array<Array<{ node: string }>>;
+  }>;
   nodes: Array<{
     name: string;
     type: string;
     parameters: Record<string, unknown>;
+    credentials?: Record<string, { id?: string; name?: string }>;
     retryOnFail?: boolean;
     onError?: string;
   }>;
