@@ -1,0 +1,140 @@
+import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+
+export type PrintJobResult = "dispatching" | "submitted" | "printed" | "retryable_error" | "uncertain";
+
+export class PrintInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PrintInputError";
+  }
+}
+
+export function validatePrintWorkerId(value: string) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(value)) throw new PrintInputError("Ungueltige Print-Worker-ID.");
+  return value;
+}
+
+export function validatePrinterKey(value: string) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) throw new PrintInputError("Ungueltiger logischer Druckerschluessel.");
+  return value;
+}
+
+export function validateCupsName(value: string) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) throw new PrintInputError("Ungueltiger CUPS-Druckername.");
+  return value;
+}
+
+export function validatePrintMedia(value: string) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) throw new PrintInputError("Ungueltiges CUPS-Medium.");
+  return value;
+}
+
+export async function readBoundedResponseBytes(response: Response, maximumBytes: number) {
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > maximumBytes) throw new PrintInputError("Antwort ist groesser als erlaubt.");
+  if (!response.body) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  const reader = response.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > maximumBytes) {
+        await reader.cancel();
+        throw new PrintInputError("Antwort ist groesser als erlaubt.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+export async function readBoundedJson<T>(request: Request, maximumBytes = 4096): Promise<T> {
+  const contentType = String(request.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
+  if (contentType !== "application/json") throw new PrintInputError("Content-Type muss application/json sein.");
+  const response = new Response(request.body, { headers: request.headers });
+  const bytes = await readBoundedResponseBytes(response, maximumBytes);
+  try {
+    const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+    return parsed as T;
+  } catch {
+    throw new PrintInputError("Ungueltiger JSON-Request.");
+  }
+}
+
+export function assertPrintPdf(bytes: Uint8Array, expectedSha256: string) {
+  if (bytes.byteLength < 100 || bytes.byteLength > 10 * 1024 * 1024) throw new Error("Druck-PDF hat eine ungueltige Groesse.");
+  if (new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") throw new Error("Druckdatei ist kein PDF.");
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  if (!/^[0-9a-f]{64}$/.test(expectedSha256) || sha256 !== expectedSha256) throw new Error("Druck-PDF-Pruefsumme stimmt nicht.");
+  return sha256;
+}
+
+export function parseCupsJobId(output: string) {
+  const matches = output.match(/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}-\d+/g) || [];
+  const jobId = matches.at(-1) || null;
+  if (!jobId) throw new Error("CUPS lieferte keine auswertbare Job-ID.");
+  return jobId;
+}
+
+export type ProcessResult = { exitCode: number; stdout: string; stderr: string };
+export type ProcessRunner = (command: string, args: string[], timeoutMs?: number) => Promise<ProcessResult>;
+
+export const runBoundedProcess: ProcessRunner = (command, args, timeoutMs = 30_000) => new Promise((resolve, reject) => {
+  const child = spawn(command, args, { shell: false, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  const append = (current: string, value: Buffer) => `${current}${value.toString("utf8")}`.slice(-16_000);
+  child.stdout.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
+  child.stderr.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
+  child.on("error", reject);
+  const timer = setTimeout(() => {
+    child.kill("SIGKILL");
+    reject(new Error(`${command} Zeitlimit ueberschritten.`));
+  }, timeoutMs);
+  child.on("close", (code) => {
+    clearTimeout(timer);
+    resolve({ exitCode: code ?? 1, stdout, stderr });
+  });
+});
+
+export function createCupsPrinter(input: {
+  cupsPrinter: string;
+  media: string;
+  runner?: ProcessRunner;
+}) {
+  const cupsPrinter = validateCupsName(input.cupsPrinter);
+  const media = validatePrintMedia(input.media);
+  const runner = input.runner || runBoundedProcess;
+  return {
+    async selfTest() {
+      const [printer] = await Promise.all([
+        runner("lpstat", ["-p", cupsPrinter]),
+        runner("lp", ["--version"]),
+      ]);
+      if (printer.exitCode !== 0) throw new Error("CUPS oder der konfigurierte Drucker ist nicht bereit.");
+    },
+    async submit(pdfPath: string) {
+      const result = await runner("lp", ["-d", cupsPrinter, "-o", `media=${media}`, "-o", "sides=one-sided", pdfPath]);
+      if (result.exitCode !== 0) throw new Error(`CUPS-Druckauftrag abgelehnt: ${(result.stderr || result.stdout).trim().slice(0, 500)}`);
+      return parseCupsJobId(`${result.stdout}\n${result.stderr}`);
+    },
+    async isCompleted(cupsJobId: string) {
+      const result = await runner("lpstat", ["-W", "completed", "-o", cupsPrinter]);
+      if (result.exitCode !== 0) return false;
+      return result.stdout.split(/\r?\n/).some((line) => line.trim().startsWith(`${cupsJobId} `) || line.trim() === cupsJobId);
+    },
+  };
+}

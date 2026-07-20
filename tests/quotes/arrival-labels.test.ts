@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Temporal } from "@js-temporal/polyfill";
-import { isArrivalLabelsRequestAuthorized } from "../../src/lib/ops/arrival-labels/auth";
+import { isArrivalLabelsRequestAuthorized, isArrivalPrintWorkerAuthorized } from "../../src/lib/ops/arrival-labels/auth";
 import { berlinDayBounds, type ArrivalDataClients } from "../../src/lib/ops/arrival-labels/clients";
 import {
   arrivalsFromDhlMessages,
@@ -14,6 +14,7 @@ import {
   isDimmerSpecialCase,
   lastFourOfTracking,
   resolveShopifyOrder,
+  selectDpdProduct,
   type DhlMailEvidence,
   type ProductConfig,
   type ShopifyOrderEvidence,
@@ -36,7 +37,12 @@ const config: ProductConfig = {
   version: "test-v1",
   enabled: true,
   standardProductCode: "DPD_CLASSIC_TEST",
-  expressProductMapping: { express: "DPD_EXPRESS_TEST", urgent: "DPD_URGENT_TEST" },
+  expressProductMapping: {
+    express: "DPD_EXPRESS_TEST",
+    express_09: "DPD_EXPRESS_09_TEST",
+    express_12: "DPD_EXPRESS_12_TEST",
+    urgent: "DPD_URGENT_TEST",
+  },
 };
 
 function arrival(trackingNumber = "1234567890") {
@@ -120,10 +126,18 @@ test("100 pieces single color dimmers are a special case without Shopify", () =>
 
 test("express, urgent and conflicting instructions are detected deterministically", () => {
   assert.equal(classifyShipping({ ...standardOrder, note: "Expressversand" }).shippingClass, "express");
+  assert.equal(classifyShipping({ ...standardOrder, note: "Expresszustellung bis 9:00 Uhr" }).shippingClass, "express_09");
+  assert.equal(classifyShipping({ ...standardOrder, note: "Express 12:00 Uhr" }).shippingClass, "express_12");
   assert.equal(classifyShipping({ ...standardOrder, note: "Eilauftrag" }).shippingClass, "urgent");
   const conflict = classifyShipping({ ...standardOrder, note: "Express Versand, aber kein Express" });
   assert.equal(conflict.shippingClass, "unknown");
   assert.match(conflict.conflict || "", /widersprechen/);
+  const deadlineConflict = classifyShipping({ ...standardOrder, note: "Express 9:00 Uhr oder Express 12:00 Uhr" });
+  assert.equal(deadlineConflict.shippingClass, "unknown");
+  assert.match(deadlineConflict.conflict || "", /Zustellzeiten/);
+  assert.equal(selectDpdProduct("express_09", config), "DPD_EXPRESS_09_TEST");
+  assert.equal(selectDpdProduct("express_12", config), "DPD_EXPRESS_12_TEST");
+  assert.equal(selectDpdProduct("express_18", config), null);
 });
 
 test("reference order with existing DPD fulfillment can never plan a second label", () => {
@@ -229,5 +243,17 @@ test("execute mode remains fail-closed even when the feature flag is set", async
   } finally {
     if (previous === undefined) delete process.env.ARRIVAL_LABEL_WRITES_ENABLED;
     else process.env.ARRIVAL_LABEL_WRITES_ENABLED = previous;
+  }
+});
+
+test("local print API uses a separate 32-character bearer secret", () => {
+  const previous = process.env.ARRIVAL_LABEL_PRINT_API_TOKEN;
+  try {
+    process.env.ARRIVAL_LABEL_PRINT_API_TOKEN = "print-worker-test-token-at-least-32-characters";
+    assert.equal(isArrivalPrintWorkerAuthorized(new Headers({ Authorization: "Bearer arrival-label-test-token-at-least-24" })), false);
+    assert.equal(isArrivalPrintWorkerAuthorized(new Headers({ Authorization: "Bearer print-worker-test-token-at-least-32-characters" })), true);
+  } finally {
+    if (previous === undefined) delete process.env.ARRIVAL_LABEL_PRINT_API_TOKEN;
+    else process.env.ARRIVAL_LABEL_PRINT_API_TOKEN = previous;
   }
 });

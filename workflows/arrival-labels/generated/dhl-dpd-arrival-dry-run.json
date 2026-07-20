@@ -50,7 +50,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(//$/, '');\nconst token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');\nif (!/^https:///.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');\nif (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');\nreturn [{ json: { url: baseUrl + '/api/internal/arrival-labels/run', mode: 'dry_run', persist: false, triggerType: 'n8n_schedule' } }];"
+        "jsCode": "const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(/\\/$/, '');\nconst token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');\nif (!/^https:\\/\\//.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');\nif (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');\nreturn [{ json: { url: baseUrl + '/api/internal/arrival-labels/run', mode: 'dry_run', persist: false, triggerType: 'n8n_schedule' } }];"
       }
     },
     {

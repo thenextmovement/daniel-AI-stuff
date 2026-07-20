@@ -4,7 +4,8 @@ import { Temporal } from "@js-temporal/polyfill";
 export const ARRIVAL_LABEL_TIMEZONE = "Europe/Berlin" as const;
 
 export type ArrivalRunMode = "dry_run" | "execute";
-export type ShippingClass = "standard" | "express" | "urgent" | "special_case" | "unknown";
+export type ShippingClass = "standard" | "express" | "express_09" | "express_12" | "express_18" | "urgent" | "special_case" | "unknown";
+export type ExpressProductRule = "express" | "express_09" | "express_12" | "express_18" | "urgent";
 export type ArrivalCaseStatus =
   | "label_planned"
   | "existing_label"
@@ -68,7 +69,9 @@ export type ProductConfig = {
   version: string;
   enabled: boolean;
   standardProductCode: string | null;
-  expressProductMapping: Partial<Record<"express" | "urgent", string>>;
+  expressProductMapping: Partial<Record<ExpressProductRule, string>>;
+  printerKey?: string | null;
+  printMedia?: string | null;
 };
 
 export type ArrivalCaseDecision = {
@@ -94,10 +97,18 @@ const STANDARD_NOTE_PATTERNS = [
   /^Netto:\s*.+\/\s*MwSt:\s*.+\/\s*Brutto:\s*.+$/i,
 ];
 
-const EXPRESS_PATTERN = /\b(express(?:\s*-?\s*versand)?|expressversand|expresslieferung)\b/i;
+const EXPRESS_PATTERN = /\b(express(?:\s*-?\s*(?:versand|zustellung|lieferung))?|expressversand|expresszustellung|expresslieferung)\b/i;
 const URGENT_PATTERN = /\b(eilauftrag|eilproduktion|eilig|rush|urgent|priority|priorisierte\s+produktion)\b/i;
 const STANDARD_PATTERN = /\b(standard(?:\s*-?\s*versand|lieferung)|normaler\s+versand)\b/i;
 const EXPRESS_NEGATION_PATTERN = /\b(kein|nicht|ohne)\s+(?:dpd\s+)?express\b|\bstandard\s+statt\s+express\b/i;
+
+function hasExpressDeadline(evidence: string, hour: "09" | "12" | "18") {
+  const shortHour = hour === "09" ? "0?9" : hour;
+  const time = `${shortHour}(?:(?::|\\.)00|\\s*uhr)`;
+  const expressFirst = `(?:express(?:\\s*-?\\s*(?:versand|zustellung|lieferung))?|expressversand|expresszustellung|expresslieferung)[^\\n.]{0,40}(?:bis\\s*)?${time}`;
+  const deadlineFirst = `(?:bis|vor|spaetestens)\\s*${time}[^\\n.]{0,40}(?:zustellung|lieferung|versand|express)`;
+  return new RegExp(`(?:${expressFirst}|${deadlineFirst})`, "i").test(evidence);
+}
 
 export function normalizeHumanText(value: unknown) {
   return String(value || "")
@@ -226,10 +237,17 @@ export function classifyShipping(order: ShopifyOrderEvidence, card?: TrelloCardE
   const urgent = URGENT_PATTERN.test(evidence);
   const explicitNegation = EXPRESS_NEGATION_PATTERN.test(evidence);
   const standard = STANDARD_PATTERN.test(evidence);
+  const deadlines = (["09", "12", "18"] as const)
+    .filter((hour) => hasExpressDeadline(evidence, hour))
+    .map((hour) => `express_${hour}` as "express_09" | "express_12" | "express_18");
 
-  if ((express || urgent) && explicitNegation) {
+  if (deadlines.length > 1) {
+    return { shippingClass: "unknown" as const, conflict: "Mehrere Express-Zustellzeiten widersprechen sich." };
+  }
+  if ((express || urgent || deadlines.length) && explicitNegation) {
     return { shippingClass: "unknown" as const, conflict: "Express-Hinweis und ausdruecklicher Ausschluss widersprechen sich." };
   }
+  if (deadlines[0]) return { shippingClass: deadlines[0], conflict: null };
   if (urgent) return { shippingClass: "urgent" as const, conflict: null };
   if (express) return { shippingClass: "express" as const, conflict: null };
   if (standard || explicitNegation) return { shippingClass: "standard" as const, conflict: null };
@@ -280,7 +298,9 @@ export function existingDpdFromOrder(order: ShopifyOrderEvidence, databaseEviden
 export function selectDpdProduct(shippingClass: ShippingClass, config: ProductConfig | null) {
   if (!config?.enabled) return null;
   if (shippingClass === "standard") return config.standardProductCode;
-  if (shippingClass === "express" || shippingClass === "urgent") return config.expressProductMapping[shippingClass] || null;
+  if (["express", "express_09", "express_12", "express_18", "urgent"].includes(shippingClass)) {
+    return config.expressProductMapping[shippingClass as ExpressProductRule] || null;
+  }
   return null;
 }
 

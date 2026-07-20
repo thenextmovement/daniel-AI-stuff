@@ -15,6 +15,6 @@ This report records the connector-assisted read-only review performed before imp
 | 6957065500 | 5500 | due 2026-07-20 | Thuy Nguyen | `#NEONT4472` / Thuy Nguyen | no relevant deviation found | standard | not approved | none found | none | manual review until product map and match approval |
 | 7312514145 | 4145 | due 2026-07-20 | Adrianne Wootton | `#NEONT4525` / Adrianne Wootton | no relevant deviation found | standard | not approved | none found | none | manual review until product map approval |
 
-Totals: 10 arrivals; 2 existing-label blocks; 1 Dimmer special case; 7 manual/missing/ambiguous cases; 0 labels created; 0 PDFs downloaded from EasyDPD.
+Totals: 10 arrivals; 2 existing-label blocks; 1 Dimmer special case; 7 manual/missing/ambiguous cases; 0 labels created; 0 PDFs downloaded from EasyDPD; 0 print jobs queued or printed.
 
 Two distinct full DHL numbers end in `5500`. The implementation therefore uses the full inbound number for identity and storage, while printing only `5500` on each applicable label.
