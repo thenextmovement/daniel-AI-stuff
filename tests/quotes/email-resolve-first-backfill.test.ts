@@ -1,0 +1,103 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const mainPath = new URL(
+  "../../workflows/email-resolve-first/generated/main-resolve-first-v4.json",
+  import.meta.url,
+);
+const backfillPath = new URL(
+  "../../workflows/email-resolve-first/generated/open-inbox-backfill-v1.json",
+  import.meta.url,
+);
+const retryPath = new URL(
+  "../../workflows/email-retry-recovery/generated/retry-recovery-v1.json",
+  import.meta.url,
+);
+const migrationPath = new URL(
+  "../../supabase/migrations/20260720131125_enqueue_email_agent_open_inbox_backfill.sql",
+  import.meta.url,
+);
+const rollbackPath = new URL(
+  "../../supabase/rollbacks/20260720131125_enqueue_email_agent_open_inbox_backfill_rollback.sql",
+  import.meta.url,
+);
+
+type Workflow = {
+  name: string;
+  nodes: Array<{
+    name: string;
+    type: string;
+    parameters: Record<string, unknown>;
+    retryOnFail?: boolean;
+    onError?: string;
+  }>;
+};
+
+function getNode(workflow: Workflow, name: string) {
+  const node = workflow.nodes.find((entry) => entry.name === name);
+  assert.ok(node, `missing workflow node ${name}`);
+  return node;
+}
+
+test("resolve-first agent blocks vague internal deferrals but keeps useful high-risk drafts", async () => {
+  const workflow = JSON.parse(await readFile(mainPath, "utf8")) as Workflow;
+  const serialized = JSON.stringify(workflow);
+  const prompt = String(getNode(workflow, "Build Draft Prompt").parameters.jsCode || "");
+  const render = String(getNode(workflow, "Validate and Render").parameters.jsCode || "");
+
+  assert.equal(workflow.name, "AI Email Agent v4 — Resolve First — Draft Only");
+  assert.equal(workflow.nodes.length, 30);
+  assert.equal(workflow.nodes.filter((node) => node.type.toLowerCase().includes("trigger")).length, 1);
+  assert.equal(workflow.nodes.filter((node) => JSON.stringify(node).includes("createReply")).length, 1);
+  assert.doesNotMatch(serialized, /sendMail|replyAll|"operation":"send"/i);
+  assert.match(prompt, /email-resolve-first-v1/);
+  assert.match(prompt, /before drafting, exhaust the current message/);
+  assert.match(render, /unhelpful_internal_deferral/);
+  assert.doesNotMatch(render, /const highRiskBlocksDraft/);
+  assert.doesNotMatch(render, /prüfen wir die Angaben noch einmal intern und melden uns anschließend/);
+});
+
+test("open-inbox scanner is bounded, reply-aware, idempotent, and draft-only", async () => {
+  const [workflow, migration, rollback] = await Promise.all([
+    readFile(backfillPath, "utf8").then((value) => JSON.parse(value) as Workflow),
+    readFile(migrationPath, "utf8"),
+    readFile(rollbackPath, "utf8"),
+  ]);
+  const serialized = JSON.stringify(workflow);
+
+  assert.ok(workflow.nodes.length <= 30);
+  assert.equal(workflow.nodes.filter((node) => node.type.toLowerCase().includes("trigger")).length, 1);
+  assert.match(serialized, /Integer 0x1081/);
+  assert.match(serialized, /mailFolders\/drafts\/messages/);
+  assert.match(serialized, /mailFolders\/sentitems\/messages/);
+  assert.match(serialized, /\.slice\(0, 10\)/);
+  assert.match(serialized, /enqueue_email_agent_open_inbox_candidate/);
+  assert.doesNotMatch(serialized, /createReply|sendMail|replyAll|"operation":"send"/i);
+
+  for (const node of workflow.nodes.filter((entry) => entry.type === "n8n-nodes-base.httpRequest")) {
+    assert.equal(node.retryOnFail, true);
+    assert.equal(node.onError, "stopWorkflow");
+  }
+
+  assert.match(migration, /security invoker/i);
+  assert.doesNotMatch(migration, /security definer/i);
+  assert.match(migration, /on conflict \(request_id\) do nothing/i);
+  assert.match(migration, /automatic_send_allowed', false/i);
+  assert.match(migration, /human_approval_required', true/i);
+  assert.match(migration, /from public, anon, authenticated/i);
+  assert.match(migration, /to service_role/i);
+  assert.match(rollback, /drop function if exists public\.enqueue_email_agent_open_inbox_candidate/i);
+  assert.match(rollback, /last_error = 'open_inbox_backfill_candidate'/i);
+});
+
+test("retry worker is regenerated from the same resolve-first core", async () => {
+  const workflow = JSON.parse(await readFile(retryPath, "utf8")) as Workflow;
+  const prompt = String(getNode(workflow, "Build Draft Prompt").parameters.jsCode || "");
+  const render = String(getNode(workflow, "Validate and Render").parameters.jsCode || "");
+
+  assert.equal(workflow.nodes.length, 30);
+  assert.match(prompt, /email-resolve-first-v1/);
+  assert.match(render, /unhelpful_internal_deferral/);
+  assert.doesNotMatch(render, /const highRiskBlocksDraft/);
+});

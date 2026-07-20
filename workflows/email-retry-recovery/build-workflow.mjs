@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const directory = dirname(fileURLToPath(import.meta.url));
-const sourcePath = join(directory, "source", "main-workflow-active-20260717.json");
+const sourcePath = join(directory, "..", "email-resolve-first", "generated", "main-resolve-first-v4.json");
 const outputDirectory = join(directory, "generated");
 
 const source = JSON.parse(await readFile(sourcePath, "utf8"));

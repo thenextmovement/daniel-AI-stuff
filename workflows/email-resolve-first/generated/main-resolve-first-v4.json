@@ -1,40 +1,116 @@
 {
-  "name": "AI Email Agent — Retry Recovery v1",
+  "source_workflow_id": "aE1v0KxbgXbWjUm8",
+  "source_active_version_id": "6091f279-3941-4755-bae4-f401264a3b6b",
+  "source_version_created_at": "2026-07-17T08:25:34.403Z",
+  "captured_at": "2026-07-17T09:24:12.793Z",
+  "name": "AI Email Agent v4 — Resolve First — Draft Only",
   "nodes": [
     {
-      "id": "retry-schedule",
-      "name": "Retry Schedule",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.3,
+      "id": "outlook-trigger",
+      "name": "Outlook Trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
       "position": [
         0,
         0
       ],
       "parameters": {
-        "rule": {
-          "interval": [
+        "pollTimes": {
+          "item": [
             {
-              "field": "cronExpression",
-              "expression": "* * * * *"
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "output": "raw",
+        "filters": {
+          "readStatus": "unread",
+          "folderId": "inbox"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "id": "loop-emails",
+      "name": "Loop Over Emails",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        220,
+        -220
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "normalize-email",
+      "name": "Normalize Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const output = [];\nconst now = Date.now();\n\nfunction stripHtml(value) {\n  return String(value || '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&quot;/gi, '\"')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction fieldTextFromHtml(value) {\n  return String(value || '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<br\\s*\\/?\\s*>/gi, '\\n')\n    .replace(/<\\/(?:p|div|tr|li|h[1-6])\\s*>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&quot;/gi, '\"')\n    .replace(/\\r/g, '')\n    .replace(/[ \\t]+/g, ' ')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n}\n\nfunction extractLatestAuthoredText(htmlValue, fallbackValue) {\n  const html = String(htmlValue || '');\n  const htmlMarkers = [\n    /<div[^>]+id=[\"']divRplyFwdMsg[\"'][^>]*>/i,\n    /<div[^>]+class=[\"'][^\"']*gmail_quote[^\"']*[\"'][^>]*>/i,\n    /<blockquote[^>]*(?:type=[\"']cite[\"'])?[^>]*>/i,\n    /<!--\\s*Original Message\\s*-->/i,\n  ];\n  let htmlCut = html.length;\n  for (const marker of htmlMarkers) {\n    const match = marker.exec(html);\n    if (match && match.index < htmlCut) htmlCut = match.index;\n  }\n\n  const text = fieldTextFromHtml(html ? html.slice(0, htmlCut) : fallbackValue || '');\n  const lines = text.split('\\n');\n  const textMarkers = [\n    /^\\s*-{2,}\\s*(?:ursprüngliche nachricht|original message)\\s*-{2,}\\s*$/i,\n    /^\\s*(?:von|from)\\s*:\\s*.+$/i,\n    /^\\s*(?:gesendet|sent)\\s*:\\s*.+$/i,\n    /^\\s*am\\s+.+\\s+schrieb\\s+.+:\\s*$/i,\n    /^\\s*on\\s+.+\\s+wrote\\s*:\\s*$/i,\n  ];\n  let lineCut = lines.length;\n  for (let index = 0; index < lines.length; index += 1) {\n    if (textMarkers.some((marker) => marker.test(lines[index]))) {\n      lineCut = index;\n      break;\n    }\n  }\n\n  const authored = lines.slice(0, lineCut).join('\\n').trim();\n  return (authored || fieldTextFromHtml(fallbackValue || '')).slice(0, 12000);\n}\n\nfunction normalizeEmailAddress(value) {\n  const candidate = String(value || '').trim().toLowerCase().replace(/[>,;.)]+$/, '');\n  return /^[a-z0-9.!#$%&'*+/=?^_{|}~-]+@[a-z0-9.-]+\\.[a-z]{2,}$/i.test(candidate) ? candidate : '';\n}\n\nfunction normalizePhone(value) {\n  const raw = String(value || '').trim();\n  const digits = raw.replace(/\\D/g, '');\n  if (!digits) return '';\n  if (raw.startsWith('+')) return '+' + digits;\n  if (digits.startsWith('00')) return '+' + digits.slice(2);\n  if (digits.startsWith('0')) return '+49' + digits.slice(1);\n  if (digits.startsWith('49')) return '+' + digits;\n  return '+' + digits;\n}\n\nfor (const item of $input.all()) {\n  const email = item.json || {};\n  const messageId = String(email.id || '').trim();\n  const conversationId = String(email.conversationId || '').trim();\n  const subject = String(email.subject || '(kein Betreff)').trim().slice(0, 500);\n  const sourceFromEmail = normalizeEmailAddress(email.from?.emailAddress?.address || '');\n  const sourceFromName = String(email.from?.emailAddress?.name || '').trim().slice(0, 200);\n  const receivedAt = String(email.receivedDateTime || '');\n  const internetMessageId = String(email.internetMessageId || '').trim().slice(0, 500);\n  const receivedMs = Date.parse(receivedAt);\n  const bodyHtml = String(email.body?.content || '');\n  const fullBodyText = stripHtml(bodyHtml || email.bodyPreview || '').slice(0, 12000);\n  let latestMessageText = extractLatestAuthoredText(bodyHtml, email.bodyPreview || '').slice(0, 12000);\n  let bodyText = latestMessageText || fullBodyText;\n  let knowledgeQuery = (subject + ' ' + latestMessageText.slice(0, 1200))\n    .replace(/https?:\\/\\/\\S+/gi, ' ')\n    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, ' ')\n    .replace(/[^\\p{L}\\p{N}\\s-]+/gu, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .slice(0, 240);\n  const fieldText = fieldTextFromHtml(bodyHtml || email.bodyPreview || '').slice(0, 16000);\n  const headers = Array.isArray(email.internetMessageHeaders) ? email.internetMessageHeaders : [];\n  const autoSubmitted = String(headers.find((h) => String(h.name || '').toLowerCase() === 'auto-submitted')?.value || '').toLowerCase();\n\n  const replyTo = Array.isArray(email.replyTo) ? email.replyTo : [];\n  const externalReplyToEntry = replyTo.find((entry) => {\n    const address = normalizeEmailAddress(entry?.emailAddress?.address || '');\n    return address && !address.endsWith('@neontrip.de');\n  });\n  const externalReplyToEmail = normalizeEmailAddress(externalReplyToEntry?.emailAddress?.address || '');\n  const externalReplyToName = String(externalReplyToEntry?.emailAddress?.name || '').trim().slice(0, 200);\n  const bodyCustomerEmailMatch = fieldText.match(/(?:^|\\n)\\s*(?:e-mail|email|direkt antworten)\\s*:\\s*([^\\s<>]+)/i);\n  const bodyCustomerEmail = normalizeEmailAddress(bodyCustomerEmailMatch?.[1] || '');\n  const customerNameMatch = fieldText.match(/(?:^|\\n)\\s*kunde\\s*:\\s*([^\\n]+)/i);\n  const firstNameMatch = fieldText.match(/(?:^|\\n)\\s*vorname\\s*:\\s*([^\\n]+)/i);\n  const lastNameMatch = fieldText.match(/(?:^|\\n)\\s*nachname\\s*:\\s*([^\\n]+)/i);\n  const formCustomerName = [firstNameMatch?.[1], lastNameMatch?.[1]].map((value) => String(value || '').trim()).filter(Boolean).join(' ');\n  const bodyCustomerName = String(customerNameMatch?.[1] || formCustomerName || '').trim().slice(0, 200);\n\n  const relaySignals = [\n    /(?:^|\\n)\\s*direkt antworten\\s*:/i.test(fieldText),\n    /neue\\s+(?:frage|nachricht)[^\\n]{0,80}neontrip\\s+angebot/i.test(fieldText),\n    /https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[A-Za-z0-9_-]{12,}/i.test(bodyHtml + ' ' + fieldText),\n    /^frage\\s+zum\\s+angebot\\b/i.test(subject),\n  ].filter(Boolean).length;\n  const trustedSupportRelay = sourceFromEmail === 'support@neontrip.de'\n    && Boolean(externalReplyToEmail)\n    && relaySignals >= 2\n    && (!bodyCustomerEmail || bodyCustomerEmail === externalReplyToEmail);\n  const knownFormRelays = new Set(['info@nerdy-apps.com']);\n  const formRelaySignals = [\n    /^neue\\s+anfrage\\s+neontrip\\b/i.test(subject),\n    /(?:^|\\n)\\s*new unique identifier\\s*:/i.test(fieldText),\n    /(?:^|\\n)\\s*vorname\\s*:/i.test(fieldText) && /(?:^|\\n)\\s*nachname\\s*:/i.test(fieldText),\n    /(?:^|\\n)\\s*nachricht\\s*:/i.test(fieldText),\n  ].filter(Boolean).length;\n  const trustedFormRelay = knownFormRelays.has(sourceFromEmail)\n    && Boolean(externalReplyToEmail)\n    && bodyCustomerEmail === externalReplyToEmail\n    && formRelaySignals >= 3;\n  const toAddresses = Array.isArray(email.toRecipients)\n    ? email.toRecipients.map((entry) => normalizeEmailAddress(entry?.emailAddress?.address || '')).filter(Boolean)\n    : [];\n  const whatsappSubjectMatch = subject.match(/^WhatsApp\\s+von\\s+(.+?)\\s*\\|\\s*(\\+?\\d[\\d\\s()/-]{7,})\\s*$/i);\n  const whatsappBodyPhoneMatch = fieldText.match(/(?:^|\\n)\\s*Telefon\\s*:\\s*([^\\n]+)/i);\n  const whatsappTrackingMatch = fieldText.match(/(?:^|\\n)\\s*Tracking-ID\\s*:\\s*(WA-[A-Za-z0-9_-]{4,})/i);\n  const whatsappMessageMatch = fieldText.match(/(?:^|\\n)\\s*Nachricht\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*So antwortest du\\s*:|\\n\\s*Tracking-ID\\s*:|$)/i);\n  const whatsappPhone = normalizePhone(whatsappSubjectMatch?.[2] || whatsappBodyPhoneMatch?.[1] || '');\n  const whatsappBodyPhone = normalizePhone(whatsappBodyPhoneMatch?.[1] || '');\n  const whatsappMarkersValid = /Neue\\s+WhatsApp-Nachricht/i.test(fieldText)\n    && /(?:^|\\n)\\s*Telefon\\s*:/i.test(fieldText)\n    && /(?:^|\\n)\\s*Typ\\s*:/i.test(fieldText)\n    && /(?:^|\\n)\\s*Nachricht\\s*:/i.test(fieldText)\n    && /(?:^|\\n)\\s*So antwortest du\\s*:/i.test(fieldText)\n    && Boolean(whatsappTrackingMatch);\n  const trustedWhatsAppRelay = sourceFromEmail === 'support@neontrip.de'\n    && toAddresses.includes('support@neontrip.de')\n    && Boolean(whatsappSubjectMatch)\n    && whatsappMarkersValid\n    && Boolean(whatsappPhone)\n    && (!whatsappBodyPhone || whatsappBodyPhone === whatsappPhone);\n  const whatsappCustomerName = String(whatsappSubjectMatch?.[1] || '').trim().slice(0, 200);\n  const whatsappCustomerEmail = bodyCustomerEmail && !bodyCustomerEmail.endsWith('@neontrip.de') ? bodyCustomerEmail : '';\n  const whatsappCustomerMessage = String(whatsappMessageMatch?.[1] || '').trim().slice(0, 12000);\n  const whatsappSyntheticEmail = whatsappPhone\n    ? 'wa+' + whatsappPhone.replace(/\\D/g, '') + '@relay.neontrip.invalid'\n    : '';\n\n  if (trustedWhatsAppRelay && whatsappCustomerMessage) {\n    latestMessageText = whatsappCustomerMessage;\n    bodyText = whatsappCustomerMessage;\n    knowledgeQuery = (subject + ' ' + whatsappCustomerMessage.slice(0, 1200))\n      .replace(/https?:\\/\\/\\S+/gi, ' ')\n      .replace(/[^\\p{L}\\p{N}\\s-]+/gu, ' ')\n      .replace(/\\s+/g, ' ')\n      .trim()\n      .slice(0, 240);\n  }\n\n  const trustedRelay = trustedSupportRelay || trustedFormRelay || trustedWhatsAppRelay;\n  const fromEmail = trustedWhatsAppRelay\n    ? (whatsappCustomerEmail || whatsappSyntheticEmail)\n    : (trustedRelay ? externalReplyToEmail : sourceFromEmail);\n  const usableReplyToName = externalReplyToName && normalizeEmailAddress(externalReplyToName) !== externalReplyToEmail\n    ? externalReplyToName\n    : '';\n  const fromName = trustedWhatsAppRelay\n    ? (whatsappCustomerName || whatsappPhone || 'WhatsApp-Kontakt')\n    : (trustedRelay ? (usableReplyToName || bodyCustomerName || externalReplyToEmail) : sourceFromName);\n\n  const emailDomain = String(fromEmail.split('@')[1] || '').toLowerCase();\n  const publicEmailDomains = new Set([\n    'gmail.com', 'googlemail.com', 'outlook.com', 'outlook.de', 'hotmail.com', 'hotmail.de',\n    'live.com', 'live.de', 'msn.com', 'yahoo.com', 'yahoo.de', 'icloud.com', 'me.com',\n    'web.de', 'gmx.de', 'gmx.net', 'mail.de', 'freenet.de', 't-online.de', 'aol.com',\n    'proton.me', 'protonmail.com', 'posteo.de', 'fastmail.com', 'yandex.com', 'yandex.ru',\n    'neontrip.de', 'example.com',\n  ]);\n  const organizationLookupEnabled = !trustedWhatsAppRelay\n    && Boolean(emailDomain)\n    && emailDomain.includes('.')\n    && !publicEmailDomains.has(emailDomain);\n\n  const historyText = (subject + '\\n' + latestMessageText).toLowerCase();\n  const yearWordValues = {\n    einem: 1, ein: 1, einen: 1, eins: 1,\n    zwei: 2, drei: 3, vier: 4, fuenf: 5, fünf: 5,\n  };\n  const agoMatch = historyText.match(/\\bvor\\s+(einem|ein|einen|eins|zwei|drei|vier|fuenf|fünf|\\d{1,2})\\s+jahr(?:en)?\\b/i);\n  const agoRaw = String(agoMatch?.[1] || '').toLowerCase();\n  const agoYears = agoRaw ? (Number(agoRaw) || yearWordValues[agoRaw] || 0) : 0;\n  const currentYear = new Date(now).getUTCFullYear();\n  const mentionedYears = Array.from(historyText.matchAll(/\\b(20\\d{2})\\b/g))\n    .map((match) => Number(match[1]))\n    .filter((year) => year >= currentYear - 5 && year <= currentYear);\n  const generalHistoricalCue = /\\b(damals|früher|frueher|historisch|alte[nsr]?\\s+(?:bestellung|auftrag|angebot)|frühere[nsr]?\\s+(?:bestellung|auftrag|angebot))\\b/i.test(historyText);\n  const explicitHistoricalRequest = Boolean(agoYears || mentionedYears.length || generalHistoricalCue);\n  let contextWindowReason = 'default_15_months';\n  let contextSinceDate = new Date(now);\n  contextSinceDate.setUTCMonth(contextSinceDate.getUTCMonth() - 15);\n\n  if (agoYears) {\n    contextSinceDate = new Date(now);\n    contextSinceDate.setUTCFullYear(contextSinceDate.getUTCFullYear() - Math.min(5, agoYears));\n    contextSinceDate.setUTCMonth(contextSinceDate.getUTCMonth() - 6);\n    contextWindowReason = 'explicit_' + Math.min(5, agoYears) + '_years_ago';\n  } else if (mentionedYears.length) {\n    contextSinceDate = new Date(Date.UTC(Math.min(...mentionedYears), 0, 1));\n    contextWindowReason = 'explicit_calendar_year';\n  } else if (generalHistoricalCue) {\n    contextSinceDate = new Date(now);\n    contextSinceDate.setUTCMonth(contextSinceDate.getUTCMonth() - 36);\n    contextWindowReason = 'explicit_historical_cue_36_months';\n  }\n\n  const historyFloor = new Date(now);\n  historyFloor.setUTCFullYear(historyFloor.getUTCFullYear() - 5);\n  if (contextSinceDate < historyFloor) contextSinceDate = historyFloor;\n  const contextSince = contextSinceDate.toISOString();\n  const contextSinceKql = String(contextSinceDate.getUTCMonth() + 1).padStart(2, '0')\n    + '/' + String(contextSinceDate.getUTCDate()).padStart(2, '0')\n    + '/' + contextSinceDate.getUTCFullYear();\n  const organizationSearchTerm = organizationLookupEnabled ? emailDomain : fromEmail;\n  const organizationSearchKql = organizationLookupEnabled\n    ? '\"(from:' + emailDomain + ' OR to:' + emailDomain + ' OR cc:' + emailDomain + ') AND received>=' + contextSinceKql + '\"'\n    : '\"participants:' + fromEmail + ' AND received>=' + contextSinceKql + '\"';\n\n  const automatedSender = /(^|[._-])(no-?reply|noreply|mailer-daemon|postmaster)([._@+-]|$)/i.test(sourceFromEmail);\n  const automatedSubject = /^(automatische antwort|automatic reply|out of office|abwesenheitsnotiz|unzustellbar|undeliverable|delivery status notification)/i.test(subject);\n  const internalSender = sourceFromEmail.endsWith('@neontrip.de');\n  const tooOld = Number.isFinite(receivedMs) && now - receivedMs > 6 * 60 * 60 * 1000;\n  const isAutomated = automatedSender || automatedSubject || (autoSubmitted && autoSubmitted !== 'no');\n\n  const skipReasons = [];\n  if (!messageId) skipReasons.push('missing_message_id');\n  if (!conversationId) skipReasons.push('missing_conversation_id');\n  if (!sourceFromEmail || !fromEmail) skipReasons.push('missing_sender');\n  if (internalSender && !(trustedSupportRelay || trustedWhatsAppRelay)) skipReasons.push('internal_sender');\n  if (isAutomated) skipReasons.push('automated_message');\n  if (tooOld) skipReasons.push('older_than_six_hours');\n\n  if (skipReasons.length) {\n    output.push({\n      json: {\n        shouldProcess: false,\n        skipReason: skipReasons.join(','),\n        messageId,\n        conversationId,\n        subject,\n        sourceFromEmail,\n        receivedAt,\n        _startTime: now,\n      },\n    });\n    continue;\n  }\n\n  const tokenMatch = (bodyHtml + ' ' + bodyText).match(/(?:[?&]token=|\\/(?:angebot|quote|offer)\\/)([A-Za-z0-9_-]{12,})/i);\n  const quoteToken = tokenMatch ? tokenMatch[1] : '';\n  const offerUrlMatch = (bodyHtml + ' ' + fieldText).match(/https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[A-Za-z0-9_-]{12,}/i);\n  const offerUrl = offerUrlMatch ? offerUrlMatch[0] : '';\n  const quoteNumberMatch = (subject + '\\n' + fieldText).match(/(?:angebot(?:\\s+a\\/n)?\\s*:?\\s*|\\bA\\/N\\s*)(\\d{3,})/i);\n  const quoteNumber = quoteNumberMatch ? 'A/N ' + quoteNumberMatch[1] : '';\n  const offerLookupQuery = offerUrl || quoteNumber || (organizationLookupEnabled ? '@' + emailDomain : fromEmail);\n  const offerFilters = [\n    'contact_email.ilike.' + fromEmail,\n    'billing_email.ilike.' + fromEmail,\n    'original_email.ilike.' + fromEmail,\n  ];\n  if (organizationLookupEnabled) {\n    offerFilters.push('contact_email.ilike.*@' + emailDomain);\n    offerFilters.push('billing_email.ilike.*@' + emailDomain);\n    offerFilters.push('original_email.ilike.*@' + emailDomain);\n  }\n  if (quoteToken) offerFilters.push('token.eq.' + quoteToken);\n  const orderFilters = ['email.eq.' + fromEmail];\n  if (organizationLookupEnabled) orderFilters.push('email.ilike.*@' + emailDomain);\n\n  output.push({\n    json: {\n      messageId,\n      shouldProcess: true,\n      skipReason: '',\n      conversationId,\n      subject,\n      internetMessageId,\n      fromEmail,\n      fromName,\n      sourceFromEmail,\n      sourceFromName,\n      replyTargetEmail: trustedWhatsAppRelay ? sourceFromEmail : (trustedRelay ? externalReplyToEmail : (externalReplyToEmail || fromEmail)),\n      messageSource: trustedWhatsAppRelay ? 'whatsapp_relay' : (trustedSupportRelay ? 'support_chat_offer_relay' : (trustedFormRelay ? 'customer_form_relay' : 'external_email')),\n      trustedSupportRelay,\n      trustedFormRelay,\n      trustedWhatsAppRelay,\n      customerPhone: trustedWhatsAppRelay ? whatsappPhone : '',\n      whatsappTrackingId: trustedWhatsAppRelay ? String(whatsappTrackingMatch?.[1] || '') : '',\n      receivedAt,\n      triggerBodyPreview: bodyText.slice(0, 1000),\n      latestMessageText,\n      knowledgeQuery,\n      quoteToken,\n      offerUrl,\n      quoteNumber,\n      offerLookupQuery,\n      offerOrFilter: '(' + offerFilters.join(',') + ')',\n      orderOrFilter: '(' + orderFilters.join(',') + ')',\n      emailDomain,\n      organizationLookupEnabled,\n      organizationSearchTerm,\n      organizationSearchKql,\n      contextSince,\n      contextSinceKql,\n      contextWindowReason,\n      explicitHistoricalRequest,\n      idempotencyKey: 'ai-email-v2:' + (internetMessageId || messageId),\n      _startTime: now,\n    },\n  });\n}\n\nreturn output;"
+      }
+    },
+    {
+      "id": "if-process-email",
+      "name": "Should Process Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c0ad2bb5-f9b8-4d3e-a629-13d55dfb6c49",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.shouldProcess === true }}",
+              "rightValue": ""
             }
           ]
         }
       }
     },
     {
-      "id": "claim-due-retry",
-      "name": "Claim Due Retry",
+      "id": "acquire-lock",
+      "name": "Acquire Idempotency Lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        220,
+        440,
         0
       ],
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "method": "POST",
-        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_due_email_agent_retry_v2",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_email_agent_message",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -46,7 +122,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_worker_execution_id: String($execution.id), p_lease_seconds: 900 }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_request_id: $json.idempotencyKey, p_message_id: $json.messageId, p_internet_message_id: $json.internetMessageId || null, p_conversation_id: $json.conversationId, p_lease_seconds: 900 }) }}",
         "options": {
           "timeout": 30000,
           "response": {
@@ -66,15 +142,15 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000,
-      "onError": "stopWorkflow"
+      "onError": "continueErrorOutput"
     },
     {
-      "id": "has-due-retry",
-      "name": "Has Due Retry?",
+      "id": "confirm-lock",
+      "name": "Was Lock Inserted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        440,
+        660,
         0
       ],
       "parameters": {
@@ -89,79 +165,18 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "retry-claimed",
+              "id": "9ee3d11a-2463-47b0-aec3-b6919fc30ec7",
               "operator": {
                 "type": "boolean",
                 "operation": "true",
                 "singleValue": true
               },
-              "leftValue": "={{ Boolean(($json.body ?? $json).claimed) }}",
+              "leftValue": "={{ Boolean(($json.body ?? $json)?.claimed) }}",
               "rightValue": ""
             }
           ]
         }
       }
-    },
-    {
-      "id": "fetch-retry-message-and-drafts",
-      "name": "Fetch Retry Message and Drafts",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        660,
-        0
-      ],
-      "parameters": {
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "method": "POST",
-        "url": "https://graph.microsoft.com/v1.0/$batch",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify((() => {\n  const response = $(\"Claim Due Retry\").first().json || {};\n  const claim = response.body ?? response;\n  const messageId = encodeURIComponent(String(claim.message_id || \"\"));\n  const internetMessageId = String(claim.internet_message_id || \"\").trim();\n  const internetMessageFilter = \"internetMessageId eq '\"\n    + internetMessageId.replaceAll(\"'\", \"''\")\n    + \"'\";\n  const sourceSelect = [\n    \"id\", \"internetMessageId\", \"conversationId\", \"subject\", \"from\", \"replyTo\",\n    \"toRecipients\", \"ccRecipients\", \"receivedDateTime\", \"sentDateTime\",\n    \"createdDateTime\", \"lastModifiedDateTime\", \"body\", \"bodyPreview\",\n    \"hasAttachments\", \"internetMessageHeaders\",\n  ].join(\",\");\n  const draftSelect = [\n    \"id\", \"conversationId\", \"subject\", \"isDraft\", \"createdDateTime\",\n    \"lastModifiedDateTime\", \"bodyPreview\",\n  ].join(\",\");\n  return {\n    requests: [\n      {\n        id: \"source-message\",\n        method: \"GET\",\n        url: \"/me/messages/\" + messageId + \"?$select=\" + encodeURIComponent(sourceSelect),\n      },\n      {\n        id: \"source-by-internet-id\",\n        method: \"GET\",\n        url: \"/me/messages?$select=\"\n          + encodeURIComponent(sourceSelect)\n          + \"&$filter=\"\n          + encodeURIComponent(internetMessageFilter)\n          + \"&$top=2\",\n      },\n      {\n        id: \"conversation-drafts\",\n        method: \"GET\",\n        url: \"/me/mailFolders/drafts/messages?$select=\"\n          + encodeURIComponent(draftSelect)\n          + \"&$top=50&$orderby=\"\n          + encodeURIComponent(\"lastModifiedDateTime desc\"),\n      },\n    ],\n  };\n})()) }}",
-        "options": {
-          "timeout": 45000,
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
-        }
-      },
-      "credentials": {
-        "microsoftOutlookOAuth2Api": {
-          "id": "CTEmJD5CjYu9hawu",
-          "name": "Microsoft Outlook support@neontrip.de"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 5000,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "id": "normalize-email",
-      "name": "Normalize Email",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        880,
-        0
-      ],
-      "parameters": {
-        "jsCode": "const output = [];\nconst now = Date.now();\nconst claimResponse = $(\"Claim Due Retry\").first().json || {};\nconst retryClaim = claimResponse.body ?? claimResponse;\nconst batchResponse = $input.first().json || {};\nconst batchPayload = batchResponse.body ?? batchResponse;\nconst responses = Array.isArray(batchPayload.responses) ? batchPayload.responses : [];\nconst messageResponse = responses.find((entry) => String(entry?.id || '') === 'source-message') || {};\nconst messageFallbackResponse = responses.find((entry) => String(entry?.id || '') === 'source-by-internet-id') || {};\nconst draftsResponse = responses.find((entry) => String(entry?.id || '') === 'conversation-drafts') || {};\nconst messageStatus = Number(messageResponse.status || 0);\nconst messageFallbackStatus = Number(messageFallbackResponse.status || 0);\nconst draftsStatus = Number(draftsResponse.status || 0);\nconst directSourceMessage = messageStatus === 200 && messageResponse.body?.id\n  ? messageResponse.body\n  : null;\nconst fallbackMessages = messageFallbackStatus === 200 && Array.isArray(messageFallbackResponse.body?.value)\n  ? messageFallbackResponse.body.value\n  : [];\nconst expectedInternetMessageId = String(retryClaim.internet_message_id || '').trim().toLowerCase();\nconst fallbackSourceMessage = fallbackMessages.find((entry) =>\n  String(entry?.internetMessageId || '').trim().toLowerCase() === expectedInternetMessageId\n) || fallbackMessages[0] || null;\nconst resolvedSourceMessage = directSourceMessage || fallbackSourceMessage;\n\nif (!resolvedSourceMessage && ([408, 425, 429].includes(messageStatus) || messageStatus >= 500)) {\n  throw new Error('Retryable Graph source-message failure: HTTP ' + messageStatus);\n}\nif (!resolvedSourceMessage && messageFallbackStatus !== 200) {\n  throw new Error('Retryable Graph internet-message-id fallback failure: HTTP ' + messageFallbackStatus);\n}\nif ([408, 425, 429].includes(draftsStatus) || draftsStatus >= 500) {\n  throw new Error('Retryable Graph draft-reconciliation failure: HTTP ' + draftsStatus);\n}\nif (!resolvedSourceMessage) {\n  return [{ json: {\n    shouldProcess: false,\n    skipReason: 'source_message_unavailable_after_internet_id_lookup',\n    messageId: String(retryClaim.message_id || ''),\n    conversationId: String(retryClaim.conversation_id || ''),\n    internetMessageId: String(retryClaim.internet_message_id || ''),\n    idempotencyKey: String(retryClaim.request_id || ''),\n    existingReplyDraftId: '',\n    retryAttemptCount: Number(retryClaim.attempt_count || 0),\n    retryWorkerExecutionId: String(retryClaim.worker_execution_id || $execution.id),\n    _startTime: now,\n  } }];\n}\nif (draftsStatus !== 200 || !Array.isArray(draftsResponse.body?.value)) {\n  throw new Error('Draft reconciliation unavailable: HTTP ' + draftsStatus);\n}\n\nconst sourceMessage = { ...resolvedSourceMessage };\nconst sourceReceivedMs = Date.parse(sourceMessage.receivedDateTime || 0);\nconst existingDraft = draftsResponse.body.value\n  .filter((entry) => entry?.isDraft === true && String(entry?.conversationId || '') === String(sourceMessage.conversationId || ''))\n  .filter((entry) => {\n    const createdMs = Date.parse(entry.createdDateTime || entry.lastModifiedDateTime || 0);\n    return !Number.isFinite(sourceReceivedMs) || !Number.isFinite(createdMs) || createdMs >= sourceReceivedMs - 120000;\n  })\n  .sort((left, right) =>\n    Date.parse(right.lastModifiedDateTime || right.createdDateTime || 0)\n    - Date.parse(left.lastModifiedDateTime || left.createdDateTime || 0)\n  )[0] || null;\n\nsourceMessage._retryExistingDraftId = String(existingDraft?.id || '');\nconst retryInputItems = [{ json: sourceMessage }];\n\nfunction stripHtml(value) {\n  return String(value || '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&quot;/gi, '\"')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction fieldTextFromHtml(value) {\n  return String(value || '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<br\\s*\\/?\\s*>/gi, '\\n')\n    .replace(/<\\/(?:p|div|tr|li|h[1-6])\\s*>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&quot;/gi, '\"')\n    .replace(/\\r/g, '')\n    .replace(/[ \\t]+/g, ' ')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n}\n\nfunction extractLatestAuthoredText(htmlValue, fallbackValue) {\n  const html = String(htmlValue || '');\n  const htmlMarkers = [\n    /<div[^>]+id=[\"']divRplyFwdMsg[\"'][^>]*>/i,\n    /<div[^>]+class=[\"'][^\"']*gmail_quote[^\"']*[\"'][^>]*>/i,\n    /<blockquote[^>]*(?:type=[\"']cite[\"'])?[^>]*>/i,\n    /<!--\\s*Original Message\\s*-->/i,\n  ];\n  let htmlCut = html.length;\n  for (const marker of htmlMarkers) {\n    const match = marker.exec(html);\n    if (match && match.index < htmlCut) htmlCut = match.index;\n  }\n\n  const text = fieldTextFromHtml(html ? html.slice(0, htmlCut) : fallbackValue || '');\n  const lines = text.split('\\n');\n  const textMarkers = [\n    /^\\s*-{2,}\\s*(?:ursprüngliche nachricht|original message)\\s*-{2,}\\s*$/i,\n    /^\\s*(?:von|from)\\s*:\\s*.+$/i,\n    /^\\s*(?:gesendet|sent)\\s*:\\s*.+$/i,\n    /^\\s*am\\s+.+\\s+schrieb\\s+.+:\\s*$/i,\n    /^\\s*on\\s+.+\\s+wrote\\s*:\\s*$/i,\n  ];\n  let lineCut = lines.length;\n  for (let index = 0; index < lines.length; index += 1) {\n    if (textMarkers.some((marker) => marker.test(lines[index]))) {\n      lineCut = index;\n      break;\n    }\n  }\n\n  const authored = lines.slice(0, lineCut).join('\\n').trim();\n  return (authored || fieldTextFromHtml(fallbackValue || '')).slice(0, 12000);\n}\n\nfunction normalizeEmailAddress(value) {\n  const candidate = String(value || '').trim().toLowerCase().replace(/[>,;.)]+$/, '');\n  return /^[a-z0-9.!#$%&'*+/=?^_{|}~-]+@[a-z0-9.-]+\\.[a-z]{2,}$/i.test(candidate) ? candidate : '';\n}\n\nfunction normalizePhone(value) {\n  const raw = String(value || '').trim();\n  const digits = raw.replace(/\\D/g, '');\n  if (!digits) return '';\n  if (raw.startsWith('+')) return '+' + digits;\n  if (digits.startsWith('00')) return '+' + digits.slice(2);\n  if (digits.startsWith('0')) return '+49' + digits.slice(1);\n  if (digits.startsWith('49')) return '+' + digits;\n  return '+' + digits;\n}\n\nfor (const item of retryInputItems) {\n  const email = item.json || {};\n  const messageId = String(email.id || '').trim();\n  const conversationId = String(email.conversationId || '').trim();\n  const subject = String(email.subject || '(kein Betreff)').trim().slice(0, 500);\n  const sourceFromEmail = normalizeEmailAddress(email.from?.emailAddress?.address || '');\n  const sourceFromName = String(email.from?.emailAddress?.name || '').trim().slice(0, 200);\n  const receivedAt = String(email.receivedDateTime || '');\n  const internetMessageId = String(email.internetMessageId || '').trim().slice(0, 500);\n  const receivedMs = Date.parse(receivedAt);\n  const bodyHtml = String(email.body?.content || '');\n  const fullBodyText = stripHtml(bodyHtml || email.bodyPreview || '').slice(0, 12000);\n  let latestMessageText = extractLatestAuthoredText(bodyHtml, email.bodyPreview || '').slice(0, 12000);\n  let bodyText = latestMessageText || fullBodyText;\n  let knowledgeQuery = (subject + ' ' + latestMessageText.slice(0, 1200))\n    .replace(/https?:\\/\\/\\S+/gi, ' ')\n    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, ' ')\n    .replace(/[^\\p{L}\\p{N}\\s-]+/gu, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .slice(0, 240);\n  const fieldText = fieldTextFromHtml(bodyHtml || email.bodyPreview || '').slice(0, 16000);\n  const headers = Array.isArray(email.internetMessageHeaders) ? email.internetMessageHeaders : [];\n  const autoSubmitted = String(headers.find((h) => String(h.name || '').toLowerCase() === 'auto-submitted')?.value || '').toLowerCase();\n\n  const replyTo = Array.isArray(email.replyTo) ? email.replyTo : [];\n  const externalReplyToEntry = replyTo.find((entry) => {\n    const address = normalizeEmailAddress(entry?.emailAddress?.address || '');\n    return address && !address.endsWith('@neontrip.de');\n  });\n  const externalReplyToEmail = normalizeEmailAddress(externalReplyToEntry?.emailAddress?.address || '');\n  const externalReplyToName = String(externalReplyToEntry?.emailAddress?.name || '').trim().slice(0, 200);\n  const bodyCustomerEmailMatch = fieldText.match(/(?:^|\\n)\\s*(?:e-mail|email|direkt antworten)\\s*:\\s*([^\\s<>]+)/i);\n  const bodyCustomerEmail = normalizeEmailAddress(bodyCustomerEmailMatch?.[1] || '');\n  const customerNameMatch = fieldText.match(/(?:^|\\n)\\s*kunde\\s*:\\s*([^\\n]+)/i);\n  const firstNameMatch = fieldText.match(/(?:^|\\n)\\s*vorname\\s*:\\s*([^\\n]+)/i);\n  const lastNameMatch = fieldText.match(/(?:^|\\n)\\s*nachname\\s*:\\s*([^\\n]+)/i);\n  const formCustomerName = [firstNameMatch?.[1], lastNameMatch?.[1]].map((value) => String(value || '').trim()).filter(Boolean).join(' ');\n  const bodyCustomerName = String(customerNameMatch?.[1] || formCustomerName || '').trim().slice(0, 200);\n\n  const relaySignals = [\n    /(?:^|\\n)\\s*direkt antworten\\s*:/i.test(fieldText),\n    /neue\\s+(?:frage|nachricht)[^\\n]{0,80}neontrip\\s+angebot/i.test(fieldText),\n    /https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[A-Za-z0-9_-]{12,}/i.test(bodyHtml + ' ' + fieldText),\n    /^frage\\s+zum\\s+angebot\\b/i.test(subject),\n  ].filter(Boolean).length;\n  const trustedSupportRelay = sourceFromEmail === 'support@neontrip.de'\n    && Boolean(externalReplyToEmail)\n    && relaySignals >= 2\n    && (!bodyCustomerEmail || bodyCustomerEmail === externalReplyToEmail);\n  const knownFormRelays = new Set(['info@nerdy-apps.com']);\n  const formRelaySignals = [\n    /^neue\\s+anfrage\\s+neontrip\\b/i.test(subject),\n    /(?:^|\\n)\\s*new unique identifier\\s*:/i.test(fieldText),\n    /(?:^|\\n)\\s*vorname\\s*:/i.test(fieldText) && /(?:^|\\n)\\s*nachname\\s*:/i.test(fieldText),\n    /(?:^|\\n)\\s*nachricht\\s*:/i.test(fieldText),\n  ].filter(Boolean).length;\n  const trustedFormRelay = knownFormRelays.has(sourceFromEmail)\n    && Boolean(externalReplyToEmail)\n    && bodyCustomerEmail === externalReplyToEmail\n    && formRelaySignals >= 3;\n  const toAddresses = Array.isArray(email.toRecipients)\n    ? email.toRecipients.map((entry) => normalizeEmailAddress(entry?.emailAddress?.address || '')).filter(Boolean)\n    : [];\n  const whatsappSubjectMatch = subject.match(/^WhatsApp\\s+von\\s+(.+?)\\s*\\|\\s*(\\+?\\d[\\d\\s()/-]{7,})\\s*$/i);\n  const whatsappBodyPhoneMatch = fieldText.match(/(?:^|\\n)\\s*Telefon\\s*:\\s*([^\\n]+)/i);\n  const whatsappTrackingMatch = fieldText.match(/(?:^|\\n)\\s*Tracking-ID\\s*:\\s*(WA-[A-Za-z0-9_-]{4,})/i);\n  const whatsappMessageMatch = fieldText.match(/(?:^|\\n)\\s*Nachricht\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*So antwortest du\\s*:|\\n\\s*Tracking-ID\\s*:|$)/i);\n  const whatsappPhone = normalizePhone(whatsappSubjectMatch?.[2] || whatsappBodyPhoneMatch?.[1] || '');\n  const whatsappBodyPhone = normalizePhone(whatsappBodyPhoneMatch?.[1] || '');\n  const whatsappMarkersValid = /Neue\\s+WhatsApp-Nachricht/i.test(fieldText)\n    && /(?:^|\\n)\\s*Telefon\\s*:/i.test(fieldText)\n    && /(?:^|\\n)\\s*Typ\\s*:/i.test(fieldText)\n    && /(?:^|\\n)\\s*Nachricht\\s*:/i.test(fieldText)\n    && /(?:^|\\n)\\s*So antwortest du\\s*:/i.test(fieldText)\n    && Boolean(whatsappTrackingMatch);\n  const trustedWhatsAppRelay = sourceFromEmail === 'support@neontrip.de'\n    && toAddresses.includes('support@neontrip.de')\n    && Boolean(whatsappSubjectMatch)\n    && whatsappMarkersValid\n    && Boolean(whatsappPhone)\n    && (!whatsappBodyPhone || whatsappBodyPhone === whatsappPhone);\n  const whatsappCustomerName = String(whatsappSubjectMatch?.[1] || '').trim().slice(0, 200);\n  const whatsappCustomerEmail = bodyCustomerEmail && !bodyCustomerEmail.endsWith('@neontrip.de') ? bodyCustomerEmail : '';\n  const whatsappCustomerMessage = String(whatsappMessageMatch?.[1] || '').trim().slice(0, 12000);\n  const whatsappSyntheticEmail = whatsappPhone\n    ? 'wa+' + whatsappPhone.replace(/\\D/g, '') + '@relay.neontrip.invalid'\n    : '';\n\n  if (trustedWhatsAppRelay && whatsappCustomerMessage) {\n    latestMessageText = whatsappCustomerMessage;\n    bodyText = whatsappCustomerMessage;\n    knowledgeQuery = (subject + ' ' + whatsappCustomerMessage.slice(0, 1200))\n      .replace(/https?:\\/\\/\\S+/gi, ' ')\n      .replace(/[^\\p{L}\\p{N}\\s-]+/gu, ' ')\n      .replace(/\\s+/g, ' ')\n      .trim()\n      .slice(0, 240);\n  }\n\n  const trustedRelay = trustedSupportRelay || trustedFormRelay || trustedWhatsAppRelay;\n  const fromEmail = trustedWhatsAppRelay\n    ? (whatsappCustomerEmail || whatsappSyntheticEmail)\n    : (trustedRelay ? externalReplyToEmail : sourceFromEmail);\n  const usableReplyToName = externalReplyToName && normalizeEmailAddress(externalReplyToName) !== externalReplyToEmail\n    ? externalReplyToName\n    : '';\n  const fromName = trustedWhatsAppRelay\n    ? (whatsappCustomerName || whatsappPhone || 'WhatsApp-Kontakt')\n    : (trustedRelay ? (usableReplyToName || bodyCustomerName || externalReplyToEmail) : sourceFromName);\n\n  const emailDomain = String(fromEmail.split('@')[1] || '').toLowerCase();\n  const publicEmailDomains = new Set([\n    'gmail.com', 'googlemail.com', 'outlook.com', 'outlook.de', 'hotmail.com', 'hotmail.de',\n    'live.com', 'live.de', 'msn.com', 'yahoo.com', 'yahoo.de', 'icloud.com', 'me.com',\n    'web.de', 'gmx.de', 'gmx.net', 'mail.de', 'freenet.de', 't-online.de', 'aol.com',\n    'proton.me', 'protonmail.com', 'posteo.de', 'fastmail.com', 'yandex.com', 'yandex.ru',\n    'neontrip.de', 'example.com',\n  ]);\n  const organizationLookupEnabled = !trustedWhatsAppRelay\n    && Boolean(emailDomain)\n    && emailDomain.includes('.')\n    && !publicEmailDomains.has(emailDomain);\n\n  const historyText = (subject + '\\n' + latestMessageText).toLowerCase();\n  const yearWordValues = {\n    einem: 1, ein: 1, einen: 1, eins: 1,\n    zwei: 2, drei: 3, vier: 4, fuenf: 5, fünf: 5,\n  };\n  const agoMatch = historyText.match(/\\bvor\\s+(einem|ein|einen|eins|zwei|drei|vier|fuenf|fünf|\\d{1,2})\\s+jahr(?:en)?\\b/i);\n  const agoRaw = String(agoMatch?.[1] || '').toLowerCase();\n  const agoYears = agoRaw ? (Number(agoRaw) || yearWordValues[agoRaw] || 0) : 0;\n  const currentYear = new Date(now).getUTCFullYear();\n  const mentionedYears = Array.from(historyText.matchAll(/\\b(20\\d{2})\\b/g))\n    .map((match) => Number(match[1]))\n    .filter((year) => year >= currentYear - 5 && year <= currentYear);\n  const generalHistoricalCue = /\\b(damals|früher|frueher|historisch|alte[nsr]?\\s+(?:bestellung|auftrag|angebot)|frühere[nsr]?\\s+(?:bestellung|auftrag|angebot))\\b/i.test(historyText);\n  const explicitHistoricalRequest = Boolean(agoYears || mentionedYears.length || generalHistoricalCue);\n  let contextWindowReason = 'default_15_months';\n  let contextSinceDate = new Date(now);\n  contextSinceDate.setUTCMonth(contextSinceDate.getUTCMonth() - 15);\n\n  if (agoYears) {\n    contextSinceDate = new Date(now);\n    contextSinceDate.setUTCFullYear(contextSinceDate.getUTCFullYear() - Math.min(5, agoYears));\n    contextSinceDate.setUTCMonth(contextSinceDate.getUTCMonth() - 6);\n    contextWindowReason = 'explicit_' + Math.min(5, agoYears) + '_years_ago';\n  } else if (mentionedYears.length) {\n    contextSinceDate = new Date(Date.UTC(Math.min(...mentionedYears), 0, 1));\n    contextWindowReason = 'explicit_calendar_year';\n  } else if (generalHistoricalCue) {\n    contextSinceDate = new Date(now);\n    contextSinceDate.setUTCMonth(contextSinceDate.getUTCMonth() - 36);\n    contextWindowReason = 'explicit_historical_cue_36_months';\n  }\n\n  const historyFloor = new Date(now);\n  historyFloor.setUTCFullYear(historyFloor.getUTCFullYear() - 5);\n  if (contextSinceDate < historyFloor) contextSinceDate = historyFloor;\n  const contextSince = contextSinceDate.toISOString();\n  const contextSinceKql = String(contextSinceDate.getUTCMonth() + 1).padStart(2, '0')\n    + '/' + String(contextSinceDate.getUTCDate()).padStart(2, '0')\n    + '/' + contextSinceDate.getUTCFullYear();\n  const organizationSearchTerm = organizationLookupEnabled ? emailDomain : fromEmail;\n  const organizationSearchKql = organizationLookupEnabled\n    ? '\"(from:' + emailDomain + ' OR to:' + emailDomain + ' OR cc:' + emailDomain + ') AND received>=' + contextSinceKql + '\"'\n    : '\"participants:' + fromEmail + ' AND received>=' + contextSinceKql + '\"';\n\n  const automatedSender = /(^|[._-])(no-?reply|noreply|mailer-daemon|postmaster)([._@+-]|$)/i.test(sourceFromEmail);\n  const automatedSubject = /^(automatische antwort|automatic reply|out of office|abwesenheitsnotiz|unzustellbar|undeliverable|delivery status notification)/i.test(subject);\n  const internalSender = sourceFromEmail.endsWith('@neontrip.de');\n  const tooOld = Number.isFinite(receivedMs) && now - receivedMs > 6 * 60 * 60 * 1000;\n  const isAutomated = automatedSender || automatedSubject || (autoSubmitted && autoSubmitted !== 'no');\n\n  const skipReasons = [];\n  if (!messageId) skipReasons.push('missing_message_id');\n  if (!conversationId) skipReasons.push('missing_conversation_id');\n  if (!sourceFromEmail || !fromEmail) skipReasons.push('missing_sender');\n  if (internalSender && !(trustedSupportRelay || trustedWhatsAppRelay)) skipReasons.push('internal_sender');\n  if (isAutomated) skipReasons.push('automated_message');\n  if (tooOld && retryClaim.claimed !== true) skipReasons.push('older_than_six_hours');\n  if (email._retryExistingDraftId) skipReasons.push('existing_reply_draft');\n\n  if (skipReasons.length) {\n    output.push({\n      json: {\n        shouldProcess: false,\n        skipReason: skipReasons.join(','),\n        messageId,\n        conversationId,\n        subject,\n        sourceFromEmail,\n        receivedAt,\n        internetMessageId,\n        idempotencyKey: String(retryClaim.request_id || ('ai-email-v2:' + (internetMessageId || messageId))),\n        existingReplyDraftId: String(email._retryExistingDraftId || ''),\n        retryAttemptCount: Number(retryClaim.attempt_count || 0),\n        retryWorkerExecutionId: String(retryClaim.worker_execution_id || $execution.id),\n        _startTime: now,\n      },\n    });\n    continue;\n  }\n\n  const tokenMatch = (bodyHtml + ' ' + bodyText).match(/(?:[?&]token=|\\/(?:angebot|quote|offer)\\/)([A-Za-z0-9_-]{12,})/i);\n  const quoteToken = tokenMatch ? tokenMatch[1] : '';\n  const offerUrlMatch = (bodyHtml + ' ' + fieldText).match(/https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[A-Za-z0-9_-]{12,}/i);\n  const offerUrl = offerUrlMatch ? offerUrlMatch[0] : '';\n  const quoteNumberMatch = (subject + '\\n' + fieldText).match(/(?:angebot(?:\\s+a\\/n)?\\s*:?\\s*|\\bA\\/N\\s*)(\\d{3,})/i);\n  const quoteNumber = quoteNumberMatch ? 'A/N ' + quoteNumberMatch[1] : '';\n  const offerLookupQuery = offerUrl || quoteNumber || (organizationLookupEnabled ? '@' + emailDomain : fromEmail);\n  const offerFilters = [\n    'contact_email.ilike.' + fromEmail,\n    'billing_email.ilike.' + fromEmail,\n    'original_email.ilike.' + fromEmail,\n  ];\n  if (organizationLookupEnabled) {\n    offerFilters.push('contact_email.ilike.*@' + emailDomain);\n    offerFilters.push('billing_email.ilike.*@' + emailDomain);\n    offerFilters.push('original_email.ilike.*@' + emailDomain);\n  }\n  if (quoteToken) offerFilters.push('token.eq.' + quoteToken);\n  const orderFilters = ['email.eq.' + fromEmail];\n  if (organizationLookupEnabled) orderFilters.push('email.ilike.*@' + emailDomain);\n\n  output.push({\n    json: {\n      messageId,\n      shouldProcess: true,\n      skipReason: '',\n      conversationId,\n      subject,\n      internetMessageId,\n      fromEmail,\n      fromName,\n      sourceFromEmail,\n      sourceFromName,\n      replyTargetEmail: trustedWhatsAppRelay ? sourceFromEmail : (trustedRelay ? externalReplyToEmail : (externalReplyToEmail || fromEmail)),\n      messageSource: trustedWhatsAppRelay ? 'whatsapp_relay' : (trustedSupportRelay ? 'support_chat_offer_relay' : (trustedFormRelay ? 'customer_form_relay' : 'external_email')),\n      trustedSupportRelay,\n      trustedFormRelay,\n      trustedWhatsAppRelay,\n      customerPhone: trustedWhatsAppRelay ? whatsappPhone : '',\n      whatsappTrackingId: trustedWhatsAppRelay ? String(whatsappTrackingMatch?.[1] || '') : '',\n      receivedAt,\n      triggerBodyPreview: bodyText.slice(0, 1000),\n      latestMessageText,\n      knowledgeQuery,\n      quoteToken,\n      offerUrl,\n      quoteNumber,\n      offerLookupQuery,\n      offerOrFilter: '(' + offerFilters.join(',') + ')',\n      orderOrFilter: '(' + orderFilters.join(',') + ')',\n      emailDomain,\n      organizationLookupEnabled,\n      organizationSearchTerm,\n      organizationSearchKql,\n      contextSince,\n      contextSinceKql,\n      contextWindowReason,\n      explicitHistoricalRequest,\n      idempotencyKey: String(retryClaim.request_id || ('ai-email-v2:' + (internetMessageId || messageId))),\n      retryAttemptCount: Number(retryClaim.attempt_count || 0),\n      retryWorkerExecutionId: String(retryClaim.worker_execution_id || $execution.id),\n      retryRecoveryVersion: 'email-agent-retry-recovery-v1',\n      _startTime: now,\n    },\n  });\n}\n\nreturn output;"
-      },
-      "onError": "continueErrorOutput"
     },
     {
       "id": "fetch-current",
@@ -684,7 +699,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "method": "POST",
-        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/complete_email_agent_retry_message",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/complete_email_agent_message",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -696,7 +711,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify((() => {\n  const r = $(\"Validate and Render\").first().json;\n  const d = $json.body ?? $json;\n  const placeholderOrganization = String(r.customerContext?.organization_id || \"\") === \"a0000000-0000-0000-0000-000000000001\";\n  const relatedEmails = Array.isArray(r.relatedEmails)\n    ? [...new Set(r.relatedEmails.map((value) => String(value || \"\").trim().toLowerCase()).filter(Boolean))].slice(0, 40)\n    : [String(r.fromEmail || \"\").toLowerCase()].filter(Boolean);\n  const actualAttachments = Array.isArray(r.actualCustomerAttachments)\n    ? r.actualCustomerAttachments.slice(0, 20).map((entry) => ({\n        name: String(entry?.name || \"Anhang\").slice(0, 240),\n        content_type: String(entry?.content_type || \"application/octet-stream\").slice(0, 120),\n        readable: Boolean(entry?.readable),\n        document_type: String(entry?.document_type || \"other\").slice(0, 80),\n      }))\n    : [];\n  const missingAttachments = Array.isArray(r.missingClaimedAttachmentRequests)\n    ? r.missingClaimedAttachmentRequests.slice(0, 10).map((entry) => ({\n        type: String(entry?.type || \"\").slice(0, 80),\n        label: String(entry?.label || \"\").slice(0, 160),\n        reason: String(entry?.reason || \"\").slice(0, 500),\n      }))\n    : [];\n  const customerContext = {\n    matched: Boolean(r.customerContext?.matched) && !placeholderOrganization,\n    match_basis: placeholderOrganization ? \"sender_only\" : String(r.customerContext?.match_basis || \"sender_only\").slice(0, 80),\n    request_ids: placeholderOrganization || !Array.isArray(r.customerContext?.request_ids)\n      ? []\n      : r.customerContext.request_ids.map(String).slice(0, 40),\n    context_since: r.customerContext?.context_since || r.contextSince || null,\n    related_emails: relatedEmails,\n    organization_id: placeholderOrganization ? null : (r.customerContext?.organization_id || null),\n    organization_name: placeholderOrganization ? null : (String(r.customerContext?.organization_name || \"\").slice(0, 240) || null),\n  };\n  const selectedOrder = r.selectedShopifyOrder && typeof r.selectedShopifyOrder === \"object\"\n    ? {\n        id: r.selectedShopifyOrder.id || r.selectedShopifyOrder.order_id || null,\n        order_number: r.selectedShopifyOrder.order_number || r.selectedShopifyOrder.name || null,\n        created_at: r.selectedShopifyOrder.created_at || null,\n        total_price: r.selectedShopifyOrder.total_price ?? null,\n        currency: r.selectedShopifyOrder.currency || r.selectedShopifyOrder.currency_code || null,\n        selection_basis: r.selectedShopifyOrder.selection_basis || r.financialReconciliation?.selection_basis || null,\n      }\n    : null;\n  const signedOffer = r.neontripOffer && typeof r.neontripOffer === \"object\"\n    ? {\n        offer_number: r.neontripOffer.offer_number || null,\n        document_reference: r.neontripOffer.document_reference || null,\n        public_url: /^https:\\/\\//i.test(String(r.neontripOffer.public_url || \"\")) ? String(r.neontripOffer.public_url).slice(0, 500) : null,\n        status: r.neontripOffer.status || null,\n        totals: r.neontripOffer.totals || null,\n      }\n    : null;\n  const financial = r.financialReconciliation && typeof r.financialReconciliation === \"object\"\n    ? r.financialReconciliation\n    : { status: \"not_applicable\", equation_verified: false, requires_human_approval: true };\n  const factsPackage = r.factsPackage && typeof r.factsPackage === \"object\"\n    ? {\n        ...r.factsPackage,\n        facts: Array.isArray(r.factsPackage.facts) ? r.factsPackage.facts.slice(0, 120) : [],\n        conflicts: Array.isArray(r.factsPackage.conflicts) ? r.factsPackage.conflicts.slice(0, 30) : [],\n        missing: Array.isArray(r.factsPackage.missing) ? r.factsPackage.missing.slice(0, 30) : [],\n      }\n    : null;\n  const evidenceCard = {\n    version: \"email-evidence-card-v2\",\n    generated_at: new Date().toISOString(),\n    channel: r.messageSource || \"external_email\",\n    customer_match: {\n      matched: customerContext.matched,\n      basis: customerContext.match_basis,\n      organization: customerContext.organization_name,\n      related_email_count: relatedEmails.length,\n      request_count: customerContext.request_ids.length,\n    },\n    checks: {\n      current_message: true,\n      conversation: true,\n      organization_history: relatedEmails.length > 1,\n      attachments: true,\n      approved_knowledge: Number(r.knowledgeMatchCount || 0) > 0,\n      commerce_resolver: Boolean(r.evidenceResolverVersion),\n      approved_style_profile: Boolean(r.approvedStyleProfile?.eligible),\n    },\n    attachments: {\n      actual: actualAttachments,\n      claimed_types: Array.isArray(r.claimedAttachmentTypes) ? r.claimedAttachmentTypes.slice(0, 10) : [],\n      missing_claimed: missingAttachments,\n    },\n    commerce: {\n      resolver_version: r.evidenceResolverVersion || \"\",\n      selected_shopify_order: selectedOrder,\n      signed_offer: signedOffer,\n      financial_reconciliation: financial,\n      evidence_sources: Array.isArray(financial.evidence_sources) ? financial.evidence_sources.slice(0, 20) : [],\n      facts_package_version: factsPackage?.version || null,\n      claimable_fact_count: factsPackage ? factsPackage.facts.filter((fact) => fact?.customer_safe === true).length : 0,\n      conflict_count: factsPackage?.conflicts?.length || 0,\n      missing_count: factsPackage?.missing?.length || 0,\n      used_fact_ids: Array.isArray(r.usedFactIds) ? r.usedFactIds.slice(0, 20) : [],\n    },\n    knowledge: {\n      matched_count: Number(r.knowledgeMatchCount || 0),\n      version_ids: Array.isArray(r.knowledgeVersionIds) ? r.knowledgeVersionIds.slice(0, 8) : [],\n    },\n    learning: {\n      profile_version: r.approvedStyleProfile?.version || \"email-style-profile-v1\",\n      eligible: Boolean(r.approvedStyleProfile?.eligible),\n      approved_sample_count: Number(r.approvedStyleProfile?.approved_sample_count || 0),\n      recommended_max_words: r.approvedStyleProfile?.recommended_max_words ?? null,\n      facts_or_customer_content_included: false,\n      automatic_prompt_rewrite_allowed: false,\n    },\n    safety: {\n      risk_level: r.riskLevel || null,\n      reply_length_class: r.replyLengthClass || null,\n      safe_fallback_used: Boolean(r.safeFallbackUsed),\n      validation_reasons: Array.isArray(r.validationReasons) ? r.validationReasons.slice(0, 30) : [],\n      possible_prompt_injection: Boolean(r.possiblePromptInjection),\n      human_approval_required: true,\n    },\n  };\n  const record = {\n    message_id: r.messageId,\n    internet_message_id: r.internetMessageId || \"\",\n    conversation_id: r.conversationId,\n    from_email: r.fromEmail,\n    from_name: r.fromName,\n    subject: r.subject,\n    message_source: r.messageSource,\n    body_preview: String(r.currentText || \"\").slice(0, 500),\n    category: r.category,\n    confidence: r.confidence,\n    order_found: r.orderCount > 0,\n    order_count: r.orderCount,\n    knowledge_version_ids: Array.isArray(r.knowledgeVersionIds) ? r.knowledgeVersionIds.slice(0, 8) : [],\n    knowledge_match_count: Number(r.knowledgeMatchCount || 0),\n    draft_created: true,\n    draft_id: d.id || \"\",\n    draft_body_preview: String(r.draftReplyText || \"\").slice(0, 500),\n    draft_body_text: String(r.draftReplyText || \"\").slice(0, 6000),\n    draft_body_hash: r.draftBodyHash || \"\",\n    latest_message_fingerprint: r.latestMessageFingerprint || \"\",\n    reply_length_class: r.replyLengthClass || null,\n    risk_level: r.riskLevel || null,\n    validation_reasons: Array.isArray(r.validationReasons) ? r.validationReasons.slice(0, 30) : [],\n    context_snapshot: {\n      snapshot_version: \"email-context-v4\",\n      channel: r.messageSource || \"external_email\",\n      customer_context: customerContext,\n      actual_attachments: actualAttachments,\n      attachment_claims: Array.isArray(r.claimedAttachmentTypes) ? r.claimedAttachmentTypes.slice(0, 10) : [],\n      missing_attachments: missingAttachments,\n      knowledge_version_ids: Array.isArray(r.knowledgeVersionIds) ? r.knowledgeVersionIds.slice(0, 8) : [],\n      evidence_resolver_version: r.evidenceResolverVersion || \"\",\n      selected_shopify_order: r.selectedShopifyOrder || null,\n      neontrip_offer: r.neontripOffer || null,\n      commerce_verified_facts: Array.isArray(r.commerceVerifiedFacts) ? r.commerceVerifiedFacts.slice(0, 40) : [],\n      financial_reconciliation: financial,\n      facts_package: factsPackage,\n      used_fact_ids: Array.isArray(r.usedFactIds) ? r.usedFactIds.slice(0, 20) : [],\n      approved_style_profile: r.approvedStyleProfile || null,\n      resolve_first_policy: {\n        version: 'email-resolve-first-v1',\n        customer_reference_missing: Boolean(r.customerReferenceMissing),\n        sources_checked: r.resolveFirstPolicy?.sources_checked || {},\n        vague_internal_deferral_allowed: false,\n        automatic_send_allowed: false,\n        human_approval_required: true,\n      },\n      safe_fallback_used: Boolean(r.safeFallbackUsed),\n      retry_recovery: {\n        version: 'email-agent-retry-recovery-v1',\n        attempt_count: Number(r.retryAttemptCount || 0),\n        worker_execution_id: String(r.retryWorkerExecutionId || $execution.id),\n        automatic_send_allowed: false,\n        human_approval_required: true,\n      },\n      evidence_card: evidenceCard,\n    },\n    error_message: r.safeFallbackUsed ? (\"SAFE_FALLBACK: \" + r.validationReasons.join(\",\")).slice(0, 1500) : null,\n    processing_time_ms: Math.max(0, Date.now() - Number(r._startTime || Date.now())),\n  };\n  return { p_request_id: r.idempotencyKey, p_record: record };\n})()) }}",
+        "jsonBody": "={{ JSON.stringify((() => {\n  const r = $(\"Validate and Render\").first().json;\n  const d = $json.body ?? $json;\n  const placeholderOrganization = String(r.customerContext?.organization_id || \"\") === \"a0000000-0000-0000-0000-000000000001\";\n  const relatedEmails = Array.isArray(r.relatedEmails)\n    ? [...new Set(r.relatedEmails.map((value) => String(value || \"\").trim().toLowerCase()).filter(Boolean))].slice(0, 40)\n    : [String(r.fromEmail || \"\").toLowerCase()].filter(Boolean);\n  const actualAttachments = Array.isArray(r.actualCustomerAttachments)\n    ? r.actualCustomerAttachments.slice(0, 20).map((entry) => ({\n        name: String(entry?.name || \"Anhang\").slice(0, 240),\n        content_type: String(entry?.content_type || \"application/octet-stream\").slice(0, 120),\n        readable: Boolean(entry?.readable),\n        document_type: String(entry?.document_type || \"other\").slice(0, 80),\n      }))\n    : [];\n  const missingAttachments = Array.isArray(r.missingClaimedAttachmentRequests)\n    ? r.missingClaimedAttachmentRequests.slice(0, 10).map((entry) => ({\n        type: String(entry?.type || \"\").slice(0, 80),\n        label: String(entry?.label || \"\").slice(0, 160),\n        reason: String(entry?.reason || \"\").slice(0, 500),\n      }))\n    : [];\n  const customerContext = {\n    matched: Boolean(r.customerContext?.matched) && !placeholderOrganization,\n    match_basis: placeholderOrganization ? \"sender_only\" : String(r.customerContext?.match_basis || \"sender_only\").slice(0, 80),\n    request_ids: placeholderOrganization || !Array.isArray(r.customerContext?.request_ids)\n      ? []\n      : r.customerContext.request_ids.map(String).slice(0, 40),\n    context_since: r.customerContext?.context_since || r.contextSince || null,\n    related_emails: relatedEmails,\n    organization_id: placeholderOrganization ? null : (r.customerContext?.organization_id || null),\n    organization_name: placeholderOrganization ? null : (String(r.customerContext?.organization_name || \"\").slice(0, 240) || null),\n  };\n  const selectedOrder = r.selectedShopifyOrder && typeof r.selectedShopifyOrder === \"object\"\n    ? {\n        id: r.selectedShopifyOrder.id || r.selectedShopifyOrder.order_id || null,\n        order_number: r.selectedShopifyOrder.order_number || r.selectedShopifyOrder.name || null,\n        created_at: r.selectedShopifyOrder.created_at || null,\n        total_price: r.selectedShopifyOrder.total_price ?? null,\n        currency: r.selectedShopifyOrder.currency || r.selectedShopifyOrder.currency_code || null,\n        selection_basis: r.selectedShopifyOrder.selection_basis || r.financialReconciliation?.selection_basis || null,\n      }\n    : null;\n  const signedOffer = r.neontripOffer && typeof r.neontripOffer === \"object\"\n    ? {\n        offer_number: r.neontripOffer.offer_number || null,\n        document_reference: r.neontripOffer.document_reference || null,\n        public_url: /^https:\\/\\//i.test(String(r.neontripOffer.public_url || \"\")) ? String(r.neontripOffer.public_url).slice(0, 500) : null,\n        status: r.neontripOffer.status || null,\n        totals: r.neontripOffer.totals || null,\n      }\n    : null;\n  const financial = r.financialReconciliation && typeof r.financialReconciliation === \"object\"\n    ? r.financialReconciliation\n    : { status: \"not_applicable\", equation_verified: false, requires_human_approval: true };\n  const factsPackage = r.factsPackage && typeof r.factsPackage === \"object\"\n    ? {\n        ...r.factsPackage,\n        facts: Array.isArray(r.factsPackage.facts) ? r.factsPackage.facts.slice(0, 120) : [],\n        conflicts: Array.isArray(r.factsPackage.conflicts) ? r.factsPackage.conflicts.slice(0, 30) : [],\n        missing: Array.isArray(r.factsPackage.missing) ? r.factsPackage.missing.slice(0, 30) : [],\n      }\n    : null;\n  const evidenceCard = {\n    version: \"email-evidence-card-v2\",\n    generated_at: new Date().toISOString(),\n    channel: r.messageSource || \"external_email\",\n    customer_match: {\n      matched: customerContext.matched,\n      basis: customerContext.match_basis,\n      organization: customerContext.organization_name,\n      related_email_count: relatedEmails.length,\n      request_count: customerContext.request_ids.length,\n    },\n    checks: {\n      current_message: true,\n      conversation: true,\n      organization_history: relatedEmails.length > 1,\n      attachments: true,\n      approved_knowledge: Number(r.knowledgeMatchCount || 0) > 0,\n      commerce_resolver: Boolean(r.evidenceResolverVersion),\n      approved_style_profile: Boolean(r.approvedStyleProfile?.eligible),\n    },\n    attachments: {\n      actual: actualAttachments,\n      claimed_types: Array.isArray(r.claimedAttachmentTypes) ? r.claimedAttachmentTypes.slice(0, 10) : [],\n      missing_claimed: missingAttachments,\n    },\n    commerce: {\n      resolver_version: r.evidenceResolverVersion || \"\",\n      selected_shopify_order: selectedOrder,\n      signed_offer: signedOffer,\n      financial_reconciliation: financial,\n      evidence_sources: Array.isArray(financial.evidence_sources) ? financial.evidence_sources.slice(0, 20) : [],\n      facts_package_version: factsPackage?.version || null,\n      claimable_fact_count: factsPackage ? factsPackage.facts.filter((fact) => fact?.customer_safe === true).length : 0,\n      conflict_count: factsPackage?.conflicts?.length || 0,\n      missing_count: factsPackage?.missing?.length || 0,\n      used_fact_ids: Array.isArray(r.usedFactIds) ? r.usedFactIds.slice(0, 20) : [],\n    },\n    knowledge: {\n      matched_count: Number(r.knowledgeMatchCount || 0),\n      version_ids: Array.isArray(r.knowledgeVersionIds) ? r.knowledgeVersionIds.slice(0, 8) : [],\n    },\n    learning: {\n      profile_version: r.approvedStyleProfile?.version || \"email-style-profile-v1\",\n      eligible: Boolean(r.approvedStyleProfile?.eligible),\n      approved_sample_count: Number(r.approvedStyleProfile?.approved_sample_count || 0),\n      recommended_max_words: r.approvedStyleProfile?.recommended_max_words ?? null,\n      facts_or_customer_content_included: false,\n      automatic_prompt_rewrite_allowed: false,\n    },\n    safety: {\n      risk_level: r.riskLevel || null,\n      reply_length_class: r.replyLengthClass || null,\n      safe_fallback_used: Boolean(r.safeFallbackUsed),\n      validation_reasons: Array.isArray(r.validationReasons) ? r.validationReasons.slice(0, 30) : [],\n      possible_prompt_injection: Boolean(r.possiblePromptInjection),\n      human_approval_required: true,\n    },\n  };\n  const record = {\n    message_id: r.messageId,\n    internet_message_id: r.internetMessageId || \"\",\n    conversation_id: r.conversationId,\n    from_email: r.fromEmail,\n    from_name: r.fromName,\n    subject: r.subject,\n    message_source: r.messageSource,\n    body_preview: String(r.currentText || \"\").slice(0, 500),\n    category: r.category,\n    confidence: r.confidence,\n    order_found: r.orderCount > 0,\n    order_count: r.orderCount,\n    knowledge_version_ids: Array.isArray(r.knowledgeVersionIds) ? r.knowledgeVersionIds.slice(0, 8) : [],\n    knowledge_match_count: Number(r.knowledgeMatchCount || 0),\n    draft_created: true,\n    draft_id: d.id || \"\",\n    draft_body_preview: String(r.draftReplyText || \"\").slice(0, 500),\n    draft_body_text: String(r.draftReplyText || \"\").slice(0, 6000),\n    draft_body_hash: r.draftBodyHash || \"\",\n    latest_message_fingerprint: r.latestMessageFingerprint || \"\",\n    reply_length_class: r.replyLengthClass || null,\n    risk_level: r.riskLevel || null,\n    validation_reasons: Array.isArray(r.validationReasons) ? r.validationReasons.slice(0, 30) : [],\n    context_snapshot: {\n      snapshot_version: \"email-context-v4\",\n      channel: r.messageSource || \"external_email\",\n      customer_context: customerContext,\n      actual_attachments: actualAttachments,\n      attachment_claims: Array.isArray(r.claimedAttachmentTypes) ? r.claimedAttachmentTypes.slice(0, 10) : [],\n      missing_attachments: missingAttachments,\n      knowledge_version_ids: Array.isArray(r.knowledgeVersionIds) ? r.knowledgeVersionIds.slice(0, 8) : [],\n      evidence_resolver_version: r.evidenceResolverVersion || \"\",\n      selected_shopify_order: r.selectedShopifyOrder || null,\n      neontrip_offer: r.neontripOffer || null,\n      commerce_verified_facts: Array.isArray(r.commerceVerifiedFacts) ? r.commerceVerifiedFacts.slice(0, 40) : [],\n      financial_reconciliation: financial,\n      facts_package: factsPackage,\n      used_fact_ids: Array.isArray(r.usedFactIds) ? r.usedFactIds.slice(0, 20) : [],\n      approved_style_profile: r.approvedStyleProfile || null,\n      resolve_first_policy: {\n        version: 'email-resolve-first-v1',\n        customer_reference_missing: Boolean(r.customerReferenceMissing),\n        sources_checked: r.resolveFirstPolicy?.sources_checked || {},\n        vague_internal_deferral_allowed: false,\n        automatic_send_allowed: false,\n        human_approval_required: true,\n      },\n      safe_fallback_used: Boolean(r.safeFallbackUsed),\n      evidence_card: evidenceCard,\n    },\n    error_message: r.safeFallbackUsed ? (\"SAFE_FALLBACK: \" + r.validationReasons.join(\",\")).slice(0, 1500) : null,\n    processing_time_ms: Math.max(0, Date.now() - Number(r._startTime || Date.now())),\n  };\n  return { p_request_id: r.idempotencyKey, p_record: record };\n})()) }}",
         "options": {
           "timeout": 30000,
           "response": {
@@ -728,7 +743,7 @@
         360
       ],
       "parameters": {
-        "jsCode": "let normalized = null;\ntry { normalized = $(\"Normalize Email\").first().json; } catch (error) {}\nconst claimResponse = $(\"Claim Due Retry\").first().json || {};\nconst retryClaim = claimResponse.body ?? claimResponse;\nnormalized = normalized || {\n  idempotencyKey: String(retryClaim.request_id || ''),\n  messageId: String(retryClaim.message_id || ''),\n  internetMessageId: String(retryClaim.internet_message_id || ''),\n  conversationId: String(retryClaim.conversation_id || ''),\n  fromEmail: '',\n  fromName: '',\n  subject: 'Retry recovery failed before normalization',\n  messageSource: 'email_agent_retry',\n  triggerBodyPreview: '',\n  _startTime: Date.now(),\n};\nconst incoming = $input.first().json || {};\nlet message = String(incoming.error?.message || incoming.message || incoming.description || 'Unknown workflow error');\nmessage = message.replace(/[\\u0000-\\u001F]+/g, ' ').slice(0, 1500);\nlet rendered = null;\nlet draftResponse = null;\ntry { rendered = $('Validate and Render').first().json; } catch (error) {}\ntry { draftResponse = $('Create Reply Draft').first().json; } catch (error) {}\nconst draftBody = draftResponse?.body ?? draftResponse;\nconst draftCreated = Boolean(draftBody?.id);\nconst statusCode = Number(incoming.error?.httpCode || incoming.error?.statusCode || incoming.statusCode || 0);\nconst retryable = statusCode === 0\n  || statusCode === 404\n  || statusCode === 408\n  || statusCode === 409\n  || statusCode === 425\n  || statusCode === 429\n  || statusCode >= 500\n  || /timeout|temporar|rate limit|resource .* not be found|socket|connection|econn/i.test(message);\n\nreturn [{ json: {\n  request_id: normalized.idempotencyKey,\n  message_id: rendered?.messageId || normalized.messageId,\n  internet_message_id: normalized.internetMessageId || '',\n  conversation_id: normalized.conversationId,\n  from_email: normalized.fromEmail,\n  from_name: normalized.fromName,\n  subject: normalized.subject,\n  message_source: normalized.messageSource,\n  body_preview: String(rendered?.currentText || normalized.triggerBodyPreview || '').slice(0, 500),\n  category: rendered?.category || 'general',\n  confidence: rendered?.confidence || 0,\n  order_found: Boolean(rendered?.orderCount > 0),\n  order_count: Number(rendered?.orderCount || 0),\n  knowledge_version_ids: Array.isArray(rendered?.knowledgeVersionIds) ? rendered.knowledgeVersionIds.slice(0, 8) : [],\n  knowledge_match_count: Number(rendered?.knowledgeMatchCount || 0),\n  draft_created: draftCreated,\n  draft_id: draftBody?.id || '',\n  draft_body_preview: String(rendered?.draftReplyText || '').slice(0, 500),\n  error_message: message,\n  latest_message_fingerprint: rendered?.latestMessageFingerprint || '',\n  reply_length_class: rendered?.replyLengthClass || null,\n  risk_level: rendered?.riskLevel || rendered?.deterministicRiskLevel || null,\n  context_snapshot: {\n    ...(rendered ? {\n      customer_context: rendered.customerContext || {},\n      attachment_claims: rendered.claimedAttachmentTypes || [],\n      missing_attachments: rendered.missingClaimedAttachmentRequests || [],\n      channel: rendered.messageSource || normalized.messageSource,\n      evidence_resolver_version: rendered.evidenceResolverVersion || '',\n      financial_reconciliation: rendered.financialReconciliation || null,\n    } : {}),\n    retry_recovery: {\n      version: 'email-agent-retry-recovery-v1',\n      attempt_count: Number(retryClaim.attempt_count || normalized.retryAttemptCount || 0),\n      worker_execution_id: String(retryClaim.worker_execution_id || normalized.retryWorkerExecutionId || $execution.id),\n      automatic_send_allowed: false,\n      human_approval_required: true,\n    },\n  },\n  retryable,\n  processing_time_ms: Math.max(0, Date.now() - Number(normalized._startTime || Date.now())),\n} }];"
+        "jsCode": "const normalized = $('Normalize Email').first().json;\nconst incoming = $input.first().json || {};\nlet message = String(incoming.error?.message || incoming.message || incoming.description || 'Unknown workflow error');\nmessage = message.replace(/[\\u0000-\\u001F]+/g, ' ').slice(0, 1500);\nlet rendered = null;\nlet draftResponse = null;\ntry { rendered = $('Validate and Render').first().json; } catch (error) {}\ntry { draftResponse = $('Create Reply Draft').first().json; } catch (error) {}\nconst draftBody = draftResponse?.body ?? draftResponse;\nconst draftCreated = Boolean(draftBody?.id);\nconst statusCode = Number(incoming.error?.httpCode || incoming.error?.statusCode || incoming.statusCode || 0);\nconst retryable = statusCode === 0\n  || statusCode === 404\n  || statusCode === 408\n  || statusCode === 409\n  || statusCode === 425\n  || statusCode === 429\n  || statusCode >= 500\n  || /timeout|temporar|rate limit|resource .* not be found|socket|connection|econn/i.test(message);\n\nreturn [{ json: {\n  request_id: normalized.idempotencyKey,\n  message_id: rendered?.messageId || normalized.messageId,\n  internet_message_id: normalized.internetMessageId || '',\n  conversation_id: normalized.conversationId,\n  from_email: normalized.fromEmail,\n  from_name: normalized.fromName,\n  subject: normalized.subject,\n  message_source: normalized.messageSource,\n  body_preview: String(rendered?.currentText || normalized.triggerBodyPreview || '').slice(0, 500),\n  category: rendered?.category || 'general',\n  confidence: rendered?.confidence || 0,\n  order_found: Boolean(rendered?.orderCount > 0),\n  order_count: Number(rendered?.orderCount || 0),\n  knowledge_version_ids: Array.isArray(rendered?.knowledgeVersionIds) ? rendered.knowledgeVersionIds.slice(0, 8) : [],\n  knowledge_match_count: Number(rendered?.knowledgeMatchCount || 0),\n  draft_created: draftCreated,\n  draft_id: draftBody?.id || '',\n  draft_body_preview: String(rendered?.draftReplyText || '').slice(0, 500),\n  error_message: message,\n  latest_message_fingerprint: rendered?.latestMessageFingerprint || '',\n  reply_length_class: rendered?.replyLengthClass || null,\n  risk_level: rendered?.riskLevel || rendered?.deterministicRiskLevel || null,\n  context_snapshot: rendered ? {\n    customer_context: rendered.customerContext || {},\n    attachment_claims: rendered.claimedAttachmentTypes || [],\n    missing_attachments: rendered.missingClaimedAttachmentRequests || [],\n    channel: rendered.messageSource || normalized.messageSource,\n    evidence_resolver_version: rendered.evidenceResolverVersion || '',\n    financial_reconciliation: rendered.financialReconciliation || null,\n  } : {},\n  retryable,\n  processing_time_ms: Math.max(0, Date.now() - Number(normalized._startTime || Date.now())),\n} }];"
       }
     },
     {
@@ -889,93 +904,93 @@
       }
     },
     {
-      "id": "should-retry-message",
-      "name": "Should Retry Message?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
+      "id": "dispatch-decision-shadow",
+      "name": "Dispatch Decision Shadow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
       "position": [
-        1100,
-        0
+        760,
+        220
       ],
       "parameters": {
-        "options": {},
-        "conditions": {
-          "options": {
-            "version": 2,
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "retry-processable",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              },
-              "leftValue": "={{ Boolean($json.shouldProcess) }}",
-              "rightValue": ""
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "finalize-retry-without-new-draft",
-      "name": "Finalize Retry Without New Draft",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        1320,
-        260
-      ],
-      "parameters": {
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "method": "POST",
-        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finalize_email_agent_retry_without_new_draft",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "LvXVkIhWZH0w0Y1x",
+          "mode": "list",
+          "cachedResultName": "AI Email Agent — Decision Shadow v1"
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  p_request_id: $json.idempotencyKey,\n  p_reason: $json.skipReason || \"retry_not_processable\",\n  p_existing_draft_id: $json.existingReplyDraftId || null,\n  p_worker_execution_id: String($execution.id),\n}) }}",
+        "mode": "once",
         "options": {
-          "timeout": 30000,
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
+          "waitForSubWorkflow": false
         }
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "NTtNxoBGGzJCQi9u",
-          "name": "Header Auth account 2 | SUPABASE"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
-      "onError": "stopWorkflow"
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
+    "Outlook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Emails": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Normalize Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Normalize Email": {
       "main": [
         [
           {
-            "node": "Should Retry Message?",
+            "node": "Should Process Email?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Dispatch Decision Shadow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Process Email?": {
+      "main": [
+        [
+          {
+            "node": "Acquire Idempotency Lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acquire Idempotency Lock": {
+      "main": [
+        [
+          {
+            "node": "Was Lock Inserted?",
             "type": "main",
             "index": 0
           }
@@ -983,6 +998,24 @@
         [
           {
             "node": "Build Failure Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was Lock Inserted?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Current Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Emails",
             "type": "main",
             "index": 0
           }
@@ -1215,7 +1248,13 @@
     },
     "Log Success": {
       "main": [
-        [],
+        [
+          {
+            "node": "Loop Over Emails",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Build Failure Record",
@@ -1321,81 +1360,6 @@
             "index": 0
           }
         ]
-      ]
-    },
-    "Retry Schedule": {
-      "main": [
-        [
-          {
-            "node": "Claim Due Retry",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Claim Due Retry": {
-      "main": [
-        [
-          {
-            "node": "Has Due Retry?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Has Due Retry?": {
-      "main": [
-        [
-          {
-            "node": "Fetch Retry Message and Drafts",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
-      ]
-    },
-    "Fetch Retry Message and Drafts": {
-      "main": [
-        [
-          {
-            "node": "Normalize Email",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Failure Record",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Should Retry Message?": {
-      "main": [
-        [
-          {
-            "node": "Fetch Current Message",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Finalize Retry Without New Draft",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Finalize Retry Without New Draft": {
-      "main": [
-        []
       ]
     }
   },

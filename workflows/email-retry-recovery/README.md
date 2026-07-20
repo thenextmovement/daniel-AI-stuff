@@ -39,8 +39,10 @@ of five total attempts.
 
 ## Source drift
 
-The generated worker is derived from the exact published production workflow
-version captured in source/main-workflow-active-20260717.json. The generated
+The generated worker is derived from the audited resolve-first production candidate
+generated at ../email-resolve-first/generated/main-resolve-first-v4.json. That candidate
+is itself patched from the exact published workflow captured in
+source/main-workflow-active-20260717.json. The generated
 source-core-manifest.json records SHA-256 hashes for every unchanged shared core
 node. Any later production-agent change must regenerate and retest the retry worker.
 
