@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks, findUploadedDesignAttachment, isEligibleAiMockupSourceName, promptForImageEdit, quoteImageVariantKey, structuredDesignActionAttachmentName } from "@/lib/ops/design";
+import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks, findUploadedDesignAttachment, isEligibleAiMockupSourceName, isEligibleDesignReferenceSourceName, promptForImageEdit, quoteImageVariantKey, structuredDesignActionAttachmentName } from "@/lib/ops/design";
 import {
   DESIGN_ACTION_CONSTRAINT_END,
   DESIGN_ACTION_CONSTRAINT_START,
@@ -86,7 +86,9 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(client, /preserveStatus/);
   assert.match(client, /Bulk-Farbänderung/);
   assert.match(client, /isEligibleAiMockupSourceName/);
+  assert.match(client, /isEligibleDesignReferenceSourceName/);
   assert.match(client, /KI-JPG Quelle/);
+  assert.match(client, /JPG-Vorlage/);
   assert.match(client, /Nur JPG-Mockups mit Mockup und AI im Dateinamen/);
   assert.match(client, /Bulk läuft/);
   assert.match(client, /Ein Neuladen verliert den Batch nicht/);
@@ -217,6 +219,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(service, /promptForImageEdit/);
   assert.match(service, /referenceImageContentType/);
   assert.match(service, /assertEligibleAiJpegSource/);
+  assert.match(service, /assertEligibleDesignReferenceJpegSource/);
   assert.match(service, /assertJpegOutput/);
   assert.match(service, /reference_attachments/);
   assert.match(service, /reference_assets/);
@@ -548,6 +551,22 @@ test("design ops accepts only AI JPG mockups as customer variant sources", () =>
     "Raiffeisenbank Straubing.jpg",
   ]) {
     assert.equal(isEligibleAiMockupSourceName(name), false, name);
+  }
+});
+
+test("design ops accepts original JPG mockups as generation references", () => {
+  for (const name of ["Mockup01.jpg", "Mockup04.jpeg", "mockup 07.JPG", "Mockup4600_AI_1.jpeg"]) {
+    assert.equal(isEligibleDesignReferenceSourceName(name), true, name);
+  }
+
+  for (const name of [
+    "Mockup01.png",
+    "Mockup04.webp",
+    "Referenz01.jpg",
+    "alte_Vorschaubilder01.jpg",
+    "Vorschaubilder04.jpeg",
+  ]) {
+    assert.equal(isEligibleDesignReferenceSourceName(name), false, name);
   }
 });
 

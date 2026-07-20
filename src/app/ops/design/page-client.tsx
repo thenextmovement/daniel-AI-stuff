@@ -24,7 +24,7 @@ import {
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, opsPageContainerClass, opsPageShellClass, OpsStatCard } from "../ops-design";
 import type { OpsOfferSnapshot } from "@/lib/ops/offers";
-import { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
+import { isEligibleAiMockupSourceName, isEligibleDesignReferenceSourceName } from "@/lib/ops/design-source";
 import type {
   DesignAssetSummary,
   DesignAttachment,
@@ -397,8 +397,11 @@ export function DesignOpsClient({
     setSendRecipient(workspace?.record?.email || "");
     setSendCcOne("");
     setSendCcTwo("");
-    const defaultReference = workspace?.primaryCard?.attachments.find((attachment) =>
+    const primaryAttachments = workspace?.primaryCard?.attachments || [];
+    const defaultReference = primaryAttachments.find((attachment) =>
       isEligibleAiMockupSourceName(attachment.name) && (!attachment.mimeType || /^image\/jpe?g$/i.test(attachment.mimeType)),
+    ) || primaryAttachments.find((attachment) =>
+      isEligibleDesignReferenceSourceName(attachment.name) && (!attachment.mimeType || /^image\/jpe?g$/i.test(attachment.mimeType)),
     ) || null;
     setSelectedReferenceAttachmentId(defaultReference?.id || "");
     setSelectedReferenceAssetId("");
@@ -421,6 +424,14 @@ export function DesignOpsClient({
   const selectedReferenceName = selectedReferenceAttachment?.name || selectedReferenceAsset?.name || null;
   const activeLightColorLabel = selectedLightColorLabel(lightColorPreset);
   const activeProductChangeLabel = selectedProductChangeLabel(productChangePreset);
+  const referenceSelectableAttachmentIds = useMemo(() => {
+    return new Set(
+      (workspace?.cards || [])
+        .flatMap((card) => card.attachments)
+        .filter((attachment) => isEligibleDesignReferenceSourceName(attachment.name) && (!attachment.mimeType || /^image\/jpe?g$/i.test(attachment.mimeType)))
+        .map((attachment) => attachment.id),
+    );
+  }, [workspace]);
   const colorSelectableAttachmentIds = useMemo(() => {
     return new Set(
       (workspace?.cards || [])
@@ -1105,7 +1116,7 @@ export function DesignOpsClient({
                           type="button"
                           onClick={() => void generateSavedDraft()}
                           disabled={busy || !workspace}
-                          title={selectedReferenceName ? `Aus ${selectedReferenceName} ein KI-Mockup generieren` : "Zuerst ein KI-JPG als Vorlage wählen"}
+                          title={selectedReferenceName ? `Aus ${selectedReferenceName} ein KI-Mockup generieren` : "Zuerst ein JPG-Mockup als Vorlage wählen"}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-[0.65rem] bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50"
                         >
                           {busy && !bulkRecolorProgress ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
@@ -1260,13 +1271,14 @@ export function DesignOpsClient({
                             ) : null}
                           </div>
                           <div className="mt-3 flex items-center justify-between gap-3">
-                            <span className="text-xs text-stone-500">Standardmäßig werden nur bearbeitbare KI-JPGs geladen.</span>
+                            <span className="text-xs text-stone-500">Nutzbare JPG-Mockup-Vorlagen</span>
                             <button type="button" onClick={() => setShowAllAttachments((current) => !current)} className="h-8 rounded-[0.55rem] border border-[#ded8d0] bg-white px-3 text-xs font-semibold text-stone-800">
-                              {showAllAttachments ? "Nur KI-JPGs" : `Alle ${card.attachments.length} anzeigen`}
+                              {showAllAttachments ? "Nur Mockup-JPGs" : `Alle ${card.attachments.length} anzeigen`}
                             </button>
                           </div>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                            {card.attachments.filter((asset) => showAllAttachments || colorSelectableAttachmentIds.has(asset.id)).map((asset) => {
+                            {card.attachments.filter((asset) => showAllAttachments || referenceSelectableAttachmentIds.has(asset.id)).map((asset) => {
+                              const referenceJpgSource = referenceSelectableAttachmentIds.has(asset.id);
                               const aiJpgSource = colorSelectableAttachmentIds.has(asset.id);
                               return (
                               <div key={asset.id} className="overflow-hidden rounded-[14px] border border-[#ded8d0] bg-white">
@@ -1284,7 +1296,7 @@ export function DesignOpsClient({
                                   <button
                                     type="button"
                                     onClick={() => selectReferenceAttachmentForEdit(asset.id)}
-                                    disabled={!aiJpgSource}
+                                    disabled={!referenceJpgSource}
                                     aria-label={`${asset.name} als Ausgangsbild verwenden`}
                                     aria-pressed={selectedReferenceAttachmentId === asset.id}
                                     className={`flex items-center justify-between gap-2 border-r border-[#ece6dc] px-3 py-2 text-left disabled:opacity-40 ${selectedReferenceAttachmentId === asset.id ? "bg-stone-950 text-white" : ""}`}
@@ -1316,6 +1328,10 @@ export function DesignOpsClient({
                                     {aiJpgSource ? (
                                       <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
                                         KI-JPG Quelle
+                                      </span>
+                                    ) : referenceJpgSource ? (
+                                      <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-800">
+                                        JPG-Vorlage
                                       </span>
                                     ) : null}
                                   </div>

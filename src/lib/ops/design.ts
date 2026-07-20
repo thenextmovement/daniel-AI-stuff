@@ -13,7 +13,7 @@ import {
   type CustomerCrmQuoteSummary,
   type CustomerSearchResult,
 } from "@/lib/ops/customer-records";
-import { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
+import { isEligibleAiMockupSourceName, isEligibleDesignReferenceSourceName } from "@/lib/ops/design-source";
 import {
   canonicalDesignActionValue,
   designActionPrompt,
@@ -27,7 +27,7 @@ import {
 } from "@/lib/ops/design-contract";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
-export { isEligibleAiMockupSourceName } from "@/lib/ops/design-source";
+export { isEligibleAiMockupSourceName, isEligibleDesignReferenceSourceName } from "@/lib/ops/design-source";
 
 export type DesignAttachmentKind = "mockup" | "reference" | "image" | "video" | "other";
 
@@ -474,6 +474,15 @@ function assertEligibleAiMockupSourceName(name: string | null | undefined) {
 
 function assertEligibleAiJpegSource(name: string | null | undefined, mimeType: string | null | undefined) {
   assertEligibleAiMockupSourceName(name);
+  if (mimeType && !isJpegMimeType(mimeType)) {
+    throw new QuoteValidationError("Das Ausgangsbild muss auch technisch eine JPEG-Datei sein.");
+  }
+}
+
+function assertEligibleDesignReferenceJpegSource(name: string | null | undefined, mimeType: string | null | undefined) {
+  if (!isEligibleDesignReferenceSourceName(name)) {
+    throw new QuoteValidationError("Nur JPG-Mockups mit Mockup im Dateinamen dürfen als Vorlage für neue KI-Mockups genutzt werden.");
+  }
   if (mimeType && !isJpegMimeType(mimeType)) {
     throw new QuoteValidationError("Das Ausgangsbild muss auch technisch eine JPEG-Datei sein.");
   }
@@ -978,8 +987,10 @@ export async function createDesignJobDraft(input: {
       .filter((attachment) => referenceIds.includes(attachment.id))
       .map((attachment) => ({ card, attachment })),
   );
+  const requiresExistingAiMockup = actionType === "light_color" || actionType === "product_change";
   for (const { attachment } of selectedReferences) {
-    assertEligibleAiJpegSource(attachment.name, attachment.mimeType);
+    if (requiresExistingAiMockup) assertEligibleAiJpegSource(attachment.name, attachment.mimeType);
+    else assertEligibleDesignReferenceJpegSource(attachment.name, attachment.mimeType);
   }
   const referenceAttachments: DesignReferenceAttachment[] = selectedReferences.map(({ card, attachment }) => ({
     cardId: card.cardId,
@@ -988,7 +999,7 @@ export async function createDesignJobDraft(input: {
     kind: "mockup",
   }));
   if (referenceIds.length !== referenceAttachments.length) {
-    throw new QuoteValidationError("Mindestens ein ausgewaehltes Ausgangsbild ist kein zulaessiges Mockup + AI + JPG.");
+    throw new QuoteValidationError("Mindestens ein ausgewaehltes Ausgangsbild ist keine zulaessige Mockup-JPEG-Vorlage.");
   }
   const referenceAssetId = trimNullable(input.referenceAssetId);
   const referenceAssets: DesignReferenceAsset[] = [];
@@ -1008,7 +1019,7 @@ export async function createDesignJobDraft(input: {
     : null;
   const jobCard = referenceCard || primaryCard;
   if (referenceAttachments.length + referenceAssets.length !== 1) {
-    throw new QuoteValidationError("Jeder Design-Job benötigt genau ein Ausgangs-Mockup mit Mockup und AI im Namen sowie echtem JPG-Format.");
+    throw new QuoteValidationError("Jeder Design-Job benötigt genau ein Ausgangs-Mockup im echten JPG-Format.");
   }
   const sourceReference = referenceAttachments[0] || null;
   const sourceFingerprint = trimNullable(input.sourceFingerprint) || (sourceReference
@@ -2560,12 +2571,14 @@ function referenceImageContentType(contentType: string | null | undefined, name:
 async function downloadDesignReferenceAttachments(job: DesignJobRow) {
   const references = referenceAttachmentsFromJob(job);
   const files = [];
+  const requiresExistingAiMockup = job.action_type === "light_color" || job.action_type === "product_change";
   for (const reference of references) {
     const attachment = await getTrelloAttachment(reference.cardId, reference.attachmentId);
     const file = await downloadTrelloAttachment(attachment);
     const body = Buffer.from(file.body);
     const contentType = referenceImageContentType(file.contentType, reference.name);
-    assertEligibleAiJpegSource(reference.name, contentType);
+    if (requiresExistingAiMockup) assertEligibleAiJpegSource(reference.name, contentType);
+    else assertEligibleDesignReferenceJpegSource(reference.name, contentType);
     assertJpegOutput(body, `Referenzbild ${reference.name}`);
     files.push({
       reference,

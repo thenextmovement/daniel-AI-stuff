@@ -24,7 +24,7 @@ Optional:
 - `DESIGN_ASSET_BUCKET` defaults to `design-assets`
 - `DESIGN_SOURCE_IMAGE_HOSTS` is a comma-separated allowlist for generated image sources outside the configured Supabase and Offers hosts
 
-All Design Studio image edits request and store JPEG. An input is eligible only when its filename contains both `Mockup` and `AI`, ends in `.jpg` or `.jpeg`, and its downloaded bytes have a JPEG signature. Archived `alte_Vorschaubilder...` files are excluded.
+All Design Studio image edits request and store JPEG. Normal KI mockup generation accepts original and generated references whose filename contains `Mockup` and ends in `.jpg` or `.jpeg`. Structured color changes, product changes and customer variants additionally require `AI` in the filename. Downloaded bytes must have a JPEG signature, and archived `alte_Vorschaubilder...` files are always excluded.
 
 ## Structured Actions
 
