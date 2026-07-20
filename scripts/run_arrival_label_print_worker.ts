@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createCupsPrinter, assertPrintPdf, readBoundedResponseBytes, validatePrinterKey, validatePrintWorkerId } from "../src/lib/ops/arrival-labels/printing";
+import { createCupsPrinter, assertPrintPdf, readBoundedResponseBytes, validateApprovedArrivalPrinterMapping, validatePrintWorkerId } from "../src/lib/ops/arrival-labels/printing";
 
 type ClaimedJob = {
   id: string;
@@ -31,13 +31,16 @@ function config() {
   if (Boolean(cloudflareClientId) !== Boolean(cloudflareClientSecret)) throw new Error("Cloudflare Access Service Token ist unvollstaendig.");
   if (!Number.isInteger(pollSeconds) || pollSeconds < 5 || pollSeconds > 300) throw new Error("Ungueltiges Druck-Pollintervall.");
   if (!Number.isInteger(confirmationSeconds) || confirmationSeconds < 30 || confirmationSeconds > 600) throw new Error("Ungueltiges Druck-Bestaetigungszeitfenster.");
+  const printer = validateApprovedArrivalPrinterMapping({
+    printerKey: required("ARRIVAL_LABEL_PRINTER_KEY"),
+    cupsPrinter: required("ARRIVAL_LABEL_CUPS_PRINTER"),
+    media: required("ARRIVAL_LABEL_PRINT_MEDIA"),
+  });
   return {
     apiUrl,
     token,
     workerId: validatePrintWorkerId(required("ARRIVAL_LABEL_PRINT_WORKER_ID")),
-    printerKey: validatePrinterKey(required("ARRIVAL_LABEL_PRINTER_KEY")),
-    cupsPrinter: required("ARRIVAL_LABEL_CUPS_PRINTER"),
-    media: required("ARRIVAL_LABEL_PRINT_MEDIA"),
+    ...printer,
     pollSeconds,
     confirmationSeconds,
     cloudflareClientId,

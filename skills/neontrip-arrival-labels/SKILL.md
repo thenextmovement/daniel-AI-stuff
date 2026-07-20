@@ -34,7 +34,7 @@ scripts/run-dry-run.sh --date 2026-07-20 --fixture tests/fixtures/arrival-labels
 - A card in `Problem with Sign`, `Problem mit Schild`, `Manual Review`, `Manuelle Prüfung`, `Sonderfälle`, or an equivalent explicitly manual Trello list remains manual review. Trello can block but cannot grant automation.
 - Never expand a handwritten four- or six-digit suffix into a full DHL number by guessing. The complete DHL number must be independently evidenced.
 - Switzerland, all other non-EU destinations, missing countries, and known EU VAT/customs special territories remain manual review.
-- EU destinations outside Germany require a complete Shopify delivery address, an explicitly approved EU DPD product, and a QA-approved A4 delivery note confirmed printed before any label purchase.
+- EU destinations outside Germany require a complete Shopify delivery address, an explicitly approved EU DPD product, and a QA-approved A4 delivery note confirmed printed on the physically separate approved office printer before any label purchase. Never route a delivery note to the A6/4x6 label printer.
 - Do not substitute the Sales-Vergabe order confirmation for a delivery note and do not assume an EasyBill API exists.
 - `100 pieces single color dimmers` is a reported special case without an expected Shopify order.
 - The reference `#NEONT4498` / DHL `2619113486` / DPD `01476817678011` must remain existing-label only.

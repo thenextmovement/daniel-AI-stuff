@@ -1,0 +1,2 @@
+alter table if exists public.arrival_label_product_config
+  drop constraint if exists arrival_label_product_config_separate_printers_check;

@@ -338,6 +338,13 @@ test("EU destinations require a complete address, an explicit EU DPD product and
   assert.equal(noA4.status, "manual_review");
   assert.ok(noA4.reasons.includes("delivery_note_printer_not_configured"));
 
+  const samePrinter = decideArrivalCase({
+    arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria],
+    productConfig: { ...config, deliveryNotePrinterKey: config.printerKey },
+  });
+  assert.equal(samePrinter.status, "manual_review");
+  assert.ok(samePrinter.reasons.includes("delivery_note_printer_not_separate"));
+
   const noEuProduct = decideArrivalCase({
     arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria],
     productConfig: { ...config, euProductMapping: {} },

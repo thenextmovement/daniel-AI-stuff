@@ -30,6 +30,22 @@ export function validatePrintMedia(value: string) {
   return value;
 }
 
+const APPROVED_LOCAL_PRINTER_MAPPINGS = {
+  "shipping-a6": { cupsPrinter: "Brother_QL_1110NWB", media: "4x6" },
+  "shipping-a4-delivery-note": { cupsPrinter: "HP_Color_LaserJet_Pro_MFP_3302", media: "A4" },
+} as const;
+
+export function validateApprovedArrivalPrinterMapping(input: { printerKey: string; cupsPrinter: string; media: string }) {
+  const printerKey = validatePrinterKey(input.printerKey);
+  const cupsPrinter = validateCupsName(input.cupsPrinter);
+  const media = validatePrintMedia(input.media);
+  const approved = APPROVED_LOCAL_PRINTER_MAPPINGS[printerKey as keyof typeof APPROVED_LOCAL_PRINTER_MAPPINGS];
+  if (!approved || approved.cupsPrinter !== cupsPrinter || approved.media !== media) {
+    throw new PrintInputError("Logischer Drucker, physische CUPS-Queue und Medium entsprechen nicht der freigegebenen Zuordnung.");
+  }
+  return { printerKey, cupsPrinter, media };
+}
+
 export async function readBoundedResponseBytes(response: Response, maximumBytes: number) {
   const declaredLength = Number(response.headers.get("content-length") || 0);
   if (declaredLength > maximumBytes) throw new PrintInputError("Antwort ist groesser als erlaubt.");

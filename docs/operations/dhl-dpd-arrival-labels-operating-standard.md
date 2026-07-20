@@ -38,6 +38,7 @@ Ohne Kauf, Download oder Druck in die manuelle Prüfung gehen:
 - bereits erfüllte Bestellung, altes Versandtracking, Ersatz-, Reklamations- oder Nachlieferungsfall, solange kein aktuelles und unbenutztes Label für genau diesen Eingang belegt ist;
 - Schweiz, sonstiges Nicht-EU-Land, fehlendes Land oder bekannte EU-Zoll-/Umsatzsteuer-Sondergebiete;
 - EU außerhalb Deutschlands ohne vollständige Adresse, freigegebenes EU-DPD-Produkt oder vor dem Labelkauf bestätigten, preisfreien A4-Lieferschein;
+- ein A4-Lieferschein, der nicht ausdrücklich an den separaten HP-Bürodrucker statt an den Brother-Etikettendrucker geroutet ist;
 - Express-/Eilanforderung ohne exakt freigegebene Produktzuordnung;
 - der Dimmer-Sonderfall `100 pieces single color dimmers` ohne erwartete Shopify-Bestellung;
 - jede technische Ungewissheit nach einer externen Schreib- oder Druckgrenze.
@@ -59,6 +60,14 @@ Der geschützte Referenzfall `#NEONT4498` / DHL `2619113486` / DPD `014768176780
 - Die vollständige DHL-Nummer bleibt Identität, Abgleichs- und Idempotenzschlüssel.
 - Vier Ziffern sind verboten, weil am 20.07.2026 bereits zwei verschiedene DHL-Nummern auf `5500` endeten.
 - Vor dem Druck werden A6-Format, Schutzflächen, SHA-256 und die unveränderte Lesbarkeit der vorhandenen Barcodes geprüft.
+
+## Verbindliche Druckertrennung
+
+- A6-/4x6-Versandetiketten gehen ausschließlich an `Brother_QL_1110NWB` (`shipping-a6`).
+- Preisfreie A4-Lieferscheine gehen ausschließlich an `HP_Color_LaserJet_Pro_MFP_3302` (`shipping-a4-delivery-note`, Medium `A4`).
+- Beide Drucker werden pro Auftrag ausdrücklich ausgewählt; der Systemstandarddrucker darf nie die Zuordnung bestimmen.
+- Sind beide logischen Schlüssel identisch, fehlt eine Queue oder ist A4 nicht bestätigt, bleibt der EU-Fall ohne Labelkauf in manueller Prüfung.
+- Eine Änderung der physischen Zuordnung erfordert erneut einen beaufsichtigten Zwei-Drucker-Test.
 
 ## Manueller Klärungsweg
 

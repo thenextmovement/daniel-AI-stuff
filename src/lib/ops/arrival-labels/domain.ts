@@ -122,7 +122,8 @@ export type DestinationGateReason =
   | "destination_non_eu_manual"
   | "destination_special_territory_manual"
   | "delivery_note_address_incomplete"
-  | "delivery_note_printer_not_configured";
+  | "delivery_note_printer_not_configured"
+  | "delivery_note_printer_not_separate";
 
 export type DestinationGate = {
   blocked: boolean;
@@ -281,6 +282,17 @@ export function assessDestinationGate(order: ShopifyOrderEvidence, config: Produ
       deliveryNoteStatus: "manual_review",
       reasonCode: "delivery_note_printer_not_configured",
       reason: "Fuer EU-Sendungen ist kein freigegebener A4-Lieferscheindrucker konfiguriert.",
+    };
+  }
+  if (!config.printerKey || config.deliveryNotePrinterKey === config.printerKey) {
+    return {
+      blocked: true,
+      destinationCountryCode: country,
+      destinationClass: "eu",
+      deliveryNoteRequired: true,
+      deliveryNoteStatus: "manual_review",
+      reasonCode: "delivery_note_printer_not_separate",
+      reason: "Der A4-Lieferscheindrucker muss physisch und logisch vom A6-Etikettendrucker getrennt sein.",
     };
   }
   return {

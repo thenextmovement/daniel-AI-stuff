@@ -154,6 +154,37 @@ test("print claim API also allows the separately approved A4 delivery-note queue
   });
 });
 
+test("print claim API rejects a configuration that maps A4 and A6 to the same logical printer", async () => {
+  await withPrintEnvironment(async () => {
+    let call = 0;
+    globalThis.fetch = async (input) => {
+      call += 1;
+      const url = String(input);
+      if (url.includes("arrival_label_product_config")) {
+        return Response.json([{
+          version: "unsafe-same-printer",
+          enabled: true,
+          standard_product_code: "DPD-CLASSIC",
+          express_product_mapping: {},
+          eu_product_mapping: { standard: "DPD-EU-CLASSIC" },
+          printer_key: "shipping-a6",
+          print_media: "4x6",
+          delivery_note_printer_key: "shipping-a6",
+          delivery_note_print_media: "A4",
+        }]);
+      }
+      throw new Error(`unexpected request ${url}`);
+    };
+    const response = await claimPrintJob(request(
+      "/api/internal/arrival-labels/print-jobs/claim",
+      { workerId: WORKER_ID, printerKey: "shipping-a6" },
+    ));
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).message, /getrennt/);
+    assert.equal(call, 1);
+  });
+});
+
 test("print result API rejects malformed status without a downstream call", async () => {
   await withPrintEnvironment(async () => {
     let called = false;

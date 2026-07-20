@@ -20,6 +20,13 @@ lpoptions -p PRINTER_QUEUE -l
 
 Confirm the exact CUPS media keyword shown by `lpoptions`; do not guess it. The worker never applies `fit-to-page` or a scaling option.
 
+The approved local queue split recorded on 2026-07-20 is:
+
+- A6/4x6 shipping labels: `Brother_QL_1110NWB`, logical key `shipping-a6`
+- A4 delivery notes: `HP_Color_LaserJet_Pro_MFP_3302`, logical key `shipping-a4-delivery-note`
+
+The two logical keys and CUPS queue names must remain different. The system default printer is irrelevant because every submission uses an explicit CUPS destination. Any change to either physical queue requires a new witnessed two-printer QA before the active product configuration may be approved.
+
 ## Configuration
 
 Copy `arrival-label-print.env.example` to `/etc/neontrip/arrival-label-print.env`, set owner/root permissions to `0600`, and provide a dedicated `ARRIVAL_LABEL_PRINT_API_TOKEN`. For EU delivery notes, copy `arrival-delivery-note-print.env.example` to `/etc/neontrip/arrival-delivery-note-print.env` and use a different worker ID plus the separately approved A4 logical/CUPS queue. If Ops is protected by Cloudflare Access, provision least-privilege service tokens for this exact API path and set both `ARRIVAL_LABEL_PRINT_CF_ACCESS_*` values. Each logical `ARRIVAL_LABEL_PRINTER_KEY` must match the approved product configuration; `ARRIVAL_LABEL_CUPS_PRINTER` is the corresponding local queue name.

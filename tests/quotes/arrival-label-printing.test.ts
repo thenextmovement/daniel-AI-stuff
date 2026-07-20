@@ -7,6 +7,7 @@ import {
   parseCupsJobId,
   readBoundedJson,
   readBoundedResponseBytes,
+  validateApprovedArrivalPrinterMapping,
   validateCupsName,
   validatePrinterKey,
   validatePrintWorkerId,
@@ -19,6 +20,29 @@ test("print identifiers accept bounded allowlisted values and reject command inj
   assert.equal(validateCupsName("Zebra-ZD421"), "Zebra-ZD421");
   assert.throws(() => validateCupsName("printer; shutdown -h now"), /CUPS/);
   assert.throws(() => validatePrinterKey("../../printer"), /Druckerschluessel/);
+});
+
+test("local print worker accepts only the approved physical A6 and A4 queue mappings", () => {
+  assert.deepEqual(validateApprovedArrivalPrinterMapping({
+    printerKey: "shipping-a6",
+    cupsPrinter: "Brother_QL_1110NWB",
+    media: "4x6",
+  }), { printerKey: "shipping-a6", cupsPrinter: "Brother_QL_1110NWB", media: "4x6" });
+  assert.deepEqual(validateApprovedArrivalPrinterMapping({
+    printerKey: "shipping-a4-delivery-note",
+    cupsPrinter: "HP_Color_LaserJet_Pro_MFP_3302",
+    media: "A4",
+  }), { printerKey: "shipping-a4-delivery-note", cupsPrinter: "HP_Color_LaserJet_Pro_MFP_3302", media: "A4" });
+  assert.throws(() => validateApprovedArrivalPrinterMapping({
+    printerKey: "shipping-a4-delivery-note",
+    cupsPrinter: "Brother_QL_1110NWB",
+    media: "A4",
+  }), /freigegebenen Zuordnung/);
+  assert.throws(() => validateApprovedArrivalPrinterMapping({
+    printerKey: "shipping-a6",
+    cupsPrinter: "HP_Color_LaserJet_Pro_MFP_3302",
+    media: "4x6",
+  }), /freigegebenen Zuordnung/);
 });
 
 test("print PDF verification requires PDF magic, size and exact SHA-256", () => {

@@ -16,6 +16,12 @@ export async function POST(request: NextRequest) {
     if (request.headers.get("x-neontrip-print-worker") !== workerId) throw new PrintInputError("Print-Worker-ID stimmt nicht ueberein.");
     const printerKey = validatePrinterKey(String(body.printerKey || ""));
     const productConfig = await loadActiveProductConfig();
+    if (
+      productConfig?.deliveryNotePrinterKey
+      && (!productConfig.printerKey || productConfig.deliveryNotePrinterKey === productConfig.printerKey)
+    ) {
+      throw new PrintInputError("A4-Lieferschein- und A6-Etikettendrucker muessen getrennt konfiguriert sein.");
+    }
     const approvedPrinters = new Set([productConfig?.printerKey, productConfig?.deliveryNotePrinterKey].filter(Boolean));
     if (!approvedPrinters.has(printerKey)) throw new PrintInputError("Drucker ist nicht freigegeben.");
     const job = await claimArrivalPrintJob({ workerId, printerKey });
