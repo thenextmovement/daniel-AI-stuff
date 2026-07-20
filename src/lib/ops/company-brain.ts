@@ -5128,9 +5128,10 @@ export function buildCompanyBrainOperationalVerdict(input: {
     : attempt
       ? `Versuch ${attempt}/${limit || "?"}${latestFailure?.retryPlanned === false ? " beendet" : ""}`
       : null;
+  const originalFailureCause = latestFailure?.summary || latestFailure?.error || null;
   const cause = resolved
     ? latestFailure
-      ? `Der frühere Fehler in Execution ${latestFailure.executionId || "unbekannt"} wurde durch die spätere erfolgreiche Zustellung${latestDelivery?.executionId ? ` in Execution ${latestDelivery.executionId}` : ""} abgeschlossen. Kein erneuter Versand nötig.`
+      ? `Ursprünglicher Fehler in Execution ${latestFailure.executionId || "unbekannt"}: ${originalFailureCause || "Die Automation wurde gestoppt."} Danach wurde das Angebot${latestDelivery?.executionId ? ` in Execution ${latestDelivery.executionId}` : ""} erfolgreich verschickt. Kein erneuter Versand nötig.`
       : "Ein erfolgreicher Zustellungsbeleg liegt vor. Kein erneuter Versand nötig."
     : latestFailure?.summary || latestFailure?.error || input.trelloFailureDiagnosis.rootCause || input.fallbackCause;
   const status: CompanyBrainOperationalVerdict["status"] = resolved
@@ -5149,10 +5150,10 @@ export function buildCompanyBrainOperationalVerdict(input: {
     cause,
     causeCode: issueKey || input.trelloFailureDiagnosis.rootCauseKey || "unknown",
     confidence: resolved || latestFailure?.diagnosticComplete ? "high" : latestFailure?.issueKey ? "medium" : "low",
-    failedStep: resolved ? null : latestFailure?.failedNode || null,
+    failedStep: latestFailure?.failedNode || null,
     executionId: resolved ? latestDelivery?.executionId || null : latestFailure?.executionId || null,
     executionUrl: resolved ? latestDelivery?.executionUrl || null : latestFailure?.executionUrl || null,
-    technicalDetail: resolved ? null : latestFailure?.technicalDetail || null,
+    technicalDetail: latestFailure?.technicalDetail || null,
     retryLabel,
     nextActionKey: retryRunning ? null : primaryAction?.key || null,
     nextActionLabel: resolved && !primaryAction

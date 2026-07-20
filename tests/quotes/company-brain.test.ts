@@ -480,7 +480,11 @@ test("company brain operational verdict shows exact cause, retry and later succe
   assert.equal(resolved.status, "resolved");
   assert.equal(resolved.executionId, "3219384");
   assert.equal(resolved.nextActionLabel, "Nichts erneut senden");
-  assert.match(resolved.cause, /spätere erfolgreiche Zustellung/);
+  assert.match(resolved.cause, /Ursprünglicher Fehler in Execution 3212929/);
+  assert.match(resolved.cause, /Vorschau-URLs sind ungueltig/);
+  assert.match(resolved.cause, /Execution 3219384.*erfolgreich verschickt/);
+  assert.equal(resolved.failedStep, "Create NEONTRIP Offer");
+  assert.match(resolved.technicalDetail || "", /HTTP 422/);
 });
 
 test("company brain classifies source mapping conflicts before retry", () => {
