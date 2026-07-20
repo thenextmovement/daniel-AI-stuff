@@ -166,6 +166,10 @@ assert.ok(feedback[0].json.p_edit_labels.includes("amount_changed"));
 assert.ok(feedback[0].json.p_edit_labels.includes("factual_correction"));
 assert.ok(feedback[0].json.p_edit_labels.includes("needs_human_review"));
 assert.equal(feedback[0].json.p_review_priority, "high");
-assert.equal(feedback[0].json.p_edit_summary.collector_version, "email-feedback-delta-v1");
+assert.equal(feedback[0].json.p_edit_summary.collector_version, "email-feedback-delta-v2-structure");
+assert.equal(feedback[0].json.p_edit_summary.draft_paragraphs, 1);
+assert.equal(feedback[0].json.p_edit_summary.sent_paragraphs, 1);
+assert.equal(feedback[0].json.p_edit_summary.draft_questions, 0);
+assert.equal(feedback[0].json.p_edit_summary.sent_questions, 0);
 
 console.log("Email feedback delta workflow tests passed.");

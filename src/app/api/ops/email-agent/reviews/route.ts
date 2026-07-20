@@ -6,6 +6,7 @@ import {
   type EmailAgentLearningStatus,
   type EmailAgentReviewFilter,
   type EmailAgentReviewPriority,
+  type EmailAgentReviewReasonCode,
 } from "@/lib/ops/email-agent-review";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 
@@ -70,10 +71,18 @@ export async function POST(request: NextRequest) {
     note?: string | null;
     operatorName?: string | null;
     idempotencyKey?: string | null;
+    reasonCodes?: EmailAgentReviewReasonCode[];
   } | null;
   const note = body?.note?.trim() || "";
   const operatorName = body?.operatorName?.trim() || "";
   const idempotencyKey = body?.idempotencyKey?.trim() || "";
+  const reasonCodes = Array.isArray(body?.reasonCodes) ? [...new Set(body.reasonCodes)] : [];
+  const allowedReasonCodes = new Set<EmailAgentReviewReasonCode>([
+    "too_long", "too_short", "wrong_tone", "wrong_greeting", "wrong_closing",
+    "poor_structure", "direct_answer_first", "avoid_repetition", "minor_formatting",
+    "insufficient_research", "factual_error", "attachment_missed", "price_or_offer_error",
+    "unnecessary_internal_deferral", "missing_customer_question", "unsupported_commitment", "other",
+  ]);
   if (
     !body
     || !Number.isInteger(body.feedbackId)
@@ -82,6 +91,9 @@ export async function POST(request: NextRequest) {
     || note.length > 2000
     || operatorName.length < 2
     || operatorName.length > 160
+    || reasonCodes.length < 1
+    || reasonCodes.length > 8
+    || reasonCodes.some((code) => !allowedReasonCodes.has(code))
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)
   ) {
     return NextResponse.json({ ok: false, error: "invalid_request" }, { status: 400 });
@@ -91,6 +103,7 @@ export async function POST(request: NextRequest) {
     const result = await reviewEmailAgentFeedback({
       feedbackId: body.feedbackId!,
       decision: body.decision as Exclude<EmailAgentLearningStatus, "pending">,
+      reasonCodes,
       note,
       reviewer: `${access.actor}:${operatorName}`.slice(0, 200),
       idempotencyKey,

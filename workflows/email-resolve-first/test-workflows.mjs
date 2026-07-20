@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   openInboxBackfillWorkflow,
+  applyApprovedStyleProfileV3Code,
   patchResolveFirstMainWorkflow,
   selectOpenInboxCandidatesCode,
 } from "./build-workflows.mjs";
@@ -40,7 +41,7 @@ function runCode(code, input, nodeData = {}) {
 const mainTriggers = main.nodes.filter((entry) => entry.type.toLowerCase().includes("trigger"));
 assert.equal(mainTriggers.length, 1);
 assert.equal(main.nodes.length, 30);
-assert.equal(main.name, "AI Email Agent v4 — Resolve First — Draft Only");
+assert.equal(main.name, "AI Email Agent v5 — Human-Gated Learning — Draft Only");
 assert.equal(main.nodes.filter((entry) => JSON.stringify(entry).includes("createReply")).length, 1);
 assert.doesNotMatch(JSON.stringify(main), /sendMail|replyAll|\/send\b/i);
 
@@ -50,9 +51,60 @@ assert.match(promptCode, /Resolve first: before drafting, exhaust/);
 assert.match(promptCode, /vague_internal_deferral_allowed: false/);
 assert.match(promptCode, /customerReferenceMissing/);
 assert.doesNotMatch(promptCode, /If facts are missing, say that the matter will be checked internally/);
+assert.match(promptCode, /const styleCategory/);
+
+const fetchStyleNode = node(main, "Fetch Approved Style Profile");
+assert.match(fetchStyleNode.parameters.url, /get_email_agent_style_profile_v3$/);
+assert.match(fetchStyleNode.parameters.jsonBody, /styleCategory/);
+assert.equal(node(main, "Apply Approved Style Profile").parameters.jsCode, applyApprovedStyleProfileV3Code);
+
+const appliedStyle = runCode(applyApprovedStyleProfileV3Code, {
+  body: {
+    version: "email-style-profile-v3-human-gated",
+    eligible: true,
+    scope: "channel",
+    approved_sample_count: 7,
+    minimum_approved_samples: 5,
+    recommended_max_words: 72,
+    recommended_max_paragraphs: 2,
+    preferred_closing: "Beste Grüße",
+    prefer_shorter: true,
+    prefer_direct_answer: true,
+    avoid_restatement: true,
+    facts_or_customer_content_included: false,
+    fact_learning_allowed: false,
+    automatic_prompt_rewrite_allowed: false,
+    human_approval_required: true,
+  },
+}, {
+  "Build Draft Prompt": {
+    expectedLanguage: "de",
+    replyLengthClass: "simple",
+    replyLengthLimits: { max_paragraphs: 3, max_characters: 1400 },
+    systemPrompt: "BASE",
+    userContext: "CONTEXT",
+  },
+})[0].json;
+assert.equal(appliedStyle.approvedStyleProfile.eligible, true);
+assert.equal(appliedStyle.replyLengthLimits.max_paragraphs, 2);
+assert.match(appliedStyle.systemPrompt, /STYLE ONLY/);
+assert.match(appliedStyle.systemPrompt, /direct answer/);
+assert.doesNotMatch(appliedStyle.systemPrompt, /customer-specific wording from prior replies[\s\S]*(?:copy|reuse)/i);
+
+const rejectedLegacyStyle = runCode(applyApprovedStyleProfileV3Code, {
+  body: {
+    version: "email-style-profile-v2-human-gated",
+    eligible: true,
+    approved_sample_count: 50,
+    recommended_max_words: 60,
+  },
+}, { "Build Draft Prompt": { systemPrompt: "BASE", userContext: "CONTEXT" } })[0].json;
+assert.equal(rejectedLegacyStyle.approvedStyleProfile.eligible, false);
 
 const renderCode = node(main, "Validate and Render").parameters.jsCode;
 assert.match(renderCode, /unhelpful_internal_deferral/);
+assert.match(renderCode, /email-draft-quality-gate-v3/);
+assert.match(renderCode, /Apply Approved Style Profile/);
 assert.match(renderCode, /const forceFallback = validationReasons\.length > 0 \|\| meta\.possiblePromptInjection/);
 assert.doesNotMatch(renderCode, /const highRiskBlocksDraft/);
 assert.doesNotMatch(renderCode, /prüfen wir die Angaben noch einmal intern und melden uns anschließend/);
@@ -60,7 +112,7 @@ assert.doesNotMatch(renderCode, /review the details internally and get back to y
 assert.equal(node(main, "Validate and Render").onError, "continueErrorOutput");
 assert.equal(main.connections["Validate and Render"].main[1][0].node, "Build Failure Record");
 assert.match(node(main, "Build Failure Record").parameters.jsCode, /nonRetryablePolicyBlock/);
-assert.match(node(main, "Log Success").parameters.jsonBody, /email-context-v4/);
+assert.match(node(main, "Log Success").parameters.jsonBody, /email-context-v5/);
 assert.match(node(main, "Log Success").parameters.jsonBody, /resolve_first_policy/);
 
 const baseMeta = {
@@ -94,8 +146,9 @@ const directHighRisk = runCode(renderCode, {
     blocked_reasons: [],
     missing_information: [],
   }),
-}, { "Build Draft Prompt": baseMeta })[0].json;
+}, { "Apply Approved Style Profile": baseMeta })[0].json;
 assert.equal(directHighRisk.safeFallbackUsed, false);
+assert.equal(directHighRisk.qualityGate.passed, true);
 assert.doesNotMatch(directHighRisk.draftReplyText, /intern|melden uns/i);
 
 const blockedDeferral = runCode(renderCode, {
@@ -112,7 +165,7 @@ const blockedDeferral = runCode(renderCode, {
     blocked_reasons: [],
     missing_information: [],
   }),
-}, { "Build Draft Prompt": { ...baseMeta, customerReferenceMissing: true } })[0].json;
+}, { "Apply Approved Style Profile": { ...baseMeta, customerReferenceMissing: true } })[0].json;
 assert.equal(blockedDeferral.safeFallbackUsed, true);
 assert.ok(blockedDeferral.validationReasons.includes("unhelpful_internal_deferral"));
 assert.match(blockedDeferral.draftReplyText, /Bestellnummer oder Angebotsnummer/);
@@ -132,7 +185,7 @@ assert.throws(() => runCode(renderCode, {
     blocked_reasons: [],
     missing_information: ["Aktueller Produktions- und Versandstatus – muss intern geprüft werden, kann nicht vom Kunden geliefert werden."],
   }),
-}, { "Build Draft Prompt": baseMeta }), /INTERNAL_EVIDENCE_MISSING/);
+}, { "Apply Approved Style Profile": baseMeta }), /INTERNAL_EVIDENCE_MISSING/);
 
 for (const paragraph of [
   "Damit wir dir weiterhelfen können, wird sich unser Team die Situation genau ansehen und eine passende Lösung finden.",
@@ -152,8 +205,26 @@ for (const paragraph of [
       blocked_reasons: [],
       missing_information: ["Interne Entscheidung über die konkrete Maßnahme ist erforderlich."],
     }),
-  }, { "Build Draft Prompt": baseMeta }), /INTERNAL_EVIDENCE_MISSING/);
+  }, { "Apply Approved Style Profile": baseMeta }), /INTERNAL_EVIDENCE_MISSING/);
 }
+
+const genericOpening = runCode(renderCode, {
+  text: JSON.stringify({
+    category: "general",
+    confidence: 0.9,
+    language: "de",
+    risk_level: "low",
+    needs_human_approval: true,
+    greeting: "Guten Tag Anna,",
+    paragraphs: ["Vielen Dank für Ihre Nachricht.", "Die angefragte Information ist im vorhandenen Vorgang eindeutig hinterlegt."],
+    closing: "Viele Grüße",
+    facts_used: [],
+    blocked_reasons: [],
+    missing_information: [],
+  }),
+}, { "Apply Approved Style Profile": { ...baseMeta, deterministicRiskLevel: "low" } })[0].json;
+assert.ok(genericOpening.qualityGate.soft_flags.includes("generic_thank_you_before_answer"));
+assert.equal(genericOpening.qualityGate.automatic_send_allowed, false);
 
 const backfillTriggers = openInboxBackfillWorkflow.nodes.filter((entry) => entry.type.toLowerCase().includes("trigger"));
 assert.equal(backfillTriggers.length, 1);

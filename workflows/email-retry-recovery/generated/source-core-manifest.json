@@ -14,11 +14,11 @@
     },
     {
       "name": "Apply Approved Style Profile",
-      "sha256": "71d0a07fde5ad0eb08b8b9107de210e3baaff28e63ca7def4cdec9515f27461f"
+      "sha256": "30cfe3aa83667777891eb6e65289cc222a11ea644b1ac18e69cac4c3a915dca1"
     },
     {
       "name": "Build Draft Prompt",
-      "sha256": "f20b4d8da5ac0426803cdfafc0044b5956c04d74e60fbfe402b74ba71b766e26"
+      "sha256": "f6edc64ef3556425000ee312d3bc15fed84ee41d45c1f1eeaaf34073d7b19d62"
     },
     {
       "name": "Build Evidence Request",
@@ -42,7 +42,7 @@
     },
     {
       "name": "Fetch Approved Style Profile",
-      "sha256": "b7b0923bb551ea486a8022537dd0813a924556f452c84d49122eaecd477faa0b"
+      "sha256": "9de542b38dc0808b4aeb13cb869ef50c7da768aa6aebd8f05db41a360c714cbf"
     },
     {
       "name": "Fetch Attachment Metadata",
@@ -86,7 +86,7 @@
     },
     {
       "name": "Validate and Render",
-      "sha256": "8667bee0dabf8c392af5d363b6429e41912a67998ef3d514a163439770658574"
+      "sha256": "e314caea2797d72ece2cc55dd73d978b9d74720ec9d4cde183ab805be9964432"
     }
   ],
   "intentionally_patched_nodes": [

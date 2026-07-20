@@ -2,6 +2,26 @@ import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 
 export type EmailAgentLearningStatus = "pending" | "approved" | "rejected" | "ignored";
 export type EmailAgentReviewPriority = "low" | "normal" | "high";
+export type EmailAgentReviewReasonCode =
+  | "too_long"
+  | "too_short"
+  | "wrong_tone"
+  | "wrong_greeting"
+  | "wrong_closing"
+  | "poor_structure"
+  | "direct_answer_first"
+  | "avoid_repetition"
+  | "minor_formatting"
+  | "insufficient_research"
+  | "factual_error"
+  | "attachment_missed"
+  | "price_or_offer_error"
+  | "unnecessary_internal_deferral"
+  | "missing_customer_question"
+  | "unsupported_commitment"
+  | "other";
+export type EmailAgentImprovementCandidateType = "knowledge" | "resolver" | "policy" | "manual_review";
+export type EmailAgentImprovementCandidateStatus = "pending" | "resolved" | "rejected";
 
 export type EmailAgentEvidenceCard = {
   version?: string;
@@ -76,6 +96,11 @@ type EmailAgentReviewRow = {
   human_reviewed_at: string | null;
   collected_at: string | null;
   evidence_card: EmailAgentEvidenceCard | null;
+  review_reason_codes: EmailAgentReviewReasonCode[] | null;
+  improvement_candidate_id: string | null;
+  improvement_candidate_type: EmailAgentImprovementCandidateType | null;
+  improvement_candidate_status: EmailAgentImprovementCandidateStatus | null;
+  improvement_candidate_created_at: string | null;
 };
 
 export type EmailAgentReviewCase = {
@@ -108,6 +133,11 @@ export type EmailAgentReviewCase = {
   humanReviewedAt: string | null;
   collectedAt: string | null;
   evidenceCard: EmailAgentEvidenceCard;
+  reviewReasonCodes: EmailAgentReviewReasonCode[];
+  improvementCandidateId: string | null;
+  improvementCandidateType: EmailAgentImprovementCandidateType | null;
+  improvementCandidateStatus: EmailAgentImprovementCandidateStatus | null;
+  improvementCandidateCreatedAt: string | null;
 };
 
 export type EmailAgentReviewFilter =
@@ -150,6 +180,11 @@ function normalizeRow(row: EmailAgentReviewRow): EmailAgentReviewCase {
     humanReviewedAt: row.human_reviewed_at,
     collectedAt: row.collected_at,
     evidenceCard: row.evidence_card || {},
+    reviewReasonCodes: Array.isArray(row.review_reason_codes) ? row.review_reason_codes : [],
+    improvementCandidateId: row.improvement_candidate_id,
+    improvementCandidateType: row.improvement_candidate_type,
+    improvementCandidateStatus: row.improvement_candidate_status,
+    improvementCandidateCreatedAt: row.improvement_candidate_created_at,
   };
 }
 
@@ -162,7 +197,7 @@ export async function listEmailAgentReviewCases(input: {
   const requestedLimit = Number(input.limit);
   const query: Record<string, string | number> = {
     select:
-      "log_id,draft_created_at,source_message_id,conversation_id,from_email,from_name,subject,channel,category,risk_level,reply_length_class,review_status,validation_reasons,draft_id,draft_body_text,feedback_id,sent_message_id,sent_internet_message_id,sent_body_text,edit_ratio,edit_labels,change_profile,review_priority,learning_status,human_review_note,human_reviewed_by,human_reviewed_at,collected_at,evidence_card",
+      "log_id,draft_created_at,source_message_id,conversation_id,from_email,from_name,subject,channel,category,risk_level,reply_length_class,review_status,validation_reasons,draft_id,draft_body_text,feedback_id,sent_message_id,sent_internet_message_id,sent_body_text,edit_ratio,edit_labels,change_profile,review_priority,learning_status,human_review_note,human_reviewed_by,human_reviewed_at,collected_at,evidence_card,review_reason_codes,improvement_candidate_id,improvement_candidate_type,improvement_candidate_status,improvement_candidate_created_at",
     order: "draft_created_at.desc",
     limit: Number.isFinite(requestedLimit) ? Math.max(1, Math.min(250, Math.trunc(requestedLimit))) : 100,
   };
@@ -171,13 +206,14 @@ export async function listEmailAgentReviewCases(input: {
   else if (status !== "all") query.learning_status = `eq.${status}`;
   if (input.priority && input.priority !== "all") query.review_priority = `eq.${input.priority}`;
 
-  const rows = await supabaseRequest<EmailAgentReviewRow[]>("email_agent_review_overview", undefined, query);
+  const rows = await supabaseRequest<EmailAgentReviewRow[]>("email_agent_learning_review_overview_v3", undefined, query);
   return rows.map(normalizeRow);
 }
 
 export async function reviewEmailAgentFeedback(input: {
   feedbackId: number;
   decision: Exclude<EmailAgentLearningStatus, "pending">;
+  reasonCodes: EmailAgentReviewReasonCode[];
   note: string;
   reviewer: string;
   idempotencyKey: string;
@@ -189,9 +225,12 @@ export async function reviewEmailAgentFeedback(input: {
     learning_status: EmailAgentLearningStatus;
     human_reviewed_at: string;
     audit_id: string;
-  }>("review_email_agent_feedback_v2", {
+    reason_codes: EmailAgentReviewReasonCode[];
+    improvement_candidate_id: string | null;
+  }>("review_email_agent_feedback_v3", {
     p_feedback_id: input.feedbackId,
     p_decision: input.decision,
+    p_reason_codes: input.reasonCodes,
     p_note: input.note,
     p_reviewer: input.reviewer,
     p_idempotency_key: input.idempotencyKey,

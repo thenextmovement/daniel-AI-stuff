@@ -21,6 +21,7 @@ import type {
   EmailAgentReviewCase,
   EmailAgentReviewFilter,
   EmailAgentReviewPriority,
+  EmailAgentReviewReasonCode,
 } from "@/lib/ops/email-agent-review";
 import type {
   EmailAgentOperationalQuality,
@@ -72,6 +73,34 @@ const labelNames: Record<string, string> = {
   whatsapp_style: "WhatsApp-Stil",
   needs_human_review: "Menschliche Prüfung wichtig",
 };
+
+const reviewReasonOptions: Array<{
+  code: EmailAgentReviewReasonCode;
+  label: string;
+  kind: "style" | "improvement";
+}> = [
+  { code: "too_long", label: "Zu ausführlich", kind: "style" },
+  { code: "too_short", label: "Zu knapp", kind: "style" },
+  { code: "wrong_tone", label: "Falscher Ton", kind: "style" },
+  { code: "wrong_greeting", label: "Falsche Anrede", kind: "style" },
+  { code: "wrong_closing", label: "Falscher Abschluss", kind: "style" },
+  { code: "poor_structure", label: "Schlecht gegliedert", kind: "style" },
+  { code: "direct_answer_first", label: "Antwort muss zuerst kommen", kind: "style" },
+  { code: "avoid_repetition", label: "Kundenfrage nicht wiederholen", kind: "style" },
+  { code: "minor_formatting", label: "Nur Formatierung", kind: "style" },
+  { code: "insufficient_research", label: "Nicht ausreichend recherchiert", kind: "improvement" },
+  { code: "factual_error", label: "Falscher Sachverhalt", kind: "improvement" },
+  { code: "attachment_missed", label: "Anhang übersehen", kind: "improvement" },
+  { code: "price_or_offer_error", label: "Preis/Angebot falsch", kind: "improvement" },
+  { code: "unnecessary_internal_deferral", label: "Unnötig intern abklären", kind: "improvement" },
+  { code: "missing_customer_question", label: "Wichtige Rückfrage fehlt", kind: "improvement" },
+  { code: "unsupported_commitment", label: "Unbelegte Zusage", kind: "improvement" },
+  { code: "other", label: "Anderer Grund", kind: "improvement" },
+];
+
+const styleOnlyReasonCodes = new Set(
+  reviewReasonOptions.filter((option) => option.kind === "style").map((option) => option.code),
+);
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "Kein Zeitpunkt";
@@ -140,6 +169,7 @@ function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }
   const drafts = quality.draft_quality_gate;
   const retry = quality.retry_health;
   const retryOpen = retry.due_retry_count + retry.stale_processing_count;
+  const learning = quality.learning_quality;
   const decisionTone = decision.passed ? "border-emerald-200 bg-emerald-50" : "border-amber-300 bg-amber-50";
   const draftTone = drafts.passed
     ? "border-emerald-200 bg-emerald-50"
@@ -148,7 +178,7 @@ function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }
       : "border-rose-200 bg-rose-50";
 
   return (
-    <section className="grid gap-3 xl:grid-cols-[1.1fr_1fr_1fr_1fr]">
+    <section className="grid gap-3 xl:grid-cols-5">
       <div className="rounded-[22px] border border-stone-900 bg-stone-950 p-5 text-white">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Produktionsstufe</p>
         <div className="mt-3 flex items-start gap-3">
@@ -194,6 +224,19 @@ function QualityGatePanel({ quality }: { quality: EmailAgentOperationalQuality }
         </div>
         <p className="mt-2 text-sm leading-6 text-stone-700">
           Letzte 24 h gerettet {retry.recovered_24h} · endgültig gesperrt {retry.failed_final_count}
+        </p>
+      </div>
+
+      <div className={`rounded-[22px] border p-5 ${learning.style_profile.eligible ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50"}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Geprüftes Stilprofil</p>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-stone-950">{learning.style_profile.eligible ? "Aktiv" : "Sammelt Freigaben"}</h2>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-stone-800">
+            {learning.style_profile.approved_sample_count}/{learning.style_profile.minimum_approved_samples}
+          </span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-stone-700">
+          {learning.feedback.pending} Lernreviews offen · {learning.improvement_candidates.pending} Verbesserungen vorgemerkt
         </p>
       </div>
     </section>
@@ -304,19 +347,24 @@ function ReviewCard({
   operatorName,
   note,
   saving,
+  selectedReasons,
   onNoteChange,
+  onReasonToggle,
   onDecision,
 }: {
   item: EmailAgentReviewCase;
   operatorName: string;
   note: string;
   saving: boolean;
+  selectedReasons: EmailAgentReviewReasonCode[];
   onNoteChange: (value: string) => void;
+  onReasonToggle: (value: EmailAgentReviewReasonCode) => void;
   onDecision: (decision: Exclude<EmailAgentLearningStatus, "pending">) => Promise<void>;
 }) {
   const percent = item.editRatio === null ? null : Math.round(item.editRatio * 100);
   const learningReady = item.feedbackId !== null;
-  const reviewReady = operatorName.trim().length >= 2 && note.trim().length >= 8;
+  const reviewReady = operatorName.trim().length >= 2 && note.trim().length >= 8 && selectedReasons.length > 0;
+  const containsImprovementReason = selectedReasons.some((reason) => !styleOnlyReasonCodes.has(reason));
 
   return (
     <article className="overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_14px_40px_rgba(24,20,16,0.07)]">
@@ -328,6 +376,11 @@ function ReviewCard({
               <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${learningClass(item.learningStatus)}`}>{learningLabel(item.learningStatus)}</span>
               {item.reviewPriority ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${priorityClass(item.reviewPriority)}`}>Review {item.reviewPriority === "high" ? "wichtig" : item.reviewPriority === "normal" ? "normal" : "niedrig"}</span> : null}
               <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-semibold text-stone-700">{channelLabel(item.channel)}</span>
+              {item.improvementCandidateStatus === "pending" ? (
+                <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-900">
+                  Verbesserungsprüfung: {item.improvementCandidateType || "offen"}
+                </span>
+              ) : null}
             </div>
             <h2 className="mt-3 break-words text-xl font-semibold tracking-tight text-stone-950">{item.subject || "Ohne Betreff"}</h2>
             <p className="mt-1 text-sm text-stone-600">
@@ -369,13 +422,44 @@ function ReviewCard({
 
         {learningReady ? (
           <section className="rounded-2xl border border-stone-200 bg-[#fffdf9] p-4">
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-stone-700">Was wurde verbessert? Mindestens einen Grund auswählen.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {reviewReasonOptions.map((option) => {
+                  const selected = selectedReasons.includes(option.code);
+                  return (
+                    <button
+                      key={option.code}
+                      type="button"
+                      aria-pressed={selected}
+                      disabled={saving}
+                      onClick={() => onReasonToggle(option.code)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${selected
+                        ? option.kind === "style"
+                          ? "border-stone-950 bg-stone-950 text-white"
+                          : "border-amber-700 bg-amber-700 text-white"
+                        : option.kind === "style"
+                          ? "border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+                          : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"}`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {containsImprovementReason ? (
+                <p className="mt-2 text-xs leading-5 text-amber-800">
+                  Dieser Grund darf nicht als Stil gelernt werden. Bei „Nicht lernen“ oder „Ignorieren“ wird automatisch eine separate Wissens-, Resolver- oder Regelprüfung vorgemerkt – ohne Kundeninhalt zu kopieren.
+                </p>
+              ) : null}
+            </div>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
               <label className="flex-1 text-xs font-semibold text-stone-700">
                 Interne Lernnotiz
                 <textarea value={note} onChange={(event) => onNoteChange(event.target.value)} maxLength={2000} rows={2} placeholder="Pflicht: Warum ist diese Entscheidung richtig?" className="mt-2 w-full resize-y rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal text-stone-900 outline-none transition focus:border-stone-600 focus:ring-2 focus:ring-stone-950/10" />
               </label>
               <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={saving || !reviewReady} onClick={() => void onDecision("approved")} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" disabled={saving || !reviewReady || containsImprovementReason} onClick={() => void onDecision("approved")} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50">
                   <Check className="h-4 w-4" /> Zum Lernen freigeben
                 </button>
                 <button type="button" disabled={saving || !reviewReady} onClick={() => void onDecision("rejected")} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-900 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50">
@@ -417,6 +501,7 @@ export function EmailAgentReviewClient({
   const [filter, setFilter] = useState<EmailAgentReviewFilter>("pending");
   const [priority, setPriority] = useState<EmailAgentReviewPriority | "all">("all");
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const [reasonCodes, setReasonCodes] = useState<Record<number, EmailAgentReviewReasonCode[]>>({});
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -448,6 +533,7 @@ export function EmailAgentReviewClient({
       if (!response.ok || !payload?.ok || !payload.items) throw new Error(payload?.error || "E-Mail-Reviews konnten nicht geladen werden.");
       setItems(payload.items);
       setNotes(Object.fromEntries(payload.items.filter((item) => item.feedbackId !== null).map((item) => [item.feedbackId!, item.humanReviewNote || ""])));
+      setReasonCodes(Object.fromEntries(payload.items.filter((item) => item.feedbackId !== null).map((item) => [item.feedbackId!, item.reviewReasonCodes])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "E-Mail-Reviews konnten nicht geladen werden.");
     } finally {
@@ -518,6 +604,7 @@ export function EmailAgentReviewClient({
           note: notes[item.feedbackId] || null,
           operatorName: operatorName || null,
           idempotencyKey: crypto.randomUUID(),
+          reasonCodes: reasonCodes[item.feedbackId] || [],
         }),
       });
       const payload = (await response.json().catch(() => null)) as ReviewsResponse | null;
@@ -616,8 +703,14 @@ export function EmailAgentReviewClient({
                   item={item}
                   operatorName={operatorName}
                   note={item.feedbackId === null ? "" : notes[item.feedbackId] || ""}
+                  selectedReasons={item.feedbackId === null ? [] : reasonCodes[item.feedbackId] || []}
                   saving={item.feedbackId !== null && savingId === item.feedbackId}
                   onNoteChange={(value) => item.feedbackId !== null && setNotes((current) => ({ ...current, [item.feedbackId!]: value }))}
+                  onReasonToggle={(value) => item.feedbackId !== null && setReasonCodes((current) => {
+                    const existing = current[item.feedbackId!] || [];
+                    const next = existing.includes(value) ? existing.filter((reason) => reason !== value) : [...existing, value].slice(0, 8);
+                    return { ...current, [item.feedbackId!]: next };
+                  })}
                   onDecision={(decision) => decide(item, decision)}
                 />
               ))}

@@ -33,9 +33,95 @@ function replaceOnce(value, find, replacement, label) {
   return source.replace(find, replacement);
 }
 
+export const applyApprovedStyleProfileV3Code = String.raw`
+const base = $("Build Draft Prompt").first().json;
+const response = $input.first().json || {};
+const rawProfile = response.body ?? response;
+const structurallySafe = rawProfile
+  && rawProfile.version === "email-style-profile-v3-human-gated"
+  && rawProfile.facts_or_customer_content_included === false
+  && rawProfile.fact_learning_allowed === false
+  && rawProfile.automatic_prompt_rewrite_allowed === false
+  && rawProfile.human_approval_required === true
+  && ["category", "channel", "global"].includes(String(rawProfile.scope || ""));
+const approvedCount = structurallySafe ? Math.max(0, Number(rawProfile.approved_sample_count || 0)) : 0;
+const minimumApproved = structurallySafe ? Math.max(5, Number(rawProfile.minimum_approved_samples || 5)) : 5;
+const recommendedWords = structurallySafe ? Number(rawProfile.recommended_max_words || 0) : 0;
+const recommendedParagraphs = structurallySafe ? Number(rawProfile.recommended_max_paragraphs || 0) : 0;
+const preferredClosing = structurallySafe && ["Viele Grüße", "Beste Grüße"].includes(rawProfile.preferred_closing)
+  ? rawProfile.preferred_closing
+  : null;
+const eligible = structurallySafe
+  && rawProfile.eligible === true
+  && approvedCount >= minimumApproved
+  && Number.isFinite(recommendedWords)
+  && recommendedWords >= 8
+  && recommendedWords <= 360
+  && Number.isFinite(recommendedParagraphs)
+  && recommendedParagraphs >= 1
+  && recommendedParagraphs <= 5;
+const approvedStyleProfile = {
+  version: "email-style-profile-v3-human-gated",
+  eligible,
+  scope: structurallySafe ? String(rawProfile.scope || "global") : "global",
+  approved_sample_count: approvedCount,
+  minimum_approved_samples: minimumApproved,
+  window_days: structurallySafe ? Number(rawProfile.window_days || 90) : 90,
+  recommended_max_words: eligible ? Math.round(recommendedWords) : null,
+  recommended_max_paragraphs: eligible ? Math.round(recommendedParagraphs) : null,
+  preferred_closing: eligible && base.expectedLanguage === "de" ? preferredClosing : null,
+  prefer_shorter: eligible && rawProfile.prefer_shorter === true,
+  prefer_direct_answer: eligible && rawProfile.prefer_direct_answer === true,
+  avoid_restatement: eligible && rawProfile.avoid_restatement === true,
+  facts_or_customer_content_included: false,
+  fact_learning_allowed: false,
+  automatic_prompt_rewrite_allowed: false,
+  human_approval_required: true,
+};
+if (!eligible) {
+  return [{ json: { ...base, approvedStyleProfile } }];
+}
+
+const currentLimits = base.replyLengthLimits && typeof base.replyLengthLimits === "object"
+  ? base.replyLengthLimits
+  : { max_paragraphs: 3, max_characters: 1400 };
+const className = base.replyLengthClass || "simple";
+const minimumCharacters = className === "ack_only" ? 160 : (className === "complex" ? 700 : 360);
+const learnedCharacterLimit = Math.max(minimumCharacters, Math.round(recommendedWords * 9));
+const replyLengthLimits = {
+  max_paragraphs: Math.max(1, Math.min(Number(currentLimits.max_paragraphs || 3), Math.round(recommendedParagraphs))),
+  max_characters: Math.max(minimumCharacters, Math.min(Number(currentLimits.max_characters || 1400), learnedCharacterLimit)),
+};
+const styleInstructions = [
+  "",
+  "HUMAN-APPROVED STYLE PROFILE (STYLE ONLY):",
+  "This versioned profile is based on " + approvedCount + " explicitly approved comparisons and may control only structure, brevity, and greeting/closing style.",
+  "Use at most " + Math.round(recommendedWords) + " words and " + Math.round(recommendedParagraphs) + " body paragraphs unless a shorter complete answer is possible.",
+  approvedStyleProfile.prefer_shorter ? "Prefer the shortest complete answer." : "Stay concise without omitting a required verified answer or precise customer question.",
+  approvedStyleProfile.prefer_direct_answer ? "Put the direct answer or exact required customer action before background explanation." : "Answer directly and avoid generic preambles.",
+  approvedStyleProfile.avoid_restatement ? "Do not restate the customer's request unless one short clarification is necessary." : "Do not repeat the full customer message.",
+  approvedStyleProfile.preferred_closing ? "Use the approved German closing: " + approvedStyleProfile.preferred_closing + "." : "Use only the allowed closing for the detected language.",
+  "Never copy names, facts, amounts, dates, attachments, promises, URLs, decisions, or customer-specific wording from prior replies.",
+].join("\n");
+const styleContext = [
+  "",
+  "<HUMAN_APPROVED_STYLE_PROFILE>",
+  JSON.stringify(approvedStyleProfile),
+  "</HUMAN_APPROVED_STYLE_PROFILE>",
+].join("\n");
+
+return [{ json: {
+  ...base,
+  approvedStyleProfile,
+  replyLengthLimits,
+  systemPrompt: String(base.systemPrompt || "") + styleInstructions,
+  userContext: String(base.userContext || "") + styleContext,
+} }];
+`;
+
 export function patchResolveFirstMainWorkflow(input) {
   const workflow = structuredClone(input);
-  workflow.name = "AI Email Agent v4 — Resolve First — Draft Only";
+  workflow.name = "AI Email Agent v5 — Human-Gated Learning — Draft Only";
 
   const prompt = findNode(workflow, "Build Draft Prompt");
   prompt.parameters.jsCode = replaceOnce(
@@ -124,8 +210,48 @@ const verifiedContext = {`,
   verifiedFactsText,`,
     "Build Draft Prompt resolve-first output",
   );
+  prompt.parameters.jsCode = replaceOnce(
+    prompt.parameters.jsCode,
+    String.raw`const attachmentAnalysis = attachmentContext.attachmentAnalysis || { files: [], warnings: [] };`,
+    String.raw`const styleCategorySource = (normalized.subject + ' ' + currentText).toLowerCase();
+const styleCategory = /\b(rechnung|invoice|zahlung|payment|gutschrift|credit note)\b/i.test(styleCategorySource)
+  ? 'invoice'
+  : (/\b(reklam|beschwer|problem|defekt|schaden|complaint|damage)\w*/i.test(styleCategorySource)
+    ? 'complaint'
+    : (/\b(rücksend|retoure|widerruf|return|refund)\w*/i.test(styleCategorySource)
+      ? 'returns'
+      : (/\b(liefer|versand|tracking|zustellung|shipping|delivery)\w*/i.test(styleCategorySource)
+        ? 'shipping'
+        : (/\b(produkt|schild|neon|montage|druckdatei|artwork|product)\w*/i.test(styleCategorySource)
+          ? 'product'
+          : 'general'))));
+const attachmentAnalysis = attachmentContext.attachmentAnalysis || { files: [], warnings: [] };`,
+    "Build Draft Prompt deterministic style category",
+  );
+  prompt.parameters.jsCode = replaceOnce(
+    prompt.parameters.jsCode,
+    String.raw`  replyLengthClass,
+  replyLengthLimits,`,
+    String.raw`  replyLengthClass,
+  replyLengthLimits,
+  styleCategory,`,
+    "Build Draft Prompt style category output",
+  );
+
+  const fetchStyle = findNode(workflow, "Fetch Approved Style Profile");
+  fetchStyle.parameters.url = "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/get_email_agent_style_profile_v3";
+  fetchStyle.parameters.jsonBody = '={{ JSON.stringify({ p_channel: $("Build Draft Prompt").first().json.messageSource || null, p_category: $("Build Draft Prompt").first().json.styleCategory || null, p_reply_length_class: $("Build Draft Prompt").first().json.replyLengthClass || null }) }}';
+
+  const applyStyle = findNode(workflow, "Apply Approved Style Profile");
+  applyStyle.parameters.jsCode = applyApprovedStyleProfileV3Code;
 
   const render = findNode(workflow, "Validate and Render");
+  render.parameters.jsCode = replaceOnce(
+    render.parameters.jsCode,
+    String.raw`const meta = $('Build Draft Prompt').first().json;`,
+    String.raw`const meta = $('Apply Approved Style Profile').first().json;`,
+    "Validate and Render uses applied style contract",
+  );
   render.parameters.jsCode = replaceOnce(
     render.parameters.jsCode,
     String.raw`if (/\b(angesehen|geöffnet|gelesen|aufgerufen|viewed|opened|read|accessed)\b/i.test(draftPlain)) validationReasons.push('internal_visibility_disclosure');`,
@@ -133,6 +259,19 @@ const verifiedContext = {`,
 const vagueDeferralPattern = /\b(?:intern(?:e|en|er)?\s+(?:prüfen|klären|abklären|nachfragen|rücksprache|geprüft|geklärt|abgeklärt|nachgefragt|weitergeleitet|abgestimmt|besprochen)|(?:muss|soll|wird|kann).{0,40}intern.{0,40}(?:geprüft|geklärt|abgeklärt|nachgefragt|abgestimmt)|(?:wird|werden)\s+sich\s+(?:unser\s+team|jemand|die\s+zuständige\s+person).{0,100}(?:ansehen|anschauen|prüfen|klären|melden|in\s+verbindung\s+setzen|lösung\s+finden)|(?:unser\s+team|wir|ich).{0,100}(?:ansehen|anschauen|prüfen|klären|melden|in\s+verbindung\s+setzen|lösung\s+finden)|(?:noch(?:mal| einmal)\s+)?(?:intern\s+)?(?:prüfen|klären)\s+(?:wir|ich)|wir\s+(?:prüfen|klären).{0,80}(?:melden uns|geben bescheid)|(?:wir|ich)\s+melden?\s+(?:uns|mich).{0,80}(?:anschließend|danach|später|wieder)|(?:review|check|clarify)\s+(?:this\s+)?internally|(?:we|i)\s+will\s+get\s+back\s+to\s+you)\b/i;
 if (vagueDeferralPattern.test(draftPlain)) validationReasons.push('unhelpful_internal_deferral');`,
     "Validate and Render deferral block",
+  );
+  render.parameters.jsCode = replaceOnce(
+    render.parameters.jsCode,
+    String.raw`if (vagueDeferralPattern.test(draftPlain)) validationReasons.push('unhelpful_internal_deferral');`,
+    String.raw`if (vagueDeferralPattern.test(draftPlain)) validationReasons.push('unhelpful_internal_deferral');
+const modelQuestionCount = (draftPlain.match(/\?/g) || []).length;
+const modelQuestionLimit = replyLengthClass === 'ack_only' ? 0 : (replyLengthClass === 'complex' ? 2 : 1);
+if (modelQuestionCount > modelQuestionLimit) validationReasons.push('too_many_customer_questions');
+const genericOpeningPattern = /^(?:vielen dank|danke|thank you)\b.{0,100}(?:nachricht|message)[.!]?$/i;
+const directAnswerSoftFlag = replyLengthClass !== 'ack_only'
+  && paragraphs.length > 1
+  && genericOpeningPattern.test(String(paragraphs[0] || '').trim());`,
+    "Validate and Render deterministic quality prechecks",
   );
   render.parameters.jsCode = replaceOnce(
     render.parameters.jsCode,
@@ -223,6 +362,72 @@ if (forceFallback) {
     closing = 'Viele Grüße';`,
     "Validate and Render German useful fallback",
   );
+  render.parameters.jsCode = replaceOnce(
+    render.parameters.jsCode,
+    String.raw`const signature = "<br><br>`,
+    String.raw`const finalPlain = [greeting, ...paragraphs, closing].join('\n');
+const finalQuestionCount = (finalPlain.match(/\?/g) || []).length;
+const finalQuestionLimit = replyLengthClass === 'ack_only' ? 0 : (replyLengthClass === 'complex' ? 2 : 1);
+const finalWordCount = finalPlain.split(/\s+/).filter(Boolean).length;
+const finalHasMarkup = /<[^>]+>|\x60{3}|\[[^\]]+\]\([^\)]+\)/.test(finalPlain);
+const finalHasDeferral = vagueDeferralPattern.test(finalPlain);
+const finalHasUnsafeCommitment = /(garantiert|verbindlich|definitiv|auf jeden fall|wir garantieren|wir liefern am|kommt sicher am|wir erstatten|wir gewähren|gutschrift erstellt|kostenlos|gratis|\d+\s*%\s*rabatt|kulanz gewährt)/i.test(finalPlain);
+const needsCustomerAction = meta.customerReferenceMissing === true || safeMissingInformation.length > 0 || missingAttachmentRequests.length > 0;
+const hasPreciseCustomerAction = !needsCustomerAction || /\b(bitte|schick|senden sie|sende|send us|please send|teilen sie|nenn|provide)\w*/i.test(finalPlain);
+const closingValidAfterRender = expectedLanguage === 'de'
+  ? ['Viele Grüße', 'Beste Grüße'].includes(closing)
+  : closing === 'Best regards';
+const learnedWordLimit = Number(meta.approvedStyleProfile?.recommended_max_words || 0);
+const effectiveWordLimit = meta.approvedStyleProfile?.eligible === true && learnedWordLimit > 0
+  ? learnedWordLimit
+  : (replyLengthClass === 'ack_only' ? 80 : (replyLengthClass === 'complex' ? 360 : 180));
+const hardChecks = {
+  json_schema_valid: !validationReasons.includes('invalid_json') && !validationReasons.includes('invalid_output_schema'),
+  grounded_claims_only: !validationReasons.some((reason) => ['invalid_fact_references', 'unverified_amount', 'unverified_reference', 'missing_fact_references', 'attachment_evidence_mismatch'].includes(reason)),
+  no_vague_internal_deferral: !finalHasDeferral,
+  no_unsafe_commitment: !finalHasUnsafeCommitment,
+  precise_customer_action_when_needed: hasPreciseCustomerAction,
+  question_count_within_limit: finalQuestionCount <= finalQuestionLimit,
+  paragraphs_within_limit: paragraphs.length >= 1 && paragraphs.length <= Number(replyLengthLimits.max_paragraphs || 3),
+  words_within_limit: finalWordCount <= effectiveWordLimit,
+  closing_valid: closingValidAfterRender,
+  plain_text_only: !finalHasMarkup,
+};
+const softFlags = [];
+if (directAnswerSoftFlag && !forceFallback) softFlags.push('generic_thank_you_before_answer');
+if (paragraphs.length > 1 && paragraphs.some((paragraph, index) => index > 0 && paragraph === paragraphs[index - 1])) softFlags.push('repeated_paragraph');
+if (meta.approvedStyleProfile?.prefer_direct_answer === true && directAnswerSoftFlag && !forceFallback) softFlags.push('approved_direct_answer_preference_missed');
+if (meta.approvedStyleProfile?.avoid_restatement === true && /\b(?:sie schreiben|du schreibst|wie von ihnen beschrieben|as you mentioned)\b/i.test(finalPlain)) softFlags.push('approved_avoid_restatement_preference_missed');
+const qualityGate = {
+  version: 'email-draft-quality-gate-v3',
+  passed: Object.values(hardChecks).every(Boolean),
+  hard_checks: hardChecks,
+  soft_flags: [...new Set(softFlags)],
+  word_count: finalWordCount,
+  word_limit: effectiveWordLimit,
+  paragraph_count: paragraphs.length,
+  question_count: finalQuestionCount,
+  automatic_send_allowed: false,
+  human_approval_required: true,
+};
+if (!qualityGate.passed) {
+  const failedChecks = Object.entries(hardChecks).filter(([, passed]) => !passed).map(([name]) => name);
+  throw new Error('QUALITY_GATE_FAILED: ' + failedChecks.join(','));
+}
+
+const signature = "<br><br>`,
+    "Validate and Render post-generation quality gate",
+  );
+  render.parameters.jsCode = replaceOnce(
+    render.parameters.jsCode,
+    String.raw`  usedFactIds: [...new Set(factUseIds)].slice(0, 20),
+  draftReplyText,`,
+    String.raw`  usedFactIds: [...new Set(factUseIds)].slice(0, 20),
+  approvedStyleProfile: meta.approvedStyleProfile || null,
+  qualityGate,
+  draftReplyText,`,
+    "Validate and Render style and quality output",
+  );
 
   render.onError = "continueErrorOutput";
   workflow.connections["Validate and Render"] = {
@@ -237,7 +442,7 @@ if (forceFallback) {
     buildFailure.parameters.jsCode,
     String.raw`const retryable = statusCode === 0
   || statusCode === 404`,
-    String.raw`const nonRetryablePolicyBlock = /^INTERNAL_EVIDENCE_MISSING:/i.test(message);
+    String.raw`const nonRetryablePolicyBlock = /^(?:INTERNAL_EVIDENCE_MISSING|QUALITY_GATE_FAILED):/i.test(message);
 const retryable = !nonRetryablePolicyBlock && (statusCode === 0
   || statusCode === 404`,
     "Build Failure internal-only policy gate start",
@@ -269,6 +474,43 @@ const retryable = !nonRetryablePolicyBlock && (statusCode === 0
         human_approval_required: true,
       },`,
     "Log Success resolve-first audit",
+  );
+  logSuccess.parameters.jsonBody = replaceOnce(
+    logSuccess.parameters.jsonBody,
+    String.raw`      approved_style_profile: r.approvedStyleProfile || null,
+      resolve_first_policy: {`,
+    String.raw`      approved_style_profile: r.approvedStyleProfile || null,
+      quality_gate: r.qualityGate || null,
+      resolve_first_policy: {`,
+    "Log Success quality gate audit",
+  );
+  logSuccess.parameters.jsonBody = replaceOnce(
+    logSuccess.parameters.jsonBody,
+    String.raw`      profile_version: r.approvedStyleProfile?.version || "email-style-profile-v1",`,
+    String.raw`      profile_version: r.approvedStyleProfile?.version || "email-style-profile-v3-human-gated",`,
+    "Log Success learning profile version",
+  );
+  logSuccess.parameters.jsonBody = replaceOnce(
+    logSuccess.parameters.jsonBody,
+    String.raw`      recommended_max_words: r.approvedStyleProfile?.recommended_max_words ?? null,
+      facts_or_customer_content_included: false,`,
+    String.raw`      recommended_max_words: r.approvedStyleProfile?.recommended_max_words ?? null,
+      recommended_max_paragraphs: r.approvedStyleProfile?.recommended_max_paragraphs ?? null,
+      prefer_direct_answer: Boolean(r.approvedStyleProfile?.prefer_direct_answer),
+      avoid_restatement: Boolean(r.approvedStyleProfile?.avoid_restatement),
+      facts_or_customer_content_included: false,`,
+    "Log Success learning profile metrics",
+  );
+  logSuccess.parameters.jsonBody = replaceOnce(
+    logSuccess.parameters.jsonBody,
+    String.raw`    safety: {`,
+    String.raw`    quality_gate: r.qualityGate || null,
+    safety: {`,
+    "Log Success evidence quality gate",
+  );
+  logSuccess.parameters.jsonBody = logSuccess.parameters.jsonBody.replace(
+    'snapshot_version: "email-context-v4"',
+    'snapshot_version: "email-context-v5"',
   );
 
   return workflow;

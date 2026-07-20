@@ -235,6 +235,16 @@ function lastLine(value) {
   return lines[lines.length - 1] || "";
 }
 
+function bodyParagraphCount(value) {
+  const parts = String(value || "")
+    .replace(/\r/g, "")
+    .split(/\n\s*\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 2) return Math.max(1, parts.length);
+  return Math.max(1, Math.min(8, parts.length - 2));
+}
+
 function greetingStyle(value) {
   const line = firstLine(value).toLowerCase();
   if (/^(hallo|hi|hey)\b/.test(line)) return "informal";
@@ -291,6 +301,8 @@ for (const item of $input.all()) {
   const sentNormalized = normalize(sentText);
   const draftWords = draftNormalized.split(/\s+/).filter(Boolean).length;
   const sentWords = sentNormalized.split(/\s+/).filter(Boolean).length;
+  const draftParagraphs = bodyParagraphCount(draftText);
+  const sentParagraphs = bodyParagraphCount(sentText);
   const draftAmounts = extractAmounts(draftText);
   const sentAmounts = extractAmounts(sentText);
   const draftDates = extractDates(draftText);
@@ -362,7 +374,12 @@ for (const item of $input.all()) {
       draft_words: draftWords,
       sent_words: sentWords,
       word_delta: sentWords - draftWords,
-      collector_version: "email-feedback-delta-v1",
+      draft_paragraphs: draftParagraphs,
+      sent_paragraphs: sentParagraphs,
+      paragraph_delta: sentParagraphs - draftParagraphs,
+      draft_questions: draftQuestions,
+      sent_questions: sentQuestions,
+      collector_version: "email-feedback-delta-v2-structure",
     },
     p_edit_labels: uniqueLabels,
     p_change_profile: {
@@ -397,6 +414,8 @@ for (const item of $input.all()) {
         sent_closing_style: sentClosing,
         shortened: uniqueLabels.includes("shortened"),
         expanded: uniqueLabels.includes("expanded"),
+        draft_paragraphs: draftParagraphs,
+        sent_paragraphs: sentParagraphs,
       },
       source: {
         channel: candidate.message_source || "external_email",
