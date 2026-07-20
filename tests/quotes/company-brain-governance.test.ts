@@ -89,6 +89,46 @@ test("workflow incident reconciliation is event driven, private and reversible",
   assert.match(rollback, /drop function if exists public\.preserve_company_brain_specific_workflow_cause/i);
 });
 
+test("closed-loop workflow attempts are event driven, private, serialized and reversible", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260720185649_company_brain_closed_loop_control.sql",
+    "utf8",
+  );
+  const rollback = readFileSync(
+    "supabase/rollbacks/20260720185649_company_brain_closed_loop_control_rollback.sql",
+    "utf8",
+  );
+
+  assert.match(migration, /create table if not exists public\.company_brain_workflow_attempts/i);
+  assert.match(migration, /after insert on public\.workflow_audit_log/i);
+  assert.match(migration, /after insert or update on public\.preview_delivery_jobs/i);
+  assert.match(migration, /company_brain_workflow_attempts enable row level security/i);
+  assert.match(migration, /revoke all on table public\.company_brain_workflow_attempts from public, anon, authenticated/i);
+  assert.match(migration, /retry_media_pipeline[\s\S]*'critical'[\s\S]*true, true/i);
+  assert.match(migration, /pg_advisory_xact_lock\(hashtextextended\(action_run\.case_key, 0\)\)/i);
+  assert.match(migration, /company_brain_case_action_busy/i);
+  assert.match(migration, /missing_terminal_event/i);
+  assert.match(rollback, /drop table if exists public\.company_brain_workflow_attempts/i);
+  assert.match(rollback, /delete from public\.company_brain_action_policies where action_key = 'retry_media_pipeline'/i);
+});
+
+test("workflow audit status contract accepts lifecycle events and has a reversible rollback", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260720192300_workflow_audit_status_contract.sql",
+    "utf8",
+  );
+  const rollback = readFileSync(
+    "supabase/rollbacks/20260720192300_workflow_audit_status_contract_rollback.sql",
+    "utf8",
+  );
+
+  for (const status of ["queued", "running", "retry_scheduled", "failed", "blocked", "sent"]) {
+    assert.match(migration, new RegExp(`'${status}'`));
+  }
+  assert.match(rollback, /rollback_original_status/);
+  assert.match(rollback, /status in \('success', 'error', 'skipped', 'pending'\)/);
+});
+
 test("Coolify deployment inspection redacts credential-shaped fields before logging", () => {
   const workflow = readFileSync(".github/workflows/coolify-secret-sync.yml", "utf8");
   assert.match(workflow, /function redactSensitiveFields\(value\)/);

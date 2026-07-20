@@ -33,15 +33,17 @@ import {
   normalizeCompanyBrainProblemType,
   type CompanyBrainProblemType,
 } from "@/lib/ops/company-brain";
+import { classifyAutomationIssueText } from "@/lib/ops/automation-issues";
 import { recordWorkflowAuditEvent } from "@/lib/ops/workflow-audit";
 import {
   addTrelloCardComment,
   addTrelloCardLabel,
   getTrelloBoardLabels,
+  getTrelloCardVisuals,
   getTrelloFailureContext,
   updateTrelloCard,
 } from "@/lib/quotes/trello";
-import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { SupabaseRestError, supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +72,7 @@ type CompanyBrainActionKey =
   | "post_trello_status_comment"
   | "repair_trello_projection"
   | "prepare_offer_retry"
+  | "retry_media_pipeline"
   | "guarded_offer_resend";
 
 type CompanyBrainActionInput = {
@@ -97,6 +100,9 @@ type CompanyBrainActionInput = {
   trelloCommentText?: string | null;
   approvalRunId?: string | null;
   approvalNote?: string | null;
+  failureAuditId?: string | null;
+  failureIssueKey?: string | null;
+  failureOccurredAt?: string | null;
 };
 
 type QuoteEmailGuardRow = {
@@ -131,6 +137,32 @@ type WorkflowDeliveryProofRow = {
   error_message?: string | null;
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
+};
+
+type PreviewDeliveryJobRow = {
+  id: string;
+  trello_card_id: string;
+  request_id?: string | null;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  idempotency_key: string;
+  last_error_code?: string | null;
+  last_error_message?: string | null;
+  n8n_execution_id?: string | null;
+  sent_at?: string | null;
+  failed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type PreviewDeliveryEnqueueResult = {
+  ok?: boolean;
+  touched?: number;
+  pending_count?: number;
+  terminal_conflict_count?: number;
+  sent_label_blocked?: number;
 };
 
 const ALLOWED_SPECIAL_CASE_KINDS: CustomerSpecialCaseKind[] = [
@@ -177,6 +209,7 @@ function normalizeActionKey(value: unknown): CompanyBrainActionKey {
     value === "post_trello_status_comment" ||
     value === "repair_trello_projection" ||
     value === "prepare_offer_retry" ||
+    value === "retry_media_pipeline" ||
     value === "guarded_offer_resend"
   ) return value;
   throw new QuoteValidationError("Unbekannte Company-Brain-Aktion.", ["Diese Aktion ist nicht freigegeben."], 422);
@@ -214,6 +247,11 @@ function trelloLabelNameKey(value: unknown) {
 function isOfferSentTrelloLabelName(value: unknown) {
   const key = trelloLabelNameKey(value);
   return key === "angebotgesendet" || key === "quotesent";
+}
+
+function isDeliverySentTrelloLabelName(value: unknown) {
+  const key = trelloLabelNameKey(value);
+  return isOfferSentTrelloLabelName(value) || key === "videogesendet" || key === "videosent";
 }
 
 function problemTypeLabel(problemType: CompanyBrainProblemType | null) {
@@ -349,10 +387,11 @@ function workflowAuditMatchesProjectionCase(
   row: WorkflowDeliveryProofRow,
   input: { requestId: string; offerId: string | null },
 ) {
-  const auditRequestId = cleanText(row.document_id, 240) || workflowAuditMetadataText(row, "request_id");
+  const auditRequestId = workflowAuditMetadataText(row, "request_id") || cleanText(row.document_id, 240);
   if (auditRequestId !== input.requestId) return false;
   if (!input.offerId) return true;
-  return workflowAuditMetadataText(row, "offer_id") === input.offerId;
+  const auditOfferId = workflowAuditMetadataText(row, "offer_id");
+  return !auditOfferId || auditOfferId === input.offerId;
 }
 
 function isFailedWorkflowAudit(row: WorkflowDeliveryProofRow) {
@@ -362,6 +401,39 @@ function isFailedWorkflowAudit(row: WorkflowDeliveryProofRow) {
 function occurredAtMs(value: string | null | undefined) {
   const parsed = Date.parse(String(value || ""));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function trelloObjectCreatedAtMs(value: string | null | undefined) {
+  const prefix = String(value || "").slice(0, 8);
+  if (!/^[0-9a-f]{8}$/i.test(prefix)) return null;
+  const timestamp = Number.parseInt(prefix, 16) * 1000;
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function workflowAuditIssueKey(row: WorkflowDeliveryProofRow) {
+  const stored = workflowAuditMetadataText(row, "automation_issue_key") ||
+    workflowAuditMetadataText(row, "failure_type") ||
+    workflowAuditMetadataText(row, "error_code");
+  const classified = classifyAutomationIssueText([
+    stored,
+    row.error_message,
+    workflowAuditMetadataText(row, "summary"),
+    workflowAuditMetadataText(row, "raw_error"),
+  ].filter(Boolean).join(" "));
+  return classified.key !== "unknown" ? classified.key : stored || "unknown";
+}
+
+async function fetchPreviewDeliveryJobs(requestId: string, trelloCardId: string) {
+  return supabaseRequest<PreviewDeliveryJobRow[]>("preview_delivery_jobs", undefined, {
+    select: "id,trello_card_id,request_id,status,attempts,max_attempts,idempotency_key,last_error_code,last_error_message,n8n_execution_id,sent_at,failed_at,metadata,created_at,updated_at",
+    or: `(trello_card_id.eq.${encodeURIComponent(trelloCardId)},request_id.eq.${encodeURIComponent(requestId)})`,
+    order: "created_at.desc",
+    limit: 30,
+  });
+}
+
+function queueJobBelongsToCase(job: PreviewDeliveryJobRow, requestId: string, trelloCardId: string) {
+  return job.trello_card_id === trelloCardId && (!job.request_id || job.request_id === requestId);
 }
 
 async function recordCompanyBrainRetryAudit(input: {
@@ -394,6 +466,55 @@ async function recordCompanyBrainRetryAudit(input: {
       recipient_email: input.recipientEmail,
       blockers: input.blockers || [],
       customer_communication_sent: input.status === "sent" || input.status === "duplicate",
+    },
+  });
+}
+
+async function recordCompanyBrainMediaRetryAudit(input: {
+  status: "blocked" | "queued";
+  requestId: string;
+  trelloCardId: string;
+  offerId: string;
+  offerNumber: string | null;
+  workflowId: string | null;
+  failureAuditId: string;
+  failureExecutionId: string | null;
+  issueKey: string;
+  attemptKey: string;
+  queueJobId?: string | null;
+  operatorName: string | null;
+  blockers?: string[];
+}) {
+  return recordWorkflowAuditEvent({
+    workflowName: "KI-Video Generator v1.0 - Neue Angebote schicken + KI-Video",
+    workflowId: input.workflowId,
+    action: "retry_media_pipeline",
+    status: input.status,
+    requestId: input.requestId,
+    trelloCardId: input.trelloCardId,
+    offerId: input.offerId,
+    offerNumber: input.offerNumber,
+    sourceEventId: input.failureAuditId,
+    idempotencyKey: input.attemptKey,
+    stage: "recovery_dispatch",
+    attemptKey: input.attemptKey,
+    attemptNumber: 1,
+    attemptLimit: 1,
+    safeActionKey: "retry_media_pipeline",
+    terminal: input.status === "blocked",
+    eventType: input.status === "queued" ? "workflow_recovery_queued" : "workflow_recovery_blocked",
+    retrySafety: input.status === "queued" ? "safe_after_review" : "blocked",
+    customer_communication_sent: false,
+    errorMessage: input.status === "blocked" ? (input.blockers || []).join(" ") : null,
+    metadata: {
+      operator_name: input.operatorName,
+      original_failure_audit_id: input.failureAuditId,
+      original_failure_execution_id: input.failureExecutionId,
+      automation_issue_key: input.issueKey,
+      queue_job_id: input.queueJobId || null,
+      recovery_source: "company_brain",
+      blockers: input.blockers || [],
+      customer_communication_sent: false,
     },
   });
 }
@@ -484,7 +605,11 @@ export async function POST(request: NextRequest) {
     const offerNumber = normalizeOfferNumber(body.offerNumber) || null;
     const trelloCardIdInput = cleanText(body.trelloCardId, 180) || null;
 
-    if (!activeActionRunId && !access.actor.local && (actionKey === "correct_customer_email" || actionKey === "guarded_offer_resend")) {
+    if (!activeActionRunId && !access.actor.local && (
+      actionKey === "correct_customer_email" ||
+      actionKey === "retry_media_pipeline" ||
+      actionKey === "guarded_offer_resend"
+    )) {
       const policy = await getCompanyBrainActionPolicy(actionKey);
       if (!actorMeetsPolicy(access.actor, policy)) {
         return jsonResponse(
@@ -506,6 +631,9 @@ export async function POST(request: NextRequest) {
           trelloCardId: trelloCardIdInput,
           recipientEmail: normalizeEmail(body.recipientEmail) || null,
           newCustomerEmail: normalizeEmail(body.newCustomerEmail) || null,
+          failureAuditId: cleanText(body.failureAuditId, 80) || null,
+          failureIssueKey: cleanText(body.failureIssueKey, 120) || null,
+          failureOccurredAt: cleanText(body.failureOccurredAt, 80) || null,
         },
       });
       if (proposed.duplicate && proposed.run.status === "resolved") {
@@ -1156,6 +1284,258 @@ export async function POST(request: NextRequest) {
         },
         audit: retryAudit,
         auditWarning,
+        customerCommunicationSent: false,
+      });
+    }
+
+    if (actionKey === "retry_media_pipeline") {
+      if (!offerId || !trelloCardId) {
+        throw new QuoteValidationError(
+          "Pipeline-Retry braucht eindeutige Identität.",
+          ["Request-ID, Offer-ID und Trello-Card-ID müssen gemeinsam aufgelöst sein."],
+          422,
+        );
+      }
+
+      const offer = await getOfferById(offerId);
+      const recordEmail = normalizeEmail(record.email);
+      const offerEmail = normalizeEmail(offer.offer.customerEmail);
+      const offerRequestId = cleanText(offer.requestId || offer.request_id, 180);
+      const recipientEmail = normalizeEmail(body.recipientEmail || record.email || offer.offer.customerEmail);
+      const blockers: string[] = [];
+
+      if (!recipientEmail || isPlaceholderCustomerEmail(recipientEmail) || !isValidEmail(recipientEmail)) {
+        blockers.push("Keine gültige Kunden-E-Mail für den späteren guarded Versand vorhanden.");
+      }
+      if (recipientEmail && isInternalNeontripEmail(recipientEmail)) {
+        blockers.push("Empfängeradresse ist intern; Pipeline-Retry an NEONTRIP-Adresse blockiert.");
+      }
+      if (offerRequestId && offerRequestId !== record.requestId) {
+        blockers.push(`Angebot gehört zu Request ${offerRequestId}, Kundenakte zu ${record.requestId}.`);
+      }
+      if (offer.trelloCardId && offer.trelloCardId !== trelloCardId) {
+        blockers.push(`Angebot gehört zu Trello-Karte ${offer.trelloCardId}, Fallprüfung zu ${trelloCardId}.`);
+      }
+      if (offerEmail && recordEmail && offerEmail !== recordEmail) {
+        blockers.push(`Angebot gehört zu ${offer.offer.customerEmail}, Kundenakte zu ${record.email}.`);
+      }
+      if (offerEmail && recipientEmail && offerEmail !== recipientEmail) {
+        blockers.push(`Empfänger ${recipientEmail} passt nicht zur Angebotsadresse ${offer.offer.customerEmail}.`);
+      }
+
+      const effectiveOfferNumber = normalizeOfferNumber(offer.offerNumber || offerNumber) || offerNumber;
+      const [workflowRows, queueRows, quoteEmailRows, outlookRows, trelloContext, trelloVisuals] = await Promise.all([
+        fetchWorkflowDeliveryProofRows({ requestId: record.requestId, offerId: offer.offerId, trelloCardId }),
+        fetchPreviewDeliveryJobs(record.requestId, trelloCardId),
+        recipientEmail ? fetchQuoteEmailGuardRows(recipientEmail, effectiveOfferNumber) : Promise.resolve([]),
+        recipientEmail ? fetchOutlookGuardRows(recipientEmail, effectiveOfferNumber) : Promise.resolve([]),
+        getTrelloFailureContext(trelloCardId),
+        getTrelloCardVisuals(trelloCardId),
+      ]);
+
+      const workflowRowsForCase = workflowRows
+        .filter((row) => workflowAuditMatchesProjectionCase(row, { requestId: record.requestId, offerId: offer.offerId }))
+        .sort((left, right) => (occurredAtMs(right.created_at) || 0) - (occurredAtMs(left.created_at) || 0));
+      const latestFailure = workflowRowsForCase.find(isFailedWorkflowAudit) || null;
+      if (!latestFailure?.id) {
+        throw new QuoteValidationError(
+          "Kein belastbarer Fehlerlauf gefunden.",
+          ["Ohne aktuellen workflow_audit_log-Fehler wird kein Pipeline-Retry angelegt."],
+          409,
+        );
+      }
+      const failureAt = occurredAtMs(latestFailure.created_at);
+      const issueKey = workflowAuditIssueKey(latestFailure);
+      const requestedFailureAuditId = cleanText(body.failureAuditId, 80);
+      const requestedIssueKey = cleanText(body.failureIssueKey, 120);
+      const requestedFailureAt = occurredAtMs(cleanText(body.failureOccurredAt, 80));
+      const workflowId = workflowAuditMetadataText(latestFailure, "workflow_id") ||
+        workflowAuditMetadataText(latestFailure, "n8n_workflow_id") ||
+        "9FoJMH6OUdsi36FB";
+      const attemptKey = `preview-delivery:${record.requestId}:${trelloCardId}:company_brain_recovery_${latestFailure.id}:v2`;
+      const recoverableIssues = new Set([
+        "offer_service_unavailable",
+        "source_changed_after_preflight",
+        "preview_media_invalid",
+        "video_content_qc_failed",
+        "video_content_qc_inconclusive",
+        "video_content_qc_unavailable",
+        "asset_processing_failed",
+      ]);
+
+      if (requestedFailureAuditId && requestedFailureAuditId !== latestFailure.id) {
+        blockers.push("Der angezeigte Fehlerlauf ist nicht mehr aktuell. Fall neu laden.");
+      }
+      if (requestedIssueKey && requestedIssueKey !== issueKey) {
+        blockers.push(`Der Fehlertyp hat sich von ${requestedIssueKey} zu ${issueKey} geändert. Fall neu laden.`);
+      }
+      if (requestedFailureAt && failureAt && requestedFailureAt !== failureAt) {
+        blockers.push("Der Fehlerzeitpunkt hat sich geändert. Fall neu laden.");
+      }
+      if (!recoverableIssues.has(issueKey)) {
+        blockers.push(`Fehlertyp ${issueKey} ist nicht für einen kontrollierten Medien-Pipeline-Retry freigegeben.`);
+      }
+
+      const successfulDeliveryAfterFailure = workflowRowsForCase.find((row) => {
+        const rowTime = occurredAtMs(row.created_at);
+        return isSuccessfulDeliveryAudit(row) && (!failureAt || !rowTime || rowTime >= failureAt);
+      });
+      const duplicateSend = quoteEmailRows.find((row) =>
+        Boolean(row.sent_at || /sent|delivered|success|ok/i.test(String(row.status || ""))),
+      );
+      const outboundForRecipient = outlookRows.find((row) =>
+        row.direction === "outbound" && !isDeliveryFailureText(`${row.subject || ""} ${row.body_preview || ""}`),
+      );
+      const bounceForRecipient = outlookRows.find((row) =>
+        isDeliveryFailureText(`${row.subject || ""} ${row.body_preview || ""}`),
+      );
+      if (successfulDeliveryAfterFailure) blockers.push("Ein späterer Workflow-Versandbeleg ist bereits vorhanden.");
+      if (duplicateSend) blockers.push(`quote_email_log enthält bereits einen Versandbeleg (${duplicateSend.sent_at || duplicateSend.created_at || "ohne Zeit"}).`);
+      if (outboundForRecipient) blockers.push(`Outlook zeigt bereits eine ausgehende Mail (${outboundForRecipient.sent_at || outboundForRecipient.created_at || "ohne Zeit"}).`);
+      if (bounceForRecipient) blockers.push("Für die aktuelle Empfängeradresse liegt ein Outlook-Bounce vor.");
+
+      const caseQueueRows = queueRows.filter((job) => queueJobBelongsToCase(job, record.requestId, trelloCardId));
+      const activeQueueJob = caseQueueRows.find((job) => /^(pending|retry|leased|processing)$/i.test(job.status));
+      const sentQueueJob = caseQueueRows.find((job) => job.status === "sent");
+      if (activeQueueJob) blockers.push(`Queue-Lauf ${activeQueueJob.id} ist bereits aktiv (${activeQueueJob.status}).`);
+      if (sentQueueJob) blockers.push(`Queue-Lauf ${sentQueueJob.id} ist bereits als versendet markiert.`);
+      if (trelloContext.card.closed) blockers.push("Die Trello-Karte ist geschlossen.");
+      if ((trelloContext.card.labels || []).some((label) => isDeliverySentTrelloLabelName(label.name))) {
+        blockers.push("Die Trello-Karte trägt bereits einen Versand-Tag.");
+      }
+
+      const newestAttachmentAt = Math.max(
+        0,
+        ...(trelloVisuals.attachments || []).map((attachment) => trelloObjectCreatedAtMs(attachment.id) || 0),
+      );
+      const offerUpdatedAt = occurredAtMs(offer.updatedAt);
+      const currentAttempt = Number(workflowAuditMetadataText(latestFailure, "current_attempt") || 0);
+      const attemptLimit = Number(workflowAuditMetadataText(latestFailure, "automatic_video_attempt_limit") || 0);
+      const exhaustedVideoAttempts = currentAttempt > 0 && attemptLimit > 0 && currentAttempt >= attemptLimit;
+      const requiresNewAttachment = issueKey === "asset_processing_failed" ||
+        (issueKey === "video_content_qc_failed" && exhaustedVideoAttempts);
+      const requiresChangedOffer = issueKey === "preview_media_invalid";
+      if (requiresNewAttachment && (!failureAt || newestAttachmentAt <= failureAt)) {
+        blockers.push("Nach dem Fehler ist kein neues/korrigiertes Trello-Asset belegt. Erst Mockup/Asset ersetzen.");
+      }
+      if (requiresChangedOffer && (!failureAt || Math.max(newestAttachmentAt, offerUpdatedAt || 0) <= failureAt)) {
+        blockers.push("Nach dem ungültigen Vorschau-Payload ist kein korrigierter Asset-/Offer-Stand belegt.");
+      }
+
+      if (blockers.length) {
+        retryAudit = await recordCompanyBrainMediaRetryAudit({
+          status: "blocked",
+          requestId: record.requestId,
+          trelloCardId,
+          offerId: offer.offerId,
+          offerNumber: effectiveOfferNumber,
+          workflowId,
+          failureAuditId: latestFailure.id,
+          failureExecutionId: workflowAuditMetadataText(latestFailure, "execution_id") || null,
+          issueKey,
+          attemptKey,
+          operatorName,
+          blockers,
+        });
+        const actionRunWarning = await finalizeActionRunSafely(activeActionRunId, {
+          status: "blocked",
+          result: { blockers, customerCommunicationSent: false },
+          failureCode: "company_brain_media_retry_blocked",
+          failureDetail: blockers.join(" "),
+        });
+        return jsonResponse({
+          ok: false,
+          actionKey,
+          requestId: record.requestId,
+          error: "Pipeline-Retry blockiert.",
+          code: "company_brain_media_retry_blocked",
+          blockers,
+          audit: retryAudit,
+          actionRunWarning,
+          customerCommunicationSent: false,
+        }, { status: 409 });
+      }
+
+      const deliveryCycleKey = `company_brain_recovery_${latestFailure.id}`;
+      const enqueueResult = await supabaseRpc<PreviewDeliveryEnqueueResult>("enqueue_preview_delivery_jobs", {
+        p_jobs: [{
+          trello_card_id: trelloCardId,
+          trello_card_url: trelloContext.card.url || trelloContext.card.shortUrl || null,
+          request_id: record.requestId,
+          card_name: trelloContext.card.name || null,
+          source_list_id: trelloContext.card.idList || "company_brain_recovery",
+          priority: 200,
+          max_attempts: 1,
+          delivery_cycle_key: deliveryCycleKey,
+          idempotency_key: attemptKey,
+          metadata: {
+            delivery_cycle_key: deliveryCycleKey,
+            source: "company_brain",
+            manual_recovery: true,
+            action_run_id: activeActionRunId,
+            original_failure_audit_id: latestFailure.id,
+            original_failure_execution_id: workflowAuditMetadataText(latestFailure, "execution_id") || null,
+            original_issue_key: issueKey,
+            operator_name: operatorName,
+            trello_had_video_sent_label: false,
+            trello_had_offer_sent_label: false,
+            customer_communication_sent: false,
+          },
+        }],
+        p_video_sent_card_ids: [],
+      });
+      const queuedRows = await fetchPreviewDeliveryJobs(record.requestId, trelloCardId);
+      const queueJob = queuedRows.find((job) => job.idempotency_key === attemptKey) || null;
+      if (!enqueueResult?.ok || !queueJob || !/^(pending|retry|leased|processing)$/i.test(queueJob.status)) {
+        throw new QuoteValidationError(
+          "Queue hat den Wiederherstellungslauf nicht bestätigt.",
+          [`Status: ${queueJob?.status || "nicht angelegt"}. Es wurde kein paralleler Fallback gestartet.`],
+          409,
+        );
+      }
+
+      retryAudit = await recordCompanyBrainMediaRetryAudit({
+        status: "queued",
+        requestId: record.requestId,
+        trelloCardId,
+        offerId: offer.offerId,
+        offerNumber: effectiveOfferNumber,
+        workflowId,
+        failureAuditId: latestFailure.id,
+        failureExecutionId: workflowAuditMetadataText(latestFailure, "execution_id") || null,
+        issueKey,
+        attemptKey,
+        queueJobId: queueJob.id,
+        operatorName,
+      });
+      const actionRunWarning = await finalizeActionRunSafely(activeActionRunId, {
+        status: "resolved",
+        result: {
+          queueJobId: queueJob.id,
+          queueStatus: queueJob.status,
+          attemptKey,
+          customerCommunicationSent: false,
+        },
+        verification: {
+          queueJobId: queueJob.id,
+          queueStatus: queueJob.status,
+          auditRecorded: Boolean(retryAudit),
+        },
+      });
+      return jsonResponse({
+        ok: true,
+        actionKey,
+        requestId: record.requestId,
+        queued: true,
+        pipelineRecovery: {
+          jobId: queueJob.id,
+          status: queueJob.status,
+          attemptKey,
+          originalFailureAuditId: latestFailure.id,
+          issueKey,
+        },
+        audit: retryAudit,
+        actionRunWarning,
         customerCommunicationSent: false,
       });
     }

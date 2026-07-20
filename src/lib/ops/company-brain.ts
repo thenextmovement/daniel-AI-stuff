@@ -248,6 +248,7 @@ export type CompanyBrainActionProposal = {
     | "post_trello_status_comment"
     | "repair_trello_projection"
     | "prepare_offer_retry"
+    | "retry_media_pipeline"
     | "guarded_offer_resend";
   label: string;
   type: "copy" | "manual_check" | "prepared_task" | "open_link";
@@ -349,6 +350,14 @@ export type CompanyBrainAutomationRun = {
   recommendedFix?: string | null;
   safeFix?: string | null;
   workflowId?: string | null;
+  attemptKey?: string | null;
+  stage?: string | null;
+  attemptNumber?: number | null;
+  attemptLimit?: number | null;
+  terminal?: boolean | null;
+  safeActionKey?: string | null;
+  contractComplete?: boolean | null;
+  contractMissingFields?: string[];
   currentAttempt?: number | null;
   nextAttempt?: number | null;
   automaticVideoAttemptLimit?: number | null;
@@ -1709,6 +1718,30 @@ type WorkflowAuditLogRow = {
   created_at?: string | null;
 };
 
+type CompanyBrainWorkflowAttemptRow = {
+  id: string;
+  attempt_key: string;
+  workflow_name: string;
+  workflow_id?: string | null;
+  execution_id?: string | null;
+  request_id?: string | null;
+  trello_card_id?: string | null;
+  offer_id?: string | null;
+  correlation_id?: string | null;
+  idempotency_key?: string | null;
+  action: string;
+  stage: string;
+  state: string;
+  issue_code?: string | null;
+  retry_safety?: string | null;
+  safe_action_key?: string | null;
+  attempt_number?: number | null;
+  attempt_limit?: number | null;
+  source_audit_id?: string | null;
+  last_event_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 type QuoteEmailLogEvidenceRow = {
   id?: string | number | null;
   unique_id?: string | null;
@@ -1957,7 +1990,27 @@ async function fetchAutomationRuns(
       order: "created_at.desc",
       limit: 30,
     });
-    const runs = rows.map((row) => {
+    const attemptFilters = [
+      ...requestIds.map((requestId) => `request_id.eq.${encodeURIComponent(requestId)}`),
+      ...trelloCardIds.map((cardId) => `trello_card_id.eq.${encodeURIComponent(cardId)}`),
+      ...offers.map((offer) => offer.offerId ? `offer_id.eq.${encodeURIComponent(offer.offerId)}` : null),
+      ...executionIds.map((executionId) => `execution_id.eq.${encodeURIComponent(executionId)}`),
+    ].filter((value): value is string => Boolean(value));
+    let attemptRows: CompanyBrainWorkflowAttemptRow[] = [];
+    if (attemptFilters.length) {
+      try {
+        attemptRows = await supabaseRequest<CompanyBrainWorkflowAttemptRow[]>("company_brain_workflow_attempts", undefined, {
+          select: "id,attempt_key,workflow_name,workflow_id,execution_id,request_id,trello_card_id,offer_id,correlation_id,idempotency_key,action,stage,state,issue_code,retry_safety,safe_action_key,attempt_number,attempt_limit,source_audit_id,last_event_at,metadata",
+          or: `(${attemptFilters.join(",")})`,
+          order: "last_event_at.desc",
+          limit: 30,
+        });
+      } catch {
+        // Backward-compatible while the closed-loop migration is rolling out.
+      }
+    }
+    const attemptSourceAuditIds = new Set(attemptRows.map((row) => row.source_audit_id).filter(Boolean));
+    const auditRuns = rows.filter((row) => !attemptSourceAuditIds.has(row.id)).map((row) => {
       const auditDiagnosis = extractAutomationAuditDiagnosis({
         errorMessage: row.error_message,
         metadata: row.metadata,
@@ -1971,12 +2024,12 @@ async function fetchAutomationRuns(
         status: cleanText(row.status) || null,
         error: cleanText(row.error_message) || metadataText(row.metadata, ["error_message", "error", "message"]),
         createdAt: row.created_at || null,
-        requestId: cleanText(row.document_id) || metadataText(row.metadata, ["request_id", "task_request_id"]),
+        requestId: metadataText(row.metadata, ["request_id", "task_request_id"]) || cleanText(row.document_id) || null,
         executionId: metadataText(row.metadata, ["execution_id", "n8n_execution_id", "workflow_execution_id"]),
         executionUrl: n8nExecutionUrl(
           metadataText(row.metadata, ["execution_id", "n8n_execution_id", "workflow_execution_id"]),
           metadataText(row.metadata, ["n8n_execution_url", "execution_url", "workflow_execution_url"]),
-          metadataText(row.metadata, ["workflow_id", "workflowId"]),
+          metadataText(row.metadata, ["workflow_id", "workflowId", "n8n_workflow_id"]),
         ),
         correlationId: metadataText(row.metadata, ["correlation_id", "request_correlation_id", "idempotency_key"]),
         sourceEventId: metadataText(row.metadata, ["source_event_id", "event_id", "message_id", "offer_event_id"]),
@@ -1996,7 +2049,15 @@ async function fetchAutomationRuns(
         safeFix: classified
           ? auditDiagnosis.hint.safeFix
           : metadataText(row.metadata, ["automation_issue_safe_fix", "safe_fix"]),
-        workflowId: metadataText(row.metadata, ["workflow_id", "workflowId"]),
+        workflowId: metadataText(row.metadata, ["workflow_id", "workflowId", "n8n_workflow_id"]),
+        attemptKey: metadataText(row.metadata, ["workflow_attempt_key", "attempt_key", "attemptKey"]),
+        stage: metadataText(row.metadata, ["workflow_stage", "stage", "failed_stage"]),
+        attemptNumber: metadataNumber(row.metadata, ["attempt_number", "current_attempt", "attemptNumber"]),
+        attemptLimit: metadataNumber(row.metadata, ["attempt_limit", "automatic_video_attempt_limit", "max_attempts"]),
+        terminal: metadataBoolean(row.metadata, ["terminal"]),
+        safeActionKey: metadataText(row.metadata, ["safe_action_key", "safeActionKey"]),
+        contractComplete: metadataBoolean(row.metadata, ["contract_complete"]),
+        contractMissingFields: metadataStringArray(row.metadata, ["contract_missing_fields"]),
         currentAttempt: metadataNumber(row.metadata, ["current_attempt", "currentAttempt"]),
         nextAttempt: metadataNumber(row.metadata, ["next_attempt", "nextAttempt"]),
         automaticVideoAttemptLimit: metadataNumber(row.metadata, ["automatic_video_attempt_limit", "automaticVideoAttemptLimit"]),
@@ -2010,6 +2071,55 @@ async function fetchAutomationRuns(
         diagnosticComplete: auditDiagnosis.diagnosticComplete,
       } satisfies CompanyBrainAutomationRun;
     });
+    const attemptRuns = attemptRows.map((row) => {
+      const issueHint = classifyAutomationIssueText([
+        row.issue_code,
+        metadataText(row.metadata, ["last_error_message", "error_message"]),
+      ].filter(Boolean).join(" "));
+      return {
+        id: `attempt:${row.id}`,
+        workflowName: row.workflow_name || null,
+        action: row.action || null,
+        status: row.state || null,
+        error: metadataText(row.metadata, ["last_error_message", "error_message"]),
+        createdAt: row.last_event_at || null,
+        requestId: row.request_id || null,
+        executionId: row.execution_id || null,
+        executionUrl: n8nExecutionUrl(row.execution_id || null, null, row.workflow_id || null),
+        correlationId: row.correlation_id || null,
+        sourceEventId: row.source_audit_id || null,
+        targetRecordId: row.offer_id || null,
+        failedNode: row.stage || null,
+        idempotencyKey: row.idempotency_key || row.attempt_key,
+        retrySafety: row.retry_safety || null,
+        summary: issueHint.key !== "unknown" ? issueHint.rootCause : metadataText(row.metadata, ["last_error_message"]),
+        issueKey: row.issue_code || (issueHint.key !== "unknown" ? issueHint.key : null),
+        recommendedFix: issueHint.key !== "unknown" ? issueHint.recommendedFix : null,
+        safeFix: issueHint.key !== "unknown" ? issueHint.safeFix : null,
+        workflowId: row.workflow_id || null,
+        attemptKey: row.attempt_key,
+        stage: row.stage,
+        attemptNumber: row.attempt_number ?? null,
+        attemptLimit: row.attempt_limit ?? null,
+        terminal: ["succeeded", "failed", "blocked", "stale", "cancelled"].includes(row.state),
+        safeActionKey: row.safe_action_key || null,
+        contractComplete: true,
+        contractMissingFields: [],
+        currentAttempt: row.attempt_number ?? null,
+        nextAttempt: row.state === "retry_scheduled" ? (row.attempt_number || 0) + 1 : null,
+        automaticVideoAttemptLimit: row.attempt_limit ?? null,
+        retryPlanned: ["queued", "running", "retry_scheduled"].includes(row.state),
+        videoQcConfidence: null,
+        videoQcIssues: [],
+        videoGenerationMode: null,
+        failureCode: row.issue_code || null,
+        httpStatus: null,
+        technicalDetail: row.stage ? `Stage: ${row.stage}` : null,
+        diagnosticComplete: Boolean(row.issue_code),
+      } satisfies CompanyBrainAutomationRun;
+    });
+    const runs = [...attemptRuns, ...auditRuns]
+      .sort((left, right) => (timestampMs(right.createdAt) || 0) - (timestampMs(left.createdAt) || 0));
     return {
       runs,
       diagnostic: { source: "workflow_audit", ok: true, label: "Automation Audit", detail: null, count: runs.length },
@@ -2984,9 +3094,10 @@ function timestampMs(value: string | null | undefined) {
 }
 
 function isAutomationFailure(run: CompanyBrainAutomationRun | null | undefined) {
+  if (run && /^(success|succeeded|sent|completed|duplicate|ok)$/i.test(run.status || "") && !run.error) return false;
   return Boolean(
     run && (
-      /fail|error|failed/i.test(`${run.status || ""} ${run.error || ""}`) ||
+      /fail|error|blocked|stale|abandoned/i.test(`${run.status || ""} ${run.error || ""}`) ||
       run.issueKey === "video_content_qc_failed" ||
       run.issueKey === "video_content_qc_inconclusive" ||
       run.issueKey === "video_content_qc_unavailable"
@@ -3052,6 +3163,9 @@ function isSuccessfulOfferDeliveryRun(run: CompanyBrainAutomationRun | null | un
   const status = cleanText(run.status).toLowerCase();
   if (action === "initial_delivery_complete") return /^(success|sent|completed|ok)$/.test(status);
   if (action === "guarded_offer_resend") return /^(success|sent|completed|duplicate|ok)$/.test(status);
+  if (action === "retry_media_pipeline" || action === "create_and_send_offer") {
+    return /^(success|succeeded|sent|completed|ok)$/.test(status);
+  }
   return false;
 }
 
@@ -4208,6 +4322,13 @@ export function buildActionProposals(input: {
   const failedAutomation = caseResolvedByDeliveryProof
     ? null
     : workflowAutomationRuns.find((run) => isAutomationFailure(run)) || null;
+  const mediaPipelineRecovery = workflowAutomationRuns.find((run) =>
+    run.action === "retry_media_pipeline" && /^(queued|pending|retry|running|leased|processing)$/i.test(run.status || ""),
+  ) || null;
+  const mediaPipelineRecoveryRunning = Boolean(
+    mediaPipelineRecovery &&
+    (!failedAutomation || (timestampMs(mediaPipelineRecovery.createdAt) || 0) >= (timestampMs(failedAutomation.createdAt) || 0)),
+  );
   const videoQcAutomation = caseResolvedByDeliveryProof
     ? null
     : workflowAutomationRuns.find((run) =>
@@ -4230,6 +4351,21 @@ export function buildActionProposals(input: {
     ...retry.safeFixes.slice(0, 3).map((entry) => `Sicherer Fix: ${entry}`),
   ]);
   const trelloCardId = input.trelloFailureDiagnosis.card?.id || primaryRecord?.trelloCardId || primaryOffer?.trelloCardId || null;
+  const mediaPipelineRetryIssue = failedAutomation?.issueKey || null;
+  const mediaPipelineRetryEligible = [
+    "offer_service_unavailable",
+    "source_changed_after_preflight",
+    "preview_media_invalid",
+    "video_content_qc_failed",
+    "video_content_qc_inconclusive",
+    "video_content_qc_unavailable",
+    "asset_processing_failed",
+  ].includes(mediaPipelineRetryIssue || "");
+  const mediaPipelineNeedsChangedInput = [
+    "preview_media_invalid",
+    "video_content_qc_failed",
+    "asset_processing_failed",
+  ].includes(mediaPipelineRetryIssue || "");
   const latestFixRun = (actionKey: CompanyBrainActionProposal["key"]) =>
     companyBrainFixRuns.find((run) => run.action === actionKey) || null;
   const emailCorrectionPrepared = latestFixRun("prepare_email_correction");
@@ -4448,6 +4584,37 @@ export function buildActionProposals(input: {
       ],
     },
     {
+      key: "retry_media_pipeline",
+      label: "Video- und Angebotslauf neu starten",
+      type: "prepared_task",
+      riskLevel: "high",
+      approvalRequired: true,
+      enabled: Boolean(
+        primaryRecord && primaryOffer && trelloCardId && failedAutomation &&
+        mediaPipelineRetryEligible && !mediaPipelineRecoveryRunning && !caseResolvedByDeliveryProof,
+      ),
+      summary: caseResolvedByDeliveryProof
+        ? "Kein neuer Lauf: Die erfolgreiche Zustellung ist belegt."
+        : mediaPipelineRecoveryRunning
+          ? "Ein kontrollierter Wiederherstellungslauf ist bereits in der Queue. Keinen zweiten Lauf starten."
+          : !mediaPipelineRetryEligible
+            ? "Der erkannte Fehler darf nicht über die Medien-Pipeline erneut gestartet werden."
+            : mediaPipelineNeedsChangedInput
+              ? "Startet genau einen neuen Queue-Lauf. Der Server erlaubt ihn nur, wenn nach dem Fehler ein korrigierter Asset-/Offer-Stand belegt ist und noch nichts versendet wurde."
+              : "Startet nach erneuter Identitäts-, Duplicate-, E-Mail-, Tag- und Queue-Prüfung genau einen idempotenten Wiederherstellungslauf.",
+      confirmationText: "Vier-Augen-Freigabe erforderlich; kein paralleler Retry und kein Versand bei ungeklärten Belegen.",
+      href: input.trelloFailureDiagnosis.card?.url || primaryRecord?.trelloCardUrl || null,
+      payloadPreview: [
+        `Fehlertyp: ${mediaPipelineRetryIssue || "unbekannt"}`,
+        failedAutomation?.executionId ? `Fehler-Execution: ${failedAutomation.executionId}` : null,
+        failedAutomation?.id ? `Audit: ${failedAutomation.id}` : null,
+        trelloCardId ? `Trello: ${trelloCardId}` : null,
+        primaryOffer?.offerNumber ? `Angebot: ${primaryOffer.offerNumber}` : null,
+        mediaPipelineNeedsChangedInput ? "Guardrail: Ein neuer/korrigierter Eingabestand muss nach dem Fehler belegt sein." : null,
+        "Guardrail: Kein Versandbeleg, kein aktiver Queue-Lauf und kein Versand-Tag.",
+      ].filter(Boolean) as string[],
+    },
+    {
       key: "post_trello_status_comment",
       label: "Trello-Status kommentieren",
       type: "prepared_task",
@@ -4590,6 +4757,7 @@ export function buildActionProposals(input: {
 }
 
 const GUIDANCE_DATA_FIX_ACTIONS: CompanyBrainActionProposal["key"][] = [
+  "retry_media_pipeline",
   "correct_customer_email",
   "prepare_email_correction",
   "repair_trello_projection",
@@ -4600,6 +4768,7 @@ const GUIDANCE_DATA_FIX_ACTIONS: CompanyBrainActionProposal["key"][] = [
 
 function guidanceActionPriority(action: CompanyBrainActionProposal, retryStatus: CompanyBrainRetryAssessment["status"]) {
   const priorityByKey: Record<CompanyBrainActionProposal["key"], number> = {
+    retry_media_pipeline: 0,
     guarded_offer_resend: retryStatus === "ready" ? 0 : 20,
     correct_customer_email: 1,
     prepare_email_correction: 2,
@@ -4676,7 +4845,8 @@ export function buildCompanyBrainEmployeeGuidance(input: {
     caseResolvedByDeliveryProof
       ? readyActions.find((action) => action.key === "repair_trello_projection") || null
       : videoQcAutomation
-      ? readyActions.find((action) => action.key === "collect_design_assets")
+      ? readyActions.find((action) => action.key === "retry_media_pipeline") ||
+        readyActions.find((action) => action.key === "collect_design_assets")
       : null
   ) || (caseResolvedByDeliveryProof ? null : readyActions.find((action) =>
     action.key === "guarded_offer_resend" ||
@@ -5101,6 +5271,9 @@ export function buildCompanyBrainOperationalVerdict(input: {
     .filter((run) => run.workflowName !== "company_brain_fix_center")
     .sort((left, right) => (timestampMs(right.createdAt) || 0) - (timestampMs(left.createdAt) || 0));
   const latestFailure = orderedRuns.find((run) => isAutomationFailure(run)) || null;
+  const latestRecovery = orderedRuns.find((run) =>
+    run.action === "retry_media_pipeline" && /^(queued|pending|retry|running|leased|processing)$/i.test(run.status || ""),
+  ) || null;
   const latestDelivery = orderedRuns.find((run) => isSuccessfulOfferDeliveryRun(run)) || null;
   const resolved = input.trelloFailureDiagnosis.rootCauseKey === "sent" || Boolean(
     latestDelivery && latestFailure &&
@@ -5109,9 +5282,14 @@ export function buildCompanyBrainOperationalVerdict(input: {
   );
   const retryRunning = Boolean(
     !resolved &&
-    latestFailure?.retryPlanned === true &&
-    latestFailure.nextAttempt &&
-    (!latestFailure.automaticVideoAttemptLimit || latestFailure.nextAttempt <= latestFailure.automaticVideoAttemptLimit),
+    (
+      latestRecovery &&
+      (!latestFailure || (timestampMs(latestRecovery.createdAt) || 0) >= (timestampMs(latestFailure.createdAt) || 0))
+    ) || (
+      latestFailure?.retryPlanned === true &&
+      latestFailure.nextAttempt &&
+      (!latestFailure.automaticVideoAttemptLimit || latestFailure.nextAttempt <= latestFailure.automaticVideoAttemptLimit)
+    ),
   );
   const issueKey = resolved ? "sent" : latestFailure?.issueKey || null;
   const actionPriority: CompanyBrainActionProposal["key"][] = resolved
@@ -5119,7 +5297,9 @@ export function buildCompanyBrainOperationalVerdict(input: {
     : issueKey === "customer_email_invalid" || issueKey === "customer_email_missing"
       ? ["correct_customer_email", "prepare_email_correction", "inspect_n8n_run"]
       : ["preview_media_invalid", "video_content_qc_failed", "video_content_qc_inconclusive", "video_content_qc_unavailable", "asset_processing_failed"].includes(issueKey || "")
-        ? ["collect_design_assets", "inspect_n8n_run", "create_internal_task"]
+        ? ["retry_media_pipeline", "collect_design_assets", "inspect_n8n_run", "create_internal_task"]
+        : ["offer_service_unavailable", "source_changed_after_preflight"].includes(issueKey || "")
+          ? ["retry_media_pipeline", "inspect_n8n_run", "create_internal_task"]
         : ["inspect_n8n_run", "create_internal_task", "save_case_note"];
   const primaryAction = actionPriority
     .map((key) => input.actionProposals.find((action) => action.key === key && action.enabled))
@@ -5128,7 +5308,9 @@ export function buildCompanyBrainOperationalVerdict(input: {
   const limit = latestFailure?.automaticVideoAttemptLimit || null;
   const nextAttempt = latestFailure?.nextAttempt || null;
   const retryLabel = retryRunning
-    ? `Versuch ${nextAttempt || "?"}/${limit || "?"} läuft automatisch`
+    ? latestRecovery
+      ? `Wiederherstellung in Queue${latestRecovery.attemptNumber ? ` · Versuch ${latestRecovery.attemptNumber}/${latestRecovery.attemptLimit || "?"}` : ""}`
+      : `Versuch ${nextAttempt || "?"}/${limit || "?"} läuft automatisch`
     : attempt
       ? `Versuch ${attempt}/${limit || "?"}${latestFailure?.retryPlanned === false ? " beendet" : ""}`
       : null;

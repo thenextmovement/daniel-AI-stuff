@@ -66,6 +66,46 @@ function companyBrainActionRequest(overrides: Record<string, unknown> = {}) {
   });
 }
 
+const mediaFailureAuditId = "11111111-1111-4111-8111-111111111111";
+
+function companyBrainMediaRetryRequest(overrides: Record<string, unknown> = {}) {
+  return request("/api/ops/company-brain/actions", {
+    actionKey: "retry_media_pipeline",
+    requestId: "REQ-GUARD-1",
+    offerId: "offer-guard-1",
+    offerNumber: "A/N 14427",
+    recipientEmail: "customer@example.com",
+    trelloCardId: "trello-card-1",
+    failureAuditId: mediaFailureAuditId,
+    failureIssueKey: "offer_service_unavailable",
+    failureOccurredAt: "2026-07-10T07:30:00.000Z",
+    confirmed: true,
+    confirmationText: "Freigabe",
+    ...overrides,
+  });
+}
+
+function mediaFailureAudit(overrides: Record<string, unknown> = {}) {
+  return {
+    id: mediaFailureAuditId,
+    document_id: "REQ-GUARD-1",
+    workflow_name: "KI-Video Generator v1.0 - Neue Angebote schicken + KI-Video",
+    action: "create_and_send_offer",
+    status: "failed",
+    error_message: "503 - database is not ready",
+    metadata: {
+      request_id: "REQ-GUARD-1",
+      trello_card_id: "trello-card-1",
+      offer_id: "offer-guard-1",
+      automation_issue_key: "offer_service_unavailable",
+      execution_id: "execution-503",
+      workflow_id: "9FoJMH6OUdsi36FB",
+    },
+    created_at: "2026-07-10T07:30:00.000Z",
+    ...overrides,
+  };
+}
+
 async function withGuardedRetryFetchMock<T>(
   options: {
     offerOverride?: Record<string, unknown>;
@@ -74,10 +114,13 @@ async function withGuardedRetryFetchMock<T>(
     workflowAuditGuardRows?: unknown[];
     workflowAuditWriteError?: boolean;
     outlookGuardRows?: unknown[];
+    previewQueueRows?: unknown[];
+    queuedPreviewJob?: Record<string, unknown>;
     trelloCard?: {
       name?: string;
       labels?: Array<{ id: string; name?: string | null; color?: string | null }>;
       boardLabels?: Array<{ id: string; name?: string | null; color?: string | null }>;
+      attachments?: Array<{ id: string; name?: string; url?: string; mimeType?: string }>;
     };
   },
   callback: (calls: string[]) => Promise<T>,
@@ -90,6 +133,7 @@ async function withGuardedRetryFetchMock<T>(
   const originalTrelloKey = process.env.TRELLO_API_KEY;
   const originalTrelloToken = process.env.TRELLO_TOKEN;
   const calls: string[] = [];
+  let previewEnqueued = false;
 
   process.env.SUPABASE_URL = "https://supabase.example.test";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
@@ -194,7 +238,19 @@ async function withGuardedRetryFetchMock<T>(
           if (options.workflowAuditWriteError) return json({ error: "audit response unavailable" }, 500);
           return json([{ id: "audit-row-1" }]);
         }
+        if (url.searchParams.has("metadata->>audit_event_key")) return json([]);
         return json(options.workflowAuditGuardRows || []);
+      }
+      if (table === "preview_delivery_jobs") {
+        if (method === "GET") {
+          return json(previewEnqueued && options.queuedPreviewJob
+            ? [options.queuedPreviewJob, ...(options.previewQueueRows || [])]
+            : options.previewQueueRows || []);
+        }
+      }
+      if (table === "enqueue_preview_delivery_jobs" && method === "POST") {
+        previewEnqueued = true;
+        return json({ ok: true, touched: 1, pending_count: 1, terminal_conflict_count: 0, sent_label_blocked: 0 });
       }
       return json([]);
     }
@@ -213,7 +269,7 @@ async function withGuardedRetryFetchMock<T>(
           closed: false,
           dateLastActivity: "2026-07-10T08:00:00.000Z",
           customFieldItems: [],
-          attachments: [],
+          attachments: options.trelloCard?.attachments || [],
           actions: [],
           labels: options.trelloCard?.labels || [],
         });
@@ -399,6 +455,67 @@ test("company brain action route still blocks customer-facing actions without re
     assertNoStore(response);
     assert.equal(payload.ok, false);
     assert.match(payload.error, /Request-ID fehlt/);
+  });
+});
+
+test("company brain queues one governed transient media recovery without directly sending", async () => {
+  const attemptKey = `preview-delivery:REQ-GUARD-1:trello-card-1:company_brain_recovery_${mediaFailureAuditId}:v2`;
+  await withGuardedRetryFetchMock({
+    workflowAuditGuardRows: [mediaFailureAudit()],
+    queuedPreviewJob: {
+      id: "22222222-2222-4222-8222-222222222222",
+      trello_card_id: "trello-card-1",
+      request_id: "REQ-GUARD-1",
+      status: "pending",
+      attempts: 0,
+      max_attempts: 1,
+      idempotency_key: attemptKey,
+      metadata: { source: "company_brain" },
+      created_at: "2026-07-10T08:00:00.000Z",
+      updated_at: "2026-07-10T08:00:00.000Z",
+    },
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainMediaRetryRequest());
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assertNoStore(response);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.queued, true);
+    assert.equal(payload.pipelineRecovery.status, "pending");
+    assert.equal(payload.pipelineRecovery.attemptKey, attemptKey);
+    assert.equal(payload.customerCommunicationSent, false);
+    assert.equal(calls.some((call) => call.includes("/rpc/enqueue_preview_delivery_jobs") && call.startsWith("POST ")), true);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
+    assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
+  });
+});
+
+test("company brain blocks media recovery while another queue job is active", async () => {
+  await withGuardedRetryFetchMock({
+    workflowAuditGuardRows: [mediaFailureAudit()],
+    previewQueueRows: [{
+      id: "33333333-3333-4333-8333-333333333333",
+      trello_card_id: "trello-card-1",
+      request_id: "REQ-GUARD-1",
+      status: "processing",
+      attempts: 1,
+      max_attempts: 3,
+      idempotency_key: "existing-active-job",
+      metadata: {},
+      created_at: "2026-07-10T07:45:00.000Z",
+      updated_at: "2026-07-10T07:46:00.000Z",
+    }],
+  }, async (calls) => {
+    const response = await POST_ACTION(companyBrainMediaRetryRequest());
+    const payload = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.code, "company_brain_media_retry_blocked");
+    assert.match(payload.blockers.join(" "), /bereits aktiv/);
+    assert.equal(calls.some((call) => call.includes("/rpc/enqueue_preview_delivery_jobs")), false);
+    assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
   });
 });
 

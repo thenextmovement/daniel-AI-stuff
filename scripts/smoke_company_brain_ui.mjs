@@ -398,7 +398,7 @@ async function runViewport(browser, target, viewport, label) {
     "JETZT TUN",
     "Kunden-E-Mail korrigieren",
     "Diagnoseweg, Belege und Quellen anzeigen",
-    "FIX CENTER",
+    "Lösung",
   ]);
   await page.locator("summary").filter({ hasText: "Diagnoseweg, Belege und Quellen anzeigen" }).first().click({ force: true });
   await waitForBodyText(page, `${label}: expanded diagnosis`, [
@@ -410,11 +410,6 @@ async function runViewport(browser, target, viewport, label) {
     "Vom Kartenfehler zur sicheren Aktion",
     "Trello-Karte gelesen",
     "Kunden-E-Mail korrigieren",
-    "Trello-Projektion bereinigen",
-    "Projektion freigeben",
-    "Guarded Retry möglich",
-    "Schon erledigt",
-    "E-Mail-Korrektur vorbereitet",
     "n8n Execution 2770420",
     "Empfänger und Angebot im Fix Center prüfen",
     "System-Blocker",
@@ -437,7 +432,14 @@ async function runViewport(browser, target, viewport, label) {
     "NICHT TUN",
   ]);
   await page.locator("summary").filter({ hasText: "Diagnoseweg, Belege und Quellen anzeigen" }).first().click({ force: true });
-  await waitForBodyText(page, `${label}: action groups`, ["Intern sichern", "Daten korrigieren", "Kundenkontakt"]);
+  await (await waitForEnabled(page.getByRole("button", { name: "Kunden-E-Mail korrigieren" }).first(), `${label}: primary action`)).click();
+  await waitForBodyText(page, `${label}: action groups`, [
+    "Intern sichern",
+    "Daten korrigieren",
+    "Kundenkontakt",
+    "Trello-Projektion bereinigen",
+    "Projektion freigeben",
+  ]);
   const fixCenter = page.locator("#company-brain-fix-center");
   await (await waitForEnabled(fixCenter.getByRole("button", { name: "Projektion freigeben" }), `${label}: projection repair`)).click();
   await waitForBodyText(page, `${label}: projection confirmation panel`, ["Freigabe prüfen", "Diese Aktion bleibt intern"]);

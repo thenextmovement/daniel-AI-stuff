@@ -335,6 +335,10 @@ function isCompanyBrainFixRun(run: CompanyBrainResolveResult["automationRuns"][n
   return run.workflowName === "company_brain_fix_center";
 }
 
+function isFailedAutomationRun(run: CompanyBrainResolveResult["automationRuns"][number]) {
+  return Boolean(run.error || /fail|error|blocked/i.test(run.status || ""));
+}
+
 function fixHistoryLabel(action: string | null) {
   if (action === "open_problem_case") return "Problemfall/Aufgabe angelegt";
   if (action === "create_internal_task") return "Interne Aufgabe angelegt";
@@ -750,7 +754,7 @@ function shortText(value: string | null | undefined, max = 180) {
 
 function actionGroupKey(action: CompanyBrainActionProposalView): CompanyBrainActionGroupKey {
   if (["open_problem_case", "save_case_note", "create_internal_task", "prepare_offer_retry"].includes(action.key)) return "internal";
-  if (["prepare_email_correction", "correct_customer_email", "post_trello_status_comment", "repair_trello_projection"].includes(action.key)) return "fix";
+  if (["prepare_email_correction", "correct_customer_email", "retry_media_pipeline", "post_trello_status_comment", "repair_trello_projection"].includes(action.key)) return "fix";
   if (action.key === "guarded_offer_resend") return "customer";
   return "manual";
 }
@@ -766,6 +770,7 @@ function executableAction(actionKey: string) {
     "post_trello_status_comment",
     "repair_trello_projection",
     "prepare_offer_retry",
+    "retry_media_pipeline",
     "guarded_offer_resend",
   ].includes(actionKey);
 }
@@ -781,6 +786,7 @@ function actionStateLabel(action: CompanyBrainActionProposalView) {
 
 function actionButtonLabel(action: CompanyBrainActionProposalView) {
   if (action.key === "guarded_offer_resend") return "Versand freigeben";
+  if (action.key === "retry_media_pipeline") return "Pipeline-Retry freigeben";
   if (action.key === "correct_customer_email") return "E-Mail-Korrektur freigeben";
   if (action.key === "repair_trello_projection") return "Projektion freigeben";
   if (action.key === "post_trello_status_comment") return "Kommentar freigeben";
@@ -791,6 +797,7 @@ function actionButtonLabel(action: CompanyBrainActionProposalView) {
 
 function operatorActionPriority(action: CompanyBrainActionProposalView, retryStatus?: string, prioritizeVideoQc = false) {
   const priorityByKey: Record<string, number> = {
+    retry_media_pipeline: 0,
     guarded_offer_resend: retryStatus === "ready" ? 0 : 6,
     collect_design_assets: prioritizeVideoQc ? 0.5 : 12,
     correct_customer_email: 1,
@@ -842,6 +849,7 @@ export function OpsCompanyBrainClient({
   const [manualAliasCanonicalId, setManualAliasCanonicalId] = useState("");
   const sharedOperatorNameKey = "neontrip-ops-operator";
   const initialUrlHandled = useRef(false);
+  const fixCenterDetailsRef = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
     try {
@@ -860,16 +868,6 @@ export function OpsCompanyBrainClient({
     if (hasSession || localMode || !opsEnabled) void loadAliasRepairInbox(false);
   }, [hasSession, localMode, opsEnabled]);
 
-  const stats = useMemo(() => ({
-    records: result?.records.length || 0,
-    offers: result?.offers.length || 0,
-    evidence: result?.evidence.length || 0,
-    findings: (result?.gaps.length || 0) + (result?.conflicts.length || 0),
-    automations: result?.automationRuns.length || 0,
-    events: result?.caseEvents.length || 0,
-    assets: result?.assets.length || 0,
-    openWatchers: result?.watchers.filter((watcher) => watcher.status === "open").length || 0,
-  }), [result]);
   const operatorView = useMemo(() => {
     if (!result) {
       return {
@@ -1259,6 +1257,7 @@ export function OpsCompanyBrainClient({
     setPendingConfirmationText("");
     setActionResultMessage(null);
     window.setTimeout(() => {
+      if (fixCenterDetailsRef.current) fixCenterDetailsRef.current.open = true;
       document.getElementById("company-brain-fix-center")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
   }
@@ -1273,6 +1272,9 @@ export function OpsCompanyBrainClient({
     const action = result?.actionProposals.find((entry) => entry.key === actionKey);
     const primaryRecord = result?.records[0] || null;
     const primaryOffer = result?.offers[0] || null;
+    const latestFailureRun = result?.automationRuns
+      .filter((run) => !isCompanyBrainFixRun(run) && isFailedAutomationRun(run))
+      .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime())[0] || null;
     if (!action || !result?.problemResolution) return;
     if (!primaryRecord) {
       setActionResultMessage("Aktion blockiert: keine Kundenakte/Request-ID als Source of Truth gefunden.");
@@ -1326,6 +1328,9 @@ export function OpsCompanyBrainClient({
           message: DEFAULT_OFFER_RETRY_MESSAGE,
           newCustomerEmail: newCustomerEmail?.trim() || null,
           trelloCommentText: actionKey === "post_trello_status_comment" ? buildTrelloStatusComment() : null,
+          failureAuditId: actionKey === "retry_media_pipeline" ? latestFailureRun?.id || null : null,
+          failureIssueKey: actionKey === "retry_media_pipeline" ? latestFailureRun?.issueKey || null : null,
+          failureOccurredAt: actionKey === "retry_media_pipeline" ? latestFailureRun?.createdAt || null : null,
           confirmed: true,
           confirmationText: pendingConfirmationText,
         }),
@@ -1338,6 +1343,7 @@ export function OpsCompanyBrainClient({
         note?: { id?: string };
         specialCase?: unknown;
         sent?: boolean;
+        queued?: boolean;
         duplicate?: boolean;
         blockers?: string[];
         changedTables?: Record<string, number>;
@@ -1346,6 +1352,12 @@ export function OpsCompanyBrainClient({
           renamed?: boolean;
           addedOfferSentLabel?: boolean;
           trelloComment?: { id?: string } | null;
+        } | null;
+        pipelineRecovery?: {
+          jobId?: string;
+          status?: string;
+          attemptKey?: string;
+          issueKey?: string;
         } | null;
         auditWarning?: string | null;
         actionRunWarning?: string | null;
@@ -1382,6 +1394,7 @@ export function OpsCompanyBrainClient({
       }
       const created = [
         payload.sent ? (payload.duplicate ? "Versand bereits idempotent vorhanden" : "Angebot erneut gesendet") : null,
+        payload.queued && payload.pipelineRecovery?.jobId ? `Pipeline-Retry ${payload.pipelineRecovery.jobId} eingereiht` : null,
         payload.changedTables ? "Kunden-E-Mail aktualisiert" : null,
         payload.trelloProjectionRepair?.renamed || payload.trelloProjectionRepair?.addedOfferSentLabel ? "Trello-Projektion bereinigt" : null,
         payload.trelloComment?.id ? "Trello-Kommentar geschrieben" : null,
@@ -1762,11 +1775,14 @@ export function OpsCompanyBrainClient({
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Kundenakten {stats.records}</span>
-                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Angebote {stats.offers}</span>
-                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Belege {stats.evidence}</span>
-                  <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">Watcher {stats.openWatchers}</span>
+                <div className="mt-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-950">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">Nicht tun</p>
+                    <p className="mt-1 text-sm font-medium leading-6">
+                      {result.employeeGuidance.forbiddenActions[0] || "Keinen Kundenkontakt oder parallelen Retry ohne eindeutige Belege auslösen."}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -2333,7 +2349,19 @@ export function OpsCompanyBrainClient({
               </details>
             </section>
 
-            <section id="company-brain-fix-center" className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm md:p-6">
+            <details
+              ref={fixCenterDetailsRef}
+              id="company-brain-fix-center"
+              className="group rounded-[2rem] border border-stone-200 bg-white shadow-sm"
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-stone-950 marker:hidden md:px-6">
+                <span>Weitere Reparaturen und Freigaben</span>
+                <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs text-stone-500 group-open:hidden">
+                  {operatorView.readyActions.length} bereit
+                </span>
+                <span className="hidden rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs text-stone-500 group-open:inline">schließen</span>
+              </summary>
+              <div className="border-t border-stone-200 p-5 md:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">Fix Center</p>
@@ -2442,7 +2470,8 @@ export function OpsCompanyBrainClient({
                   </div>
                 ))}
               </div>
-            </section>
+              </div>
+            </details>
 
             <details className="group rounded-[2rem] border border-stone-200 bg-white shadow-sm">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-stone-950 marker:hidden md:px-6">

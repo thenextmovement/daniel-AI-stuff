@@ -33,7 +33,10 @@ test("workflow audit normalizes n8n offer failure events", () => {
   assert.match(String(event.metadata.automation_issue_root_cause), /keine belastbare Kunden-E-Mail-Adresse/);
   assert.match(String(event.metadata.automation_issue_recommended_fix), /Kunden-E-Mail/);
   assert.equal(event.metadata.idempotency_key, "offer-send:trello:FYXcIQ9K:v1");
-  assert.equal(event.metadata.audit_contract_version, 1);
+  assert.equal(event.metadata.audit_contract_version, 2);
+  assert.equal(event.metadata.contract_complete, false);
+  assert.ok(Array.isArray(event.metadata.contract_missing_fields));
+  assert.match(String(event.metadata.workflow_attempt_key), /^workflow-attempt:/);
 });
 
 test("workflow audit derives structured issue metadata from raw n8n invalid email errors", () => {
@@ -314,7 +317,38 @@ test("workflow audit keeps company brain internal fixes observable without custo
   assert.equal(event.metadata.customer_communication_sent, false);
   assert.equal(event.metadata.internal_only, true);
   assert.equal(event.metadata.task_id, "task-cb-1");
-  assert.equal(event.metadata.audit_contract_version, 1);
+  assert.equal(event.metadata.audit_contract_version, 2);
+});
+
+test("workflow audit v2 records a complete retry attempt contract without rejecting legacy events", () => {
+  const event = normalizeWorkflowAuditEvent({
+    workflowName: "KI-Video Generator v1.0 - Neue Angebote schicken + KI-Video",
+    workflowId: "9FoJMH6OUdsi36FB",
+    action: "retry_media_pipeline",
+    status: "queued",
+    requestId: "REQ-RECOVERY",
+    trelloCardId: "trello-recovery",
+    offerId: "offer-recovery",
+    stage: "recovery_dispatch",
+    attemptKey: "preview-delivery:REQ-RECOVERY:trello-recovery:recovery:v2",
+    attemptNumber: 1,
+    attemptLimit: 1,
+    safeActionKey: "retry_media_pipeline",
+    terminal: false,
+    eventType: "workflow_recovery_queued",
+    retrySafety: "safe_after_review",
+    customer_communication_sent: false,
+  });
+
+  assert.equal(event.metadata.audit_contract_version, 2);
+  assert.equal(event.metadata.contract_complete, true);
+  assert.deepEqual(event.metadata.contract_missing_fields, []);
+  assert.equal(event.metadata.workflow_id, "9FoJMH6OUdsi36FB");
+  assert.equal(event.metadata.workflow_stage, "recovery_dispatch");
+  assert.equal(event.metadata.attempt_number, 1);
+  assert.equal(event.metadata.attempt_limit, 1);
+  assert.equal(event.metadata.safe_action_key, "retry_media_pipeline");
+  assert.equal(event.metadata.terminal, false);
 });
 
 test("workflow audit creates stable event keys for duplicate n8n callbacks", () => {

@@ -456,6 +456,30 @@ test("company brain operational verdict shows exact cause, retry and later succe
   assert.equal(unresolved.executionId, "3212929");
   assert.match(unresolved.technicalDetail || "", /HTTP 422/);
 
+  const queuedRecovery: CompanyBrainAutomationRun = {
+    ...failure,
+    id: "attempt:recovery",
+    action: "retry_media_pipeline",
+    status: "queued",
+    error: null,
+    createdAt: "2026-07-20T08:03:00.000Z",
+    issueKey: "preview_media_invalid",
+    attemptKey: "preview-delivery:REQ-1:card:recovery:v2",
+    attemptNumber: 1,
+    attemptLimit: 1,
+    retryPlanned: true,
+  };
+  const recovering = buildCompanyBrainOperationalVerdict({
+    automationRuns: [queuedRecovery, failure],
+    trelloFailureDiagnosis: retryDiagnosis(),
+    actionProposals: [action],
+    retryAssessment,
+    fallbackCause: "Unbekannt",
+  });
+  assert.equal(recovering.status, "retry_running");
+  assert.equal(recovering.nextActionKey, null);
+  assert.match(recovering.retryLabel || "", /Wiederherstellung in Queue/);
+
   const delivered: CompanyBrainAutomationRun = {
     ...failure,
     id: "success",
@@ -2784,6 +2808,7 @@ test("company brain routes video QC failures to mockup review and blocks direct 
   const mockupReview = actions.find((action) => action.key === "collect_design_assets");
   const guardedResend = actions.find((action) => action.key === "guarded_offer_resend");
   const retryTask = actions.find((action) => action.key === "prepare_offer_retry");
+  const pipelineRetry = actions.find((action) => action.key === "retry_media_pipeline");
 
   assert.equal(mockupReview?.label, "Mockup für Video prüfen");
   assert.equal(mockupReview?.enabled, true);
@@ -2791,6 +2816,8 @@ test("company brain routes video QC failures to mockup review and blocks direct 
   assert.equal(guardedResend?.enabled, false);
   assert.match(guardedResend?.summary || "", /Video-Inhaltsprüfung/);
   assert.equal(retryTask?.enabled, false);
+  assert.equal(pipelineRetry?.enabled, true);
+  assert.match(pipelineRetry?.summary || "", /genau einen neuen Queue-Lauf/i);
 
   const guidance = buildCompanyBrainEmployeeGuidance({
     problemResolution: {
@@ -2823,8 +2850,8 @@ test("company brain routes video QC failures to mockup review and blocks direct 
   });
 
   assert.equal(guidance.rootCauseCode, "video_content_qc_failed");
-  assert.equal(guidance.nextBestActionKey, "collect_design_assets");
-  assert.equal(guidance.nextBestActionLabel, "Mockup für Video prüfen");
+  assert.equal(guidance.nextBestActionKey, "retry_media_pipeline");
+  assert.equal(guidance.nextBestActionLabel, "Video- und Angebotslauf neu starten");
   assert.match(guidance.plainLanguageSummary, /DESIGN_MORPH/);
 });
 

@@ -9,6 +9,8 @@ export type WorkflowAuditEventInput = {
   workflowName?: string | null;
   workflow_name?: string | null;
   workflow?: Record<string, unknown> | null;
+  workflowId?: string | null;
+  workflow_id?: string | null;
   action?: string | null;
   status?: string | null;
   requestId?: string | null;
@@ -49,6 +51,19 @@ export type WorkflowAuditEventInput = {
   summary?: string | null;
   retrySafety?: WorkflowAuditRetrySafety | null;
   retry_safety?: WorkflowAuditRetrySafety | null;
+  stage?: string | null;
+  workflow_stage?: string | null;
+  attemptKey?: string | null;
+  attempt_key?: string | null;
+  attemptNumber?: number | string | null;
+  attempt_number?: number | string | null;
+  attemptLimit?: number | string | null;
+  attempt_limit?: number | string | null;
+  safeActionKey?: string | null;
+  safe_action_key?: string | null;
+  terminal?: boolean | null;
+  eventType?: string | null;
+  event_type?: string | null;
   customer_communication_sent?: boolean | null;
   metadata?: Record<string, unknown> | null;
 };
@@ -101,6 +116,20 @@ function normalizeRetrySafety(value: unknown): WorkflowAuditRetrySafety {
   return RETRY_SAFETY_VALUES.has(normalized) ? normalized : "unknown";
 }
 
+function nullableInteger(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function nullableBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const normalized = cleanText(value, 20).toLowerCase();
+  if (["true", "1", "yes"].includes(normalized)) return true;
+  if (["false", "0", "no"].includes(normalized)) return false;
+  return null;
+}
+
 function compactMetadata(input: Record<string, unknown> | null | undefined) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   const output: Record<string, unknown> = {};
@@ -131,6 +160,20 @@ function compactMetadata(input: Record<string, unknown> | null | undefined) {
 function issueRetrySafety(key: AutomationIssueKey): WorkflowAuditRetrySafety {
   if (isBlockingAutomationIssueKey(key)) return "blocked";
   return "unknown";
+}
+
+function issueSafeActionKey(key: AutomationIssueKey) {
+  if (key === "customer_email_missing" || key === "customer_email_invalid" || key === "delivery_failure") {
+    return "correct_customer_email";
+  }
+  if (["offer_service_unavailable", "source_changed_after_preflight", "video_content_qc_inconclusive", "video_content_qc_unavailable"].includes(key)) {
+    return "retry_media_pipeline";
+  }
+  if (["preview_media_invalid", "video_content_qc_failed", "asset_processing_failed", "size_ladder_validation_failed"].includes(key)) {
+    return "collect_design_assets";
+  }
+  if (key === "duplicate_guard") return "repair_trello_projection";
+  return key === "unknown" ? "inspect_n8n_run" : "create_internal_task";
 }
 
 function metadataText(metadata: Record<string, unknown>, keys: string[]) {
@@ -164,6 +207,8 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
   const node = objectValue(input.node);
   const errorObject = objectValue(input.error);
   const workflowName = nullableText(input.workflowName || input.workflow_name, 180) || nestedText(workflow, ["name"], 180);
+  const workflowId = nullableText(input.workflowId || input.workflow_id, 180) ||
+    nestedText(workflow, ["id"], 180);
   const compactedMetadata = compactMetadata(input.metadata);
   const action = nullableText(input.action, 180) ||
     metadataText(compactedMetadata, ["action", "expected_action", "workflow_action"]) ||
@@ -231,6 +276,38 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
   ].filter(Boolean).join(" "));
   const retrySafety = explicitRetrySafety !== "unknown" ? explicitRetrySafety : issueRetrySafety(issueHint.key);
   const summary = rawSummary || (issueHint.key !== "unknown" ? issueHint.rootCause : null);
+  const stage = nullableText(input.stage || input.workflow_stage, 180) ||
+    metadataText(compactedMetadata, ["workflow_stage", "stage", "failed_stage"]) ||
+    failedNode || action;
+  const attemptKeyInput = nullableText(input.attemptKey || input.attempt_key, 300) ||
+    metadataText(compactedMetadata, ["workflow_attempt_key", "attempt_key", "attemptKey"]);
+  const attemptKey = attemptKeyInput || `workflow-attempt:${hashKey([
+    workflowId || workflowName,
+    executionId || idempotencyKey || correlationId || sourceEventId || documentId,
+    action,
+  ].join("|"))}`;
+  const attemptNumber = nullableInteger(input.attemptNumber || input.attempt_number) ??
+    nullableInteger(metadataText(compactedMetadata, ["attempt_number", "current_attempt", "attemptNumber"])) ??
+    1;
+  const attemptLimit = nullableInteger(input.attemptLimit || input.attempt_limit) ??
+    nullableInteger(metadataText(compactedMetadata, ["attempt_limit", "automatic_video_attempt_limit", "max_attempts"]));
+  const safeActionKeyInput = nullableText(input.safeActionKey || input.safe_action_key, 120) ||
+    metadataText(compactedMetadata, ["safe_action_key", "safeActionKey"]);
+  const safeActionKey = safeActionKeyInput || issueSafeActionKey(issueHint.key);
+  const inferredTerminal = /^(success|succeeded|sent|completed|duplicate|ok|error|failed|failure|blocked|abandoned|cancelled)$/i.test(status);
+  const terminalInput = input.terminal ?? nullableBoolean(compactedMetadata.terminal);
+  const terminal = terminalInput ?? inferredTerminal;
+  const eventType = nullableText(input.eventType || input.event_type, 120) ||
+    metadataText(compactedMetadata, ["event_type", "eventType"]) ||
+    `${action}:${status}`;
+  const contractMissingFields = [
+    workflowId ? null : "workflow_id",
+    requestId || trelloCardId || offerId ? null : "case_identity",
+    attemptKeyInput ? null : "attempt_key",
+    nullableText(input.stage || input.workflow_stage, 180) || metadataText(compactedMetadata, ["workflow_stage", "stage", "failed_stage"]) ? null : "stage",
+    safeActionKeyInput ? null : "safe_action_key",
+    terminalInput !== null ? null : "terminal",
+  ].filter((value): value is string => Boolean(value));
   const metadata = {
     ...compactedMetadata,
     request_id: requestId,
@@ -241,7 +318,8 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
     offer_number: offerNumber,
     execution_id: executionId,
     n8n_execution_id: executionId,
-    n8n_workflow_id: nestedText(workflow, ["id"], 180),
+    workflow_id: workflowId,
+    n8n_workflow_id: workflowId,
     n8n_execution_url: nestedText(execution, ["url"], 500),
     n8n_execution_mode: nestedText(execution, ["mode"], 120),
     n8n_node_type: nestedText(node, ["type"], 180),
@@ -251,6 +329,15 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
     idempotency_key: idempotencyKey,
     failed_node: failedNode,
     retry_safety: retrySafety,
+    workflow_attempt_key: attemptKey,
+    workflow_stage: stage,
+    attempt_number: attemptNumber,
+    attempt_limit: attemptLimit,
+    safe_action_key: safeActionKey,
+    terminal,
+    event_type: eventType,
+    contract_complete: contractMissingFields.length === 0,
+    contract_missing_fields: contractMissingFields,
     customer_communication_sent: input.customer_communication_sent === true,
     summary,
     automation_issue_key: issueHint.key !== "unknown" ? issueHint.key : null,
@@ -259,7 +346,7 @@ export function normalizeWorkflowAuditEvent(input: WorkflowAuditEventInput): Wor
     automation_issue_safe_fix: issueHint.key !== "unknown" ? issueHint.safeFix : null,
     automation_issue_retry_safety: issueHint.key !== "unknown" ? issueHint.retrySafety : null,
     automation_issue_contract_version: 1,
-    audit_contract_version: 1,
+    audit_contract_version: 2,
   };
   const explicitKey = nullableText((input.metadata || {}).audit_event_key, 300);
   const auditEventKey = explicitKey || `workflow-audit:${hashKey([
