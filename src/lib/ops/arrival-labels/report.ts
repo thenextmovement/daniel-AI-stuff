@@ -13,8 +13,8 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
     `- Korrelations-ID: \`${result.correlationId}\``,
     `- Produktkonfiguration: ${result.configVersion ? `\`${result.configVersion}\`` : "nicht freigegeben"}`,
     "",
-    "| DHL-Sendung | Letzte 4 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde | Notiz / Änderung | Versandart | DPD-Produkt | DPD-Tracking | PDF | Status / Fehler |",
-    "| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| DHL-Sendung | Letzte 4 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde | Notiz / Änderung | Versandart | DPD-Produkt | DPD-Tracking | PDF | Druck | Status / Fehler |",
+    "| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
 
   for (const entry of result.cases) {
@@ -29,6 +29,7 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
       cell(entry.selectedDpdProduct),
       cell(entry.existingDpdTracking),
       "-",
+      result.mode === "dry_run" ? "nicht eingereiht (Dry Run)" : "-",
       cell(entry.manualReviewReason || entry.status),
     ].join(" | ")} |`);
   }

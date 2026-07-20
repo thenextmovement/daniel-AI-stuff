@@ -1,6 +1,13 @@
+revoke execute on function public.arrival_labels_update_print_job(uuid, text, text, text, text, timestamptz) from service_role;
+revoke execute on function public.arrival_labels_claim_print_job(text, text, integer, timestamptz) from service_role;
+revoke execute on function public.arrival_labels_enqueue_print_job(uuid, uuid, text, text) from service_role;
 revoke execute on function public.arrival_labels_claim_case(uuid, text, integer, timestamptz) from service_role;
+drop function if exists public.arrival_labels_update_print_job(uuid, text, text, text, text, timestamptz);
+drop function if exists public.arrival_labels_claim_print_job(text, text, integer, timestamptz);
+drop function if exists public.arrival_labels_enqueue_print_job(uuid, uuid, text, text);
 drop function if exists public.arrival_labels_claim_case(uuid, text, integer, timestamptz);
 
+drop table if exists public.arrival_label_print_jobs;
 drop table if exists public.arrival_label_artifacts;
 drop table if exists public.arrival_label_events;
 drop table if exists public.arrival_label_run_cases;

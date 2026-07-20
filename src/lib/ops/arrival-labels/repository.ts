@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import type { ArrivalCaseDecision, DhlArrival, ExistingDpdEvidence, ProductConfig } from "./domain";
 import type { ArrivalDataClients } from "./clients";
+import { readBoundedResponseBytes } from "./printing";
 
 type ProductConfigRow = {
   version: string;
   enabled: boolean;
   standard_product_code: string | null;
   express_product_mapping: Record<string, unknown> | null;
+  printer_key: string | null;
+  print_media: string | null;
 };
 
 type RunRow = { id: string; correlation_id: string };
@@ -15,7 +18,7 @@ type CaseRow = { id: string; idempotency_key: string; status: string };
 
 export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
   const rows = await supabaseRequest<ProductConfigRow[]>("arrival_label_product_config", undefined, {
-    select: "version,enabled,standard_product_code,express_product_mapping",
+    select: "version,enabled,standard_product_code,express_product_mapping,printer_key,print_media",
     enabled: "eq.true",
     limit: 2,
   });
@@ -29,14 +32,131 @@ export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
     standardProductCode: row.standard_product_code,
     expressProductMapping: {
       express: typeof mapping.express === "string" ? mapping.express : undefined,
+      express_09: typeof mapping.express_09 === "string" ? mapping.express_09 : undefined,
+      express_12: typeof mapping.express_12 === "string" ? mapping.express_12 : undefined,
+      express_18: typeof mapping.express_18 === "string" ? mapping.express_18 : undefined,
       urgent: typeof mapping.urgent === "string" ? mapping.urgent : undefined,
     },
+    printerKey: row.printer_key,
+    printMedia: row.print_media,
   };
+}
+
+export type ArrivalPrintJobRow = {
+  id: string;
+  case_id: string;
+  artifact_id: string;
+  idempotency_key: string;
+  printer_key: string;
+  document_sha256: string;
+  status: "queued" | "claimed" | "dispatching" | "submitted" | "printed" | "retryable_error" | "manual_review" | "cancelled";
+  attempts: number;
+  max_attempts: number;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  cups_job_id: string | null;
+  last_error: string | null;
+};
+
+export async function enqueueArrivalPrintJob(input: {
+  caseId: string;
+  artifactId: string;
+  printerKey: string;
+  idempotencyKey: string;
+}) {
+  const rows = await supabaseRpc<ArrivalPrintJobRow[]>("arrival_labels_enqueue_print_job", {
+    p_case_id: input.caseId,
+    p_artifact_id: input.artifactId,
+    p_printer_key: input.printerKey,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  if (!rows[0]) throw new Error("Druckauftrag konnte nicht angelegt werden.");
+  return rows[0];
+}
+
+export async function claimArrivalPrintJob(input: { workerId: string; printerKey: string; leaseSeconds?: number }) {
+  const rows = await supabaseRpc<ArrivalPrintJobRow[]>("arrival_labels_claim_print_job", {
+    p_worker_id: input.workerId,
+    p_printer_key: input.printerKey,
+    p_lease_seconds: input.leaseSeconds || 180,
+  });
+  return rows[0] || null;
+}
+
+export async function updateArrivalPrintJob(input: {
+  jobId: string;
+  workerId: string;
+  result: "dispatching" | "submitted" | "printed" | "retryable_error" | "uncertain";
+  cupsJobId?: string | null;
+  error?: string | null;
+}) {
+  const rows = await supabaseRpc<ArrivalPrintJobRow[]>("arrival_labels_update_print_job", {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_result: input.result,
+    p_cups_job_id: input.cupsJobId || null,
+    p_error: input.error || null,
+  });
+  if (!rows[0]) throw new Error("Druckauftrag konnte nicht aktualisiert werden.");
+  return rows[0];
+}
+
+type PrintArtifactRow = {
+  id: string;
+  storage_bucket: string;
+  storage_key: string;
+  sha256: string;
+  content_type: string;
+  byte_size: number;
+};
+
+export async function loadClaimedPrintArtifact(input: { jobId: string; workerId: string }) {
+  const jobs = await supabaseRequest<ArrivalPrintJobRow[]>("arrival_label_print_jobs", undefined, {
+    select: "id,case_id,artifact_id,idempotency_key,printer_key,document_sha256,status,attempts,max_attempts,lease_owner,lease_expires_at,cups_job_id,last_error",
+    id: `eq.${input.jobId}`,
+    lease_owner: `eq.${input.workerId}`,
+    status: "in.(claimed,dispatching,submitted)",
+    limit: 1,
+  });
+  const job = jobs[0];
+  if (!job) return null;
+  const artifacts = await supabaseRequest<PrintArtifactRow[]>("arrival_label_artifacts", undefined, {
+    select: "id,storage_bucket,storage_key,sha256,content_type,byte_size",
+    id: `eq.${job.artifact_id}`,
+    artifact_kind: "eq.annotated_pdf",
+    limit: 1,
+  });
+  const artifact = artifacts[0];
+  if (!artifact || artifact.sha256 !== job.document_sha256 || artifact.content_type !== "application/pdf") return null;
+  return { job, artifact };
+}
+
+export async function downloadPrivateArrivalArtifact(artifact: PrintArtifactRow) {
+  const baseUrl = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+  if (!/^https:\/\//.test(baseUrl) || !key) throw new Error("Supabase Storage ist nicht konfiguriert.");
+  if (artifact.byte_size < 1 || artifact.byte_size > 10 * 1024 * 1024) throw new Error("Druck-PDF hat eine ungueltige Groesse.");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(artifact.storage_bucket)) throw new Error("Ungueltiger privater Storage-Bucket.");
+  const pathSegments = artifact.storage_key.split("/");
+  if (!pathSegments.length || pathSegments.some((segment) => !segment || segment === "." || segment === ".." || segment.length > 255)) {
+    throw new Error("Ungueltiger privater Storage-Pfad.");
+  }
+  const objectPath = pathSegments.map(encodeURIComponent).join("/");
+  const url = `${baseUrl}/storage/v1/object/authenticated/${encodeURIComponent(artifact.storage_bucket)}/${objectPath}`;
+  const response = await fetch(url, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Druck-PDF konnte nicht geladen werden (HTTP ${response.status}).`);
+  const bytes = await readBoundedResponseBytes(response, 10 * 1024 * 1024);
+  if (bytes.byteLength !== Number(artifact.byte_size)) throw new Error("Druck-PDF-Groesse stimmt nicht mit dem Audit-Datensatz ueberein.");
+  return bytes;
 }
 
 export async function startArrivalRun(input: {
   correlationId?: string;
-  triggerType: "manual_cli" | "manual_api" | "n8n_schedule" | "fixture_test";
+  triggerType: "manual_cli" | "manual_api" | "n8n_email" | "n8n_schedule" | "fixture_test";
   mode: "dry_run" | "execute";
   localDate: string;
   configVersion: string | null;

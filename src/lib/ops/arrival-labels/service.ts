@@ -39,7 +39,7 @@ export type ArrivalRunResult = {
 export type RunArrivalLabelsOptions = {
   localDate?: string;
   mode?: ArrivalRunMode;
-  triggerType?: "manual_cli" | "manual_api" | "n8n_schedule" | "fixture_test";
+  triggerType?: "manual_cli" | "manual_api" | "n8n_email" | "n8n_schedule" | "fixture_test";
   persist?: boolean;
   correlationId?: string;
   clients?: ArrivalDataClients;
