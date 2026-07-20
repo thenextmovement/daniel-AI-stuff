@@ -403,7 +403,7 @@ return { json: { dispatchReceiptId } };`,
 };
 
 const outlookArchiveWorkflow = {
-  name: "NEONTRIP Archive DHL Mail After Label Print v0.1 (INACTIVE)",
+  name: "NEONTRIP Archive DHL Mail After Label Print v0.2 (INACTIVE)",
   active: false,
   nodes: [
     {
@@ -415,7 +415,7 @@ const outlookArchiveWorkflow = {
       parameters: {
         width: 940,
         height: 220,
-        content: "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Pre-dispatch errors may retry; any uncertainty after move dispatch becomes manual review and never auto-retries. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable the database archive setting.",
+        content: "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Cloudflare Access and the Ops bearer token are both required. Pre-dispatch errors may retry; any uncertainty after move dispatch becomes manual review and never auto-retries. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable the database archive setting.",
       },
     },
     {
@@ -438,11 +438,15 @@ const outlookArchiveWorkflow = {
         language: "javaScript",
         jsCode: String.raw`const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(/\/$/, '');
 const token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');
+const cfAccessClientId = String($env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID || '');
+const cfAccessClientSecret = String($env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET || '');
 const workflowPart = String($workflow.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
 const executionPart = String($execution.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
 const workerId = ('n8n-outlook-archive:' + workflowPart + ':' + executionPart).slice(0, 96);
 if (!/^https:\/\//.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');
 if (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');
+if (cfAccessClientId.length < 16) throw new Error('ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID is missing or too short');
+if (cfAccessClientSecret.length < 24) throw new Error('ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET is missing or too short');
 if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(workerId)) throw new Error('Outlook archive worker id is invalid');
 return [{ json: { baseUrl, workerId } }];`,
       },
@@ -460,6 +464,8 @@ return [{ json: { baseUrl, workerId } }];`,
         sendHeaders: true,
         headerParameters: { parameters: [
           { name: "Authorization", value: "={{ 'Bearer ' + $env.ARRIVAL_LABEL_AGENT_API_TOKEN }}" },
+          { name: "CF-Access-Client-Id", value: "={{ $env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID }}" },
+          { name: "CF-Access-Client-Secret", value: "={{ $env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET }}" },
           { name: "X-Neontrip-Outlook-Archive-Worker", value: "={{ $json.workerId }}" },
           { name: "Content-Type", value: "application/json" },
         ] },
@@ -483,7 +489,7 @@ return [{ json: { baseUrl, workerId } }];`,
     executionTimeout: 90,
     errorWorkflow: "ArT3LN25Mb1PAuBE",
   },
-  versionId: "arrival-outlook-archive-after-print-v0-1",
+  versionId: "arrival-outlook-archive-after-print-v0-2",
   meta: { templateCredsSetupCompleted: false },
   tags: [],
 };

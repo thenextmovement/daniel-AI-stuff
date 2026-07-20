@@ -73,7 +73,16 @@ assert.equal(archiveRequests[0].retryOnFail, undefined, "move processor request 
 assert.ok(archiveRequests[0].parameters.options.timeout <= 60000);
 assert.match(archiveSerialized, /outlook-archives\/process/);
 assert.match(archiveSerialized, /X-Neontrip-Outlook-Archive-Worker/);
+assert.match(archiveSerialized, /CF-Access-Client-Id/);
+assert.match(archiveSerialized, /CF-Access-Client-Secret/);
+assert.match(archiveSerialized, /ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID is missing or too short/);
+assert.match(archiveSerialized, /ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET is missing or too short/);
 assert.match(archiveSerialized, /full tracking number/);
+assert.doesNotMatch(
+  archiveRequests[0].parameters.body,
+  /ARRIVAL_LABEL_CF_ACCESS_CLIENT|ARRIVAL_LABEL_AGENT_API_TOKEN/,
+  "secrets must stay in request headers and never enter the request body",
+);
 assert.doesNotMatch(archiveSerialized, /EASYDPD|createLabel|ARRIVAL_LABEL_WRITES_ENABLED|print-jobs\/claim/);
 assert.ok(archiveWorkflow.nodes.length <= 5, "archive orchestration must stay small");
 for (const codeNode of archiveWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.code")) {

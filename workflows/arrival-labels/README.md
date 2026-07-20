@@ -15,5 +15,7 @@ Runtime secrets stay in n8n environment variables:
 
 - `NEONTRIP_OPS_BASE_URL` (HTTPS)
 - `ARRIVAL_LABEL_AGENT_API_TOKEN` (at least 24 characters)
+- `ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID` (dedicated Cloudflare Access service-token ID; archive worker only)
+- `ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET` (dedicated Cloudflare Access service-token secret; archive worker only)
 
 All generated workflows are inactive. The two detector workflows send `mode=dry_run` and `persist=true`: persistence is limited to audited case decisions, events and review-mail outbox entries; it does not authorize carrier purchase or printing. The mail worker sends deterministic plain text only to `info@neontrip.de`, marks dispatch before Outlook, and never automatically resends an uncertain dispatch. The Outlook archive worker invokes one server-side outbox item per minute without HTTP retry; the server revalidates the exact message ID, allowlisted DHL sender and full tracking number before a single move to the Archive folder. It also requires Microsoft Graph application permission `Mail.ReadWrite` and the fail-closed database archive setting to be enabled with a current activation timestamp. These workflows must not be activated until the Ops API deployment, database migration, shadow run and operator review are complete. Deactivation plus disabling the archive setting is the immediate archive rollback.
