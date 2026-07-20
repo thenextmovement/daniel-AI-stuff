@@ -1,0 +1,52 @@
+{
+  "messages": [
+    {
+      "messageId": "fixture-dhl-reference",
+      "receivedAt": "2026-07-20T06:00:00Z",
+      "senderAddress": "DHL Express <tracking@example.invalid>",
+      "subject": "DHL Express: Ihre Sendung kommt HEUTE",
+      "bodyText": "DHL Express Sendungsnummer: 2619113486"
+    },
+    {
+      "messageId": "fixture-dhl-dimmer",
+      "receivedAt": "2026-07-20T06:10:00Z",
+      "senderAddress": "DHL Express <tracking@example.invalid>",
+      "subject": "DHL Express: Ihre Sendung kommt HEUTE",
+      "bodyText": "Tracking number 5538051234"
+    }
+  ],
+  "cards": [
+    {
+      "id": "fixture-card-reference",
+      "name": "2619113486 | #NEONT4498 | Alexander Walden",
+      "url": "https://trello.example.invalid/reference"
+    },
+    {
+      "id": "fixture-card-dimmer",
+      "name": "5538051234 | 100 pieces Single color Dimmers",
+      "url": "https://trello.example.invalid/dimmer"
+    }
+  ],
+  "orders": [
+    {
+      "id": "gid://shopify/Order/4498",
+      "name": "#NEONT4498",
+      "customerName": "Alexander Walden",
+      "note": null,
+      "tags": [],
+      "lineItems": [{ "title": "Neonschild", "quantity": 1 }],
+      "shippingLines": [{ "title": "Standard Versand", "code": "Standard" }],
+      "fulfillments": [
+        {
+          "id": "gid://shopify/Fulfillment/reference",
+          "status": "SUCCESS",
+          "trackingCompany": "DPD",
+          "trackingNumber": "01476817678011",
+          "trackingUrl": null
+        }
+      ]
+    }
+  ],
+  "existingLabels": {},
+  "productConfig": null
+}
