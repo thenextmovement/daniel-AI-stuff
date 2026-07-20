@@ -22,4 +22,11 @@ test("systemd worker runs unprivileged and keeps secrets outside the unit", asyn
   assert.match(unit, /ProtectSystem=strict/);
   assert.match(unit, /EnvironmentFile=\/etc\/neontrip\/arrival-label-print\.env/);
   assert.doesNotMatch(unit, /ARRIVAL_LABEL_PRINT_API_TOKEN=/);
+
+  const deliveryNoteUnit = await readFile("deploy/local-print-worker/neontrip-arrival-delivery-note-print.service", "utf8");
+  assert.match(deliveryNoteUnit, /User=neontrip-print/);
+  assert.match(deliveryNoteUnit, /NoNewPrivileges=true/);
+  assert.match(deliveryNoteUnit, /ProtectSystem=strict/);
+  assert.match(deliveryNoteUnit, /EnvironmentFile=\/etc\/neontrip\/arrival-delivery-note-print[.]env/);
+  assert.doesNotMatch(deliveryNoteUnit, /ARRIVAL_LABEL_PRINT_API_TOKEN=/);
 });

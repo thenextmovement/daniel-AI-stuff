@@ -28,6 +28,9 @@ scripts/run-dry-run.sh --date 2026-07-20 --fixture tests/fixtures/arrival-labels
 - Never guess DPD 09:00, 12:00, Express 12:00, or Express 18:00 mappings.
 - Existing Shopify fulfillment or DPD tracking means no second label.
 - Missing or ambiguous Trello/Shopify data, non-standard notes, conflicting shipping instructions, and absent product configuration remain manual review.
+- Switzerland, all other non-EU destinations, missing countries, and known EU VAT/customs special territories remain manual review.
+- EU destinations outside Germany require a complete Shopify delivery address, an explicitly approved EU DPD product, and a QA-approved A4 delivery note confirmed printed before any label purchase.
+- Do not substitute the Sales-Vergabe order confirmation for a delivery note and do not assume an EasyBill API exists.
 - `100 pieces single color dimmers` is a reported special case without an expected Shopify order.
 - The reference `#NEONT4498` / DHL `2619113486` / DPD `01476817678011` must remain existing-label only.
 

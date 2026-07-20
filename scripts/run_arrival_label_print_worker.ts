@@ -5,6 +5,7 @@ import { createCupsPrinter, assertPrintPdf, readBoundedResponseBytes, validatePr
 
 type ClaimedJob = {
   id: string;
+  documentKind: "label" | "delivery_note";
   printerKey: string;
   sha256: string;
   attempts: number;
@@ -96,7 +97,11 @@ async function claim(configuration: ReturnType<typeof config>) {
   });
   if (response.status === 204) return null;
   const payload = await response.json() as { job?: ClaimedJob };
-  if (!payload.job || payload.job.printerKey !== configuration.printerKey) throw new Error("Ops Print API lieferte einen ungueltigen Druckauftrag.");
+  if (!payload.job
+    || payload.job.printerKey !== configuration.printerKey
+    || !["label", "delivery_note"].includes(payload.job.documentKind)) {
+    throw new Error("Ops Print API lieferte einen ungueltigen Druckauftrag.");
+  }
   return payload.job;
 }
 
@@ -129,7 +134,7 @@ async function processOne(configuration: ReturnType<typeof config>, printer: Ret
 
     if (await waitForCompletion(printer, cupsJobId, configuration.confirmationSeconds)) {
       await updateResult(configuration, job, "printed", cupsJobId);
-      process.stdout.write(`printed job=${job.id} cups=${cupsJobId}\n`);
+      process.stdout.write(`printed kind=${job.documentKind} job=${job.id} cups=${cupsJobId}\n`);
     } else {
       await updateResult(configuration, job, "uncertain", cupsJobId, "CUPS completion could not be proven; manual check required and no automatic reprint is allowed.");
       process.stderr.write(`manual_review job=${job.id} cups=${cupsJobId}\n`);

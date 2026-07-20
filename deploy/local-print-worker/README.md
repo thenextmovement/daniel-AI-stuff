@@ -6,7 +6,7 @@ Run this worker on one always-on machine inside the NEONTRIP office WLAN. It mak
 
 - Node.js version compatible with the Ops repository
 - CUPS client commands `lp` and `lpstat`
-- one configured A6-capable printer queue
+- one configured A6-capable label queue and, for EU delivery notes, a separate A4 office-printer queue
 - a dedicated unprivileged OS user such as `neontrip-print`
 - the reviewed Ops commit checked out below `/opt/neontrip-ops/current`
 
@@ -22,7 +22,7 @@ Confirm the exact CUPS media keyword shown by `lpoptions`; do not guess it. The 
 
 ## Configuration
 
-Copy `arrival-label-print.env.example` to `/etc/neontrip/arrival-label-print.env`, set owner/root permissions to `0600`, and provide a dedicated `ARRIVAL_LABEL_PRINT_API_TOKEN`. If Ops is protected by Cloudflare Access, provision a least-privilege service token for this exact API path and set both `ARRIVAL_LABEL_PRINT_CF_ACCESS_*` values. The logical `ARRIVAL_LABEL_PRINTER_KEY` must match the approved product configuration; `ARRIVAL_LABEL_CUPS_PRINTER` is the local queue name.
+Copy `arrival-label-print.env.example` to `/etc/neontrip/arrival-label-print.env`, set owner/root permissions to `0600`, and provide a dedicated `ARRIVAL_LABEL_PRINT_API_TOKEN`. For EU delivery notes, copy `arrival-delivery-note-print.env.example` to `/etc/neontrip/arrival-delivery-note-print.env` and use a different worker ID plus the separately approved A4 logical/CUPS queue. If Ops is protected by Cloudflare Access, provision least-privilege service tokens for this exact API path and set both `ARRIVAL_LABEL_PRINT_CF_ACCESS_*` values. Each logical `ARRIVAL_LABEL_PRINTER_KEY` must match the approved product configuration; `ARRIVAL_LABEL_CUPS_PRINTER` is the corresponding local queue name.
 
 Read-only local readiness check (prints no page):
 
@@ -36,7 +36,7 @@ One polling cycle:
 npm run arrival-labels:print-worker -- --once
 ```
 
-Only after a real A6 test label has been visually and scan-checked should the supplied systemd unit be installed and enabled. Installation requires explicit local administrator approval and is intentionally not performed by this repository.
+Run the no-page self-test once with each environment file. Only after a real A6 test label and a separate A4 delivery note have been visually checked should the matching systemd units be installed and enabled. The A6 unit uses `/etc/neontrip/arrival-label-print.env`; the A4 unit uses `/etc/neontrip/arrival-delivery-note-print.env`. Installation requires explicit local administrator approval and is intentionally not performed by this repository.
 
 ## Exactly-once boundary
 

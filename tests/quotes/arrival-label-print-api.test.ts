@@ -83,8 +83,11 @@ test("print claim API returns an approved queue job with a stable document path"
           enabled: true,
           standard_product_code: "DPD-CLASSIC",
           express_product_mapping: { express: "DPD-EXPRESS-12" },
+          eu_product_mapping: { standard: "DPD-EU-CLASSIC" },
           printer_key: "shipping-a6",
           print_media: "A6",
+          delivery_note_printer_key: "office-a4",
+          delivery_note_print_media: "A4",
         }]);
       }
       if (url.includes("rpc/arrival_labels_claim_print_job")) {
@@ -92,6 +95,7 @@ test("print claim API returns an approved queue job with a stable document path"
           id: "11111111-1111-4111-8111-111111111111",
           case_id: "22222222-2222-4222-8222-222222222222",
           artifact_id: "33333333-3333-4333-8333-333333333333",
+          document_kind: "label",
           idempotency_key: "shopify-order:incoming-dhl:print",
           printer_key: "shipping-a6",
           document_sha256: "a".repeat(64),
@@ -113,7 +117,39 @@ test("print claim API returns an approved queue job with a stable document path"
     const payload = await response.json();
     assert.equal(response.status, 200);
     assert.equal(payload.job.documentPath, "/api/internal/arrival-labels/print-jobs/11111111-1111-4111-8111-111111111111/document");
+    assert.equal(payload.job.documentKind, "label");
     assert.equal(payload.job.sha256, "a".repeat(64));
+    assert.equal(call, 2);
+  });
+});
+
+test("print claim API also allows the separately approved A4 delivery-note queue", async () => {
+  await withPrintEnvironment(async () => {
+    let call = 0;
+    globalThis.fetch = async (input) => {
+      call += 1;
+      const url = String(input);
+      if (url.includes("arrival_label_product_config")) {
+        return Response.json([{
+          version: "test-v1",
+          enabled: true,
+          standard_product_code: "DPD-CLASSIC",
+          express_product_mapping: {},
+          eu_product_mapping: { standard: "DPD-EU-CLASSIC" },
+          printer_key: "shipping-a6",
+          print_media: "A6",
+          delivery_note_printer_key: "office-a4",
+          delivery_note_print_media: "A4",
+        }]);
+      }
+      if (url.includes("rpc/arrival_labels_claim_print_job")) return Response.json([]);
+      throw new Error(`unexpected request ${url}`);
+    };
+    const response = await claimPrintJob(request(
+      "/api/internal/arrival-labels/print-jobs/claim",
+      { workerId: WORKER_ID, printerKey: "office-a4" },
+    ));
+    assert.equal(response.status, 204);
     assert.equal(call, 2);
   });
 });

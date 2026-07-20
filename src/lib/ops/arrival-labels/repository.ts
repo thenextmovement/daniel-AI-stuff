@@ -10,8 +10,11 @@ type ProductConfigRow = {
   enabled: boolean;
   standard_product_code: string | null;
   express_product_mapping: Record<string, unknown> | null;
+  eu_product_mapping: Record<string, unknown> | null;
   printer_key: string | null;
   print_media: string | null;
+  delivery_note_printer_key: string | null;
+  delivery_note_print_media: string | null;
 };
 
 type RunRow = { id: string; correlation_id: string };
@@ -75,7 +78,7 @@ export async function updateArrivalReviewNotification(input: {
 
 export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
   const rows = await supabaseRequest<ProductConfigRow[]>("arrival_label_product_config", undefined, {
-    select: "version,enabled,standard_product_code,express_product_mapping,printer_key,print_media",
+    select: "version,enabled,standard_product_code,express_product_mapping,eu_product_mapping,printer_key,print_media,delivery_note_printer_key,delivery_note_print_media",
     enabled: "eq.true",
     limit: 2,
   });
@@ -83,6 +86,7 @@ export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
   const row = rows[0];
   if (!row) return null;
   const mapping = row.express_product_mapping || {};
+  const euMapping = row.eu_product_mapping || {};
   return {
     version: row.version,
     enabled: row.enabled,
@@ -94,8 +98,18 @@ export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
       express_18: typeof mapping.express_18 === "string" ? mapping.express_18 : undefined,
       urgent: typeof mapping.urgent === "string" ? mapping.urgent : undefined,
     },
+    euProductMapping: {
+      standard: typeof euMapping.standard === "string" ? euMapping.standard : undefined,
+      express: typeof euMapping.express === "string" ? euMapping.express : undefined,
+      express_09: typeof euMapping.express_09 === "string" ? euMapping.express_09 : undefined,
+      express_12: typeof euMapping.express_12 === "string" ? euMapping.express_12 : undefined,
+      express_18: typeof euMapping.express_18 === "string" ? euMapping.express_18 : undefined,
+      urgent: typeof euMapping.urgent === "string" ? euMapping.urgent : undefined,
+    },
     printerKey: row.printer_key,
     printMedia: row.print_media,
+    deliveryNotePrinterKey: row.delivery_note_printer_key,
+    deliveryNotePrintMedia: row.delivery_note_print_media,
   };
 }
 
@@ -103,6 +117,7 @@ export type ArrivalPrintJobRow = {
   id: string;
   case_id: string;
   artifact_id: string;
+  document_kind: "label" | "delivery_note";
   idempotency_key: string;
   printer_key: string;
   document_sha256: string;
@@ -160,6 +175,7 @@ export async function updateArrivalPrintJob(input: {
 
 type PrintArtifactRow = {
   id: string;
+  artifact_kind: "annotated_pdf" | "delivery_note_pdf";
   storage_bucket: string;
   storage_key: string;
   sha256: string;
@@ -169,7 +185,7 @@ type PrintArtifactRow = {
 
 export async function loadClaimedPrintArtifact(input: { jobId: string; workerId: string }) {
   const jobs = await supabaseRequest<ArrivalPrintJobRow[]>("arrival_label_print_jobs", undefined, {
-    select: "id,case_id,artifact_id,idempotency_key,printer_key,document_sha256,status,attempts,max_attempts,lease_owner,lease_expires_at,cups_job_id,last_error",
+    select: "id,case_id,artifact_id,document_kind,idempotency_key,printer_key,document_sha256,status,attempts,max_attempts,lease_owner,lease_expires_at,cups_job_id,last_error",
     id: `eq.${input.jobId}`,
     lease_owner: `eq.${input.workerId}`,
     status: "in.(claimed,dispatching,submitted)",
@@ -178,13 +194,13 @@ export async function loadClaimedPrintArtifact(input: { jobId: string; workerId:
   const job = jobs[0];
   if (!job) return null;
   const artifacts = await supabaseRequest<PrintArtifactRow[]>("arrival_label_artifacts", undefined, {
-    select: "id,storage_bucket,storage_key,sha256,content_type,byte_size",
+    select: "id,artifact_kind,storage_bucket,storage_key,sha256,content_type,byte_size",
     id: `eq.${job.artifact_id}`,
-    artifact_kind: "eq.annotated_pdf",
     limit: 1,
   });
   const artifact = artifacts[0];
-  if (!artifact || artifact.sha256 !== job.document_sha256 || artifact.content_type !== "application/pdf") return null;
+  const expectedKind = job.document_kind === "delivery_note" ? "delivery_note_pdf" : "annotated_pdf";
+  if (!artifact || artifact.artifact_kind !== expectedKind || artifact.sha256 !== job.document_sha256 || artifact.content_type !== "application/pdf") return null;
   return { job, artifact };
 }
 
@@ -263,6 +279,10 @@ export async function upsertArrivalCase(input: {
       shopify_note: order?.note || null,
       shopify_note_hash: order?.note ? await sha256Text(order.note) : null,
       shipping_class: input.decision.shippingClass,
+      destination_country_code: input.decision.destinationCountryCode,
+      destination_class: input.decision.destinationClass,
+      delivery_note_required: input.decision.deliveryNoteRequired,
+      delivery_note_status: input.decision.deliveryNoteStatus,
       selected_dpd_product: input.decision.selectedDpdProduct,
       existing_dpd_tracking: input.decision.existingDpdTracking,
       status: input.decision.status,
@@ -270,6 +290,7 @@ export async function upsertArrivalCase(input: {
       source_snapshot: {
         reasons: input.decision.reasons,
         shopifyAdminUrl: order?.adminUrl || null,
+        shippingAddress: order?.shippingAddress || null,
         shopifyCustomAttributes: order?.customAttributes || [],
         shopifyTags: order?.tags || [],
         lineItems: order?.lineItems || [],
@@ -290,6 +311,10 @@ export async function upsertArrivalCase(input: {
       decision_snapshot: {
         idempotencyKey: input.decision.idempotencyKey,
         shippingClass: input.decision.shippingClass,
+        destinationCountryCode: input.decision.destinationCountryCode,
+        destinationClass: input.decision.destinationClass,
+        deliveryNoteRequired: input.decision.deliveryNoteRequired,
+        deliveryNoteStatus: input.decision.deliveryNoteStatus,
         selectedDpdProduct: input.decision.selectedDpdProduct,
         existingDpdTracking: input.decision.existingDpdTracking,
         manualReviewReason: input.decision.manualReviewReason,

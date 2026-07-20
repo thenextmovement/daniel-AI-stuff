@@ -13,8 +13,8 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
     `- Korrelations-ID: \`${result.correlationId}\``,
     `- Produktkonfiguration: ${result.configVersion ? `\`${result.configVersion}\`` : "nicht freigegeben"}`,
     "",
-    "| DHL-Sendung | Letzte 6 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde | Notiz / Änderung | Versandart | DPD-Produkt | DPD-Tracking | PDF | Druck | Status / Fehler |",
-    "| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| DHL-Sendung | Letzte 6 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde | Zielland | Notiz / Änderung | Versandart | DPD-Produkt | Lieferschein | DPD-Tracking | PDF | Druck | Status / Fehler |",
+    "| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
 
   for (const entry of result.cases) {
@@ -24,9 +24,13 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
       entry.expectedArrival,
       entry.trelloCard ? `[${cell(entry.trelloCard.name)}](${entry.trelloCard.url})` : "-",
       entry.shopifyOrder ? `${cell(entry.shopifyOrder.name)} / ${cell(entry.shopifyOrder.customerName)}` : "-",
+      `${cell(entry.destinationCountryCode)} (${entry.destinationClass})`,
       cell(entry.relevantOrderNote),
       entry.shippingClass,
       cell(entry.selectedDpdProduct),
+      entry.deliveryNoteRequired
+        ? entry.deliveryNoteStatus
+        : entry.destinationClass === "domestic_de" ? "nicht erforderlich" : "nicht automatisch geplant",
       cell(entry.existingDpdTracking),
       "-",
       result.mode === "dry_run" ? "nicht eingereiht (Dry Run)" : "-",

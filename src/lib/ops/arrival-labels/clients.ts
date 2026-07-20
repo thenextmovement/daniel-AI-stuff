@@ -198,6 +198,17 @@ const ARRIVAL_ORDERS_QUERY = `
         tags
         customAttributes { key value }
         customer { displayName }
+        shippingAddress {
+          name
+          company
+          address1
+          address2
+          zip
+          city
+          provinceCode
+          country
+          countryCodeV2
+        }
         lineItems(first: 100) { nodes { title quantity } }
         shippingLines(first: 20) { nodes { title code } }
         fulfillments(first: 20) {
@@ -247,6 +258,7 @@ function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvide
   const numericId = id.match(/^gid:\/\/shopify\/Order\/(\d+)$/)?.[1];
   if (!id || !name || !numericId) return null;
   const customer = raw.customer as JsonRecord | null | undefined;
+  const shippingAddress = raw.shippingAddress as JsonRecord | null | undefined;
   const lineItems = ((raw.lineItems as JsonRecord | undefined)?.nodes || []) as JsonRecord[];
   const shippingLines = ((raw.shippingLines as JsonRecord | undefined)?.nodes || []) as JsonRecord[];
   const fulfillments = Array.isArray(raw.fulfillments) ? raw.fulfillments as JsonRecord[] : [];
@@ -256,6 +268,17 @@ function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvide
     adminUrl: `https://${shopDomain}/admin/orders/${numericId}`,
     customerName: customer ? String(customer.displayName || "").trim() || null : null,
     note: String(raw.note || "").trim() || null,
+    shippingAddress: shippingAddress ? {
+      name: String(shippingAddress.name || "").trim() || null,
+      company: String(shippingAddress.company || "").trim() || null,
+      address1: String(shippingAddress.address1 || "").trim() || null,
+      address2: String(shippingAddress.address2 || "").trim() || null,
+      zip: String(shippingAddress.zip || "").trim() || null,
+      city: String(shippingAddress.city || "").trim() || null,
+      provinceCode: String(shippingAddress.provinceCode || "").trim() || null,
+      country: String(shippingAddress.country || "").trim() || null,
+      countryCodeV2: String(shippingAddress.countryCodeV2 || "").trim().toUpperCase() || null,
+    } : null,
     customAttributes: Array.isArray(raw.customAttributes)
       ? (raw.customAttributes as JsonRecord[]).map((attribute) => ({
         key: String(attribute.key || "").trim(),

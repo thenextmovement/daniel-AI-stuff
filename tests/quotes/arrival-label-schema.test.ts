@@ -19,7 +19,14 @@ test("arrival-label schema enforces source-of-truth, RLS and idempotency boundar
   assert.doesNotMatch(sql, /insert\s+into\s+public\.arrival_label_product_config/i);
   assert.doesNotMatch(sql, /grant select, insert, update, delete on table public\.arrival_label_events/i);
   assert.match(sql, /arrival_labels_enqueue_print_job/i);
-  assert.match(sql, /only a QA-approved annotated PDF can be printed/i);
+  assert.match(sql, /only a QA-approved label or delivery-note PDF can be printed/i);
+  assert.match(sql, /eu_product_mapping jsonb/i);
+  assert.match(sql, /delivery_note_printer_key text/i);
+  assert.match(sql, /artifact_kind in \('original_pdf', 'annotated_pdf', 'rendered_preview', 'delivery_note_pdf'\)/i);
+  assert.match(sql, /document_kind in \('label', 'delivery_note'\)/i);
+  assert.match(sql, /EU label purchase is blocked until a QA-approved delivery note is confirmed printed/i);
+  assert.match(sql, /delivery_note_status = 'print_queued'/i);
+  assert.match(sql, /v_job[.]document_kind = 'delivery_note'[\s\S]+delivery_note_status = 'printed'/i);
   assert.match(sql, /p_result = 'dispatching'[\s\S]+invalid transition to dispatching/i);
   assert.match(sql, /status in \('queued', 'claimed', 'retryable_error'\)/i);
   assert.match(sql, /Print worker stopped before dispatch and exhausted safe retry attempts/i);
@@ -47,7 +54,9 @@ test("rollback removes all arrival-label objects in dependency order", async () 
   assert.match(sql, /drop table if exists public\.arrival_label_print_jobs/i);
   assert.match(sql, /drop table if exists public\.arrival_label_review_notifications/i);
   assert.match(sql, /drop function if exists public\.arrival_labels_claim_review_notification/i);
-  assert.ok(sql.indexOf("arrival_label_print_jobs") < sql.indexOf("arrival_label_artifacts"));
-  assert.ok(sql.indexOf("arrival_label_review_notifications") < sql.indexOf("arrival_label_cases"));
-  assert.ok(sql.indexOf("arrival_label_run_cases") < sql.indexOf("arrival_label_cases"));
+  assert.ok(sql.lastIndexOf("drop table if exists public.arrival_label_print_jobs") < sql.lastIndexOf("drop table if exists public.arrival_label_artifacts"));
+  assert.ok(sql.lastIndexOf("drop table if exists public.arrival_label_review_notifications") < sql.lastIndexOf("drop table if exists public.arrival_label_cases"));
+  assert.ok(sql.lastIndexOf("drop table if exists public.arrival_label_run_cases") < sql.lastIndexOf("drop table if exists public.arrival_label_cases"));
+  assert.match(sql, /drop trigger if exists arrival_label_cases_delivery_note_purchase_gate/i);
+  assert.match(sql, /drop function if exists public[.]arrival_labels_require_delivery_note_before_label_creation/i);
 });

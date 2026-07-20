@@ -6,6 +6,7 @@ import { isArrivalLabelsRequestAuthorized, isArrivalPrintWorkerAuthorized } from
 import { berlinDayBounds, type ArrivalDataClients } from "../../src/lib/ops/arrival-labels/clients";
 import {
   arrivalsFromDhlMessages,
+  assessDestinationGate,
   assessShopifyAutomationGate,
   buildIdempotencyKey,
   classifyShipping,
@@ -29,6 +30,17 @@ const standardOrder: ShopifyOrderEvidence = {
   adminUrl: "https://neontrip.myshopify.com/admin/orders/100",
   customerName: "Ada Beispiel",
   note: null,
+  shippingAddress: {
+    name: "Ada Beispiel",
+    company: null,
+    address1: "Musterstrasse 1",
+    address2: null,
+    zip: "10115",
+    city: "Berlin",
+    provinceCode: "BE",
+    country: "Deutschland",
+    countryCodeV2: "DE",
+  },
   customAttributes: [],
   tags: [],
   lineItems: [{ title: "Neonschild", quantity: 1 }],
@@ -46,6 +58,14 @@ const config: ProductConfig = {
     express_12: "DPD_EXPRESS_12_TEST",
     urgent: "DPD_URGENT_TEST",
   },
+  euProductMapping: {
+    standard: "DPD_EU_CLASSIC_TEST",
+    express: "DPD_EU_EXPRESS_TEST",
+  },
+  printerKey: "shipping-a6",
+  printMedia: "A6",
+  deliveryNotePrinterKey: "office-a4",
+  deliveryNotePrintMedia: "A4",
 };
 
 function arrival(trackingNumber = "1234567890") {
@@ -234,6 +254,95 @@ test("common German and English pickup variants are recognized deterministically
     const gate = assessShopifyAutomationGate({ ...standardOrder, note });
     assert.ok(gate.reasonCodes.includes("pickup_instruction"), note);
   }
+});
+
+test("Switzerland and other non-EU destinations are always routed to manual review", () => {
+  for (const [countryCodeV2, country, expectedCode] of [
+    ["CH", "Schweiz", "destination_switzerland_manual"],
+    ["GB", "Vereinigtes Koenigreich", "destination_non_eu_manual"],
+  ] as const) {
+    const order: ShopifyOrderEvidence = {
+      ...standardOrder,
+      shippingAddress: { ...standardOrder.shippingAddress!, countryCodeV2, country },
+    };
+    const gate = assessDestinationGate(order, config);
+    assert.equal(gate.blocked, true);
+    assert.equal(gate.reasonCode, expectedCode);
+    const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
+    assert.equal(decision.status, "manual_review");
+    assert.equal(decision.selectedDpdProduct, null);
+    assert.ok(decision.reasons.includes(expectedCode));
+  }
+});
+
+test("missing Shopify destination country fails closed before any existing-label shortcut", () => {
+  const order: ShopifyOrderEvidence = {
+    ...standardOrder,
+    shippingAddress: null,
+    fulfillments: [{
+      id: "gid://shopify/Fulfillment/1",
+      status: "SUCCESS",
+      trackingCompany: "DPD",
+      trackingNumber: "01476817678011",
+      trackingUrl: null,
+    }],
+  };
+  const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
+  assert.equal(decision.status, "manual_review");
+  assert.equal(decision.destinationClass, "unknown");
+  assert.equal(decision.existingDpdTracking, "01476817678011");
+  assert.ok(decision.reasons.includes("destination_country_missing"));
+});
+
+test("EU destinations require a complete address, an explicit EU DPD product and an A4 delivery-note printer", () => {
+  const austria: ShopifyOrderEvidence = {
+    ...standardOrder,
+    shippingAddress: {
+      ...standardOrder.shippingAddress!,
+      zip: "1010",
+      city: "Wien",
+      provinceCode: "9",
+      country: "Oesterreich",
+      countryCodeV2: "AT",
+    },
+  };
+  const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria], productConfig: config });
+  assert.equal(decision.status, "label_planned");
+  assert.equal(decision.destinationClass, "eu");
+  assert.equal(decision.deliveryNoteRequired, true);
+  assert.equal(decision.deliveryNoteStatus, "planned");
+  assert.equal(decision.selectedDpdProduct, "DPD_EU_CLASSIC_TEST");
+
+  const noA4 = decideArrivalCase({
+    arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria],
+    productConfig: { ...config, deliveryNotePrinterKey: null },
+  });
+  assert.equal(noA4.status, "manual_review");
+  assert.ok(noA4.reasons.includes("delivery_note_printer_not_configured"));
+
+  const noEuProduct = decideArrivalCase({
+    arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria],
+    productConfig: { ...config, euProductMapping: {} },
+  });
+  assert.equal(noEuProduct.status, "manual_review");
+  assert.match(noEuProduct.manualReviewReason || "", /EU-DPD-Produkt/);
+});
+
+test("EU tax and customs special territories remain manual even with an EU country code", () => {
+  const canaryIslands: ShopifyOrderEvidence = {
+    ...standardOrder,
+    shippingAddress: {
+      ...standardOrder.shippingAddress!,
+      zip: "35001",
+      city: "Las Palmas de Gran Canaria",
+      country: "Spanien",
+      countryCodeV2: "ES",
+    },
+  };
+  const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [canaryIslands], productConfig: config });
+  assert.equal(decision.status, "manual_review");
+  assert.equal(decision.destinationClass, "special_territory");
+  assert.ok(decision.reasons.includes("destination_special_territory_manual"));
 });
 
 test("idempotency key uses Shopify order ID plus the full DHL tracking number", () => {

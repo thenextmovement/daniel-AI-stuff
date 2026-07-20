@@ -5,6 +5,7 @@ revoke execute on function public.arrival_labels_update_print_job(uuid, text, te
 revoke execute on function public.arrival_labels_claim_print_job(text, text, integer, timestamptz) from service_role;
 revoke execute on function public.arrival_labels_enqueue_print_job(uuid, uuid, text, text) from service_role;
 revoke execute on function public.arrival_labels_claim_case(uuid, text, integer, timestamptz) from service_role;
+revoke execute on function public.arrival_labels_require_delivery_note_before_label_creation() from service_role;
 drop function if exists public.arrival_labels_update_review_notification(uuid, text, text, text, text, timestamptz);
 drop function if exists public.arrival_labels_claim_review_notification(text, integer, timestamptz);
 drop function if exists public.arrival_labels_enqueue_review_notification(uuid, text, text, text, text, text);
@@ -12,6 +13,8 @@ drop function if exists public.arrival_labels_update_print_job(uuid, text, text,
 drop function if exists public.arrival_labels_claim_print_job(text, text, integer, timestamptz);
 drop function if exists public.arrival_labels_enqueue_print_job(uuid, uuid, text, text);
 drop function if exists public.arrival_labels_claim_case(uuid, text, integer, timestamptz);
+drop trigger if exists arrival_label_cases_delivery_note_purchase_gate on public.arrival_label_cases;
+drop function if exists public.arrival_labels_require_delivery_note_before_label_creation();
 
 drop table if exists public.arrival_label_review_notifications;
 drop table if exists public.arrival_label_print_jobs;

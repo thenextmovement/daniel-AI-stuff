@@ -1,0 +1,36 @@
+[Unit]
+Description=NEONTRIP arrival-label A4 delivery-note CUPS print worker
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=neontrip-print
+Group=neontrip-print
+WorkingDirectory=/opt/neontrip-ops/current
+EnvironmentFile=/etc/neontrip/arrival-delivery-note-print.env
+ExecStart=/usr/bin/npm run arrival-labels:print-worker
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

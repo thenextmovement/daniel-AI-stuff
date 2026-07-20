@@ -8,7 +8,7 @@ import {
   validateArrivalReviewNotification,
 } from "../../src/lib/ops/arrival-labels/review-notifications";
 
-function blockedDecision(note = "Abholer; Details unter https://evil.example/phish"): ArrivalCaseDecision {
+function blockedDecision(note: string | null = "Abholer; Details unter https://evil.example/phish"): ArrivalCaseDecision {
   return {
     idempotencyKey: "shopify:gid://shopify/Order/100:dhl:1234567890",
     trackingNumber: "1234567890",
@@ -21,6 +21,17 @@ function blockedDecision(note = "Abholer; Details unter https://evil.example/phi
       adminUrl: "https://neontrip.myshopify.com/admin/orders/100",
       customerName: "Ada Beispiel",
       note,
+      shippingAddress: {
+        name: "Ada Beispiel",
+        company: null,
+        address1: "Musterstrasse 1",
+        address2: null,
+        zip: "10115",
+        city: "Berlin",
+        provinceCode: "BE",
+        country: "Deutschland",
+        countryCodeV2: "DE",
+      },
       customAttributes: [],
       tags: [],
       lineItems: [{ title: "Neonschild", quantity: 1 }],
@@ -28,6 +39,10 @@ function blockedDecision(note = "Abholer; Details unter https://evil.example/phi
       fulfillments: [],
     },
     shippingClass: "standard",
+    destinationCountryCode: "DE",
+    destinationClass: "domestic_de",
+    deliveryNoteRequired: false,
+    deliveryNoteStatus: "manual_review",
     selectedDpdProduct: null,
     existingDpdTracking: null,
     status: "manual_review",
@@ -68,4 +83,20 @@ test("trusted link validation and fixed recipient fail closed", () => {
 test("planned and existing-label cases do not create review notifications", () => {
   assert.equal(buildArrivalReviewNotification({ ...blockedDecision(), status: "label_planned", manualReviewReason: null }), null);
   assert.equal(buildArrivalReviewNotification({ ...blockedDecision(), status: "existing_label", manualReviewReason: null }), null);
+});
+
+test("country blocks identify Switzerland and avoid promising an automatic delivery note", () => {
+  const notification = buildArrivalReviewNotification({
+    ...blockedDecision(null),
+    destinationCountryCode: "CH",
+    destinationClass: "switzerland",
+    deliveryNoteRequired: false,
+    deliveryNoteStatus: "manual_review",
+    manualReviewReason: "Sendungen in die Schweiz werden nicht automatisch gebucht oder gedruckt.",
+    relevantOrderNote: null,
+    reasons: ["destination_switzerland_manual"],
+  });
+  assert.ok(notification);
+  assert.match(notification.bodyText, /Zielland: CH \(switzerland\)/);
+  assert.match(notification.bodyText, /Lieferschein: nicht automatisch geplant/);
 });

@@ -34,6 +34,17 @@
       "adminUrl": "https://neontrip.myshopify.com/admin/orders/4498",
       "customerName": "Alexander Walden",
       "note": null,
+      "shippingAddress": {
+        "name": "Alexander Walden",
+        "company": null,
+        "address1": "Musterstrasse 1",
+        "address2": null,
+        "zip": "10115",
+        "city": "Berlin",
+        "provinceCode": "BE",
+        "country": "Deutschland",
+        "countryCodeV2": "DE"
+      },
       "customAttributes": [],
       "tags": [],
       "lineItems": [{ "title": "Neonschild", "quantity": 1 }],

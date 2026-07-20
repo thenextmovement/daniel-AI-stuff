@@ -4,15 +4,28 @@ create table if not exists public.arrival_label_product_config (
   enabled boolean not null default false,
   standard_product_code text null,
   express_product_mapping jsonb not null default '{}'::jsonb,
+  eu_product_mapping jsonb not null default '{}'::jsonb,
   pdf_layout_config jsonb not null default '{}'::jsonb,
   storage_bucket text not null default 'arrival-labels-private',
   printer_key text null,
   print_media text null,
+  delivery_note_printer_key text null,
+  delivery_note_print_media text null,
   approved_by text null,
   approved_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint arrival_label_product_config_version_check check (version ~ '^[a-z0-9][a-z0-9._-]{0,79}$'),
+  constraint arrival_label_product_config_eu_mapping_check check (jsonb_typeof(eu_product_mapping) = 'object'),
+  constraint arrival_label_product_config_delivery_note_printer_check check (
+    (delivery_note_printer_key is null and delivery_note_print_media is null)
+    or (
+      delivery_note_printer_key is not null
+      and delivery_note_print_media is not null
+      and delivery_note_printer_key ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+      and upper(delivery_note_print_media) = 'A4'
+    )
+  ),
   constraint arrival_label_product_config_enabled_check check (
     not enabled
     or (
@@ -82,6 +95,10 @@ create table if not exists public.arrival_label_cases (
   shopify_note text null,
   shopify_note_hash text null,
   shipping_class text not null default 'unknown',
+  destination_country_code text null,
+  destination_class text not null default 'unknown',
+  delivery_note_required boolean not null default false,
+  delivery_note_status text not null default 'not_required',
   selected_dpd_product text null,
   existing_dpd_tracking text null,
   shopify_fulfillment_id text null,
@@ -102,6 +119,22 @@ create table if not exists public.arrival_label_cases (
   constraint arrival_label_cases_outlook_state_check check (outlook_delivery_state in ('due_today', 'delivered_today', 'unknown')),
   constraint arrival_label_cases_shipping_class_check check (
     shipping_class in ('standard', 'express', 'express_09', 'express_12', 'express_18', 'urgent', 'special_case', 'unknown')
+  ),
+  constraint arrival_label_cases_destination_country_check check (destination_country_code is null or destination_country_code ~ '^[A-Z]{2}$'),
+  constraint arrival_label_cases_destination_class_check check (
+    destination_class in ('domestic_de', 'eu', 'switzerland', 'non_eu', 'special_territory', 'unknown')
+  ),
+  constraint arrival_label_cases_delivery_note_status_check check (
+    delivery_note_status in ('not_required', 'planned', 'qa_approved', 'print_queued', 'printed', 'manual_review')
+  ),
+  constraint arrival_label_cases_delivery_note_requirement_check check (
+    not delivery_note_required
+    or (
+      destination_class = 'eu'
+      and destination_country_code is not null
+      and destination_country_code <> 'DE'
+      and delivery_note_status <> 'not_required'
+    )
   ),
   constraint arrival_label_cases_status_check check (
     status in (
@@ -182,7 +215,7 @@ create table if not exists public.arrival_label_artifacts (
   page_height_points numeric null,
   qa_result jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  constraint arrival_label_artifacts_kind_check check (artifact_kind in ('original_pdf', 'annotated_pdf', 'rendered_preview')),
+  constraint arrival_label_artifacts_kind_check check (artifact_kind in ('original_pdf', 'annotated_pdf', 'rendered_preview', 'delivery_note_pdf')),
   constraint arrival_label_artifacts_sha256_check check (sha256 ~ '^[0-9a-f]{64}$'),
   constraint arrival_label_artifacts_byte_size_check check (byte_size > 0),
   constraint arrival_label_artifacts_storage_unique unique (storage_bucket, storage_key),
@@ -193,6 +226,7 @@ create table if not exists public.arrival_label_print_jobs (
   id uuid primary key default gen_random_uuid(),
   case_id uuid not null references public.arrival_label_cases(id) on delete cascade,
   artifact_id uuid not null unique references public.arrival_label_artifacts(id) on delete restrict,
+  document_kind text not null,
   idempotency_key text not null unique,
   printer_key text not null,
   document_sha256 text not null,
@@ -210,6 +244,7 @@ create table if not exists public.arrival_label_print_jobs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint arrival_label_print_jobs_idempotency_check check (length(idempotency_key) between 20 and 300),
+  constraint arrival_label_print_jobs_document_kind_check check (document_kind in ('label', 'delivery_note')),
   constraint arrival_label_print_jobs_printer_check check (printer_key ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'),
   constraint arrival_label_print_jobs_sha256_check check (document_sha256 ~ '^[0-9a-f]{64}$'),
   constraint arrival_label_print_jobs_status_check check (
@@ -225,6 +260,39 @@ create index if not exists arrival_label_print_jobs_claim_idx
 create index if not exists arrival_label_print_jobs_reconcile_idx
   on public.arrival_label_print_jobs (printer_key, status, updated_at)
   where status in ('dispatching', 'submitted', 'manual_review');
+
+create or replace function public.arrival_labels_require_delivery_note_before_label_creation()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if new.delivery_note_required and new.status in ('label_created', 'pdf_processed', 'completed') then
+    if new.delivery_note_status <> 'printed' or not exists (
+      select 1
+      from public.arrival_label_artifacts a
+      join public.arrival_label_print_jobs j on j.artifact_id = a.id
+      where a.case_id = new.id
+        and a.artifact_kind = 'delivery_note_pdf'
+        and a.content_type = 'application/pdf'
+        and coalesce(a.qa_result ->> 'ok', 'false') = 'true'
+        and j.document_kind = 'delivery_note'
+        and j.status = 'printed'
+    ) then
+      raise exception 'EU label purchase is blocked until a QA-approved delivery note is confirmed printed';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger arrival_label_cases_delivery_note_purchase_gate
+before insert or update of status, delivery_note_status on public.arrival_label_cases
+for each row execute function public.arrival_labels_require_delivery_note_before_label_creation();
+
+revoke execute on function public.arrival_labels_require_delivery_note_before_label_creation() from public, anon, authenticated;
+grant execute on function public.arrival_labels_require_delivery_note_before_label_creation() to service_role;
 
 create table if not exists public.arrival_label_review_notifications (
   id uuid primary key default gen_random_uuid(),
@@ -355,7 +423,10 @@ set search_path = public, pg_temp
 as $$
 declare
   v_artifact public.arrival_label_artifacts%rowtype;
+  v_case public.arrival_label_cases%rowtype;
+  v_config public.arrival_label_product_config%rowtype;
   v_job public.arrival_label_print_jobs%rowtype;
+  v_document_kind text;
 begin
   if coalesce(p_printer_key, '') !~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' then
     raise exception 'invalid printer key';
@@ -370,22 +441,37 @@ begin
   for share;
 
   if not found
-    or v_artifact.artifact_kind <> 'annotated_pdf'
+    or v_artifact.artifact_kind not in ('annotated_pdf', 'delivery_note_pdf')
     or v_artifact.content_type <> 'application/pdf'
     or coalesce(v_artifact.qa_result ->> 'ok', 'false') <> 'true' then
-    raise exception 'only a QA-approved annotated PDF can be printed';
+    raise exception 'only a QA-approved label or delivery-note PDF can be printed';
   end if;
-  if not exists (
-    select 1 from public.arrival_label_cases
-    where id = p_case_id and status in ('pdf_processed', 'completed')
-  ) then
-    raise exception 'case is not ready for printing';
+
+  select * into v_case from public.arrival_label_cases where id = p_case_id for update;
+  if not found then raise exception 'arrival-label case not found'; end if;
+  select * into v_config from public.arrival_label_product_config where enabled is true for share;
+  if not found then raise exception 'active product configuration not found'; end if;
+
+  if v_artifact.artifact_kind = 'annotated_pdf' then
+    v_document_kind := 'label';
+    if v_case.status not in ('pdf_processed', 'completed') or p_printer_key <> v_config.printer_key then
+      raise exception 'case or printer is not ready for label printing';
+    end if;
+  else
+    v_document_kind := 'delivery_note';
+    if not v_case.delivery_note_required
+      or v_case.delivery_note_status not in ('qa_approved', 'print_queued')
+      or v_case.status not in ('label_planned', 'existing_label')
+      or p_printer_key <> v_config.delivery_note_printer_key
+      or upper(coalesce(v_config.delivery_note_print_media, '')) <> 'A4' then
+      raise exception 'case or printer is not ready for delivery-note printing';
+    end if;
   end if;
 
   insert into public.arrival_label_print_jobs (
-    case_id, artifact_id, idempotency_key, printer_key, document_sha256
+    case_id, artifact_id, document_kind, idempotency_key, printer_key, document_sha256
   ) values (
-    p_case_id, p_artifact_id, p_idempotency_key, p_printer_key, v_artifact.sha256
+    p_case_id, p_artifact_id, v_document_kind, p_idempotency_key, p_printer_key, v_artifact.sha256
   )
   on conflict (idempotency_key) do nothing
   returning * into v_job;
@@ -394,9 +480,15 @@ begin
     select * into v_job
     from public.arrival_label_print_jobs
     where idempotency_key = p_idempotency_key;
-    if v_job.case_id <> p_case_id or v_job.artifact_id <> p_artifact_id or v_job.printer_key <> p_printer_key then
+    if v_job.case_id <> p_case_id or v_job.artifact_id <> p_artifact_id or v_job.printer_key <> p_printer_key or v_job.document_kind <> v_document_kind then
       raise exception 'print idempotency key belongs to different input';
     end if;
+  end if;
+
+  if v_document_kind = 'delivery_note' and v_case.delivery_note_status = 'qa_approved' then
+    update public.arrival_label_cases
+    set delivery_note_status = 'print_queued', updated_at = now()
+    where id = p_case_id;
   end if;
 
   return next v_job;
@@ -463,6 +555,13 @@ begin
   if cardinality(v_exhausted_case_ids) > 0 then
     update public.arrival_label_cases
     set status = 'manual_review',
+        delivery_note_status = case
+          when exists (
+            select 1 from public.arrival_label_print_jobs j
+            where j.case_id = arrival_label_cases.id and j.document_kind = 'delivery_note' and j.status = 'manual_review'
+          ) then 'manual_review'
+          else delivery_note_status
+        end,
         manual_review_reason = 'Druck fehlgeschlagen; maximale Anzahl sicherer Vorab-Versuche erreicht.',
         updated_at = p_now
     where id = any(v_exhausted_case_ids);
@@ -582,14 +681,21 @@ begin
   returning * into v_job;
 
   if p_result = 'printed' then
-    update public.arrival_label_cases
-    set status = 'completed',
-        manual_review_reason = null,
-        updated_at = p_now
-    where id = v_job.case_id;
+    if v_job.document_kind = 'delivery_note' then
+      update public.arrival_label_cases
+      set delivery_note_status = 'printed', updated_at = p_now
+      where id = v_job.case_id;
+    else
+      update public.arrival_label_cases
+      set status = 'completed',
+          manual_review_reason = null,
+          updated_at = p_now
+      where id = v_job.case_id;
+    end if;
   elsif p_result = 'uncertain' or v_retry_exhausted then
     update public.arrival_label_cases
     set status = 'manual_review',
+        delivery_note_status = case when v_job.document_kind = 'delivery_note' then 'manual_review' else delivery_note_status end,
         manual_review_reason = case
           when p_result = 'uncertain'
             then 'Druckstatus ist unklar; physisch pruefen und nicht automatisch erneut drucken.'
@@ -611,6 +717,7 @@ begin
     'arrival-label-print-worker:' || left(p_worker_id, 96),
     jsonb_build_object(
       'printJobId', v_job.id,
+      'documentKind', v_job.document_kind,
       'printerKey', v_job.printer_key,
       'cupsJobId', v_job.cups_job_id,
       'attempts', v_job.attempts,

@@ -135,18 +135,51 @@ export async function renderPdfFirstPageToPng(pdf: Uint8Array, scale = 3) {
   }
 }
 
-export async function extractPdfText(pdf: Uint8Array) {
+export async function renderPdfPagesToPng(pdf: Uint8Array, scale = 2, maximumPages = 20) {
+  if (!Number.isFinite(scale) || scale < 1 || scale > 5) throw new Error("PDF-Render-Skalierung muss zwischen 1 und 5 liegen.");
+  if (!Number.isInteger(maximumPages) || maximumPages < 1 || maximumPages > 50) throw new Error("Ungueltige maximale PDF-Seitenzahl.");
   ensurePdfGlobals();
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({ data: new Uint8Array(pdf), disableWorker: true } as never);
   const document = await task.promise;
   try {
-    const page = await document.getPage(1);
-    const content = await page.getTextContent();
-    return content.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .filter(Boolean)
-      .join(" ");
+    if (document.numPages < 1 || document.numPages > maximumPages) throw new Error("PDF-Seitenzahl liegt ausserhalb der freigegebenen Grenzen.");
+    const rendered: Buffer[] = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const viewport = page.getViewport({ scale });
+      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+      const context = canvas.getContext("2d");
+      await page.render({ canvas, canvasContext: context, viewport } as never).promise;
+      rendered.push(canvas.toBuffer("image/png"));
+    }
+    return rendered;
+  } finally {
+    await task.destroy();
+  }
+}
+
+export async function extractPdfText(pdf: Uint8Array) {
+  const pages = await extractPdfTextAllPages(pdf);
+  return pages[0] || "";
+}
+
+export async function extractPdfTextAllPages(pdf: Uint8Array) {
+  ensurePdfGlobals();
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const task = pdfjs.getDocument({ data: new Uint8Array(pdf), disableWorker: true } as never);
+  const document = await task.promise;
+  try {
+    const pages: string[] = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      pages.push(content.items
+        .map((item) => ("str" in item ? item.str : ""))
+        .filter(Boolean)
+        .join(" "));
+    }
+    return pages;
   } finally {
     await task.destroy();
   }

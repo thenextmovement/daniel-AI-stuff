@@ -66,6 +66,10 @@ function reviewSnapshot(decision: ArrivalCaseDecision) {
     status: decision.status,
     reason: decision.manualReviewReason,
     reasons: [...decision.reasons].sort(),
+    destinationCountryCode: decision.destinationCountryCode,
+    destinationClass: decision.destinationClass,
+    deliveryNoteRequired: decision.deliveryNoteRequired,
+    deliveryNoteStatus: decision.deliveryNoteStatus,
     note: decision.shopifyOrder?.note || null,
     attributes: [...(decision.shopifyOrder?.customAttributes || [])]
       .map((attribute) => ({ key: attribute.key, value: attribute.value }))
@@ -83,6 +87,9 @@ export function buildArrivalReviewNotification(decision: ArrivalCaseDecision): A
   const noteExcerpt = singleLine(decision.relevantOrderNote, 500);
   const notificationKey = `arrival-review:${createHash("sha256").update(reviewSnapshot(decision), "utf8").digest("hex")}`;
   const orderLabel = singleLine(decision.shopifyOrder?.name || "ohne eindeutige Shopify-Zuordnung", 100);
+  const deliveryNoteLabel = decision.deliveryNoteRequired
+    ? decision.deliveryNoteStatus
+    : decision.destinationClass === "domestic_de" ? "nicht erforderlich" : "nicht automatisch geplant";
   const subject = `[NEONTRIP] Versandetikett manuell pruefen: ${orderLabel} / DHL ${decision.lastSix}`;
   const lines = [
     "Automatische Verarbeitung gesperrt.",
@@ -92,6 +99,8 @@ export function buildArrivalReviewNotification(decision: ArrivalCaseDecision): A
     `Kunde: ${singleLine(decision.shopifyOrder?.customerName || "nicht eindeutig", 150)}`,
     `Eingehende DHL-Sendung: ${decision.trackingNumber}`,
     `Letzte 6 Ziffern: ${decision.lastSix}`,
+    `Zielland: ${singleLine(decision.destinationCountryCode || "nicht eindeutig", 10)} (${decision.destinationClass})`,
+    `Lieferschein: ${deliveryNoteLabel}`,
     `Grund: ${reason}`,
     `Pruefcodes: ${decision.reasons.length ? decision.reasons.join(", ") : decision.status}`,
     `Shopify: ${shopifyOrderUrl || "kein vertrauenswuerdiger Direktlink verfuegbar"}`,

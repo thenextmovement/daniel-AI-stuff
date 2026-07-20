@@ -16,13 +16,15 @@ export async function POST(request: NextRequest) {
     if (request.headers.get("x-neontrip-print-worker") !== workerId) throw new PrintInputError("Print-Worker-ID stimmt nicht ueberein.");
     const printerKey = validatePrinterKey(String(body.printerKey || ""));
     const productConfig = await loadActiveProductConfig();
-    if (!productConfig?.printerKey || productConfig.printerKey !== printerKey) throw new PrintInputError("Drucker ist nicht freigegeben.");
+    const approvedPrinters = new Set([productConfig?.printerKey, productConfig?.deliveryNotePrinterKey].filter(Boolean));
+    if (!approvedPrinters.has(printerKey)) throw new PrintInputError("Drucker ist nicht freigegeben.");
     const job = await claimArrivalPrintJob({ workerId, printerKey });
     if (!job) return new NextResponse(null, { status: 204, headers: NO_STORE });
     return NextResponse.json({
       ok: true,
       job: {
         id: job.id,
+        documentKind: job.document_kind,
         printerKey: job.printer_key,
         sha256: job.document_sha256,
         attempts: job.attempts,

@@ -153,6 +153,10 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
           payload: {
             status: cases[index].status,
             shippingClass: cases[index].shippingClass,
+            destinationCountryCode: cases[index].destinationCountryCode,
+            destinationClass: cases[index].destinationClass,
+            deliveryNoteRequired: cases[index].deliveryNoteRequired,
+            deliveryNoteStatus: cases[index].deliveryNoteStatus,
             reasons: cases[index].reasons,
           },
         });

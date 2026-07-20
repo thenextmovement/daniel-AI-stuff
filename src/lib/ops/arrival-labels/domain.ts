@@ -6,6 +6,9 @@ export const ARRIVAL_LABEL_TIMEZONE = "Europe/Berlin" as const;
 export type ArrivalRunMode = "dry_run" | "execute";
 export type ShippingClass = "standard" | "express" | "express_09" | "express_12" | "express_18" | "urgent" | "special_case" | "unknown";
 export type ExpressProductRule = "express" | "express_09" | "express_12" | "express_18" | "urgent";
+export type DpdProductRule = "standard" | ExpressProductRule;
+export type DestinationClass = "domestic_de" | "eu" | "switzerland" | "non_eu" | "special_territory" | "unknown";
+export type DeliveryNoteStatus = "not_required" | "planned" | "qa_approved" | "print_queued" | "printed" | "manual_review";
 export type ArrivalCaseStatus =
   | "label_planned"
   | "existing_label"
@@ -48,12 +51,25 @@ export type ShopifyFulfillmentEvidence = {
   trackingUrl: string | null;
 };
 
+export type ShopifyShippingAddressEvidence = {
+  name: string | null;
+  company: string | null;
+  address1: string | null;
+  address2: string | null;
+  zip: string | null;
+  city: string | null;
+  provinceCode: string | null;
+  country: string | null;
+  countryCodeV2: string | null;
+};
+
 export type ShopifyOrderEvidence = {
   id: string;
   name: string;
   adminUrl: string;
   customerName: string | null;
   note: string | null;
+  shippingAddress: ShopifyShippingAddressEvidence | null;
   customAttributes: Array<{ key: string; value: string }>;
   tags: string[];
   lineItems: Array<{ title: string; quantity: number }>;
@@ -72,8 +88,11 @@ export type ProductConfig = {
   enabled: boolean;
   standardProductCode: string | null;
   expressProductMapping: Partial<Record<ExpressProductRule, string>>;
+  euProductMapping?: Partial<Record<DpdProductRule, string>>;
   printerKey?: string | null;
   printMedia?: string | null;
+  deliveryNotePrinterKey?: string | null;
+  deliveryNotePrintMedia?: string | null;
 };
 
 export type ArrivalCaseDecision = {
@@ -84,12 +103,34 @@ export type ArrivalCaseDecision = {
   trelloCard: TrelloCardEvidence | null;
   shopifyOrder: ShopifyOrderEvidence | null;
   shippingClass: ShippingClass;
+  destinationCountryCode: string | null;
+  destinationClass: DestinationClass;
+  deliveryNoteRequired: boolean;
+  deliveryNoteStatus: DeliveryNoteStatus;
   selectedDpdProduct: string | null;
   existingDpdTracking: string | null;
   status: ArrivalCaseStatus;
   manualReviewReason: string | null;
   relevantOrderNote: string | null;
   reasons: string[];
+};
+
+export type DestinationGateReason =
+  | "destination_country_missing"
+  | "destination_switzerland_manual"
+  | "destination_non_eu_manual"
+  | "destination_special_territory_manual"
+  | "delivery_note_address_incomplete"
+  | "delivery_note_printer_not_configured";
+
+export type DestinationGate = {
+  blocked: boolean;
+  destinationCountryCode: string | null;
+  destinationClass: DestinationClass;
+  deliveryNoteRequired: boolean;
+  deliveryNoteStatus: DeliveryNoteStatus;
+  reasonCode: DestinationGateReason | null;
+  reason: string | null;
 };
 
 export type ShopifyAutomationGateReason =
@@ -121,6 +162,132 @@ const STANDARD_ATTRIBUTE_KEYS = new Set([
   "Idempotency Key",
   "Invoice Mail Intended",
 ]);
+
+// Reviewed 2026-07-20 against the official EU country and Commission territorial-scope tables.
+// https://european-union.europa.eu/principles-countries-history/eu-countries_en
+// https://taxation-customs.ec.europa.eu/taxation/vat/vat-directive/how-does-vat-work/territorial-scope_en
+// Special VAT/customs territories are handled separately below and remain fail-closed.
+const EU_COUNTRY_CODES = new Set([
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE",
+  "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+]);
+
+function normalizedPostalCode(value: unknown) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isSpecialEuTerritory(address: ShopifyShippingAddressEvidence) {
+  const country = String(address.countryCodeV2 || "").toUpperCase();
+  const postalCode = normalizedPostalCode(address.zip);
+  const place = normalizeHumanText([address.city, address.provinceCode, address.address1, address.address2].filter(Boolean).join(" "));
+  if (country === "DE" && (postalCode === "27498" || postalCode === "78266" || /\bhelgoland\b|\bbusingen\b/.test(place))) return true;
+  if (country === "ES" && (/^(35|38|51|52)/.test(postalCode) || /\bkanar|\bcanary|\bceuta\b|\bmelilla\b/.test(place))) return true;
+  if (country === "FI" && (/^22/.test(postalCode) || /\baland\b/.test(place))) return true;
+  if (country === "GR" && (postalCode === "63086" || /\bmount athos\b|\bberg athos\b|\bagio oros\b/.test(place))) return true;
+  if (country === "IT" && (/^(23041|22061)$/.test(postalCode) || /\blivigno\b|\bcampione d italia\b/.test(place))) return true;
+  return false;
+}
+
+function hasCompleteDeliveryAddress(address: ShopifyShippingAddressEvidence) {
+  return Boolean(
+    (String(address.name || "").trim() || String(address.company || "").trim())
+    && String(address.address1 || "").trim()
+    && String(address.zip || "").trim()
+    && String(address.city || "").trim()
+    && String(address.countryCodeV2 || "").trim(),
+  );
+}
+
+export function assessDestinationGate(order: ShopifyOrderEvidence, config: ProductConfig | null): DestinationGate {
+  const address = order.shippingAddress;
+  const country = String(address?.countryCodeV2 || "").trim().toUpperCase() || null;
+  if (!address || !country || !/^[A-Z]{2}$/.test(country)) {
+    return {
+      blocked: true,
+      destinationCountryCode: country,
+      destinationClass: "unknown",
+      deliveryNoteRequired: false,
+      deliveryNoteStatus: "manual_review",
+      reasonCode: "destination_country_missing",
+      reason: "Zielland der Shopify-Lieferadresse fehlt oder ist ungueltig.",
+    };
+  }
+  if (isSpecialEuTerritory(address)) {
+    return {
+      blocked: true,
+      destinationCountryCode: country,
+      destinationClass: "special_territory",
+      deliveryNoteRequired: false,
+      deliveryNoteStatus: "manual_review",
+      reasonCode: "destination_special_territory_manual",
+      reason: "Die Lieferadresse liegt in einem EU-Sondergebiet und benoetigt eine manuelle Versand- und Zollpruefung.",
+    };
+  }
+  if (country === "CH") {
+    return {
+      blocked: true,
+      destinationCountryCode: country,
+      destinationClass: "switzerland",
+      deliveryNoteRequired: false,
+      deliveryNoteStatus: "manual_review",
+      reasonCode: "destination_switzerland_manual",
+      reason: "Sendungen in die Schweiz werden nicht automatisch gebucht oder gedruckt.",
+    };
+  }
+  if (country === "DE") {
+    return {
+      blocked: false,
+      destinationCountryCode: country,
+      destinationClass: "domestic_de",
+      deliveryNoteRequired: false,
+      deliveryNoteStatus: "not_required",
+      reasonCode: null,
+      reason: null,
+    };
+  }
+  if (!EU_COUNTRY_CODES.has(country)) {
+    return {
+      blocked: true,
+      destinationCountryCode: country,
+      destinationClass: "non_eu",
+      deliveryNoteRequired: false,
+      deliveryNoteStatus: "manual_review",
+      reasonCode: "destination_non_eu_manual",
+      reason: `Sendungen nach ${country} werden nicht automatisch gebucht oder gedruckt.`,
+    };
+  }
+  if (!hasCompleteDeliveryAddress(address)) {
+    return {
+      blocked: true,
+      destinationCountryCode: country,
+      destinationClass: "eu",
+      deliveryNoteRequired: true,
+      deliveryNoteStatus: "manual_review",
+      reasonCode: "delivery_note_address_incomplete",
+      reason: "Die EU-Lieferadresse ist fuer einen belastbaren Lieferschein unvollstaendig.",
+    };
+  }
+  if (!config?.deliveryNotePrinterKey || String(config.deliveryNotePrintMedia || "").toUpperCase() !== "A4") {
+    return {
+      blocked: true,
+      destinationCountryCode: country,
+      destinationClass: "eu",
+      deliveryNoteRequired: true,
+      deliveryNoteStatus: "manual_review",
+      reasonCode: "delivery_note_printer_not_configured",
+      reason: "Fuer EU-Sendungen ist kein freigegebener A4-Lieferscheindrucker konfiguriert.",
+    };
+  }
+  return {
+    blocked: false,
+    destinationCountryCode: country,
+    destinationClass: "eu",
+    deliveryNoteRequired: true,
+    deliveryNoteStatus: "planned",
+    reasonCode: null,
+    reason: null,
+  };
+}
 
 const EXPRESS_PATTERN = /\b(express(?:\s*-?\s*(?:versand|zustellung|lieferung))?|expressversand|expresszustellung|expresslieferung)\b/i;
 const URGENT_PATTERN = /\b(eilauftrag|eilproduktion|eilig|rush|urgent|priority|priorisierte\s+produktion)\b/i;
@@ -381,8 +548,19 @@ export function existingDpdFromOrder(order: ShopifyOrderEvidence, databaseEviden
   return dpd || combined[0] || null;
 }
 
-export function selectDpdProduct(shippingClass: ShippingClass, config: ProductConfig | null) {
+export function selectDpdProduct(
+  shippingClass: ShippingClass,
+  config: ProductConfig | null,
+  destinationClass: DestinationClass = "domestic_de",
+) {
   if (!config?.enabled) return null;
+  if (destinationClass === "eu") {
+    if (shippingClass === "standard") return config.euProductMapping?.standard || null;
+    if (["express", "express_09", "express_12", "express_18", "urgent"].includes(shippingClass)) {
+      return config.euProductMapping?.[shippingClass as ExpressProductRule] || null;
+    }
+    return null;
+  }
   if (shippingClass === "standard") return config.standardProductCode;
   if (["express", "express_09", "express_12", "express_18", "urgent"].includes(shippingClass)) {
     return config.expressProductMapping[shippingClass as ExpressProductRule] || null;
@@ -405,6 +583,12 @@ export function decideArrivalCase(input: {
   productConfig: ProductConfig | null;
 }): ArrivalCaseDecision {
   const reasons: string[] = [];
+  const unresolvedDestination = {
+    destinationCountryCode: null,
+    destinationClass: "unknown" as const,
+    deliveryNoteRequired: false,
+    deliveryNoteStatus: "manual_review" as const,
+  };
   const trelloMatch = findTrelloCardForTracking(input.trelloCards, input.arrival.trackingNumber);
   if (!trelloMatch.card) {
     return {
@@ -415,6 +599,7 @@ export function decideArrivalCase(input: {
       trelloCard: null,
       shopifyOrder: null,
       shippingClass: "unknown",
+      ...unresolvedDestination,
       selectedDpdProduct: null,
       existingDpdTracking: null,
       status: trelloMatch.error?.startsWith("Keine") ? "missing_data" : "ambiguous_match",
@@ -433,6 +618,7 @@ export function decideArrivalCase(input: {
       trelloCard: trelloMatch.card,
       shopifyOrder: null,
       shippingClass: "special_case",
+      ...unresolvedDestination,
       selectedDpdProduct: null,
       existingDpdTracking: null,
       status: "special_case",
@@ -456,6 +642,7 @@ export function decideArrivalCase(input: {
       trelloCard: trelloMatch.card,
       shopifyOrder: null,
       shippingClass: "unknown",
+      ...unresolvedDestination,
       selectedDpdProduct: null,
       existingDpdTracking: null,
       status: /nicht eindeutig|Bestellungen passen/.test(orderMatch.error || "") ? "ambiguous_match" : "missing_data",
@@ -467,9 +654,11 @@ export function decideArrivalCase(input: {
 
   const existing = existingDpdFromOrder(orderMatch.order, input.existingDpdEvidence);
   const gate = assessShopifyAutomationGate(orderMatch.order);
+  const destination = assessDestinationGate(orderMatch.order, input.productConfig);
   const note = relevantOrderNote(orderMatch.order.note);
   const shipping = classifyShipping(orderMatch.order, trelloMatch.card);
-  if (gate.blocked) {
+  if (gate.blocked || destination.blocked) {
+    const blockedReasons = [gate.reason, destination.reason].filter(Boolean).join(" ");
     return {
       idempotencyKey: buildIdempotencyKey(orderMatch.order.id, input.arrival.trackingNumber),
       trackingNumber: input.arrival.trackingNumber,
@@ -478,12 +667,16 @@ export function decideArrivalCase(input: {
       trelloCard: trelloMatch.card,
       shopifyOrder: orderMatch.order,
       shippingClass: shipping.shippingClass,
+      destinationCountryCode: destination.destinationCountryCode,
+      destinationClass: destination.destinationClass,
+      deliveryNoteRequired: destination.deliveryNoteRequired,
+      deliveryNoteStatus: "manual_review",
       selectedDpdProduct: null,
       existingDpdTracking: existing?.trackingNumber || null,
       status: "manual_review",
-      manualReviewReason: gate.reason,
+      manualReviewReason: blockedReasons,
       relevantOrderNote: gate.noteExcerpt,
-      reasons: gate.reasonCodes,
+      reasons: [...gate.reasonCodes, ...(destination.reasonCode ? [destination.reasonCode] : [])],
     };
   }
   if (shipping.conflict) {
@@ -495,6 +688,10 @@ export function decideArrivalCase(input: {
       trelloCard: trelloMatch.card,
       shopifyOrder: orderMatch.order,
       shippingClass: "unknown",
+      destinationCountryCode: destination.destinationCountryCode,
+      destinationClass: destination.destinationClass,
+      deliveryNoteRequired: destination.deliveryNoteRequired,
+      deliveryNoteStatus: destination.deliveryNoteStatus,
       selectedDpdProduct: null,
       existingDpdTracking: existing?.trackingNumber || null,
       status: "conflicting_instructions",
@@ -512,6 +709,10 @@ export function decideArrivalCase(input: {
       trelloCard: trelloMatch.card,
       shopifyOrder: orderMatch.order,
       shippingClass: shipping.shippingClass,
+      destinationCountryCode: destination.destinationCountryCode,
+      destinationClass: destination.destinationClass,
+      deliveryNoteRequired: destination.deliveryNoteRequired,
+      deliveryNoteStatus: destination.deliveryNoteStatus,
       selectedDpdProduct: null,
       existingDpdTracking: existing.trackingNumber,
       status: "existing_label",
@@ -529,6 +730,10 @@ export function decideArrivalCase(input: {
       trelloCard: trelloMatch.card,
       shopifyOrder: orderMatch.order,
       shippingClass: "unknown",
+      destinationCountryCode: destination.destinationCountryCode,
+      destinationClass: destination.destinationClass,
+      deliveryNoteRequired: destination.deliveryNoteRequired,
+      deliveryNoteStatus: destination.deliveryNoteStatus,
       selectedDpdProduct: null,
       existingDpdTracking: null,
       status: "manual_review",
@@ -538,7 +743,7 @@ export function decideArrivalCase(input: {
     };
   }
 
-  const product = selectDpdProduct(shipping.shippingClass, input.productConfig);
+  const product = selectDpdProduct(shipping.shippingClass, input.productConfig, destination.destinationClass);
   if (!product) {
     return {
       idempotencyKey: buildIdempotencyKey(orderMatch.order.id, input.arrival.trackingNumber),
@@ -548,10 +753,14 @@ export function decideArrivalCase(input: {
       trelloCard: trelloMatch.card,
       shopifyOrder: orderMatch.order,
       shippingClass: shipping.shippingClass,
+      destinationCountryCode: destination.destinationCountryCode,
+      destinationClass: destination.destinationClass,
+      deliveryNoteRequired: destination.deliveryNoteRequired,
+      deliveryNoteStatus: destination.deliveryNoteStatus,
       selectedDpdProduct: null,
       existingDpdTracking: null,
       status: "manual_review",
-      manualReviewReason: `Kein bestaetigtes DPD-Produkt fuer ${shipping.shippingClass} konfiguriert.`,
+      manualReviewReason: `Kein bestaetigtes ${destination.destinationClass === "eu" ? "EU-" : ""}DPD-Produkt fuer ${shipping.shippingClass} konfiguriert.`,
       relevantOrderNote: null,
       reasons: [...reasons, "dpd_product_config_missing"],
     };
@@ -565,6 +774,10 @@ export function decideArrivalCase(input: {
     trelloCard: trelloMatch.card,
     shopifyOrder: orderMatch.order,
     shippingClass: shipping.shippingClass,
+    destinationCountryCode: destination.destinationCountryCode,
+    destinationClass: destination.destinationClass,
+    deliveryNoteRequired: destination.deliveryNoteRequired,
+    deliveryNoteStatus: destination.deliveryNoteStatus,
     selectedDpdProduct: product,
     existingDpdTracking: null,
     status: "label_planned",
