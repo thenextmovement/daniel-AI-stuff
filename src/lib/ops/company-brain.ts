@@ -4192,6 +4192,7 @@ export function buildActionProposals(input: {
   watchers: CompanyBrainWatcher[];
   automationRuns: CompanyBrainAutomationRun[];
   integrationReadiness: CompanyBrainIntegrationReadiness[];
+  liveOutlookEvidenceCount?: number;
   assets: CompanyBrainAsset[];
   retryAssessment: CompanyBrainRetryAssessment;
   trelloFailureDiagnosis: CompanyBrainTrelloFailureDiagnosis;
@@ -4355,13 +4356,16 @@ export function buildActionProposals(input: {
       riskLevel: "low",
       approvalRequired: false,
       enabled: liveOutlook?.status === "configured",
-      summary: liveOutlook?.status === "configured"
-        ? "Runtime wirkt vorbereitet; Live-Suche kann als nächster Backend-Schritt aktiviert werden."
-        : "Graph-Konfiguration fehlt oder ist unvollständig; aktuell nur Outlook-Spiegel nutzen.",
+      summary: (input.liveOutlookEvidenceCount || 0) > 0
+        ? `${input.liveOutlookEvidenceCount} Live-Outlook-Beleg(e) read-only geladen.`
+        : liveOutlook?.status === "configured"
+          ? "Graph-Livezugriff ist konfiguriert; für diesen Fall wurde kein zusätzlicher Live-Outlook-Beleg gefunden."
+          : "Graph-Konfiguration fehlt oder ist unvollständig; aktuell nur Outlook-Spiegel nutzen.",
       confirmationText: "Nur lesen, keine Mail senden.",
       href: null,
       payloadPreview: [
         `Status: ${liveOutlook?.status || "unknown"}`,
+        `Live-Belege: ${input.liveOutlookEvidenceCount || 0}`,
         primaryRecord?.email ? `Kunde: ${primaryRecord.email}` : "Kunde: unbekannt",
         primaryOffer?.offerNumber ? `Angebot: ${primaryOffer.offerNumber}` : "Angebot: unbekannt",
       ],
@@ -5603,6 +5607,7 @@ export async function resolveCompanyBrain(input: CompanyBrainResolveInput): Prom
     watchers,
     automationRuns,
     integrationReadiness,
+    liveOutlookEvidenceCount: evidence.filter((entry) => entry.source === "outlook_graph_live").length,
     assets,
     retryAssessment,
     trelloFailureDiagnosis,

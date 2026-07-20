@@ -2438,6 +2438,8 @@ function actionProposalFixture(options: {
   automationRuns?: CompanyBrainAutomationRun[];
   withoutRecord?: boolean;
   trelloFailureDiagnosis?: CompanyBrainTrelloFailureDiagnosis;
+  liveOutlookConfigured?: boolean;
+  liveOutlookEvidenceCount?: number;
 }) {
   const records: CompanyBrainRecordSummary[] = [{
     requestId: "REQ-ACTIONS",
@@ -2516,15 +2518,47 @@ function actionProposalFixture(options: {
     watchers: [],
     automationRuns: options.automationRuns || [],
     integrationReadiness: [
-      { key: "live_outlook", label: "Live Outlook", status: "missing", summary: "fehlt", detail: null },
+      {
+        key: "live_outlook",
+        label: "Live Outlook",
+        status: options.liveOutlookConfigured ? "configured" : "missing",
+        summary: options.liveOutlookConfigured ? "bereit" : "fehlt",
+        detail: null,
+      },
       { key: "n8n_live", label: "Live n8n", status: "configured", summary: "bereit", detail: null },
       { key: "coolify", label: "Coolify", status: "configured", summary: "bereit", detail: null },
     ],
+    liveOutlookEvidenceCount: options.liveOutlookEvidenceCount,
     assets: [],
     retryAssessment: options.retry,
     trelloFailureDiagnosis: options.trelloFailureDiagnosis || retryDiagnosis(),
   });
 }
+
+test("company brain action proposals report loaded Live Outlook evidence", () => {
+  const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
+    status: "blocked",
+    label: "Versand bereits belegt",
+    summary: "Ein Versandbeleg ist vorhanden.",
+    recipientEmail: "max@example.com",
+    offerId: "offer-actions",
+    offerNumber: "AN-5010",
+    idempotencyKey: null,
+    canSendWithConfirmation: false,
+    blockers: ["Keinen erneuten Versand auslösen."],
+    safeFixes: [],
+  };
+  const actions = actionProposalFixture({
+    retry,
+    liveOutlookConfigured: true,
+    liveOutlookEvidenceCount: 4,
+  });
+  const liveOutlook = actions.find((action) => action.key === "verify_live_outlook");
+
+  assert.equal(liveOutlook?.enabled, true);
+  assert.equal(liveOutlook?.summary, "4 Live-Outlook-Beleg(e) read-only geladen.");
+  assert.ok(liveOutlook?.payloadPreview.includes("Live-Belege: 4"));
+});
 
 test("company brain action proposals do not duplicate prepared email correction tasks", () => {
   const retry: ReturnType<typeof buildCompanyBrainRetryAssessment> = {
