@@ -159,13 +159,23 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
       const token = requiredEnv("TRELLO_TOKEN");
       const boardId = String(process.env.ARRIVAL_LABEL_TRELLO_BOARD_ID || "62bae9b97705e7419ed64593").trim();
       if (!/^[a-f0-9]{24}$/i.test(boardId)) throw new ArrivalIntegrationError("Quentin Trello Board-ID ist ungueltig.", "trello_board_invalid");
-      const url = new URL(`https://api.trello.com/1/boards/${boardId}/cards`);
-      url.searchParams.set("key", apiKey);
-      url.searchParams.set("token", token);
-      url.searchParams.set("fields", "id,name,url,desc,idList,closed");
-      url.searchParams.set("filter", "open");
-      const response = await fetchWithRetry(url.toString(), { headers: { Accept: "application/json" } });
-      const cards = await response.json() as Array<{ id?: string; name?: string; url?: string; desc?: string; idList?: string; closed?: boolean }>;
+      const cardsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/cards`);
+      cardsUrl.searchParams.set("key", apiKey);
+      cardsUrl.searchParams.set("token", token);
+      cardsUrl.searchParams.set("fields", "id,name,url,desc,idList,closed");
+      cardsUrl.searchParams.set("filter", "open");
+      const listsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/lists`);
+      listsUrl.searchParams.set("key", apiKey);
+      listsUrl.searchParams.set("token", token);
+      listsUrl.searchParams.set("fields", "id,name");
+      listsUrl.searchParams.set("filter", "all");
+      const [cardsResponse, listsResponse] = await Promise.all([
+        fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }),
+        fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }),
+      ]);
+      const cards = await cardsResponse.json() as Array<{ id?: string; name?: string; url?: string; desc?: string; idList?: string; closed?: boolean }>;
+      const lists = await listsResponse.json() as Array<{ id?: string; name?: string }>;
+      const listNames = new Map(lists.filter((list) => list.id && list.name).map((list) => [list.id as string, list.name as string]));
       return cards
         .filter((card) => !card.closed && card.id && card.name && card.url)
         .map((card) => ({
@@ -174,6 +184,7 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
           url: card.url as string,
           description: card.desc || null,
           listId: card.idList || null,
+          listName: card.idList ? listNames.get(card.idList) || null : null,
         }));
     },
   };

@@ -41,6 +41,7 @@ export type TrelloCardEvidence = {
   url: string;
   description?: string | null;
   listId?: string | null;
+  listName?: string | null;
 };
 
 export type ShopifyFulfillmentEvidence = {
@@ -145,6 +146,10 @@ export type ShopifyAutomationGate = {
   noteExcerpt: string | null;
   attributeKeys: string[];
 };
+
+export type TrelloAutomationGate =
+  | { blocked: false; reasonCode: null; reason: null }
+  | { blocked: true; reasonCode: "trello_manual_list"; reason: string };
 
 const OFFER_TOKEN = "[A-Za-z0-9_-]{8,128}";
 const OFFER_URL = new RegExp(`^https://angebote[.]neontrip[.]de/offer/(${OFFER_TOKEN})$`);
@@ -398,6 +403,22 @@ export function isDimmerSpecialCase(card: TrelloCardEvidence) {
   return quantity && dimmer && singleColor;
 }
 
+export function assessTrelloAutomationGate(card: TrelloCardEvidence): TrelloAutomationGate {
+  const listName = normalizeHumanText(card.listName);
+  const manualList = /^(?:problems? with signs?|problem mit(?: dem)? schild|schildprobleme?|manual review|manuelle? prufung|sonderfalle?)$/.test(listName);
+  if (!manualList) return { blocked: false, reasonCode: null, reason: null };
+  const safeListName = String(card.listName || "manuelle Trello-Liste")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return {
+    blocked: true,
+    reasonCode: "trello_manual_list",
+    reason: `Trello-Karte liegt in der manuellen Sperrliste "${safeListName}".`,
+  };
+}
+
 function parseStandardOfferMetadataNote(note: string | null | undefined) {
   const normalized = String(note || "").trim();
   if (!normalized) return { standard: true, offerId: null as string | null };
@@ -633,6 +654,25 @@ export function decideArrivalCase(input: {
     orders: input.shopifyOrders,
     customerNameHints: input.customerNameHintsByCardId?.[trelloMatch.card.id],
   });
+  const trelloGate = assessTrelloAutomationGate(trelloMatch.card);
+  if (trelloGate.blocked) {
+    return {
+      idempotencyKey: buildIdempotencyKey(orderMatch.order?.id || null, input.arrival.trackingNumber),
+      trackingNumber: input.arrival.trackingNumber,
+      lastSix: input.arrival.lastSix,
+      expectedArrival: `${input.arrival.localDate} (${input.arrival.deliveryState})`,
+      trelloCard: trelloMatch.card,
+      shopifyOrder: orderMatch.order,
+      shippingClass: "special_case",
+      ...unresolvedDestination,
+      selectedDpdProduct: null,
+      existingDpdTracking: null,
+      status: "manual_review",
+      manualReviewReason: trelloGate.reason,
+      relevantOrderNote: orderMatch.order ? relevantOrderNote(orderMatch.order.note) : null,
+      reasons: [trelloGate.reasonCode],
+    };
+  }
   if (!orderMatch.order) {
     return {
       idempotencyKey: buildIdempotencyKey(null, input.arrival.trackingNumber),

@@ -8,6 +8,7 @@ import {
   arrivalsFromDhlMessages,
   assessDestinationGate,
   assessShopifyAutomationGate,
+  assessTrelloAutomationGate,
   buildIdempotencyKey,
   classifyShipping,
   decideArrivalCase,
@@ -146,6 +147,23 @@ test("100 pieces single color dimmers are a special case without Shopify", () =>
   assert.equal(decision.status, "special_case");
   assert.equal(decision.shopifyOrder, null);
   assert.equal(decision.selectedDpdProduct, null);
+});
+
+test("manual Trello lists are hard stops and can only block automation", () => {
+  for (const listName of ["Problem with Sign", "Problems with Signs", "Problem mit Schild", "Manual Review", "Manuelle Prüfung", "Sonderfälle"]) {
+    assert.equal(assessTrelloAutomationGate({ ...card(), listName }).blocked, true, listName);
+  }
+  const manualCard = { ...card(), listName: "Problem with Sign" };
+  const decision = decideArrivalCase({
+    arrival: arrival(),
+    trelloCards: [manualCard],
+    shopifyOrders: [standardOrder],
+    productConfig: config,
+  });
+  assert.equal(decision.status, "manual_review");
+  assert.equal(decision.shopifyOrder?.id, standardOrder.id);
+  assert.equal(decision.selectedDpdProduct, null);
+  assert.deepEqual(decision.reasons, ["trello_manual_list"]);
 });
 
 test("express, urgent and conflicting instructions are detected deterministically", () => {

@@ -1,10 +1,10 @@
 # Automation Safety Review
 
-Review scope: inactive DHL-arrival dry-run service, fail-closed Shopify special-case gate, additive Postgres schema, deterministic internal review-mail outbox, generated Outlook/daily/mail-worker n8n orchestrators, PDF processor, authenticated print spool and local CUPS worker. Production disposition: **NO-GO for label creation or physical printing; GO for code review, fixtures and read-only validation**.
+Review scope: inactive DHL-arrival dry-run service, fail-closed Shopify and Trello-manual-list gates, additive Postgres schema, deterministic internal review-mail outbox, generated Outlook/daily/mail-worker n8n orchestrators, PDF processor, authenticated print spool and local CUPS worker. Production disposition: **NO-GO for automated label creation or automated physical printing; GO for code review, fixtures and read-only validation**. The witnessed one-off manual print of the verified existing `#NEONT4498` label is preserved in the batch audit and does not change this disposition.
 
 | Dimension | Score (1–5) | Evidence and residual risk |
 | --- | ---: | --- |
-| Correctness | 4 | Full-number DHL extraction, six-digit overlay, exact Trello order references, strict customer fallback, exact offer-note/custom-attribute gate, pickup wording and reference protection are tested. Real DHL templates and a real EasyDPD PDF still require contract fixtures. |
+| Correctness | 4 | Full-number DHL extraction, six-digit overlay, exact Trello order references, strict customer fallback, explicit manual-list blocking, exact offer-note/custom-attribute gate, pickup wording and reference protection are tested. Real DHL templates, current-versus-stale existing-label evidence and a real EasyDPD PDF still require contract fixtures. |
 | Reliability | 4 | Bounded retries/backoff, timeouts, Berlin timezone, separate event/reconciliation triggers and fail-closed errors. Expired pre-dispatch claims can be recovered; exhausted attempts and every post-dispatch uncertainty require review. Real CUPS completion retention still needs a physical shadow test. |
 | Idempotency | 5 | Application key and DB uniqueness use Shopify order ID plus full DHL number; review-mail keys include the blocked input snapshot; one print job per annotated artifact; row leases; uncertainty after mail or print `dispatching` is manual review, never automatic resend/reprint. EasyDPD must later accept or emulate the carrier idempotency contract. |
 | Observability | 4 | Correlation ID, run/case/print/review-mail state, immutable per-run snapshot, append-only events, n8n mail-dispatch receipt, CUPS job ID, structured report, PDF SHA/QA artifacts. Printer telemetry and a witnessed Outlook shadow run still await setup. |
@@ -20,6 +20,7 @@ Review scope: inactive DHL-arrival dry-run service, fail-closed Shopify special-
 - The migration is un-applied and the n8n workflow is unimported/inactive.
 - No CUPS tools or printer are configured on the current host; printer queue, media keyword and physical scan test are unverified.
 - It is not yet confirmed whether EasyDPD itself owns Shopify fulfillment/tracking writes; a second writer is prohibited.
+- Existing Shopify or DPD tracking blocks a second purchase but does not prove that its PDF is current, unused or printable. The future adapter needs explicit freshness/usability evidence; stale original-shipment labels stay manual.
 - A real service-driven read-only run after deployment has not yet been operator-approved.
 - The new review-mail outbox has not been applied to a disposable database or shadow-tested with Outlook; its workflow remains inactive.
 
