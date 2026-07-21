@@ -10,9 +10,9 @@ const inventory = JSON.parse(
 const explicitDecisions = {
   TLLSwYTcIRgtinVg: {
     capability: "pandadoc_event_lifecycle",
-    classification: "canonical_refactor",
-    targetMode: "split_loop_with_bounded_ai_enrichment",
-    decision: "split_receiver_error_handler_enrichment_and_customer_projection",
+    classification: "legacy_deactivate_after_replay",
+    targetMode: "inactive",
+    decision: "duplicate_receiver_events_already_claimed_by_specialized_pandadoc_loops",
     priority: "critical",
   },
   geeNR1aVW9tZjPuN: {

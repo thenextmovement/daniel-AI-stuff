@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-07-21T18:02:44.617Z",
+  "generatedAt": "2026-07-21T18:19:21.507Z",
   "sourceGeneratedAt": "2026-07-21T19:00:00+02:00",
   "scope": "all_active_n8n_workflows",
   "counts": {
     "total": 152,
     "canonicalKeep": 91,
     "refactorOrReview": 61,
-    "deactivate": 5,
+    "deactivate": 6,
     "critical": 8
   },
   "workflows": [
@@ -24,9 +24,9 @@
         ]
       },
       "capability": "pandadoc_event_lifecycle",
-      "classification": "canonical_refactor",
-      "targetMode": "split_loop_with_bounded_ai_enrichment",
-      "decision": "split_receiver_error_handler_enrichment_and_customer_projection",
+      "classification": "legacy_deactivate_after_replay",
+      "targetMode": "inactive",
+      "decision": "duplicate_receiver_events_already_claimed_by_specialized_pandadoc_loops",
       "priority": "critical"
     },
     {

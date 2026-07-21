@@ -147,7 +147,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 
 - Every one of the 152 active workflows is assigned in the generated capability manifest; none is unclassified.
 - 91 workflows are structurally acceptable to keep, while 61 require refactor or explicit review; all 19 workflows over 30 nodes have an explicit target decision.
-- The five true agent workflows have individual decisions: replace win-back and design reminder with draft loops; split the PandaDoc event receiver into bounded loops; deactivate the unused Telegram GitHub controller and Fabienne assistant until owner allowlists and approval/tool wrappers exist.
+- The five true agent workflows have individual decisions: replace win-back and design reminder with draft loops; retire the redundant PandaDoc event receiver after replay evidence; deactivate the unused Telegram GitHub controller and Fabienne assistant until owner allowlists and approval/tool wrappers exist.
 - The manifest contains no target architecture that relies on an autonomous agent. AI remains only as a bounded proposal or enrichment step where deterministic logic is insufficient.
 
 ### Agent cutover evidence
@@ -188,6 +188,8 @@ Keep the previous workflow active version and full JSON backup until the replace
 20. Gemini Mockup v1.2 completed a long series of real card/image operations but failed on its terminal processing-label cleanup because that node alone had no credential binding.
 21. Supplier Shopify Tag Sync disabled TLS certificate verification and repeated an ambiguous POST up to three times; one incident lasted about 100 seconds after repeated 30-second timeouts. The first hardened run then proved why verification had been disabled: the internal `coolify-proxy` certificate is not trusted by n8n. It failed before data exchange; the candidate now routes through the publicly certified Ops endpoint without a forged `Host` header.
 22. `Customs CI Cleanup (LÖSCHEN)` is not an obsolete workflow: it has current successful executions and performs database deletions plus invoice generation from a Trello event. It must be refactored, not blindly deactivated.
+23. Both recent PandaDoc Event Receiver executions were duplicate no-ops: the same idempotency keys had already been claimed by specialized PandaDoc loops. Keeping the 58-node receiver active therefore adds an autonomous AI branch, a second error trigger, and a direct viewed-email sender without observed unique capability.
+24. The dependency audit initially contained two high and one low advisory. Non-breaking transitive updates plus `tsx` 4.23.1/`esbuild` 0.28.1 remove all three; `npm audit` now reports zero vulnerabilities.
 
 ## Validation ledger
 
