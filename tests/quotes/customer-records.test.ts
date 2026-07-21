@@ -9,6 +9,7 @@ import {
   buildCustomerUpdatePreview,
   customerOrganizationEmailDomains,
   deriveCustomerOpsState,
+  duplicateCustomerTrelloCard,
   getCustomerRecordByRequestId,
   listMockupTrelloAttachments,
   parseTrelloCardIdentifier,
@@ -800,4 +801,224 @@ test("buildSpecialCaseSummary returns resolved when resolution is newer than rep
   assert.equal(summary.dueAt, "2026-05-23T10:00:00.000Z");
   assert.equal(summary.resolvedBy, "Daniel");
   assert.equal(summary.resolvedAt, "2026-05-20T12:00:00.000Z");
+});
+
+test("duplicateCustomerTrelloCard reimports a copied Trello card with a new request id", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  const calls: Array<{ url: URL; method: string; body: any }> = [];
+  const boardId = "63d10c34105771f01ccf4296";
+  const listId = "64ca588f8bd547afc087a6ea";
+  const sourceCardId = "64ca588f8bd547afc087a6eb";
+  const copiedCardId = "650000000000000000000001";
+  const sourceDesc = "Beschreibung der Karte\nmit zweiter Zeile";
+  let createdRequest: any = null;
+  let copiedRequestFieldValue = "source-request";
+
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+
+  const customerRow = (requestId: string) => ({
+    id: "customer-1",
+    request_id: requestId,
+    email: "kunde@example.com",
+    billing_email: "kunde@example.com",
+    cc_emails: [],
+    first_name: "Ada",
+    last_name: "Lovelace",
+    name: "Ada Lovelace",
+    phone: "+491234",
+    company: "Example GmbH",
+    company_name: "Example GmbH",
+    updated_at: "2026-07-20T10:00:00.000Z",
+  });
+  const sourceRequest = {
+    id: "request-row-source",
+    request_id: "source-request",
+    customer_id: "customer-1",
+    title: "Musterkarte",
+    description: sourceDesc,
+    status: "offer_sent",
+    deal_status: "quote_sent",
+    segment: "NT-3",
+    segment_status: "accepted",
+    segment_confidence: 0.82,
+    segment_source: "request_segmenter",
+    s_kategorie: "Schildkroeten und Preise",
+    size: "100 cm",
+    color: ["Rot"],
+    application: "Ladenfront",
+    delivery_time: "2 Wochen",
+    customer_type: "B2B",
+    country: "DE",
+    form_id: "source_form",
+    trello_card_id: sourceCardId,
+    trello_card_url: `https://trello.com/c/${sourceCardId}`,
+    updated_at: "2026-07-20T10:00:00.000Z",
+  };
+  const customFields = [
+    { id: "field-request-id", name: "nerdy-forms-id", type: "text" },
+    { id: "field-usage", name: "Usage", type: "text" },
+  ];
+  const attachments = [
+    { id: "attachment-1", name: "image.png", mimeType: "image/png", url: "https://trello.example/image.png" },
+    { id: "attachment-2", name: "mockup-1.jpg", mimeType: "image/jpeg", url: "https://trello.example/mockup.jpg" },
+  ];
+
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  }
+
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const method = String(init.method || "GET").toUpperCase();
+    const body = typeof init.body === "string" ? JSON.parse(init.body) : null;
+    calls.push({ url, method, body });
+
+    if (url.hostname === "api.trello.com") {
+      if (url.pathname === "/1/search") {
+        const query = url.searchParams.get("query");
+        const cardId = query === createdRequest?.request_id ? copiedCardId : sourceCardId;
+        return json({ cards: [{ id: cardId, name: "Musterkarte", idBoard: boardId, url: `https://trello.com/c/${cardId}` }] });
+      }
+      if (url.pathname === `/1/boards/${boardId}/customFields`) return json(customFields);
+      if (url.pathname === `/1/boards/${boardId}/lists`) {
+        return json([{ id: listId, name: "Neue Anfrage", closed: false, pos: 1 }]);
+      }
+      if (url.pathname === `/1/cards/${sourceCardId}`) {
+        return json({
+          id: sourceCardId,
+          name: "Musterkarte",
+          desc: sourceDesc,
+          idBoard: boardId,
+          idList: listId,
+          customFieldItems: [
+            { idCustomField: "field-request-id", value: { text: "source-request" } },
+            { idCustomField: "field-usage", value: { text: "Ladenfront" } },
+          ],
+          attachments,
+          actions: [],
+        });
+      }
+      if (url.pathname === "/1/cards" && method === "POST") {
+        return json({
+          id: copiedCardId,
+          idBoard: boardId,
+          name: url.searchParams.get("name"),
+          url: `https://trello.com/c/${copiedCardId}`,
+          shortUrl: `https://trello.com/c/${copiedCardId}`,
+        });
+      }
+      if (url.pathname === `/1/cards/${copiedCardId}/customField/field-request-id/item` && method === "PUT") {
+        copiedRequestFieldValue = body?.value?.text;
+        return new Response("", { status: 200 });
+      }
+      if (url.pathname === `/1/cards/${copiedCardId}` && method === "PUT") {
+        return new Response("", { status: 200 });
+      }
+      if (url.pathname === `/1/cards/${copiedCardId}`) {
+        return json({
+          id: copiedCardId,
+          name: "Musterkarte",
+          desc: sourceDesc,
+          idBoard: boardId,
+          idList: listId,
+          customFieldItems: [
+            { idCustomField: "field-request-id", value: { text: copiedRequestFieldValue } },
+            { idCustomField: "field-usage", value: { text: "Ladenfront" } },
+          ],
+          attachments,
+          actions: [],
+        });
+      }
+      throw new Error(`Unexpected Trello call: ${method} ${url.pathname}`);
+    }
+
+    if (url.hostname === "supabase.example.co") {
+      if (url.pathname.endsWith("/rest/v1/master_customers")) {
+        if (method === "PATCH") return new Response(null, { status: 204 });
+        if (url.searchParams.get("request_id") === "eq.source-request") return json([customerRow("source-request")]);
+        if (createdRequest && url.searchParams.get("request_id") === `eq.${createdRequest.request_id}`) {
+          return json([customerRow(createdRequest.request_id)]);
+        }
+        if (url.searchParams.get("id") === "eq.customer-1") return json([customerRow(createdRequest?.request_id || "source-request")]);
+        return json([]);
+      }
+      if (url.pathname.endsWith("/rest/v1/master_requests")) {
+        if (method === "POST") {
+          createdRequest = { id: "request-row-created", ...body };
+          return json([createdRequest]);
+        }
+        if (url.searchParams.has("attribution_raw->>idempotency_key")) return json([]);
+        if (url.searchParams.get("request_id") === "eq.source-request") return json([sourceRequest]);
+        if (createdRequest && url.searchParams.get("request_id") === `eq.${createdRequest.request_id}`) {
+          return json([createdRequest]);
+        }
+        return json([]);
+      }
+      if (url.pathname.endsWith("/rest/v1/workflow_audit_log")) {
+        if (method === "POST") return new Response(null, { status: 204 });
+        return json([]);
+      }
+      if (url.pathname.endsWith("/rest/v1/sales_tasks")) {
+        if (method === "POST") return json([{ id: "task-1", ...body, created_at: "2026-07-21T10:00:00.000Z" }]);
+        return json([]);
+      }
+      if (method === "PATCH" || method === "DELETE") return new Response(null, { status: 204 });
+      return json([]);
+    }
+
+    throw new Error(`Unexpected fetch: ${method} ${url.toString()}`);
+  }) as typeof fetch;
+
+  try {
+    const result = await duplicateCustomerTrelloCard(
+      "source-request",
+      { boardKey: "anfrage_management", cardId: sourceCardId, idempotencyKey: "duplicate-test-key" },
+      { operatorName: "Daniel", mode: "local_bypass" },
+    );
+
+    assert.notEqual(result.requestId, "source-request");
+    assert.equal(result.cardId, copiedCardId);
+    assert.equal(result.record.requestId, result.requestId);
+    assert.equal(copiedRequestFieldValue, result.requestId);
+
+    const copyCall = calls.find((call) => call.url.hostname === "api.trello.com" && call.url.pathname === "/1/cards" && call.method === "POST");
+    assert.equal(copyCall?.url.searchParams.get("idCardSource"), sourceCardId);
+    assert.equal(copyCall?.url.searchParams.get("keepFromSource"), "all");
+    assert.equal(copyCall?.url.searchParams.get("idList"), listId);
+
+    assert.equal(createdRequest?.request_id, result.requestId);
+    assert.equal(createdRequest?.status, "new");
+    assert.equal(createdRequest?.deal_status, "open");
+    assert.equal(createdRequest?.trello_card_id, copiedCardId);
+    assert.equal(createdRequest?.attribution_raw?.idempotency_key, "duplicate-test-key");
+    assert.equal(createdRequest?.attribution_raw?.source_request_id, "source-request");
+
+    const customerPatch = calls.find((call) => call.url.pathname.endsWith("/rest/v1/master_customers") && call.method === "PATCH");
+    assert.equal(customerPatch?.body?.request_id, result.requestId);
+    assert.equal(
+      calls.some((call) => call.url.pathname.endsWith("/rest/v1/sales_tasks") && call.method === "POST" && call.body?.task_type === "call_new_inquiry"),
+      true,
+    );
+    assert.equal(
+      calls.some((call) => call.url.pathname.endsWith("/rest/v1/workflow_audit_log") && call.method === "POST" && call.body?.action === "customer_trello_card_duplicated"),
+      true,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalSupabaseUrl;
+    if (originalSupabaseKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalSupabaseKey;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+  }
 });

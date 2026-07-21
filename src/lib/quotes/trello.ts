@@ -465,6 +465,52 @@ export async function createTrelloCard(input: {
   return (await response.json()) as CreatedTrelloCard;
 }
 
+export async function copyTrelloCard(input: {
+  sourceCardId: string;
+  listId: string;
+  name?: string | null;
+  desc?: string | null;
+  keepFromSource?: "all" | string;
+}) {
+  const { key, token } = trelloConfig();
+  const url = new URL("https://api.trello.com/1/cards");
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+  url.searchParams.set("idList", input.listId);
+  url.searchParams.set("idCardSource", input.sourceCardId);
+  url.searchParams.set("keepFromSource", input.keepFromSource || "all");
+  if (input.name !== undefined && input.name !== null) url.searchParams.set("name", input.name);
+  if (input.desc !== undefined && input.desc !== null) url.searchParams.set("desc", input.desc);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Karte konnte nicht kopiert werden: ${response.status}`);
+  }
+
+  return (await response.json()) as CreatedTrelloCard;
+}
+
+export async function archiveTrelloCard(cardId: string) {
+  const { key, token } = trelloConfig();
+  const url = new URL(`https://api.trello.com/1/cards/${encodeURIComponent(cardId)}`);
+  url.searchParams.set("key", key);
+  url.searchParams.set("token", token);
+  url.searchParams.set("closed", "true");
+
+  const response = await fetch(url.toString(), {
+    method: "PUT",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trello Karten-Rollback fehlgeschlagen: ${response.status}`);
+  }
+}
+
 export async function addTrelloCardAttachment(input: {
   cardId: string;
   url: string;

@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   CheckSquare2,
   Clock3,
+  Copy,
   Database,
   ExternalLink,
   Gift,
@@ -40,6 +41,7 @@ import type {
   CustomerTeamStateInput,
   CustomerWorkboardSection,
   CustomerRequestSummary,
+  CustomerTrelloCardDuplicateInput,
   CustomerTrelloCardUpdateInput,
   CustomerTrelloFieldUpdateInput,
   CustomerTrelloBoardCard,
@@ -3995,6 +3997,21 @@ type TrelloCardResponse = {
   ok: boolean;
   record?: CustomerSearchResult;
   count?: number;
+  error?: string;
+  issues?: string[];
+};
+
+type TrelloCardDuplicateResponse = {
+  ok: boolean;
+  result?: {
+    requestId: string;
+    sourceRequestId: string;
+    customerId: string;
+    cardId: string;
+    cardUrl: string | null;
+    warnings: string[];
+    record: CustomerSearchResult;
+  };
   error?: string;
   issues?: string[];
 };
@@ -12386,11 +12403,15 @@ function Modal({
 function TrelloCardEditor({
   board,
   saving,
+  duplicating,
   onSave,
+  onDuplicate,
 }: {
   board: CustomerTrelloBoardCard;
   saving: boolean;
+  duplicating: boolean;
   onSave: (update: CustomerTrelloCardUpdateInput) => Promise<void>;
+  onDuplicate: (input: CustomerTrelloCardDuplicateInput) => Promise<void>;
 }) {
   const [name, setName] = useState(board.cardName || "");
   const [desc, setDesc] = useState(board.cardDescription || "");
@@ -12440,8 +12461,32 @@ function TrelloCardEditor({
             <QuickLink href={board.cardUrl || board.boardUrl} label="Kartenansicht öffnen" />
             <button
               type="button"
+              disabled={saving || duplicating}
+              onClick={async () => {
+                const confirmed = window.confirm(
+                  `Neue Anfrage aus "${board.cardName || board.boardName}" erstellen?\n\nDie Trello-Karte wird kopiert, bekommt eine neue Request-ID und wird danach als neuer Fall geladen.`,
+                );
+                if (!confirmed) return;
+                const idempotencyKey =
+                  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                    ? crypto.randomUUID()
+                    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                await onDuplicate({
+                  boardKey: board.boardKey,
+                  cardId: board.cardId!,
+                  idempotencyKey,
+                });
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-black/70 transition hover:border-[#fa31a2] hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Copy className="h-4 w-4" />
+              {duplicating ? "Dupliziert..." : "Karte duplizieren"}
+            </button>
+            <button
+              type="button"
               onClick={() => setEditorOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0A0A0A] px-4 py-2 text-sm font-medium text-white transition hover:bg-black/90"
+              disabled={duplicating}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0A0A0A] px-4 py-2 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
             >
               Bearbeiten
             </button>
@@ -12556,14 +12601,18 @@ function TrelloMediaPanel({
   record,
   placetelTemplate,
   trelloCardSaving,
+  trelloCardDuplicating,
   onSaveCard,
+  onDuplicateCard,
   simpleView = false,
   mediaOnly = false,
 }: {
   record: CustomerSearchResult;
   placetelTemplate: string | null;
   trelloCardSaving: boolean;
+  trelloCardDuplicating: boolean;
   onSaveCard: (update: CustomerTrelloCardUpdateInput) => Promise<void>;
+  onDuplicateCard: (input: CustomerTrelloCardDuplicateInput) => Promise<void>;
   simpleView?: boolean;
   mediaOnly?: boolean;
 }) {
@@ -12893,7 +12942,9 @@ function TrelloMediaPanel({
                       key={board.boardId}
                       board={board}
                       saving={trelloCardSaving}
+                      duplicating={trelloCardDuplicating}
                       onSave={onSaveCard}
+                      onDuplicate={onDuplicateCard}
                     />
                   ))}
                 </div>
@@ -13128,11 +13179,15 @@ type TrelloWorkspaceTab = "design" | "cards" | "fields";
 function TrelloCardsPanel({
   record,
   saving,
+  duplicating,
   onSave,
+  onDuplicate,
 }: {
   record: CustomerSearchResult;
   saving: boolean;
+  duplicating: boolean;
   onSave: (update: CustomerTrelloCardUpdateInput) => Promise<void>;
+  onDuplicate: (input: CustomerTrelloCardDuplicateInput) => Promise<void>;
 }) {
   const trello = record.trello;
   if (!trello) {
@@ -13160,7 +13215,9 @@ function TrelloCardsPanel({
             key={board.boardId}
             board={board}
             saving={saving}
+            duplicating={duplicating}
             onSave={onSave}
+            onDuplicate={onDuplicate}
           />
         ))}
       </div>
@@ -13173,7 +13230,9 @@ function TrelloWorkspacePanel({
   placetelTemplate,
   trelloSaving,
   trelloCardSaving,
+  trelloCardDuplicating,
   onSaveTrelloCard,
+  onDuplicateTrelloCard,
   onSaveTrelloFields,
   simpleView,
 }: {
@@ -13181,7 +13240,9 @@ function TrelloWorkspacePanel({
   placetelTemplate: string | null;
   trelloSaving: boolean;
   trelloCardSaving: boolean;
+  trelloCardDuplicating: boolean;
   onSaveTrelloCard: (update: CustomerTrelloCardUpdateInput) => Promise<void>;
+  onDuplicateTrelloCard: (input: CustomerTrelloCardDuplicateInput) => Promise<void>;
   onSaveTrelloFields: (requestId: string, boardKey: string, updates: CustomerTrelloFieldUpdateInput[]) => Promise<void>;
   simpleView: boolean;
 }) {
@@ -13257,7 +13318,9 @@ function TrelloWorkspacePanel({
           record={record}
           placetelTemplate={placetelTemplate}
           trelloCardSaving={trelloCardSaving}
+          trelloCardDuplicating={trelloCardDuplicating}
           onSaveCard={onSaveTrelloCard}
+          onDuplicateCard={onDuplicateTrelloCard}
           simpleView={simpleView}
           mediaOnly
         />
@@ -13267,7 +13330,9 @@ function TrelloWorkspacePanel({
         <TrelloCardsPanel
           record={record}
           saving={trelloCardSaving}
+          duplicating={trelloCardDuplicating}
           onSave={onSaveTrelloCard}
+          onDuplicate={onDuplicateTrelloCard}
         />
       ) : null}
 
@@ -19946,11 +20011,13 @@ function RecordCard({
   actionRunning,
   trelloSaving,
   trelloCardSaving,
+  trelloCardDuplicating,
   placetelTemplate,
   onPreview,
   onSave,
   onSaveTrelloFields,
   onSaveTrelloCard,
+  onDuplicateTrelloCard,
   onAddNote,
   onRollback,
   onRepairDownstreamSync,
@@ -19984,11 +20051,13 @@ function RecordCard({
   actionRunning: boolean;
   trelloSaving: boolean;
   trelloCardSaving: boolean;
+  trelloCardDuplicating: boolean;
   placetelTemplate: string | null;
   onPreview: (requestId: string, updates: CustomerUpdateFields) => Promise<CustomerUpdatePreview>;
   onSave: (requestId: string, updates: CustomerUpdateFields) => Promise<void>;
   onSaveTrelloFields: (requestId: string, boardKey: string, updates: CustomerTrelloFieldUpdateInput[]) => Promise<void>;
   onSaveTrelloCard: (requestId: string, update: CustomerTrelloCardUpdateInput) => Promise<void>;
+  onDuplicateTrelloCard: (requestId: string, input: CustomerTrelloCardDuplicateInput) => Promise<void>;
   onAddNote: (requestId: string, note: CustomerOpsNoteDraft) => Promise<void>;
   onRollback: (requestId: string) => Promise<void>;
   onRepairDownstreamSync: (requestId: string) => Promise<void>;
@@ -20467,7 +20536,9 @@ function RecordCard({
               placetelTemplate={placetelTemplate}
               trelloSaving={trelloSaving}
               trelloCardSaving={trelloCardSaving}
+              trelloCardDuplicating={trelloCardDuplicating}
               onSaveTrelloCard={(update) => onSaveTrelloCard(record.requestId, update)}
+              onDuplicateTrelloCard={(input) => onDuplicateTrelloCard(record.requestId, input)}
               onSaveTrelloFields={(requestId, boardKey, fieldUpdates) => onSaveTrelloFields(requestId, boardKey, fieldUpdates)}
               simpleView={simpleView}
             />
@@ -21035,6 +21106,7 @@ export function CustomerRecordsClient({
   const [recordPreferredTab, setRecordPreferredTab] = useState<RecordDetailTab | null>(null);
   const [trelloSavingRequestId, setTrelloSavingRequestId] = useState<string | null>(null);
   const [trelloCardSavingRequestId, setTrelloCardSavingRequestId] = useState<string | null>(null);
+  const [trelloDuplicateSavingRequestId, setTrelloDuplicateSavingRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [lastSavedRequestId, setLastSavedRequestId] = useState<string | null>(null);
@@ -21963,6 +22035,44 @@ export function CustomerRecordsClient({
     applyRecordUpdate(payload.record);
     setMessage(`${payload.count || 0} Kartenfeld${payload.count === 1 ? "" : "er"} gespeichert.`);
     setTrelloCardSavingRequestId(null);
+  }
+
+  async function duplicateTrelloCard(requestId: string, input: CustomerTrelloCardDuplicateInput) {
+    setTrelloDuplicateSavingRequestId(requestId);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/ops/customer-records/trello-card/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, duplicate: input, operatorName }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as TrelloCardDuplicateResponse | null;
+
+      if (response.status === 401) {
+        setHasSession(false);
+        setError("Zugang abgelaufen. Bitte erneut entsperren.");
+        return;
+      }
+
+      if (!response.ok || !payload?.ok || !payload.result) {
+        setError(formatApiError(payload));
+        return;
+      }
+
+      const warningText = payload.result.warnings.length ? ` ${payload.result.warnings.join(" ")}` : "";
+      applyRecordUpdate(payload.result.record);
+      await loadRecordByRequestId(payload.result.requestId, "trello");
+      setMessage(`Trello-Karte wurde als neue Anfrage ${payload.result.requestId} neu eingespielt.${warningText}`);
+      void loadInbox();
+      void loadWorkboard();
+    } catch (duplicateError) {
+      setError(duplicateError instanceof Error ? duplicateError.message : "Trello-Karte konnte nicht dupliziert werden.");
+    } finally {
+      setTrelloDuplicateSavingRequestId(null);
+    }
   }
 
   async function runRecordAction(
@@ -24642,11 +24752,13 @@ export function CustomerRecordsClient({
                 actionRunning={actionRequestId === record.requestId}
                 trelloSaving={trelloSavingRequestId === record.requestId}
                 trelloCardSaving={trelloCardSavingRequestId === record.requestId}
+                trelloCardDuplicating={trelloDuplicateSavingRequestId === record.requestId}
                 placetelTemplate={placetelTemplate}
                 onPreview={preview}
                 onSave={save}
                 onSaveTrelloFields={saveTrelloFields}
                 onSaveTrelloCard={saveTrelloCard}
+                onDuplicateTrelloCard={duplicateTrelloCard}
                 onAddNote={addNote}
                 onRollback={(requestId) => runRecordAction(requestId, "rollback_last_update")}
                 onRepairDownstreamSync={repairDownstreamSync}
@@ -25026,11 +25138,13 @@ export function CustomerRecordsClient({
                 actionRunning={actionRequestId === record.requestId}
                 trelloSaving={trelloSavingRequestId === record.requestId}
                 trelloCardSaving={trelloCardSavingRequestId === record.requestId}
+                trelloCardDuplicating={trelloDuplicateSavingRequestId === record.requestId}
                 placetelTemplate={placetelTemplate}
                 onPreview={preview}
                 onSave={save}
                 onSaveTrelloFields={saveTrelloFields}
                 onSaveTrelloCard={saveTrelloCard}
+                onDuplicateTrelloCard={duplicateTrelloCard}
                 onAddNote={addNote}
                 onRollback={(requestId) => runRecordAction(requestId, "rollback_last_update")}
                 onRepairDownstreamSync={repairDownstreamSync}

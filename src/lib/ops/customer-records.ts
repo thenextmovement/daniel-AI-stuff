@@ -1,8 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { buildCustomerName, isValidEmail, normalizeEmail } from "@/lib/quotes/customer";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import {
+  archiveTrelloCard,
+  copyTrelloCard,
+  findTrelloCustomFieldByName,
   getTrelloBoardLists,
   getTrelloCard,
   moveTrelloCardToList,
@@ -18,6 +21,7 @@ import {
   canAutoUpdateTrelloDescription,
   type MockupContextInput,
 } from "@/lib/ops/mockup-context";
+import { taskTitle, upsertSalesTask } from "@/lib/ops/sales-task-engine";
 
 type MasterCustomerRow = {
   id: string;
@@ -142,6 +146,7 @@ type MasterRequestRow = {
   utm_content?: string | null;
   landing_page_url?: string | null;
   referrer?: string | null;
+  attribution_raw?: Record<string, unknown> | null;
 };
 
 type LatestSegmentClassificationRow = {
@@ -453,6 +458,7 @@ const CUSTOMER_RECORDS_FOLLOWUP_RESCHEDULE_ACTION = "customer_followups_reschedu
 const CUSTOMER_RECORDS_CONTACT_BLOCK_ACTION = "customer_contact_blocked";
 const CUSTOMER_RECORDS_TRELLO_FIELDS_ACTION = "customer_trello_fields_updated";
 const CUSTOMER_RECORDS_TRELLO_CARD_ACTION = "customer_trello_card_updated";
+const CUSTOMER_RECORDS_TRELLO_DUPLICATE_ACTION = "customer_trello_card_duplicated";
 const CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION = "customer_trello_mockup_description_synced";
 const CUSTOMER_RECORDS_CALL_LOG_ACTION = "customer_call_logged";
 const CUSTOMER_RECORDS_CALLBACK_SCHEDULED_ACTION = "customer_callback_scheduled";
@@ -486,6 +492,16 @@ const COMMUNICATION_AUDIT_ACTIONS = new Set([
   "followup_email_sent",
   "customer_reply_detected",
 ]);
+const CUSTOMER_RECORD_REQUEST_ID_FIELD_NAMES = [
+  "nerdy-forms-id",
+  "nerdy_forms_id",
+  "nerdyforms_id",
+  "nerdyform_id",
+  "Nerdy-Forms-ID",
+  "Nerdy Forms ID",
+  "NerdyForms ID",
+  "request_id",
+];
 
 const TRELLO_BOARD_CONFIGS = [
   {
@@ -1202,6 +1218,22 @@ export type CustomerTrelloCardUpdateInput = {
   usageFieldId?: string;
   usage?: string | null;
   listId?: string | null;
+};
+
+export type CustomerTrelloCardDuplicateInput = {
+  boardKey: string;
+  cardId: string;
+  idempotencyKey?: string | null;
+};
+
+export type CustomerTrelloCardDuplicateResult = {
+  requestId: string;
+  sourceRequestId: string;
+  customerId: string;
+  cardId: string;
+  cardUrl: string | null;
+  warnings: string[];
+  record: CustomerSearchResult;
 };
 
 export type CustomerTrelloMockupDescriptionSyncResult = {
@@ -4028,6 +4060,8 @@ function entryTitleFromAuditAction(action: string | null | undefined) {
       return "Trello-Felder aktualisiert";
     case CUSTOMER_RECORDS_TRELLO_CARD_ACTION:
       return "Trello-Karte aktualisiert";
+    case CUSTOMER_RECORDS_TRELLO_DUPLICATE_ACTION:
+      return "Trello-Karte dupliziert";
     case CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION:
       return "Trello-Description automatisch aktualisiert";
     case CUSTOMER_RECORDS_CALL_LOG_ACTION:
@@ -4061,19 +4095,26 @@ function entryTitleFromAuditAction(action: string | null | undefined) {
 
 async function fetchDownstreamRows(
   master: MasterCustomerRow,
-  options: { includeTrello?: boolean; includeOfferTracking?: boolean; includeActivity?: boolean; includeRelated?: boolean } = {},
+  options: {
+    includeTrello?: boolean;
+    includeOfferTracking?: boolean;
+    includeActivity?: boolean;
+    includeRelated?: boolean;
+    requestIdOverride?: string | null;
+  } = {},
 ) {
   const { includeTrello = true } = options;
   const { includeOfferTracking = true } = options;
   const { includeActivity = true } = options;
   const { includeRelated = true } = options;
   const storedRequestId = trimNullable(master.request_id);
+  const lookupRequestId = trimNullable(options.requestIdOverride) || storedRequestId;
   const emails = emailCandidates(master);
-  const requestRows = storedRequestId
+  const requestRows = lookupRequestId
     ? await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
         select:
           "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
-        request_id: `eq.${storedRequestId}`,
+        request_id: `eq.${lookupRequestId}`,
         order: "updated_at.desc",
         limit: 1,
       })
@@ -4085,7 +4126,7 @@ async function fetchDownstreamRows(
         limit: 1,
       });
   const request = requestRows[0] || null;
-  const requestId = storedRequestId || trimNullable(request?.request_id);
+  const requestId = lookupRequestId || trimNullable(request?.request_id);
   const quoteEmailOr = buildOrFilter([
     ...emails.map((email) => emailEqualsClause("recipient_email", email)),
     ...(request?.trello_card_id ? [`card_id.eq.${encodeURIComponent(request.trello_card_id)}`] : []),
@@ -4459,12 +4500,27 @@ async function fetchCustomerContextByRequestId(requestId: string): Promise<Custo
     limit: 1,
   });
 
-  const master = rows[0];
+  let master = rows[0] || null;
+  if (!master) {
+    const requestRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+      select: "request_id,customer_id",
+      request_id: `eq.${requestId}`,
+      limit: 1,
+    });
+    const customerId = trimNullable(requestRows[0]?.customer_id);
+    if (customerId) {
+      const customerRows = await selectMasterCustomerRows({
+        id: `eq.${customerId}`,
+        limit: 1,
+      });
+      master = customerRows[0] || null;
+    }
+  }
   if (!master) {
     throw new QuoteValidationError("Kein Datensatz zu dieser Request-ID gefunden.", [], 404);
   }
 
-  const downstream = await fetchDownstreamRows(master);
+  const downstream = await fetchDownstreamRows(master, { requestIdOverride: requestId });
   return { master: applyAuditCcEmails(master, downstream.audits), ...downstream };
 }
 
@@ -5995,6 +6051,410 @@ export async function updateCustomerTrelloCard(
     record: mapSearchResult(await fetchCustomerContextByRequestId(normalizedRequestId)),
     count: changedFields.length,
   };
+}
+
+type ExistingTrelloDuplicate = {
+  requestId: string;
+  customerId: string | null;
+  cardId: string | null;
+  cardUrl: string | null;
+};
+
+function preserveTrelloText(value: string | null | undefined) {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function trelloFieldComparableValue(field: Pick<TrelloEditableCustomField, "type" | "value"> | undefined) {
+  if (!field) return "__missing__";
+  if (field.type === "checkbox") return field.value ? "true" : "false";
+  if (field.value === null || field.value === undefined || field.value === "") return "";
+  return String(field.value);
+}
+
+function trelloAttachmentSignature(attachments: TrelloAttachment[]) {
+  return attachments
+    .map((attachment) => `${attachmentName(attachment)}|${trimNullable(attachment.mimeType) || ""}`)
+    .sort((left, right) => left.localeCompare(right, "de", { numeric: true }));
+}
+
+function sameStringList(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+async function findExistingTrelloDuplicateByIdempotencyKey(idempotencyKey: string): Promise<ExistingTrelloDuplicate | null> {
+  const auditRows = await supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+    select: "document_id,metadata",
+    workflow_name: `eq.${CUSTOMER_RECORDS_WORKFLOW_NAME}`,
+    action: `eq.${CUSTOMER_RECORDS_TRELLO_DUPLICATE_ACTION}`,
+    "metadata->>idempotency_key": `eq.${idempotencyKey}`,
+    order: "created_at.desc",
+    limit: 1,
+  });
+  const audit = auditRows[0];
+  const auditRequestId = trimNullable(audit?.metadata?.request_id as string | null | undefined) || trimNullable(audit?.document_id);
+  if (auditRequestId) {
+    return {
+      requestId: auditRequestId,
+      customerId: trimNullable(audit?.metadata?.customer_id as string | null | undefined),
+      cardId: trimNullable(audit?.metadata?.trello_card_id as string | null | undefined),
+      cardUrl: trimNullable(audit?.metadata?.trello_card_url as string | null | undefined),
+    };
+  }
+
+  const requestRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+    select: "request_id,customer_id,trello_card_id,trello_card_url",
+    "attribution_raw->>idempotency_key": `eq.${idempotencyKey}`,
+    order: "created_at.desc",
+    limit: 1,
+  });
+  const request = requestRows[0];
+  if (!request?.request_id) return null;
+  return {
+    requestId: request.request_id,
+    customerId: request.customer_id || null,
+    cardId: request.trello_card_id || null,
+    cardUrl: request.trello_card_url || null,
+  };
+}
+
+async function setCustomerCurrentRequest(customerId: string, requestId: string) {
+  await supabaseRequest(
+    "master_customers",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        request_id: requestId,
+        updated_at: new Date().toISOString(),
+      }),
+      headers: { Prefer: "return=minimal" },
+    },
+    { id: `eq.${customerId}` },
+  );
+}
+
+async function insertDuplicatedMasterRequest(input: {
+  sourceRequest: MasterRequestRow | null;
+  customerId: string;
+  requestId: string;
+  sourceRequestId: string;
+  sourceCardId: string;
+  copiedCardId: string;
+  copiedCardUrl: string | null;
+  cardName: string;
+  cardDescription: string | null;
+  idempotencyKey: string;
+  actor?: UpdateActor;
+}) {
+  const source = input.sourceRequest;
+  const now = new Date().toISOString();
+  const rows = await supabaseRequest<MasterRequestRow[]>("master_requests", {
+    method: "POST",
+    body: JSON.stringify({
+      customer_id: input.customerId,
+      request_id: input.requestId,
+      title: input.cardName,
+      description: input.cardDescription,
+      status: "new",
+      deal_status: "open",
+      segment: trimNullable(source?.segment),
+      segment_status: trimNullable(source?.segment_status) || (trimNullable(source?.segment) ? "accepted" : "needs_review"),
+      segment_confidence: source?.segment_confidence ?? null,
+      segment_source: trimNullable(source?.segment_source),
+      segment_classified_at: source?.segment_classified_at || null,
+      segment_policy_version: trimNullable(source?.segment_policy_version),
+      s_kategorie: trimNullable(source?.s_kategorie),
+      estimated_value: source?.estimated_value ?? null,
+      final_value: null,
+      size: trimNullable(source?.size),
+      color: Array.isArray(source?.color) ? source?.color : [],
+      application: trimNullable(source?.application),
+      delivery_time: trimNullable(source?.delivery_time),
+      customer_type: trimNullable(source?.customer_type),
+      country: trimNullable(source?.country) || "DE",
+      form_id: "customer_records_trello_duplicate",
+      referrer: "ops_customer_records",
+      trello_card_id: input.copiedCardId,
+      trello_card_url: input.copiedCardUrl,
+      utm_source: trimNullable(source?.utm_source),
+      utm_medium: trimNullable(source?.utm_medium),
+      utm_campaign: trimNullable(source?.utm_campaign),
+      utm_term: trimNullable(source?.utm_term),
+      utm_content: trimNullable(source?.utm_content),
+      landing_page_url: trimNullable(source?.landing_page_url),
+      attribution_raw: {
+        source: "customer_records_trello_duplicate",
+        idempotency_key: input.idempotencyKey,
+        source_request_id: input.sourceRequestId,
+        source_trello_card_id: input.sourceCardId,
+        source_form_id: trimNullable(source?.form_id),
+        source_status: trimNullable(source?.status),
+        source_deal_status: trimNullable(source?.deal_status),
+        created_by: actorLabel(input.actor),
+        created_at: now,
+      },
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  return rows[0];
+}
+
+async function verifyCopiedTrelloCard(input: {
+  sourceCardId: string;
+  copiedCardId: string;
+  sourceName: string;
+  sourceDesc: string;
+  requestIdFieldId: string;
+  newRequestId: string;
+}) {
+  const sourceDetail = await getTrelloCard(input.sourceCardId);
+  let latestCopied = await getTrelloCard(input.copiedCardId);
+  let issues: string[] = [];
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    issues = [];
+    if ((latestCopied.name || "") !== input.sourceName) {
+      issues.push("Titel der neuen Trello-Karte weicht von der Quellkarte ab.");
+    }
+    if ((latestCopied.desc || "") !== input.sourceDesc) {
+      issues.push("Beschreibung der neuen Trello-Karte weicht von der Quellkarte ab.");
+    }
+
+    const sourceAttachments = trelloAttachmentSignature(sourceDetail.attachments || []);
+    const copiedAttachments = trelloAttachmentSignature(latestCopied.attachments || []);
+    if (!sameStringList(sourceAttachments, copiedAttachments)) {
+      issues.push(`Anhaenge der Trello-Kopie stimmen nicht ueberein (${copiedAttachments.length}/${sourceAttachments.length}).`);
+    }
+
+    const copiedFieldById = new Map((latestCopied.editableFields || []).map((field) => [field.id, field]));
+    for (const sourceField of sourceDetail.editableFields || []) {
+      const copiedField = copiedFieldById.get(sourceField.id);
+      if (!copiedField) {
+        issues.push(`Custom Field "${sourceField.name}" fehlt auf der Trello-Kopie.`);
+        continue;
+      }
+      const expected =
+        sourceField.id === input.requestIdFieldId
+          ? input.newRequestId
+          : trelloFieldComparableValue(sourceField);
+      const actual = trelloFieldComparableValue(copiedField);
+      if (actual !== expected) {
+        issues.push(
+          sourceField.id === input.requestIdFieldId
+            ? `Request-ID-Feld "${sourceField.name}" wurde nicht auf die neue ID gesetzt.`
+            : `Custom Field "${sourceField.name}" weicht von der Quellkarte ab.`,
+        );
+      }
+    }
+
+    if (!issues.length) return latestCopied;
+    if (attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 450 * (attempt + 1)));
+      latestCopied = await getTrelloCard(input.copiedCardId);
+    }
+  }
+
+  throw new QuoteValidationError("Trello-Kopie ist nicht identisch genug.", issues);
+}
+
+export async function duplicateCustomerTrelloCard(
+  requestId: string,
+  input: CustomerTrelloCardDuplicateInput,
+  actor?: UpdateActor,
+): Promise<CustomerTrelloCardDuplicateResult> {
+  const normalizedRequestId = normalizeRequestSearch(requestId);
+  const boardKey = trimNullable(input?.boardKey);
+  const cardId = trimNullable(input?.cardId);
+  const idempotencyKey = trimNullable(input?.idempotencyKey) || randomUUID();
+
+  if (!boardKey || !cardId) {
+    throw new QuoteValidationError("Trello-Karte fuer die Duplizierung fehlt.");
+  }
+
+  const context = await fetchCustomerContextByRequestId(normalizedRequestId);
+  const existing = await findExistingTrelloDuplicateByIdempotencyKey(idempotencyKey);
+  if (existing) {
+    if (existing.customerId) await setCustomerCurrentRequest(existing.customerId, existing.requestId);
+    return {
+      requestId: existing.requestId,
+      sourceRequestId: normalizedRequestId,
+      customerId: existing.customerId || context.master.id,
+      cardId: existing.cardId || "",
+      cardUrl: existing.cardUrl,
+      warnings: ["Diese Kartenduplizierung wurde bereits verarbeitet."],
+      record: mapSearchResult(await fetchCustomerContextByRequestId(existing.requestId)),
+    };
+  }
+
+  const boardCard = context.trello?.cards.find((card) => card.boardKey === boardKey && card.cardId === cardId) || null;
+  if (!boardCard || !boardCard.cardId) {
+    throw new QuoteValidationError("Die gewaehlte Trello-Karte ist fuer diesen Fall nicht verfuegbar.", [], 404);
+  }
+
+  const sourceDetail = await getTrelloCard(cardId);
+  if (sourceDetail.idBoard && sourceDetail.idBoard !== boardCard.boardId) {
+    throw new QuoteValidationError("Die Trello-Karte gehoert nicht zum erwarteten Board.");
+  }
+
+  const targetListId = trimNullable(sourceDetail.idList) || boardCard.listId;
+  if (!targetListId) {
+    throw new QuoteValidationError("Die Quellkarte hat keine Trello-Liste. Kopie kann nicht sicher erstellt werden.");
+  }
+
+  const boardId = sourceDetail.idBoard || boardCard.boardId;
+  const requestIdField = await findTrelloCustomFieldByName(boardId, CUSTOMER_RECORD_REQUEST_ID_FIELD_NAMES);
+  if (!requestIdField) {
+    throw new QuoteValidationError("Request-ID Custom Field auf dem Trello-Board nicht gefunden.", [
+      "Ohne nerdy-forms-id/request_id Feld wuerde die Kopie keine neue Anfrage-ID bekommen.",
+    ]);
+  }
+  if ((requestIdField.type || "text") !== "text") {
+    throw new QuoteValidationError("Request-ID Custom Field ist kein Textfeld.", [
+      `Gefundenes Feld "${requestIdField.name}" hat Typ "${requestIdField.type}".`,
+    ]);
+  }
+
+  const newRequestId = randomUUID();
+  const sourceName = sourceDetail.name || boardCard.cardName || "Trello-Kopie";
+  const sourceDesc = sourceDetail.desc || "";
+  const warnings: string[] = [];
+  let copiedCard: Awaited<ReturnType<typeof copyTrelloCard>> | null = null;
+  let requestInserted = false;
+
+  try {
+    copiedCard = await copyTrelloCard({
+      sourceCardId: cardId,
+      listId: targetListId,
+      name: sourceName,
+      desc: sourceDesc,
+      keepFromSource: "all",
+    });
+
+    await updateTrelloCard(copiedCard.id, {
+      name: sourceName,
+      desc: sourceDesc,
+    });
+
+    await updateTrelloCustomField({
+      cardId: copiedCard.id,
+      fieldId: requestIdField.id,
+      type: requestIdField.type || "text",
+      value: newRequestId,
+    });
+
+    const copiedDetail = await verifyCopiedTrelloCard({
+      sourceCardId: cardId,
+      copiedCardId: copiedCard.id,
+      sourceName,
+      sourceDesc,
+      requestIdFieldId: requestIdField.id,
+      newRequestId,
+    });
+    const copiedCardUrl = copiedCard.url || copiedCard.shortUrl || null;
+
+    const insertedRequest = await insertDuplicatedMasterRequest({
+      sourceRequest: context.request,
+      customerId: context.master.id,
+      requestId: newRequestId,
+      sourceRequestId: normalizedRequestId,
+      sourceCardId: cardId,
+      copiedCardId: copiedCard.id,
+      copiedCardUrl,
+      cardName: sourceName,
+      cardDescription: preserveTrelloText(sourceDesc),
+      idempotencyKey,
+      actor,
+    });
+    requestInserted = true;
+
+    await setCustomerCurrentRequest(context.master.id, newRequestId);
+
+    let salesTaskCreated = false;
+    try {
+      const task = await upsertSalesTask({
+        requestId: newRequestId,
+        taskType: "call_new_inquiry",
+        status: "open",
+        title: taskTitle("call_new_inquiry"),
+        detail: preserveTrelloText(sourceDesc) || `Aus Trello-Karte ${cardId} neu eingespielt.`,
+        dueAt: new Date().toISOString(),
+        priorityTier: "standard",
+        assigneeLabel: actorLabel(actor),
+        source: "manual",
+        sourceRef: "customer_records_trello_duplicate",
+        idempotencyKey: `trello-duplicate-call:${newRequestId}`,
+        payload: {
+          trello_duplicate: true,
+          idempotency_key: idempotencyKey,
+          source_request_id: normalizedRequestId,
+          source_trello_card_id: cardId,
+        },
+      });
+      salesTaskCreated = Boolean(task);
+    } catch (error) {
+      console.warn("customer records trello duplicate sales task failed", { requestId: newRequestId, error });
+      warnings.push("Call-Aufgabe konnte nicht automatisch angelegt werden.");
+    }
+
+    try {
+      await insertWorkflowAuditLog({
+        requestId: newRequestId,
+        action: CUSTOMER_RECORDS_TRELLO_DUPLICATE_ACTION,
+        status: "success",
+        summary: `${boardCard.boardName} Karte als neue Anfrage dupliziert`,
+        changedFields: ["request_id", "trello_card", "customer_current_request"],
+        actor,
+        extraMetadata: {
+          request_id: insertedRequest.request_id,
+          customer_id: context.master.id,
+          idempotency_key: idempotencyKey,
+          source_request_id: normalizedRequestId,
+          source_trello_card_id: cardId,
+          source_trello_board_key: boardKey,
+          source_trello_board_name: boardCard.boardName,
+          source_trello_list_id: targetListId,
+          trello_card_id: copiedCard.id,
+          trello_card_url: copiedCardUrl,
+          request_id_field_id: requestIdField.id,
+          request_id_field_name: requestIdField.name,
+          custom_fields_verified: copiedDetail.editableFields?.length || 0,
+          attachments_verified: copiedDetail.attachments?.length || 0,
+          sales_task_created: salesTaskCreated,
+        },
+      });
+    } catch (error) {
+      console.warn("customer records trello duplicate audit failed", { requestId: newRequestId, error });
+      warnings.push("Audit-Log konnte nicht geschrieben werden; die Anfrage wurde trotzdem angelegt.");
+    }
+
+    return {
+      requestId: newRequestId,
+      sourceRequestId: normalizedRequestId,
+      customerId: context.master.id,
+      cardId: copiedCard.id,
+      cardUrl: copiedCardUrl,
+      warnings,
+      record: mapSearchResult(await fetchCustomerContextByRequestId(newRequestId)),
+    };
+  } catch (error) {
+    if (copiedCard?.id && !requestInserted) {
+      try {
+        await archiveTrelloCard(copiedCard.id);
+      } catch (rollbackError) {
+        throw new SupabaseRestError(
+          "Trello-Kopie fehlgeschlagen und Rollback konnte die neue Karte nicht archivieren.",
+          500,
+          {
+            originalError: error instanceof Error ? error.message : String(error),
+            rollbackError: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+            copiedCardId: copiedCard.id,
+          },
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 export async function addCustomerOpsNote(requestId: string, input: string | CustomerOpsNoteInput, actor?: UpdateActor) {
