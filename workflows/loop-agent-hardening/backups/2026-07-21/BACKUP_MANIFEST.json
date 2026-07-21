@@ -196,6 +196,14 @@
       "activeVersionId": "bbb0cb8f-aae5-4f45-bab7-dc499b18722c",
       "publishedActiveSha256": "975c2de95871125bf358b581bcb64f4c5ae9222a01e2af4166553a8ce9eebb01",
       "capturedAt": "2026-07-21T21:23:00+02:00"
+    },
+    {
+      "key": "legacy_video_delivery_polling_pre_event_intake",
+      "id": "HIFQvcfBKPEK9oSN",
+      "name": "KI-Video Generator v1.0",
+      "activeVersionId": "2f5b90dc-34e3-4a90-9198-486abe585532",
+      "publishedActiveSha256": "6c0ded379b6b3136985702464352c0b4759e81052542cdd3cb6bad37937c3b60",
+      "capturedAt": "2026-07-21T21:12:00+02:00"
     }
   ]
 }

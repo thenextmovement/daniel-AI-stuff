@@ -1,0 +1,2958 @@
+{
+  "id": "HIFQvcfBKPEK9oSN",
+  "name": "KI-Video Generator v1.0",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "executionTimeout": 1200,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "createdAt": "2026-04-17T13:38:42.449Z",
+  "updatedAt": "2026-06-02T18:27:28.033Z",
+  "activeVersionId": "2f5b90dc-34e3-4a90-9198-486abe585532",
+  "versionCreatedAt": "2026-06-02T18:27:28.038Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}?fields=id,name&attachments=true&attachment_fields=id,bytes,date,edgeColor,idMember,isMalicious,isUpload,mimeType,name,previews,url,pos,fileName,sourceView",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "id": "t03",
+      "name": "Get Attachments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        688,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $(\"Config\").first().json;\nconst rawItems = $input.all().map(i => i.json);\nconst firstItem = rawItems[0] || {};\nconst attachments = Array.isArray(firstItem.attachments) ? firstItem.attachments : rawItems;\n\nfunction attachmentName(attachment) {\n  return String(attachment.name || attachment.fileName || \"\").trim();\n}\n\nconst imageAttachments = attachments.filter((attachment) => /\\.jpe?g$/i.test(attachmentName(attachment)));\nfunction normalizedMockupBase(attachment) {\n  return attachmentName(attachment)\n    .toLowerCase()\n    .replace(/\\.[^.]+$/i, \"\")\n    .replace(/[\\s_-]+/g, \"\");\n}\nfunction mockupNumber(attachment) {\n  const match = normalizedMockupBase(attachment).match(/^mockup0?([1-4])$/);\n  return match ? Number(match[1]) : null;\n}\n\nconst safeMockups = imageAttachments\n  .map((attachment) => ({ attachment, number: mockupNumber(attachment) }))\n  .filter((entry) => entry.number !== null)\n  .sort((a, b) => a.number - b.number);\nconst mockup = safeMockups[0]?.attachment || null;\n\nif (!mockup) {\n  return [{ json: {\n    cardId: config.cardId,\n    cardName: config.cardName,\n    mockupOk: false,\n    mockupError: \"Kein kundensicheres Mockup gefunden. Erlaubt sind Mockup1 bis Mockup4 oder Mockup01 bis Mockup04 als JPG/JPEG. Kein image.png, kein PNG/WebP, kein Cover, keine sonstigen Attachments.\",\n    attachmentNames: attachments.map(attachmentName).filter(Boolean).join(\", \")\n  } }];\n}\n\nconst previews = Array.isArray(mockup.previews) ? mockup.previews : [];\nconst bestPreview = previews\n  .filter((preview) => preview && preview.url && preview.width && preview.height)\n  .sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];\n\nconst fn = mockup.fileName || mockup.name;\nconst originalUrl = \"https://api.trello.com/1/cards/\" + config.cardId + \"/attachments/\" + mockup.id + \"/download/\" + encodeURIComponent(fn);\nconst previewUrl = bestPreview && bestPreview.url ? bestPreview.url.replace(\"https://trello.com/1/\", \"https://api.trello.com/1/\") : \"\";\nconst downloadUrl = previewUrl || originalUrl;\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: config.cardName,\n  mockupOk: true,\n  selectedMockupName: attachmentName(mockup),\n  selectedMockupAttachmentId: mockup.id,\n  selectedMockupFileName: fn,\n  selectedMockupMimeType: mockup.mimeType || \"\",\n  selectedMockupNumber: mockupNumber(mockup),\n  selectedMockupSource: bestPreview ? \"trello_preview_\" + bestPreview.width + \"x\" + bestPreview.height : \"original\",\n  downloadUrl\n} }];"
+      },
+      "id": "t04",
+      "name": "Find Mockup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.downloadUrl }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        },
+        "sendHeaders": false,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "t05",
+      "name": "Download Mockup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AlBnHgoncCtlzKGY",
+          "name": "Trello attachment download OAuth header active"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst now = new Date();\nconst dayKey = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });\nconst hourKey = dayKey + 'T' + now.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false });\nconst MAX_GROK_PER_DAY = 80;\nconst MAX_GROK_PER_HOUR = 20;\n\nif (staticData.grokDayKey !== dayKey) {\n  staticData.grokDayKey = dayKey;\n  staticData.grokDayCount = 0;\n}\n\nif (staticData.grokHourKey !== hourKey) {\n  staticData.grokHourKey = hourKey;\n  staticData.grokHourCount = 0;\n}\n\nif ((staticData.grokDayCount || 0) >= MAX_GROK_PER_DAY) {\n  throw new Error('Grok safety cap reached: max ' + MAX_GROK_PER_DAY + ' video starts per day. Card: ' + config.cardId);\n}\n\nif ((staticData.grokHourCount || 0) >= MAX_GROK_PER_HOUR) {\n  throw new Error('Grok safety cap reached: max ' + MAX_GROK_PER_HOUR + ' video starts per hour. Card: ' + config.cardId);\n}\n\nstaticData.grokDayCount = (staticData.grokDayCount || 0) + 1;\nstaticData.grokHourCount = (staticData.grokHourCount || 0) + 1;\nstaticData.lastGrokStartAt = now.toISOString();\nstaticData.lastGrokCardId = config.cardId;\n\nconst binaryData = $input.first().binary;\nif (!binaryData || !binaryData.data) throw new Error('Keine Binary-Daten');\n\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst base64 = buffer.toString('base64');\nconst mimeType = binaryData.data.mimeType || 'image/jpeg';\nif (!mimeType.startsWith('image/')) {\n  throw new Error('Download fehlgeschlagen: mimeType ist ' + mimeType + ' statt image/*. Trello-Auth Problem?');\n}\n\nconst dataUri = 'data:' + mimeType + ';base64,' + base64;\nconst approxBytes = Buffer.byteLength(dataUri, 'utf8');\nif (approxBytes > 5 * 1024 * 1024) {\n  throw new Error('Grok Data-URI zu groß (' + approxBytes + ' Bytes). Bild vor Video verkleinern oder Upload-Flow verwenden.');\n}\n\nconst prompt = 'Cinematic product animation based on the provided image. The scene starts dimly lit. The custom neon sign smoothly transitions from off to on, glowing with vibrant, flicker-free light. CRITICAL: Preserve the EXACT color temperature from the source image. If the sign is cool white, keep it cool white. If it is warm white, keep it warm white. Color accuracy is paramount. The illumination casts realistic reflections and a color-accurate ambient glow onto the wall. A slow, subtle camera dolly-in amplifies depth. Maintain hyper-realistic textures of the sign and wall. Professional commercial lighting style, shallow depth of field. The sign shape and text must remain perfectly stable and unchanged throughout. No morphing, no distortion, no warping of the sign. No audio.';\n\nreturn [{ json: {\n  cardId: config.cardId,\n  grokBody: {\n    model: 'grok-imagine-video',\n    prompt,\n    image: { url: dataUri },\n    duration: 8,\n    resolution: '720p'\n  }\n} }];"
+      },
+      "id": "t06",
+      "name": "Build Runway Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.x.ai/v1/videos/generations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.grokBody) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "t07",
+      "name": "Submit to Runway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1808,
+        280
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "xiy2t4KWmbxDuti8",
+          "name": "XAI API Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst config = $('Config').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst errorStatus = Number(response && response.error && response.error.status || response.statusCode || response.status || 0);\n\nif (errorStatus === 429) {\n  const now = new Date();\n  const cooldownUntil = new Date(Date.now() + 30 * 60 * 1000);\n  staticData.grokRateLimitedUntil = cooldownUntil.toISOString();\n  staticData.lastGrokRateLimitAt = now.toISOString();\n  staticData.lastGrokRateLimitCardId = config.cardId;\n  console.log('Grok rate limited (429). Cooldown bis ' + cooldownUntil.toISOString() + '. Card: ' + config.cardId);\n  return [{ json: {\n    rateLimited: true,\n    transient: true,\n    reason: 'Grok/xAI Provider Rate Limit 429',\n    action: 'Automatischer Retry: Karte bleibt in der KI-Video-Liste. Der Workflow startet neue Grok-Jobs erst wieder nach dem Cooldown.',\n    cooldownUntil: cooldownUntil.toISOString(),\n    cooldownUntilBerlin: cooldownUntil.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),\n    cardId: config.cardId,\n    cardName: config.cardName,\n    trelloCardUrl: config.cardUrl || ('https://trello.com/c/' + config.cardId),\n    workflowName: 'KI-Video Generator v1.0',\n    observedAt: now.toISOString()\n  } }];\n}\n\nif (response && response.error) {\n  throw new Error('Grok Submit fehlgeschlagen: ' + JSON.stringify(response).substring(0, 500));\n}\n\nconst requestId = response.request_id || response.id || response.taskId;\nif (!requestId) throw new Error('Keine Grok Request ID: ' + JSON.stringify(response).substring(0, 500));\n\nstaticData.grokRateLimitedUntil = null;\nreturn [{ json: {\n  rateLimited: false,\n  requestId,\n  cardId: config.cardId,\n  attempts: 0\n} }];"
+      },
+      "id": "t08",
+      "name": "Save Request ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 15
+      },
+      "id": "t09",
+      "name": "Wait 15s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        280
+      ],
+      "webhookId": "grok-test-wait"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "=https://api.x.ai/v1/videos/{{ $json.requestId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "t10",
+      "name": "Check Runway Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2480,
+        208
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "xiy2t4KWmbxDuti8",
+          "name": "XAI API Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const status = $input.first().json;\nconst prev = $('Save Request ID').first().json;\nconst attempts = (prev.attempts || 0) + 1;\nconst normalizedStatus = String(status.status || '').toLowerCase();\n\nif (['done', 'completed', 'succeeded'].includes(normalizedStatus)) {\n  const videoUrl = (status.video && (status.video.url || status.video.download_url)) ||\n    status.video_url || status.url || status.download_url ||\n    (status.output && (status.output.url || status.output.video_url || status.output.download_url)) ||\n    (status.result && (status.result.url || status.result.video_url || status.result.download_url)) ||\n    (Array.isArray(status.outputs) && status.outputs[0] && (status.outputs[0].url || status.outputs[0].video_url)) || '';\n\n  if (!videoUrl) {\n    throw new Error('Grok Task fertig, aber ohne Output-URL: ' + JSON.stringify(status).substring(0, 500));\n  }\n\n  return [{ json: {\n    done: true,\n    videoUrl,\n    cardId: prev.cardId,\n    attempts,\n    rawResponse: JSON.stringify(status).substring(0, 2000)\n  } }];\n}\n\nif (['failed', 'expired', 'canceled', 'cancelled'].includes(normalizedStatus)) {\n  throw new Error('Grok Video fehlgeschlagen: ' + JSON.stringify(status).substring(0, 500));\n}\n\nif (attempts >= 60) throw new Error('Grok Timeout nach ' + attempts + ' Versuchen');\n\nreturn [{ json: {\n  done: false,\n  requestId: prev.requestId,\n  cardId: prev.cardId,\n  attempts\n} }];"
+      },
+      "id": "t11",
+      "name": "Is Done?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-done",
+              "leftValue": "={{ $json.done }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "t12",
+      "name": "IF Done",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.videoUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "t13",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3152,
+        280
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/attachments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "name",
+              "value": "Mockup01_video.mp4"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t14",
+      "name": "Upload Video to Trello",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3376,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "121f39c2-029f-470b-9382-0984bbf9acc0",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -208,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.trello.com/1/lists/69ea22fe1431c2e7d7e7b3c4/cards?fields=id,name,idLabels,labels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "id": "8c7a8fbf-690d-477c-9849-ccd1ed767c99",
+      "name": "Search Cards",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels/{{ $('Config').first().json.triggerLabelId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $('Config').first().json.regenerateOnly ? '♻️ KI-Video-Regeneration gestartet. Es wird nur ein neues Video erzeugt und angehängt, ohne neue Kunden-E-Mail. Zeit: ' : '🎬 KI-Video-Erstellung gestartet. Quelle: Anfrage Management / KI-Video an Kunden schicken. Zeit: ' }}{{ new Date().toLocaleString('de-DE') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "afb0706a-b89a-4be6-b809-9b67e39d8ff6",
+      "name": "Remove Label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "parameters": {
+        "jsCode": "const SOURCE_LIST_ID = '69ea22fe1431c2e7d7e7b3c4'; // KI-Video an Kunden schicken\nconst VIDEO_SENT_LABEL_ID = '69ea8cb44dafe69b2a31350c'; // Video gesendet\nconst MAX_GROK_PER_DAY = 80;\nconst MAX_GROK_PER_HOUR = 20;\nconst LEASE_MS = 20 * 60 * 1000;\nconst cards = $input.all().map(i => i.json);\n\nfunction hasLabelId(card, labelId) {\n  return (card.idLabels || []).includes(labelId);\n}\n\nfunction cardCreatedAtMs(card) {\n  const rawId = String(card && card.id || '');\n  if (!/^[0-9a-fA-F]{24}$/.test(rawId)) return Number.MAX_SAFE_INTEGER;\n  const seconds = Number.parseInt(rawId.slice(0, 8), 16);\n  return Number.isFinite(seconds) ? seconds * 1000 : Number.MAX_SAFE_INTEGER;\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst now = new Date();\nconst existingLeaseUntilRaw = staticData.kiVideoLeaseUntil || '';\nconst existingLeaseCardId = staticData.kiVideoLeaseCardId || '';\n\nif (existingLeaseUntilRaw && existingLeaseCardId) {\n  const existingLeaseUntil = new Date(existingLeaseUntilRaw);\n  if (existingLeaseUntil > now) {\n    console.log('[KI VIDEO LEASE] Active lease until ' + existingLeaseUntil.toISOString() + ' for card ' + existingLeaseCardId + '. Skipping new run.');\n    return [];\n  }\n\n  staticData.kiVideoLeaseUntil = null;\n  staticData.kiVideoLeaseCardId = null;\n  staticData.kiVideoLeaseCardName = null;\n  staticData.kiVideoLeaseAcquiredAt = null;\n}\n\nconst eligibleCards = cards\n  .filter(card =>\n    !String(card.name || '').trim().startsWith('FEHLER -') &&\n    !hasLabelId(card, VIDEO_SENT_LABEL_ID)\n  )\n  .sort((a, b) => {\n    const createdDiff = cardCreatedAtMs(a) - cardCreatedAtMs(b);\n    if (createdDiff !== 0) return createdDiff;\n    return String(a.id || '').localeCompare(String(b.id || ''));\n  });\nconst card = eligibleCards[0];\nif (!card) return [];\n\nconst rateLimitedUntil = staticData.grokRateLimitedUntil ? new Date(staticData.grokRateLimitedUntil) : null;\nif (rateLimitedUntil && rateLimitedUntil > now) {\n  console.log('[KI VIDEO RATE LIMIT] Grok cooldown active until ' + rateLimitedUntil.toISOString() + '. Keeping card queued: ' + card.id);\n  return [];\n}\nif (rateLimitedUntil && rateLimitedUntil <= now) {\n  staticData.grokRateLimitedUntil = null;\n}\n\nconst dayKey = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });\nconst hourKey = dayKey + 'T' + now.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false });\n\nif (staticData.grokDayKey !== dayKey) {\n  staticData.grokDayKey = dayKey;\n  staticData.grokDayCount = 0;\n}\n\nif (staticData.grokHourKey !== hourKey) {\n  staticData.grokHourKey = hourKey;\n  staticData.grokHourCount = 0;\n}\n\nif ((staticData.grokDayCount || 0) >= MAX_GROK_PER_DAY) {\n  console.log('[KI VIDEO CAP] daily cap reached. Keeping trigger label on card for later retry: ' + card.id);\n  return [];\n}\n\nif ((staticData.grokHourCount || 0) >= MAX_GROK_PER_HOUR) {\n  console.log('[KI VIDEO CAP] hourly cap reached. Keeping trigger label on card for later retry: ' + card.id);\n  return [];\n}\n\nconst leaseUntil = new Date(now.getTime() + LEASE_MS);\nstaticData.kiVideoLeaseUntil = leaseUntil.toISOString();\nstaticData.kiVideoLeaseCardId = card.id;\nstaticData.kiVideoLeaseCardName = card.name || '';\nstaticData.kiVideoLeaseAcquiredAt = now.toISOString();\n\nconst regenerateOnly = false;\nconst triggerLabel = { id: '', name: 'column_trigger' };\n\nreturn [{ json: {\n  cardId: card.id,\n  cardName: card.name,\n  cardUrl: card.shortUrl || ('https://trello.com/c/' + card.id),\n  sourceListId: SOURCE_LIST_ID,\n  videoSentLabelId: VIDEO_SENT_LABEL_ID,\n  triggerLabelId: triggerLabel.id,\n  triggerLabelName: triggerLabel.name,\n  regenerateOnly,\n  deliveryMode: regenerateOnly ? 'regenerate_only' : 'send_preview_email',\n  videoProvider: 'grok',\n  leaseAcquiredAt: now.toISOString(),\n  leaseUntil: leaseUntil.toISOString()\n} }];"
+      },
+      "id": "9fe45ab0-ab68-4397-a4e7-e2d9783f5df5",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        280
+      ]
+    },
+    {
+      "id": "upload-video-s3-preview",
+      "name": "Upload Video to Supabase Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3376,
+        88
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/preview-videos/\" + $('Validate Preview Quote').first().json.requestId + \"/Mockup01_video.mp4\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "resolve-request-for-preview-delivery",
+      "name": "Resolve Request for Preview Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3600,
+        88
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_requests?' + ($json.requestId ? 'or=(request_id.eq.' + encodeURIComponent($json.requestId) + ',trello_card_id.eq.' + encodeURIComponent($json.cardId) + ')' : 'trello_card_id=eq.' + encodeURIComponent($json.cardId)) + '&select=id,request_id,customer_id,ac_deal_id,trello_card_id,trello_card_url,title,final_value&order=created_at.desc&limit=1' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "validate-preview-request",
+      "name": "Validate Preview Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json || {};\nconst rows = $input.all().map(i => i.json).filter(Boolean);\nconst row = Array.isArray(rows[0]) ? rows[0][0] : rows[0];\nconst extracted = $('Extract Preview Request ID').first().json || {};\n\nif (extracted.requestIdConflict) {\n  return [{ json: {\n    cardId: config.cardId,\n    cardName: config.cardName,\n    requestId: '',\n    requestUuid: '',\n    customerId: '',\n    acDealId: '',\n    canonicalTrelloCardId: '',\n    previewRequestOk: false,\n    previewRequestError: extracted.requestIdConflictError || 'Conflicting Trello Request-IDs on card ' + (config.cardId || '-')\n  } }];\n}\n\nif (!row || !row.request_id || !row.customer_id) {\n  return [{ json: {\n    cardId: config.cardId,\n    cardName: config.cardName,\n    requestId: $('Extract Preview Request ID').first().json.requestId || '',\n    requestUuid: '',\n    customerId: '',\n    acDealId: '',\n    canonicalTrelloCardId: '',\n    previewRequestOk: false,\n    previewRequestError: 'No request/customer match in master_requests for Trello card ' + (config.cardId || '-')\n  } }];\n}\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: config.cardName,\n  requestId: row.request_id,\n  requestUuid: row.id,\n  customerId: row.customer_id,\n  acDealId: row.ac_deal_id || '',\n  canonicalTrelloCardId: row.trello_card_id || '',\n  canonicalTrelloCardUrl: row.trello_card_url || '',\n  finalValue: row.final_value || null,\n  previewRequestOk: true,\n  previewRequestError: ''\n} }];"
+      }
+    },
+    {
+      "id": "lookup-preview-customer",
+      "name": "Lookup Preview Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4048,
+        88
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_customers?id=eq.{{ encodeURIComponent($json.customerId) }}&select=email,first_name,last_name,phone,country",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "validate-preview-customer",
+      "name": "Validate Preview Customer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4048,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(Boolean);\nconst customer = Array.isArray(rows[0]) ? rows[0][0] : rows[0];\nconst prev = $('Validate Preview Request').first().json;\n\nconst emailRaw = String(customer && customer.email || '').trim();\nconst email = emailRaw.toLowerCase();\nconst emailValid = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\nconst phone = String(customer && customer.phone || '').trim();\n\nif (!emailValid && !phone) {\n  throw new Error('Preview customer contact channel missing for request ' + prev.requestId + ': no valid email and no phone');\n}\n\nconst roleAccount = false;\n\nreturn [{ json: {\n  ...prev,\n  email: emailValid ? email : '',\n  emailValid,\n  emailMissing: !emailValid,\n  skipCustomerEmail: !emailValid,\n  whatsappFallbackOnly: !emailValid && !!phone,\n  firstName: customer.first_name || '',\n  lastName: customer.last_name || '',\n  phone,\n  country: customer.country || '',\n  roleAccount\n} }];"
+      }
+    },
+    {
+      "id": "lookup-preview-quote",
+      "name": "Lookup Latest Preview Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4272,
+        88
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_quotes?request_id=eq.{{ encodeURIComponent($json.requestId) }}&select=pandadoc_id,pandadoc_status,share_link&order=updated_at.desc&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "id": "validate-preview-quote",
+      "name": "Validate Preview Quote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4496,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(Boolean);\nconst quote = Array.isArray(rows[0]) ? rows[0][0] : rows[0];\nconst prev = $('Validate Preview Customer').first().json;\n\nfunction isStablePandaDocLink(value) {\n  const link = String(value || '').trim();\n  return /^https:\\/\\/app\\.pandadoc\\.com\\/document\\//i.test(link) && !/\\/s\\//.test(link) && /(?:\\?|&)token=/.test(link);\n}\n\nlet previewQuoteOk = true;\nlet previewQuoteMissing = false;\nlet previewQuoteError = '';\nconst shareLink = String(quote?.share_link || '').trim();\nconst status = String(quote?.pandadoc_status || '').trim();\n\nif (!quote || quote.error || quote.code === 'PGRST116' || !shareLink) {\n  previewQuoteOk = false;\n  previewQuoteMissing = true;\n  const apiReason = quote?.error?.description || quote?.description || quote?.message || '';\n  previewQuoteError = 'No stable PandaDoc share_link found in master_quotes for request ' + prev.requestId + (apiReason ? ' (' + apiReason + ')' : '');\n} else if (!isStablePandaDocLink(shareLink)) {\n  previewQuoteOk = false;\n  previewQuoteError = 'PandaDoc link in master_quotes is not a stable customer document link for request ' + prev.requestId;\n} else if (/completed|declined|expired/i.test(status)) {\n  previewQuoteOk = false;\n  previewQuoteError = 'Quote status blocks preview delivery: ' + status;\n}\n\nreturn [{ json: {\n  ...prev,\n  pandaDocId: quote?.pandadoc_id || '',\n  pandaDocStatus: status,\n  shareLink,\n  previewQuoteOk,\n  previewQuoteMissing,\n  previewQuoteError,\n  previewQuoteSource: previewQuoteOk ? 'master_quotes' : '',\n  previewQuoteEvidence: previewQuoteOk ? { source: 'master_quotes', pandadoc_id: quote?.pandadoc_id || '' } : {}\n} }];"
+      }
+    },
+    {
+      "id": "build-preview-delivery-payload",
+      "name": "Build Preview Delivery Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4944,
+        88
+      ],
+      "parameters": {
+        "jsCode": "function resolvedPreviewQuote() {\n  try {\n    const resolved = $('Validate Preview Quote after Resolver').first().json;\n    if (resolved && resolved.previewQuoteOk === true && resolved.shareLink) return resolved;\n  } catch (error) {}\n  return $('Validate Preview Quote').first().json;\n}\nconst prev = resolvedPreviewQuote();\nconst offerUrl = String(prev.shareLink || '').trim();\n\nif (!offerUrl || /\\/s\\//.test(offerUrl)) {\n  throw new Error('Refusing to send temporary or missing PandaDoc customer link for request ' + prev.requestId);\n}\n\nconst enc = encodeURIComponent;\nconst customerName = [prev.firstName, prev.lastName].filter(Boolean).join(' ').trim() || prev.firstName || 'Kunde';\nconst cardId = prev.cardId;\nconst trelloUpload = $('Upload Video to Trello').first().json || {};\nlet supabaseUploadResult = {};\ntry {\n  supabaseUploadResult = $('Upload Video to Supabase Storage').first().json || {};\n} catch (error) {\n  supabaseUploadResult = {};\n}\nconst runwayVideoUrl = ($('Download Video').first().json || {}).videoUrl || '';\nconst supabaseUploadError = supabaseUploadResult.error || null;\nconst supabaseUploadOk = !supabaseUploadError;\nconst supabaseVideoUrl = 'https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/product-images/preview-videos/' + enc(prev.requestId) + '/Mockup01_video.mp4';\n\nif (!trelloUpload.id || !trelloUpload.fileName) {\n  throw new Error('Trello video upload missing attachment id/fileName for card ' + cardId);\n}\n\nconst proxyBase = 'https://video.neontrip.de/media/video';\nconst trelloProxyVideoUrl = proxyBase + '?' + [\n  'cardId=' + enc(cardId),\n  'attachmentId=' + enc(trelloUpload.id),\n  'fileName=' + enc(trelloUpload.fileName)\n].join('&');\nconst videoUrl = supabaseUploadOk ? supabaseVideoUrl : trelloProxyVideoUrl;\n\nconst selectedMockup = $('Find Mockup').first().json || {};\nif (!selectedMockup.selectedMockupAttachmentId || !selectedMockup.selectedMockupFileName) {\n  throw new Error('Refusing preview delivery without customer-safe selected mockup for card ' + cardId);\n}\nconst thumbUrl = 'https://video.neontrip.de/media/image?' + [\n  'cardId=' + enc(cardId),\n  'attachmentId=' + enc(selectedMockup.selectedMockupAttachmentId),\n  'fileName=' + enc(selectedMockup.selectedMockupFileName)\n].join('&');\nfunction qs(params) {\n  return Object.entries(params)\n    .map(([key, value]) => enc(key) + '=' + enc(String(value || '')))\n    .join('&');\n}\n\nconst rawProjectName = String(prev.cardName || '').trim();\nconst projectName = rawProjectName\n  .replace(/^FEHLER\\s*[-:]\\s*/i, '')\n  .trim() || 'NEONTRIP Angebot';\nconst videoHostingStatus = supabaseUploadOk ? 'supabase_storage' : 'supabase_failed_trello_proxy';\nconst regenerateOnly = $('Config').first().json.regenerateOnly === true;\nconst customerEmail = String(prev.email || '').trim().toLowerCase();\nconst emailValid = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail);\nconst phonePresent = String(prev.phone || '').trim().length > 5;\nconst whatsappFallbackOnly = !emailValid && phonePresent && !regenerateOnly;\nconst skipCustomerEmail = regenerateOnly || whatsappFallbackOnly || prev.skipCustomerEmail === true;\n\nconst previewUrl = 'https://video.neontrip.de/v/demo/?' + qs({\n  name: customerName,\n  offer: offerUrl,\n  video: videoUrl,\n  thumb: thumbUrl,\n  project: projectName\n});\n\nreturn [{ json: {\n  customer_name: customerName,\n  customer_email: emailValid ? customerEmail : '',\n  customer_phone: prev.phone || '',\n  customer_country: prev.country || '',\n  role_account: prev.roleAccount === true,\n  request_id: prev.requestId,\n  card_id: cardId,\n  project_name: projectName,\n  pandadoc_customer_link: offerUrl,\n  pandadoc_document_link: prev.shareLink || '',\n  whatsapp_pandadoc_link: prev.shareLink || offerUrl,\n  preview_url: previewUrl,\n  video_url: videoUrl,\n  thumb_url: thumbUrl,\n  s3_upload_error: null,\n  supabase_upload_error: supabaseUploadError,\n  supabase_video_url: supabaseVideoUrl,\n  runway_video_url: runwayVideoUrl,\n  trello_video_attachment_id: trelloUpload.id,\n  video_url_is_temporary: false,\n  video_hosting_status: videoHostingStatus,\n  regenerate_only: regenerateOnly,\n  skip_customer_email: skipCustomerEmail,\n  whatsapp_fallback_only: whatsappFallbackOnly,\n  email_missing: !emailValid,\n  delivery_mode: regenerateOnly ? 'regenerate_only' : (whatsappFallbackOnly ? 'whatsapp_fallback_only' : 'send_preview_email'),\n  source: 'ki_video_generator_v1'\n} }];"
+      }
+    },
+    {
+      "id": "send-preview-delivery-test",
+      "name": "Send Preview Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5168,
+        88
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://fuajob.online/webhook/neontrip-preview-delivery-test",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "preview-delivery-ok",
+      "name": "Preview Delivery OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5392,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "preview-ok",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-video-sent-label",
+      "name": "Set Video gesendet Label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5616,
+        88
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "={{ $('Config').first().json.videoSentLabelId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "id": "get-card-details-preview",
+      "name": "Get Card Details for Preview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        88
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}?fields=id,name,desc&customFieldItems=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "id": "extract-preview-request-id",
+      "name": "Extract Preview Request ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json;\nconst card = $input.first().json || {};\nconst customFieldItems = Array.isArray(card.customFieldItems) ? card.customFieldItems : [];\nconst NERDY_FORMS_FIELD_ID = '67a200bd23b1ffd304e63335';\n\nconst field = customFieldItems.find((item) => item.idCustomField === NERDY_FORMS_FIELD_ID);\nconst value = field && field.value ? field.value : {};\nconst customRequestId = String(value.text || value.number || value.date || '').trim();\n\nconst desc = String(card.desc || '');\nconst descMatch = desc.match(/(?:request[_ -]?id|nerdyforms?[_ -]?id|anfrage[_ -]?id)\\s*[:#-]?\\s*([a-zA-Z0-9_-]+)/i);\nconst descRequestId = descMatch ? String(descMatch[1]).trim() : '';\nconst requestIdConflict = Boolean(customRequestId && descRequestId && customRequestId !== descRequestId);\nconst requestId = requestIdConflict ? '' : (customRequestId || descRequestId);\nconst requestIdSource = requestIdConflict ? 'conflict' : (customRequestId ? 'trello_custom_field' : (descRequestId ? 'trello_description' : 'none'));\nconst requestIdConflictError = requestIdConflict\n  ? `Conflicting Trello Request-IDs: custom_field=${customRequestId}, description=${descRequestId}`\n  : '';\n\nreturn [{ json: {\n  ...config,\n  requestId,\n  requestIdSource,\n  customRequestId,\n  descRequestId,\n  requestIdConflict,\n  requestIdConflictError\n} }];"
+      }
+    },
+    {
+      "id": "customer-email-sent-gate",
+      "name": "Customer Email Sent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6064,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "customer-email-sent",
+              "leftValue": "={{ $json.sent_customer_email === true && $json.regenerate_only !== true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "set-angebot-gesendet-label",
+      "name": "Set Angebot gesendet Label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6288,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.card_id }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "63d13d82858ce1c1b71045c0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "log-preview-quote-email",
+      "name": "Log Preview Quote Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6288,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/quote_email_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ unique_id: $json.request_id, recipient_email: $json.customer_email, status: 'sent', sent_at: new Date().toISOString() }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "supabase-preview-email-sent-timestamp",
+      "name": "Supabase: Preview Email Sent Timestamp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6288,
+        240
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_quotes?request_id=eq.{{ encodeURIComponent($json.request_id) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ email_sent: new Date().toISOString() }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "trello-preview-success-comment",
+      "name": "Trello: Preview Success Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6288,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.card_id }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=✅ **Angebot mit KI-Video versendet**\n\n📧 An: {{ $json.customer_email }}\n🎬 Vorschau: {{ $json.preview_url }}\n🔗 PandaDoc: {{ $json.pandadoc_customer_link }}\n🏷 Labels: Video gesendet + Angebot gesendet\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "build-post-send-context",
+      "name": "Build Post-Send Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5840,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const payload = $('Build Preview Delivery Payload').first().json || {};\nconst delivery = $('Send Preview Delivery').first().json || {};\n\nreturn [{ json: {\n  ...payload,\n  delivery_ok: delivery.ok === true,\n  sent_customer_email: delivery.sent_customer_email === true,\n  sent_test_email: delivery.sent_test_email === true,\n  skipped_customer_email: delivery.skipped_customer_email === true,\n  subject: delivery.subject || 'Ihr NEONTRIP-Angebot mit Vorschau'\n} }];"
+      }
+    },
+    {
+      "id": "wait-whatsapp-preview",
+      "name": "Wait 2 Minutes WhatsApp",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        6288,
+        560
+      ],
+      "parameters": {
+        "amount": 2,
+        "unit": "minutes"
+      },
+      "continueOnFail": true,
+      "webhookId": "0a531084-daa2-4886-b993-f16364d6a840"
+    },
+    {
+      "id": "normalize-phone-preview-whatsapp",
+      "name": "Telefon normalisieren WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6512,
+        560
+      ],
+      "parameters": {
+        "jsCode": "const data = $input.first().json || {};\nconst rawPhone = String(data.customer_phone || data.phone || '').trim();\nconst country = String(data.customer_country || data.country || 'DE').trim().toLowerCase();\nconst deliveryMode = String(data.delivery_mode || '').trim();\n\nconst countryCodeMap = {\n  deutschland: '+49', germany: '+49', de: '+49',\n  oesterreich: '+43', österreich: '+43', austria: '+43', at: '+43',\n  schweiz: '+41', switzerland: '+41', ch: '+41'\n};\n\nfunction normalizePhone(raw, countryName) {\n  if (!raw) return '';\n  let cleaned = raw.replace(/[^0-9+]/g, '');\n  if (cleaned.startsWith('+')) return cleaned;\n  if (cleaned.startsWith('00')) return '+' + cleaned.substring(2);\n  const countryCode = countryCodeMap[countryName] || '+49';\n  if (cleaned.startsWith('0')) return countryCode + cleaned.substring(1);\n  return countryCode + cleaned;\n}\n\nconst normalizedPhone = normalizePhone(rawPhone, country);\nconst whatsappPandaDocLink = String(data.whatsapp_pandadoc_link || data.pandadoc_document_link || data.pandadoc_customer_link || '').trim();\nconst urlParts = whatsappPandaDocLink.split('/document/');\nconst pandaDocToken = urlParts.length > 1 ? urlParts[1] : '';\nconst firstName = String(data.first_name || data.customer_first_name || data.customer_name || 'Kunde').trim().split(/\\s+/)[0] || 'Kunde';\nconst hasPhone = normalizedPhone.length > 5;\nconst hasTemplateLink = pandaDocToken.length > 5;\nconst canAttemptWhatsapp = data.regenerate_only !== true && (\n  data.sent_customer_email === true ||\n  data.skipped_customer_email === true ||\n  data.whatsapp_fallback_only === true ||\n  deliveryMode === 'whatsapp_fallback_only'\n);\n\nlet whatsappSkipReason = '';\nif (data.regenerate_only === true) whatsappSkipReason = 'regenerate_only';\nelse if (!canAttemptWhatsapp) whatsappSkipReason = 'whatsapp_not_enabled_for_delivery_mode';\nelse if (!hasPhone) whatsappSkipReason = 'missing_phone';\nelse if (!hasTemplateLink) whatsappSkipReason = 'missing_pandadoc_document_link';\n\nreturn [{ json: {\n  ...data,\n  normalizedPhone,\n  firstName,\n  whatsappPandaDocLink,\n  pandaDocToken,\n  hasPhone,\n  hasTemplateLink,\n  whatsappReady: canAttemptWhatsapp && hasPhone && hasTemplateLink,\n  whatsappSkipReason\n} }];"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "has-whatsapp-ready-preview",
+      "name": "WhatsApp Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6736,
+        560
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-whatsapp-ready",
+              "leftValue": "={{ $json.whatsappReady }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "send-whatsapp-preview-template",
+      "name": "WhatsApp senden",
+      "type": "n8n-nodes-whatsable.whatsAble",
+      "typeVersion": 1,
+      "position": [
+        6960,
+        464
+      ],
+      "parameters": {
+        "productOperation": "sendNotifyerTemplate",
+        "notifyerRecipient": "={{ $json.normalizedPhone }}",
+        "notifyerTemplate": "={{ JSON.stringify({\n  \"template_id\": \"0f4e0542-4b42-419b-87b0-b87be792d998\",\n  \"variable_counts\": 3,\n  \"template_formate\": \"[b:2, vw:1]\",\n  \"components\": {\n    \"name\": \"neontrip_angebot_erste_anfrage_leuchtreklame\",\n    \"category\": \"MARKETING\",\n    \"language\": \"de\",\n    \"components\": [\n      {\n        \"text\": \"Hallo {1},\\n\\n*vielen Dank für deine Anfrage. Du findest das Angebot sowie die Visualisierung für dein personalisiertes Leuchtschild über folgenden Link:*\\n\\n{2}\\n\\nDu kannst in deinem Angebot verschiedene Optionen hinzufügen oder abwählen und dich zwischen dem Standard- und Express-Versand entscheiden.\\n\\nDie aktuelle Lieferzeit liegt bei ca. 3-4 Wochen, aber wir können in der Regel bereits früher ausliefern. Eine Express-Produktion ist optional buchbar und verkürzt die Lieferzeit auf ca. 7-11 Tage.\\n\\nBitte beachte, dass diese Nachricht automatisch versendet wurde und keine Antwort auf diese Whatsapp-Nummer möglich ist. Falls du uns kontaktieren möchtest kannst du uns so erreichen:\\n\\nEmail: support@neontrip.de\\nTelefon: +4921154257240\\n\\n*Um das Angebot anzunehmen, signiere bitte das Angebot digital über den Link.*\",\n        \"type\": \"BODY\",\n        \"example\": {\n          \"body_text\": [\n            [\n              \"Daniel\",\n              \"https://app.pandadoc.com/document/v2?token=sample\"\n            ]\n          ]\n        }\n      },\n      {\n        \"type\": \"BUTTONS\",\n        \"buttons\": [\n          {\n            \"url\": \"https://app.pandadoc.com/document/{1}\",\n            \"text\": \"Angebot ansehen\",\n            \"type\": \"URL\",\n            \"example\": [\n              \"v2?token=sample\"\n            ]\n          },\n          {\n            \"text\": \"Telefonisch kontaktieren\",\n            \"type\": \"PHONE_NUMBER\",\n            \"phone_number\": \"+49 21154257240\"\n          }\n        ]\n      }\n    ]\n  }\n}) }}",
+        "notifyerVariables": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "body1": "={{ $json.firstName }}",
+            "body2": "={{ $json.whatsappPandaDocLink }}",
+            "visit_website": "={{ $json.pandaDocToken }}"
+          },
+          "matchingColumns": [
+            "body1",
+            "body2",
+            "visit_website"
+          ],
+          "schema": [
+            {
+              "id": "body1",
+              "displayName": "Body 1 - Vorname",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "id": "body2",
+              "displayName": "Body 2 - PandaDoc Link",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "id": "visit_website",
+              "displayName": "Button URL - Token",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "whatsAbleApi": {
+          "id": "6oBpyPZ2dg8Hc4d2",
+          "name": "WhatsAble account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "whatsapp-skip-preview",
+      "name": "WhatsApp Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        6960,
+        656
+      ],
+      "parameters": {},
+      "continueOnFail": true
+    },
+    {
+      "id": "supabase-whatsapp-sent-preview",
+      "name": "Supabase: WhatsApp Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7632,
+        384
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_quotes?request_id=eq.{{ encodeURIComponent($json.request_id) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ whatsapp_sent: new Date().toISOString() }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "trello-whatsapp-comment-preview",
+      "name": "Trello: WhatsApp Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7856,
+        384
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.card_id }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=📱 **WhatsApp automatisch gesendet**\n📞 An: {{ $json.normalizedPhone }}\n👤 Name: {{ $json.firstName }}\n🔗 PandaDoc: {{ $json.whatsappPandaDocLink }}\n🎬 Vorschau: {{ $json.preview_url }}\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "whatsapp-done-preview",
+      "name": "WhatsApp Fertig",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        8080,
+        384
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "if-stable-pandadoc-link-preview",
+      "name": "Stable Preview PandaDoc Link?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4720,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "stable-preview-link",
+              "leftValue": "={{ $json.previewQuoteOk === true && !!$json.shareLink && !$json.shareLink.includes('/s/') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notify-missing-pandadoc-link-preview",
+      "name": "Notify Missing Preview PandaDoc Link",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        4944,
+        280
+      ],
+      "parameters": {
+        "toRecipients": "support@neontrip.de",
+        "subject": "=⚠️ KI-Video übersprungen: Quote/PandaDoc fehlt - {{ $json.cardName || $json.requestId }}",
+        "bodyContent": "=<div style=\"font-family: Arial, Helvetica, sans-serif; line-height:1.5; color:#111;\">\n  <p><strong>KI-Video-Preview wurde übersprungen.</strong></p>\n  <p>Grund: {{ $json.previewQuoteError || 'Permanenter PandaDoc-Link fehlt oder ist temporär.' }}</p>\n  <ul>\n    <li>Request-ID: {{ $json.requestId }}</li>\n    <li>Karte: {{ $json.cardName }}</li>\n    <li>Trello Card-ID: {{ $json.cardId }}</li>\n    <li>Kunde: {{ $json.firstName }} {{ $json.lastName }} &lt;{{ $json.email }}&gt;</li>\n    <li>PandaDoc-ID: {{ $json.pandaDocId || '-' }}</li>\n    <li>PandaDoc-Status: {{ $json.pandaDocStatus || '-' }}</li>\n    <li>shareLink: {{ $json.shareLink || '-' }}</li>\n  </ul>\n  <p>Es wurde keine Kundenmail und keine WhatsApp gesendet. Die Karte wurde als FEHLER markiert und nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.</p>\n</div>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "18f2660f-4b1a-4def-996b-25feb18e5f60"
+    },
+    {
+      "id": "validate-whatsapp-send-preview",
+      "name": "Validate WhatsApp Send Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7184,
+        464
+      ],
+      "parameters": {
+        "jsCode": "const source = $('Telefon normalisieren WhatsApp').first().json || {};\nconst response = $input.first().json || {};\nconst raw = JSON.stringify(response).slice(0, 2000);\nconst lower = raw.toLowerCase();\nconst statusNumber = Number(response.statusCode || response.code || 0);\nconst explicitFalse = response.success === false || response.ok === false;\nconst hasError = !!response.error || !!response.errors || explicitFalse || statusNumber >= 400 ||\n  lower.includes('unauthorized') || lower.includes('forbidden') || lower.includes('failed') || lower.includes('error');\nconst positive = response.success === true || response.ok === true || !!response.id || !!response.messageId ||\n  !!response.message_id || !!response.sid || ['sent', 'queued', 'success', 'ok'].includes(String(response.status || '').toLowerCase()) ||\n  !!response.data || !!response.result;\n\nreturn [{ json: {\n  ...source,\n  whatsappSendOk: !hasError && !!positive,\n  whatsappRawResponse: raw,\n  whatsappError: hasError ? raw.slice(0, 700) : (!positive ? 'WhatsAble hat keinen eindeutigen Send-Erfolg zurückgegeben.' : '')\n} }];"
+      }
+    },
+    {
+      "id": "if-whatsapp-sent-ok-preview",
+      "name": "WhatsApp Sent OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        7408,
+        464
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "whatsapp-send-ok",
+              "leftValue": "={{ $json.whatsappSendOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "trello-whatsapp-failure-comment-preview",
+      "name": "Trello: WhatsApp Failure Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7632,
+        592
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.card_id }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **WhatsApp nicht bestätigt**\n📞 An: {{ $json.normalizedPhone || \"-\" }}\n👤 Name: {{ $json.firstName || \"-\" }}\n🔗 PandaDoc: {{ $json.whatsappPandaDocLink || \"-\" }}\n🎬 Vorschau: {{ $json.preview_url || \"-\" }}\nGrund: {{ $json.whatsappError || \"WhatsAble hat keinen eindeutigen Send-Erfolg zurückgegeben.\" }}\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "notes": "Added 2026-05-04T20:44:09.878Z: marks WhatsApp send failures without writing whatsapp_sent."
+    },
+    {
+      "id": "trello-whatsapp-skip-comment-preview",
+      "name": "Trello: WhatsApp Skip Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7184,
+        656
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.card_id }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **WhatsApp übersprungen**\nGrund: {{ $json.whatsappSkipReason || \"nicht bereit\" }}\nTelefon: {{ $json.normalizedPhone || \"-\" }}\nPandaDoc-Link: {{ $json.whatsappPandaDocLink || \"-\" }}\n🎬 Vorschau: {{ $json.preview_url || \"-\" }}\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "notes": "Added 2026-05-04T20:44:09.878Z: marks skipped WhatsApp due to missing phone/link."
+    },
+    {
+      "id": "ade2bd24-4d02-415b-96de-0c23710ecb56",
+      "name": "Trello: Preview Blocked Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4944,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.previewQuoteError || 'PandaDoc-Link fehlt oder ist temporär.' }}\nRequest-ID: {{ $json.requestId || '-' }}\nPandaDoc-ID: {{ $json.pandaDocId || '-' }}\nPandaDoc-Status: {{ $json.pandaDocStatus || '-' }}\nKunde: {{ $json.firstName || '-' }} {{ $json.lastName || '' }} <{{ $json.email || '-' }}>\n\nDie Karte wurde nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "921fa5b0-c5ee-4a15-bfb1-d92bdfb7e0f9",
+      "name": "Trello: Move Blocked Preview to Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5168,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $('Validate Preview Quote').first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "name",
+              "value": "={{ (() => { const c = $('Validate Preview Quote').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "if-preview-request-found",
+      "name": "Preview Request Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4048,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "preview-request-ok",
+              "leftValue": "={{ $json.previewRequestOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "trello-missing-request-comment-preview",
+      "name": "Trello: Missing Request Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4048,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.previewRequestError || 'Kein passender master_requests Eintrag gefunden.' }}\nRequest-ID: {{ $json.requestId || '-' }}\nTrello Card-ID: {{ $json.cardId || '-' }}\nKarte: {{ $json.cardName || '-' }}\n\nEs wurde keine Kundenmail, keine WhatsApp und kein Video-API-Start ausgelöst. Die Karte wird als FEHLER markiert und nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "trello-move-missing-request-to-quote-ready",
+      "name": "Trello: Move Missing Request to Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4272,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Validate Preview Request\").first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "name",
+              "value": "={{ (() => { const c = $('Validate Preview Request').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "if-safe-mockup-found",
+      "name": "Safe Mockup Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "safe-mockup-ok",
+              "leftValue": "={{ $json.mockupOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "trello-missing-safe-mockup-comment",
+      "name": "Trello: Missing Safe Mockup Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1360,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.mockupError || \"Kein erlaubtes Mockup gefunden.\" }}\nKarte: {{ $json.cardName || \"-\" }}\nTrello Card-ID: {{ $json.cardId || \"-\" }}\nAttachments: {{ ($json.attachmentNames || \"-\").slice(0, 1200) }}\n\nEs wurde keine Video-API gestartet, keine Kundenmail und keine WhatsApp gesendet. Bitte ein kundensicheres `Mockup1` bis `Mockup4` bzw. `Mockup01` bis `Mockup04` als JPG/JPEG anhängen. Die Karte wird als FEHLER markiert und nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString(\"de-DE\", { timeZone: \"Europe/Berlin\" }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "trello-move-missing-safe-mockup-to-quote-ready",
+      "name": "Trello: Move Missing Safe Mockup to Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1584,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Find Mockup\").first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "name",
+              "value": "={{ (() => { const c = $('Find Mockup').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "ccac4866-8fb4-4b6b-b63e-276376ca0cf3",
+      "name": "WhatsApp Test (Mockup) → Daniel",
+      "type": "n8n-nodes-whatsable.whatsAble",
+      "typeVersion": 1,
+      "position": [
+        6288,
+        720
+      ],
+      "parameters": {
+        "productOperation": "sendNotifyerTemplate",
+        "notifyerRecipient": "+4915904209999",
+        "notifyerTemplate": "{\"template_id\":\"e95995fc-bb39-4838-bc94-75ec55e11083\",\"variable_counts\":3,\"template_formate\":\"[m:1, b:2, vw:1]\",\"components\":{\"name\":\"neontrip_mockup_visualisierung_leuchtreklame\",\"category\":\"MARKETING\",\"language\":\"de\",\"components\":[{\"type\":\"HEADER\",\"format\":\"IMAGE\",\"example\":{\"header_handle\":[\"4:bW9ja3VwLTEuanBn:aW1hZ2UvanBlZw==:ARaVPzyELPdfkK3VhpxH6MqVbDk90mfV1XVd7sPk-hRRXBcRZmaeO1H5xWjui4KryKpkZsGgYQEcJLiKiPR4KLsZUdnpSEUD0_vtOVSv_HeknA:e:1778356631:507596288631557:61572415617961:ARa53EqjMzALKe7NXSA\"]}},{\"text\":\"Hallo {1},                                                       \\n\\n*Hier ist deine personalisierte Visualisierung für dein Leuchtschild.*\\n\\nDu findest das vollständige Angebot mit allen Größen, Farben und Optionen unter folgendem Link.\\n\\nhttps://app.pandadoc.com/document/v2?token={2}\\n\\nDu kannst dich zwischen Standard- und Express-Versand entscheiden. Die aktuelle Lieferzeit liegt bei ca. 3-4 Wochen. Eine Express-Produktion ist optional buchbar und verkürzt die Lieferzeit auf ca. 4-10 Tage.\\n\\nBei Fragen sind wir gerne für dich da:                                                                           \\n\\nE-Mail: support@neontrip.de\\nTelefon: +4921154257240\\n\\nBitte beachte, dass diese Nachricht automatisch versendet wurde und keine Antwort auf diese WhatsApp-Nummer möglich ist.\\n\\n*Um das Angebot anzunehmen, signiere bitte das Angebot digital über den Link.*\",\"type\":\"BODY\",\"example\":{\"body_text\":[[\"Daniel\",\"64cb76a7ce66170fa849511dddea15caee0b0f57\"]]}},{\"type\":\"BUTTONS\",\"buttons\":[{\"url\":\"https://app.pandadoc.com/document/v2?token={1}\",\"text\":\"Angebot ansehen \",\"type\":\"URL\",\"example\":[\"64cb76a7ce66170fa849511dddea15caee0b0f57\"]},{\"text\":\"Telefonisch kontaktieren\",\"type\":\"PHONE_NUMBER\",\"phone_number\":\"+49 21154257240\"}]}]}}",
+        "notifyerVariables": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "media": "={{ $('Resolve Header Image').first().json.headerImageUrl }}",
+            "body1": "={{ $('Validate Preview Customer').first().json.firstName }}",
+            "body2": "={{ ((() => { try { return $('Build Post-Send Context').first().json.pandadoc_document_link || $('Build Post-Send Context').first().json.pandadoc_customer_link || ''; } catch (e) { return ''; } })()).split('token=')[1] || '' }}",
+            "visit_website": "={{ ((() => { try { return $('Build Post-Send Context').first().json.pandadoc_document_link || $('Build Post-Send Context').first().json.pandadoc_customer_link || ''; } catch (e) { return ''; } })()).split('token=')[1] || '' }}"
+          },
+          "matchingColumns": [
+            "media",
+            "body1",
+            "body2",
+            "visit_website"
+          ],
+          "schema": [
+            {
+              "id": "media",
+              "displayName": "Media (IMAGE). Example: Enter media URL",
+              "defaultMatch": true,
+              "canBeUsedToMatch": true,
+              "required": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "body1",
+              "displayName": "Body 1 - Vorname",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "id": "body2",
+              "displayName": "Body 2 - PandaDoc Token",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "id": "visit_website",
+              "displayName": "Button URL - Token",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "credentials": {
+        "whatsAbleApi": {
+          "id": "vBkMcLbcIp32O7D5",
+          "name": "WhatsAble account 2 whatsable API"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "id": "f6d94235-0890-41af-899b-c3802d0905ec",
+      "name": "Resolve Header Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6176,
+        720
+      ],
+      "parameters": {
+        "jsCode": "const requestId = $('Extract Preview Request ID').first().json.requestId || '';\nconst baseUrl = 'https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/pandadoc-mockups';\nconst mockup01Url = baseUrl + '/' + requestId + '/Mockup01.jpg';\nconst mockup02Url = baseUrl + '/' + requestId + '/Mockup02.jpg';\nconst fallbackUrl = baseUrl + '/_fallback/default.png';\n\nconst httpFn = (this.helpers && this.helpers.httpRequest) ? this.helpers.httpRequest.bind(this.helpers)\n             : (typeof $helpers !== 'undefined' && $helpers.httpRequest) ? $helpers.httpRequest\n             : null;\n\nasync function urlExists(url) {\n  if (!httpFn) {\n    return { ok: false, status: 0, error: 'httpRequest helper not available' };\n  }\n  try {\n    const res = await httpFn({\n      method: 'GET',\n      url: url,\n      headers: { 'Range': 'bytes=0-0' },\n      returnFullResponse: true,\n      timeout: 8000\n    });\n    return { ok: res.statusCode === 200 || res.statusCode === 206, status: res.statusCode };\n  } catch (e) {\n    return { ok: false, status: -1, error: String(e.message || e).slice(0, 200) };\n  }\n}\n\nconst test01 = requestId ? await urlExists(mockup01Url) : { ok: false, status: 0, error: 'no requestId' };\nconst test02 = (requestId && !test01.ok) ? await urlExists(mockup02Url) : { ok: false, status: 0, error: test01.ok ? 'skipped' : 'no requestId' };\n\nlet headerImageUrl;\nlet chosenSource;\n\nif (test01.ok) {\n  headerImageUrl = mockup01Url;\n  chosenSource = 'mockup01';\n} else if (test02.ok) {\n  headerImageUrl = mockup02Url;\n  chosenSource = 'mockup02';\n} else {\n  headerImageUrl = fallbackUrl;\n  chosenSource = 'fallback';\n}\n\nreturn [{ json: {\n  headerImageUrl,\n  chosenSource,\n  requestId,\n  mockup01Url,\n  mockup02Url,\n  fallbackUrl,\n  debug: {\n    httpFnAvailable: !!httpFn,\n    test01,\n    test02\n  }\n} }];"
+      }
+    },
+    {
+      "id": "grok-rate-limited-if",
+      "name": "Grok Rate Limited?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2256,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "grok-rate-limited",
+              "leftValue": "={{ $json.rateLimited === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notify-grok-rate-limit",
+      "name": "Notify Grok Rate Limit",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        160
+      ],
+      "parameters": {
+        "toRecipients": "support@neontrip.de",
+        "subject": "=⚠️ KI-Video wartet: Grok/xAI Rate Limit - {{ $json.cardName || $json.cardId }}",
+        "bodyContent": "=<div style=\"font-family: Arial, Helvetica, sans-serif; line-height:1.5; color:#111;\">\n  <p><strong>KI-Video kann gerade keinen neuen Provider-Job starten.</strong></p>\n  <p><strong>Problem:</strong> {{ $json.reason }}</p>\n  <ul>\n    <li>Karte: {{ $json.cardName || '-' }}</li>\n    <li>Trello Card-ID: {{ $json.cardId || '-' }}</li>\n    <li>Trello: <a href=\"{{ $json.trelloCardUrl }}\">{{ $json.trelloCardUrl }}</a></li>\n    <li>Beobachtet: {{ $json.observedAt }}</li>\n    <li>Cooldown bis: {{ $json.cooldownUntilBerlin }} Europe/Berlin</li>\n  </ul>\n  <p><strong>Was passiert jetzt?</strong><br>{{ $json.action }}</p>\n  <p><strong>Was tun?</strong><br>Normalerweise nichts manuell verschicken. Wenn diese Mail mehrfach für dieselbe Karte oder länger als ca. 2 Stunden kommt, xAI/Grok Provider-Limit, Credits oder Parallel-Last prüfen und den Workflow temporär drosseln.</p>\n</div>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "9963774c-4989-4a46-8143-5ec137e1440b"
+    },
+    {
+      "id": "preview-alias-upsert-current-card",
+      "name": "Supabase: Upsert Preview Card Alias",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        912,
+        88
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/trello_card_aliases",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  request_id: $('Extract Preview Request ID').first().json.requestId,\n  alias_trello_card_id: $('Config').first().json.cardId,\n  alias_trello_card_url: $('Config').first().json.cardUrl || null,\n  canonical_trello_card_id: null,\n  alias_type: 'current_trello_card',\n  source: 'ki_video_preview_alias_fallback_v1',\n  notes: 'Automatically recorded before KI video PandaDoc link resolution to recover from Trello card duplication/recreation.'\n} }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "restore-preview-context-after-alias",
+      "name": "Restore Preview Context after Alias",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const base = $('Extract Preview Request ID').first().json;\nconst aliasResult = $input.first()?.json || {};\nreturn [{\n  json: {\n    ...base,\n    alias_fallback_attempted: true,\n    alias_fallback_error: aliasResult.error?.message || aliasResult.message || null\n  }\n}];"
+      }
+    },
+    {
+      "id": "release-video-lease",
+      "name": "Release Video Lease",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        456
+      ],
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst config = $('Config').first().json;\nconst currentLeaseCardId = staticData.kiVideoLeaseCardId || '';\nconst shouldRelease = !currentLeaseCardId || currentLeaseCardId === config.cardId;\n\nif (shouldRelease) {\n  staticData.kiVideoLeaseUntil = null;\n  staticData.kiVideoLeaseCardId = null;\n  staticData.kiVideoLeaseCardName = null;\n  staticData.kiVideoLeaseAcquiredAt = null;\n}\n\nreturn [{ json: {\n  leaseReleased: shouldRelease,\n  releasedCardId: config.cardId,\n  previousLeaseCardId: currentLeaseCardId || null,\n  releasedAt: new Date().toISOString()\n} }];"
+      }
+    },
+    {
+      "id": "need-preview-pandadoc-resolver",
+      "name": "Need Preview PandaDoc Resolver?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4720,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "missing-master-quote-link",
+              "leftValue": "={{ $json.previewQuoteMissing === true && !!$json.requestId }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "pandadoc-search-preview-document",
+      "name": "PandaDoc: Search Preview Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4944,
+        -144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MpPnODlQq5wOkRvR",
+          "name": "Header Auth account | Pandadoc"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.pandadoc.com/public/v1/documents?q={{ encodeURIComponent($json.requestId) }}&count=10",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "select-preview-pandadoc-document",
+      "name": "Select Preview PandaDoc Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5168,
+        -144
+      ],
+      "parameters": {
+        "jsCode": "const prev = $('Validate Preview Quote').first().json;\nconst body = $input.first().json || {};\nconst docs = Array.isArray(body.results) ? body.results : (Array.isArray(body.documents) ? body.documents : (Array.isArray(body) ? body : []));\nconst requestId = String(prev.requestId || '').trim();\nconst blockedStatus = /completed|declined|expired/i;\n\nconst candidates = docs\n  .filter(doc => doc && doc.id)\n  .filter(doc => !blockedStatus.test(String(doc.status || '')))\n  .filter(doc => String(doc.name || doc.title || '').includes(requestId));\n\nif (!requestId || candidates.length === 0) {\n  return [{ json: {\n    ...prev,\n    previewQuoteOk: false,\n    previewQuoteMissing: false,\n    previewResolverDocumentFound: false,\n    previewQuoteError: 'No verified PandaDoc document found by request_id after missing master_quotes link for request ' + (requestId || '-'),\n    previewQuoteEvidence: {\n      source: 'pandadoc_search',\n      searched_request_id: requestId,\n      returned_count: docs.length\n    }\n  } }];\n}\n\nconst doc = candidates\n  .sort((a, b) => String(b.date_modified || b.updated_at || '').localeCompare(String(a.date_modified || a.updated_at || '')))[0];\n\nreturn [{ json: {\n  ...prev,\n  previewResolverDocumentFound: true,\n  pandaDocId: doc.id,\n  pandaDocStatus: String(doc.status || '').replace(/^document\\./, ''),\n  previewQuoteEvidence: {\n    source: 'pandadoc_search',\n    searched_request_id: requestId,\n    returned_count: docs.length,\n    selected_document_id: doc.id,\n    selected_document_name: doc.name || doc.title || '',\n    selected_document_status: doc.status || ''\n  }\n} }];"
+      }
+    },
+    {
+      "id": "preview-pandadoc-document-found",
+      "name": "Preview PandaDoc Document Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5392,
+        -144
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "preview-pandadoc-doc-found",
+              "leftValue": "={{ $json.previewResolverDocumentFound === true && !!$json.pandaDocId }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "pandadoc-get-preview-document-details",
+      "name": "PandaDoc: Get Preview Document Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5616,
+        -144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MpPnODlQq5wOkRvR",
+          "name": "Header Auth account | Pandadoc"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.pandadoc.com/public/v1/documents/{{ encodeURIComponent($json.pandaDocId) }}/details",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "prepare-preview-quote-upsert",
+      "name": "Prepare Preview Quote Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5840,
+        -144
+      ],
+      "parameters": {
+        "jsCode": "const prev = $('Select Preview PandaDoc Document').first().json;\nconst details = $input.first().json || {};\nconst requestId = String(prev.requestId || '').trim();\nconst expectedEmail = String(prev.email || '').trim().toLowerCase();\nconst recipients = Array.isArray(details.recipients) ? details.recipients : [];\nconst matchingRecipient = recipients.find(r => String(r.email || '').trim().toLowerCase() === expectedEmail);\nconst recipientWithLink = matchingRecipient || recipients.find(r => r && r.shared_link);\nconst shareLink = String(recipientWithLink?.shared_link || details.shared_link || '').trim();\nconst status = String(details.status || prev.pandaDocStatus || '').replace(/^document\\./, '');\nconst documentName = String(details.name || prev.previewQuoteEvidence?.selected_document_name || '');\nconst hasRequestEvidence = documentName.includes(requestId);\nconst recipientEmails = recipients.map(r => String(r.email || '').trim().toLowerCase()).filter(Boolean);\nconst recipientMatchesCustomer = !recipientEmails.length || recipientEmails.includes(expectedEmail);\nconst totalValue = (details.grand_total || {}).amount || (details.pricing || {}).total || prev.finalValue || null;\n\nfunction stableLink(value) {\n  const link = String(value || '').trim();\n  return /^https:\\/\\/app\\.pandadoc\\.com\\/document\\//i.test(link) &&\n    !/\\/s\\//.test(link) &&\n    /(?:\\?|&)token=/.test(link);\n}\n\nlet resolverQuoteOk = true;\nlet previewQuoteError = '';\n\nif (!hasRequestEvidence) {\n  resolverQuoteOk = false;\n  previewQuoteError = 'PandaDoc document details did not prove request_id ownership for request ' + requestId;\n} else if (!recipientMatchesCustomer) {\n  resolverQuoteOk = false;\n  previewQuoteError = 'PandaDoc recipient email does not match master_customers email for request ' + requestId;\n} else if (!stableLink(shareLink)) {\n  resolverQuoteOk = false;\n  previewQuoteError = 'PandaDoc details did not provide a stable customer share_link for request ' + requestId;\n} else if (/completed|declined|expired/i.test(status)) {\n  resolverQuoteOk = false;\n  previewQuoteError = 'PandaDoc status blocks preview delivery: ' + status;\n}\n\nreturn [{ json: {\n  ...prev,\n  pandaDocId: String(details.id || prev.pandaDocId || '').trim(),\n  pandaDocStatus: status,\n  shareLink,\n  resolverQuoteOk,\n  previewQuoteOk: resolverQuoteOk,\n  previewQuoteMissing: false,\n  previewQuoteError,\n  previewQuoteSource: resolverQuoteOk ? 'pandadoc_api_backfill' : '',\n  previewQuoteEvidence: {\n    ...(prev.previewQuoteEvidence || {}),\n    source: 'pandadoc_api_backfill',\n    details_document_id: details.id || prev.pandaDocId || '',\n    details_document_name: documentName,\n    recipient_email_match: recipientMatchesCustomer,\n    request_id_in_document_name: hasRequestEvidence\n  },\n  masterQuoteUpsert: resolverQuoteOk ? {\n    pandadoc_id: String(details.id || prev.pandaDocId || '').trim(),\n    request_id: requestId,\n    customer_id: prev.customerId,\n    pandadoc_status: status || 'sent',\n    share_link: shareLink,\n    edit_link: 'https://app.pandadoc.com/a/#/documents/' + String(details.id || prev.pandaDocId || '').trim(),\n    total_value: totalValue,\n    updated_at: new Date().toISOString()\n  } : null\n} }];"
+      }
+    },
+    {
+      "id": "resolved-preview-pandadoc-link",
+      "name": "Resolved Preview PandaDoc Link?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6064,
+        -144
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "resolver-quote-ok",
+              "leftValue": "={{ $json.resolverQuoteOk === true && !!$json.masterQuoteUpsert && !!$json.masterQuoteUpsert.pandadoc_id && !!$json.masterQuoteUpsert.share_link }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "supabase-upsert-preview-quote",
+      "name": "Supabase: Upsert Preview Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6288,
+        -144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_quotes?on_conflict=pandadoc_id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.masterQuoteUpsert) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "validate-preview-quote-after-resolver",
+      "name": "Validate Preview Quote after Resolver",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6512,
+        -144
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(Boolean);\nconst quote = Array.isArray(rows[0]) ? rows[0][0] : rows[0];\nconst prev = $('Prepare Preview Quote Upsert').first().json;\nconst shareLink = String(quote?.share_link || prev.shareLink || '').trim();\nconst status = String(quote?.pandadoc_status || prev.pandaDocStatus || '').trim();\nconst pandaDocId = String(quote?.pandadoc_id || prev.pandaDocId || '').trim();\n\nfunction stableLink(value) {\n  const link = String(value || '').trim();\n  return /^https:\\/\\/app\\.pandadoc\\.com\\/document\\//i.test(link) && !/\\/s\\//.test(link) && /(?:\\?|&)token=/.test(link);\n}\n\nlet previewQuoteOk = true;\nlet previewQuoteError = '';\n\nif (!pandaDocId || !stableLink(shareLink)) {\n  previewQuoteOk = false;\n  previewQuoteError = 'Resolved PandaDoc quote was not persisted as a stable master_quotes row for request ' + prev.requestId;\n} else if (/completed|declined|expired/i.test(status)) {\n  previewQuoteOk = false;\n  previewQuoteError = 'Quote status blocks preview delivery after resolver: ' + status;\n}\n\nreturn [{ json: {\n  ...prev,\n  pandaDocId,\n  pandaDocStatus: status,\n  shareLink,\n  previewQuoteOk,\n  previewQuoteMissing: false,\n  previewQuoteError,\n  previewQuoteSource: previewQuoteOk ? 'master_quotes_after_pandadoc_resolver' : '',\n  previewQuoteEvidence: {\n    ...(prev.previewQuoteEvidence || {}),\n    source: 'master_quotes_after_pandadoc_resolver',\n    persisted_pandadoc_id: pandaDocId\n  }\n} }];"
+      }
+    },
+    {
+      "id": "preview-request-id-conflict-if",
+      "name": "Preview Request ID Conflict?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        820
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "request-id-conflict",
+              "leftValue": "={{ $json.requestIdConflict }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Get Attachments": {
+      "main": [
+        [
+          {
+            "node": "Find Mockup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Mockup": {
+      "main": [
+        [
+          {
+            "node": "Safe Mockup Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Mockup": {
+      "main": [
+        [
+          {
+            "node": "Build Runway Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 15s": {
+      "main": [
+        [
+          {
+            "node": "Check Runway Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Done?": {
+      "main": [
+        [
+          {
+            "node": "IF Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Done": {
+      "main": [
+        [
+          {
+            "node": "Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Search Cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Label": {
+      "main": [
+        [
+          {
+            "node": "Get Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Cards": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video": {
+      "main": [
+        [
+          {
+            "node": "Upload Video to Trello",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upload Video to Supabase Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Request for Preview Delivery": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Request": {
+      "main": [
+        [
+          {
+            "node": "Preview Request Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Preview Customer": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Customer": {
+      "main": [
+        [
+          {
+            "node": "Lookup Latest Preview Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Latest Preview Quote": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Preview Delivery Payload": {
+      "main": [
+        [
+          {
+            "node": "Send Preview Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Runway Request": {
+      "main": [
+        [
+          {
+            "node": "Submit to Runway",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit to Runway": {
+      "main": [
+        [
+          {
+            "node": "Save Request ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Runway Status": {
+      "main": [
+        [
+          {
+            "node": "Is Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Preview Delivery": {
+      "main": [
+        [
+          {
+            "node": "Preview Delivery OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview Delivery OK?": {
+      "main": [
+        [
+          {
+            "node": "Set Video gesendet Label",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Video to Trello": {
+      "main": [
+        [
+          {
+            "node": "Build Preview Delivery Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get Card Details for Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Card Details for Preview": {
+      "main": [
+        [
+          {
+            "node": "Extract Preview Request ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Video gesendet Label": {
+      "main": [
+        [
+          {
+            "node": "Build Post-Send Context",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Post-Send Context": {
+      "main": [
+        [
+          {
+            "node": "Customer Email Sent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Email Sent?": {
+      "main": [
+        [
+          {
+            "node": "Set Angebot gesendet Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Preview Quote Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase: Preview Email Sent Timestamp",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: Preview Success Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait 2 Minutes WhatsApp",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Resolve Header Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 2 Minutes WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Minutes WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Telefon normalisieren WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telefon normalisieren WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Ready?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WhatsApp Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp senden": {
+      "main": [
+        [
+          {
+            "node": "Validate WhatsApp Send Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: WhatsApp Comment": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Fertig",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Quote": {
+      "main": [
+        [
+          {
+            "node": "Need Preview PandaDoc Resolver?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stable Preview PandaDoc Link?": {
+      "main": [
+        [
+          {
+            "node": "Get Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Missing Preview PandaDoc Link",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: Preview Blocked Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: Move Blocked Preview to Quote Ready",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate WhatsApp Send Result": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Sent OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Sent OK?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: WhatsApp Sent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: WhatsApp Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trello: WhatsApp Failure Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Skip": {
+      "main": [
+        [
+          {
+            "node": "Trello: WhatsApp Skip Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview Request Found?": {
+      "main": [
+        [
+          {
+            "node": "Lookup Preview Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trello: Missing Request Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Missing Request Comment": {
+      "main": [
+        [
+          {
+            "node": "Trello: Move Missing Request to Quote Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe Mockup Found?": {
+      "main": [
+        [
+          {
+            "node": "Download Mockup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trello: Missing Safe Mockup Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Missing Safe Mockup Comment": {
+      "main": [
+        [
+          {
+            "node": "Trello: Move Missing Safe Mockup to Quote Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Header Image": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Test (Mockup) → Daniel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Request ID": {
+      "main": [
+        [
+          {
+            "node": "Grok Rate Limited?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok Rate Limited?": {
+      "main": [
+        [
+          {
+            "node": "Notify Grok Rate Limit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Upsert Preview Card Alias": {
+      "main": [
+        [
+          {
+            "node": "Restore Preview Context after Alias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Preview Context after Alias": {
+      "main": [
+        [
+          {
+            "node": "Resolve Request for Preview Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need Preview PandaDoc Resolver?": {
+      "main": [
+        [
+          {
+            "node": "PandaDoc: Search Preview Document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stable Preview PandaDoc Link?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PandaDoc: Search Preview Document": {
+      "main": [
+        [
+          {
+            "node": "Select Preview PandaDoc Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Preview PandaDoc Document": {
+      "main": [
+        [
+          {
+            "node": "Preview PandaDoc Document Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview PandaDoc Document Found?": {
+      "main": [
+        [
+          {
+            "node": "PandaDoc: Get Preview Document Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stable Preview PandaDoc Link?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PandaDoc: Get Preview Document Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare Preview Quote Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Preview Quote Upsert": {
+      "main": [
+        [
+          {
+            "node": "Resolved Preview PandaDoc Link?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolved Preview PandaDoc Link?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Upsert Preview Quote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stable Preview PandaDoc Link?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Upsert Preview Quote": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Quote after Resolver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Quote after Resolver": {
+      "main": [
+        [
+          {
+            "node": "Stable Preview PandaDoc Link?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Preview Request ID": {
+      "main": [
+        [
+          {
+            "node": "Preview Request ID Conflict?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview Request ID Conflict?": {
+      "main": [
+        [
+          {
+            "node": "Restore Preview Context after Alias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: Upsert Preview Card Alias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
+

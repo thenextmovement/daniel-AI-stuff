@@ -256,6 +256,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 42. Forty-two of its 124 nodes are unreachable from the only trigger, including an entire legacy direct email/WhatsApp delivery branch and a disconnected PandaDoc resolver branch.
 43. A second active 74-node video workflow scans another 349-card Trello list every three minutes and normally exits after three nodes, duplicating the same polling architecture with volatile static-data leases.
 44. `finish_preview_delivery_job` accepts only a job ID and requested state; it has no claim token or worker ownership check, so a stale execution can finish a later lease. A token-bound v2 state transition is required before the final stage split.
+45. The first secret scan treated two literal PandaDoc `?token=sample` examples inside WhatsApp template definitions as live credentials and redacted the backup unnecessarily. A length-aware credential scan proved them non-secret; the exact rollback artifact was restored and the false-positive rule was corrected for this capture.
 
 ## Validation ledger
 
