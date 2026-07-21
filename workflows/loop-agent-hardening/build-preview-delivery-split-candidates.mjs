@@ -230,7 +230,7 @@ if (source.activeVersionId !== "bbb0cb8f-aae5-4f45-bab7-dc499b18722c") {
 }
 
 const worker = structuredClone(source);
-worker.name = "NEONTRIP Preview Delivery Worker v2 — DB Claim Loop";
+worker.name = "NEONTRIP Preview Delivery Worker v2.1 — Token-Bound DB Claim Loop";
 worker.active = false;
 worker.settings = {
   ...worker.settings,
@@ -301,6 +301,59 @@ if (staticData.grokHourKey !== hourKey) { staticData.grokHourKey = hourKey; stat
 if ((staticData.grokDayCount || 0) >= MAX_GROK_PER_DAY) return [];
 if ((staticData.grokHourCount || 0) >= MAX_GROK_PER_HOUR) return [];
 return $input.all();`;
+
+const claimNode = worker.nodes.find((node) => node.name === "Supabase: Claim Preview Delivery Job");
+const configNode = worker.nodes.find((node) => node.name === "Config");
+const releaseNode = worker.nodes.find((node) => node.name === "Release Video Lease");
+const finishNode = worker.nodes.find((node) => node.name === "Supabase: Finish Preview Delivery Job");
+if (!claimNode || !configNode || !releaseNode || !finishNode) {
+  throw new Error("preview worker claim/finish nodes missing");
+}
+claimNode.parameters.url = "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_next_preview_delivery_job_v2";
+claimNode.parameters.jsonBody = "={{ JSON.stringify({ p_worker_id: 'preview-delivery-worker-v2:' + String($execution.id || 'scheduled'), p_workflow_execution_id: String($execution.id || ''), p_lease_seconds: 7200, p_max_active: 3 }) }}";
+configNode.parameters.jsCode = configNode.parameters.jsCode
+  .replace(
+    "if (!job || !job.id || !job.trello_card_id) {",
+    "if (!job || !job.id || !job.trello_card_id || !(job.claim_token || claim.claim_token)) {",
+  )
+  .replace(
+    "  jobId: job.id,\n",
+    "  jobId: job.id,\n  claimToken: job.claim_token || claim.claim_token,\n",
+  );
+releaseNode.parameters.jsCode = releaseNode.parameters.jsCode.replace(
+  "    jobId: config.jobId || null,\n",
+  "    jobId: config.jobId || null,\n    claimToken: config.claimToken || null,\n",
+);
+finishNode.parameters.url = "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_preview_delivery_job_v2";
+finishNode.parameters.jsonBody = "={{ JSON.stringify({ p_job_id: $json.jobId || null, p_claim_token: $json.claimToken || null, p_status: $json.previewDeliveryJobStatus || 'retry', p_error_code: $json.previewDeliveryJobErrorCode || null, p_error_message: $json.previewDeliveryJobErrorMessage || null, p_workflow_execution_id: String($execution.id || ''), p_metadata: { released_at: $json.releasedAt, released_card_id: $json.releasedCardId, lease_released: $json.leaseReleased === true, automatic_retry_planned: $json.automaticRetryPlanned === true, current_attempt: $json.currentAttempt || null, next_attempt: $json.nextAttempt || null, automatic_recovery_kind: $json.automaticRecoveryKind || null, automatic_recovery_attempt_limit: $json.automaticRecoveryAttemptLimit || null, automatic_video_attempt_limit: $json.automaticVideoAttemptLimit || 2, video_qc_issues: $json.videoQcIssues || [], video_qc_confidence: $json.videoQcConfidence ?? null, video_generation_fingerprint: $json.videoGenerationFingerprint || null, video_generation_mode: $json.videoGenerationMode || null, company_brain_audit_write_ok: $json.auditWriteOk, company_brain_audit_write_error: $json.auditWriteError || null, offer_delivery_handoff_accepted: $json.offerDeliveryHandoffAccepted === true, offer_delivery_action: $json.offerDeliveryAction || null, offer_delivery_status: $json.offerDeliveryStatus || null } }) }}";
+worker.nodes.push({
+  id: "assert-preview-job-finished",
+  name: "Assert Preview Job Finished",
+  type: "n8n-nodes-base.code",
+  typeVersion: 2,
+  position: [4288, 456],
+  parameters: {
+    jsCode: String.raw`const result = $json || {};
+const released = $('Release Video Lease').item.json;
+if (result.ok !== true) throw new Error('preview_delivery_finish_rejected:' + String(result.error || 'unknown'));
+const actual = String(result.effective_status || result.job?.status || '');
+const expected = String(released.previewDeliveryJobStatus || '');
+const exhaustedRetry = expected === 'retry' && actual === 'failed';
+if (!actual || (actual !== expected && !exhaustedRetry)) {
+  throw new Error('preview_delivery_finish_status_mismatch:' + expected + ':' + actual);
+}
+return [{ json: {
+  ok: true,
+  job_id: released.jobId,
+  status: actual,
+  idempotent: result.idempotent === true,
+  claim_token_consumed: !result.job?.claim_token,
+} }];`,
+  },
+});
+worker.connections["Supabase: Finish Preview Delivery Job"] = {
+  main: [[{ node: "Assert Preview Job Finished", type: "main", index: 0 }]],
+};
 
 const validatedErrorOutputNodes = new Set([
   "Submit to Runway",

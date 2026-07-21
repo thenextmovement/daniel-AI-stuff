@@ -39,7 +39,7 @@ assertGraph(intake);
 assertGraph(worker);
 assert.equal(intake.nodes.length, 6);
 assert.equal(intake.nodes.filter(isTrigger).length, 1);
-assert.equal(worker.nodes.length, 79);
+assert.equal(worker.nodes.length, 80);
 assert.equal(worker.nodes.filter(isTrigger).length, 1);
 assert.equal(worker.connections["Schedule Trigger"].main[0][0].node, "Queue Worker Gate");
 assert.equal(worker.nodes.some((entry) => entry.name === "Search Cards"), false);
@@ -48,6 +48,28 @@ assert.equal(worker.nodes.some((entry) => entry.name === "Supabase: Enqueue Prev
 assert.equal(worker.nodes.some((entry) => entry.name === "Send Preview Delivery"), false);
 assert.equal(worker.nodes.some((entry) => entry.name === "WhatsApp senden"), false);
 assert.equal(worker.nodes.some((entry) => entry.name === "Build Preview Delivery Payload"), false);
+assert.match(
+  node(worker, "Supabase: Claim Preview Delivery Job").parameters.url,
+  /claim_next_preview_delivery_job_v2$/,
+);
+assert.match(
+  node(worker, "Supabase: Claim Preview Delivery Job").parameters.jsonBody,
+  /p_workflow_execution_id/,
+);
+assert.match(node(worker, "Config").parameters.jsCode, /claimToken: job\.claim_token/);
+assert.match(node(worker, "Release Video Lease").parameters.jsCode, /claimToken: config\.claimToken/);
+assert.match(
+  node(worker, "Supabase: Finish Preview Delivery Job").parameters.url,
+  /finish_preview_delivery_job_v2$/,
+);
+assert.match(
+  node(worker, "Supabase: Finish Preview Delivery Job").parameters.jsonBody,
+  /p_claim_token/,
+);
+assert.equal(
+  worker.connections["Supabase: Finish Preview Delivery Job"].main[0][0].node,
+  "Assert Preview Job Finished",
+);
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const normalize = new AsyncFunction("$json", node(intake, "Normalize Relevant Preview Event").parameters.jsCode);
@@ -120,4 +142,3 @@ assert.doesNotMatch(serialized, /langchain|agent|microsoftOutlook|whatsAble/i);
 assert.match(serialized, /enqueue_preview_delivery_jobs/);
 
 console.log("Preview delivery split candidate tests passed");
-

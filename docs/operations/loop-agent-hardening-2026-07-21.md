@@ -209,6 +209,8 @@ Keep the previous workflow active version and full JSON backup until the replace
 - The first split candidates replace list polling with a six-node Trello-event intake and reduce the scheduled worker to its 79 reachable database-claim nodes. The event intake accepts only moves into the two approved preview lists or deliberate removal of a sent label, re-reads current card state, and enqueues one stable event-keyed database job.
 - Before any graph cutover, production queue RPC privileges were corrected at commit `031fe2b7d438d8434cbdce65c96167fb5cd0b272`: `anon` and `authenticated` can no longer enqueue, claim, or finish `SECURITY DEFINER` preview jobs; `service_role` remains allowed and subsequent production n8n runs stayed successful.
 - The 79-node worker is explicitly an interim first split, not the final target. Video preparation/generation, QC, offer delivery, and projection still require separate stage workers below the 30-node boundary.
+- Production cutover now runs event intake `o3Lckpd5ZiH1hQ4H` and database worker `S4gjf0YeZjP0pqFR`; both published graphs match their artifacts exactly and have zero strict errors. The 124-node and 74-node pollers are inactive and clearly renamed. The first empty-queue worker run used four nodes and about 5 KB instead of downloading 548 or 349 Trello cards.
+- A token-bound queue v2 candidate adds claim-replay idempotency by n8n execution, a unique token for every new lease, receipt-gated completion, stale-finish rejection, append-only transition events, and a downstream assertion node. Its rollback preserves all evidence and only switches executor permissions back to the legacy functions.
 
 ## Defects found so far
 
@@ -257,6 +259,9 @@ Keep the previous workflow active version and full JSON backup until the replace
 43. A second active 74-node video workflow scans another 349-card Trello list every three minutes and normally exits after three nodes, duplicating the same polling architecture with volatile static-data leases.
 44. `finish_preview_delivery_job` accepts only a job ID and requested state; it has no claim token or worker ownership check, so a stale execution can finish a later lease. A token-bound v2 state transition is required before the final stage split.
 45. The first secret scan treated two literal PandaDoc `?token=sample` examples inside WhatsApp template definitions as live credentials and redacted the backup unnecessarily. A length-aware credential scan proved them non-secret; the exact rollback artifact was restored and the false-positive rule was corrected for this capture.
+46. The queue table granted every table privilege, including `DELETE`, `TRUNCATE`, and `TRIGGER`, to `anon`, `authenticated`, and `service_role`. RLS had no policies and blocked the first two today, but the grants were an unsafe latent bypass if RLS were ever disabled; v2 reduces the table to service-role `SELECT/INSERT/UPDATE` only.
+47. Retrying the legacy claim RPC after an ambiguous HTTP response could consume a second queue row for the same n8n execution. The v2 claim serializes on execution ID and returns the original live lease and token.
+48. The first v2 finish replay check accepted an old retry token after the row had already been leased again. The PostgreSQL stale-execution test caught this ordering bug; idempotent replay is now allowed only when no active lease exists.
 
 ## Validation ledger
 
@@ -284,5 +289,6 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Follow-up production transaction smoke passed all claim/replay/failure/RLS assertions and rolled back with zero queue, attempt, or event residue. The published production graph is exact and strict-valid at 19 nodes, 1 trigger, 22 valid connections, and 0 errors.
 - Preview split behavior tests pass event filtering, stable event idempotency, current-list/sent-label revalidation, request identity extraction, durable-enqueue assertions, graph reachability, removal of direct customer delivery nodes, and JavaScript compilation. The consolidated target suite now covers 12 workflows; the 79-node first-split worker is tested separately until its stage decomposition is complete.
 - Production preview RPC privilege smoke passed nine assertions: anonymous/authenticated enqueue, claim, and finish are blocked while all three service-role paths remain executable. Five subsequent scheduled n8n executions completed successfully.
+- Preview claim-token PostgreSQL 17 tests pass claim replay, parallel different-row claims, receipt-required completion, completion replay, retry re-lease, stale old-execution rejection, exact event counts, RLS/privilege isolation, non-destructive rollback, and reapply. A real concurrent same-execution claim returned one identical token from both sessions and produced exactly one lease and one claim event.
 - Dependency audit: 0 vulnerabilities after the locked transitive update.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.

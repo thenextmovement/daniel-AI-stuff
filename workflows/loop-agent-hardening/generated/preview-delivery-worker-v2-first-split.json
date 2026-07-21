@@ -1,5 +1,5 @@
 {
-  "name": "NEONTRIP Preview Delivery Worker v2 — DB Claim Loop",
+  "name": "NEONTRIP Preview Delivery Worker v2.1 — Token-Bound DB Claim Loop",
   "active": false,
   "isArchived": false,
   "settings": {
@@ -324,7 +324,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const SOURCE_LIST_ID = '6a18389f5e45294188451924'; // Neue Angebote schicken + KI-Video\nconst VIDEO_SENT_LABEL_ID = '69ea8cb44dafe69b2a31350c'; // Video gesendet\nconst LEASE_MS = 2 * 60 * 60 * 1000; // Must exceed STOP/initial-delivery wait so one card cannot start multiple paid videos.\n\nconst claim = $input.first().json || {};\nconst job = claim.job || (claim.data && claim.data.job) || null;\nif (!job || !job.id || !job.trello_card_id) {\n  console.log('[KI VIDEO QUEUE] No job claimed. Reason: ' + (claim.reason || 'queue_empty') + '. Active leases: ' + String(claim.active_leases ?? 'unknown') + '/' + String(claim.max_active ?? 'unknown'));\n  return [];\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst now = new Date();\nconst leaseUntil = new Date(now.getTime() + LEASE_MS);\nstaticData.kiVideoLeaseUntil = leaseUntil.toISOString();\nstaticData.kiVideoLeaseCardId = job.trello_card_id;\nstaticData.kiVideoLeaseCardName = job.card_name || '';\nstaticData.kiVideoLeaseAcquiredAt = now.toISOString();\n\nconst regenerateOnly = false;\nconst triggerLabel = { id: '', name: 'queue_trigger' };\n\nreturn [{ json: {\n  jobId: job.id,\n  jobStatus: job.status,\n  jobAttempts: job.attempts || 0,\n  jobMaxAttempts: job.max_attempts || 3,\n  queueSeq: job.queue_seq || null,\n  queueEnteredAt: job.entered_at || null,\n  queueLeaseUntil: job.lease_until || null,\n  deliveryCycleKey: job.delivery_cycle_key || job.deliveryCycleKey || (job.metadata && job.metadata.delivery_cycle_key) || '',\n  workerActiveLeasesBeforeClaim: claim.active_leases_before_claim ?? null,\n  workerMaxActive: claim.max_active ?? 3,\n  cardId: job.trello_card_id,\n  cardName: job.card_name || '',\n  cardUrl: job.trello_card_url || ('https://trello.com/c/' + job.trello_card_id),\n  sourceListId: job.source_list_id || SOURCE_LIST_ID,\n  videoSentLabelId: VIDEO_SENT_LABEL_ID,\n  triggerLabelId: triggerLabel.id,\n  triggerLabelName: triggerLabel.name,\n  regenerateOnly,\n  deliveryMode: regenerateOnly ? 'regenerate_only' : 'send_preview_email',\n  videoProvider: 'grok',\n  leaseAcquiredAt: now.toISOString(),\n  leaseUntil: leaseUntil.toISOString()\n} }];"
+        "jsCode": "const SOURCE_LIST_ID = '6a18389f5e45294188451924'; // Neue Angebote schicken + KI-Video\nconst VIDEO_SENT_LABEL_ID = '69ea8cb44dafe69b2a31350c'; // Video gesendet\nconst LEASE_MS = 2 * 60 * 60 * 1000; // Must exceed STOP/initial-delivery wait so one card cannot start multiple paid videos.\n\nconst claim = $input.first().json || {};\nconst job = claim.job || (claim.data && claim.data.job) || null;\nif (!job || !job.id || !job.trello_card_id || !(job.claim_token || claim.claim_token)) {\n  console.log('[KI VIDEO QUEUE] No job claimed. Reason: ' + (claim.reason || 'queue_empty') + '. Active leases: ' + String(claim.active_leases ?? 'unknown') + '/' + String(claim.max_active ?? 'unknown'));\n  return [];\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst now = new Date();\nconst leaseUntil = new Date(now.getTime() + LEASE_MS);\nstaticData.kiVideoLeaseUntil = leaseUntil.toISOString();\nstaticData.kiVideoLeaseCardId = job.trello_card_id;\nstaticData.kiVideoLeaseCardName = job.card_name || '';\nstaticData.kiVideoLeaseAcquiredAt = now.toISOString();\n\nconst regenerateOnly = false;\nconst triggerLabel = { id: '', name: 'queue_trigger' };\n\nreturn [{ json: {\n  jobId: job.id,\n  claimToken: job.claim_token || claim.claim_token,\n  jobStatus: job.status,\n  jobAttempts: job.attempts || 0,\n  jobMaxAttempts: job.max_attempts || 3,\n  queueSeq: job.queue_seq || null,\n  queueEnteredAt: job.entered_at || null,\n  queueLeaseUntil: job.lease_until || null,\n  deliveryCycleKey: job.delivery_cycle_key || job.deliveryCycleKey || (job.metadata && job.metadata.delivery_cycle_key) || '',\n  workerActiveLeasesBeforeClaim: claim.active_leases_before_claim ?? null,\n  workerMaxActive: claim.max_active ?? 3,\n  cardId: job.trello_card_id,\n  cardName: job.card_name || '',\n  cardUrl: job.trello_card_url || ('https://trello.com/c/' + job.trello_card_id),\n  sourceListId: job.source_list_id || SOURCE_LIST_ID,\n  videoSentLabelId: VIDEO_SENT_LABEL_ID,\n  triggerLabelId: triggerLabel.id,\n  triggerLabelName: triggerLabel.name,\n  regenerateOnly,\n  deliveryMode: regenerateOnly ? 'regenerate_only' : 'send_preview_email',\n  videoProvider: 'grok',\n  leaseAcquiredAt: now.toISOString(),\n  leaseUntil: leaseUntil.toISOString()\n} }];"
       },
       "id": "9fe45ab0-ab68-4397-a4e7-e2d9783f5df5",
       "name": "Config",
@@ -1057,7 +1057,7 @@
         456
       ],
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst config = $('Config').first().json;\nconst input = $input.first().json || {};\nlet failure = {};\nlet preparedFailurePresent = false;\ntry {\n  failure = $('Prepare Locked Offer Failure').first().json || {};\n  preparedFailurePresent = Object.keys(failure).length > 0;\n} catch (error) {\n  failure = {};\n}\nconst source = preparedFailurePresent ? failure : input;\nconst deliveryHandoff = input && typeof input.delivery === 'object' ? input.delivery : null;\nconst deliveryHandoffAccepted = Boolean(deliveryHandoff && ['ready', 'wait', 'paused', 'skip'].includes(String(deliveryHandoff.action || '')));\nconst currentLeaseCardId = staticData.kiVideoLeaseCardId || '';\nconst shouldRelease = !currentLeaseCardId || currentLeaseCardId === config.cardId;\n\nif (shouldRelease) {\n  staticData.kiVideoLeaseUntil = null;\n  staticData.kiVideoLeaseCardId = null;\n  staticData.kiVideoLeaseCardName = null;\n  staticData.kiVideoLeaseAcquiredAt = null;\n}\n\nlet sent = deliveryHandoffAccepted;\ntry {\n  if (!sent) sent = $('Preview Delivery OK?').first().json.ok === true;\n} catch (error) {\n  sent = false;\n}\n\nlet auditWriteOk = null;\nlet auditWriteError = null;\ntry {\n  const auditResult = $('Audit: Company Brain Offer Failure').first().json || {};\n  auditWriteOk = !auditResult.error;\n  auditWriteError = auditResult.error ? JSON.stringify(auditResult.error).slice(0, 1000) : null;\n} catch (error) {\n  auditWriteOk = null;\n}\n\nconst serialized = JSON.stringify(source).slice(0, 4000);\nconst retryable = source.retryable === true;\nconst rateLimited = source.rateLimited === true || /\\b429\\b|rate limit|too many requests/i.test(serialized);\nconst transientProviderFailure =\n  source.transientVideoProviderFailure === true ||\n  /\\b50[0234]\\b|econnrefused|econnreset|etimedout|upstream connect|connection refused|temporar(?:y|ily)|overloaded|service unavailable|try again later/i.test(serialized);\nconst previewDeliveryRejected = source.ok === false;\nconst currentAttempt = Math.max(1, Number(source.currentAttempt || config.jobAttempts || 1));\nconst jobMaxAttempts = Math.max(1, Number(config.jobMaxAttempts || 3));\nconst directRetryable =\n  (rateLimited || transientProviderFailure || previewDeliveryRejected) &&\n  currentAttempt < jobMaxAttempts;\nconst shouldRetry = preparedFailurePresent ? retryable : directRetryable;\nconst failed = !sent && !shouldRetry;\nconst jobStatus = sent ? 'sent' : (shouldRetry ? 'retry' : 'failed');\nconst errorCode = sent ? null : (\n  source.failureType ||\n  source.failureCode ||\n  source.errorCode ||\n  (rateLimited\n    ? 'rate_limited'\n    : (transientProviderFailure\n      ? 'transient_video_provider_failure'\n      : (previewDeliveryRejected ? 'preview_delivery_rejected' : 'preview_delivery_failed')))\n);\nconst errorMessage = sent ? null : (\n  source.failureMessage ||\n  source.errorMessage ||\n  source.mockupError ||\n  source.reason ||\n  serialized.slice(0, 1000) ||\n  'Preview delivery did not complete successfully'\n);\n\nreturn [{\n  json: {\n    leaseReleased: shouldRelease,\n    releasedCardId: config.cardId,\n    previousLeaseCardId: currentLeaseCardId || null,\n    releasedAt: new Date().toISOString(),\n    jobId: config.jobId || null,\n    previewDeliveryJobStatus: jobStatus,\n    previewDeliveryJobErrorCode: errorCode,\n    previewDeliveryJobErrorMessage: errorMessage,\n    previewDeliveryJobFailed: failed,\n    automaticRetryPlanned: shouldRetry,\n    currentAttempt,\n    nextAttempt: shouldRetry ? (source.nextAttempt || currentAttempt + 1) : null,\n    automaticRecoveryKind: source.automaticRecoveryKind || (shouldRetry ? 'infrastructure_retry' : 'manual_review'),\n    automaticRecoveryAttemptLimit: source.automaticRecoveryAttemptLimit || jobMaxAttempts,\n    automaticVideoAttemptLimit: source.automaticVideoAttemptLimit || 2,\n    videoQcIssues: source.videoQcIssues || [],\n    videoQcConfidence: source.videoQcConfidence ?? null,\n    videoGenerationFingerprint: source.videoGenerationFingerprint || null,\n    videoGenerationMode: source.videoGenerationMode || null,\n    offerDeliveryHandoffAccepted: deliveryHandoffAccepted,\n    offerDeliveryAction: deliveryHandoff ? String(deliveryHandoff.action || '') : null,\n    offerDeliveryStatus: deliveryHandoff ? String(deliveryHandoff.status || '') : null,\n    auditWriteOk,\n    auditWriteError,\n  }\n}];\n"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst config = $('Config').first().json;\nconst input = $input.first().json || {};\nlet failure = {};\nlet preparedFailurePresent = false;\ntry {\n  failure = $('Prepare Locked Offer Failure').first().json || {};\n  preparedFailurePresent = Object.keys(failure).length > 0;\n} catch (error) {\n  failure = {};\n}\nconst source = preparedFailurePresent ? failure : input;\nconst deliveryHandoff = input && typeof input.delivery === 'object' ? input.delivery : null;\nconst deliveryHandoffAccepted = Boolean(deliveryHandoff && ['ready', 'wait', 'paused', 'skip'].includes(String(deliveryHandoff.action || '')));\nconst currentLeaseCardId = staticData.kiVideoLeaseCardId || '';\nconst shouldRelease = !currentLeaseCardId || currentLeaseCardId === config.cardId;\n\nif (shouldRelease) {\n  staticData.kiVideoLeaseUntil = null;\n  staticData.kiVideoLeaseCardId = null;\n  staticData.kiVideoLeaseCardName = null;\n  staticData.kiVideoLeaseAcquiredAt = null;\n}\n\nlet sent = deliveryHandoffAccepted;\ntry {\n  if (!sent) sent = $('Preview Delivery OK?').first().json.ok === true;\n} catch (error) {\n  sent = false;\n}\n\nlet auditWriteOk = null;\nlet auditWriteError = null;\ntry {\n  const auditResult = $('Audit: Company Brain Offer Failure').first().json || {};\n  auditWriteOk = !auditResult.error;\n  auditWriteError = auditResult.error ? JSON.stringify(auditResult.error).slice(0, 1000) : null;\n} catch (error) {\n  auditWriteOk = null;\n}\n\nconst serialized = JSON.stringify(source).slice(0, 4000);\nconst retryable = source.retryable === true;\nconst rateLimited = source.rateLimited === true || /\\b429\\b|rate limit|too many requests/i.test(serialized);\nconst transientProviderFailure =\n  source.transientVideoProviderFailure === true ||\n  /\\b50[0234]\\b|econnrefused|econnreset|etimedout|upstream connect|connection refused|temporar(?:y|ily)|overloaded|service unavailable|try again later/i.test(serialized);\nconst previewDeliveryRejected = source.ok === false;\nconst currentAttempt = Math.max(1, Number(source.currentAttempt || config.jobAttempts || 1));\nconst jobMaxAttempts = Math.max(1, Number(config.jobMaxAttempts || 3));\nconst directRetryable =\n  (rateLimited || transientProviderFailure || previewDeliveryRejected) &&\n  currentAttempt < jobMaxAttempts;\nconst shouldRetry = preparedFailurePresent ? retryable : directRetryable;\nconst failed = !sent && !shouldRetry;\nconst jobStatus = sent ? 'sent' : (shouldRetry ? 'retry' : 'failed');\nconst errorCode = sent ? null : (\n  source.failureType ||\n  source.failureCode ||\n  source.errorCode ||\n  (rateLimited\n    ? 'rate_limited'\n    : (transientProviderFailure\n      ? 'transient_video_provider_failure'\n      : (previewDeliveryRejected ? 'preview_delivery_rejected' : 'preview_delivery_failed')))\n);\nconst errorMessage = sent ? null : (\n  source.failureMessage ||\n  source.errorMessage ||\n  source.mockupError ||\n  source.reason ||\n  serialized.slice(0, 1000) ||\n  'Preview delivery did not complete successfully'\n);\n\nreturn [{\n  json: {\n    leaseReleased: shouldRelease,\n    releasedCardId: config.cardId,\n    previousLeaseCardId: currentLeaseCardId || null,\n    releasedAt: new Date().toISOString(),\n    jobId: config.jobId || null,\n    claimToken: config.claimToken || null,\n    previewDeliveryJobStatus: jobStatus,\n    previewDeliveryJobErrorCode: errorCode,\n    previewDeliveryJobErrorMessage: errorMessage,\n    previewDeliveryJobFailed: failed,\n    automaticRetryPlanned: shouldRetry,\n    currentAttempt,\n    nextAttempt: shouldRetry ? (source.nextAttempt || currentAttempt + 1) : null,\n    automaticRecoveryKind: source.automaticRecoveryKind || (shouldRetry ? 'infrastructure_retry' : 'manual_review'),\n    automaticRecoveryAttemptLimit: source.automaticRecoveryAttemptLimit || jobMaxAttempts,\n    automaticVideoAttemptLimit: source.automaticVideoAttemptLimit || 2,\n    videoQcIssues: source.videoQcIssues || [],\n    videoQcConfidence: source.videoQcConfidence ?? null,\n    videoGenerationFingerprint: source.videoGenerationFingerprint || null,\n    videoGenerationMode: source.videoGenerationMode || null,\n    offerDeliveryHandoffAccepted: deliveryHandoffAccepted,\n    offerDeliveryAction: deliveryHandoff ? String(deliveryHandoff.action || '') : null,\n    offerDeliveryStatus: deliveryHandoff ? String(deliveryHandoff.status || '') : null,\n    auditWriteOk,\n    auditWriteError,\n  }\n}];\n"
       }
     },
     {
@@ -1243,7 +1243,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_next_preview_delivery_job",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_next_preview_delivery_job_v2",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -1257,7 +1257,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_worker_id: 'ki-video-worker:' + String($execution.id || 'scheduled'), p_lease_seconds: 7200, p_max_active: 3 }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_worker_id: 'preview-delivery-worker-v2:' + String($execution.id || 'scheduled'), p_workflow_execution_id: String($execution.id || ''), p_lease_seconds: 7200, p_max_active: 3 }) }}",
         "options": {
           "timeout": 15000
         }
@@ -1284,7 +1284,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_preview_delivery_job",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_preview_delivery_job_v2",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -1298,7 +1298,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job_id: $json.jobId || null, p_status: $json.previewDeliveryJobStatus || 'retry', p_error_code: $json.previewDeliveryJobErrorCode || null, p_error_message: $json.previewDeliveryJobErrorMessage || null, p_n8n_execution_id: String($execution.id || ''), p_metadata: { released_at: $json.releasedAt, released_card_id: $json.releasedCardId, lease_released: $json.leaseReleased === true, automatic_retry_planned: $json.automaticRetryPlanned === true, current_attempt: $json.currentAttempt || null, next_attempt: $json.nextAttempt || null, automatic_recovery_kind: $json.automaticRecoveryKind || null, automatic_recovery_attempt_limit: $json.automaticRecoveryAttemptLimit || null, automatic_video_attempt_limit: $json.automaticVideoAttemptLimit || 2, video_qc_issues: $json.videoQcIssues || [], video_qc_confidence: $json.videoQcConfidence ?? null, video_generation_fingerprint: $json.videoGenerationFingerprint || null, video_generation_mode: $json.videoGenerationMode || null, company_brain_audit_write_ok: $json.auditWriteOk, company_brain_audit_write_error: $json.auditWriteError || null, offer_delivery_handoff_accepted: $json.offerDeliveryHandoffAccepted === true, offer_delivery_action: $json.offerDeliveryAction || null, offer_delivery_status: $json.offerDeliveryStatus || null } }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job_id: $json.jobId || null, p_claim_token: $json.claimToken || null, p_status: $json.previewDeliveryJobStatus || 'retry', p_error_code: $json.previewDeliveryJobErrorCode || null, p_error_message: $json.previewDeliveryJobErrorMessage || null, p_workflow_execution_id: String($execution.id || ''), p_metadata: { released_at: $json.releasedAt, released_card_id: $json.releasedCardId, lease_released: $json.leaseReleased === true, automatic_retry_planned: $json.automaticRetryPlanned === true, current_attempt: $json.currentAttempt || null, next_attempt: $json.nextAttempt || null, automatic_recovery_kind: $json.automaticRecoveryKind || null, automatic_recovery_attempt_limit: $json.automaticRecoveryAttemptLimit || null, automatic_video_attempt_limit: $json.automaticVideoAttemptLimit || 2, video_qc_issues: $json.videoQcIssues || [], video_qc_confidence: $json.videoQcConfidence ?? null, video_generation_fingerprint: $json.videoGenerationFingerprint || null, video_generation_mode: $json.videoGenerationMode || null, company_brain_audit_write_ok: $json.auditWriteOk, company_brain_audit_write_error: $json.auditWriteError || null, offer_delivery_handoff_accepted: $json.offerDeliveryHandoffAccepted === true, offer_delivery_action: $json.offerDeliveryAction || null, offer_delivery_status: $json.offerDeliveryStatus || null } }) }}",
         "options": {
           "timeout": 15000
         }
@@ -2314,6 +2314,19 @@
       "maxTries": 5,
       "waitBetweenTries": 15000,
       "onError": "continueErrorOutput"
+    },
+    {
+      "id": "assert-preview-job-finished",
+      "name": "Assert Preview Job Finished",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4288,
+        456
+      ],
+      "parameters": {
+        "jsCode": "const result = $json || {};\nconst released = $('Release Video Lease').item.json;\nif (result.ok !== true) throw new Error('preview_delivery_finish_rejected:' + String(result.error || 'unknown'));\nconst actual = String(result.effective_status || result.job?.status || '');\nconst expected = String(released.previewDeliveryJobStatus || '');\nconst exhaustedRetry = expected === 'retry' && actual === 'failed';\nif (!actual || (actual !== expected && !exhaustedRetry)) {\n  throw new Error('preview_delivery_finish_status_mismatch:' + expected + ':' + actual);\n}\nreturn [{ json: {\n  ok: true,\n  job_id: released.jobId,\n  status: actual,\n  idempotent: result.idempotent === true,\n  claim_token_consumed: !result.job?.claim_token,\n} }];"
+      }
     }
   ],
   "connections": {
@@ -3289,6 +3302,17 @@
             "index": 0,
             "node": "Prepare Locked Offer Failure",
             "type": "main"
+          }
+        ]
+      ]
+    },
+    "Supabase: Finish Preview Delivery Job": {
+      "main": [
+        [
+          {
+            "node": "Assert Preview Job Finished",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
