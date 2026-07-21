@@ -1,0 +1,814 @@
+{
+  "id": "7AvW1d4JBNDFuNsv",
+  "name": "NEONTRIP Anfrage → Telegram Approval v1.0",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2026-07-02T13:49:28.724Z",
+  "updatedAt": "2026-07-03T09:01:13.705Z",
+  "activeVersionId": "3052c17b-2021-4b4a-a149-a4d606302958",
+  "versionCreatedAt": "2026-07-03T09:01:13.707Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "wh",
+      "name": "Trello Trigger",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "id": "63d10c34105771f01ccf4296"
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "webhookId": "0a65d0bb-e331-4b1b-aec1-62ad922b72c8"
+    },
+    {
+      "id": "filter",
+      "name": "Filter: Neue Anfrage",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Konfiguration\nconst CHAT_ID = '-5354838907'; // Telegram-Gruppe \"Neontrip Anfragen\"\nconst ANFRAGEN_LIST = '64ca588f8bd547afc087a6ea';\nconst BOARD_ID = '63d10c34105771f01ccf4296';\n\nconst root = $input.first().json || {};\nconst action = (root.body && root.body.action) || root.action;\nif (!action) return [];\n\nconst boardId = action.data && action.data.board && action.data.board.id;\nif (boardId !== BOARD_ID) return [];\n\nconst t = action.type;\nconst card = (action.data && action.data.card) || {};\nif (!card.id) return [];\n\n// Neue Karte in der Anfragen-Liste\nif (t === 'createCard' || (t === 'updateCard' && action.data.listAfter)) {\n  const listId = t === 'createCard'\n    ? (action.data.list && action.data.list.id)\n    : action.data.listAfter.id;\n  if (listId !== ANFRAGEN_LIST) return [];\n  return [{ json: { branch: 'new', card_id: card.id, card_name: card.name || '', chat_id: CHAT_ID, event_type: t } }];\n}\n\n// Nachträglich hinzugefügter Anhang auf einer Karte in der Anfragen-Liste\nif (t === 'addAttachmentToCard') {\n  const listId = action.data.list && action.data.list.id;\n  if (listId !== ANFRAGEN_LIST) return [];\n  const att = action.data.attachment || {};\n  if (!att.id) return [];\n  return [{ json: { branch: 'att', card_id: card.id, card_name: card.name || '', chat_id: CHAT_ID, att_id: att.id, att_name: att.name || 'datei' } }];\n}\n\nreturn [];"
+      }
+    },
+    {
+      "id": "ifbranch",
+      "name": "Neu oder Anhang?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.branch }}",
+              "rightValue": "new",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "claim",
+      "name": "Supabase: Claim (Dedupe)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/quote_approvals",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=representation"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ card_id: $json.card_id, card_name: $json.card_name, chat_id: $json.chat_id, status: 'pending' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "gate",
+      "name": "Nur neue Fälle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "// Insert mit ignore-duplicates: leere Antwort = Karte schon gemeldet -> Stop\nconst items = $input.all().map(i => i.json).filter(j => j && j.card_id);\nif (items.length === 0) return [];\nreturn [{ json: items[0] }];"
+      }
+    },
+    {
+      "id": "wait3",
+      "name": "3 Minuten warten",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "amount": 3,
+        "unit": "minutes"
+      },
+      "webhookId": "7e234ab8-fe01-4dc6-9d32-2e0525f085bd"
+    },
+    {
+      "id": "getcard",
+      "name": "Trello: Karte laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1320,
+        -100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $('Nur neue Fälle').item.json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "name,desc,shortUrl,idList"
+            },
+            {
+              "name": "attachments",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "getreq",
+      "name": "Supabase: Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1540,
+        -100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_requests?trello_card_id=eq.{{ $('Nur neue Fälle').item.json.card_id }}&select=request_id,customer_id,description&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "getcust",
+      "name": "Supabase: Kunde",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1760,
+        -100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_customers?id=eq.{{ $json.customer_id || '00000000-0000-0000-0000-000000000000' }}&select=first_name,last_name,name,email,phone,company_name,company&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "build",
+      "name": "Nachricht bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const ANFRAGEN_LIST = '64ca588f8bd547afc087a6ea';\nconst base = $('Nur neue Fälle').item.json;\nconst card = $('Trello: Karte laden').item.json;\n\n// Karte muss noch in der Anfragen-Liste sein\nif (!card || card.idList !== ANFRAGEN_LIST) return [];\n\nconst reqRows = $('Supabase: Request').all().map(i => i.json).filter(r => r && (r.request_id || r.customer_id || r.description));\nconst req = reqRows[0] || {};\nconst custRows = $input.all().map(i => i.json).filter(r => r && (r.email || r.first_name || r.name));\nconst cust = custRows[0] || {};\n\nfunction esc(s) {\n  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\n// Name bestimmen\nlet name = [cust.first_name, cust.last_name].filter(Boolean).join(' ') || cust.name || '';\nif (!name) name = (card.name || '').split('|')[0].trim();\nconst company = cust.company_name || cust.company || '';\nconst email = cust.email || '–';\nconst phone = cust.phone || '–';\n\n// Original-Kundentext: IMMER KOMPLETT, nie kürzen\nlet original = (req.description || '').trim();\nconst desc = card.desc || '';\nif (!original) {\n  const markers = [/📧 ORIGINAL NACHRICHT[^:]*:/i, /Original Nachricht[^:]*:/i, /\\bNachricht:\\s*/];\n  for (const m of markers) {\n    const match = desc.match(m);\n    if (match) {\n      let rest = desc.slice(match.index + match[0].length);\n      const cut = rest.indexOf('---');\n      if (cut > 0) rest = rest.slice(0, cut);\n      original = rest.trim();\n      if (original) break;\n    }\n  }\n}\nif (!original) original = desc.trim() || '(kein Text gefunden)';\n\nconst headerTop = '🆕 <b>Neue Anfrage</b> von: <b>' + esc(name) + '</b>' + (company ? ' (' + esc(company) + ')' : '') + '\\n📧 ' + esc(email) + '\\n📞 ' + esc(phone);\nconst linkLine = '🔗 ' + (card.shortUrl || '');\n\nconst fullMsg = headerTop + '\\n\\n💬 <b>Kundennachricht:</b>\\n' + esc(original) + '\\n\\n' + linkLine;\n\nlet message_text;\nconst text_chunks = [];\nif (fullMsg.length <= 3800) {\n  message_text = fullMsg;\n} else {\n  // Kompletter Text in eigenen Nachrichten (nie kürzen), Buttons-Nachricht verweist darauf\n  for (let i = 0; i < original.length; i += 3500) {\n    text_chunks.push(original.slice(i, i + 3500));\n  }\n  message_text = headerTop + '\\n\\n💬 <b>Kundennachricht:</b> komplett in den Nachrichten darüber ⬆️\\n\\n' + linkLine;\n}\n\nconst kb = { inline_keyboard: [\n  [\n    { text: '✅ Ja', callback_data: 'ok:' + base.card_id },\n    { text: '❌ Nein', callback_data: 'no:' + base.card_id }\n  ],\n  [ { text: '✏️ Änderung', callback_data: 'edit:' + base.card_id } ]\n] };\n\n// ALLE Attachments: Bilder als Foto, Rest als Dokument (EPS, PDF, ZIP, egal was)\nconst atts = Array.isArray(card.attachments) ? card.attachments : [];\nconst attachments = [];\nconst att_ids = [];\nfor (const a of atts) {\n  if (!a.id) continue;\n  const fn = a.fileName || a.name || (a.id + '.bin');\n  const isImage = (a.mimeType && a.mimeType.startsWith('image/')) || /\\.(jpe?g|png|webp|gif|bmp)($|\\?)/i.test(a.url || fn);\n  attachments.push({\n    download_url: 'https://api.trello.com/1/cards/' + base.card_id + '/attachments/' + a.id + '/download/' + encodeURIComponent(fn),\n    filename: fn,\n    is_image: isImage,\n    caption: '📎 ' + fn + ' — gehört zur Anfrage von ' + name,\n    chat_id: base.chat_id\n  });\n  att_ids.push(a.id);\n}\n\nreturn [{ json: {\n  chat_id: base.chat_id,\n  card_id: base.card_id,\n  card_name: card.name || base.card_name,\n  card_url: card.shortUrl || '',\n  request_id: req.request_id || null,\n  message_text,\n  text_chunks,\n  reply_markup: kb,\n  attachments,\n  att_ids\n} }];"
+      }
+    },
+    {
+      "id": "splitimg",
+      "name": "Anhänge aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "const attachments = $input.first().json.attachments || [];\nreturn attachments.map(a => ({ json: a }));"
+      }
+    },
+    {
+      "id": "dlimg",
+      "name": "Trello: Anhang laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2420,
+        -300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.download_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AlBnHgoncCtlzKGY",
+          "name": "Trello attachment download OAuth header active"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "sendphoto",
+      "name": "Telegram: Anhang senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2640,
+        -300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Anhänge aufteilen').item.json.is_image ? 'https://api.telegram.org/bot[REDACTED]/sendPhoto' : 'https://api.telegram.org/bot[REDACTED]/sendDocument' }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('Anhänge aufteilen').item.json.chat_id }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Anhänge aufteilen').item.json.caption }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "={{ $('Anhänge aufteilen').item.json.is_image ? 'photo' : 'document' }}",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "splittext",
+      "name": "Kundentext aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst chunks = j.text_chunks || [];\nreturn chunks.map((c, i) => ({ json: { chat_id: j.chat_id, text: (i === 0 ? '💬 Kundennachricht (komplett):\\n\\n' : '… ') + c } }));"
+      }
+    },
+    {
+      "id": "sendtext",
+      "name": "Telegram: Kundentext senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2420,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot[REDACTED]/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.text, disable_web_page_preview: true }) }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "sendmsg",
+      "name": "Telegram: Nachricht + Buttons",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2200,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot[REDACTED]/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Nachricht bauen').item.json.chat_id, text: $('Nachricht bauen').item.json.message_text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: $('Nachricht bauen').item.json.reply_markup }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "saveid",
+      "name": "Supabase: Message-ID speichern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2420,
+        100
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/quote_approvals?card_id=eq.{{ $('Nachricht bauen').item.json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message_id: $json.result && $json.result.message_id, card_url: $('Nachricht bauen').item.json.card_url, card_name: $('Nachricht bauen').item.json.card_name, request_id: $('Nachricht bauen').item.json.request_id, sent_attachments: $('Nachricht bauen').item.json.att_ids }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "attload",
+      "name": "Supabase: Approval laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        660,
+        260
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/quote_approvals?card_id=eq.{{ $json.card_id }}&select=card_id,card_name,message_id,sent_attachments&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "attcheck",
+      "name": "Anhang prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        260
+      ],
+      "parameters": {
+        "jsCode": "const evt = $('Filter: Neue Anfrage').item.json;\nconst rows = $input.all().map(i => i.json).filter(r => r && r.card_id);\nif (rows.length === 0) return []; // Karte (noch) nicht gemeldet -> ignorieren\nconst row = rows[0];\nif (!row.message_id) return []; // Hauptnachricht noch nicht raus -> Haupt-Flow schickt den Anhang mit\nconst sent = Array.isArray(row.sent_attachments) ? row.sent_attachments : [];\nif (sent.includes(evt.att_id)) return []; // schon geschickt\n\nconst fn = evt.att_name || (evt.att_id + '.bin');\nconst isImage = /\\.(jpe?g|png|webp|gif|bmp)($|\\?)/i.test(fn);\nreturn [{ json: {\n  card_id: evt.card_id,\n  chat_id: evt.chat_id,\n  att_id: evt.att_id,\n  filename: fn,\n  is_image: isImage,\n  download_url: 'https://api.trello.com/1/cards/' + evt.card_id + '/attachments/' + evt.att_id + '/download/' + encodeURIComponent(fn),\n  caption: '📎 Nachgereichter Anhang: ' + fn + ' — gehört zur Anfrage „' + (row.card_name || evt.card_name) + '“',\n  sent_attachments: sent\n} }];"
+      }
+    },
+    {
+      "id": "attdl",
+      "name": "Trello: Anhang laden (nachträglich)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1100,
+        260
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.download_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AlBnHgoncCtlzKGY",
+          "name": "Trello attachment download OAuth header active"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "attsend",
+      "name": "Telegram: Anhang senden (nachträglich)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1320,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Anhang prüfen').item.json.is_image ? 'https://api.telegram.org/bot[REDACTED]/sendPhoto' : 'https://api.telegram.org/bot[REDACTED]/sendDocument' }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('Anhang prüfen').item.json.chat_id }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Anhang prüfen').item.json.caption }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "={{ $('Anhang prüfen').item.json.is_image ? 'photo' : 'document' }}",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "attmark",
+      "name": "Supabase: Anhang vermerkt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1540,
+        260
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/quote_approvals?card_id=eq.{{ $('Anhang prüfen').item.json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ sent_attachments: ($('Anhang prüfen').item.json.sent_attachments || []).concat([$('Anhang prüfen').item.json.att_id]) }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Trello Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter: Neue Anfrage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Neue Anfrage": {
+      "main": [
+        [
+          {
+            "node": "Neu oder Anhang?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neu oder Anhang?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Claim (Dedupe)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: Approval laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Claim (Dedupe)": {
+      "main": [
+        [
+          {
+            "node": "Nur neue Fälle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur neue Fälle": {
+      "main": [
+        [
+          {
+            "node": "3 Minuten warten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3 Minuten warten": {
+      "main": [
+        [
+          {
+            "node": "Trello: Karte laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Karte laden": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Request": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Kunde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Kunde": {
+      "main": [
+        [
+          {
+            "node": "Nachricht bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nachricht bauen": {
+      "main": [
+        [
+          {
+            "node": "Anhänge aufteilen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Kundentext aufteilen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram: Nachricht + Buttons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhänge aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Trello: Anhang laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Anhang laden": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Anhang senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kundentext aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Kundentext senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: Nachricht + Buttons": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Message-ID speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Approval laden": {
+      "main": [
+        [
+          {
+            "node": "Anhang prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhang prüfen": {
+      "main": [
+        [
+          {
+            "node": "Trello: Anhang laden (nachträglich)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Anhang laden (nachträglich)": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Anhang senden (nachträglich)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: Anhang senden (nachträglich)": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Anhang vermerkt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

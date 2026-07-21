@@ -1,0 +1,214 @@
+{
+  "id": "2FhaSbG9w8QeS70e",
+  "name": "AI Email Agent — Open Inbox Backfill v1",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "executionTimeout": 180
+  },
+  "createdAt": "2026-07-20T13:27:11.595Z",
+  "updatedAt": "2026-07-20T13:36:40.207Z",
+  "activeVersionId": "7006dfe1-9fd5-43f1-a664-a02a17335914",
+  "versionCreatedAt": "2026-07-20T13:36:40.210Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "open-inbox-schedule",
+      "name": "Open Inbox Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fetch-open-inbox-snapshot",
+      "name": "Fetch Open Inbox Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/$batch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify((() => {\n  const since = new Date(Date.now() - 30 * 86400000).toISOString();\n  const selectInbox = ['id', 'internetMessageId', 'conversationId', 'subject', 'from', 'receivedDateTime', 'bodyPreview', 'hasAttachments', 'isRead'].join(',');\n  const selectDrafts = ['id', 'conversationId', 'isDraft', 'createdDateTime', 'lastModifiedDateTime'].join(',');\n  const selectSent = ['id', 'conversationId', 'sentDateTime'].join(',');\n  const expandLastVerb = \"singleValueExtendedProperties($filter=id eq 'Integer 0x1081')\";\n  const inboxUrl = '/me/mailFolders/inbox/messages?$select=' + encodeURIComponent(selectInbox)\n    + '&$expand=' + encodeURIComponent(expandLastVerb)\n    + '&$filter=' + encodeURIComponent('receivedDateTime ge ' + since)\n    + '&$orderby=' + encodeURIComponent('receivedDateTime desc')\n    + '&$top=1000';\n  const draftsUrl = '/me/mailFolders/drafts/messages?$select=' + encodeURIComponent(selectDrafts)\n    + '&$filter=' + encodeURIComponent('lastModifiedDateTime ge ' + since)\n    + '&$orderby=' + encodeURIComponent('lastModifiedDateTime desc')\n    + '&$top=1000';\n  const sentUrl = '/me/mailFolders/sentitems/messages?$select=' + encodeURIComponent(selectSent)\n    + '&$filter=' + encodeURIComponent('sentDateTime ge ' + since)\n    + '&$orderby=' + encodeURIComponent('sentDateTime desc')\n    + '&$top=1000';\n  return { requests: [\n    { id: 'inbox', method: 'GET', url: inboxUrl },\n    { id: 'drafts', method: 'GET', url: draftsUrl },\n    { id: 'sent', method: 'GET', url: sentUrl },\n  ] };\n})()) }}",
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "select-open-inbox-candidates",
+      "name": "Select Open Inbox Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst response = $input.first().json || {};\nconst payload = response.body ?? response;\nconst responses = Array.isArray(payload.responses) ? payload.responses : [];\n\nfunction batchBody(id) {\n  const entry = responses.find((item) => String(item?.id || '') === id) || {};\n  const status = Number(entry.status || 0);\n  if (status !== 200 || !Array.isArray(entry.body?.value)) {\n    throw new Error('Open-inbox snapshot failed for ' + id + ': HTTP ' + status);\n  }\n  return entry.body;\n}\nfunction emailOf(message) {\n  return String(message?.from?.emailAddress?.address || '').trim().toLowerCase();\n}\nfunction latestVerb(message) {\n  const row = (Array.isArray(message?.singleValueExtendedProperties)\n    ? message.singleValueExtendedProperties\n    : []).find((entry) => String(entry?.id || '').toLowerCase() === 'integer 0x1081');\n  return Number(row?.value || 0);\n}\nfunction isTrustedRelay(message) {\n  if (emailOf(message) !== 'support@neontrip.de') return false;\n  const corpus = String(message.subject || '') + '\\n' + String(message.bodyPreview || '');\n  return /^whatsapp\\s+von\\s+/i.test(String(message.subject || ''))\n    || /^frage\\s+zum\\s+angebot\\b/i.test(String(message.subject || ''))\n    || /^neue\\s+anfrage\\s+neontrip\\b/i.test(String(message.subject || ''))\n    || /neue\\s+whatsapp-nachricht|tracking-id\\s*:\\s*wa-/i.test(corpus);\n}\nfunction isAutomated(message) {\n  const from = emailOf(message);\n  const subject = String(message.subject || '');\n  return /(^|[._-])(no-?reply|noreply|mailer-daemon|postmaster)([._@+-]|$)/i.test(from)\n    || /^(automatische antwort|automatic reply|out of office|abwesenheitsnotiz|unzustellbar|undeliverable|delivery status notification)/i.test(subject);\n}\nfunction isActionable(message) {\n  const text = (String(message.subject || '') + '\\n' + String(message.bodyPreview || '')).trim();\n  const compact = text.replace(/\\s+/g, ' ').trim();\n  if (!compact) return false;\n  if (/^(?:re:\\s*)?(?:danke|vielen dank|besten dank|perfekt|super|okay|ok|alles klar|verstanden|passt|thank you|thanks)[.!\\s]*$/i.test(compact)) return false;\n  return /\\?/u.test(text)\n    || /\\b(?:bitte|kannst du|können sie|könnt ihr|möchte|möchten|brauche|benötige|fehl|problem|falsch|ändern|storn|reklam|beschwer|wann|wie|wo|was|warum|wieso|bestell|auftrag|angebot|rechnung|zahlung|liefer|versand|tracking|preis|teuer|please|could you|need|missing|problem|wrong|change|cancel|complaint|when|how|where|what|why|order|quote|invoice|payment|shipping|delivery)\\w*/i.test(text);\n}\n\nconst inbox = batchBody('inbox').value;\nconst drafts = batchBody('drafts').value;\nconst sent = batchBody('sent').value;\nconst cutoff = Date.now() - 30 * 86400000;\nconst latestInboundByConversation = new Map();\n\nfor (const message of inbox) {\n  const receivedMs = Date.parse(message.receivedDateTime || 0);\n  const conversationId = String(message.conversationId || '');\n  const from = emailOf(message);\n  if (!message.id || !conversationId || !Number.isFinite(receivedMs) || receivedMs < cutoff) continue;\n  if ((!from || from.endsWith('@neontrip.de')) && !isTrustedRelay(message)) continue;\n  if (isAutomated(message) || !isActionable(message)) continue;\n  if ([102, 103, 108, 261].includes(latestVerb(message))) continue;\n  const existing = latestInboundByConversation.get(conversationId);\n  if (!existing || Date.parse(existing.receivedDateTime || 0) < receivedMs) {\n    latestInboundByConversation.set(conversationId, message);\n  }\n}\n\nconst candidates = [...latestInboundByConversation.values()]\n  .filter((message) => {\n    const receivedMs = Date.parse(message.receivedDateTime || 0);\n    const conversationId = String(message.conversationId || '');\n    const laterSent = sent.some((entry) =>\n      String(entry?.conversationId || '') === conversationId\n      && Date.parse(entry.sentDateTime || 0) >= receivedMs - 30000\n    );\n    const laterDraft = drafts.some((entry) =>\n      entry?.isDraft !== false\n      && String(entry?.conversationId || '') === conversationId\n      && Date.parse(entry.lastModifiedDateTime || entry.createdDateTime || 0) >= receivedMs - 30000\n    );\n    return !laterSent && !laterDraft;\n  })\n  .sort((left, right) => Date.parse(left.receivedDateTime || 0) - Date.parse(right.receivedDateTime || 0))\n  .slice(0, 10);\n\nreturn candidates.map((message) => ({ json: {\n  messageId: String(message.id || ''),\n  internetMessageId: String(message.internetMessageId || ''),\n  conversationId: String(message.conversationId || ''),\n  receivedAt: String(message.receivedDateTime || ''),\n  isRead: message.isRead === true,\n  backfillPolicyVersion: 'email-open-inbox-backfill-v1',\n  automaticSendAllowed: false,\n  humanApprovalRequired: true,\n} }));\n"
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "loop-open-inbox-candidates",
+      "name": "Loop Open Inbox Candidates",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "enqueue-open-inbox-candidate",
+      "name": "Enqueue Open Inbox Candidate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/enqueue_email_agent_open_inbox_candidate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_message_id: $json.messageId, p_internet_message_id: $json.internetMessageId || null, p_conversation_id: $json.conversationId, p_worker_execution_id: $execution.id }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "stopWorkflow"
+    }
+  ],
+  "connections": {
+    "Open Inbox Schedule": {
+      "main": [
+        [
+          {
+            "node": "Fetch Open Inbox Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Open Inbox Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Select Open Inbox Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Open Inbox Candidates": {
+      "main": [
+        [
+          {
+            "node": "Loop Open Inbox Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Open Inbox Candidates": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Enqueue Open Inbox Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enqueue Open Inbox Candidate": {
+      "main": [
+        [
+          {
+            "node": "Loop Open Inbox Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -136,6 +136,24 @@ export function patchResolveFirstMainWorkflow(input) {
   const workflow = structuredClone(input);
   workflow.name = "AI Email Agent v7 — Resolve First Quality v5 — Draft Only";
 
+  const normalize = findNode(workflow, "Normalize Email");
+  normalize.parameters.jsCode = replaceOnce(
+    normalize.parameters.jsCode,
+    String.raw`  const isAutomated = automatedSender || automatedSubject || (autoSubmitted && autoSubmitted !== 'no');`,
+    String.raw`  const isAutomated = automatedSender || automatedSubject || (autoSubmitted && autoSubmitted !== 'no');
+  const isRiesenobjekteFormNotification = sourceFromEmail === 'submissions@formsubmit.co'
+    && /^Neue\s+Google-Ads-Anfrage\s*[–-]\s*RIESENOBJEKTE$/i.test(subject)
+    && /Google Ads Landingpage/i.test(fieldText);`,
+    "Normalize Email deterministic RIESENOBJEKTE ownership",
+  );
+  normalize.parameters.jsCode = replaceOnce(
+    normalize.parameters.jsCode,
+    String.raw`  if (isAutomated) skipReasons.push('automated_message');`,
+    String.raw`  if (isAutomated) skipReasons.push('automated_message');
+  if (isRiesenobjekteFormNotification) skipReasons.push('riesenobjekte_form_notification');`,
+    "Normalize Email RIESENOBJEKTE duplicate suppression",
+  );
+
   const prompt = findNode(workflow, "Build Draft Prompt");
   prompt.parameters.jsCode = replaceOnce(
     prompt.parameters.jsCode,
@@ -516,6 +534,55 @@ const signature = "<br><br>`,
   };
 
   const buildFailure = findNode(workflow, "Build Failure Record");
+  buildFailure.parameters.jsCode = replaceOnce(
+    buildFailure.parameters.jsCode,
+    String.raw`const incoming = $input.first().json || {};
+let message = String(incoming.error?.message || incoming.message || incoming.description || 'Unknown workflow error');
+message = message.replace(/[\u0000-\u001F]+/g, ' ').slice(0, 1500);`,
+    String.raw`const incoming = $input.first().json || {};
+function sanitizeWorkflowError(value) {
+  let text = typeof value === 'string' ? value : '';
+  text = text
+    .replace(/https?:\/\/[^\s"']+/gi, (url) => url.replace(/\?.*$/, '?[redacted]'))
+    .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]')
+    .replace(/\b(authorization|apikey|api[_-]?key|token|key)\s*[:=]\s*[^\s,;&]+/gi, '$1=[redacted]')
+    .replace(/<[^<>@\s]+@[^<>@\s]+>/gi, '[redacted-message-id]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .replace(/[\u0000-\u001F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.slice(0, 1500);
+}
+function extractWorkflowError(input) {
+  const nested = input?.error && typeof input.error === 'object' ? input.error : {};
+  const candidates = [
+    nested.description,
+    ...(Array.isArray(nested.messages) ? nested.messages : []),
+    nested.cause?.message,
+    nested.context?.response?.body?.message,
+    input?.body?.message,
+    input?.description,
+    ...(Array.isArray(input?.messages) ? input.messages : []),
+    nested.message,
+    input?.message,
+  ];
+  for (const candidate of candidates) {
+    const clean = sanitizeWorkflowError(candidate);
+    if (clean && !/^unknown workflow error$/i.test(clean)) return clean;
+  }
+  const fallbackStatus = Number(
+    nested.httpCode
+    || nested.statusCode
+    || input?.httpCode
+    || input?.statusCode
+    || nested.context?.response?.statusCode
+    || 0
+  );
+  return fallbackStatus > 0 ? 'HTTP ' + fallbackStatus + ' workflow failure' : 'Unclassified workflow failure';
+}
+const message = extractWorkflowError(incoming);`,
+    "Build Failure sanitized nested error extraction",
+  );
   buildFailure.parameters.jsCode = replaceOnce(
     buildFailure.parameters.jsCode,
     String.raw`const retryable = statusCode === 0

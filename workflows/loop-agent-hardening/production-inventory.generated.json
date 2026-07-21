@@ -1,0 +1,5325 @@
+{
+  "generatedAt": "2026-07-21T19:00:00+02:00",
+  "source": "n8n MCP read-only production inventory",
+  "counts": {
+    "totalActive": 152,
+    "over30": 19,
+    "zeroTriggers": 1,
+    "multipleTriggers": 26,
+    "withAi": 31,
+    "withAiAndCustomerComm": 18,
+    "withTrello": 37
+  },
+  "caveats": [
+    "Classification is structural and heuristic; full node configuration and business semantics require capability review.",
+    "No credential values, request bodies, execution payloads, customer data, or secrets are included.",
+    "ErrorTrigger is counted as a trigger because the production rule requires one trigger per workflow."
+  ],
+  "workflows": [
+    {
+      "id": "TLLSwYTcIRgtinVg",
+      "name": "NEONTRIP Event Receiver v3.3",
+      "updatedAt": "2026-05-20T09:02:22.556Z",
+      "nodeCount": 58,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "PandaDoc Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "On Error",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "AI Agent",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "disabled": false
+        },
+        {
+          "name": "Google Search",
+          "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+          "disabled": false
+        },
+        {
+          "name": "JSON Output",
+          "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+          "disabled": false
+        },
+        {
+          "name": "OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Fetch Email Context",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Send Viewed Email (Fabienne)",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Error Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Missing Request ID",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 10,
+      "trelloNodes": [],
+      "recoveryNodeCount": 3,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers",
+        "ai_and_customer_communication",
+        "true_agent_node"
+      ]
+    },
+    {
+      "id": "9FoJMH6OUdsi36FB",
+      "name": "KI-Video Generator v1.0 - Neue Angebote schicken + KI-Video",
+      "updatedAt": "2026-07-21T09:47:21.023Z",
+      "nodeCount": 124,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Analyze Video Content QC",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Notify Missing Preview PandaDoc Link",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Grok Rate Limit",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 17,
+      "trelloNodes": [
+        {
+          "name": "Upload Video to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Preview Success Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: WhatsApp Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: WhatsApp Failure Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: WhatsApp Skip Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Preview Blocked Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move Blocked Preview to Quote Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Missing Request Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move Missing Request to Quote Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Missing Safe Mockup Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move Missing Safe Mockup to Quote Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Check Reusable Trello Video",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "Reusable Trello Video?",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        },
+        {
+          "name": "Download Reusable Trello Video",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 12,
+      "flags": [
+        "node_limit_exceeded",
+        "ai_and_customer_communication",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "CS4jhqo9tdd0cPe4",
+      "name": "NEONTRIP Follow-up Queue Processor v3.6 (AI Reply Detection)",
+      "updatedAt": "2026-07-14T07:55:36.469Z",
+      "nodeCount": 101,
+      "triggerCount": 3,
+      "triggers": [
+        {
+          "name": "Alle 30 Min (Mo-So 8-21)",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "On Error",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Claude",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        },
+        {
+          "name": "Claude Retry",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        },
+        {
+          "name": "Classify Reply",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        },
+        {
+          "name": "Classify EC",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Fetch Customer Replies",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Send Error Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Send Failure Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Alert: PandaDoc Link fehlt",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Fetch EC Inbox",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Daniel EC",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 21,
+      "trelloNodes": [],
+      "recoveryNodeCount": 15,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers",
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "X5etVW0msgSzHMMG",
+      "name": "NEONTRIP Quote Ready SIMPLE v1.1",
+      "updatedAt": "2026-07-08T07:12:31.931Z",
+      "nodeCount": 70,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "On Error",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 6,
+      "trelloNodes": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Custom Fields holen",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Success Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Success Label",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: WhatsApp Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Hard-Block Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 12,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "fcPiGDWq41htB5mV",
+      "name": "RH | Unstrukturierte Anfragen - OUTLOOK",
+      "updatedAt": "2026-05-29T19:14:43.436Z",
+      "nodeCount": 39,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Outlook Trigger1",
+          "type": "n8n-nodes-base.microsoftOutlookTrigger",
+          "disabled": true
+        },
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Translate english",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Translate chinese",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Message a model",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Translate German",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Search Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Create Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Outlook Trigger1",
+          "type": "n8n-nodes-base.microsoftOutlookTrigger",
+          "disabled": true
+        },
+        {
+          "name": "Get Emails from Folder",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Move to Verarbeitete Anfragen",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 14,
+      "trelloNodes": [
+        {
+          "name": "Create Trello Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Add Attachment to Trello1 (FIXED)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Set Trello Custom Field",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Wait for Trello Card",
+          "type": "n8n-nodes-base.merge",
+          "disabled": false
+        },
+        {
+          "name": "Update Request with Trello ID",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers",
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "uRYt9I30bzzVTB2D",
+      "name": "Inflatables EU-Anfrage | PRODUKTION | 20 Lieferanten",
+      "updatedAt": "2026-07-17T15:53:42.041Z",
+      "nodeCount": 36,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "TrelloMoveTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "OpenAIExtractSupplierData",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "SendRiesenobjekteSMTP",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 10,
+      "trelloNodes": [
+        {
+          "name": "DownloadTrelloAttachment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "TrelloMoveTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "TrelloMoveFilter",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 5,
+      "flags": [
+        "node_limit_exceeded",
+        "ai_and_customer_communication",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "FgkQvBFkg9qSqfNC",
+      "name": "Customs CI Cleanup (LÖSCHEN)",
+      "updatedAt": "2026-05-26T13:51:03.251Z",
+      "nodeCount": 28,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "TrelloTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 10,
+      "trelloNodes": [
+        {
+          "name": "TrelloTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Trello Comment: Cleanup Done",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello Comment: Already Cleaned",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "RECHNUNG: Trello Attach PDF",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "RECHNUNG: Trello Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 7,
+      "flags": [
+        "active_name_state_conflict",
+        "polling_or_recovery_workflow",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "kpU6b9m34KWnKsSq",
+      "name": "Buffer Draft Generator v1.0",
+      "updatedAt": "2026-04-30T11:10:50.484Z",
+      "nodeCount": 17,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Webhook HEAD Responder",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Get Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Get Attachments",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Add Processing Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Post Comment",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Remove Processing Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Remove Regenerate Label (if set)",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers",
+        "active_name_state_conflict",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "Rmv4Ht895SiIgUOC",
+      "name": "Gemini Mockup Generator v1.1",
+      "updatedAt": "2026-07-21T16:53:37.862Z",
+      "nodeCount": 98,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Gemini Image Edit (Variant A)",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        },
+        {
+          "name": "Check Gemini Result",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        },
+        {
+          "name": "Build Gemini Prompt",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "Gemini: Analyze Description",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Skip - Gemini Not Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Gemini Image Edit (Variant B)",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        },
+        {
+          "name": "Prep Gemini Fallback",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "Comment Gemini Fallback",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: Search Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 26,
+      "trelloNodes": [
+        {
+          "name": "Write Usage to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Wait for Trello Attachment Consistency",
+          "type": "n8n-nodes-base.wait",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 9,
+      "flags": [
+        "node_limit_exceeded",
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "T4mdDxLquLMJ6FMl",
+      "name": "Gemini Mockup Generator v1.2 - KI Mockup erstellen",
+      "updatedAt": "2026-07-21T16:53:36.186Z",
+      "nodeCount": 85,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Gemini Image Edit (Variant A)",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        },
+        {
+          "name": "Check Gemini Result",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        },
+        {
+          "name": "Build Gemini Prompt",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "Gemini: Analyze Description",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Skip - Gemini Not Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Gemini Image Edit (Variant B)",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        },
+        {
+          "name": "Prep Gemini Fallback",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "Comment Gemini Fallback",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: Search Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 22,
+      "trelloNodes": [
+        {
+          "name": "Write Usage to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 7,
+      "flags": [
+        "node_limit_exceeded",
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "9MHAajzPsdk2Wt2X",
+      "name": "Customs CI Generator",
+      "updatedAt": "2026-06-10T16:01:20.839Z",
+      "nodeCount": 84,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "TrelloTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 27,
+      "trelloNodes": [
+        {
+          "name": "TrelloTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Trello Comment: Validation Failed",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello Comment: Re-Trigger Detected",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Update declared_value_auto",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Attach PDF",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Add Label Processing",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello Comment: Cancelled (Moved Out)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Remove Label Processing",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Add Label Created",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Remove Label (Cancel)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello Comment: CI Created",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Add Label DO NOT PRINT",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Remove Label DO NOT PRINT",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Remove Label Processing (Validation Failed)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Remove Label Processing (Re-Trigger)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Add Label Already Exists",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move to Details Missing (Validation Failed)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "IGNORE: Trello: Update declared_value_auto",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "IGNORE: Trello: Attach PDF",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "IGNORE: Trello: Remove Label Processing",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "IGNORE: Trello: Add Label übersprungen",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "IGNORE: Trello Comment: IGNORE Created",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Remove Label CI DELETED FROM DB",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 4,
+      "flags": [
+        "node_limit_exceeded",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "HIFQvcfBKPEK9oSN",
+      "name": "KI-Video Generator v1.0",
+      "updatedAt": "2026-06-02T18:27:28.033Z",
+      "nodeCount": 74,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Notify Missing Preview PandaDoc Link",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Grok Rate Limit",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 11,
+      "trelloNodes": [
+        {
+          "name": "Upload Video to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Preview Success Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: WhatsApp Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: WhatsApp Failure Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: WhatsApp Skip Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Preview Blocked Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move Blocked Preview to Quote Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Missing Request Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move Missing Request to Quote Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Missing Safe Mockup Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move Missing Safe Mockup to Quote Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 2,
+      "flags": [
+        "node_limit_exceeded",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "ThfkcnArNJ75XnX6",
+      "name": "Customs Difference Invoice",
+      "updatedAt": "2026-06-18T21:49:15.551Z",
+      "nodeCount": 67,
+      "triggerCount": 3,
+      "triggers": [
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Run Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": true
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 9,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "Gb01bGXui65eOJCP",
+      "name": "Customs Monthly Supplier Invoice",
+      "updatedAt": "2026-05-19T09:11:33.483Z",
+      "nodeCount": 67,
+      "triggerCount": 3,
+      "triggers": [
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Run Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 9,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "ESDlD5V0yxFKxF8x",
+      "name": "Customs Supplier Invoice From CI Log",
+      "updatedAt": "2026-06-17T12:23:58.129Z",
+      "nodeCount": 60,
+      "triggerCount": 3,
+      "triggers": [
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Run Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": true
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 8,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "GTcIwaTHdaxdSM3f",
+      "name": "Placetel Notizen V4 - KOMPLETT FERTIG",
+      "updatedAt": "2026-06-01T09:56:04.606Z",
+      "nodeCount": 40,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Webhook (Notify API)",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Webhook (Recording)",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Audio transkribieren",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Zusammenfassung erstellen",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Audio transkribieren (API)",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Zusammenfassung erstellen (API)",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "node_limit_exceeded",
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "aE1v0KxbgXbWjUm8",
+      "name": "AI Email Agent v7 — Resolve First Quality v5 — Draft Only",
+      "updatedAt": "2026-07-21T15:25:20.588Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Outlook Trigger",
+          "type": "n8n-nodes-base.microsoftOutlookTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Analyze Attachments Safely",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        },
+        {
+          "name": "Draft Reply JSON",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook Trigger",
+          "type": "n8n-nodes-base.microsoftOutlookTrigger",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 5,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "ai_and_customer_communication",
+        "active_name_state_conflict"
+      ]
+    },
+    {
+      "id": "geeNR1aVW9tZjPuN",
+      "name": "Telegram GitHub Controller",
+      "updatedAt": "2026-01-16T20:42:26.076Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Telegram Trigger",
+          "type": "n8n-nodes-base.telegramTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "AI Intent Parser",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "disabled": false
+        },
+        {
+          "name": "Anthropic Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+          "disabled": false
+        },
+        {
+          "name": "Enhance Prompt",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Telegram Trigger",
+          "type": "n8n-nodes-base.telegramTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Send Telegram Response",
+          "type": "n8n-nodes-base.telegram",
+          "disabled": false
+        },
+        {
+          "name": "Send Error Response",
+          "type": "n8n-nodes-base.telegram",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 6,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "ai_and_customer_communication",
+        "true_agent_node"
+      ]
+    },
+    {
+      "id": "FjovLIqnIQ4Zdp4K",
+      "name": "Buffer Publisher v0.1",
+      "updatedAt": "2026-05-26T12:31:02.035Z",
+      "nodeCount": 27,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Webhook HEAD Responder",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 7,
+      "trelloNodes": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Get Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Get Attachments",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Add Processing Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Post Success Comment",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Post Error Comment",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Add Live Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Remove Retry Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Move to Social Posted",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Add Retry Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Remove Publish Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Remove Processing Label",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 5,
+      "flags": [
+        "multiple_detected_triggers",
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "cqbB8GIwhP2guGIb",
+      "name": "NEONTRIP Win-Back Agent v1.0",
+      "updatedAt": "2026-06-12T12:01:24.638Z",
+      "nodeCount": 22,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Wöchentlich (Freitag 10:07 Uhr)",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "KI: Schreibe Win-Back Email",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "disabled": false
+        },
+        {
+          "name": "Anthropic Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Sende Email (Outlook)",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "ai_and_customer_communication",
+        "true_agent_node"
+      ]
+    },
+    {
+      "id": "dljSoxks55YNqFbf",
+      "name": "Telegram AI Agent - Fabienne v3 (erweitert)",
+      "updatedAt": "2026-03-19T09:27:45.944Z",
+      "nodeCount": 20,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Listen for incoming events",
+          "type": "n8n-nodes-base.telegramTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "AI Agent",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "disabled": false
+        },
+        {
+          "name": "Transcribe a recording1",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "OpenAI Chat Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "disabled": false
+        },
+        {
+          "name": "Simple Memory",
+          "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send a message in Microsoft Outlook",
+          "type": "n8n-nodes-base.microsoftOutlookTool",
+          "disabled": false
+        },
+        {
+          "name": "Get Voice File",
+          "type": "n8n-nodes-base.telegram",
+          "disabled": false
+        },
+        {
+          "name": "Telegram",
+          "type": "n8n-nodes-base.telegram",
+          "disabled": false
+        },
+        {
+          "name": "Listen for incoming events",
+          "type": "n8n-nodes-base.telegramTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Get many messages in Microsoft Outlook",
+          "type": "n8n-nodes-base.microsoftOutlookTool",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication",
+        "true_agent_node"
+      ]
+    },
+    {
+      "id": "btJd34v7PJFVej6G",
+      "name": "NEONTRIP Design-Erinnerung v1.2",
+      "updatedAt": "2026-05-28T09:47:59.159Z",
+      "nodeCount": 15,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "KI: Design vergessen?",
+          "type": "@n8n/n8n-nodes-langchain.agent",
+          "disabled": false
+        },
+        {
+          "name": "OpenAI GPT-4o-mini",
+          "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Get Emails from Folder",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Erinnerung senden",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Email archivieren",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication",
+        "true_agent_node"
+      ]
+    },
+    {
+      "id": "Jj8U6Zip8sRB4vmK",
+      "name": "NEONTRIP Follow-up Stuck Recovery v1.2",
+      "updatedAt": "2026-04-30T08:19:49.076Z",
+      "nodeCount": 11,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Every 15 Min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 3,
+      "flags": [
+        "multiple_detected_triggers",
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "7UJW9mgP42m0ulbj",
+      "name": "PandaDoc sent → Update AC Deal + Stage (Rate Limit Protected)",
+      "updatedAt": "2026-05-13T08:50:33.399Z",
+      "nodeCount": 62,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "PandaDoc Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Notify Missing Request ID (Status)",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Quote Sync Failed (Sent)",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Reminder Schedule Failed (Sent)",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Request Status Sync Failed (Sent)",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 15,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": [
+        "node_limit_exceeded"
+      ]
+    },
+    {
+      "id": "FQ7lf36yje4B1eE3",
+      "name": "LP Anfrage Webhook v1.0",
+      "updatedAt": "2026-07-17T07:56:11.276Z",
+      "nodeCount": 36,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "LP Webhook Trigger",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Search Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Create Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify info@neontrip.de",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify mit Design",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 12,
+      "trelloNodes": [
+        {
+          "name": "Create Trello Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Upload File to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Set Trello Custom Field",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Update Trello Card Description",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "node_limit_exceeded"
+      ]
+    },
+    {
+      "id": "X497QfsvfE2Od0Vj",
+      "name": "Customs Rebuild Month Overview",
+      "updatedAt": "2026-05-19T09:11:54.974Z",
+      "nodeCount": 33,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Run Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 4,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "node_limit_exceeded"
+      ]
+    },
+    {
+      "id": "nUrqyTSnGE8j9QT8",
+      "name": "NEONTRIP AC Deal AutoReply v1",
+      "updatedAt": "2026-07-17T09:28:13.170Z",
+      "nodeCount": 32,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "AC Deal Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Send RIESENOBJEKTE Email",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 5,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "node_limit_exceeded"
+      ]
+    },
+    {
+      "id": "2fRdyqdyVDMWwH4O",
+      "name": "NEONTRIP Qonto Webhook v2 Aktiv",
+      "updatedAt": "2026-07-20T17:15:26.745Z",
+      "nodeCount": 32,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Qonto Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Error Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Email: easybill Problem",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 4,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": [
+        "node_limit_exceeded"
+      ]
+    },
+    {
+      "id": "oyF3lAhAOLUgWbzg",
+      "name": "AI Email Agent — Retry Recovery v1",
+      "updatedAt": "2026-07-20T19:14:34.149Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Retry Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Analyze Attachments Safely",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        },
+        {
+          "name": "Draft Reply JSON",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 6,
+      "trelloNodes": [],
+      "recoveryNodeCount": 7,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "Xqt27WSNfJYVGROP",
+      "name": "RH | V3 Anfragen + Mail Anfragen Aktiv",
+      "updatedAt": "2026-05-07T11:41:39.573Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Translate english",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Translate chinese",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Search Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Create Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 11,
+      "trelloNodes": [
+        {
+          "name": "Create Trello Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Upload File to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Set Trello Custom Field",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Update Trello Card Description",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "AcYSau5MGsAxeAqL",
+      "name": "RH | Unstruktuierte Anfragen Aktiv",
+      "updatedAt": "2026-05-20T09:28:32.919Z",
+      "nodeCount": 29,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Zendesk Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Translate english",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Translate chinese",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Message a model",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        },
+        {
+          "name": "Translate German",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Search Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Create Outlook Contact",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 12,
+      "trelloNodes": [
+        {
+          "name": "Create Trello Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Add Attachment to Trello1 (FIXED)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Set Trello Custom Field",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Update Request with Trello ID",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "Hzf3fcJwmcCxExnx",
+      "name": "EU Supplier Request on Trello Move",
+      "updatedAt": "2026-07-21T13:17:42.847Z",
+      "nodeCount": 27,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "TrelloMoveTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "OpenAIExtractSupplierData",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 9,
+      "trelloNodes": [
+        {
+          "name": "DownloadTrelloAttachment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "TrelloMoveTrigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "TrelloMoveFilter",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 6,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "rYmSl4D0nNmEEU0M",
+      "name": "NEONTRIP Inbound Shipping Agent v0.1",
+      "updatedAt": "2026-07-20T17:22:06.119Z",
+      "nodeCount": 27,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Hour",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: Send Inbound Shipping Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 9,
+      "trelloNodes": [
+        {
+          "name": "Trello: Board Lists",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Cards in sign shipped",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Board Custom Fields",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Build Trello Candidates",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "Supabase RPC: Record Trello Candidates",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "8PlBdlnG8gwtYTc7",
+      "name": "Trello Update Auto-Email → Outlook mit PandaDoc Link",
+      "updatedAt": "2026-07-03T11:30:04.143Z",
+      "nodeCount": 27,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Sende Outlook E-Mail",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Missing PandaDoc Link",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 5,
+      "trelloNodes": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Hole Karten-Details",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Supabase: Upsert Trello Alias",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "bvRcF5Xaj3eGY0J4",
+      "name": "NEONTRIP - Quote Ready QC Check v3",
+      "updatedAt": "2026-07-03T08:29:04.102Z",
+      "nodeCount": 23,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Every 5 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Test",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Analyze Vision",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "IdFouG1kp8Uo23W5",
+      "name": "Create Order in Shopify - 2025 (migrated from Make)",
+      "updatedAt": "2026-06-03T15:41:08.125Z",
+      "nodeCount": 22,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "PandaDoc Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Error Trigger",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Express/Eil Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Send Error Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 6,
+      "trelloNodes": [],
+      "recoveryNodeCount": 3,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "7AvW1d4JBNDFuNsv",
+      "name": "NEONTRIP Anfrage → Telegram Approval v1.0",
+      "updatedAt": "2026-07-03T09:01:13.705Z",
+      "nodeCount": 22,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 4,
+      "trelloNodes": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Karte laden",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Anhang laden",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Anhang laden (nachträglich)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "6ZCFSn6XGN4AMwk5",
+      "name": "NEONTRIP Review Request Processor v1.0",
+      "updatedAt": "2026-04-01T09:02:02.087Z",
+      "nodeCount": 21,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Every Day 10 AM",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Test Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Review Request",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "MZhNgpQa8XP55jbg",
+      "name": "Trello: Bestehendes Angebot erneut versenden v1.0",
+      "updatedAt": "2026-07-06T08:43:54.700Z",
+      "nodeCount": 20,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 5,
+      "trelloNodes": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Get Card Details",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Offers: Get Existing Offer by Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Add Angebot gesendet",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Add Video gesendet",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move to Sent List",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Success Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Failure Comment",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Move Failure to Quote Ready",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "RmtnAQZUBD2bHXhp",
+      "name": "NEONTRIP PandaDoc Viewed → Follow-up Email v1.0",
+      "updatedAt": "2026-05-13T10:14:27.734Z",
+      "nodeCount": 19,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "On Error",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Execute Workflow Trigger",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: Email senden",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "OScsDR4hRqkfCqlh",
+      "name": "Anthropic API Cost Monitor v1.0",
+      "updatedAt": "2026-03-20T12:36:46.055Z",
+      "nodeCount": 16,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 4 Stunden",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Anthropic: Kosten abrufen",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: Alert-Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Outlook: Tagesbericht",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "hlEjOgERRNOCLYsI",
+      "name": "PandaDoc Link Watchdog",
+      "updatedAt": "2026-02-26T09:03:05.696Z",
+      "nodeCount": 16,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Custom Fields holen",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Karte Status",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "MiZTcLbgzcU9cszp",
+      "name": "Trello zu Outlook - E-Mail Archivierung FINAL",
+      "updatedAt": "2026-05-28T07:45:57.378Z",
+      "nodeCount": 16,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Suche E-Mails in 01_Neue Anfragen",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Archiviere E-Mail nach Archiv",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Suche LP Benachrichtigung",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Hole Karten-Details",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        },
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "ozqdbVghFvqQXqCW",
+      "name": "Email-Anfrage → Quote Ready (Nacht) v1.0",
+      "updatedAt": "2026-03-19T16:28:53.823Z",
+      "nodeCount": 15,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Schedule 5min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "p7BXBzTkM2OF4eBu",
+      "name": "AC Deals → Supabase Import (Auto-Schedule)",
+      "updatedAt": "2026-02-13T09:42:34.605Z",
+      "nodeCount": 14,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Alle 2 Min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Test",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "BH9zlclRi8G1Yk2A",
+      "name": "Customs CI Regenerate From Sheet",
+      "updatedAt": "2026-06-30T20:45:35.971Z",
+      "nodeCount": 14,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [
+        {
+          "name": "Trello: Attach Regenerated PDF",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello Comment: Regenerated",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Update declared_value_auto From Regenerate",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "1zRpwNShjVJRoLcH",
+      "name": "Customer Match Sync v1.0",
+      "updatedAt": "2026-04-20T12:10:06.719Z",
+      "nodeCount": 13,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "When clicking ‘Execute workflow’",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        },
+        {
+          "name": "24 Stunden",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "0lsUb5gvvGcU1Vpi",
+      "name": "Follow-up Link Recovery Webhook v1.0",
+      "updatedAt": "2026-04-09T11:59:35.692Z",
+      "nodeCount": 13,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "vseFp5GZU975CeOM",
+      "name": "NEONTRIP KI-Modell-Update-Monitor v1.0",
+      "updatedAt": "2026-07-14T19:47:42.765Z",
+      "nodeCount": 13,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 6 Stunden",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "OpenAI News RSS",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "OpenAI API Changelog",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Anthropic Release Notes",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Anthropic News Sitemap",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Gemini API Changelog",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Update E-Mail senden",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "j3GCBHSxfOW3SP1c",
+      "name": "NEONTRIP Post-Delivery Flow v1.0",
+      "updatedAt": "2026-03-19T09:28:48.330Z",
+      "nodeCount": 13,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Daily 10AM",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Generate Post-Delivery Email",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send via Outlook",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Lookup Outlook History",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "enm0dD2EatTXVGLj",
+      "name": "NEONTRIP Apify o Apollo CSV Import",
+      "updatedAt": "2026-02-09T11:01:42.269Z",
+      "nodeCount": 12,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Google Drive Trigger",
+          "type": "n8n-nodes-base.googleDriveTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "cW08nxn9ANfGFEou",
+      "name": "NEONTRIP Repeat Business v1.0",
+      "updatedAt": "2026-03-19T09:28:49.148Z",
+      "nodeCount": 12,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Weekly Monday 9AM",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Generate Reactivation Email",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send via Outlook",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Lookup Outlook History",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "ai_and_customer_communication"
+      ]
+    },
+    {
+      "id": "RzS4MbbtHDvdrOI4",
+      "name": "RH | easybill Sync → Supabase",
+      "updatedAt": "2026-06-26T11:41:25.166Z",
+      "nodeCount": 12,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Sync starten",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "7R8uFPpFrKwk9VQr",
+      "name": "RIESENOBJEKTE Trello → Angebot",
+      "updatedAt": "2026-07-21T12:23:25.613Z",
+      "nodeCount": 11,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Board Event",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 4,
+      "trelloNodes": [
+        {
+          "name": "Trello Board Event",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "SUjbDk41kyR7aJ8T",
+      "name": "MAKE PandaDoc Sheet Fallback from Supabase v1",
+      "updatedAt": "2026-05-08T13:08:25.860Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Get Trello Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "7YRFB56vbc4Iem6A",
+      "name": "NEONTRIP Quote Ready Size Ladder Preparation v1.1",
+      "updatedAt": "2026-07-16T07:37:25.661Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 5 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello: Get Quote Ready Cards",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "uwz7hQahhZpolNQH",
+      "name": "NEONTRIP Cleanup Stuck Items v1.0",
+      "updatedAt": "2026-03-19T13:41:25.301Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 30 Min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "M4waCIoRvl9D3ANQ",
+      "name": "NEONTRIP LinkedIn Scraper v1.0",
+      "updatedAt": "2026-03-12T10:23:30.347Z",
+      "nodeCount": 9,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Mo-Fr 4:00",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": true
+        },
+        {
+          "name": "Manual Test",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "sEP7CFh1qr6EpO0V",
+      "name": "NEONTRIP Payment Reminder Scheduler v1.1 (Polling)",
+      "updatedAt": "2026-02-09T12:56:58.171Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 10 Minuten",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "LiBUAn5qRXtWm4Ig",
+      "name": "Google Ads Monday Check v1.0",
+      "updatedAt": "2026-04-10T09:38:03.858Z",
+      "nodeCount": 8,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Montag 09:00",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Test",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "pEkn7OpvZbFwAhab",
+      "name": "NT · Quote Latency Monitor v1.0",
+      "updatedAt": "2026-05-30T21:18:56.783Z",
+      "nodeCount": 8,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Every 15min (Mo-Fr 08-20)",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Daily 18:00 (Mo-Fr)",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: SLA Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Outlook: Daily Digest",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "T0F00SlJIzoqvTVY",
+      "name": "RH | Mahn-Mail senden (Webhook)",
+      "updatedAt": "2026-07-03T13:06:37.290Z",
+      "nodeCount": 8,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        },
+        {
+          "name": "Webhook Gesendet",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "PsymhpsiEs8Qj6vN",
+      "name": "Voice Agent — Call Status Poller v1.0",
+      "updatedAt": "2026-04-08T12:54:12.227Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 15 Minuten",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "h2Eye2kArl2CBx3k",
+      "name": "NEONTRIP Supplier Payment Reminder Email v0.1 (INACTIVE DRAFT)",
+      "updatedAt": "2026-06-29T13:19:05.575Z",
+      "nodeCount": 7,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Payment Reminder Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send via Outlook",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "active_name_state_conflict"
+      ]
+    },
+    {
+      "id": "e7z5bWMyzpMV2OI5",
+      "name": "Shopify Bezahlt → Trello 💰 Emoji",
+      "updatedAt": "2026-01-28T10:36:22.390Z",
+      "nodeCount": 7,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello: Board Karten holen",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Karte umbenennen",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "aI2ZLBVjeLJkeLC4",
+      "name": "RIESENOBJEKTE Supplier Reply Tracker | IMAP info@riesenobjekte.de | v2",
+      "updatedAt": "2026-07-17T12:48:48.481Z",
+      "nodeCount": 6,
+      "triggerCount": 0,
+      "triggers": [],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "no_detected_trigger"
+      ]
+    },
+    {
+      "id": "6EwCpB5HRoqgs1ul",
+      "name": "Trello: Auto-Reclaim KI-Video Timeout (20min) v1.0",
+      "updatedAt": "2026-07-09T10:29:03.571Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 5 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "fiDudR4FqkND92G0",
+      "name": "Mockup Processing Label Cleanup v1.0",
+      "updatedAt": "2026-05-30T20:33:48.718Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "LmK72JkDSVyLF76g",
+      "name": "NEONTRIP Trello Offer Structure Preview v1.0",
+      "updatedAt": "2026-07-06T10:48:44.806Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello Trigger",
+          "type": "n8n-nodes-base.trelloTrigger",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "trello_source_candidate"
+      ]
+    },
+    {
+      "id": "m6VJ0hvDT7I40xy0",
+      "name": "RH | Shopify Orders Sync → Supabase",
+      "updatedAt": "2026-07-02T13:10:00.983Z",
+      "nodeCount": 5,
+      "triggerCount": 2,
+      "triggers": [
+        {
+          "name": "Sync starten",
+          "type": "n8n-nodes-base.manualTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "multiple_detected_triggers"
+      ]
+    },
+    {
+      "id": "WSBR7iygxxfIxJvW",
+      "name": "Trello: Auto-Reclaim Update Auto-Email (20min) v1.0",
+      "updatedAt": "2026-04-27T10:42:56.118Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 5 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": [
+        "polling_or_recovery_workflow"
+      ]
+    },
+    {
+      "id": "bX807BBPK804CCyE",
+      "name": "NEONTRIP AC ↔ PandaDoc Stage Sync (Webhook) v1.4 (Pre-Dedupe Env Guard + Central Stages + Clean Flags)",
+      "updatedAt": "2025-12-19T10:48:26.867Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "HzMgctp78bcMq44A",
+      "name": "NEONTRIP Payment Reminder Processor v1.1",
+      "updatedAt": "2026-05-13T12:47:06.038Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 15 Min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify Support",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        },
+        {
+          "name": "Notify Support (Stage 4)",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        },
+        {
+          "name": "Error Alert Email",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        },
+        {
+          "name": "Notify Support (Call Human Review)",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        },
+        {
+          "name": "Notify Support (Vapi Failed)",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 5,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": []
+    },
+    {
+      "id": "6otS4c8KAuQKSdxz",
+      "name": "NEONTRIP Reply Detector v2.7",
+      "updatedAt": "2026-05-19T13:45:20.934Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 5 Min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Check Inbox",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Notify: Ready to Buy",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": true
+        }
+      ],
+      "externalWriteNodeCount": 8,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "evkTXwRgxDOFPPDr",
+      "name": "RIESENOBJEKTE Inflatable Video Worker via xAI v1.0",
+      "updatedAt": "2026-07-20T16:09:16.136Z",
+      "nodeCount": 30,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Worker",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Build xAI Deflation Request",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "Reserve xAI Start",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Submit xAI Video",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Parse xAI Submit",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "xAI Submit Accepted?",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        },
+        {
+          "name": "Poll xAI Video",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Parse xAI Status",
+          "type": "n8n-nodes-base.code",
+          "disabled": false
+        },
+        {
+          "name": "xAI Video Ready?",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        },
+        {
+          "name": "xAI Video Failed?",
+          "type": "n8n-nodes-base.if",
+          "disabled": false
+        },
+        {
+          "name": "Analyze Inflatable Video QC",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 4,
+      "trelloNodes": [
+        {
+          "name": "Upload Inflatable Video to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 4,
+      "flags": []
+    },
+    {
+      "id": "QtG2XHw7DsvOEPtQ",
+      "name": "NEONTRIP Shipping Agent v0.1",
+      "updatedAt": "2026-07-20T17:22:05.380Z",
+      "nodeCount": 27,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Hour",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: Send Pickup Notice",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Outlook: Send Internal Shipping Warning",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Outlook: Send Shipping Monitor Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 11,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "SEKwtYAVRR7zeKnl",
+      "name": "NEONTRIP Offers → Shopify Order v1",
+      "updatedAt": "2026-07-15T12:10:05.247Z",
+      "nodeCount": 26,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook: Offer Completed",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "hPFmuX35rmu8Y5nQ",
+      "name": "NEONTRIP Telegram Approval Handler v1.0",
+      "updatedAt": "2026-07-03T10:45:34.933Z",
+      "nodeCount": 26,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Telegram Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Whisper Transkription",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello: Karte verschieben",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Karte laden (Desc)",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Desc speichern",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "1EjFCTTp84otDKgG",
+      "name": "Google Ads Offline Upload v1.1 (hourly)",
+      "updatedAt": "2026-06-19T08:04:11.726Z",
+      "nodeCount": 21,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Stündlich (xx:00)",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "ELpwCfdWOCRZ22gy",
+      "name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+      "updatedAt": "2026-07-20T17:22:04.683Z",
+      "nodeCount": 20,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Minute Shadow Queue Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "OpenAI Structured Segment Classifier",
+          "type": "@n8n/n8n-nodes-langchain.openAi",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [
+        {
+          "name": "Prepare Trello Description Sync Request",
+          "type": "n8n-nodes-base.code",
+          "disabled": true
+        },
+        {
+          "name": "Trello Description Sync HTTP",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": true
+        },
+        {
+          "name": "Evaluate Trello Description Sync",
+          "type": "n8n-nodes-base.code",
+          "disabled": true
+        },
+        {
+          "name": "Trello Description Sync Success?",
+          "type": "n8n-nodes-base.if",
+          "disabled": true
+        },
+        {
+          "name": "Trello Description Sync Retry?",
+          "type": "n8n-nodes-base.if",
+          "disabled": true
+        },
+        {
+          "name": "Wait Before Trello Description Sync Retry",
+          "type": "n8n-nodes-base.wait",
+          "disabled": true
+        },
+        {
+          "name": "Prepare Next Trello Description Sync Retry",
+          "type": "n8n-nodes-base.code",
+          "disabled": true
+        },
+        {
+          "name": "Fail Trello Description Sync",
+          "type": "n8n-nodes-base.code",
+          "disabled": true
+        },
+        {
+          "name": "Trello Description Sync Done",
+          "type": "n8n-nodes-base.noOp",
+          "disabled": true
+        }
+      ],
+      "recoveryNodeCount": 3,
+      "flags": []
+    },
+    {
+      "id": "YCjuwXGnxTjhj40i",
+      "name": "LP Synthetic Monitor v1.0",
+      "updatedAt": "2026-07-07T18:23:21.800Z",
+      "nodeCount": 19,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 10 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Synthetic Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "CueMwrLRaeoQDLxA",
+      "name": "SEA Agent: Daily Collector v1.0",
+      "updatedAt": "2026-03-18T11:49:15.323Z",
+      "nodeCount": 18,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Täglich 7:00",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 4,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "nzSsJr3tC6RQNZC0",
+      "name": "SEA Agent: Action Executor v1.0",
+      "updatedAt": "2026-03-18T11:49:16.500Z",
+      "nodeCount": 16,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook Trigger",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook Bestätigung",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "NHLfS4jbY9Ldub4a",
+      "name": "Alte Deals → Verloren (90 Tage)",
+      "updatedAt": "2026-05-31T17:28:13.229Z",
+      "nodeCount": 15,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": []
+    },
+    {
+      "id": "Z9SvIuIw4ISzsfuW",
+      "name": "CS Demo Processor v1.0",
+      "updatedAt": "2026-03-30T12:26:25.521Z",
+      "nodeCount": 15,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "CS Demo Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Claude Demo",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "jYfFUwgxdVSqMc6e",
+      "name": "Deals → Verloren (14 Tage in 1. Deal Stufe)",
+      "updatedAt": "2026-01-23T18:46:05.783Z",
+      "nodeCount": 14,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": []
+    },
+    {
+      "id": "TqzCGpwfuJDBS86b",
+      "name": "NEONTRIP Preview Delivery v1 (Live)",
+      "updatedAt": "2026-07-16T10:23:52.812Z",
+      "nodeCount": 14,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook Preview Delivery Test",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Test Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Send Email with PDF",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "mFSeeALvHqYN2ypa",
+      "name": "RIESENOBJEKTE Supplier Refresh | Admin Button",
+      "updatedAt": "2026-07-20T22:11:31.564Z",
+      "nodeCount": 14,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Admin Refresh Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "FZuDdaV7xPnVrW8z",
+      "name": "MIKA | NEONTRIP AC Follow-up Email Messebau v1.0",
+      "updatedAt": "2026-04-21T21:43:41.679Z",
+      "nodeCount": 13,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "AC Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook: Send Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "0V7o1JysBxqNm1i7",
+      "name": "RIESENOBJEKTE Supplier Reply Tracker | Outlook support@neontrip.de",
+      "updatedAt": "2026-07-20T22:11:32.047Z",
+      "nodeCount": 13,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Five Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "DeWOEFIuq7hZdkka",
+      "name": "SEA Agent: Alert Monitor v1.0",
+      "updatedAt": "2026-06-22T09:37:25.404Z",
+      "nodeCount": 13,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 4 Stunden",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Alert Email senden",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "Q9gjAfWlp7EESxm2",
+      "name": "NEONTRIP Approval Nacht-Timeout v1.0",
+      "updatedAt": "2026-07-02T17:58:09.899Z",
+      "nodeCount": 12,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 15 Minuten",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello: Karte prüfen",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Verschieben",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "EV74uCUqszwRKOLr",
+      "name": "NEONTRIP Health Check v3.5 (Accurate Stats + Safe Repair)",
+      "updatedAt": "2026-05-11T07:10:42.418Z",
+      "nodeCount": 12,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule (4h + 9 Uhr)",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "rBggMnVkWwiVXXXO",
+      "name": "PROD — Shopify Configurator → Trello 2D Assets",
+      "updatedAt": "2026-07-21T15:42:16.907Z",
+      "nodeCount": 12,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 5 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [
+        {
+          "name": "Create Trello Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "hucy9EMXPblxJsCm",
+      "name": "Trello Inflatable Mockup Generator v1.0",
+      "updatedAt": "2026-07-21T16:53:39.147Z",
+      "nodeCount": 12,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Gemini: Edit Image to Inflatable Mockup",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [
+        {
+          "name": "Upload Inflatable Mockup to Trello",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "a4o6IEDynr6mBXsy",
+      "name": "Voice Agent — Post-Call Processing v1.0",
+      "updatedAt": "2026-04-08T09:42:06.254Z",
+      "nodeCount": 12,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Vapi Post-Call Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Telegram Low Sentiment Alert",
+          "type": "n8n-nodes-base.telegram",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "kvcTDJjbLmxYrWmy",
+      "name": "Zapier Shopify Configurator Request ID Sidecar",
+      "updatedAt": "2026-05-05T23:14:17.342Z",
+      "nodeCount": 11,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Run Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 5,
+      "trelloNodes": [
+        {
+          "name": "Trello: Set Nerdy-Forms_ID",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        },
+        {
+          "name": "Trello: Update Description",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "kAoVEdqFiuJ6IzjR",
+      "name": "LP Form Smoke Alert v1.0",
+      "updatedAt": "2026-06-04T21:34:44.399Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 10 Minuten",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "LP Alert Email senden",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "VV8WTqZP7Kg1shL7",
+      "name": "NEONTRIP AC Lost Deal Sync v1.0",
+      "updatedAt": "2026-02-16T14:11:58.783Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 15 Minuten",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "RdIWdbDefpDMJBdI",
+      "name": "NEONTRIP Offer Customer Color Mockup QA v2 (PRODUCTION)",
+      "updatedAt": "2026-07-21T16:53:21.318Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Color Mockup Request",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Generate Color Variant",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        },
+        {
+          "name": "Analyze Color QA",
+          "type": "@n8n/n8n-nodes-langchain.googleGemini",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "cj6Me3DNQmlDBgLs",
+      "name": "NEONTRIP Quote Variant Extractor v1.0",
+      "updatedAt": "2026-05-12T07:02:23.132Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Receive QC Data",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "5maan9rdlyXD0sO7",
+      "name": "RIESENOBJEKTE FormSubmit AutoReply v1 — Deterministic",
+      "updatedAt": "2026-07-21T15:39:27.573Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Outlook Trigger",
+          "type": "n8n-nodes-base.microsoftOutlookTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook Trigger",
+          "type": "n8n-nodes-base.microsoftOutlookTrigger",
+          "disabled": false
+        },
+        {
+          "name": "Send RIESENOBJEKTE AutoReply",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "ZIQWGun8m0sMJKzy",
+      "name": "Shopify Monatsumsatz monatlich an Frank",
+      "updatedAt": "2026-07-21T07:26:38.369Z",
+      "nodeCount": 10,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Jeden 2. um 10:00",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "DldbjbPaVbAS3Avs",
+      "name": "AI Email Commerce Evidence Resolver v1 — Read Only",
+      "updatedAt": "2026-07-15T13:09:52.966Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Evidence Resolver Input",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "Hrd08cXctM1LO9T3",
+      "name": "AI Email Commerce Evidence Resolver v2 — Read Only",
+      "updatedAt": "2026-07-17T08:24:47.593Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Evidence Resolver Input",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "lLZAPo43xNunBrS3",
+      "name": "NEONTRIP Lead Scoring v1.0",
+      "updatedAt": "2026-04-17T12:41:18.123Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "AC Deal Added",
+          "type": "n8n-nodes-base.activeCampaignTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "AI Lead Scoring",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "o9FNf0wFBbRQCrvW",
+      "name": "NEONTRIP WhatsApp → Email",
+      "updatedAt": "2026-03-24T08:10:23.973Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "WhatsApp Eingang",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "E-Mail an Support",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "E-Mail mit Attachment",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "SahGezm5DPnVuvzN",
+      "name": "PandaDoc Express-Versand Benachrichtigung",
+      "updatedAt": "2026-03-12T11:26:39.179Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook PandaDoc",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Email Eilauftrag",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "UTJaUNRP9LNXzapE",
+      "name": "RH | Mark Paid → Shopify + easybill (Webhook)",
+      "updatedAt": "2026-06-26T11:12:52.189Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "2wu8PLbC6zb3nLuL",
+      "name": "Trello: 3D Angebot erstellen -> KI-Video (15min) v1.0",
+      "updatedAt": "2026-05-28T10:06:35.508Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Minute",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "olifFMiIsFML9FRl",
+      "name": "Trello: Angebot ueberprueft -> KI-Video (15min) v1.0",
+      "updatedAt": "2026-05-28T09:58:43.762Z",
+      "nodeCount": 9,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Minute",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 3,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "pbgr9n5xRgpCyLBd",
+      "name": "LP Health Check v1.0",
+      "updatedAt": "2026-04-10T07:22:44.073Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule 09:00 Berlin",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Email Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "LZPbWCFNNvH4i3ug",
+      "name": "NEONTRIP | Offer Update Mail via Outlook",
+      "updatedAt": "2026-07-10T09:38:32.879Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Offer Mail Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "LHiIOKYuk2DqzfD7",
+      "name": "NEONTRIP Email → WhatsApp",
+      "updatedAt": "2026-02-16T13:11:08.687Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Alle 2 Minuten",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Hole gesendete E-Mails",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "ArT3LN25Mb1PAuBE",
+      "name": "NEONTRIP Error Alerting v1.0",
+      "updatedAt": "2026-07-20T17:30:14.799Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Error Trigger",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Email Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": []
+    },
+    {
+      "id": "wxi9BgBL9dHmdhZH",
+      "name": "NEONTRIP Offer Update WhatsApp via WhatsAble v0.1",
+      "updatedAt": "2026-06-23T14:01:09.763Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Offer WhatsApp Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "Ka4L6C7uLdO3ASQg",
+      "name": "NEONTRIP Shopify → Review Queue v1.0",
+      "updatedAt": "2026-03-03T10:58:39.441Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Shopify Order Created",
+          "type": "n8n-nodes-base.shopifyTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "p4lm3w9jPHnaP4VX",
+      "name": "NEONTRIP Supplier Order Confirmation Email v0.1",
+      "updatedAt": "2026-06-23T12:00:44.952Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Order Confirmation Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "YvpZsctzOYvnCquT",
+      "name": "NT · Ads LP Health Monitor v1.0",
+      "updatedAt": "2026-04-14T12:04:15.385Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Outlook senden",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "I9vCp27sS3jcH1am",
+      "name": "Shopify → Supabase Sync (4x täglich)",
+      "updatedAt": "2026-04-08T10:30:22.552Z",
+      "nodeCount": 8,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "4x Täglich",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "7TxHQRyeUxVbpOrl",
+      "name": "AI Email Agent — Sent Delta Indexer v1",
+      "updatedAt": "2026-07-16T13:23:27.364Z",
+      "nodeCount": 7,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Five Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "vCDQuqaWOALmMd56",
+      "name": "Google Ads Offline Conversions v2.0",
+      "updatedAt": "2026-04-01T07:23:15.250Z",
+      "nodeCount": 7,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Trigger",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "REUwgbUIRHXoUsAA",
+      "name": "NEONTRIP Outlook Customer Email Sync v1.0",
+      "updatedAt": "2026-07-15T13:06:27.024Z",
+      "nodeCount": 7,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 15 Min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Get Inbox Messages",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        },
+        {
+          "name": "Get Sent Messages",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "CMNPNypIgSZJlSoo",
+      "name": "PandaDoc zu Trello - Produkte und Optionen",
+      "updatedAt": "2025-12-16T14:05:40.840Z",
+      "nodeCount": 7,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook PandaDoc",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Trello Karte erstellen",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "NJTficzVI4aSTYeL",
+      "name": "RIESENOBJEKTE Supplier Quote Extractor | HUMAN REVIEW",
+      "updatedAt": "2026-07-17T12:24:01.546Z",
+      "nodeCount": 7,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Five Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Extract Quote Facts",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "Ujeb4B9h500noRgM",
+      "name": "VIP Deal Behandlung - PandaDoc zu ActiveCampaign",
+      "updatedAt": "2026-02-09T08:31:15.291Z",
+      "nodeCount": 7,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "PandaDoc Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "x2TwRO9kDncNz0YB",
+      "name": "🔍 NT · System · Error Monitor & Digest v1.0",
+      "updatedAt": "2026-05-30T21:13:07.356Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Daily 07:00 CET",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Digest Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "LvXVkIhWZH0w0Y1x",
+      "name": "AI Email Agent — Decision Shadow v2",
+      "updatedAt": "2026-07-17T09:06:17.402Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Decision Shadow Input",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [
+        {
+          "name": "Classify Decision JSON",
+          "type": "@n8n/n8n-nodes-langchain.anthropic",
+          "disabled": false
+        }
+      ],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "PE6E2YgtokQjP3XC",
+      "name": "Auto-Complete Previous Deal Tasks (AC)",
+      "updatedAt": "2026-03-05T12:54:59.329Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Deal Task Created",
+          "type": "n8n-nodes-base.activeCampaignTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "DIodOuoB6JUu4m79",
+      "name": "Auto-Follow-Up bei Nicht-Erreicht (AC)",
+      "updatedAt": "2026-03-05T13:07:04.325Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Task Completed",
+          "type": "n8n-nodes-base.activeCampaignTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "3MIiPTmR7RMjLS7a",
+      "name": "Customs Daily Status Email",
+      "updatedAt": "2026-06-17T20:17:12.165Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule 09:00 Berlin",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Status Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "Q2qw3RVWGgBKHpfb",
+      "name": "Customs Weekly Consistency Email",
+      "updatedAt": "2026-06-24T12:47:08.438Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Friday 09:00 Berlin",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Weekly Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "E1Mi6EEB0c3sglJg",
+      "name": "GAds Upload Health Check v1.0",
+      "updatedAt": "2026-05-18T08:23:42.125Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Daily 09:00",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "QadPKWZ2cmZDCk2W",
+      "name": "NEONTRIP Workflow Monitor v2.0",
+      "updatedAt": "2026-05-29T21:03:37.181Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Hour",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 2,
+      "flags": []
+    },
+    {
+      "id": "DomnXhPG8ambg9qb",
+      "name": "RH | Mahnwesen 2026 Neontrip",
+      "updatedAt": "2026-06-24T10:25:15.953Z",
+      "nodeCount": 6,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "2FhaSbG9w8QeS70e",
+      "name": "AI Email Agent — Open Inbox Backfill v1",
+      "updatedAt": "2026-07-20T13:36:40.207Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Open Inbox Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "bAXM54PasUD8IFNx",
+      "name": "AI Email Agent — Review Feedback Matcher v3",
+      "updatedAt": "2026-07-20T16:29:24.955Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every Five Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "M4uG1HAtN9Zggxww",
+      "name": "Error Notification → info@NeonTrip.de",
+      "updatedAt": "2026-07-20T16:56:01.178Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Error Trigger",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Prepared Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 1,
+      "flags": []
+    },
+    {
+      "id": "SH5HK6TqLCyaitXu",
+      "name": "NEONTRIP Internal Alert Router v1 — SHADOW",
+      "updatedAt": "2026-07-20T16:56:16.136Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Internal Alert Input",
+          "type": "n8n-nodes-base.executeWorkflowTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "xFQTm4E7qw38C9cF",
+      "name": "NEONTRIP Supplier Completed Offers Sync v0.1",
+      "updatedAt": "2026-07-20T17:22:04.065Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 10 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "WlSmT7zlLcR4TlUG",
+      "name": "NEONTRIP Supplier Shopify Tag Sync v0.1",
+      "updatedAt": "2026-07-20T17:22:03.492Z",
+      "nodeCount": 5,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 5 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "rhdkU6uRLCn7GLFl",
+      "name": "Customs Error Notifier",
+      "updatedAt": "2026-06-17T20:27:32.141Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Error Trigger",
+          "type": "n8n-nodes-base.errorTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Error Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 2,
+      "trelloNodes": [
+        {
+          "name": "Trello: Create Error Card",
+          "type": "n8n-nodes-base.trello",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 4,
+      "flags": []
+    },
+    {
+      "id": "1zP17gxz5vPgke0U",
+      "name": "GitHub Claude Notifier",
+      "updatedAt": "2026-01-16T20:38:50.414Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "GitHub Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Telegram Notification",
+          "type": "n8n-nodes-base.telegram",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "PllHsez3Tp1Q4MTN",
+      "name": "NEONTRIP Archive DHL Mail After Label Print v0.5",
+      "updatedAt": "2026-07-20T18:45:57.819Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Archive Outbox Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "eSKKKiqDIzBpKRCN",
+      "name": "NEONTRIP Mockup Late-Backfill v1.0",
+      "updatedAt": "2026-04-27T12:52:20.643Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "FyZCGkPNoA6EQI3N",
+      "name": "RH | Qonto Sync → Supabase (Webhook)",
+      "updatedAt": "2026-06-26T11:39:37.744Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "FdIQ7n3CTpWHGZRW",
+      "name": "RH | Shopify Tag setzen (Webhook)",
+      "updatedAt": "2026-06-29T10:40:16.568Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "jC4p5BhLzuPSygqz",
+      "name": "RIESENOBJEKTE | Angebotsmail via SMTP",
+      "updatedAt": "2026-07-16T10:21:58.898Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "RIESEN Offer Mail Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send RIESEN SMTP Mail",
+          "type": "n8n-nodes-base.emailSend",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "CeFRGEedO19V9rNR",
+      "name": "RIESENOBJEKTE Inflatable Video Intake v1.0",
+      "updatedAt": "2026-07-20T16:12:30.683Z",
+      "nodeCount": 4,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Schedule Intake",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "wfQbVpKGgmWhfx1R",
+      "name": "Backfill GAds Conversion: Angebot versendet",
+      "updatedAt": "2026-04-15T10:57:24.361Z",
+      "nodeCount": 3,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Every 15 Min",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "efV72NrTmKx89MSC",
+      "name": "Form Fail Report Receiver v1.0",
+      "updatedAt": "2026-06-02T18:42:19.363Z",
+      "nodeCount": 3,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook: /form-fail-report",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [
+        {
+          "name": "Send Alert Email",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "disabled": false
+        }
+      ],
+      "externalWriteNodeCount": 1,
+      "trelloNodes": [],
+      "recoveryNodeCount": 0,
+      "flags": []
+    },
+    {
+      "id": "R8dm9WmITF8OYwF4",
+      "name": "NEONTRIP Preview Video Proxy v1",
+      "updatedAt": "2026-05-30T21:13:06.806Z",
+      "nodeCount": 3,
+      "triggerCount": 1,
+      "triggers": [
+        {
+          "name": "Webhook Preview Video Proxy",
+          "type": "n8n-nodes-base.webhook",
+          "disabled": false
+        }
+      ],
+      "aiNodes": [],
+      "customerCommunicationNodes": [],
+      "externalWriteNodeCount": 0,
+      "trelloNodes": [
+        {
+          "name": "Download Trello Video",
+          "type": "n8n-nodes-base.httpRequest",
+          "disabled": false
+        }
+      ],
+      "recoveryNodeCount": 0,
+      "flags": []
+    }
+  ]
+}

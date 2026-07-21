@@ -23,6 +23,10 @@ create table public.email_locks (
   )
 );
 
+create unique index email_locks_internet_message_id_key
+  on public.email_locks (internet_message_id)
+  where internet_message_id is not null;
+
 create table public.email_agent_log (
   id bigint generated always as identity primary key,
   message_id text not null unique,

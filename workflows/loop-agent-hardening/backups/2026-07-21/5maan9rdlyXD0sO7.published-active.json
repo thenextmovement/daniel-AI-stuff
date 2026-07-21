@@ -1,0 +1,460 @@
+{
+  "id": "5maan9rdlyXD0sO7",
+  "name": "RIESENOBJEKTE FormSubmit AutoReply v1 — Deterministic",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "createdAt": "2026-07-21T15:28:57.330Z",
+  "updatedAt": "2026-07-21T15:39:27.573Z",
+  "activeVersionId": "0987cb97-badb-40e2-a5b6-05bc52f70448",
+  "versionCreatedAt": "2026-07-21T15:37:04.583Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "ro-outlook-trigger",
+      "name": "Outlook Trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "output": "raw",
+        "filters": {
+          "readStatus": "unread",
+          "folderId": "inbox"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "id": "ro-normalize",
+      "name": "Normalize & Validate Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const output = [];\nconst now = Date.now();\n\nfunction decode(value) {\n  return String(value || '')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&quot;/gi, '\"')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction field(html, label) {\n  const escaped = String(label).replace(/[.*+?^$(){}|[\\]\\\\]/g, '\\\\$&');\n  const pattern = new RegExp('<strong>\\\\s*' + escaped + '\\\\s*<\\\\/strong>[\\\\s\\\\S]*?<pre[^>]*>([\\\\s\\\\S]*?)<\\\\/pre>', 'i');\n  return decode(pattern.exec(html)?.[1] || '');\n}\n\nfunction normalizeEmail(value) {\n  const candidate = String(value || '').trim().toLowerCase();\n  return /^[a-z0-9.!#$%&'*+/=?^_{|}~-]+@[a-z0-9.-]+\\.[a-z]{2,}$/i.test(candidate) ? candidate : '';\n}\n\nfor (const item of $input.all()) {\n  const email = item.json || {};\n  const html = String(email.body?.content || '');\n  const subject = String(email.subject || '').trim();\n  const sourceFromEmail = String(email.from?.emailAddress?.address || '').trim().toLowerCase();\n  const toAddresses = (email.toRecipients || []).map(x => String(x?.emailAddress?.address || '').toLowerCase());\n  const customerEmail = normalizeEmail(field(html, 'E-Mail'));\n  const customerName = field(html, 'Name').slice(0, 160);\n  const firstName = customerName.split(/\\s+/).filter(Boolean)[0] || '';\n  const company = field(html, 'Unternehmen').slice(0, 200);\n  const projectDescription = field(html, 'Projektbeschreibung').slice(0, 2000);\n  const objectType = field(html, 'Objekttyp').slice(0, 120);\n  const consent = field(html, 'Datenschutz_bestaetigt');\n  const gclid = field(html, 'gclid').slice(0, 200);\n  const isTarget = sourceFromEmail === 'submissions@formsubmit.co'\n    && /^Neue\\s+Google-Ads-Anfrage\\s*[–-]\\s*RIESENOBJEKTE$/i.test(subject)\n    && toAddresses.includes('info@riesenobjekte.de')\n    && /https:\\/\\/www\\.riesenobjekte\\.de\\//i.test(html)\n    && /Google Ads Landingpage/i.test(html);\n  const isQa = /(?:^|\\b)(?:qa|test)(?:\\b|[-_])/i.test([customerName, projectDescription, gclid].join(' '))\n    || /nicht bearbeiten/i.test([customerName, projectDescription].join(' '))\n    || /^TEST-/i.test(gclid);\n  const validCustomer = Boolean(customerEmail)\n    && customerEmail !== sourceFromEmail\n    && !customerEmail.endsWith('@formsubmit.co');\n  const consentOk = /^ja$/i.test(consent);\n  const shouldSend = isTarget && !isQa && validCustomer && consentOk;\n  const reasons = [];\n  if (!isTarget) reasons.push('not_riesenobjekte_formsubmit');\n  if (isQa) reasons.push('qa_test');\n  if (!validCustomer) reasons.push('invalid_customer_email');\n  if (!consentOk) reasons.push('missing_consent');\n  const messageId = String(email.id || '').trim();\n  const internetMessageId = String(email.internetMessageId || '').trim();\n  const conversationId = String(email.conversationId || messageId).trim();\n  const idempotencyKey = 'riesenobjekte-form-autoreply:' + (internetMessageId || messageId);\n\n  output.push({json:{\n    shouldSend,\n    skipReason: reasons.join(','),\n    messageId,\n    internetMessageId,\n    conversationId,\n    idempotencyKey,\n    sourceFromEmail,\n    customerEmail,\n    customerName,\n    firstName,\n    company,\n    projectDescription,\n    objectType,\n    consent,\n    gclid,\n    subject,\n    receivedAt: String(email.receivedDateTime || ''),\n    _startTime: now\n  }});\n}\nreturn output;"
+      }
+    },
+    {
+      "id": "ro-if-valid",
+      "name": "Valid Real Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ro-valid-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.shouldSend === true }}",
+              "rightValue": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ro-lock",
+      "name": "Acquire Idempotency Lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_email_agent_message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_request_id: $json.idempotencyKey, p_message_id: $json.messageId, p_internet_message_id: $json.internetMessageId || null, p_conversation_id: $json.conversationId, p_lease_seconds: 900 }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "ro-if-claimed",
+      "name": "Was Lock Inserted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ro-claimed-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ Boolean(($json.body ?? $json)?.claimed) }}",
+              "rightValue": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ro-send",
+      "name": "Send RIESENOBJEKTE AutoReply",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "fromEmail": "RIESENOBJEKTE <info@riesenobjekte.de>",
+        "toEmail": "={{ $('Normalize & Validate Lead').item.json.customerEmail }}",
+        "subject": "Vielen Dank für Ihre Anfrage bei RIESENOBJEKTE",
+        "emailFormat": "html",
+        "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.6;max-width:640px\"><p>{{ $('Normalize & Validate Lead').item.json.firstName ? 'Hallo ' + $('Normalize & Validate Lead').item.json.firstName + ',' : 'Guten Tag,' }}</p><p>vielen Dank für Ihre Anfrage bei RIESENOBJEKTE. Wir haben Ihre Angaben{{ $('Normalize & Validate Lead').item.json.objectType ? ' zu ' + $('Normalize & Validate Lead').item.json.objectType : '' }} erhalten und prüfen jetzt die passende Umsetzung.</p><p>Wir melden uns in der Regel innerhalb eines Werktags mit den nächsten Schritten bei Ihnen.</p><p style=\"margin-top:28px\">Viele Grüße<br><strong>Fabienne von RIESENOBJEKTE</strong></p><p style=\"font-size:13px;color:#555;margin-top:20px\"><strong>RIESENOBJEKTE</strong><br>E-Mail: <a href=\"mailto:info@riesenobjekte.de\" style=\"color:#111\">info@riesenobjekte.de</a><br>Web: <a href=\"https://www.riesenobjekte.de\" style=\"color:#111\">www.riesenobjekte.de</a><br>Telefon: <a href=\"tel:+4921154257240\" style=\"color:#111\">+49 211 54257240</a></p></div>",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "info@riesenobjekte.de"
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "IUNoH8bC7Yk617An",
+          "name": "GLOBAL | RIESENOBJEKTE | SMTP | info@riesenobjekte.de | NICHT LÖSCHEN"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput",
+      "webhookId": "c24e2d8c-893f-4b63-8ae8-47664ce49ad7"
+    },
+    {
+      "id": "ro-complete",
+      "name": "Complete Idempotency Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1440,
+        0
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/complete_email_agent_message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_request_id: $('Normalize & Validate Lead').item.json.idempotencyKey, p_record: { message_id: $('Normalize & Validate Lead').item.json.messageId, internet_message_id: $('Normalize & Validate Lead').item.json.internetMessageId, conversation_id: $('Normalize & Validate Lead').item.json.conversationId, from_email: $('Normalize & Validate Lead').item.json.customerEmail, from_name: $('Normalize & Validate Lead').item.json.customerName, subject: $('Normalize & Validate Lead').item.json.subject, message_source: 'riesenobjekte_formsubmit', body_preview: $('Normalize & Validate Lead').item.json.projectDescription.slice(0,500), category: 'general', confidence: 1, order_found: false, order_count: 0, knowledge_version_ids: [], knowledge_match_count: 0, draft_created: false, draft_id: String($json.messageId || ''), draft_body_preview: 'RIESENOBJEKTE Eingangsbestätigung per SMTP versendet', error_message: null, processing_time_ms: Math.max(0, Date.now() - Number($('Normalize & Validate Lead').item.json._startTime || Date.now())) } }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "ro-failure",
+      "name": "Build Failure Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        320
+      ],
+      "parameters": {
+        "jsCode": "let base = {};\ntry { base = $('Normalize & Validate Lead').first().json; } catch (_) {}\nlet sent = {};\ntry { sent = $('Send RIESENOBJEKTE AutoReply').first().json || {}; } catch (_) {}\nconst incoming = $input.first().json || {};\nconst message = String(incoming.error?.message || incoming.message || incoming.description || 'Unknown workflow error')\n  .replace(/[\\u0000-\\u001F]+/g, ' ')\n  .slice(0, 1500);\nconst sentMessageId = String(sent.messageId || '').trim();\nconst sendAccepted = sentMessageId !== '' && Array.isArray(sent.accepted) && sent.accepted.length > 0;\nreturn [{json:{\n  request_id: base.idempotencyKey || '',\n  message_id: base.messageId || '',\n  internet_message_id: base.internetMessageId || '',\n  conversation_id: base.conversationId || '',\n  from_email: base.customerEmail || '',\n  from_name: base.customerName || '',\n  subject: base.subject || '',\n  message_source: 'riesenobjekte_formsubmit',\n  category: 'general',\n  draft_created: sendAccepted,\n  draft_id: sendAccepted ? sentMessageId : '',\n  draft_body_preview: sendAccepted ? 'RIESENOBJEKTE Eingangsbestätigung per SMTP versendet; Protokollierung fehlgeschlagen' : '',\n  error_message: message,\n  retryable: sendAccepted ? false : /timeout|temporar|rate limit|429|5\\d\\d|socket|connection|econn/i.test(message),\n  processing_time_ms: Math.max(0, Date.now() - Number(base._startTime || Date.now()))\n}}];"
+      }
+    },
+    {
+      "id": "ro-fail-log",
+      "name": "Fail Idempotency Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1440,
+        320
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/fail_email_agent_message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_request_id: $json.request_id, p_record: $json, p_retryable: Boolean($json.retryable) }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "ro-stop",
+      "name": "Stop With Observable Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        320
+      ],
+      "parameters": {
+        "jsCode": "const record = $('Build Failure Record').first().json;\nthrow new Error('RIESENOBJEKTE FormSubmit AutoReply failed: ' + String(record.error_message || 'unknown error'));\nreturn [];"
+      }
+    }
+  ],
+  "connections": {
+    "Outlook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Validate Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Validate Lead": {
+      "main": [
+        [
+          {
+            "node": "Valid Real Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Real Lead?": {
+      "main": [
+        [
+          {
+            "node": "Acquire Idempotency Lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Acquire Idempotency Lock": {
+      "main": [
+        [
+          {
+            "node": "Was Lock Inserted?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Failure Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was Lock Inserted?": {
+      "main": [
+        [
+          {
+            "node": "Send RIESENOBJEKTE AutoReply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Send RIESENOBJEKTE AutoReply": {
+      "main": [
+        [
+          {
+            "node": "Complete Idempotency Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Failure Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Idempotency Record": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Build Failure Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Failure Record": {
+      "main": [
+        [
+          {
+            "node": "Fail Idempotency Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fail Idempotency Record": {
+      "main": [
+        [
+          {
+            "node": "Stop With Observable Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop With Observable Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

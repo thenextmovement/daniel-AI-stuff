@@ -1,0 +1,846 @@
+{
+  "id": "MZhNgpQa8XP55jbg",
+  "name": "Trello: Bestehendes Angebot erneut versenden v1.0",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "createdAt": "2026-07-06T08:43:54.700Z",
+  "updatedAt": "2026-07-06T08:43:54.700Z",
+  "activeVersionId": "7a824495-6ac4-40e1-81ef-fa62a8819de2",
+  "versionCreatedAt": "2026-07-06T08:43:54.700Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Trello Trigger",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "existing-offer-resend-2026-07-06T084336562Z",
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "id": "63d10c34105771f01ccf4296"
+      }
+    },
+    {
+      "id": "filter_resend_list",
+      "name": "Filter: Resend List",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-list-after",
+              "leftValue": "={{ $json.action.data.listAfter.id }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "6a4b6a0ff91df78b28ec77d3"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "normalize",
+      "name": "Normalize Trigger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const action = $json.action || {};\nconst data = action.data || {};\nconst card = data.card || {};\nconst listAfter = data.listAfter || {};\nconst listBefore = data.listBefore || {};\nif (!card.id) throw new Error('Missing Trello card id');\nreturn [{ json: {\n  trelloActionId: action.id || $json.id || '',\n  cardId: card.id,\n  cardName: card.name || '',\n  cardShortLink: card.shortLink || '',\n  cardUrl: card.shortLink ? 'https://trello.com/c/' + card.shortLink : (card.id ? 'https://trello.com/c/' + card.id : ''),\n  listAfterId: listAfter.id || '',\n  listAfterName: listAfter.name || '',\n  listBeforeId: listBefore.id || '',\n  listBeforeName: listBefore.name || '',\n  movedAt: action.date || new Date().toISOString(),\n  correlationId: 'trello:' + card.id + ':existing-offer-resend:' + (action.id || Date.now())\n} }];"
+      }
+    },
+    {
+      "id": "get_card",
+      "name": "Trello: Get Card Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        220
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,desc,url,idLabels,labels,dateLastActivity"
+            },
+            {
+              "name": "customFieldItems",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "get_offer",
+      "name": "Offers: Get Existing Offer by Trello",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "parameters": {
+        "method": "GET",
+        "url": "=https://angebote.neontrip.de/api/internal/offers/by-trello/{{ $(\"Normalize Trigger\").first().json.cardId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "extract_context",
+      "name": "Extract Offer Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const trigger = $('Normalize Trigger').first().json;\nconst card = $('Trello: Get Card Details').first().json || {};\nconst response = $json || {};\nconst offer = response.offer || response;\nconst details = offer.offer || {};\nfunction validEmail(value) { return /^[^s@]+@[^s@]+.[^s@]+$/.test(String(value || '').trim()); }\nfunction extractRequestId(text) {\n  const m = String(text || '').match(/(?:Request-ID|request[_ -]?id|nerdyforms?[_ -]?id|anfrage[_ -]?id)s*[:#-]?s*([a-zA-Z0-9_-]+)/i);\n  return m ? m[1].trim() : '';\n}\nconst requestId = String(details.projectTitle || extractRequestId(card.desc) || '').trim();\nconst recipientEmail = validEmail(details.customerEmail) ? String(details.customerEmail).trim().toLowerCase() : '';\nconst customerPhone = String(details.customerPhone || '').trim();\nconst customerName = [details.customerFirstName, details.customerLastName].filter(Boolean).join(' ').trim() || details.customerFirstName || details.customerCompany || 'Kunde';\nif (!offer.offerId || !offer.publicUrl) throw new Error('Existing offer missing offerId/publicUrl');\nreturn [{ json: {\n  ...trigger,\n  trelloCardName: card.name || trigger.cardName,\n  trelloCardUrl: card.url || trigger.cardUrl,\n  requestId,\n  offerId: offer.offerId,\n  offerNumber: offer.offerNumber || '',\n  documentReference: offer.documentReference || '',\n  publicUrl: offer.publicUrl,\n  offerStatus: offer.status || '',\n  videoReady: Boolean(offer.videoStatus === 'READY' || details.videoStatus === 'READY' || offer.previewVideoUrl || details.previewVideoUrl),\n  recipientEmail,\n  recipientSource: recipientEmail ? 'offer.customerEmail' : '',\n  customerPhone,\n  customerName,\n  needsCustomerLookup: !recipientEmail && Boolean(requestId)\n} }];"
+      }
+    },
+    {
+      "id": "if_has_email_first",
+      "name": "IF Recipient Exists First",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "email",
+              "leftValue": "={{ $json.recipientEmail }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "lookup_customer",
+      "name": "Supabase: Lookup Customer Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1680,
+        380
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_customers?select=email,phone,first_name,last_name,name&request_id=eq.{{ encodeURIComponent($json.requestId || \"\") }}&limit=1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "resolve_after_lookup",
+      "name": "Resolve Recipient After Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        380
+      ],
+      "parameters": {
+        "jsCode": "const base = $('Extract Offer Context').first().json;\nconst rows = Array.isArray($json) ? $json : [];\nconst customer = rows[0] || {};\nfunction validEmail(value) { return /^[^s@]+@[^s@]+.[^s@]+$/.test(String(value || '').trim()); }\nconst email = validEmail(base.recipientEmail) ? base.recipientEmail : (validEmail(customer.email) ? String(customer.email).trim().toLowerCase() : '');\nconst phone = base.customerPhone || customer.phone || '';\nconst name = base.customerName !== 'Kunde' ? base.customerName : ([customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || customer.name || 'Kunde');\nreturn [{ json: { ...base, recipientEmail: email, recipientSource: email ? (base.recipientEmail ? base.recipientSource : 'master_customers.email') : '', customerPhone: phone, customerName: name } }];"
+      }
+    },
+    {
+      "id": "if_has_email_final",
+      "name": "IF Recipient Exists Final",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "email",
+              "leftValue": "={{ $json.recipientEmail }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "build_send_payload",
+      "name": "Build Send Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const data = $json;\nconst offerLabel = data.offerNumber || data.documentReference || data.offerId;\nconst idempotencyKey = ['trello-existing-offer-resend', data.cardId, data.trelloActionId || data.movedAt || Date.now(), data.offerId, 'v1']\n  .map(v => String(v || 'missing').replace(/[^a-zA-Z0-9_-]+/g, '_'))\n  .join(':');\nconst firstName = String(data.customerName || 'Kunde').split(/s+/)[0] || 'Kunde';\nconst message = [\n  'Guten Tag ' + firstName + ',',\n  '',\n  'wie gewünscht sende ich Ihnen Ihr bestehendes NEONTRIP Angebot hier noch einmal direkt zu.',\n  '',\n  'Im Angebotslink sehen Sie das Mockup, die Video-Vorschau und alle Details zu Größe, Ausführung, Lieferzeit und Preis. Sie können das Angebot online in Ruhe prüfen und bei Fragen einfach direkt auf diese Nachricht antworten.',\n  '',\n  'Viele Grüße',\n  'Fabienne von NEONTRIP'\n].join('\n');\nreturn [{ json: {\n  ...data,\n  idempotencyKey,\n  sendPayload: {\n    recipientEmail: data.recipientEmail,\n    cc: [],\n    subject: 'Ihr NEONTRIP Angebot ' + offerLabel,\n    message,\n    actor: 'n8n Trello Resend',\n    reason: 'Bestehendes Angebot erneut aus Trello-Spalte versendet; kein neues Mockup/Video.',\n    idempotencyKey,\n    includePdf: false,\n    includeWhatsApp: true,\n    deliveryPurpose: 'MANUAL_RESEND'\n  }\n} }];"
+      }
+    },
+    {
+      "id": "send_offer",
+      "name": "Offers: Send Existing Offer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2640,
+        220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=https://angebote.neontrip.de/api/internal/offers/{{ encodeURIComponent($json.offerId) }}/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.sendPayload) }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "add_offer_sent_label",
+      "name": "Trello: Add Angebot gesendet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2880,
+        160
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Build Send Payload\").first().json.cardId }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "63d13d82858ce1c1b71045c0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "if_video_ready",
+      "name": "IF Video Ready",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "video",
+              "leftValue": "={{ $(\"Build Send Payload\").first().json.videoReady }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "add_video_sent_label",
+      "name": "Trello: Add Video gesendet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3360,
+        80
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Build Send Payload\").first().json.cardId }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "69ea8cb44dafe69b2a31350c"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "move_sent",
+      "name": "Trello: Move to Sent List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3600,
+        160
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Build Send Payload\").first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "63d1840632e9dbf0a8b26405"
+            },
+            {
+              "name": "pos",
+              "value": "top"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "comment_success",
+      "name": "Trello: Success Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3840,
+        160
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Build Send Payload\").first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=✅ Bestehendes Angebot erneut versendet\n\nAn: {{ $(\"Build Send Payload\").first().json.recipientEmail }}\nOffer: {{ $(\"Build Send Payload\").first().json.offerNumber || $(\"Build Send Payload\").first().json.documentReference }}\nLink: {{ $(\"Build Send Payload\").first().json.publicUrl }}\nVideo neu generiert: nein\nMockups neu generiert: nein\nExecution: {{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "prepare_failure",
+      "name": "Prepare Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        520
+      ],
+      "parameters": {
+        "jsCode": "let base = {};\ntry { base = $('Build Send Payload').first().json; } catch (e) {}\nif (!base.cardId) { try { base = $('Extract Offer Context').first().json; } catch (e) {} }\nif (!base.cardId) { try { base = $('Normalize Trigger').first().json; } catch (e) {} }\nconst raw = JSON.stringify($json || {}).slice(0, 1500);\nconst message = raw.includes('recipient') || raw.includes('email') || !base.recipientEmail\n  ? 'Keine gültige Empfängeradresse für das bestehende Angebot gefunden.'\n  : 'Bestehendes Angebot konnte nicht erneut versendet werden.';\nconst cleanName = String(base.trelloCardName || base.cardName || 'Karte').replace(/^FEHLERs*[-:]s*/i, '').trim();\nreturn [{ json: { ...base, failureMessage: message, rawError: raw, failureTitle: 'FEHLER - ' + cleanName } }];"
+      }
+    },
+    {
+      "id": "comment_failure",
+      "name": "Trello: Failure Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3120,
+        520
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=❌ Bestehendes Angebot wurde NICHT erneut versendet\n\nGrund: {{ $json.failureMessage }}\nOffer: {{ $json.offerNumber || $json.documentReference || \"-\" }}\nLink: {{ $json.publicUrl || \"-\" }}\nExecution: {{ $execution.id }}\n\nEs wurde kein neues Mockup und kein neues Video generiert."
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "move_failure",
+      "name": "Trello: Move Failure to Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3360,
+        520
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "pos",
+              "value": "top"
+            },
+            {
+              "name": "name",
+              "value": "={{ $json.failureTitle }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Trello Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter: Resend List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Resend List": {
+      "main": [
+        [
+          {
+            "node": "Normalize Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Normalize Trigger": {
+      "main": [
+        [
+          {
+            "node": "Trello: Get Card Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Get Card Details": {
+      "main": [
+        [
+          {
+            "node": "Offers: Get Existing Offer by Trello",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offers: Get Existing Offer by Trello": {
+      "main": [
+        [
+          {
+            "node": "Extract Offer Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Offer Context": {
+      "main": [
+        [
+          {
+            "node": "IF Recipient Exists First",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Recipient Exists First": {
+      "main": [
+        [
+          {
+            "node": "Build Send Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: Lookup Customer Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Lookup Customer Email": {
+      "main": [
+        [
+          {
+            "node": "Resolve Recipient After Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Recipient After Lookup": {
+      "main": [
+        [
+          {
+            "node": "IF Recipient Exists Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Recipient Exists Final": {
+      "main": [
+        [
+          {
+            "node": "Build Send Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Send Payload": {
+      "main": [
+        [
+          {
+            "node": "Offers: Send Existing Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offers: Send Existing Offer": {
+      "main": [
+        [
+          {
+            "node": "Trello: Add Angebot gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Add Angebot gesendet": {
+      "main": [
+        [
+          {
+            "node": "IF Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Video Ready": {
+      "main": [
+        [
+          {
+            "node": "Trello: Add Video gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trello: Move to Sent List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Add Video gesendet": {
+      "main": [
+        [
+          {
+            "node": "Trello: Move to Sent List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Move to Sent List": {
+      "main": [
+        [
+          {
+            "node": "Trello: Success Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Failure": {
+      "main": [
+        [
+          {
+            "node": "Trello: Failure Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Failure Comment": {
+      "main": [
+        [
+          {
+            "node": "Trello: Move Failure to Quote Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

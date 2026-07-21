@@ -1,9 +1,23 @@
 {
-  "source_workflow_id": "aE1v0KxbgXbWjUm8",
-  "source_active_version_id": "6091f279-3941-4755-bae4-f401264a3b6b",
-  "source_version_created_at": "2026-07-17T08:25:34.403Z",
-  "captured_at": "2026-07-17T09:24:12.793Z",
+  "id": "aE1v0KxbgXbWjUm8",
   "name": "AI Email Agent v7 — Resolve First Quality v5 — Draft Only",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "executionTimeout": 300
+  },
+  "createdAt": "2026-07-15T13:13:57.558Z",
+  "updatedAt": "2026-07-21T15:25:20.588Z",
+  "activeVersionId": "844553ef-03e9-4f6a-9cab-9bb6347d36c0",
+  "versionCreatedAt": "2026-07-21T15:25:20.591Z",
+  "versionName": null,
   "nodes": [
     {
       "id": "outlook-trigger",
@@ -744,7 +758,7 @@
         360
       ],
       "parameters": {
-        "jsCode": "const normalized = $('Normalize Email').first().json;\nconst incoming = $input.first().json || {};\nfunction sanitizeWorkflowError(value) {\n  let text = typeof value === 'string' ? value : '';\n  text = text\n    .replace(/https?:\\/\\/[^\\s\"']+/gi, (url) => url.replace(/\\?.*$/, '?[redacted]'))\n    .replace(/\\b(Bearer)\\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]')\n    .replace(/\\b(authorization|apikey|api[_-]?key|token|key)\\s*[:=]\\s*[^\\s,;&]+/gi, '$1=[redacted]')\n    .replace(/<[^<>@\\s]+@[^<>@\\s]+>/gi, '[redacted-message-id]')\n    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '[redacted-email]')\n    .replace(/[\\u0000-\\u001F]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  return text.slice(0, 1500);\n}\nfunction extractWorkflowError(input) {\n  const nested = input?.error && typeof input.error === 'object' ? input.error : {};\n  const candidates = [\n    nested.description,\n    ...(Array.isArray(nested.messages) ? nested.messages : []),\n    nested.cause?.message,\n    nested.context?.response?.body?.message,\n    input?.body?.message,\n    input?.description,\n    ...(Array.isArray(input?.messages) ? input.messages : []),\n    nested.message,\n    input?.message,\n  ];\n  for (const candidate of candidates) {\n    const clean = sanitizeWorkflowError(candidate);\n    if (clean && !/^unknown workflow error$/i.test(clean)) return clean;\n  }\n  const fallbackStatus = Number(\n    nested.httpCode\n    || nested.statusCode\n    || input?.httpCode\n    || input?.statusCode\n    || nested.context?.response?.statusCode\n    || 0\n  );\n  return fallbackStatus > 0 ? 'HTTP ' + fallbackStatus + ' workflow failure' : 'Unclassified workflow failure';\n}\nconst message = extractWorkflowError(incoming);\nlet rendered = null;\nlet draftResponse = null;\ntry { rendered = $('Validate and Render').first().json; } catch (error) {}\ntry { draftResponse = $('Create Reply Draft').first().json; } catch (error) {}\nconst draftBody = draftResponse?.body ?? draftResponse;\nconst draftCreated = Boolean(draftBody?.id);\nconst statusCode = Number(incoming.error?.httpCode || incoming.error?.statusCode || incoming.statusCode || 0);\nconst nonRetryablePolicyBlock = /^(?:INTERNAL_EVIDENCE_MISSING|QUALITY_GATE_FAILED):/i.test(message);\nconst retryable = !nonRetryablePolicyBlock && (statusCode === 0\n  || statusCode === 404\n  || statusCode === 408\n  || statusCode === 409\n  || statusCode === 425\n  || statusCode === 429\n  || statusCode >= 500\n  || /timeout|temporar|rate limit|resource .* not be found|socket|connection|econn/i.test(message));\n\nreturn [{ json: {\n  request_id: normalized.idempotencyKey,\n  message_id: rendered?.messageId || normalized.messageId,\n  internet_message_id: normalized.internetMessageId || '',\n  conversation_id: normalized.conversationId,\n  from_email: normalized.fromEmail,\n  from_name: normalized.fromName,\n  subject: normalized.subject,\n  message_source: normalized.messageSource,\n  body_preview: String(rendered?.currentText || normalized.triggerBodyPreview || '').slice(0, 500),\n  category: rendered?.category || 'general',\n  confidence: rendered?.confidence || 0,\n  order_found: Boolean(rendered?.orderCount > 0),\n  order_count: Number(rendered?.orderCount || 0),\n  knowledge_version_ids: Array.isArray(rendered?.knowledgeVersionIds) ? rendered.knowledgeVersionIds.slice(0, 8) : [],\n  knowledge_match_count: Number(rendered?.knowledgeMatchCount || 0),\n  draft_created: draftCreated,\n  draft_id: draftBody?.id || '',\n  draft_body_preview: String(rendered?.draftReplyText || '').slice(0, 500),\n  error_message: message,\n  latest_message_fingerprint: rendered?.latestMessageFingerprint || '',\n  reply_length_class: rendered?.replyLengthClass || null,\n  risk_level: rendered?.riskLevel || rendered?.deterministicRiskLevel || null,\n  context_snapshot: rendered ? {\n    customer_context: rendered.customerContext || {},\n    attachment_claims: rendered.claimedAttachmentTypes || [],\n    missing_attachments: rendered.missingClaimedAttachmentRequests || [],\n    channel: rendered.messageSource || normalized.messageSource,\n    evidence_resolver_version: rendered.evidenceResolverVersion || '',\n    financial_reconciliation: rendered.financialReconciliation || null,\n  } : {},\n  retryable,\n  processing_time_ms: Math.max(0, Date.now() - Number(normalized._startTime || Date.now())),\n} }];"
+        "jsCode": "const normalized = $('Normalize Email').first().json;\nconst incoming = $input.first().json || {};\nlet message = String(incoming.error?.message || incoming.message || incoming.description || 'Unknown workflow error');\nmessage = message.replace(/[\\u0000-\\u001F]+/g, ' ').slice(0, 1500);\nlet rendered = null;\nlet draftResponse = null;\ntry { rendered = $('Validate and Render').first().json; } catch (error) {}\ntry { draftResponse = $('Create Reply Draft').first().json; } catch (error) {}\nconst draftBody = draftResponse?.body ?? draftResponse;\nconst draftCreated = Boolean(draftBody?.id);\nconst statusCode = Number(incoming.error?.httpCode || incoming.error?.statusCode || incoming.statusCode || 0);\nconst nonRetryablePolicyBlock = /^(?:INTERNAL_EVIDENCE_MISSING|QUALITY_GATE_FAILED):/i.test(message);\nconst retryable = !nonRetryablePolicyBlock && (statusCode === 0\n  || statusCode === 404\n  || statusCode === 408\n  || statusCode === 409\n  || statusCode === 425\n  || statusCode === 429\n  || statusCode >= 500\n  || /timeout|temporar|rate limit|resource .* not be found|socket|connection|econn/i.test(message));\n\nreturn [{ json: {\n  request_id: normalized.idempotencyKey,\n  message_id: rendered?.messageId || normalized.messageId,\n  internet_message_id: normalized.internetMessageId || '',\n  conversation_id: normalized.conversationId,\n  from_email: normalized.fromEmail,\n  from_name: normalized.fromName,\n  subject: normalized.subject,\n  message_source: normalized.messageSource,\n  body_preview: String(rendered?.currentText || normalized.triggerBodyPreview || '').slice(0, 500),\n  category: rendered?.category || 'general',\n  confidence: rendered?.confidence || 0,\n  order_found: Boolean(rendered?.orderCount > 0),\n  order_count: Number(rendered?.orderCount || 0),\n  knowledge_version_ids: Array.isArray(rendered?.knowledgeVersionIds) ? rendered.knowledgeVersionIds.slice(0, 8) : [],\n  knowledge_match_count: Number(rendered?.knowledgeMatchCount || 0),\n  draft_created: draftCreated,\n  draft_id: draftBody?.id || '',\n  draft_body_preview: String(rendered?.draftReplyText || '').slice(0, 500),\n  error_message: message,\n  latest_message_fingerprint: rendered?.latestMessageFingerprint || '',\n  reply_length_class: rendered?.replyLengthClass || null,\n  risk_level: rendered?.riskLevel || rendered?.deterministicRiskLevel || null,\n  context_snapshot: rendered ? {\n    customer_context: rendered.customerContext || {},\n    attachment_claims: rendered.claimedAttachmentTypes || [],\n    missing_attachments: rendered.missingClaimedAttachmentRequests || [],\n    channel: rendered.messageSource || normalized.messageSource,\n    evidence_resolver_version: rendered.evidenceResolverVersion || '',\n    financial_reconciliation: rendered.financialReconciliation || null,\n  } : {},\n  retryable,\n  processing_time_ms: Math.max(0, Date.now() - Number(normalized._startTime || Date.now())),\n} }];"
       }
     },
     {
@@ -1370,14 +1384,5 @@
         ]
       ]
     }
-  },
-  "settings": {
-    "executionOrder": "v1",
-    "timezone": "Europe/Berlin",
-    "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveManualExecutions": true,
-    "saveExecutionProgress": true,
-    "executionTimeout": 300
   }
 }

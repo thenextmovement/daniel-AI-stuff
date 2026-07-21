@@ -1,0 +1,1053 @@
+{
+  "id": "Hzf3fcJwmcCxExnx",
+  "name": "EU Supplier Request on Trello Move",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2026-07-10T13:08:43.853Z",
+  "updatedAt": "2026-07-21T13:17:42.847Z",
+  "activeVersionId": "c2d88c55-9410-42de-98a8-12dcf78493c3",
+  "versionCreatedAt": "2026-07-21T13:17:42.849Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "details",
+      "name": "RecheckCardWithAttachments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{$json.cardId}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,desc,idList,url,dateLastActivity"
+            },
+            {
+              "name": "attachments",
+              "value": "true"
+            },
+            {
+              "name": "attachment_fields",
+              "value": "id,name,url,mimeType,isUpload"
+            },
+            {
+              "name": "actions",
+              "value": "commentCard"
+            },
+            {
+              "name": "action_limit",
+              "value": "100"
+            },
+            {
+              "name": "action_fields",
+              "value": "data,date"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "extract",
+      "name": "PrepareAIExtraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const card = $input.first().json || {};\nconst prompt = [\n  'You extract supplier quote data from a Trello card.',\n  'Read the ENTIRE description from top to bottom.',\n  'The structured Additional Information block at the top is authoritative and MUST override all later AI messages, translations, original emails, and title values.',\n  'Within that top block, Size, Indoor/Outdoor, Backboard, Color, paint color, and Quantity are authoritative when they contain real values.',\n  'Later text may add context but must not replace an authoritative top-block value.',\n  'If the top block says Size: 83cm and later says Letter height: 20-24 cm, output dimensions as Overall sign size: 83 cm; Letter height: 20-24 cm.',\n  'If the top block contains a non-empty Backboard value such as CUT TO SHAPE, never output Loose letters. Preserve the backboard information and combine it with relevant mounting context.',\n  'Preserve the semantic meaning of measurements. Example: if the text says Buchstabenhöhe 20-24 cm, output dimensions as Letter height: 20-24 cm, never just 20-24 cm.',\n  'Do not interpret a letter height as the complete sign width or sign size.',\n  'Ignore placeholders such as size in mm, 0 cm, TBD, unknown, and empty values.',\n  'Use the title only as a fallback after the full description.',\n  'Return JSON only with exactly these string fields: dimensions, illumination_colour, paint_colour, mounting, quantity, application, deadline.',\n  'For missing dimensions or application use See attachment.',\n  'For missing illumination or paint colour use See logo / attached design.',\n  'For missing mounting use Loose letters.',\n  'Quantity must be a numeric string. If no explicit quantity is stated, output exactly 1. Never output See attachment for quantity.',\n  'For deadline, only use an explicitly binding latest delivery date for the finished goods found in the DESCRIPTION, such as spätestens bis, muss bis, Lieferung muss bis, required by, must arrive by, must be delivered by, or no later than.',\n  'Do not use event dates, quote deadlines, design deadlines, production estimates, requested dates, target dates or non-binding delivery information unless the text explicitly says the finished goods must arrive by that date.',\n  'Copy the complete deadline wording verbatim from the DESCRIPTION. Do not translate, normalize, calculate, infer or invent a date.',\n  'If the DESCRIPTION contains no explicit deadline, output exactly Not specified.',\n  'Keep explicit context such as Letter height, Overall sign size, Plate size, or Individual letter size in the value.',\n  '',\n  'TITLE:',\n  String(card.name || ''),\n  '',\n  'DESCRIPTION:',\n  String(card.desc || '')\n].join('\\n');\nreturn [ { json: { cardId: card.id, prompt: prompt } } ];"
+      }
+    },
+    {
+      "id": "queue",
+      "name": "BuildAttachmentQueue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const j = $input.first().json;\nif (!Array.isArray(j.attachments) || j.attachments.length === 0) {\n  return [{ json: { ...j, hasAttachment: false } }];\n}\nreturn j.attachments.map((a, index) => ({ json: { ...j, attachments: undefined, hasAttachment: true, attachmentIndex: index, attachmentName: a.name, attachmentUrl: a.url, attachmentMimeType: a.mimeType } }));"
+      }
+    },
+    {
+      "id": "ifattach",
+      "name": "HasAttachment",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-file",
+              "leftValue": "={{$json.hasAttachment}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "download",
+      "name": "DownloadTrelloAttachment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1880,
+        220
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.attachmentUrl.replace('https://trello.com/','https://api.trello.com/')}}",
+        "authentication": "genericCredentialType",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        },
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mUsIsdf3wM0EHTa5",
+          "name": "Trello Attachment Download OAuth Header"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "combine",
+      "name": "CombineAttachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nif (!items.length) return [];\nconst first = items[0];\nconst binary = {};\nlet n = 0;\nfor (const item of items) {\n  if (!item.json.hasAttachment || !item.binary?.data) continue;\n  binary['attachment_' + n] = { ...item.binary.data, fileName: item.json.attachmentName || item.binary.data.fileName || ('attachment-' + n), mimeType: item.json.attachmentMimeType || item.binary.data.mimeType || 'application/octet-stream' };\n  n++;\n}\nreturn [{ json: { cardId:first.json.cardId, cardName:first.json.cardName, cardUrl:first.json.cardUrl, emailSubject:first.json.emailSubject, emailHtml:first.json.emailHtml, attachmentCount:n, alreadySentRecipients:Array.isArray(first.json.alreadySentRecipients) ? first.json.alreadySentRecipients : [] }, binary }];"
+      }
+    },
+    {
+      "id": "send",
+      "name": "BuildGraphMailPayload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2280,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first();\nconst attachments = [];\nfor (const key of Object.keys(item.binary || {})) {\n  const meta = item.binary[key];\n  const buffer = await this.helpers.getBinaryDataBuffer(0, key);\n  const attachment = {};\n  attachment['@odata.type'] = '#microsoft.graph.fileAttachment';\n  attachment.name = meta.fileName || key;\n  attachment.contentType = meta.mimeType || 'application/octet-stream';\n  attachment.contentBytes = buffer.toString('base64');\n  attachments.push(attachment);\n}\nconst allRecipients = [\n  'a.wisniewski@neon-light.eu',\n  'jiri.zvolsky@topadvert.cz',\n  'shapovalova@goleks.com',\n  'max@goleks.com',\n  'export@dad.lt',\n  'kristel.lembit@luminescence.ee'\n];\nconst alreadySent = new Set((Array.isArray(item.json.alreadySentRecipients) ? item.json.alreadySentRecipients : []).map(value => String(value).toLowerCase()));\nconst recipients = allRecipients.filter(recipient => !alreadySent.has(recipient.toLowerCase()));\nreturn recipients.map(recipient => {\n  const message = {};\n  message.subject = item.json.emailSubject;\n  message.body = { contentType: 'HTML', content: item.json.emailHtml };\n  message.toRecipients = [ { emailAddress: { address: recipient } } ];\n  message.attachments = attachments;\n  return { json: {\n    cardId: item.json.cardId,\n    recipient,\n    graphBody: { message, saveToSentItems: true }\n  } };\n});"
+      },
+      "webhookId": "eaf74176-a900-4963-bb7e-12845bf1a006"
+    },
+    {
+      "id": "mark",
+      "name": "MarkSentInState",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const sentItem = $('CombineAttachments').first();\nconst cardId = sentItem.json.cardId;\nconst state = $getWorkflowStaticData('global');\nstate.sent = state.sent || {};\nstate.sent[cardId] = { sentAt:new Date().toISOString(), attachmentCount:sentItem.json.attachmentCount, recipientCount:6 };\ndelete state.claimed?.[cardId];\ndelete state.firstSeen?.[cardId];\nreturn [{ json:{ cardId, cardName:sentItem.json.cardName, attachmentCount:sentItem.json.attachmentCount, recipientCount:6 } }];"
+      }
+    },
+    {
+      "id": "comment",
+      "name": "CommentSuccessfulSupplierSend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3300,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('MarkSentInState').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=[Auto][EU-REQUEST] Angebotsanfrage erfolgreich separat an 6 Lieferanten versendet. Anhänge je E-Mail: {{ $('MarkSentInState').first().json.attachmentCount }}. n8n-Ausführung: {{$execution.id}}."
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true
+    },
+    {
+      "id": "addsentlabel",
+      "name": "AddEmailsSentLabel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2880,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{$json.cardId}}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "6a50f13ae470e59a185454b4"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "sendgraph",
+      "name": "SendOutlookToSuppliers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2480,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/me/sendMail",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify($json.graphBody)}}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "id": "extractgemini",
+      "name": "OpenAIExtractSupplierData",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        300
+      ],
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Extract supplier quote data accurately. Follow the supplied precedence rules. Return only one valid JSON object with exactly these string fields: dimensions, illumination_colour, paint_colour, mounting, quantity, application, deadline. Deadline must be copied verbatim only from an explicitly binding latest-delivery statement for the finished goods in the description; otherwise use Not specified. Ignore event dates, quote deadlines, design deadlines, production estimates, requested dates and non-binding dates. Never calculate or invent a date. Do not add markdown or commentary."
+            },
+            {
+              "role": "user",
+              "content": "={{$json.prompt}}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 900,
+          "temperature": 0
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "StsVoyuEzSmCM5jg",
+          "name": "OpenAi account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "buildairequest",
+      "name": "BuildRequestFromAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const root = $input.first().json || {};\nconst stack = [root];\nlet extracted = null;\nwhile (stack.length && !extracted) {\n  const value = stack.shift();\n  if (Array.isArray(value)) {\n    for (const nested of value) stack.push(nested);\n  } else if (value && typeof value === 'object') {\n    if ('dimensions' in value && 'mounting' in value && 'deadline' in value) {\n      extracted = value;\n      break;\n    }\n    for (const nested of Object.values(value)) stack.push(nested);\n  } else if (typeof value === 'string') {\n    const cleaned = value.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '').trim();\n    try {\n      const parsed = JSON.parse(cleaned);\n      stack.push(parsed);\n    } catch (error) {}\n  }\n}\nif (!extracted) throw new Error('Gemini did not return the required supplier data JSON.');\nconst card = $('RecheckCardWithAttachments').first().json || {};\nif (!card.id || card.idList !== '6a4fa373d16787b871c2625b') return [];\nconst text = (value, fallback) => String(value || fallback).trim();\nconst esc = value => text(value, '').replace(/[&<>\"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[char]));\nconst dimensions = text(extracted.dimensions, 'See attachment');\nconst illumination = text(extracted.illumination_colour, 'See logo / attached design');\nconst paint = text(extracted.paint_colour, 'See logo / attached design');\nconst mounting = text(extracted.mounting, 'Loose letters');\nconst quantity = text(extracted.quantity, '1');\nconst application = text(extracted.application, 'See attachment');\nconst deadlineCandidate = text(extracted.deadline, 'Not specified');\nconst normalizeDeadlineText = value => String(value || '').toLowerCase().replace(/\\s+/g, ' ').trim();\nconst descriptionNormalized = normalizeDeadlineText(card.desc);\nconst deadlineNormalized = normalizeDeadlineText(deadlineCandidate);\nconst deadlineMissing = /^(not specified|unknown|tbd|n\\/?a|-)$/.test(deadlineNormalized);\nconst deadlineHasBindingCue = /(?:spätestens\\s+bis|muss\\s+(?:spätestens\\s+)?bis|lieferung\\s+(?:muss\\s+)?(?:spätestens\\s+)?bis|benötigt\\s+bis|required\\s+by|must\\s+(?:arrive|be\\s+delivered)\\s+by|no\\s+later\\s+than|latest\\s+delivery)/i.test(deadlineCandidate);\nconst deadline = !deadlineMissing && deadlineHasBindingCue && deadlineNormalized && descriptionNormalized.includes(deadlineNormalized) ? deadlineCandidate : '';\nconst uploads = (Array.isArray(card.attachments) ? card.attachments : []).filter(a => a && a.url && a.isUpload !== false);\nconst recipientMarkerPrefix = '[Auto][EU-REQUEST-RECIPIENT] ';\nconst alreadySentRecipients = [...new Set((Array.isArray(card.actions) ? card.actions : []).map(action => String(action?.data?.text || '')).filter(text => text.startsWith(recipientMarkerPrefix)).map(text => text.slice(recipientMarkerPrefix.length).split(/\\s+/)[0].trim().toLowerCase()).filter(Boolean))];\nconst rasterExtensions = new Set(['jpg','jpeg','png','webp','gif','bmp','tif','tiff','heic','heif','avif']);\nconst attachmentExtension = attachment => {\n  const name = String(attachment?.name || '').toLowerCase().split('?')[0].split('#')[0];\n  return name.includes('.') ? name.split('.').pop() : '';\n};\nconst hasOnlyRasterImages = uploads.length > 0 && uploads.every(attachment => {\n  const extension = attachmentExtension(attachment);\n  const mimeType = String(attachment?.mimeType || '').toLowerCase();\n  return rasterExtensions.has(extension) || (mimeType.startsWith('image/') && mimeType !== 'image/svg+xml');\n});\nconst missingVectorNote = hasOnlyRasterImages\n  ? '<p>We currently do not have a vector file from the customer; could you please still calculate the quotation based on the attached images?</p>'\n  : '';\nconst signature = '<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-family:Arial,Helvetica,sans-serif;color:#111111;margin-top:30px\"><tbody><tr><td><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"max-width:600px;width:100%\"><tbody><tr><td style=\"padding:16px 0\"><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\"><tbody><tr><td valign=\"top\" style=\"width:140px;padding-right:16px\"><img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" alt=\"Fabienne Trapp\" width=\"120\" height=\"120\" style=\"display:block;width:120px;height:120px;border-radius:60px;border:2px solid #111111;object-fit:cover\"></td><td valign=\"top\"><div style=\"font-size:16px;font-weight:700\">Fabienne Trapp</div><div style=\"font-size:12px;color:#6b7280;margin:4px 0 10px\">Beratung &amp; Realisierung</div><div style=\"font-size:13px;font-weight:700;margin-bottom:8px\">NEONTRIP®</div><div style=\"font-size:13px;line-height:1.6\">Tel: +49 211 54257240<br>E-Mail: support@neontrip.de<br>Web: www.neontrip.de<br>Adresse: Bilker Allee 29, 40219 Düsseldorf</div></td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></table>';\nconst emailHtml = '<div style=\"font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.6\"><p>Hello,</p><p>we would like to request a quotation for the following sign:</p><p><strong>Size:</strong> '+esc(dimensions)+'<br><strong>Illumination colour:</strong> '+esc(illumination)+'<br><strong>Paint colour:</strong> '+esc(paint)+'<br><strong>Mounting:</strong> '+esc(mounting)+'<br><strong>Quantity:</strong> '+esc(quantity)+'<br><strong>Application:</strong> '+esc(application)+(deadline ? '<br><strong>Required deadline:</strong> '+esc(deadline) : '')+'</p><p>Please find all available design files attached.</p>'+missingVectorNote+'<p>Please send us your price, production time and shipping time to Germany.</p><p>Thank you.</p></div>'+signature;\n\nreturn [ { json: { cardId:card.id, cardName:card.name || '', cardUrl:card.url || '', emailSubject:'NEONTRIP | Quotation Request | '+new Intl.DateTimeFormat('de-DE', { timeZone:'Europe/Berlin', day:'2-digit', month:'2-digit', year:'numeric' }).format(new Date()), emailHtml:emailHtml, extracted:extracted, attachments:uploads.map(a => ({ id:a.id, name:a.name || ('attachment-'+a.id), url:a.url, mimeType:a.mimeType || 'application/octet-stream' })), alreadySentRecipients } } ];"
+      }
+    },
+    {
+      "id": "trellomovetrigger",
+      "name": "TrelloMoveTrigger",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "eu-supplier-move-trigger-20260710",
+      "parameters": {
+        "id": "63d10c34105771f01ccf4296"
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "filtertargetmove",
+      "name": "TrelloMoveFilter",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "target-list",
+              "leftValue": "={{$json.action.data.listAfter.id}}",
+              "rightValue": "6a4fa373d16787b871c2625b",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "wait30",
+      "name": "Wait30Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        300
+      ],
+      "webhookId": "wait-eu-supplier-30s",
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "addwaiting",
+      "name": "AddWaitingLabel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('TrelloMoveTrigger').first().json.action.data.card.id }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "6a50f83f8820051b5a5d9de2"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "executeOnce": true
+    },
+    {
+      "id": "stilltarget",
+      "name": "CheckStillInTargetList",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1080,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "still-target",
+              "leftValue": "={{$json.idList}}",
+              "rightValue": "6a4fa373d16787b871c2625b",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "removecancelled",
+      "name": "RemoveWaitingCancelled",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1100,
+        460
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{$json.id}}/idLabels/6a50f83f8820051b5a5d9de2",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "executeOnce": true
+    },
+    {
+      "id": "removesuccess",
+      "name": "RemoveWaitingAfterSuccess",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3100,
+        300
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('MarkSentInState').first().json.cardId }}/idLabels/6a50f83f8820051b5a5d9de2",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "executeOnce": true
+    },
+    {
+      "id": "preservemove",
+      "name": "PreserveMoveContext",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        550,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const event = $('TrelloMoveTrigger').first().json;\nconst cardId = event?.action?.data?.card?.id;\nif (!cardId) throw new Error('Trello move event did not contain a card ID.');\nreturn [ { json: { cardId: cardId, actionId: event.action.id || null } } ];"
+      }
+    },
+    {
+      "id": "title-contains-3d-filter",
+      "name": "TitleContains3D",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1260,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "title-has-3d",
+              "leftValue": "={{ String($json.name || '').toLowerCase().includes('3d') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "add-no-3d-title-label",
+      "name": "AddNo3DTitleLabel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1460,
+        460
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('RecheckCardWithAttachments').first().json.id }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "6a59fbe656019f9dc203fea0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "executeOnce": true
+    },
+    {
+      "id": "remove-waiting-no-3d-title",
+      "name": "RemoveWaitingNo3DTitle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1660,
+        460
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('RecheckCardWithAttachments').first().json.id }}/idLabels/6a50f83f8820051b5a5d9de2",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "executeOnce": true
+    },
+    {
+      "id": "loop-supplier-recipients",
+      "name": "LoopSupplierRecipients",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2420,
+        300
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "record-recipient-sent",
+      "name": "RecordRecipientSent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2780,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('LoopSupplierRecipients').item.json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=[Auto][EU-REQUEST-RECIPIENT] {{ $('LoopSupplierRecipients').item.json.recipient }} sent_at={{$now.toISO()}} execution={{$execution.id}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "wait-between-supplier-mails",
+      "name": "WaitBetweenSupplierMails",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2960,
+        300
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "webhookId": "1a61d647-4de8-44f6-923d-9cfd487e576b"
+    }
+  ],
+  "connections": {
+    "RecheckCardWithAttachments": {
+      "main": [
+        [
+          {
+            "node": "CheckStillInTargetList",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildAttachmentQueue": {
+      "main": [
+        [
+          {
+            "node": "HasAttachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HasAttachment": {
+      "main": [
+        [
+          {
+            "node": "DownloadTrelloAttachment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CombineAttachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DownloadTrelloAttachment": {
+      "main": [
+        [
+          {
+            "node": "CombineAttachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CombineAttachments": {
+      "main": [
+        [
+          {
+            "node": "BuildGraphMailPayload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MarkSentInState": {
+      "main": [
+        [
+          {
+            "node": "AddEmailsSentLabel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AddEmailsSentLabel": {
+      "main": [
+        [
+          {
+            "node": "RemoveWaitingAfterSuccess",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildGraphMailPayload": {
+      "main": [
+        [
+          {
+            "node": "LoopSupplierRecipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PrepareAIExtraction": {
+      "main": [
+        [
+          {
+            "node": "OpenAIExtractSupplierData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildRequestFromAI": {
+      "main": [
+        [
+          {
+            "node": "BuildAttachmentQueue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TrelloMoveTrigger": {
+      "main": [
+        [
+          {
+            "node": "TrelloMoveFilter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TrelloMoveFilter": {
+      "main": [
+        [
+          {
+            "node": "AddWaitingLabel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Wait30Seconds": {
+      "main": [
+        [
+          {
+            "node": "RecheckCardWithAttachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AddWaitingLabel": {
+      "main": [
+        [
+          {
+            "node": "PreserveMoveContext",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CheckStillInTargetList": {
+      "main": [
+        [
+          {
+            "node": "TitleContains3D",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RemoveWaitingCancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RemoveWaitingAfterSuccess": {
+      "main": [
+        [
+          {
+            "node": "CommentSuccessfulSupplierSend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PreserveMoveContext": {
+      "main": [
+        [
+          {
+            "node": "Wait30Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAIExtractSupplierData": {
+      "main": [
+        [
+          {
+            "node": "BuildRequestFromAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendOutlookToSuppliers": {
+      "main": [
+        [
+          {
+            "node": "RecordRecipientSent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TitleContains3D": {
+      "main": [
+        [
+          {
+            "node": "PrepareAIExtraction",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AddNo3DTitleLabel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AddNo3DTitleLabel": {
+      "main": [
+        [
+          {
+            "node": "RemoveWaitingNo3DTitle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LoopSupplierRecipients": {
+      "main": [
+        [
+          {
+            "node": "MarkSentInState",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SendOutlookToSuppliers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RecordRecipientSent": {
+      "main": [
+        [
+          {
+            "node": "WaitBetweenSupplierMails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WaitBetweenSupplierMails": {
+      "main": [
+        [
+          {
+            "node": "LoopSupplierRecipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

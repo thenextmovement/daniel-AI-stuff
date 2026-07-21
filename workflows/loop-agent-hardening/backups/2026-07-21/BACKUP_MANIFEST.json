@@ -1,0 +1,97 @@
+{
+  "generatedAt": "2026-07-21T19:05:00+02:00",
+  "note": "Published active graphs captured read-only before mutation. A later deep scan found a hardcoded Telegram bot token in the legacy approval workflow; that value was redacted immediately, so this one local artifact is structurally exact but intentionally not credential-exact. Other local files passed the expanded token scan. Published version IDs and generated credential-safe candidates are the rollback references.",
+  "workflows": [
+    {
+      "key": "open_inbox",
+      "id": "2FhaSbG9w8QeS70e",
+      "name": "AI Email Agent — Open Inbox Backfill v1",
+      "activeVersionId": "7006dfe1-9fd5-43f1-a664-a02a17335914",
+      "draftVersionId": "7006dfe1-9fd5-43f1-a664-a02a17335914",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "bd30543cae636564740f371d31ee71e81dfb261f8dd71c753ffde1f1fe81b5de",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "ai_email_main",
+      "id": "aE1v0KxbgXbWjUm8",
+      "name": "AI Email Agent v7 — Resolve First Quality v5 — Draft Only",
+      "activeVersionId": "844553ef-03e9-4f6a-9cab-9bb6347d36c0",
+      "draftVersionId": "844553ef-03e9-4f6a-9cab-9bb6347d36c0",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "89495b955e780e3765205d7e50cfe3b51c85aa62a5b05f4ecc1ce27ed49f0af5",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "ai_email_retry",
+      "id": "oyF3lAhAOLUgWbzg",
+      "name": "AI Email Agent — Retry Recovery v1",
+      "activeVersionId": "36b7015b-01cb-41d6-af6f-90a23a3e5619",
+      "draftVersionId": "36b7015b-01cb-41d6-af6f-90a23a3e5619",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "d0b9a08648a3f42fcac56b684073d240d37e9a66c3ef69bddfede2d19a0619ce",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "formsubmit",
+      "id": "5maan9rdlyXD0sO7",
+      "name": "RIESENOBJEKTE FormSubmit AutoReply v1 — Deterministic",
+      "activeVersionId": "0987cb97-badb-40e2-a5b6-05bc52f70448",
+      "draftVersionId": "0987cb97-badb-40e2-a5b6-05bc52f70448",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "5814433ea8cd8023745f3a55a5f353f8e540082354696c76b6785cba49e12221",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "supplier_tag_sync",
+      "id": "WlSmT7zlLcR4TlUG",
+      "name": "NEONTRIP Supplier Shopify Tag Sync v0.1",
+      "activeVersionId": "5ca51c86-20f4-4b9f-8353-1af050faab3a",
+      "draftVersionId": "5ca51c86-20f4-4b9f-8353-1af050faab3a",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "7d09afa6773cec59bf15d9fe626b04dd046be56ae99fd0971bc666b6ec6fceba",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "telegram_approval",
+      "id": "7AvW1d4JBNDFuNsv",
+      "name": "NEONTRIP Anfrage → Telegram Approval v1.0",
+      "activeVersionId": "3052c17b-2021-4b4a-a149-a4d606302958",
+      "draftVersionId": "3052c17b-2021-4b4a-a149-a4d606302958",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "cdd75963060624f68d2f011c5aaaf023ba57a7e28fb1efdc585392a583e6d043",
+      "credentialValuesRedacted": true,
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "eu_supplier",
+      "id": "Hzf3fcJwmcCxExnx",
+      "name": "EU Supplier Request on Trello Move",
+      "activeVersionId": "c2d88c55-9410-42de-98a8-12dcf78493c3",
+      "draftVersionId": "c2d88c55-9410-42de-98a8-12dcf78493c3",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "f7d3e0729d17d73dac8716d549adcf349322eecd4b51003efaafcc8c018c36eb",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "gemini_mockup_v12",
+      "id": "T4mdDxLquLMJ6FMl",
+      "name": "Gemini Mockup Generator v1.2 - KI Mockup erstellen",
+      "activeVersionId": "37b269f7-67d3-41ff-a229-a399da4c0348",
+      "draftVersionId": "37b269f7-67d3-41ff-a229-a399da4c0348",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "eb9bb2af524b6d438cf35e130619b5543dbb05ce5b4a2f575948c9151e7ca924",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "resend_offer",
+      "id": "MZhNgpQa8XP55jbg",
+      "name": "Trello: Bestehendes Angebot erneut versenden v1.0",
+      "activeVersionId": "7a824495-6ac4-40e1-81ef-fa62a8819de2",
+      "draftVersionId": "7a824495-6ac4-40e1-81ef-fa62a8819de2",
+      "serverBackupVersionIds": [],
+      "publishedActiveSha256": "8852bb71c0fc90b892164328046fbb92f1f68b07770904a4c1c1430f2d6d0732",
+      "capturedAt": "2026-07-21T19:05:00+02:00"
+    }
+  ]
+}
