@@ -1,0 +1,443 @@
+{
+  "id": "j3GCBHSxfOW3SP1c",
+  "name": "NEONTRIP Post-Delivery Flow v1.0",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2026-03-13T20:52:31.095Z",
+  "updatedAt": "2026-03-19T09:28:48.330Z",
+  "activeVersionId": "48d73618-2b85-4a30-af87-70344f8de548",
+  "versionCreatedAt": "2026-03-19T09:28:48.331Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "schedule-trigger",
+      "name": "Daily 10AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10,
+              "field": "days"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-candidates",
+      "name": "Get Post-Delivery Candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/get_post_delivery_candidates",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"batch_size\": 10 }",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "id": "check-empty",
+      "name": "Has Candidates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "check-data",
+              "leftValue": "={{ $json.review_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "determine-type",
+      "name": "Determine Outreach Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const item = $json;\nconst orderValue = parseFloat(item.order_value) || 0;\nconst name = item.customer_name || 'Kunde';\nconst firstName = name.split(' ')[0];\n\n// High-value orders (>2000) get case study + photo request\n// Normal orders get referral + photo request\nconst outreachTypes = ['referral', 'photo_request'];\nif (orderValue >= 2000) {\n  outreachTypes.push('case_study');\n}\n\nreturn [{\n  json: {\n    ...item,\n    firstName,\n    orderValue,\n    outreach_types: outreachTypes,\n    is_high_value: orderValue >= 2000\n  }\n}];"
+      }
+    },
+    {
+      "id": "generate-email",
+      "name": "Generate Post-Delivery Email",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "id"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Du bist Fabienne Trapp von NEONTRIP (LED-Neonschilder, Leuchtreklame aus Duesseldorf), Beratung & Realisierung.\n\nSchreibe eine kurze, freundliche Post-Delivery E-Mail an einen Kunden, der sein Schild erhalten hat.\n\nKUNDENDATEN:\n- Name: {{ $json.firstName }}\n- Bestellnummer: {{ $json.order_number }}\n- Bestellwert: {{ $json.orderValue }}EUR\n- High-Value: {{ $json.is_high_value }}\n\nE-MAIL VERLAUF ({{ $json.email_count }} E-Mails):\n{{ $json.email_history }}\n\nANGEBOTE ({{ $json.quote_count }}):\n{{ $json.quote_history }}\n\nDie E-Mail soll DREI Dinge in EINER Mail abfragen (kurz und natuerlich):\n\n1. **Foto-Anfrage**: Frage ob der Kunde ein Foto vom montierten Schild schicken kann (fuer Social Media / Referenzen)\n2. **Empfehlung**: Erwaehne dass du dich ueber eine Weiterempfehlung freuen wuerdest (kein Gutschein, kein Rabatt!)\n{{ $json.is_high_value ? '3. **Case Study**: Frage ob ihr das Projekt als Referenz / Case Study auf der Website zeigen duerft (mit Firmenname und Foto)' : '' }}\n\nREGELN:\n- NIEMALS Rabatte oder Gutscheine anbieten\n- Max 6-8 Saetze, locker und persoenlich\n- Nicht betaeln, nicht aufdringlich\n- Wenn E-Mail-Verlauf vorhanden: Bezug auf fruehere Kommunikation nehmen, zeige dass du den Kunden kennst\n- Absender: Fabienne von NEONTRIP\n- Deutsche Sprache\n- KEINE Signatur am Ende — die wird automatisch angehaengt\n- Beende den Text mit: Herzliche Gruesse<br>Fabienne\n\nANTWORTE NUR MIT EINEM JSON-OBJEKT:\n{\"subject\": \"Betreffzeile\", \"body\": \"E-Mail Text (HTML mit <br> fuer Zeilenumbrueche, OHNE Signatur)\"}",
+              "role": "user"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 800
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "kZCDxC1N8hTos1iS",
+          "name": "Anthropic Claude"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "parse-email",
+      "name": "Parse Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const context = $('Prepare Delivery Context').first().json;\nconst aiOutput = $json.message?.content || $json.text || $json;\n\nconst HTML_SIGNATURE = `\n<br><br>\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.6; color: #333333; max-width: 600px;\">\n    <tbody>\n        <tr>\n            <td style=\"padding: 0;\">\n                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                    <tbody>\n                        <tr>\n                            <td colspan=\"2\" style=\"padding-bottom: 20px;\">\n                                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                                    <tbody>\n                                        <tr>\n                                            <td valign=\"middle\" style=\"padding-right: 20px; width: 120px;\">\n                                                <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" \n                                                     alt=\"Fabienne Trapp\" \n                                                     style=\"width: 100px; height: 100px; border-radius: 50%; display: block; object-fit: cover;\">\n                                            </td>\n                                            <td valign=\"top\">\n                                                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n                                                    <tbody>\n                                                        <tr><td style=\"padding-bottom: 5px;\"><strong style=\"font-size: 16px; color: #2C3E50;\">Fabienne Trapp</strong></td></tr>\n                                                        <tr><td style=\"padding-bottom: 12px;\"><span style=\"color: #7F8C8D; font-size: 13px;\">Beratung & Realisierung</span></td></tr>\n                                                        <tr><td style=\"padding-bottom: 2px;\"><span style=\"color: #2C3E50; font-weight: 600;\">NEONTRIP\\u00ae</span></td></tr>\n                                                        <tr><td style=\"padding-top: 8px; padding-bottom: 2px;\"><span style=\"color: #555555; font-size: 13px;\">Tel: +49 211 54257240</span></td></tr>\n                                                        <tr><td style=\"padding-bottom: 2px;\"><span style=\"color: #555555; font-size: 13px;\">E-Mail: <a href=\"mailto:support@neontrip.de\" style=\"color: #4A90E2; text-decoration: none;\">support@neontrip.de</a></span></td></tr>\n                                                        <tr><td style=\"padding-bottom: 2px;\"><span style=\"color: #555555; font-size: 13px;\">Web: <a href=\"https://www.neontrip.de\" style=\"color: #4A90E2; text-decoration: none;\">www.neontrip.de</a></span></td></tr>\n                                                        <tr><td style=\"padding-top: 2px;\"><span style=\"color: #555555; font-size: 13px;\">Adresse: Bilker Allee 29, 40219 D\\u00fcsseldorf</span></td></tr>\n                                                    </tbody>\n                                                </table>\n                                            </td>\n                                        </tr>\n                                    </tbody>\n                                </table>\n                            </td>\n                        </tr>\n                        <tr>\n                            <td colspan=\"2\" style=\"padding-top: 20px;\">\n                                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #121212; border-radius: 8px; padding: 20px; text-align: center;\">\n                                    <tbody>\n                                        <tr>\n                                            <td align=\"center\">\n                                                <div style=\"font-size: 32px; font-weight: bold; color: #FFFFFF; letter-spacing: 2px; font-family: Arial, sans-serif;\">NEON<span style=\"color: #00FF88;\">\\u26a1</span>TRIP</div>\n                                                <div style=\"margin-top: 8px; font-size: 11px; color: #FFFFFF; letter-spacing: 0.5px; font-weight: 300;\">UNIQUE LIGHTING AND BRANDING</div>\n                                            </td>\n                                        </tr>\n                                    </tbody>\n                                </table>\n                            </td>\n                        </tr>\n                    </tbody>\n                </table>\n            </td>\n        </tr>\n    </tbody>\n</table>`;\n\nlet parsed;\ntry {\n  if (typeof aiOutput === 'string') {\n    const jsonMatch = aiOutput.match(/\\{[\\s\\S]*\\}/);\n    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : aiOutput);\n  } else {\n    parsed = aiOutput;\n  }\n} catch (e) {\n  parsed = {\n    subject: `Ihr NEONTRIP Schild \\u2014 Wie sieht es montiert aus, ${context.firstName}?`,\n    body: `Hallo ${context.firstName},<br><br>hier ist Fabienne von NEONTRIP. Ich hoffe, Ihr Schild aus Bestellung ${context.order_number} ist gut angekommen und haengt bereits!<br><br>Falls Sie ein Foto vom montierten Schild haben \\u2014 ich wuerde mich riesig freuen, wenn ich es fuer unsere Referenzen verwenden duerfte.<br><br>Herzliche Gruesse<br>Fabienne`\n  };\n}\n\nconst fullBody = parsed.body + HTML_SIGNATURE;\n\nreturn [{\n  json: {\n    to: context.customer_email,\n    subject: parsed.subject,\n    body: fullBody,\n    order_id: context.order_id,\n    order_number: context.order_number,\n    order_value: context.orderValue,\n    customer_email: context.customer_email,\n    customer_name: context.customer_name,\n    outreach_types: context.outreach_types\n  }\n}];"
+      }
+    },
+    {
+      "id": "send-email",
+      "name": "Send via Outlook",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body }}",
+        "bodyContentType": "HTML",
+        "additionalFields": {
+          "from": "support@neontrip.de"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "bNyYLKhLkBmKlgtY",
+          "name": "Microsoft Outlook"
+        }
+      }
+    },
+    {
+      "id": "log-outreach",
+      "name": "Log to Supabase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const item = $json;\nconst types = item.outreach_types || ['referral', 'photo_request'];\n\n// Create one log entry per outreach type\nconst logs = types.map(type => ({\n  order_id: item.order_id,\n  order_number: item.order_number,\n  customer_email: item.customer_email,\n  customer_name: item.customer_name,\n  order_value: item.order_value,\n  outreach_type: type,\n  status: 'sent'\n}));\n\nreturn logs.map(log => ({ json: log }));"
+      }
+    },
+    {
+      "id": "save-log",
+      "name": "Save Log Entry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/post_delivery_outreach",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"order_id\": \"{{ $json.order_id }}\",\n  \"order_number\": \"{{ $json.order_number }}\",\n  \"customer_email\": \"{{ $json.customer_email }}\",\n  \"customer_name\": \"{{ $json.customer_name }}\",\n  \"order_value\": {{ $json.order_value || 0 }},\n  \"outreach_type\": \"{{ $json.outreach_type }}\",\n  \"status\": \"sent\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "id": "note-info",
+      "name": "Post-Delivery Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        80
+      ],
+      "parameters": {
+        "content": "## NEONTRIP Post-Delivery Flow v1.0\n\n**Trigger:** Täglich 10:00 Uhr\n**Batch:** 10 Kunden pro Tag\n**Ziel:** Nach zugestellter Bestellung + Review-Anfrage:\n- Foto vom montierten Schild anfragen\n- Weiterempfehlung erbitten\n- Bei High-Value (>2000€): Case Study anfragen\n\n**Timing:** 7 Tage nach Review-Anfrage\n**Dedupe:** Nur 1x pro Order",
+        "width": 350,
+        "height": 260
+      }
+    },
+    {
+      "id": "lookup-outlook",
+      "name": "Lookup Outlook History",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "limit": 6,
+        "filtersUI": {
+          "values": {
+            "filters": {
+              "sender": "={{ $json.customer_email }}"
+            }
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "lookup-pandadoc",
+      "name": "Lookup PandaDoc Quotes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/v_quotes_by_email?email=eq.{{ encodeURIComponent($('Determine Outreach Type').first().json.customer_email) }}&select=document_id,customer_name,status,total_value,created_at,signed_at&order=created_at.desc&limit=3",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "prepare-delivery-context",
+      "name": "Prepare Delivery Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const context = $('Determine Outreach Type').first().json;\n\n// Outlook email history\nconst outlookItems = $('Lookup Outlook History').all().map(i => i.json);\nconst emailHistory = outlookItems\n  .filter(e => e.subject)\n  .map(e => `[${(e.receivedDateTime || '').substring(0,10)}] ${e.subject}`)\n  .slice(0, 6);\n\n// PandaDoc quotes\nconst pandadocItems = $('Lookup PandaDoc Quotes').all().map(i => i.json);\nconst quotes = pandadocItems\n  .filter(q => q.document_id)\n  .map(q => `${q.status} | ${q.total_value}EUR | ${(q.created_at || '').substring(0,10)}`);\n\nreturn [{\n  json: {\n    ...context,\n    email_history: emailHistory.length > 0 ? emailHistory.join('\\n') : 'Keine E-Mail-Historie',\n    quote_history: quotes.length > 0 ? quotes.join('\\n') : 'Keine Angebote',\n    email_count: emailHistory.length,\n    quote_count: quotes.length\n  }\n}];"
+      }
+    }
+  ],
+  "connections": {
+    "Daily 10AM": {
+      "main": [
+        [
+          {
+            "node": "Get Post-Delivery Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Post-Delivery Candidates": {
+      "main": [
+        [
+          {
+            "node": "Has Candidates?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Candidates?": {
+      "main": [
+        [
+          {
+            "node": "Determine Outreach Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Post-Delivery Email": {
+      "main": [
+        [
+          {
+            "node": "Parse Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email": {
+      "main": [
+        [
+          {
+            "node": "Send via Outlook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via Outlook": {
+      "main": [
+        [
+          {
+            "node": "Log to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Save Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Outreach Type": {
+      "main": [
+        [
+          {
+            "node": "Lookup Outlook History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Outlook History": {
+      "main": [
+        [
+          {
+            "node": "Lookup PandaDoc Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup PandaDoc Quotes": {
+      "main": [
+        [
+          {
+            "node": "Prepare Delivery Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Delivery Context": {
+      "main": [
+        [
+          {
+            "node": "Generate Post-Delivery Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

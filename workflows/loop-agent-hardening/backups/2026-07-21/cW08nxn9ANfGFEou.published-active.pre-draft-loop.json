@@ -1,0 +1,426 @@
+{
+  "id": "cW08nxn9ANfGFEou",
+  "name": "NEONTRIP Repeat Business v1.0",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2026-03-13T20:51:37.127Z",
+  "updatedAt": "2026-03-19T09:28:49.148Z",
+  "activeVersionId": "fc210f92-ada0-46eb-89f2-074d0c433ed9",
+  "versionCreatedAt": "2026-03-19T09:28:49.150Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekly Monday 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/get_repeat_business_candidates",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"batch_size\": 10 }",
+        "options": {}
+      },
+      "id": "get-candidates",
+      "name": "Get Repeat Candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "check-data",
+              "leftValue": "={{ $json.customer_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-empty",
+      "name": "Has Candidates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_orders?customer_id=eq.{{ $json.customer_id }}&cancelled_at=is.null&order=shopify_created_at.desc&limit=5&select=shopify_order_number,order_value,line_items,shopify_created_at",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-order-history",
+      "name": "Get Order History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const candidate = $('Has Candidates?').first().json;\nconst orderItems = $('Get Order History').all().map(i => i.json);\n\n// Outlook email history\nconst outlookItems = $('Lookup Outlook History').all().map(i => i.json);\nconst emailHistory = outlookItems\n  .filter(e => e.subject)\n  .map(e => ({\n    subject: e.subject,\n    preview: (e.bodyPreview || '').substring(0, 200),\n    from: e.from?.emailAddress?.address || '',\n    date: e.receivedDateTime || e.receivedAt || ''\n  }))\n  .slice(0, 8);\n\n// PandaDoc quotes\nconst pandadocItems = $('Lookup PandaDoc Quotes').all().map(i => i.json);\nconst quotes = pandadocItems\n  .filter(q => q.document_id)\n  .map(q => ({\n    status: q.status,\n    value: q.total_value,\n    created: q.created_at,\n    viewed: q.viewed_at,\n    signed: q.signed_at\n  }));\n\n// Extract product names from line_items\nconst products = orderItems.flatMap(o => {\n  if (!o.line_items) return [];\n  const items = Array.isArray(o.line_items) ? o.line_items : [o.line_items];\n  return items.map(li => li.title || li.name || 'LED Neonschild').filter(Boolean);\n});\nconst uniqueProducts = [...new Set(products)].slice(0, 5);\n\nconst lastOrder = new Date(candidate.last_order_date);\nconst monthsAgo = Math.round((Date.now() - lastOrder.getTime()) / (1000 * 60 * 60 * 24 * 30));\n\nconst isB2B = !!(candidate.company_name && candidate.company_name.trim());\nconst isHighValue = candidate.total_revenue >= 5000;\n\nconst greeting = candidate.first_name \n  ? candidate.first_name \n  : (isB2B ? candidate.company_name : 'Kunde');\n\n// Build email history summary\nconst emailSummary = emailHistory.length > 0\n  ? emailHistory.map(e => `[${e.date?.substring(0,10) || '?'}] Von: ${e.from} | Betreff: ${e.subject}`).join('\\n')\n  : 'Keine E-Mail-Historie gefunden';\n\n// Build quote summary\nconst quoteSummary = quotes.length > 0\n  ? quotes.map(q => `Status: ${q.status}, Wert: ${q.value}EUR, Erstellt: ${q.created?.substring(0,10) || '?'}${q.signed ? ', Unterschrieben: ' + q.signed.substring(0,10) : ''}`).join('\\n')\n  : 'Keine PandaDoc Angebote gefunden';\n\nreturn [{\n  json: {\n    ...candidate,\n    orders_summary: orderItems.map(o => ({\n      number: o.shopify_order_number,\n      value: o.order_value,\n      date: o.shopify_created_at\n    })),\n    products_ordered: uniqueProducts,\n    months_since_last_order: monthsAgo,\n    is_b2b: isB2B,\n    is_high_value: isHighValue,\n    greeting_name: greeting,\n    order_count: candidate.total_orders,\n    total_spent: candidate.total_revenue,\n    email_history: emailSummary,\n    quote_history: quoteSummary,\n    email_count: emailHistory.length,\n    quote_count: quotes.length\n  }\n}];"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Email Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {}
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 1000,
+          "temperature": 0.7
+        }
+      },
+      "id": "generate-email",
+      "name": "Generate Reactivation Email",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1568,
+        304
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "kZCDxC1N8hTos1iS",
+          "name": "Anthropic Claude"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Prepare Email Context').first().json;\nconst aiOutput = $json.message?.content || $json.text || $json;\n\nconst HTML_SIGNATURE = `\n<br><br>\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.6; color: #333333; max-width: 600px;\">\n    <tbody>\n        <tr>\n            <td style=\"padding: 0;\">\n                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                    <tbody>\n                        <tr>\n                            <td colspan=\"2\" style=\"padding-bottom: 20px;\">\n                                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                                    <tbody>\n                                        <tr>\n                                            <td valign=\"middle\" style=\"padding-right: 20px; width: 120px;\">\n                                                <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" \n                                                     alt=\"Fabienne Trapp\" \n                                                     style=\"width: 100px; height: 100px; border-radius: 50%; display: block; object-fit: cover;\">\n                                            </td>\n                                            <td valign=\"top\">\n                                                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n                                                    <tbody>\n                                                        <tr><td style=\"padding-bottom: 5px;\"><strong style=\"font-size: 16px; color: #2C3E50;\">Fabienne Trapp</strong></td></tr>\n                                                        <tr><td style=\"padding-bottom: 12px;\"><span style=\"color: #7F8C8D; font-size: 13px;\">Beratung & Realisierung</span></td></tr>\n                                                        <tr><td style=\"padding-bottom: 2px;\"><span style=\"color: #2C3E50; font-weight: 600;\">NEONTRIP®</span></td></tr>\n                                                        <tr><td style=\"padding-top: 8px; padding-bottom: 2px;\"><span style=\"color: #555555; font-size: 13px;\">Tel: +49 211 54257240</span></td></tr>\n                                                        <tr><td style=\"padding-bottom: 2px;\"><span style=\"color: #555555; font-size: 13px;\">E-Mail: <a href=\"mailto:support@neontrip.de\" style=\"color: #4A90E2; text-decoration: none;\">support@neontrip.de</a></span></td></tr>\n                                                        <tr><td style=\"padding-bottom: 2px;\"><span style=\"color: #555555; font-size: 13px;\">Web: <a href=\"https://www.neontrip.de\" style=\"color: #4A90E2; text-decoration: none;\">www.neontrip.de</a></span></td></tr>\n                                                        <tr><td style=\"padding-top: 2px;\"><span style=\"color: #555555; font-size: 13px;\">Adresse: Bilker Allee 29, 40219 Düsseldorf</span></td></tr>\n                                                    </tbody>\n                                                </table>\n                                            </td>\n                                        </tr>\n                                    </tbody>\n                                </table>\n                            </td>\n                        </tr>\n                        <tr>\n                            <td colspan=\"2\" style=\"padding-top: 20px;\">\n                                <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #121212; border-radius: 8px; padding: 20px; text-align: center;\">\n                                    <tbody>\n                                        <tr>\n                                            <td align=\"center\">\n                                                <div style=\"font-size: 32px; font-weight: bold; color: #FFFFFF; letter-spacing: 2px; font-family: Arial, sans-serif;\">NEON<span style=\"color: #00FF88;\">⚡</span>TRIP</div>\n                                                <div style=\"margin-top: 8px; font-size: 11px; color: #FFFFFF; letter-spacing: 0.5px; font-weight: 300;\">UNIQUE LIGHTING AND BRANDING</div>\n                                            </td>\n                                        </tr>\n                                    </tbody>\n                                </table>\n                            </td>\n                        </tr>\n                    </tbody>\n                </table>\n            </td>\n        </tr>\n    </tbody>\n</table>`;\n\nlet parsed;\ntry {\n  if (typeof aiOutput === 'string') {\n    const jsonMatch = aiOutput.match(/\\{[\\s\\S]*\\}/);\n    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : aiOutput);\n  } else {\n    parsed = aiOutput;\n  }\n} catch (e) {\n  parsed = {\n    subject: `NEONTRIP — Neues Projekt geplant, ${context.greeting_name}?`,\n    body: `Hallo ${context.greeting_name},<br><br>hier ist Fabienne von NEONTRIP. Ihre letzte Bestellung liegt nun ${context.months_since_last_order} Monate zurück — gibt es ein neues Projekt, bei dem wir Sie unterstützen können?<br><br>Herzliche Grüße<br>Fabienne`\n  };\n}\n\n// Append signature to body\nconst fullBody = parsed.body + HTML_SIGNATURE;\n\nreturn [{\n  json: {\n    to: context.email,\n    subject: parsed.subject,\n    body: fullBody,\n    customer_id: context.customer_id,\n    customer_email: context.email,\n    customer_name: `${context.first_name || ''} ${context.last_name || ''}`.trim(),\n    company_name: context.company_name,\n    last_order_date: context.last_order_date,\n    last_order_value: context.last_order_value,\n    total_orders: context.order_count,\n    total_revenue: context.total_spent\n  }\n}];"
+      },
+      "id": "parse-email",
+      "name": "Parse Email JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "toRecipients": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body }}",
+        "additionalFields": {
+          "from": "support@neontrip.de"
+        }
+      },
+      "id": "send-email",
+      "name": "Send via Outlook",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2144,
+        304
+      ],
+      "webhookId": "94e649de-6284-4079-9127-d06916e4dec6",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "bNyYLKhLkBmKlgtY",
+          "name": "Microsoft Outlook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/repeat_business_outreach",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $json.customer_id }}\",\n  \"customer_email\": \"{{ $json.customer_email }}\",\n  \"customer_name\": \"{{ $json.customer_name }}\",\n  \"company_name\": \"{{ $json.company_name }}\",\n  \"last_order_date\": \"{{ $json.last_order_date }}\",\n  \"last_order_value\": {{ $json.last_order_value || 0 }},\n  \"total_orders\": {{ $json.total_orders || 0 }},\n  \"total_revenue\": {{ $json.total_revenue || 0 }},\n  \"email_subject\": \"{{ $json.subject }}\",\n  \"status\": \"sent\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "log-outreach",
+      "name": "Log to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2368,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## NEONTRIP Repeat Business v1.0\n\n**Trigger:** Jeden Montag 9:00 Uhr\n**Batch:** 10 Kunden pro Woche\n**Ziel:** Bestandskunden mit letzter Bestellung 3-12 Monate reaktivieren\n\n**Logik:**\n- Supabase RPC holt Top-10 nach Umsatz\n- Kunden auf Blacklist oder kürzlich kontaktiert (60 Tage) werden übersprungen\n- AI generiert personalisierte E-Mail\n- Versand via Outlook\n- Logging in repeat_business_outreach Tabelle",
+        "height": 300,
+        "width": 350
+      },
+      "id": "note-info",
+      "name": "Repeat Business Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 8,
+        "filtersUI": {
+          "values": {
+            "filters": {
+              "sender": "={{ $('Has Candidates?').first().json.email }}"
+            }
+          }
+        },
+        "options": {}
+      },
+      "id": "lookup-outlook",
+      "name": "Lookup Outlook History",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        896,
+        304
+      ],
+      "webhookId": "be14d64c-8d41-4e11-8d31-49a5eab709dd",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/v_quotes_by_email?email=eq.{{ encodeURIComponent($('Has Candidates?').first().json.email) }}&select=document_id,customer_name,status,total_value,share_link,created_at,sent_at,viewed_at,signed_at&order=created_at.desc&limit=5",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "lookup-pandadoc",
+      "name": "Lookup PandaDoc Quotes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Weekly Monday 9AM": {
+      "main": [
+        [
+          {
+            "node": "Get Repeat Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Repeat Candidates": {
+      "main": [
+        [
+          {
+            "node": "Has Candidates?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Candidates?": {
+      "main": [
+        [
+          {
+            "node": "Get Order History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email Context": {
+      "main": [
+        [
+          {
+            "node": "Generate Reactivation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Reactivation Email": {
+      "main": [
+        [
+          {
+            "node": "Parse Email JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email JSON": {
+      "main": [
+        [
+          {
+            "node": "Send via Outlook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via Outlook": {
+      "main": [
+        [
+          {
+            "node": "Log to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Order History": {
+      "main": [
+        [
+          {
+            "node": "Lookup Outlook History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Outlook History": {
+      "main": [
+        [
+          {
+            "node": "Lookup PandaDoc Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup PandaDoc Quotes": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

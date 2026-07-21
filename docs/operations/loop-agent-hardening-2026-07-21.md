@@ -173,6 +173,14 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Model output is accepted only as an exact JSON object with one bounded `body` field. Malformed, URL-, address-, price-, discount-, guarantee-, percentage-, and deadline-shaped output falls back to deterministic copy.
 - The only communication side effect is an Outlook draft with `automaticSendAllowed=false` and `humanApprovalRequired=true`; Outlook draft creation is never retried.
 
+### Post-delivery and repeat-business draft replacements
+
+- Replaced both direct customer-send paths with separate database-backed draft loops: 15 nodes for post-delivery and 16 for repeat-business, each with exactly one schedule trigger.
+- Reduced both candidate RPCs to one item per run and replaced cross-node `.first()` lookups with item-linked references, preventing context from one customer being reused for another customer in the same batch.
+- Added stable order/customer identities, internal/test-recipient rejection, atomic claims, human-review flags, explicit draft receipts, and fail-closed `draft_unknown` handling.
+- Both models now receive an explicit untrusted-data boundary and may return only exact `{subject, body_text}` JSON. URLs, addresses, HTML, discounts, prices, guarantees, percentages, and delivery promises are rejected before HTML escaping and deterministic draft construction.
+- Outlook creates drafts only, never retries draft creation, and routes provider errors to the canonical unknown-outcome state.
+
 ## Defects found so far
 
 1. Open-inbox and email-agent claims could race on alternate message identities.
@@ -202,6 +210,11 @@ Keep the previous workflow active version and full JSON backup until the replace
 25. The ActiveCampaign auto-reply retried Outlook customer sends up to five times, maintained overlapping cooldown/static retry concepts, selected prompt style randomly, and sent a separate RIESENOBJEKTE SMTP path automatically.
 26. Its legacy parser accepted malformed non-JSON model text as customer copy after a permissive regex/raw-text fallback. The replacement rejects malformed output and uses deterministic copy in a human-reviewed draft.
 27. The public TLS route for Supplier Shopify Tag Sync is protected by Cloudflare Access and returned an HTML redirect. Because the POST outcome could not be proven from n8n, the workflow is now inactive; the two failed hardened runs were never automatically retried.
+28. Post-delivery and repeat-business both generated probabilistic customer copy and sent it directly, with retries on model generation and no human approval or durable draft receipt.
+29. Both outreach workflows used cross-node `.first()` references while requesting batches of ten candidates. A multi-item execution could therefore combine the first customer's identity/history with another item's model or send path; the replacements use one candidate plus item-linked references.
+30. The repeat-business model node contained an empty `responses` configuration rather than an explicit bounded prompt, while its parser accepted permissively extracted JSON or raw fallback content.
+31. The shared candidate harness accidentally applied the 30-node target-architecture gate to the explicitly temporary 85-node Gemini containment hotfix, so it aborted before testing later candidates. The hotfix is now covered only by its dedicated regression test and remains listed for decomposition.
+32. The same harness detected triggers by the substring `trigger`, which incorrectly classified webhook-triggered workflows as having zero triggers. Trigger detection now handles webhook nodes explicitly and all native `*Trigger` node types uniformly.
 
 ## Validation ledger
 
@@ -218,5 +231,10 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Supplier tag-sync hotfix candidate: 4 enabled nodes, 1 trigger, 3 valid connections, 0 errors.
 - ActiveCampaign auto-reply draft candidate: 22 nodes, 1 trigger, 22 valid connections, 0 errors; malformed-model, unsafe-content, recipient, compilation, and deterministic-fallback tests passed.
 - Extended draft-kind database tests and non-destructive rollback/reapply passed on PostgreSQL 17.
+- Post-delivery draft candidate: 15 nodes, 1 trigger, 14 valid connections, 0 invalid connections, 0 strict errors.
+- Repeat-business draft candidate: 16 nodes, 1 trigger, 15 valid connections, 0 invalid connections, 0 strict errors.
+- Outreach behavior tests cover invalid/internal recipients, missing identities, exact-schema acceptance, malformed and injected output, unsafe claims/URLs, HTML escaping, deterministic fallback, draft-only routing, and outcome receipt branches.
+- New outreach database tests passed first claim, real parallel duplicate suppression (`draft`/`stop`, one row and one claim event), completion, ambiguous-outcome quarantine, service-role boundaries, rollback rejection, and reapply on PostgreSQL 17.
+- Consolidated candidate suite: 10 target workflows passed; the two production containment hotfixes and both agent-to-draft candidates also passed their dedicated suites.
 - Dependency audit: 0 vulnerabilities after the locked transitive update.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.

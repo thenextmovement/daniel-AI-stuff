@@ -204,3 +204,69 @@ end;
 $$;
 
 select 'customer communication draft database tests passed' as result;
+
+do $$
+declare
+  post_claim jsonb;
+  post_complete jsonb;
+  repeat_claim jsonb;
+  repeat_unknown jsonb;
+begin
+  post_claim := public.claim_customer_communication_draft(
+    'post_delivery',
+    'order-claim-test',
+    'post-delivery-human-review-draft-v2',
+    'execution-post-1',
+    900
+  );
+  perform pg_temp.assert_true(
+    post_claim->>'route' = 'draft'
+      and not (post_claim->>'automatic_send_allowed')::boolean
+      and (post_claim->>'human_approval_required')::boolean,
+    'post-delivery must authorize one human-reviewed draft only'
+  );
+
+  post_complete := public.complete_customer_communication_draft(
+    'post_delivery',
+    'order-claim-test',
+    (post_claim->>'claim_token')::uuid,
+    'outlook-draft-post-1',
+    'execution-post-1'
+  );
+  perform pg_temp.assert_true(
+    (post_complete->>'completed')::boolean,
+    'post-delivery draft completion must be receipted'
+  );
+
+  repeat_claim := public.claim_customer_communication_draft(
+    'repeat_business',
+    'customer-claim-test',
+    'repeat-business-human-review-draft-v2',
+    'execution-repeat-1',
+    900
+  );
+  repeat_unknown := public.mark_customer_communication_draft_unknown(
+    'repeat_business',
+    'customer-claim-test',
+    (repeat_claim->>'claim_token')::uuid,
+    'execution-repeat-1',
+    'outlook_draft_failed'
+  );
+  perform pg_temp.assert_true(
+    (repeat_unknown->>'marked_unknown')::boolean
+      and not (repeat_unknown->>'automatic_retry_allowed')::boolean,
+    'repeat-business ambiguous draft outcome must fail closed'
+  );
+end;
+$$;
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 2
+    from public.customer_communication_draft_jobs
+    where communication_kind in ('post_delivery', 'repeat_business')
+  ),
+  'both new outreach identities must be represented exactly once'
+);
+
+select 'post-delivery and repeat-business draft database tests passed' as result;
