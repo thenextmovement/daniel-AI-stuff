@@ -14,7 +14,8 @@ import {
   renderPlist,
 } from "../../scripts/manage_arrival_label_scheduler.mjs";
 
-const baseEnvironment = {
+const baseEnvironment: NodeJS.ProcessEnv = {
+  NODE_ENV: "test",
   USER: "scheduler-test",
   NEONTRIP_OPS_BASE_URL: "https://ops.neontrip.de",
 };
