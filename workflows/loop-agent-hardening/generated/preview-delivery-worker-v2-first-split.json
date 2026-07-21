@@ -9,8 +9,6 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false,
     "saveDataErrorExecution": "all",
-    "binaryMode": "separate",
-    "timeSavedMode": "fixed",
     "errorWorkflow": "M4uG1HAtN9Zggxww"
   },
   "versionCreatedAt": "2026-07-21T09:47:21.032Z",

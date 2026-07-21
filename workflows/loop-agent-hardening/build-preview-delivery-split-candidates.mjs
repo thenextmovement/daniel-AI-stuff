@@ -238,6 +238,8 @@ worker.settings = {
   callerPolicy: "workflowsFromSameOwner",
   availableInMCP: false,
 };
+delete worker.settings.binaryMode;
+delete worker.settings.timeSavedMode;
 
 worker.connections["Schedule Trigger"] = {
   main: [[{ node: "Queue Worker Gate", type: "main", index: 0 }]],
