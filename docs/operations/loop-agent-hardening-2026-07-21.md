@@ -199,6 +199,8 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Customer copy is selected from fixed versioned templates, HTML-escaped, and contains only the preflight-approved offer link. There is no model call or model fallback.
 - Outlook send has exactly one attempt. Success is receipted atomically and may enqueue the next follow-up once after 72 hours; any provider error becomes `delivery_unknown` and is never retried automatically.
 - The non-destructive rollback revokes all service-role executor permissions while retaining delivery and event evidence.
+- Production cutover passed commit `a9739caab5a453d3402a3a216425119b990c3d98`, `codex-safe-push-main`, and `codex-predeploy ops`. The production migration then passed a fully rolled-back transaction covering parallel claim exclusion, transition replays, payment-reminder exclusion, confirmed completion, ambiguous delivery, stale-lease recovery, service-role-only execution, RLS, and zero synthetic residue.
+- Published workflow `whey5GnTeSjiuZxD`, active version `b04c66fc-fb9f-4e97-ae53-3a57d80f9b06`, matches the versioned graph and settings exactly after ignoring only provider-managed Outlook webhook IDs. Strict production validation reports 19 enabled nodes, one trigger, 22 valid connections, no invalid connection, and no error.
 
 ## Defects found so far
 
@@ -240,6 +242,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 36. The follow-up workflow combines schedule, unauthenticated manual webhook, error trigger, stale/error recovery, offer checks, Outlook reply search, two AI classifiers, AI copy generation, customer send, queue mutation, ActiveCampaign projection, and audit logging in one 101-node cyclic graph.
 37. The legacy business-hours node contains hardcoded address-based bypasses, including a personal mailbox, so selected records could run outside the published schedule instead of following a policy-controlled test mode.
 38. The legacy claim is a retried REST `PATCH` with `continueRegularOutput`; an error-shaped response can continue into normalization rather than producing an explicit durable claim failure.
+39. The n8n create interface silently omitted the candidate's `callerPolicy` and `availableInMCP: false` settings. The inactive graph comparison caught the drift; a full settings update restored the exact artifact before publication.
 
 ## Validation ledger
 
@@ -264,5 +267,6 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Deterministic follow-up candidate: 19 nodes, 1 trigger, 22 valid connections, 0 invalid connections, 0 strict errors, 0 AI/agent nodes.
 - Follow-up behavior tests cover recipient/link validation, modern-offer closed/ambiguous state, PandaDoc terminal state, reply evidence, lookup failure, HTML/name injection, deterministic copy, one-attempt send routing, and durable completion/unknown branches.
 - Follow-up PostgreSQL 17 tests cover real parallel claim (`process`/`stop` with one attempt/event), payment-reminder exclusion, completion replay, next-step idempotency, preflight block, ambiguous send, stale lease, service-role-only RPCs, rollback revoke, and reapply.
+- Follow-up production transaction smoke passed all claim/replay/failure/RLS assertions and rolled back with zero queue, attempt, or event residue. The published production graph is exact and strict-valid at 19 nodes, 1 trigger, 22 valid connections, and 0 errors.
 - Dependency audit: 0 vulnerabilities after the locked transitive update.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.
