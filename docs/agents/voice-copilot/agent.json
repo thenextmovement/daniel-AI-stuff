@@ -40,7 +40,7 @@
     "docs/legal/voice-consent-and-disclosure.md",
     "docs/runbooks/voice-model-switch.md"
   ],
-  "status": "ready_for_handoff_with_blocked_customer_rollout",
+  "status": "handoff_ready_rollout_blocked",
   "evidence_status": "verified_against_git_code_and_focused_local_tests_without_live_evidence",
   "schedule_supported": false,
   "capabilities": [
