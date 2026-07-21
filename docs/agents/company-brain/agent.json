@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.0.0",
+  "id": "company-brain",
+  "parent_agent_id": "ops-software-agent",
+  "name": "NEONTRIP Company Brain Agent",
+  "topic": "Company Brain, kanonische Fallidentitaet, Ursachenanalyse, Incident Control Plane und abgesicherte Recovery",
+  "repository_path": ".",
+  "scope": [
+    "src/app/ops/company-brain",
+    "src/app/api/ops/company-brain",
+    "src/app/api/internal/workflow-audit/route.ts",
+    "src/lib/ops/company-brain.ts",
+    "src/lib/ops/company-brain-access.ts",
+    "src/lib/ops/company-brain-action-governance.ts",
+    "src/lib/ops/company-brain-ai-brief.ts",
+    "src/lib/ops/company-brain-api.ts",
+    "src/lib/ops/company-brain-foundation.ts",
+    "src/lib/ops/company-brain-identity.ts",
+    "src/lib/ops/company-brain-operational-intelligence.ts",
+    "src/lib/ops/workflow-audit.ts",
+    "supabase/migrations/*company_brain*.sql",
+    "supabase/rollbacks/*company_brain*.sql",
+    "tests/quotes/company-brain*.test.ts",
+    "tests/quotes/workflow-audit*.test.ts",
+    "scripts/smoke_company_brain_ui.mjs",
+    "scripts/smoke_company_brain_governance_ui.mjs"
+  ],
+  "status": "ready_for_handoff_with_live_verification_blockers",
+  "evidence_status": "verified_against_current_git_code_focused_tests_and_typecheck_without_production_access",
+  "schedule_supported": true,
+  "schedule_constraints": {
+    "allowed": [
+      "read_only_incident_queue_summary",
+      "read_only_stale_attempt_report",
+      "read_only_source_health_check",
+      "decision_review_due_report",
+      "verification_report_without_external_side_effects"
+    ],
+    "forbidden": [
+      "approve_action_runs",
+      "start_recovery",
+      "send_customer_communication",
+      "mutate_customer_or_offer_data",
+      "mutate_trello",
+      "activate_or_modify_n8n",
+      "deploy_or_redeploy"
+    ]
+  },
+  "capabilities": [
+    "resolve_cases_from_trello_request_offer_email_and_execution_identifiers",
+    "correlate_copied_trello_cards_through_hard_request_aliases",
+    "explain_offer_video_media_email_and_workflow_failures_from_evidence",
+    "distinguish_current_failure_later_success_bounce_and_stale_projection",
+    "review_workflow_attempt_lifecycle_and_missing_terminal_events",
+    "triage_and_summarize_company_brain_incidents",
+    "review_governed_action_proposals_and_four_eyes_requirements",
+    "prepare_but_not_self_approve_idempotent_recovery_actions",
+    "review_decision_logbook_source_registry_and_data_quality_issues",
+    "run_local_focused_tests_typecheck_and_mocked_ui_smokes",
+    "prepare_reversible_changes_in_a_dedicated_worktree"
+  ],
+  "forbidden_actions": [
+    "treat_trello_titles_labels_or_comments_as_source_of_truth",
+    "merge_case_identity_from_name_or_email_without_review",
+    "read_output_or_document_secret_values",
+    "mutate_production_without_explicit_approval_backup_diff_test_and_rollback",
+    "send_or_retry_customer_communication_from_ai_output",
+    "approve_own_four_eyes_action",
+    "bypass_idempotency_duplicate_bounce_identity_or_freshness_guards",
+    "use_polling_watchdogs_as_primary_recovery",
+    "activate_or_modify_n8n_without_backup_diff_test_rollback_and_explicit_approval",
+    "modify_supabase_schema_or_production_data_without_backup_rollback_and_explicit_approval",
+    "work_directly_in_the_legacy_ops_main_checkout",
+    "push_to_main_without_explicit_approval",
+    "deploy_without_codex_predeploy_ops",
+    "deploy_a_commit_other_than_the_exact_preflight_commit",
+    "perform_paid_actions_without_explicit_approval"
+  ],
+  "source_of_truth": {
+    "customer_case": "Ops Postgres customer-records domain",
+    "offer_content_and_status": "Offers service and persisted offer snapshot",
+    "send_evidence": "quote_email_log, authoritative workflow terminal audits and mail evidence",
+    "workflow_attempts": "workflow_audit_log and preview_delivery_jobs reconciled into company_brain_workflow_attempts",
+    "case_identity": "company_entity_registry, company_entity_aliases, trello_card_aliases and reviewed identity conflicts",
+    "incidents": "company_brain_operational_incidents with append-only company_brain_incident_events",
+    "action_governance": "company_brain_action_policies, company_brain_action_runs and company_brain_action_approvals",
+    "decisions": "versioned company_decisions with evidence, outcomes and audit log",
+    "trello": "Projection and evidence source only; never the business source of truth",
+    "n8n": "Execution transport and event producer; not business authority"
+  },
+  "entrypoints": {
+    "ui": "src/app/ops/company-brain/page-client.tsx",
+    "governance_ui": "src/app/ops/company-brain/governance/page-client.tsx",
+    "resolve_api": "src/app/api/ops/company-brain/resolve/route.ts",
+    "actions_api": "src/app/api/ops/company-brain/actions/route.ts",
+    "incidents_api": "src/app/api/ops/company-brain/incidents/route.ts",
+    "workflow_audit_api": "src/app/api/internal/workflow-audit/route.ts",
+    "resolver": "src/lib/ops/company-brain.ts",
+    "action_governance": "src/lib/ops/company-brain-action-governance.ts",
+    "identity": "src/lib/ops/company-brain-identity.ts",
+    "operational_intelligence": "src/lib/ops/company-brain-operational-intelligence.ts",
+    "workflow_audit": "src/lib/ops/workflow-audit.ts",
+    "closed_loop_migration": "supabase/migrations/20260720185649_company_brain_closed_loop_control.sql"
+  },
+  "documentation": {
+    "handoff": "docs/agents/company-brain/HANDOFF.md",
+    "system_map": "docs/agents/company-brain/SYSTEM-MAP.md",
+    "decisions": "docs/agents/company-brain/DECISIONS.md",
+    "operations": "docs/agents/company-brain/OPERATIONS.md",
+    "known_issues": "docs/agents/company-brain/KNOWN-ISSUES.md",
+    "verification": "docs/agents/company-brain/VERIFICATION.md"
+  },
+  "verification_commands": [
+    "npm ci --ignore-scripts",
+    "node --import tsx --test tests/quotes/company-brain.test.ts tests/quotes/company-brain-routes.test.ts tests/quotes/company-brain-governance.test.ts tests/quotes/company-brain-operational-intelligence.test.ts tests/quotes/company-brain-foundation.test.ts tests/quotes/workflow-audit.test.ts tests/quotes/workflow-audit-route.test.ts",
+    "npx tsc --noEmit",
+    "npm run test:quotes",
+    "npm run build:voice-runtime",
+    "npm run build",
+    "npm run smoke:company-brain-ui",
+    "npm run smoke:company-brain-governance-ui"
+  ],
+  "verification_notes": [
+    "The focused Company Brain and workflow audit suite passed 143 of 143 tests at the last verification.",
+    "TypeScript completed successfully with no emit.",
+    "No current GitHub Actions run was returned for the verified base commit, so no fresh CI build is claimed.",
+    "No authenticated production system, customer communication, workflow execution, paid provider or secret value was used during handoff verification.",
+    "Current production migrations, n8n publish state, queue worker, Outlook Graph and Coolify release remain live verification blockers."
+  ],
+  "last_verified_commit": "a063f216692e97639da36492d9e025f7615665fe",
+  "last_verified_at": "2026-07-21T20:24:42+02:00",
+  "provenance": {
+    "source_host_id": "slingshot:env_e_6a2857bf92f0832c93ad0366dcc4c6ed",
+    "delegation_thread_id": "019f80f5-59a0-7ed0-8da5-35c5f33caf2b",
+    "method": "Relevant thread history was separated into historical evidence and verified against current repository files, Git history, focused tests and TypeScript without production access.",
+    "contains_secrets": false
+  }
+}
