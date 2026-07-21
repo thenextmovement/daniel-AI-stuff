@@ -106,6 +106,8 @@ export type ProductConfig = {
   printMedia?: string | null;
   deliveryNotePrinterKey?: string | null;
   deliveryNotePrintMedia?: string | null;
+  pdfLayoutConfig?: import("./pdf").DpdPdfLayout | null;
+  storageBucket?: string | null;
 };
 
 export type ArrivalCaseDecision = {

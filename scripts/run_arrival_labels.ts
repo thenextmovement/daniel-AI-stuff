@@ -39,7 +39,7 @@ async function fixtureClients(fixturePath: string) {
 async function main() {
   const requestedMode = argument("mode") || "dry_run";
   if (!hasFlag("acknowledge-production-write") && requestedMode !== "dry_run") {
-    throw new Error("Execute erfordert --acknowledge-production-write und bleibt bis zur EasyDPD-Freigabe zusätzlich gesperrt.");
+    throw new Error("Execute erfordert --acknowledge-production-write.");
   }
   if (!hasFlag("persist") && requestedMode !== "dry_run") {
     throw new Error("Execute erfordert ein persistiertes Audit (--persist).");

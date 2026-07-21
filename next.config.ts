@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: __dirname,
+  serverExternalPackages: ["@napi-rs/canvas"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },

@@ -503,7 +503,7 @@ test("internal arrival-label API requires its dedicated sufficiently long bearer
   }
 });
 
-test("execute mode remains fail-closed even when the feature flag is set", async () => {
+test("execute mode remains fail-closed without a persisted audit even when the feature flag is set", async () => {
   const previous = process.env.ARRIVAL_LABEL_WRITES_ENABLED;
   process.env.ARRIVAL_LABEL_WRITES_ENABLED = "true";
   try {
@@ -515,7 +515,7 @@ test("execute mode remains fail-closed even when the feature flag is set", async
     };
     await assert.rejects(
       runArrivalLabels({ mode: "execute", localDate: "2026-07-20", clients, productConfig: config }),
-      /EasyDPD-Write-Adapter ist noch nicht freigegeben/,
+      /persistiertes Audit/,
     );
   } finally {
     if (previous === undefined) delete process.env.ARRIVAL_LABEL_WRITES_ENABLED;

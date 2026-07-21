@@ -20,6 +20,8 @@
     "arrival-labels:scheduler": "node scripts/run_arrival_label_scheduler.mjs",
     "arrival-labels:scheduler:manage": "node scripts/manage_arrival_label_scheduler.mjs",
     "arrival-labels:print-worker": "node --import tsx scripts/run_arrival_label_print_worker.ts",
+    "arrival-labels:browser-worker": "node scripts/run_easydpd_browser_worker.mjs",
+    "arrival-labels:browser-worker:manage": "node scripts/manage_easydpd_browser_worker.mjs",
     "lint": "next lint",
     "verify": "npm run test:quotes && npm run build:voice-runtime && npm run build",
     "test:quotes": "node --import tsx --test tests/quotes/*.test.ts"

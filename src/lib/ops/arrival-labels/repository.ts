@@ -4,6 +4,7 @@ import type { ArrivalCaseDecision, DhlArrival, ExistingDpdEvidence, ProductConfi
 import type { ArrivalDataClients } from "./clients";
 import type { ArrivalReviewNotification } from "./review-notifications";
 import { readBoundedResponseBytes } from "./printing";
+import type { BrowserArtifactRecord } from "./browser-purchase";
 
 type ProductConfigRow = {
   version: string;
@@ -15,6 +16,8 @@ type ProductConfigRow = {
   print_media: string | null;
   delivery_note_printer_key: string | null;
   delivery_note_print_media: string | null;
+  pdf_layout_config: Record<string, unknown> | null;
+  storage_bucket: string | null;
 };
 
 type RunRow = { id: string; correlation_id: string };
@@ -121,7 +124,7 @@ export async function updateArrivalReviewNotification(input: {
 
 export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
   const rows = await supabaseRequest<ProductConfigRow[]>("arrival_label_product_config", undefined, {
-    select: "version,enabled,standard_product_code,express_product_mapping,eu_product_mapping,printer_key,print_media,delivery_note_printer_key,delivery_note_print_media",
+    select: "version,enabled,standard_product_code,express_product_mapping,eu_product_mapping,printer_key,print_media,delivery_note_printer_key,delivery_note_print_media,pdf_layout_config,storage_bucket",
     enabled: "eq.true",
     limit: 2,
   });
@@ -153,7 +156,170 @@ export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
     printMedia: row.print_media,
     deliveryNotePrinterKey: row.delivery_note_printer_key,
     deliveryNotePrintMedia: row.delivery_note_print_media,
+    pdfLayoutConfig: row.pdf_layout_config as ProductConfig["pdfLayoutConfig"],
+    storageBucket: row.storage_bucket,
   };
+}
+
+export type ArrivalBrowserPurchaseJobRow = {
+  id: string;
+  case_id: string;
+  idempotency_key: string;
+  shop_domain: string;
+  shopify_order_id: string;
+  shopify_order_numeric_id: string;
+  shopify_order_name: string;
+  order_url: string;
+  selected_dpd_product: string;
+  easydpd_product_label: string;
+  label_format: "Einzeln auf A6";
+  package_weight_grams: 500;
+  maximum_purchase_cents: number;
+  observed_purchase_cents: number | null;
+  incoming_dhl_tracking_number: string;
+  incoming_dhl_last_six: string;
+  status: "queued" | "claimed" | "validated" | "dispatching" | "purchased" | "artifact_uploaded" | "completed" | "retryable_error" | "manual_review" | "cancelled";
+  attempts: number;
+  max_attempts: number;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  dpd_tracking_number: string | null;
+  original_pdf_sha256: string | null;
+  annotated_pdf_sha256: string | null;
+  print_job_id: string | null;
+  last_error: string | null;
+};
+
+export async function enqueueArrivalBrowserPurchase(caseId: string) {
+  const rows = await supabaseRpc<ArrivalBrowserPurchaseJobRow[]>("arrival_labels_enqueue_browser_purchase", { p_case_id: caseId });
+  if (!rows[0]) throw new Error("EasyDPD-Browser-Auftrag konnte nicht angelegt werden.");
+  return rows[0];
+}
+
+export async function claimArrivalBrowserPurchase(input: { workerId: string; leaseSeconds?: number }) {
+  const rows = await supabaseRpc<ArrivalBrowserPurchaseJobRow[]>("arrival_labels_claim_browser_purchase", {
+    p_worker_id: input.workerId,
+    p_lease_seconds: input.leaseSeconds || 300,
+  });
+  return rows[0] || null;
+}
+
+export async function loadOwnedArrivalBrowserPurchase(input: { jobId: string; workerId: string }) {
+  const rows = await supabaseRequest<ArrivalBrowserPurchaseJobRow[]>("arrival_label_browser_purchase_jobs", undefined, {
+    select: "id,case_id,idempotency_key,shop_domain,shopify_order_id,shopify_order_numeric_id,shopify_order_name,order_url,selected_dpd_product,easydpd_product_label,label_format,package_weight_grams,maximum_purchase_cents,observed_purchase_cents,incoming_dhl_tracking_number,incoming_dhl_last_six,status,attempts,max_attempts,lease_owner,lease_expires_at,dpd_tracking_number,original_pdf_sha256,annotated_pdf_sha256,print_job_id,last_error",
+    id: `eq.${input.jobId}`,
+    lease_owner: `eq.${input.workerId}`,
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+export async function updateArrivalBrowserPurchase(input: {
+  jobId: string;
+  workerId: string;
+  result: "validated" | "dispatching" | "purchased" | "completed" | "retryable_error" | "uncertain";
+  dpdTrackingNumber?: string | null;
+  originalPdfSha256?: string | null;
+  observedPurchaseCents?: number | null;
+  printJobId?: string | null;
+  error?: string | null;
+}) {
+  const rows = await supabaseRpc<ArrivalBrowserPurchaseJobRow[]>("arrival_labels_update_browser_purchase", {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_result: input.result,
+    p_dpd_tracking_number: input.dpdTrackingNumber || null,
+    p_original_pdf_sha256: input.originalPdfSha256 || null,
+    p_observed_purchase_cents: input.observedPurchaseCents ?? null,
+    p_print_job_id: input.printJobId || null,
+    p_error: input.error || null,
+  });
+  if (!rows[0]) throw new Error("EasyDPD-Browser-Auftrag konnte nicht aktualisiert werden.");
+  return rows[0];
+}
+
+function privateStorageConfiguration() {
+  const url = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+  if (!/^https:\/\//.test(url) || !key) throw new Error("Supabase Storage ist nicht konfiguriert.");
+  return { url, key };
+}
+
+function encodeStoragePath(storageKey: string) {
+  const segments = storageKey.split("/");
+  if (!segments.length || segments.some((segment) => !segment || segment === "." || segment === ".." || segment.length > 255)) {
+    throw new Error("Ungueltiger privater Storage-Pfad.");
+  }
+  return segments.map(encodeURIComponent).join("/");
+}
+
+export async function uploadPrivateArrivalArtifact(input: {
+  bucket: string;
+  storageKey: string;
+  contentType: "application/pdf" | "image/png";
+  bytes: Uint8Array;
+  sha256: string;
+}) {
+  const { url, key } = privateStorageConfiguration();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(input.bucket)) throw new Error("Ungueltiger privater Storage-Bucket.");
+  const objectPath = encodeStoragePath(input.storageKey);
+  const endpoint = `${url}/storage/v1/object/${encodeURIComponent(input.bucket)}/${objectPath}`;
+  const headers = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": input.contentType };
+  const response = await fetch(endpoint, { method: "POST", headers, body: Buffer.from(input.bytes), signal: AbortSignal.timeout(20_000) });
+  if (response.ok) return;
+  if (response.status !== 400 && response.status !== 409) throw new Error(`Privater Storage-Upload fehlgeschlagen (HTTP ${response.status}).`);
+
+  const existing = await fetch(`${url}/storage/v1/object/authenticated/${encodeURIComponent(input.bucket)}/${objectPath}`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!existing.ok) throw new Error("Vorhandenes Storage-Objekt konnte nicht idempotent verifiziert werden.");
+  const bytes = await readBoundedResponseBytes(existing, 10 * 1024 * 1024);
+  const { createHash } = await import("node:crypto");
+  if (createHash("sha256").update(bytes).digest("hex") !== input.sha256) throw new Error("Storage-Pfad ist bereits mit anderem Inhalt belegt.");
+}
+
+export async function insertArrivalBrowserArtifact(input: Omit<BrowserArtifactRecord, "id">) {
+  const inserted = await supabaseRequest<BrowserArtifactRecord[]>("arrival_label_artifacts", {
+    method: "POST",
+    headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+    body: JSON.stringify(input),
+  }, { on_conflict: "case_id,artifact_kind" });
+  if (inserted[0]) return inserted[0];
+  const rows = await supabaseRequest<BrowserArtifactRecord[]>("arrival_label_artifacts", undefined, {
+    select: "id,case_id,artifact_kind,storage_bucket,storage_key,sha256,content_type,byte_size,page_width_points,page_height_points,qa_result",
+    case_id: `eq.${input.case_id}`,
+    artifact_kind: `eq.${input.artifact_kind}`,
+    limit: 1,
+  });
+  const existing = rows[0];
+  if (!existing || existing.sha256 !== input.sha256 || existing.storage_bucket !== input.storage_bucket || existing.storage_key !== input.storage_key) {
+    throw new Error("Artefakt-Idempotenzgrenze ist bereits mit anderem Inhalt belegt.");
+  }
+  return existing;
+}
+
+export async function registerArrivalBrowserArtifacts(input: {
+  jobId: string;
+  workerId: string;
+  dpdTrackingNumber: string;
+  originalPdfSha256: string;
+  originalArtifactId: string;
+  annotatedArtifactId: string;
+  previewArtifactId: string;
+}) {
+  const rows = await supabaseRpc<ArrivalBrowserPurchaseJobRow[]>("arrival_labels_register_browser_artifacts", {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_dpd_tracking_number: input.dpdTrackingNumber,
+    p_original_pdf_sha256: input.originalPdfSha256,
+    p_original_artifact_id: input.originalArtifactId,
+    p_annotated_artifact_id: input.annotatedArtifactId,
+    p_preview_artifact_id: input.previewArtifactId,
+  });
+  if (!rows[0]) throw new Error("EasyDPD-Artefakte konnten nicht registriert werden.");
+  return rows[0];
 }
 
 export type ArrivalPrintJobRow = {

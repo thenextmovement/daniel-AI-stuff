@@ -12,6 +12,7 @@ import {
 } from "./domain";
 import {
   createDatabaseExistingLabelClient,
+  enqueueArrivalBrowserPurchase,
   enqueueArrivalReviewNotification,
   finishArrivalRun,
   loadActiveProductConfig,
@@ -78,7 +79,6 @@ function assertWriteGate(mode: ArrivalRunMode, productConfig: ProductConfig | nu
     throw new Error("Produktive Labelerstellung ist deaktiviert (ARRIVAL_LABEL_WRITES_ENABLED ist nicht true).");
   }
   if (!productConfig?.enabled) throw new Error("Keine freigegebene DPD-Produktkonfiguration aktiv.");
-  throw new Error("EasyDPD-Write-Adapter ist noch nicht freigegeben; Execute-Modus bleibt fail-closed.");
 }
 
 export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): Promise<ArrivalRunResult> {
@@ -86,6 +86,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
   const localDate = validateLocalDate(options.localDate || todayInBerlin());
   const triggerType = options.triggerType || "manual_cli";
   const persist = options.persist === true;
+  if (mode === "execute" && !persist) throw new Error("Execute-Modus erfordert ein persistiertes Audit.");
   const runtimeClients = options.clients || createRuntimeClients();
   if (!options.clients) runtimeClients.existingLabels = createDatabaseExistingLabelClient();
   const productConfig = options.productConfig === undefined
@@ -142,6 +143,9 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
     if (run) {
       for (let index = 0; index < cases.length; index += 1) {
         const stored = await upsertArrivalCase({ runId: run.id, arrival: arrivals[index], decision: cases[index] });
+        if (mode === "execute" && cases[index].status === "label_planned") {
+          await enqueueArrivalBrowserPurchase(stored.id);
+        }
         const notification = buildArrivalReviewNotification(cases[index]);
         if (notification) await enqueueArrivalReviewNotification({ caseId: stored.id, notification });
         await recordArrivalEvent({

@@ -32,3 +32,10 @@ export function isArrivalPrintWorkerAuthorized(headers: Headers) {
   if (expected.length < 32 || !bearer) return false;
   return timingSafeEqual(digest(expected), digest(bearer));
 }
+
+export function isArrivalBrowserWorkerAuthorized(headers: Headers) {
+  const expected = String(process.env.ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN || "").trim();
+  const bearer = (headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
+  if (expected.length < 32 || !bearer) return false;
+  return timingSafeEqual(digest(expected), digest(bearer));
+}
