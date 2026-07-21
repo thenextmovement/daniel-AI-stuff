@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0.0",
+  "id": "export-shipping",
+  "parent_agent_id": "logistics-fulfillment-agent",
+  "name": "NEONTRIP Exportversand/Schweiz Agent",
+  "topic": "DPD-Exportlabel, Handelsrechnung, Shopify-Tracking und kontrollierte Kundenbenachrichtigung für Schweiz/Nicht-EU",
+  "repository_path": ".",
+  "status": "knowledge_handoff_ready_implementation_not_in_main",
+  "implementation_status": "historical_uncommitted_prototype_only",
+  "activation_status": "not_deployed_not_activated",
+  "evidence_status": "verified_against_current_main_historical_worktree_focused_tests_and_official_dpd_docs",
+  "schedule_supported": false,
+  "capabilities": [
+    "trace_export_shipping_requirements_and_data_flow",
+    "distinguish_current_main_from_the_historical_uncommitted_prototype",
+    "review_shopify_order_customs_package_and_customer_vat_inputs",
+    "evaluate_dpd_cloud_vs_easydpd_provider_boundaries",
+    "review_snapshot_idempotency_document_storage_and_no_retry_guards",
+    "prepare_a_reversible_current_worktree_implementation_plan",
+    "run_focused_local_tests_and_static_safety_checks",
+    "plan_separate_deploy_label_shopify_and_customer_notification_gates"
+  ],
+  "forbidden_actions": [
+    "treat_the_historical_prototype_as_merged_deployed_or_live",
+    "copy_the_outdated_prototype_into_main_without_current_diff_and_review",
+    "read_output_document_or_commit_secret_values",
+    "create_purchase_or_print_a_real_carrier_label_without_separate_explicit_approval",
+    "activate_export_feature_flags_without_explicit_approval",
+    "create_or_reconcile_shopify_fulfillment_without_the_shopify_write_gate",
+    "notify_a_customer_without_the_separate_customer_notification_gate",
+    "blindly_retry_an_ambiguous_dpd_easydpd_shopify_or_print_side_effect",
+    "reuse_the_arrival_easydpd_worker_for_switzerland_without_a_new_approved_contract",
+    "activate_or_modify_n8n_without_backup_diff_rollback_and_explicit_approval",
+    "modify_production_supabase_storage_or_data_without_backup_rollback_and_explicit_approval",
+    "treat_trello_as_source_of_truth",
+    "work_directly_in_the_legacy_ops_main_checkout",
+    "push_or_merge_without_explicit_approval",
+    "deploy_without_codex_predeploy_ops",
+    "deploy_a_commit_other_than_the_exact_preflight_commit"
+  ],
+  "scope": {
+    "canonical_documentation": "docs/agents/export-shipping",
+    "current_main_adjacent_paths": [
+      "src/lib/ops/shipping.ts",
+      "src/lib/ops/arrival-labels",
+      "scripts/easydpd_browser_worker_lib.mjs",
+      "supabase/migrations/20260721170915_create_arrival_label_browser_purchase_queue.sql",
+      "tests/quotes/arrival-label-browser-worker.test.ts",
+      "tests/quotes/shipping.test.ts"
+    ],
+    "historical_prototype_paths_not_in_main": [
+      "src/app/ops/customer-records/shipping/export",
+      "src/app/api/ops/customer-records/shipping/export",
+      "src/lib/ops/export-shipping.ts",
+      "src/lib/ops/export-shipping-dpd.ts",
+      "src/lib/ops/export-shipping-shopify.ts",
+      "src/lib/ops/export-shipping-documents.ts",
+      "supabase/migrations/20260717100350_create_export_shipping.sql",
+      "supabase/rollbacks/20260717100350_create_export_shipping_rollback.sql",
+      "tests/quotes/export-shipping.test.ts",
+      "scripts/smoke_export_shipping_ui.mjs",
+      "workflows/dpd-export-shipping-monitor-v0.1.inactive-draft.json"
+    ]
+  },
+  "source_of_truth": {
+    "orders_addresses_fulfillment_orders_and_current_items": "Shopify Admin read server-side",
+    "export_jobs_snapshots_idempotency_documents_and_audit": "Ops Supabase/Postgres after an approved implementation",
+    "carrier_label_and_tracking": "Exactly one explicitly approved DPD provider",
+    "fulfillment_and_customer_notification": "Shopify or provider, with ownership decided before activation",
+    "trello": "Projection only; never source of truth"
+  },
+  "documentation": {
+    "handoff": "docs/agents/export-shipping/HANDOFF.md",
+    "system_map": "docs/agents/export-shipping/SYSTEM-MAP.md",
+    "decisions": "docs/agents/export-shipping/DECISIONS.md",
+    "operations": "docs/agents/export-shipping/OPERATIONS.md",
+    "known_issues": "docs/agents/export-shipping/KNOWN-ISSUES.md",
+    "verification": "docs/agents/export-shipping/VERIFICATION.md"
+  },
+  "activation_gates": [
+    "architecture_and_provider_approval",
+    "code_schema_and_disabled_deploy_approval",
+    "read_only_preview_acceptance",
+    "separate_real_label_generation_approval",
+    "separate_shopify_fulfillment_approval",
+    "separate_customer_notification_approval",
+    "separate_monitoring_activation_approval"
+  ],
+  "verification_commands": [
+    "node --import tsx --test tests/quotes/export-shipping.test.ts",
+    "node --import tsx --test tests/quotes/arrival-label-browser-worker.test.ts tests/quotes/shipping.test.ts",
+    "jq -e '.active == false' workflows/dpd-export-shipping-monitor-v0.1.inactive-draft.json",
+    "npx tsc --noEmit",
+    "git diff --check"
+  ],
+  "verification_notes": [
+    "The export-focused prototype suite passed 13 of 13 tests in the historical uncommitted worktree.",
+    "The current main arrival-browser-worker and shipping suites passed 35 of 35 focused tests.",
+    "No real DPD or EasyDPD label, Shopify fulfillment, customer notification, workflow activation, push or deployment was performed.",
+    "A full rebuild was intentionally not repeated for this documentation-only handoff."
+  ],
+  "last_verified_commit": "a063f216692e97639da36492d9e025f7615665fe",
+  "last_verified_at": "2026-07-21T20:25:18+02:00",
+  "historical_prototype": {
+    "worktree": "/Users/danielklesse/codex-worktrees/neontrip-ops-dpd-export-shipping-20260717-120022",
+    "base_commit": "cc2e19944b8142c68f8e27ec7b857181e3efa409",
+    "committed": false,
+    "in_origin_main": false,
+    "commits_behind_last_verified_main": 48
+  },
+  "provenance": {
+    "source_host_id": "slingshot:env_e_6a2857bf92f0832c93ad0366dcc4c6ed",
+    "source_thread_id": "019f80f5-59a0-7ed0-8da5-35c5f33caf2b",
+    "method": "Relevant chat history separated from current repository, Git, focused test and read-only official DPD evidence",
+    "contains_secrets": false
+  }
+}
