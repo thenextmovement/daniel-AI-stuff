@@ -5,7 +5,7 @@
   "name": "NEONTRIP Exportversand/Schweiz Agent",
   "topic": "DPD-Exportlabel, Handelsrechnung, Shopify-Tracking und kontrollierte Kundenbenachrichtigung für Schweiz/Nicht-EU",
   "repository_path": ".",
-  "status": "knowledge_handoff_ready_implementation_not_in_main",
+  "status": "handoff_ready_implementation_external",
   "implementation_status": "historical_uncommitted_prototype_only",
   "activation_status": "not_deployed_not_activated",
   "evidence_status": "verified_against_current_main_historical_worktree_focused_tests_and_official_dpd_docs",
