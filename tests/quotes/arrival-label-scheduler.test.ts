@@ -13,6 +13,7 @@ import {
   parseManagerArgs,
   renderPlist,
 } from "../../scripts/manage_arrival_label_scheduler.mjs";
+import { isDirectInvocation } from "../../scripts/run_arrival_label_scheduler.mjs";
 
 const baseEnvironment: NodeJS.ProcessEnv = {
   NODE_ENV: "test",
@@ -24,6 +25,15 @@ test("local scheduler defaults to dry-run and the exact approved endpoint", () =
   const config = resolveConfig([], baseEnvironment);
   assert.equal(config.mode, "dry_run");
   assert.equal(config.apiUrl, "https://ops.neontrip.de/api/internal/arrival-labels/run");
+});
+
+test("scheduler recognizes direct execution through a symlinked runtime path", () => {
+  const canonical = "/Users/test/Desktop/neontrip/runtime/run_arrival_label_scheduler.mjs";
+  const symlinked = "/Users/test/NEONTRIP/runtime/run_arrival_label_scheduler.mjs";
+  const resolveRealpath = (value: string) => value === symlinked ? canonical : value;
+
+  assert.equal(isDirectInvocation(`file://${canonical}`, symlinked, resolveRealpath), true);
+  assert.equal(isDirectInvocation(`file://${canonical}`, "/tmp/importer.mjs", resolveRealpath), false);
 });
 
 test("local scheduler rejects HTTP, unapproved hosts and alternate paths", () => {
