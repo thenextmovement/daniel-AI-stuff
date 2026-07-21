@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0.0",
+  "id": "sales-vergabe",
+  "name": "NEONTRIP Sales-Vergabe Agent",
+  "topic": "Sales-Vergabe, Completed-Offers, Shopify-Reconcile, Zahlung und Supplier-Zuweisung",
+  "repository_path": ".",
+  "scope": [
+    "src/app/ops/sales-vergabe",
+    "src/app/api/ops/supplier-sales",
+    "src/lib/ops/supplier-sales.ts",
+    "src/lib/quotes/accept-quote.ts",
+    "src/lib/quotes/ops-sales-sync.ts",
+    "tests/quotes/supplier-sales.test.ts",
+    "tests/quotes/acceptance.test.ts",
+    "scripts/smoke_sales_vergabe_ui.mjs",
+    "supabase/migrations/20260609102438_create_supplier_sales_ops.sql",
+    "supabase/rollbacks/20260609102438_create_supplier_sales_ops_rollback.sql",
+    "workflows/supplier-completed-offers-sync-v0.1.inactive-draft.json",
+    "workflows/supplier-shopify-tag-sync-v0.1.inactive-draft.json",
+    "workflows/supplier-payment-reminder-email-v0.1.inactive-draft.json",
+    "workflows/supplier-order-confirmation-email-v0.1.inactive-draft.json"
+  ],
+  "status": "ready_for_handoff_with_known_issues",
+  "evidence_status": "verified_against_git_code_tests_and_read_only_checks",
+  "capabilities": [
+    "trace_offer_completed_to_supplier_sales",
+    "review_supplier_sales_ui_and_api",
+    "diagnose_completed_offers_and_shopify_reconciliation",
+    "review_payment_and_assignment_guards",
+    "review_repeat_paid_customer_detection",
+    "review_shopify_tag_and_trello_projection_logic",
+    "run_local_tests_typecheck_build_and_mocked_ui_smoke",
+    "prepare_reversible_changes_in_a_dedicated_worktree"
+  ],
+  "forbidden_actions": [
+    "treat_trello_as_source_of_truth",
+    "read_or_document_secret_values",
+    "mutate_production_without_explicit_approval",
+    "send_customer_communication_without_validation_and_explicit_approval",
+    "trigger_supplier_assignment_or_shopify_tag_mutations_without_explicit_approval",
+    "activate_or_modify_n8n_without_backup_diff_rollback_and_explicit_approval",
+    "modify_supabase_schema_or_data_without_backup_rollback_and_explicit_approval",
+    "work_directly_in_the_legacy_ops_main_checkout",
+    "push_to_main_without_explicit_approval",
+    "deploy_without_codex_predeploy_ops",
+    "deploy_a_commit_other_than_the_exact_preflight_commit"
+  ],
+  "source_of_truth": {
+    "accepted_offer_and_customer_selection": "Offers database and immutable acceptance snapshot",
+    "assignment_and_idempotency": "Ops Supabase supplier_sales domain tables",
+    "payment_fulfillment_and_current_order_tags": "Shopify Admin reconciled into Ops",
+    "supplier_cards": "Projection only; Trello is not source of truth",
+    "workflow_transport": "n8n is transport and scheduling, not business authority"
+  },
+  "entrypoints": {
+    "ui": "src/app/ops/sales-vergabe/page-client.tsx",
+    "page": "src/app/ops/sales-vergabe/page.tsx",
+    "api": "src/app/api/ops/supplier-sales/route.ts",
+    "domain": "src/lib/ops/supplier-sales.ts",
+    "offer_acceptance": "src/lib/quotes/accept-quote.ts",
+    "offer_sync": "src/lib/quotes/ops-sales-sync.ts",
+    "migration": "supabase/migrations/20260609102438_create_supplier_sales_ops.sql"
+  },
+  "documentation": {
+    "handoff": "docs/agents/sales-vergabe/HANDOFF.md",
+    "system_map": "docs/agents/sales-vergabe/SYSTEM-MAP.md",
+    "decisions": "docs/agents/sales-vergabe/DECISIONS.md",
+    "operations": "docs/agents/sales-vergabe/OPERATIONS.md",
+    "known_issues": "docs/agents/sales-vergabe/KNOWN-ISSUES.md",
+    "verification": "docs/agents/sales-vergabe/VERIFICATION.md"
+  },
+  "verification_commands": [
+    "npm ci",
+    "node --import tsx --test tests/quotes/supplier-sales.test.ts tests/quotes/acceptance.test.ts",
+    "npm run test:quotes",
+    "npx tsc --noEmit",
+    "npm run build",
+    "npm run smoke:sales-vergabe-ui"
+  ],
+  "verification_notes": [
+    "The focused suite, full quote suite, TypeScript check and production build passed at last verification.",
+    "The mocked UI smoke currently times out after rapid combined filter changes and is a known open QA issue.",
+    "No authenticated production data or external side effect was used during handoff verification."
+  ],
+  "last_verified_commit": "d3e14db4e1da447cf18ec0d328c63827f81bd9f1",
+  "last_verified_at": "2026-07-21T18:44:02+02:00",
+  "provenance": {
+    "primary_thread_id": "019ecc68-649e-7781-a33b-4348f2d6e9f4",
+    "delegation_thread_id": "019f80f5-59a0-7ed0-8da5-35c5f33caf2b",
+    "method": "Thread inventory verified against repository files, Git history, tests and read-only system checks",
+    "contains_secrets": false
+  }
+}
