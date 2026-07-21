@@ -96,8 +96,16 @@ export async function inspectExactDhlOutlookArchiveTarget(input: {
   let inboxResponse: Response;
   try {
     [messageResponse, inboxResponse] = await Promise.all([
-      fetchWithRetry(messageUrl.toString(), { headers }, { attempts: 3, timeoutMs: 15_000 }),
-      fetchWithRetry(inboxUrl, { headers }, { attempts: 3, timeoutMs: 15_000 }),
+      fetchWithRetry(messageUrl.toString(), { headers }, {
+        attempts: 3,
+        timeoutMs: 15_000,
+        integration: "microsoft_graph_archive_message",
+      }),
+      fetchWithRetry(inboxUrl, { headers }, {
+        attempts: 3,
+        timeoutMs: 15_000,
+        integration: "microsoft_graph_archive_inbox",
+      }),
     ]);
   } catch (error) {
     if (error instanceof ArrivalIntegrationError) throw error;

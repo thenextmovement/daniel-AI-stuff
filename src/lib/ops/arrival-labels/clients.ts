@@ -44,8 +44,13 @@ async function delay(milliseconds: number) {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-export async function fetchWithRetry(url: string, init: RequestInit, options?: { attempts?: number; timeoutMs?: number }) {
+export async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  options?: { attempts?: number; timeoutMs?: number; integration?: string },
+) {
   const attempts = Math.min(Math.max(options?.attempts || 3, 1), 4);
+  const integration = String(options?.integration || "external_api").replace(/[^a-z0-9_-]/gi, "_");
   let lastError: unknown = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -56,7 +61,11 @@ export async function fetchWithRetry(url: string, init: RequestInit, options?: {
       });
       if (response.ok) return response;
       if (![429, 502, 503, 504].includes(response.status) || attempt === attempts - 1) {
-        throw new ArrivalIntegrationError(`Externe API antwortete mit HTTP ${response.status}.`, "external_http_error", [429, 502, 503, 504].includes(response.status));
+        throw new ArrivalIntegrationError(
+          `${integration}: Externe API antwortete mit HTTP ${response.status}.`,
+          `${integration}_http_error`,
+          [429, 502, 503, 504].includes(response.status),
+        );
       }
     } catch (error) {
       lastError = error;
@@ -66,7 +75,11 @@ export async function fetchWithRetry(url: string, init: RequestInit, options?: {
     await delay(250 * (2 ** attempt));
   }
   if (lastError instanceof Error) throw lastError;
-  throw new ArrivalIntegrationError("Externe API konnte nicht erreicht werden.", "external_transport_error", true);
+  throw new ArrivalIntegrationError(
+    `${integration}: Externe API konnte nicht erreicht werden.`,
+    `${integration}_transport_error`,
+    true,
+  );
 }
 
 export function berlinDayBounds(localDate: string) {
@@ -90,7 +103,7 @@ export async function microsoftGraphToken() {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
-  });
+  }, { integration: "microsoft_graph_token" });
   const payload = await response.json() as { access_token?: string };
   if (!payload.access_token) throw new ArrivalIntegrationError("Microsoft Graph lieferte kein Access Token.", "graph_token_missing");
   return payload.access_token;
@@ -113,7 +126,11 @@ export function createOutlookClient(): ArrivalDataClients["outlook"] {
       const messages: DhlMailEvidence[] = [];
       let nextUrl: string | null = initial.toString();
       for (let page = 0; nextUrl && page < 5; page += 1) {
-        const response = await fetchWithRetry(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetchWithRetry(
+          nextUrl,
+          { headers: { Authorization: `Bearer ${token}` } },
+          { integration: "microsoft_graph_outlook" },
+        );
         const payload = await response.json() as {
           value?: Array<{
             id?: string;
@@ -171,8 +188,8 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
       listsUrl.searchParams.set("fields", "id,name");
       listsUrl.searchParams.set("filter", "all");
       const [cardsResponse, listsResponse] = await Promise.all([
-        fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }),
-        fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }),
+        fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_cards" }),
+        fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_lists" }),
       ]);
       const cards = await cardsResponse.json() as Array<{ id?: string; name?: string; url?: string; desc?: string; idList?: string; closed?: boolean }>;
       const lists = await listsResponse.json() as Array<{ id?: string; name?: string }>;
@@ -243,7 +260,7 @@ export function createShopifyClient(): ArrivalDataClients["shopify"] {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": config.token },
           body: JSON.stringify({ query: ARRIVAL_ORDERS_QUERY, variables: { first: 250, query } }),
-        });
+        }, { integration: "shopify_admin_graphql" });
         const payload = await response.json() as JsonRecord;
         const errors = Array.isArray(payload.errors) ? payload.errors : [];
         if (errors.length) throw new ArrivalIntegrationError("Shopify GraphQL lieferte Fehler.", "shopify_graphql_error");

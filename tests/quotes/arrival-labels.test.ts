@@ -3,7 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Temporal } from "@js-temporal/polyfill";
 import { isArrivalLabelsRequestAuthorized, isArrivalLabelsRunRequestAuthorized, isArrivalPrintWorkerAuthorized } from "../../src/lib/ops/arrival-labels/auth";
-import { berlinDayBounds, type ArrivalDataClients } from "../../src/lib/ops/arrival-labels/clients";
+import {
+  ArrivalIntegrationError,
+  berlinDayBounds,
+  fetchWithRetry,
+  type ArrivalDataClients,
+} from "../../src/lib/ops/arrival-labels/clients";
 import {
   arrivalsFromDhlMessages,
   assessDestinationGate,
@@ -450,6 +455,28 @@ test("Berlin day bounds remain correct across daylight saving transitions", () =
   assert.equal(Temporal.Instant.from(summer.startUtc).toZonedDateTimeISO("Europe/Berlin").hour, 0);
   assert.match(winter.startUtc, /23:00:00Z$/);
   assert.match(summer.startUtc, /22:00:00Z$/);
+});
+
+test("external integration failures retain a sanitized source in the audit error", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("unauthorized", { status: 401 });
+  try {
+    await assert.rejects(
+      fetchWithRetry("https://example.invalid", {}, {
+        attempts: 1,
+        integration: "microsoft graph token/../../secret",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ArrivalIntegrationError);
+        assert.equal(error.code, "microsoft_graph_token_______secret_http_error");
+        assert.match(error.message, /^microsoft_graph_token_______secret: Externe API antwortete mit HTTP 401\.$/);
+        assert.doesNotMatch(error.message, /example\.invalid/);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test("saved reference fixture contains the protected NEONT4498 tracking evidence", async () => {
