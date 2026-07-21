@@ -92,7 +92,8 @@ export function berlinDayBounds(localDate: string) {
 export async function microsoftGraphToken() {
   const tenantId = requiredEnv("MICROSOFT_GRAPH_TENANT_ID");
   const clientId = requiredEnv("MICROSOFT_GRAPH_CLIENT_ID");
-  const clientSecret = requiredEnv("MICROSOFT_GRAPH_CLIENT_SECRET");
+  const clientSecret = String(process.env.MICROSOFT_GRAPH_CLIENT_SECRET_NEXT || "").trim()
+    || requiredEnv("MICROSOFT_GRAPH_CLIENT_SECRET");
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,

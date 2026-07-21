@@ -149,3 +149,15 @@ test("Coolify sync uses a separate scheduler secret with an explicit delete roll
   assert.match(workflow, /valueSha256Prefix/);
   assert.doesNotMatch(workflow, /console\.log\([^\n]*ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN/);
 });
+
+test("Microsoft Graph secret rotation preserves the prior Coolify value as rollback", () => {
+  const workflow = readFileSync(".github/workflows/coolify-secret-sync.yml", "utf8");
+  const clients = readFileSync("src/lib/ops/arrival-labels/clients.ts", "utf8");
+  assert.match(workflow, /sync_ops_microsoft_graph_secret/);
+  assert.match(workflow, /delete_ops_microsoft_graph_secret_next/);
+  assert.match(workflow, /MICROSOFT_GRAPH_CLIENT_SECRET_NEXT/);
+  assert.match(workflow, /fallbackKeyPreserved: "MICROSOFT_GRAPH_CLIENT_SECRET"/);
+  assert.match(workflow, /previous: previous \? envSummary\(previous\) : null/);
+  assert.match(clients, /MICROSOFT_GRAPH_CLIENT_SECRET_NEXT/);
+  assert.match(clients, /\|\| requiredEnv\("MICROSOFT_GRAPH_CLIENT_SECRET"\)/);
+});
