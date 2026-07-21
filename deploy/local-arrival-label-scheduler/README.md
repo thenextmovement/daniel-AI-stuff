@@ -10,7 +10,7 @@ Store the dedicated API token in the macOS Keychain. The command prompts for the
 
 ```bash
 /usr/bin/security add-generic-password -U \
-  -s NEONTRIP_ARRIVAL_LABEL_AGENT_API_TOKEN \
+  -s NEONTRIP_ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN \
   -a "$USER" -w
 ```
 
@@ -23,7 +23,9 @@ export ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID='the-scoped-service-token-id'
   -a "$USER" -w
 ```
 
-Use a least-privilege token restricted to `POST /api/internal/arrival-labels/run`. Rotate it independently from print-worker and n8n tokens.
+The matching server-side environment key is `ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN`. Use a least-privilege token restricted to `POST /api/internal/arrival-labels/run`. Rotate it independently from print-worker and n8n tokens.
+
+The repository workflow `Coolify Secret Sync` can copy the same dedicated GitHub Actions secret to the Ops runtime with mode `sync_ops_arrival_label_scheduler_token`. It records only length and a SHA-256 prefix, never the token. Mode `delete_ops_arrival_label_scheduler_token` is the server-side credential rollback.
 
 ## Install and inspect
 
@@ -74,3 +76,5 @@ npm run arrival-labels:scheduler:manage -- uninstall
 ```
 
 Revoking the Keychain token is the emergency authentication stop. Disabling the scheduler does not resolve any carrier/print dispatch already marked uncertain; those remain manual-review cases.
+
+For full credential rollback, also run the Coolify secret-sync delete mode and remove the repository secret after the local LaunchAgent has been disabled. The original n8n `ARRIVAL_LABEL_AGENT_API_TOKEN` remains untouched throughout installation and rollback.

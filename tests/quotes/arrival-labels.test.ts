@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Temporal } from "@js-temporal/polyfill";
-import { isArrivalLabelsRequestAuthorized, isArrivalPrintWorkerAuthorized } from "../../src/lib/ops/arrival-labels/auth";
+import { isArrivalLabelsRequestAuthorized, isArrivalLabelsRunRequestAuthorized, isArrivalPrintWorkerAuthorized } from "../../src/lib/ops/arrival-labels/auth";
 import { berlinDayBounds, type ArrivalDataClients } from "../../src/lib/ops/arrival-labels/clients";
 import {
   arrivalsFromDhlMessages,
@@ -460,13 +460,19 @@ test("saved reference fixture contains the protected NEONT4498 tracking evidence
 
 test("internal arrival-label API requires its dedicated sufficiently long bearer token", () => {
   const previous = process.env.ARRIVAL_LABEL_AGENT_API_TOKEN;
+  const previousLocal = process.env.ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN;
   try {
     process.env.ARRIVAL_LABEL_AGENT_API_TOKEN = "arrival-label-test-token-at-least-24";
+    process.env.ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN = "local-scheduler-test-token-at-least-24";
     assert.equal(isArrivalLabelsRequestAuthorized(new Headers({ Authorization: "Bearer wrong-token" })), false);
     assert.equal(isArrivalLabelsRequestAuthorized(new Headers({ Authorization: "Bearer arrival-label-test-token-at-least-24" })), true);
+    assert.equal(isArrivalLabelsRequestAuthorized(new Headers({ Authorization: "Bearer local-scheduler-test-token-at-least-24" })), false);
+    assert.equal(isArrivalLabelsRunRequestAuthorized(new Headers({ Authorization: "Bearer local-scheduler-test-token-at-least-24" })), true);
   } finally {
     if (previous === undefined) delete process.env.ARRIVAL_LABEL_AGENT_API_TOKEN;
     else process.env.ARRIVAL_LABEL_AGENT_API_TOKEN = previous;
+    if (previousLocal === undefined) delete process.env.ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN;
+    else process.env.ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN = previousLocal;
   }
 });
 

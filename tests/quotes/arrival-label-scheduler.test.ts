@@ -139,3 +139,13 @@ test("local schedule trigger migration is constrained, audited and safely revers
   assert.match(rollback, /Rollback blocked/);
   assert.doesNotMatch(rollback, /delete\s+from\s+public\.arrival_label_runs/i);
 });
+
+test("Coolify sync uses a separate scheduler secret with an explicit delete rollback", () => {
+  const workflow = readFileSync(".github/workflows/coolify-secret-sync.yml", "utf8");
+  assert.match(workflow, /sync_ops_arrival_label_scheduler_token/);
+  assert.match(workflow, /delete_ops_arrival_label_scheduler_token/);
+  assert.match(workflow, /secrets\.ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN/);
+  assert.match(workflow, /previous: previous \? envSummary\(previous\) : null/);
+  assert.match(workflow, /valueSha256Prefix/);
+  assert.doesNotMatch(workflow, /console\.log\([^\n]*ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN/);
+});

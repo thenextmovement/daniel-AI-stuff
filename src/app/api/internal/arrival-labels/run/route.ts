@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { isArrivalLabelsRequestAuthorized } from "@/lib/ops/arrival-labels/auth";
+import { isArrivalLabelsRunRequestAuthorized } from "@/lib/ops/arrival-labels/auth";
 import { PrintInputError, readBoundedJson } from "@/lib/ops/arrival-labels/printing";
 import { arrivalRunMarkdown } from "@/lib/ops/arrival-labels/report";
 import { runArrivalLabels } from "@/lib/ops/arrival-labels/service";
@@ -19,7 +19,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 const ALLOWED_KEYS = new Set(["localDate", "mode", "persist", "triggerType"]);
 
 export async function POST(request: NextRequest) {
-  if (!isArrivalLabelsRequestAuthorized(request.headers)) {
+  if (!isArrivalLabelsRunRequestAuthorized(request.headers)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, headers: NO_STORE });
   }
   const requestId = randomUUID();

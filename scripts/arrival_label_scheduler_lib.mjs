@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 
 export const DEFAULT_BASE_URL = "https://ops.neontrip.de";
 export const DEFAULT_ALLOWED_HOSTS = ["ops.neontrip.de"];
-export const DEFAULT_TOKEN_SERVICE = "NEONTRIP_ARRIVAL_LABEL_AGENT_API_TOKEN";
+export const DEFAULT_TOKEN_SERVICE = "NEONTRIP_ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN";
 export const DEFAULT_CF_SECRET_SERVICE = "NEONTRIP_ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET";
 export const MAX_RESPONSE_BYTES = 1024 * 1024;
 
