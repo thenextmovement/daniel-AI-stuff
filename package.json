@@ -17,6 +17,8 @@
     "smoke:sales-vergabe-ui": "node scripts/smoke_sales_vergabe_ui.mjs",
     "start": "next start",
     "arrival-labels:dry-run": "node --import tsx scripts/run_arrival_labels.ts --mode dry_run",
+    "arrival-labels:scheduler": "node scripts/run_arrival_label_scheduler.mjs",
+    "arrival-labels:scheduler:manage": "node scripts/manage_arrival_label_scheduler.mjs",
     "arrival-labels:print-worker": "node --import tsx scripts/run_arrival_label_print_worker.ts",
     "lint": "next lint",
     "verify": "npm run test:quotes && npm run build:voice-runtime && npm run build",

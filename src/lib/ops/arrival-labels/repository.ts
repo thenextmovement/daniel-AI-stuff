@@ -272,7 +272,7 @@ export async function downloadPrivateArrivalArtifact(artifact: PrintArtifactRow)
 
 export async function startArrivalRun(input: {
   correlationId?: string;
-  triggerType: "manual_cli" | "manual_api" | "n8n_email" | "n8n_schedule" | "fixture_test";
+  triggerType: "manual_cli" | "manual_api" | "n8n_email" | "n8n_schedule" | "local_schedule" | "fixture_test";
   mode: "dry_run" | "execute";
   localDate: string;
   configVersion: string | null;

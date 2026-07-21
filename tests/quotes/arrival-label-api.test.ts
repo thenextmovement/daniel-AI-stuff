@@ -69,3 +69,13 @@ test("arrival-label run API hides downstream details and returns a request ID", 
     assert.doesNotMatch(JSON.stringify(payload), /sensitive-database-detail/);
   });
 });
+
+test("arrival-label run API accepts the audited local scheduler trigger", async () => {
+  await withEnvironment(async () => {
+    globalThis.fetch = async () => new Response("downstream unavailable", { status: 500 });
+    const response = await runArrivalLabels(request({ mode: "dry_run", persist: false, triggerType: "local_schedule" }));
+    assert.equal(response.status, 500);
+    const payload = await response.json();
+    assert.notEqual(payload.error, "invalid_request");
+  });
+});

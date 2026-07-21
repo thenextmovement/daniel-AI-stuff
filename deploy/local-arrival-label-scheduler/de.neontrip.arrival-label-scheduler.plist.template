@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>de.neontrip.arrival-label-scheduler</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{NODE_PATH}}</string>
+    <string>{{RUNNER_PATH}}</string>
+    <string>--mode</string>
+    <string>{{MODE}}</string>
+{{EXECUTE_ACK_ARGUMENT}}
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>NEONTRIP_OPS_BASE_URL</key>
+    <string>{{OPS_BASE_URL}}</string>
+    <key>NEONTRIP_KEYCHAIN_ACCOUNT</key>
+    <string>{{KEYCHAIN_ACCOUNT}}</string>
+    <key>ARRIVAL_LABEL_SCHEDULER_LIVE_ENABLED</key>
+    <string>{{LIVE_ENABLED}}</string>
+{{CF_CLIENT_ID_ENV}}
+  </dict>
+  <key>StartInterval</key>
+  <integer>{{INTERVAL_SECONDS}}</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>{{STDOUT_PATH}}</string>
+  <key>StandardErrorPath</key>
+  <string>{{STDERR_PATH}}</string>
+</dict>
+</plist>

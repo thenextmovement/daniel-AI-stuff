@@ -2,6 +2,8 @@
 
 These workflows invoke the tested Ops arrival-label service. One reacts to allowlisted DHL Outlook emails every minute, one performs the daily reconciliation, one drains the deduplicated internal review-mail outbox, and one drains the exact-message Outlook archive outbox after a confirmed shipping-label print. They deliberately contain no matching, EasyDPD, Shopify-mutation, PDF, or printing business logic.
 
+For installations that do not use the paid n8n mail trigger, `deploy/local-arrival-label-scheduler` provides a macOS LaunchAgent. It calls the same authenticated endpoint every five minutes using `trigger_type=local_schedule`, reads secrets from Keychain and keeps the Mac outbound-only. The local schedule is an alternative trigger, not a second source of business logic.
+
 ## Build and check
 
 ```bash

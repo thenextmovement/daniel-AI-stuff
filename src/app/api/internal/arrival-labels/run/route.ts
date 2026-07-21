@@ -12,7 +12,7 @@ type RequestBody = {
   localDate?: string;
   mode?: "dry_run" | "execute";
   persist?: boolean;
-  triggerType?: "manual_api" | "n8n_email" | "n8n_schedule";
+  triggerType?: "manual_api" | "n8n_email" | "n8n_schedule" | "local_schedule";
 };
 
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
     if (body.mode !== undefined && !["dry_run", "execute"].includes(body.mode)) throw new PrintInputError("Ungueltiger Modus.");
     if (body.persist !== undefined && typeof body.persist !== "boolean") throw new PrintInputError("persist muss boolean sein.");
-    if (body.triggerType !== undefined && !["manual_api", "n8n_email", "n8n_schedule"].includes(body.triggerType)) {
+    if (body.triggerType !== undefined && !["manual_api", "n8n_email", "n8n_schedule", "local_schedule"].includes(body.triggerType)) {
       throw new PrintInputError("Ungueltiger Trigger-Typ.");
     }
     const result = await runArrivalLabels({
