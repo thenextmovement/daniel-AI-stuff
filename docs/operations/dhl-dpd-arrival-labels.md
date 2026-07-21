@@ -16,7 +16,7 @@ The binding operator rules, including manual Trello lists, stale-label handling 
 
 ## Architecture
 
-The Ops TypeScript service owns all deterministic rules. Outlook, Trello, Shopify and existing-shipment evidence are normalized, then a case is decided. Postgres stores current case state, per-run snapshots, append-only events and artifact metadata. Trello is never the source of truth.
+The Ops TypeScript service owns all deterministic rules. Outlook, Trello, Shopify and existing-shipment evidence are normalized, then a case is decided. Postgres stores current case state, per-run snapshots, append-only events and artifact metadata. Trello is never the source of truth. Shopify's financial status is recorded for audit only; an open, pending, authorized, partially paid or unknown payment status does not block an otherwise valid arrival-label case.
 
 The idempotency boundary is `Shopify order GID + full inbound DHL tracking number`. A unique database index enforces the same pair. Before any future label write, both Shopify fulfillment/tracking and database shipment evidence must be empty. A lease RPC uses `FOR UPDATE SKIP LOCKED` for future side-effect serialization.
 

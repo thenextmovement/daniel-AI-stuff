@@ -2,6 +2,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import type {
   DhlMailEvidence,
   ExistingDpdEvidence,
+  ShopifyFinancialStatus,
   ShopifyOrderEvidence,
   TrelloCardEvidence,
 } from "./domain";
@@ -205,6 +206,7 @@ const ARRIVAL_ORDERS_QUERY = `
       nodes {
         id
         name
+        displayFinancialStatus
         note
         tags
         customAttributes { key value }
@@ -273,11 +275,13 @@ function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvide
   const lineItems = ((raw.lineItems as JsonRecord | undefined)?.nodes || []) as JsonRecord[];
   const shippingLines = ((raw.shippingLines as JsonRecord | undefined)?.nodes || []) as JsonRecord[];
   const fulfillments = Array.isArray(raw.fulfillments) ? raw.fulfillments as JsonRecord[] : [];
+  const financialStatus = normalizeFinancialStatus(raw.displayFinancialStatus);
   return {
     id,
     name,
     adminUrl: `https://${shopDomain}/admin/orders/${numericId}`,
     customerName: customer ? String(customer.displayName || "").trim() || null : null,
+    financialStatus,
     note: String(raw.note || "").trim() || null,
     shippingAddress: shippingAddress ? {
       name: String(shippingAddress.name || "").trim() || null,
@@ -319,6 +323,21 @@ function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvide
       }));
     }),
   };
+}
+
+function normalizeFinancialStatus(value: unknown): ShopifyFinancialStatus {
+  const normalized = String(value || "").trim().toLowerCase();
+  if ([
+    "paid",
+    "pending",
+    "authorized",
+    "partially_paid",
+    "partially_refunded",
+    "refunded",
+    "voided",
+    "expired",
+  ].includes(normalized)) return normalized as ShopifyFinancialStatus;
+  return "unknown";
 }
 
 export function customerNameHintsFromCard(card: TrelloCardEvidence) {

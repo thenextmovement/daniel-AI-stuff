@@ -30,6 +30,7 @@ const standardOrder: ShopifyOrderEvidence = {
   name: "#NEONT100",
   adminUrl: "https://neontrip.myshopify.com/admin/orders/100",
   customerName: "Ada Beispiel",
+  financialStatus: "paid",
   note: null,
   shippingAddress: {
     name: "Ada Beispiel",
@@ -216,6 +217,36 @@ test("non-standard Shopify notes and missing product mapping fail to manual revi
   const noConfig = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [standardOrder], productConfig: null });
   assert.equal(noConfig.status, "manual_review");
   assert.match(noConfig.manualReviewReason || "", /DPD-Produkt/);
+});
+
+test("open Shopify payment status is audit-only and never blocks an otherwise valid arrival label", () => {
+  for (const financialStatus of ["pending", "authorized", "partially_paid", "unknown"] as const) {
+    const order: ShopifyOrderEvidence = { ...standardOrder, financialStatus };
+    const decision = decideArrivalCase({
+      arrival: arrival(),
+      trelloCards: [card()],
+      shopifyOrders: [order],
+      productConfig: config,
+    });
+    assert.equal(decision.status, "label_planned", financialStatus);
+    assert.equal(decision.selectedDpdProduct, "DPD_CLASSIC_TEST", financialStatus);
+    assert.equal(decision.shopifyOrder?.financialStatus, financialStatus);
+    assert.deepEqual(decision.reasons, []);
+  }
+});
+
+test("refunded, voided and expired orders remain manual-review cases", () => {
+  for (const financialStatus of ["refunded", "voided", "expired"] as const) {
+    const decision = decideArrivalCase({
+      arrival: arrival(),
+      trelloCards: [card()],
+      shopifyOrders: [{ ...standardOrder, financialStatus }],
+      productConfig: config,
+    });
+    assert.equal(decision.status, "manual_review", financialStatus);
+    assert.equal(decision.selectedDpdProduct, null, financialStatus);
+    assert.ok(decision.reasons.includes("payment_terminal_status"), financialStatus);
+  }
 });
 
 test("only the exact NEONTRIP offer note and attribute schema passes the Shopify gate", () => {

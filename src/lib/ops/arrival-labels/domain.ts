@@ -64,11 +64,23 @@ export type ShopifyShippingAddressEvidence = {
   countryCodeV2: string | null;
 };
 
+export type ShopifyFinancialStatus =
+  | "paid"
+  | "pending"
+  | "authorized"
+  | "partially_paid"
+  | "partially_refunded"
+  | "refunded"
+  | "voided"
+  | "expired"
+  | "unknown";
+
 export type ShopifyOrderEvidence = {
   id: string;
   name: string;
   adminUrl: string;
   customerName: string | null;
+  financialStatus: ShopifyFinancialStatus;
   note: string | null;
   shippingAddress: ShopifyShippingAddressEvidence | null;
   customAttributes: Array<{ key: string; value: string }>;
@@ -138,7 +150,8 @@ export type DestinationGate = {
 export type ShopifyAutomationGateReason =
   | "pickup_instruction"
   | "non_standard_shopify_note"
-  | "non_standard_shopify_attribute";
+  | "non_standard_shopify_attribute"
+  | "payment_terminal_status";
 
 export type ShopifyAutomationGate = {
   blocked: boolean;
@@ -494,11 +507,13 @@ export function assessShopifyAutomationGate(order: ShopifyOrderEvidence): Shopif
   if (PICKUP_PATTERN.test(pickupEvidence)) reasonCodes.push("pickup_instruction");
   if (!isStandardOfferMetadataNote(note)) reasonCodes.push("non_standard_shopify_note");
   if (!standardAttributes(order.customAttributes)) reasonCodes.push("non_standard_shopify_attribute");
+  if (["refunded", "voided", "expired"].includes(order.financialStatus)) reasonCodes.push("payment_terminal_status");
   const uniqueCodes = [...new Set(reasonCodes)];
   const reasonParts = uniqueCodes.map((code) => ({
     pickup_instruction: "Shopify enthaelt einen Abhol- oder Ladenlokal-Hinweis.",
     non_standard_shopify_note: "Shopify enthaelt eine Notiz ausserhalb des freigegebenen NEONTRIP-Angebotsformats.",
     non_standard_shopify_attribute: "Shopify enthaelt Zusatzfelder ausserhalb des freigegebenen NEONTRIP-Angebotsformats.",
+    payment_terminal_status: `Shopify-Zahlungsstatus ${order.financialStatus} weist auf eine beendete oder rueckabgewickelte Bestellung hin.`,
   })[code]);
   return {
     blocked: uniqueCodes.length > 0,

@@ -33,6 +33,7 @@
       "name": "#NEONT4498",
       "adminUrl": "https://neontrip.myshopify.com/admin/orders/4498",
       "customerName": "Alexander Walden",
+      "financialStatus": "paid",
       "note": null,
       "shippingAddress": {
         "name": "Alexander Walden",

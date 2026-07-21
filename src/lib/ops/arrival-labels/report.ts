@@ -13,7 +13,7 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
     `- Korrelations-ID: \`${result.correlationId}\``,
     `- Produktkonfiguration: ${result.configVersion ? `\`${result.configVersion}\`` : "nicht freigegeben"}`,
     "",
-    "| DHL-Sendung | Letzte 6 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde | Zielland | Notiz / Änderung | Versandart | DPD-Produkt | Lieferschein | DPD-Tracking | PDF | Druck | Status / Fehler |",
+    "| DHL-Sendung | Letzte 6 | Erwartete Ankunft | Trello / Auftrag | Shopify / Kunde / Zahlung | Zielland | Notiz / Änderung | Versandart | DPD-Produkt | Lieferschein | DPD-Tracking | PDF | Druck | Status / Fehler |",
     "| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
 
@@ -23,7 +23,7 @@ export function arrivalRunMarkdown(result: ArrivalRunResult) {
       entry.lastSix,
       entry.expectedArrival,
       entry.trelloCard ? `[${cell(entry.trelloCard.name)}](${entry.trelloCard.url})` : "-",
-      entry.shopifyOrder ? `${cell(entry.shopifyOrder.name)} / ${cell(entry.shopifyOrder.customerName)}` : "-",
+      entry.shopifyOrder ? `${cell(entry.shopifyOrder.name)} / ${cell(entry.shopifyOrder.customerName)} / ${cell(entry.shopifyOrder.financialStatus)} (nur Audit)` : "-",
       `${cell(entry.destinationCountryCode)} (${entry.destinationClass})`,
       cell(entry.relevantOrderNote),
       entry.shippingClass,

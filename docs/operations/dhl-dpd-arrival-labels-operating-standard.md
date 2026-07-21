@@ -25,6 +25,8 @@ Alle folgenden Bedingungen müssen gleichzeitig erfüllt sein:
 7. Es existiert weder in Shopify noch in der Ops-Datenbank oder bei EasyDPD bereits eine zweite Sendung, die einen erneuten Kauf verbietet.
 8. Die vollständige Idempotenzkennung `Shopify-Order-ID + vollständige DHL-Nummer` ist noch nicht verarbeitet.
 
+Der Shopify-Zahlungsstatus ist ausdrücklich nur Audit-Information. `pending`, `authorized`, `partially_paid`, `unknown` oder ein anderer offener Zahlungszustand sind allein kein Stopper: Wenn eine DHL-Eingangsmeldung eindeutig einem ansonsten freigegebenen Standardfall zugeordnet ist, darf die Versandvorbereitung unabhängig vom Zahlungseingang fortgesetzt werden. Alle übrigen Stopper gelten unverändert.
+
 Fehlt eine Bedingung oder widersprechen sich Quellen, ist der Fall manuell.
 
 ## Harte Stopper
@@ -36,12 +38,15 @@ Ohne Kauf, Download oder Druck in die manuelle Prüfung gehen:
 - Trello-Listen mit manueller Bedeutung, insbesondere `Problem with Sign`, `Problem mit Schild`, `Manual Review`, `Manuelle Prüfung` oder `Sonderfälle`;
 - Shopify-Hinweise wie `Abholer`, `Ladenlokal`, `holt ab`, `Selbstabholung`, `vor Ort` oder sonstiger Text außerhalb des Standardformats;
 - bereits erfüllte Bestellung, altes Versandtracking, Ersatz-, Reklamations- oder Nachlieferungsfall, solange kein aktuelles und unbenutztes Label für genau diesen Eingang belegt ist;
+- vollständig erstattete, stornierte oder abgelaufene Shopify-Bestellung (`refunded`, `voided`, `expired`); diese Zustände sind keine bloß offene Zahlung;
 - Schweiz, sonstiges Nicht-EU-Land, fehlendes Land oder bekannte EU-Zoll-/Umsatzsteuer-Sondergebiete;
 - EU außerhalb Deutschlands ohne vollständige Adresse, freigegebenes EU-DPD-Produkt oder vor dem Labelkauf bestätigten, preisfreien A4-Lieferschein;
 - ein A4-Lieferschein, der nicht ausdrücklich an den separaten HP-Bürodrucker statt an den Brother-Etikettendrucker geroutet ist;
 - Express-/Eilanforderung ohne exakt freigegebene Produktzuordnung;
 - der Dimmer-Sonderfall `100 pieces single color dimmers` ohne erwartete Shopify-Bestellung;
 - jede technische Ungewissheit nach einer externen Schreib- oder Druckgrenze.
+
+Ein offener Shopify-Zahlungsstatus gehört nicht zu den harten Stoppern und darf nicht als Ersatz für eine der oben genannten Sicherheitsprüfungen verwendet werden. Rückabgewickelte oder beendete Bestellungen bleiben davon ausdrücklich ausgenommen.
 
 Die Trello-Listensperre ist ausschließlich ein zusätzlicher Stopper. Ein Wechsel in eine normale Liste ist keine Freigabe, solange Shopify, Datenbank und EasyDPD nicht ebenfalls alle Bedingungen erfüllen.
 

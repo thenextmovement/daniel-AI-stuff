@@ -333,6 +333,7 @@ export async function upsertArrivalCase(input: {
       source_snapshot: {
         reasons: input.decision.reasons,
         shopifyAdminUrl: order?.adminUrl || null,
+        shopifyFinancialStatus: order?.financialStatus || null,
         shippingAddress: order?.shippingAddress || null,
         shopifyCustomAttributes: order?.customAttributes || [],
         shopifyTags: order?.tags || [],
@@ -360,6 +361,7 @@ export async function upsertArrivalCase(input: {
         deliveryNoteStatus: input.decision.deliveryNoteStatus,
         selectedDpdProduct: input.decision.selectedDpdProduct,
         existingDpdTracking: input.decision.existingDpdTracking,
+        shopifyFinancialStatus: order?.financialStatus || null,
         manualReviewReason: input.decision.manualReviewReason,
       },
     }),
