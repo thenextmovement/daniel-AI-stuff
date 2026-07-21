@@ -180,6 +180,22 @@
       "activeVersionId": "fc210f92-ada0-46eb-89f2-074d0c433ed9",
       "publishedActiveSha256": "681d28073dbbbbcedc6ac007fb8cdb68a5966bdd001d35ef1f86d7780596b5d3",
       "capturedAt": "2026-07-21T21:02:00+02:00"
+    },
+    {
+      "key": "followup_queue_processor_pre_split",
+      "id": "CS4jhqo9tdd0cPe4",
+      "name": "NEONTRIP Follow-up Queue Processor v3.6 (AI Reply Detection)",
+      "activeVersionId": "faa4bb8f-5e03-4032-abe7-16d63c5bb08c",
+      "publishedActiveSha256": "250bd0618af172c071ca70b80869ff407c75ecb3b2a8121653990f50d15fe026",
+      "capturedAt": "2026-07-21T21:23:00+02:00"
+    },
+    {
+      "key": "quote_video_delivery_monolith_pre_split",
+      "id": "9FoJMH6OUdsi36FB",
+      "name": "KI-Video Generator v1.0 - Neue Angebote schicken + KI-Video",
+      "activeVersionId": "bbb0cb8f-aae5-4f45-bab7-dc499b18722c",
+      "publishedActiveSha256": "975c2de95871125bf358b581bcb64f4c5ae9222a01e2af4166553a8ce9eebb01",
+      "capturedAt": "2026-07-21T21:23:00+02:00"
     }
   ]
 }

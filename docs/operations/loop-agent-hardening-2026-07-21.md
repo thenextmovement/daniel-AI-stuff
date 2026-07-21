@@ -180,6 +180,15 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Added stable order/customer identities, internal/test-recipient rejection, atomic claims, human-review flags, explicit draft receipts, and fail-closed `draft_unknown` handling.
 - Both models now receive an explicit untrusted-data boundary and may return only exact `{subject, body_text}` JSON. URLs, addresses, HTML, discounts, prices, guarantees, percentages, and delivery promises are rejected before HTML escaping and deterministic draft construction.
 - Outlook creates drafts only, never retries draft creation, and routes provider errors to the canonical unknown-outcome state.
+- Production cutover passed commit `b0197c1a6a6b08330eeda34b26e346d56117cdda`, `codex-safe-push-main`, and `codex-predeploy ops`. The production migration and a fully rolled-back transaction smoke passed before either graph changed.
+- Published post-delivery version `5b515713-2bf9-4952-962a-21bc4f8fcfce` and repeat-business version `e73c2e50-f445-4c42-87c2-d3c7b20ae909` materially match their candidates exactly; n8n added only provider-managed webhook IDs to Outlook nodes.
+
+### Follow-up emergency containment
+
+- Captured the full 101-node, three-trigger published graph and exact active version before containment.
+- The legacy Outlook send retries an ambiguous customer-send result up to three times. The reply classifier explicitly defaults API failures and unparseable/unclear output to `send`.
+- The safe interim decision is to deactivate and clearly rename the monolith before replacement work. Existing database queue rows remain canonical and are not deleted or replayed.
+- Target replacement: separate schedule/manual intake, atomic claim/recovery, deterministic preflight, fail-closed reply classifier, bounded draft generator, human review, deterministic delivery receipt, and post-send scheduling workers, each with one trigger and at most 30 nodes.
 
 ## Defects found so far
 
@@ -215,6 +224,10 @@ Keep the previous workflow active version and full JSON backup until the replace
 30. The repeat-business model node contained an empty `responses` configuration rather than an explicit bounded prompt, while its parser accepted permissively extracted JSON or raw fallback content.
 31. The shared candidate harness accidentally applied the 30-node target-architecture gate to the explicitly temporary 85-node Gemini containment hotfix, so it aborted before testing later candidates. The hotfix is now covered only by its dedicated regression test and remains listed for decomposition.
 32. The same harness detected triggers by the substring `trigger`, which incorrectly classified webhook-triggered workflows as having zero triggers. Trigger detection now handles webhook nodes explicitly and all native `*Trigger` node types uniformly.
+33. The 101-node follow-up processor retries Outlook customer sends up to three times even though a timeout can leave the provider outcome unknown, allowing duplicate follow-ups.
+34. Its AI reply classifier uses `send` as the documented default on API errors, malformed output, `UNCLEAR`, and every unknown category. A classifier outage can therefore trigger the exact customer side effect the classifier is meant to suppress.
+35. Follow-up text parsing extracts the first brace-shaped substring from free-form model output and later rewrites forbidden phrases instead of requiring an exact output schema and human approval.
+36. The follow-up workflow combines schedule, unauthenticated manual webhook, error trigger, stale/error recovery, offer checks, Outlook reply search, two AI classifiers, AI copy generation, customer send, queue mutation, ActiveCampaign projection, and audit logging in one 101-node cyclic graph.
 
 ## Validation ledger
 
