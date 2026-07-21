@@ -58,7 +58,7 @@
             {
               "id": "ops-api-url",
               "name": "opsApiUrl",
-              "value": "={{ ($env.NEONTRIP_OPS_BASE_URL || 'https://coolify-proxy').replace(/\\/$/, '') + '/api/ops/supplier-sales' }}",
+              "value": "={{ (($env.NEONTRIP_OPS_BASE_URL || '').includes('coolify-proxy') ? 'https://ops.neontrip.de' : ($env.NEONTRIP_OPS_BASE_URL || 'https://ops.neontrip.de')).replace(/\\/$/, '') + '/api/ops/supplier-sales' }}",
               "type": "string"
             },
             {
@@ -106,10 +106,6 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Host",
-              "value": "ops.neontrip.de"
-            },
             {
               "name": "Authorization",
               "value": "={{ $json.authorizationHeader }}"

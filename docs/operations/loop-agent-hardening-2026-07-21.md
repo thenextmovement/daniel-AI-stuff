@@ -186,7 +186,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 18. The first design-draft cutover plan would have considered the full historical source folder because the new database ledger starts empty; a 48-hour freshness ceiling now blocks that backfill.
 19. The workflow named `Supplier Payment Reminder ... (INACTIVE DRAFT)` was actually active and exposed an unauthenticated webhook that accepted caller-controlled recipients and links, then retried Outlook sending up to three times. It had no execution history and is scheduled for immediate deactivation.
 20. Gemini Mockup v1.2 completed a long series of real card/image operations but failed on its terminal processing-label cleanup because that node alone had no credential binding.
-21. Supplier Shopify Tag Sync disabled TLS certificate verification and repeated an ambiguous POST up to three times; one incident lasted about 100 seconds after repeated 30-second timeouts.
+21. Supplier Shopify Tag Sync disabled TLS certificate verification and repeated an ambiguous POST up to three times; one incident lasted about 100 seconds after repeated 30-second timeouts. The first hardened run then proved why verification had been disabled: the internal `coolify-proxy` certificate is not trusted by n8n. It failed before data exchange; the candidate now routes through the publicly certified Ops endpoint without a forged `Host` header.
 22. `Customs CI Cleanup (LÖSCHEN)` is not an obsolete workflow: it has current successful executions and performs database deletions plus invoice generation from a Trello event. It must be refactored, not blindly deactivated.
 
 ## Validation ledger

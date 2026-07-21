@@ -44,11 +44,24 @@ assert.equal(cleanup.typeVersion, reference.typeVersion);
 assert.notEqual(cleanup.retryOnFail, true);
 
 const sync = nodeByName(supplierSync, "Ops: Sync Shopify Supplier Tags");
+const syncConfig = nodeByName(supplierSync, "Config");
+const opsApiUrl = syncConfig.parameters.assignments.assignments.find(
+  (assignment) => assignment.name === "opsApiUrl",
+);
+assert.ok(opsApiUrl);
+assert.match(opsApiUrl.value, /https:\/\/ops\.neontrip\.de/);
+assert.match(opsApiUrl.value, /includes\('coolify-proxy'\)/);
 assert.notEqual(sync.retryOnFail, true);
 assert.equal(sync.maxTries, undefined);
 assert.equal(sync.waitBetweenTries, undefined);
 assert.equal(sync.parameters.options.timeout, 60000);
 assert.equal(sync.parameters.options.allowUnauthorizedCerts, undefined);
+assert.equal(
+  sync.parameters.headerParameters.parameters.some(
+    (header) => header.name.toLowerCase() === "host",
+  ),
+  false,
+);
 assert.match(supplierSync.name, /single attempt/);
 
 for (const workflow of [gemini, supplierSync]) {

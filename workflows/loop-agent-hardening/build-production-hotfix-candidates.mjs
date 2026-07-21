@@ -54,6 +54,13 @@ async function buildSupplierTagSyncHotfix() {
   );
   workflow.name = "NEONTRIP Supplier Shopify Tag Sync v0.2 — single attempt";
 
+  const config = nodeByName(workflow, "Config");
+  const opsApiUrl = config.parameters.assignments.assignments.find(
+    (assignment) => assignment.name === "opsApiUrl",
+  );
+  if (!opsApiUrl) throw new Error("Supplier sync opsApiUrl assignment missing");
+  opsApiUrl.value = String.raw`={{ (($env.NEONTRIP_OPS_BASE_URL || '').includes('coolify-proxy') ? 'https://ops.neontrip.de' : ($env.NEONTRIP_OPS_BASE_URL || 'https://ops.neontrip.de')).replace(/\/$/, '') + '/api/ops/supplier-sales' }}`;
+
   const request = nodeByName(workflow, "Ops: Sync Shopify Supplier Tags");
   request.retryOnFail = false;
   delete request.maxTries;
@@ -65,6 +72,10 @@ async function buildSupplierTagSyncHotfix() {
     timeout: 60000,
   };
   delete request.parameters.options.allowUnauthorizedCerts;
+  request.parameters.headerParameters.parameters =
+    request.parameters.headerParameters.parameters.filter(
+      (header) => header.name.toLowerCase() !== "host",
+    );
 
   return workflow;
 }
