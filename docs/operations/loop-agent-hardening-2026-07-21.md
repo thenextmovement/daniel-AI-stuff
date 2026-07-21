@@ -188,7 +188,17 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Captured the full 101-node, three-trigger published graph and exact active version before containment.
 - The legacy Outlook send retries an ambiguous customer-send result up to three times. The reply classifier explicitly defaults API failures and unparseable/unclear output to `send`.
 - The safe interim decision is to deactivate and clearly rename the monolith before replacement work. Existing database queue rows remain canonical and are not deleted or replayed.
-- Target replacement: separate schedule/manual intake, atomic claim/recovery, deterministic preflight, fail-closed reply classifier, bounded draft generator, human review, deterministic delivery receipt, and post-send scheduling workers, each with one trigger and at most 30 nodes.
+- Target replacement: one scheduled intake, atomic claim/recovery, deterministic offer/reply preflight, fixed copy, a one-attempt delivery executor, durable receipt, human review for every uncertainty, and deterministic post-send scheduling.
+
+### Deterministic follow-up replacement
+
+- Replaced the 101-node agent-like state machine with a 19-node, one-trigger candidate containing no AI or agent node.
+- Postgres now claims exactly one due non-payment follow-up under a row lock, owns the lease, records every transition, and converts stale in-flight attempts to `delivery_unknown` plus human review.
+- Modern NEONTRIP and PandaDoc offers pass independent, allowlisted status/link preflights. Closed, ambiguous, unavailable, or malformed offer state is blocked for review.
+- Outlook inbound-reply lookup is read-only and bounded. Any customer reply or lookup uncertainty blocks delivery; no model decides whether to override a reply.
+- Customer copy is selected from fixed versioned templates, HTML-escaped, and contains only the preflight-approved offer link. There is no model call or model fallback.
+- Outlook send has exactly one attempt. Success is receipted atomically and may enqueue the next follow-up once after 72 hours; any provider error becomes `delivery_unknown` and is never retried automatically.
+- The non-destructive rollback revokes all service-role executor permissions while retaining delivery and event evidence.
 
 ## Defects found so far
 
@@ -228,6 +238,8 @@ Keep the previous workflow active version and full JSON backup until the replace
 34. Its AI reply classifier uses `send` as the documented default on API errors, malformed output, `UNCLEAR`, and every unknown category. A classifier outage can therefore trigger the exact customer side effect the classifier is meant to suppress.
 35. Follow-up text parsing extracts the first brace-shaped substring from free-form model output and later rewrites forbidden phrases instead of requiring an exact output schema and human approval.
 36. The follow-up workflow combines schedule, unauthenticated manual webhook, error trigger, stale/error recovery, offer checks, Outlook reply search, two AI classifiers, AI copy generation, customer send, queue mutation, ActiveCampaign projection, and audit logging in one 101-node cyclic graph.
+37. The legacy business-hours node contains hardcoded address-based bypasses, including a personal mailbox, so selected records could run outside the published schedule instead of following a policy-controlled test mode.
+38. The legacy claim is a retried REST `PATCH` with `continueRegularOutput`; an error-shaped response can continue into normalization rather than producing an explicit durable claim failure.
 
 ## Validation ledger
 
@@ -249,5 +261,8 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Outreach behavior tests cover invalid/internal recipients, missing identities, exact-schema acceptance, malformed and injected output, unsafe claims/URLs, HTML escaping, deterministic fallback, draft-only routing, and outcome receipt branches.
 - New outreach database tests passed first claim, real parallel duplicate suppression (`draft`/`stop`, one row and one claim event), completion, ambiguous-outcome quarantine, service-role boundaries, rollback rejection, and reapply on PostgreSQL 17.
 - Consolidated candidate suite: 10 target workflows passed; the two production containment hotfixes and both agent-to-draft candidates also passed their dedicated suites.
+- Deterministic follow-up candidate: 19 nodes, 1 trigger, 22 valid connections, 0 invalid connections, 0 strict errors, 0 AI/agent nodes.
+- Follow-up behavior tests cover recipient/link validation, modern-offer closed/ambiguous state, PandaDoc terminal state, reply evidence, lookup failure, HTML/name injection, deterministic copy, one-attempt send routing, and durable completion/unknown branches.
+- Follow-up PostgreSQL 17 tests cover real parallel claim (`process`/`stop` with one attempt/event), payment-reminder exclusion, completion replay, next-step idempotency, preflight block, ambiguous send, stale lease, service-role-only RPCs, rollback revoke, and reapply.
 - Dependency audit: 0 vulnerabilities after the locked transitive update.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.
