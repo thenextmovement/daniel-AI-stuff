@@ -204,6 +204,14 @@
       "activeVersionId": "2f5b90dc-34e3-4a90-9198-486abe585532",
       "publishedActiveSha256": "6c0ded379b6b3136985702464352c0b4759e81052542cdd3cb6bad37937c3b60",
       "capturedAt": "2026-07-21T21:12:00+02:00"
+    },
+    {
+      "key": "preview_delivery_worker_pre_claim_token",
+      "id": "S4gjf0YeZjP0pqFR",
+      "name": "NEONTRIP Preview Delivery Worker v2 — DB Claim Loop",
+      "activeVersionId": "1fbe6d59-d5d0-40fe-af78-a69b893fc088",
+      "publishedActiveSha256": "a3ac064a1bb6d421dc7f5f0d08cbc2aee5e5d81a35cf6f8a6f29779e3c7eb88f",
+      "capturedAt": "2026-07-21T21:25:00+02:00"
     }
   ]
 }
