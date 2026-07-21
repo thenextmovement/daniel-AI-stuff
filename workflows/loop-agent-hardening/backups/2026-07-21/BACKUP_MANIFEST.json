@@ -156,6 +156,14 @@
       "activeVersionId": "c794940a-afec-4086-87cc-774496e6ca07",
       "publishedActiveSha256": "c78f54b1305ce3de57a3fdc3ef3d71231cb6ccd15460543637143cca015deffe",
       "capturedAt": "2026-07-21T20:11:59+02:00"
+    },
+    {
+      "key": "activecampaign_autoreply_pre_draft_loop",
+      "id": "nUrqyTSnGE8j9QT8",
+      "name": "NEONTRIP AC Deal AutoReply v1",
+      "activeVersionId": "a1c46285-afed-449e-bfef-1ab5c6362ebd",
+      "publishedActiveSha256": "94b946212911b8973e4b71681b8a49314cb8d0c65557f87cfb51997a41bc88b4",
+      "capturedAt": "2026-07-21T20:24:00+02:00"
     }
   ]
 }

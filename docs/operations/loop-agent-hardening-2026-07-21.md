@@ -164,6 +164,15 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Added a strict-valid Supplier Shopify Tag Sync v0.2 candidate that removes three-attempt POST retry behavior, restores TLS certificate verification, and uses one bounded 60-second attempt.
 - Captured versioned backups for the active-but-labelled-inactive payment-reminder webhook, the unused Gemini v1.1 duplicate, and the active Customs cleanup workflow before any state/name decision.
 
+### ActiveCampaign auto-reply draft replacement
+
+- Replaced the 32-node auto-send design with a strict-valid 22-node database draft loop and one webhook trigger.
+- Removed five sticky nodes, a disabled fan-out, the volatile three-attempt guard, legacy cooldown authority, and the separate SMTP auto-send branch.
+- Added stable `deal_id` identity, internal/test-recipient blocking, an atomic `activecampaign_autoreply` draft claim, and explicit draft-created or draft-unknown receipts.
+- Replaced random prompt-style selection with a stable deal-derived variant and reduced model temperature.
+- Model output is accepted only as an exact JSON object with one bounded `body` field. Malformed, URL-, address-, price-, discount-, guarantee-, percentage-, and deadline-shaped output falls back to deterministic copy.
+- The only communication side effect is an Outlook draft with `automaticSendAllowed=false` and `humanApprovalRequired=true`; Outlook draft creation is never retried.
+
 ## Defects found so far
 
 1. Open-inbox and email-agent claims could race on alternate message identities.
@@ -190,6 +199,9 @@ Keep the previous workflow active version and full JSON backup until the replace
 22. `Customs CI Cleanup (LÖSCHEN)` is not an obsolete workflow: it has current successful executions and performs database deletions plus invoice generation from a Trello event. It must be refactored, not blindly deactivated.
 23. Both recent PandaDoc Event Receiver executions were duplicate no-ops: the same idempotency keys had already been claimed by specialized PandaDoc loops. Keeping the 58-node receiver active therefore adds an autonomous AI branch, a second error trigger, and a direct viewed-email sender without observed unique capability.
 24. The dependency audit initially contained two high and one low advisory. Non-breaking transitive updates plus `tsx` 4.23.1/`esbuild` 0.28.1 remove all three; `npm audit` now reports zero vulnerabilities.
+25. The ActiveCampaign auto-reply retried Outlook customer sends up to five times, maintained overlapping cooldown/static retry concepts, selected prompt style randomly, and sent a separate RIESENOBJEKTE SMTP path automatically.
+26. Its legacy parser accepted malformed non-JSON model text as customer copy after a permissive regex/raw-text fallback. The replacement rejects malformed output and uses deterministic copy in a human-reviewed draft.
+27. The public TLS route for Supplier Shopify Tag Sync is protected by Cloudflare Access and returned an HTML redirect. Because the POST outcome could not be proven from n8n, the workflow is now inactive; the two failed hardened runs were never automatically retried.
 
 ## Validation ledger
 
@@ -204,4 +216,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Outlook draft create/delete diagnostic completed without a node error and the temporary workflow was deleted.
 - Gemini cleanup hotfix candidate: 85 nodes, 1 trigger, 101 valid connections, 0 errors; retained only as immediate containment pending split.
 - Supplier tag-sync hotfix candidate: 4 enabled nodes, 1 trigger, 3 valid connections, 0 errors.
+- ActiveCampaign auto-reply draft candidate: 22 nodes, 1 trigger, 22 valid connections, 0 errors; malformed-model, unsafe-content, recipient, compilation, and deterministic-fallback tests passed.
+- Extended draft-kind database tests and non-destructive rollback/reapply passed on PostgreSQL 17.
+- Dependency audit: 0 vulnerabilities after the locked transitive update.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.

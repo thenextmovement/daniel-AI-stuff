@@ -170,4 +170,37 @@ select pg_temp.assert_true(
   'service role must be able to claim customer drafts'
 );
 
+do $$
+declare
+  claim jsonb;
+  completed jsonb;
+begin
+  claim := public.claim_customer_communication_draft(
+    'activecampaign_autoreply',
+    'deal-claim-test',
+    'ac-autoreply-human-review-draft-v2',
+    'execution-ac-1',
+    900
+  );
+  perform pg_temp.assert_true(
+    claim->>'route' = 'draft'
+      and not (claim->>'automatic_send_allowed')::boolean
+      and (claim->>'human_approval_required')::boolean,
+    'ActiveCampaign auto-reply must authorize one human-reviewed draft only'
+  );
+
+  completed := public.complete_customer_communication_draft(
+    'activecampaign_autoreply',
+    'deal-claim-test',
+    (claim->>'claim_token')::uuid,
+    'outlook-draft-ac-1',
+    'execution-ac-1'
+  );
+  perform pg_temp.assert_true(
+    (completed->>'completed')::boolean,
+    'ActiveCampaign auto-reply draft completion must be receipted'
+  );
+end;
+$$;
+
 select 'customer communication draft database tests passed' as result;
