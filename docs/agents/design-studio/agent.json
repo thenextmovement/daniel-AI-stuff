@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0.0",
+  "id": "design-studio",
+  "parent_agent_id": "ops-software-agent",
+  "name": "NEONTRIP Design Studio Agent",
+  "topic": "Design Studio, KI-Mockups, Trello-Projektion, Offer-Integration und Quote-Bildvarianten",
+  "repository_path": ".",
+  "scope": [
+    "src/app/ops/design",
+    "src/app/api/ops/design",
+    "src/lib/ops/design.ts",
+    "src/lib/ops/design-batches.ts",
+    "src/lib/ops/design-contract.ts",
+    "src/lib/ops/design-source.ts",
+    "src/app/api/ops/customer-records/offers/[offerId]/send/route.ts",
+    "tests/quotes/design-ops.test.ts",
+    "tests/quotes/mockup-context.test.ts",
+    "tests/quotes/mockups.test.ts",
+    "supabase/migrations/20260706102534_create_design_ops_tables.sql",
+    "supabase/migrations/20260708103749_create_quote_image_variants.sql",
+    "supabase/migrations/20260715211543_harden_design_engine_batches.sql",
+    "supabase/rollbacks/20260706102534_create_design_ops_tables_rollback.sql",
+    "supabase/rollbacks/20260708103749_create_quote_image_variants_rollback.sql",
+    "supabase/rollbacks/20260715211543_harden_design_engine_batches_rollback.sql",
+    "docs/operations/design-ops.md",
+    "workflows/plans/design-generation-worker-v0.1.md"
+  ],
+  "status": "ready_for_handoff_with_known_issues",
+  "evidence_status": "verified_against_git_code_focused_tests_and_read_only_ci_evidence",
+  "capabilities": [
+    "trace_design_studio_ui_api_and_persistence",
+    "review_prompt_and_source_image_contracts",
+    "diagnose_direct_image_generation_jobs_and_assets",
+    "diagnose_durable_bulk_batches_and_item_isolation",
+    "review_trello_upload_replacement_and_removal_safeguards",
+    "review_offer_asset_linking_price_review_and_send_guard",
+    "review_quote_image_variant_cache_and_customer_ui_gap",
+    "run_focused_cost_free_design_tests",
+    "prepare_reversible_changes_in_a_dedicated_worktree"
+  ],
+  "forbidden_actions": [
+    "treat_trello_as_source_of_truth",
+    "read_log_or_document_secret_values",
+    "trigger_paid_image_or_video_generation_without_explicit_approval_and_cost_limit",
+    "mutate_production_without_backup_diff_rollback_and_explicit_approval",
+    "upload_replace_archive_or_delete_trello_attachments_without_explicit_approval",
+    "update_or_send_customer_offers_without_validation_and_explicit_approval",
+    "send_real_customer_communication_without_validation_and_explicit_approval",
+    "bypass_offer_price_review_send_guards_or_idempotency",
+    "activate_or_modify_n8n_without_backup_diff_rollback_and_explicit_approval",
+    "modify_supabase_schema_storage_policy_or_live_data_without_backup_rollback_and_explicit_approval",
+    "work_directly_in_the_legacy_ops_main_checkout",
+    "push_to_main_without_explicit_approval",
+    "deploy_without_codex_predeploy_ops",
+    "deploy_a_commit_other_than_the_exact_preflight_commit"
+  ],
+  "source_of_truth": {
+    "jobs_prompts_assets_and_batches": "Ops Supabase design domain tables",
+    "offer_content_and_customer_selection": "Offers database",
+    "quote_variant_cache": "Ops Supabase quote_image_variants",
+    "image_objects": "Configured Supabase Storage bucket",
+    "trello_cards_and_attachments": "Input and projection only; not authoritative for execution state",
+    "n8n": "Optional transport or worker only; no executable Design worker is versioned in the repository"
+  },
+  "entrypoints": {
+    "ui": "src/app/ops/design/page-client.tsx",
+    "page": "src/app/ops/design/page.tsx",
+    "api": "src/app/api/ops/design/route.ts",
+    "domain": "src/lib/ops/design.ts",
+    "batch_engine": "src/lib/ops/design-batches.ts",
+    "action_contract": "src/lib/ops/design-contract.ts",
+    "source_rules": "src/lib/ops/design-source.ts",
+    "offer_send_guard": "src/app/api/ops/customer-records/offers/[offerId]/send/route.ts",
+    "base_migration": "supabase/migrations/20260706102534_create_design_ops_tables.sql",
+    "variant_migration": "supabase/migrations/20260708103749_create_quote_image_variants.sql",
+    "batch_migration": "supabase/migrations/20260715211543_harden_design_engine_batches.sql"
+  },
+  "documentation": {
+    "handoff": "docs/agents/design-studio/HANDOFF.md",
+    "system_map": "docs/agents/design-studio/SYSTEM-MAP.md",
+    "decisions": "docs/agents/design-studio/DECISIONS.md",
+    "operations": "docs/agents/design-studio/OPERATIONS.md",
+    "known_issues": "docs/agents/design-studio/KNOWN-ISSUES.md",
+    "verification": "docs/agents/design-studio/VERIFICATION.md",
+    "manifest": "docs/agents/design-studio/agent.json"
+  },
+  "verification_commands": [
+    "npm ci",
+    "node --import tsx --test tests/quotes/design-ops.test.ts tests/quotes/mockup-context.test.ts tests/quotes/mockups.test.ts",
+    "git diff --check",
+    "node -e \"JSON.parse(require('fs').readFileSync('docs/agents/design-studio/agent.json','utf8'))\""
+  ],
+  "verification_notes": [
+    "The focused cost-free suite passed 32 of 32 tests and did not call production systems or OpenAI.",
+    "GitHub Actions run 29856777646 succeeded for the exact last_verified_commit and includes the full quote suite, TypeScript and production build.",
+    "No authenticated production mutation, paid generation, customer communication, push or deploy was used during handoff verification."
+  ],
+  "schedule_supported": false,
+  "schedule_note": "No executable scheduled Design worker is versioned, and this agent may not schedule or activate external workflows without a separate explicit approval.",
+  "last_verified_commit": "a063f216692e97639da36492d9e025f7615665fe",
+  "last_verified_at": "2026-07-21T20:26:55+02:00",
+  "provenance": {
+    "source_host_id": "slingshot:env_e_6a2857bf92f0832c93ad0366dcc4c6ed",
+    "primary_thread_id": "019f80f5-59a0-7ed0-8da5-35c5f33caf2b",
+    "method": "Relevant thread history separated from facts and verified against repository files, Git history, focused tests and read-only CI metadata",
+    "contains_secrets": false
+  }
+}
