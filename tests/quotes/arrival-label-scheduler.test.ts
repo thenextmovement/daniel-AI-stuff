@@ -156,8 +156,11 @@ test("Microsoft Graph secret rotation preserves the prior Coolify value as rollb
   assert.match(workflow, /sync_ops_microsoft_graph_secret/);
   assert.match(workflow, /delete_ops_microsoft_graph_secret_next/);
   assert.match(workflow, /MICROSOFT_GRAPH_CLIENT_SECRET_NEXT/);
+  assert.match(workflow, /MICROSOFT_GRAPH_CLIENT_ID_NEXT/);
   assert.match(workflow, /fallbackKeyPreserved: "MICROSOFT_GRAPH_CLIENT_SECRET"/);
-  assert.match(workflow, /previous: previous \? envSummary\(previous\) : null/);
+  assert.match(workflow, /fallbackClientIdKeyPreserved: "MICROSOFT_GRAPH_CLIENT_ID"/);
+  assert.match(workflow, /secret: previous \? envSummary\(previous\) : null/);
   assert.match(clients, /MICROSOFT_GRAPH_CLIENT_SECRET_NEXT/);
+  assert.match(clients, /MICROSOFT_GRAPH_CLIENT_ID_NEXT/);
   assert.match(clients, /\|\| requiredEnv\("MICROSOFT_GRAPH_CLIENT_SECRET"\)/);
 });
