@@ -25,7 +25,7 @@
     "scripts/smoke_company_brain_ui.mjs",
     "scripts/smoke_company_brain_governance_ui.mjs"
   ],
-  "status": "ready_for_handoff_with_live_verification_blockers",
+  "status": "handoff_ready_live_evidence_pending",
   "evidence_status": "verified_against_current_git_code_focused_tests_and_typecheck_without_production_access",
   "schedule_supported": true,
   "schedule_constraints": {
