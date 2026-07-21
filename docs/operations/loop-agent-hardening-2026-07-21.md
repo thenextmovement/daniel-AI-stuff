@@ -135,6 +135,21 @@ Keep the previous workflow active version and full JSON backup until the replace
 - PostgreSQL 17 tests cover first claim, replay, real parallel claims, successful completion, ambiguous send failure, expired leases, role isolation, rollback, and reapply.
 - A temporary production n8n diagnostic verified native Trello card and attachment reads and was deleted after the test.
 
+### Agent-to-draft replacements
+
+- Replaced the design-reminder agent design with a 12-node deterministic loop: five-minute schedule, 10-minute minimum age, 48-hour maximum age, strict recipient validation, atomic database claim, Outlook draft creation, and explicit `draft_created` or `draft_unknown` receipt.
+- The 48-hour freshness ceiling prevents the first database-backed run from creating a backlog of drafts for historical inbox items.
+- Replaced the win-back agent design with a 19-node loop: deterministic deal/contact eligibility, active-project and segment exclusions, atomic claim, bounded JSON-only AI proposal, deterministic content allowlists and HTML escaping, and Outlook draft creation.
+- Both workflows set `humanApprovalRequired=true` and `automaticSendAllowed=false`; neither contains an autonomous agent node or an automatic customer-send path.
+- Added the shared `customer_communication_draft_jobs` state machine with service-role-only atomic claim/complete/unknown RPCs, append-only transition events, expired-lease fail-closed behavior, and no blind retry after an ambiguous provider outcome.
+
+### Capability and agent decisions
+
+- Every one of the 152 active workflows is assigned in the generated capability manifest; none is unclassified.
+- 91 workflows are structurally acceptable to keep, while 61 require refactor or explicit review; all 19 workflows over 30 nodes have an explicit target decision.
+- The five true agent workflows have individual decisions: replace win-back and design reminder with draft loops; split the PandaDoc event receiver into bounded loops; deactivate the unused Telegram GitHub controller and Fabienne assistant until owner allowlists and approval/tool wrappers exist.
+- The manifest contains no target architecture that relies on an autonomous agent. AI remains only as a bounded proposal or enrichment step where deterministic logic is insufficient.
+
 ## Defects found so far
 
 1. Open-inbox and email-agent claims could race on alternate message identities.
@@ -149,12 +164,22 @@ Keep the previous workflow active version and full JSON backup until the replace
 10. The first supplier refactor candidate had a string-typed Switch output, one stale renamed-node connection, and an incomplete static error-node contract; strict validation caught all three before cutover.
 11. A fresh worktree lacked installed test dependencies; `npm ci` restored the lockfile-defined environment.
 12. The installed dependency tree currently reports two high and one low advisory; remediation is being reviewed separately to avoid an untested lockfile mutation.
+13. The win-back agent accepted model-authored HTML and sent it directly to customers without schema validation, recipient idempotency, or human approval; a downstream tag write could also fail after an ambiguous send.
+14. The design-reminder workflow used AI for a decision that could be deterministic, stored retry authority in volatile workflow static data, scanned every minute, automatically sent mail, and archived source messages on the no-send path.
+15. The Telegram GitHub controller had no owner/chat allowlist while exposing branch, issue, pull-request, deploy, and confirmation write routes to an AI parser; the current published version had no execution evidence.
+16. The Fabienne Telegram assistant had no owner/chat allowlist while exposing Outlook send, calendar create, Shopify, ActiveCampaign, mail, and calendar tools; the current published version had no execution evidence.
+17. The first generated win-back validator contained incorrectly escaped regular-expression sequences inside a template literal; the code-node compilation test caught the defect before publication.
+18. The first design-draft cutover plan would have considered the full historical source folder because the new database ledger starts empty; a 48-hour freshness ceiling now blocks that backfill.
 
 ## Validation ledger
 
-- Repository quote/ops suite: 646 passed, 0 failed.
+- Repository quote/ops suite: 654 passed, 0 failed.
 - Voice runtime TypeScript build: passed.
 - Next.js production build: passed.
-- Workflow candidate behavior suite: 4 workflows passed.
+- Workflow candidate behavior suite: 6 workflows passed, including both agent-to-draft replacements.
 - Supplier candidate strict validation: 30 nodes, 1 trigger, 33 valid connections, 0 invalid connections, 0 errors.
+- Design draft-loop strict validation: 12 nodes, 1 trigger, 12 valid connections, 0 errors.
+- Win-back draft-loop strict validation: 19 nodes, 1 trigger, 22 valid connections, 0 errors.
+- Customer draft database tests: first claim, replay, completion, ambiguous outcome, expired lease, role isolation, real parallel claim, rollback, and reapply passed on PostgreSQL 17.
+- Outlook draft create/delete diagnostic completed without a node error and the temporary workflow was deleted.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.

@@ -1,0 +1,1185 @@
+{
+  "id": "geeNR1aVW9tZjPuN",
+  "name": "Telegram GitHub Controller",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "createdAt": "2026-01-15T09:02:09.596Z",
+  "updatedAt": "2026-01-16T20:42:26.076Z",
+  "activeVersionId": "67ba642a-e490-4d64-85d3-a0d55b1845ef",
+  "versionCreatedAt": "2026-01-16T20:42:26.082Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger-1",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        528
+      ],
+      "webhookId": "telegram-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "BLLuvpzrfxUTNdLW",
+          "name": "Telegram account | daniel n8n mcp handy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are a GitHub/n8n command parser. Analyze the Telegram message and extract:\n- action: one of [status, branch, commit, issue, pr, deploy, build, confirm]\n- repo: Repository name (format: owner/repo) - use 'thenextmovement/n8n-gsd-automation' as default\n- details: Additional information\n- issueNumber: Extract issue number if mentioned (for confirm action)\n\nACTION DETECTION:\n- 'confirm' = User wants to CONFIRM/APPROVE a GitHub issue. Keywords: bestätige, confirm, approve, ja mach, deploy issue, go ahead. MUST include an issue number.\n- 'build' = User wants to CREATE/BUILD an n8n workflow. Keywords: baue, erstelle, build, workflow, automation, ich brauche einen workflow\n- 'status' = Check repository status\n- 'branch' = Create a branch\n- 'issue' = Create a GitHub issue (NOT an n8n workflow request)\n- 'pr' = Create a pull request\n- 'deploy' = Trigger GitHub Actions\n\nIMPORTANT:\n- If user mentions an issue number with confirmation words, use action='confirm' and put the number in 'issueNumber'\n- If user describes an n8n workflow they want built, use action='build' and put the FULL description in 'details'\n\nRespond ONLY with valid JSON (NO markdown, NO code blocks):\n{\"action\": \"\", \"repo\": \"\", \"details\": \"\", \"issueNumber\": null}\n\nExamples:\n- \"Bestätige Issue 12\" -> {\"action\": \"confirm\", \"repo\": \"thenextmovement/n8n-gsd-automation\", \"details\": \"\", \"issueNumber\": 12}\n- \"Confirm 11 - deploy it!\" -> {\"action\": \"confirm\", \"repo\": \"thenextmovement/n8n-gsd-automation\", \"details\": \"deploy it!\", \"issueNumber\": 11}\n- \"Ja, Issue 10 kann deployed werden\" -> {\"action\": \"confirm\", \"repo\": \"thenextmovement/n8n-gsd-automation\", \"details\": \"kann deployed werden\", \"issueNumber\": 10}\n- \"Baue mir einen Workflow der Shopify Orders in Google Sheets speichert\" -> {\"action\": \"build\", \"repo\": \"thenextmovement/n8n-gsd-automation\", \"details\": \"n8n Workflow: Shopify Orders automatisch in Google Sheets speichern\", \"issueNumber\": null}"
+        }
+      },
+      "id": "ai-agent-1",
+      "name": "AI Intent Parser",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and extract action\nconst aiOutput = $input.first().json.output;\n\n// Default repository - always use this one\nconst DEFAULT_REPO = 'thenextmovement/n8n-gsd-automation';\n\n// Get chatId and messageId from Telegram Trigger\nconst telegramData = $('Telegram Trigger').first().json;\nconst chatId = telegramData.message.chat.id;\nconst messageId = telegramData.message.message_id;\nconst userName = telegramData.message.from.first_name || 'User';\n\nlet parsed;\n\ntry {\n  // Remove markdown code blocks if present\n  let cleanOutput = aiOutput;\n  if (typeof cleanOutput === 'string') {\n    cleanOutput = cleanOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  }\n  parsed = typeof cleanOutput === 'string' ? JSON.parse(cleanOutput) : cleanOutput;\n} catch (e) {\n  const jsonMatch = aiOutput.match(/\\{[^}]+\\}/);\n  if (jsonMatch) {\n    parsed = JSON.parse(jsonMatch[0]);\n  } else {\n    throw new Error('Could not parse AI response as JSON');\n  }\n}\n\nconst validActions = ['status', 'branch', 'commit', 'issue', 'pr', 'deploy', 'build', 'confirm'];\nif (!validActions.includes(parsed.action)) {\n  throw new Error(`Invalid action: ${parsed.action}. Valid actions: ${validActions.join(', ')}`);\n}\n\n// For confirm action, issueNumber is required\nif (parsed.action === 'confirm' && !parsed.issueNumber) {\n  throw new Error('Confirm action requires an issue number. Example: \"Bestätige Issue 12\"');\n}\n\n// Always use default repo\nconst repo = DEFAULT_REPO;\n\nreturn {\n  json: {\n    action: parsed.action,\n    repo: repo,\n    details: parsed.details || '',\n    issueNumber: parsed.issueNumber || null,\n    chatId: chatId,\n    messageId: messageId,\n    userName: userName\n  }\n};"
+      },
+      "id": "code-parser-1",
+      "name": "Parse & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        528
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "status"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "status"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "branch"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "branch"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "commit"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "commit"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "issue"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "issue"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "pr"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "pr"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "deploy"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "deploy"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "build"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "build"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "confirm"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "confirm"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-1",
+      "name": "Route by Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.repo }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "github-status-1",
+      "name": "GitHub Get Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1264,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/thenextmovement/n8n-gsd-automation/pulls?state=open",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "github-status-prs-1",
+      "name": "Get Open PRs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1264,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/thenextmovement/n8n-gsd-automation/issues?state=open",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "github-status-issues-1",
+      "name": "Get Open Issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1488,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/thenextmovement/n8n-gsd-automation/commits?per_page=5",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "github-status-commits-1",
+      "name": "Get Recent Commits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1712,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const repo = $('GitHub Get Status').first().json;\nconst prs = $('Get Open PRs').all();\nconst issues = $('Get Open Issues').all();\nconst commits = $('Get Recent Commits').all().slice(0, 5);\n\n// Get chatId from Parse & Validate node (not from merged GitHub data)\nconst chatId = $('Parse & Validate').first().json.chatId;\n\nlet message = `📊 *Status for ${repo.full_name}*\\n\\n`;\nmessage += `⭐ Stars: ${repo.stargazers_count}\\n`;\nmessage += `🔱 Forks: ${repo.forks_count}\\n`;\nmessage += `👀 Watchers: ${repo.watchers_count}\\n\\n`;\n\nmessage += `📝 *Open PRs: ${prs.length}*\\n`;\nif (prs.length > 0) {\n  prs.slice(0, 3).forEach(pr => {\n    message += ` • #${pr.json.number}: ${pr.json.title}\\n`;\n  });\n}\n\nmessage += `\\n🐛 *Open Issues: ${issues.length}*\\n`;\nif (issues.length > 0) {\n  issues.slice(0, 3).forEach(issue => {\n    message += ` • #${issue.json.number}: ${issue.json.title}\\n`;\n  });\n}\n\nmessage += `\\n📌 *Recent Commits:*\\n`;\ncommits.forEach(commit => {\n  const msg = commit.json.commit.message.split('\\n')[0];\n  message += ` • ${msg.substring(0, 50)}...\\n`;\n});\n\nreturn {\n  json: {\n    chatId: chatId,\n    message: message\n  }\n};"
+      },
+      "id": "format-status-1",
+      "name": "Format Status Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.repo }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-default-branch-1",
+      "name": "Get Default Branch SHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1712,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/git/refs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "github-branch-1",
+      "name": "GitHub Create Branch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1936,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const repoData = $input.first().json;\nconst branchName = $input.first().json.details;\n\nreturn {\n  json: {\n    chatId: $input.first().json.chatId,\n    message: `✅ *Branch created successfully*\\n\\nBranch: \\`${branchName}\\`\\nRepository: ${repoData.full_name}`\n  }\n};"
+      },
+      "id": "format-branch-1",
+      "name": "Format Branch Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/issues",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "github-issue-1",
+      "name": "GitHub Create Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1936,
+        592
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const issue = $input.first().json;\n\nreturn {\n  json: {\n    chatId: $input.first().json.chatId,\n    message: `✅ *Issue created successfully*\\n\\nTitle: ${issue.title}\\nNumber: #${issue.number}\\nURL: ${issue.html_url}`\n  }\n};"
+      },
+      "id": "format-issue-1",
+      "name": "Format Issue Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/pulls",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "github-pr-1",
+      "name": "GitHub Create PR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1936,
+        784
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pr = $input.first().json;\n\nreturn {\n  json: {\n    chatId: $input.first().json.chatId,\n    message: `✅ *Pull Request created successfully*\\n\\nTitle: ${pr.title}\\nNumber: #${pr.number}\\nURL: ${pr.html_url}`\n  }\n};"
+      },
+      "id": "format-pr-1",
+      "name": "Format PR Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        784
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/actions/workflows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "github-list-workflows-1",
+      "name": "List Workflows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1488,
+        976
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflows = $input.first().json.workflows;\nconst targetName = $input.first().json.details || '';\n\nlet workflow = workflows.find(w => w.name.toLowerCase().includes(targetName.toLowerCase()));\nif (!workflow && workflows.length > 0) {\n  workflow = workflows.find(w => w.state === 'active') || workflows[0];\n}\n\nif (!workflow) {\n  throw new Error('No workflow found');\n}\n\nreturn {\n  json: {\n    repo: $input.first().json.repo,\n    workflowId: workflow.id,\n    workflowName: workflow.name,\n    chatId: $input.first().json.chatId\n  }\n};"
+      },
+      "id": "find-workflow-1",
+      "name": "Find Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1712,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/actions/workflows/{{ $json.workflowId }}/dispatches",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "github-trigger-workflow-1",
+      "name": "Trigger Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1936,
+        976
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowName = $input.first().json.workflowName;\nconst repo = $input.first().json.repo;\n\nreturn {\n  json: {\n    chatId: $input.first().json.chatId,\n    message: `✅ *Workflow triggered successfully*\\n\\nWorkflow: ${workflowName}\\nRepository: ${repo}`\n  }\n};"
+      },
+      "id": "format-deploy-1",
+      "name": "Format Deploy Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}",
+        "replyMarkup": "none",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-response-1",
+      "name": "Send Telegram Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2384,
+        592
+      ],
+      "webhookId": "ced08b65-87c5-4ede-a700-cecba3e9104e",
+      "credentials": {
+        "telegramApi": {
+          "id": "BLLuvpzrfxUTNdLW",
+          "name": "Telegram account | daniel n8n mcp handy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "={{ $json.error ? $json.error.message : ($json.message ? $json.message : 'An error occurred') }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-error-1",
+      "name": "Send Error Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1264,
+        448
+      ],
+      "webhookId": "5063f2bf-37d1-4b6c-b542-72003f24108f",
+      "credentials": {
+        "telegramApi": {
+          "id": "BLLuvpzrfxUTNdLW",
+          "name": "Telegram account | daniel n8n mcp handy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        400,
+        736
+      ],
+      "id": "8dcfffff-5ea0-4823-9781-af76785ab95f",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "kZCDxC1N8hTos1iS",
+          "name": "Anthropic account | droninehandel@gmail.com"
+        }
+      }
+    },
+    {
+      "id": "merge-status-1",
+      "name": "Merge Status Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        2000,
+        112
+      ],
+      "parameters": {
+        "mode": "append",
+        "options": {
+          "clashHandling": {
+            "values": {
+              "resolveClash": "preferLast"
+            }
+          }
+        },
+        "numberInputs": 4
+      }
+    },
+    {
+      "id": "create-build-issue-1",
+      "name": "Create Build Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1488,
+        1200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/issues",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "id": "format-build-response-1",
+      "name": "Format Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1712,
+        1200
+      ],
+      "parameters": {
+        "jsCode": "const issue = $input.first().json;\nconst chatId = $('Parse & Validate').first().json.chatId;\n\nreturn {\n  json: {\n    chatId: chatId,\n    message: `🚀 *Workflow Build Request erstellt!*\\n\\n📝 Issue: #${issue.number}\\n🔗 ${issue.html_url}\\n\\n⏳ Claude arbeitet jetzt daran...\\nDu bekommst eine Benachrichtigung wenn der Plan fertig ist.`\n  }\n};"
+      }
+    },
+    {
+      "id": "enhance-prompt-1",
+      "name": "Enhance Prompt",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1264,
+        1200
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=User Request: {{ $json.details }}\n\nContext:\n- User: {{ $json.userName }}\n- Platform: n8n workflow automation\n- Target: Deploy to https://fuajob.online",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "Du bist ein Prompt Engineer für n8n Workflow Automation. Deine Aufgabe ist es, vage User-Anfragen in präzise, actionable Workflow-Spezifikationen umzuwandeln.\n\nAnalysiere die Anfrage und erstelle einen strukturierten Prompt mit:\n\n## 1. WORKFLOW ZIEL\n- Was genau soll automatisiert werden?\n- Welches Problem wird gelöst?\n\n## 2. TRIGGER\n- Wann soll der Workflow starten? (Schedule, Webhook, Manual, Event-based)\n- Spezifische Zeiten/Intervalle falls genannt\n\n## 3. DATENQUELLEN (Input)\n- Welche Apps/Services werden als Quelle benötigt?\n- Welche Daten sollen abgerufen werden?\n- Filter/Zeiträume?\n\n## 4. VERARBEITUNG\n- Müssen Daten transformiert werden?\n- Filterlogik?\n- Berechnungen?\n\n## 5. ZIEL/OUTPUT\n- Wohin sollen die Daten?\n- Welches Format?\n- Welche Felder?\n\n## 6. EXTRAS (falls sinnvoll)\n- Error Handling?\n- Benachrichtigungen?\n- Logging?\n\n## 7. CREDENTIALS BENÖTIGT\n- Liste alle benötigten API-Zugänge\n\nWenn Infos fehlen, mache sinnvolle Annahmen basierend auf Best Practices.\n\nAntworte NUR mit dem strukturierten Prompt, keine Erklärungen."
+        }
+      }
+    },
+    {
+      "id": "format-enhanced-1",
+      "name": "Format Enhanced Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        1200
+      ],
+      "parameters": {
+        "jsCode": "const enhanced = $input.first().json.output;\nconst original = $('Parse & Validate').first().json;\n\n// Build the complete request body as a properly escaped JSON string\nconst requestBody = {\n  title: `[BUILD] ${original.details.substring(0, 80)}`,\n  body: `## \\ud83d\\ude80 Workflow Build Request\\n\\n**Requested by:** ${original.userName} (Telegram)\\n**Chat ID:** ${original.chatId}\\n\\n---\\n\\n${enhanced}\\n\\n---\\n\\n@claude Bitte erstelle diesen n8n Workflow im GSD Mode:\\n\\n1. **Templates First**: Suche zuerst nach passenden n8n Templates\\n2. **Validate**: Nutze validate_node und validate_workflow\\n3. **Deploy**: Nutze n8n MCP Tools um direkt zu deployen auf https://fuajob.online\\n4. **Test**: Validiere den deployed Workflow\\n\\nAntworte mit einem kurzen Plan und warte auf Bestaetigung bevor du deployest.`,\n  labels: [\"workflow-request\", \"claude\"]\n};\n\nreturn {\n  json: {\n    ...original,\n    enhancedPrompt: enhanced,\n    originalDetails: original.details,\n    requestBody: JSON.stringify(requestBody)\n  }\n};"
+      }
+    },
+    {
+      "id": "post-confirm-comment-1",
+      "name": "Post Confirm Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        1400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/issues/{{ $json.issueNumber }}/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"body\": \"## \\u2705 Deployment Best\\u00e4tigt via Telegram\\n\\n**Von:** {{ $json.userName }}\\n**Chat ID:** {{ $json.chatId }}\\n{{ $json.details ? '**Nachricht:** ' + $json.details : '' }}\\n\\n---\\n\\n@claude Bitte fahre mit dem Deployment fort. Der User hat best\\u00e4tigt.\"}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "8pfmmylUBSoOXUmX",
+          "name": "Header Auth | github dronlinehandel | nextmovement"
+        }
+      }
+    },
+    {
+      "id": "format-confirm-response-1",
+      "name": "Format Confirm Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        1400
+      ],
+      "parameters": {
+        "jsCode": "const comment = $input.first().json;\nconst issueNumber = $('Parse & Validate').first().json.issueNumber;\nconst chatId = $('Parse & Validate').first().json.chatId;\n\nreturn {\n  json: {\n    chatId: chatId,\n    message: `\\u2705 *Deployment best\\u00e4tigt!*\\n\\n\\ud83d\\udcdd Issue #${issueNumber}\\n\\ud83d\\udd17 ${comment.html_url}\\n\\n\\u23f3 Claude f\\u00e4hrt jetzt mit dem Deployment fort...\\nDu bekommst eine Benachrichtigung wenn es fertig ist.`\n  }\n};"
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Intent Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Intent Parser": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Validate": {
+      "main": [
+        [
+          {
+            "node": "Route by Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Action": {
+      "main": [
+        [
+          {
+            "node": "GitHub Get Status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Open PRs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Open Issues",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Recent Commits",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Default Branch SHA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GitHub Create Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GitHub Create PR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enhance Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Post Confirm Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Status Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Default Branch SHA": {
+      "main": [
+        [
+          {
+            "node": "GitHub Create Branch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub Create Branch": {
+      "main": [
+        [
+          {
+            "node": "Format Branch Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Branch Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub Create Issue": {
+      "main": [
+        [
+          {
+            "node": "Format Issue Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Issue Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub Create PR": {
+      "main": [
+        [
+          {
+            "node": "Format PR Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format PR Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Workflows": {
+      "main": [
+        [
+          {
+            "node": "Find Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Workflow": {
+      "main": [
+        [
+          {
+            "node": "Trigger Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Workflow": {
+      "main": [
+        [
+          {
+            "node": "Format Deploy Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Deploy Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Intent Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Enhance Prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Status Data": {
+      "main": [
+        [
+          {
+            "node": "Format Status Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub Get Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Status Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Open PRs": {
+      "main": [
+        [
+          {
+            "node": "Merge Status Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Open Issues": {
+      "main": [
+        [
+          {
+            "node": "Merge Status Data",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Get Recent Commits": {
+      "main": [
+        [
+          {
+            "node": "Merge Status Data",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Create Build Issue": {
+      "main": [
+        [
+          {
+            "node": "Format Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Build Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enhance Prompt": {
+      "main": [
+        [
+          {
+            "node": "Format Enhanced Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Enhanced Prompt": {
+      "main": [
+        [
+          {
+            "node": "Create Build Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Confirm Comment": {
+      "main": [
+        [
+          {
+            "node": "Format Confirm Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Confirm Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

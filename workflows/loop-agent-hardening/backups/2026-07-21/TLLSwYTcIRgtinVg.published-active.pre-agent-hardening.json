@@ -1,0 +1,2092 @@
+{
+  "id": "TLLSwYTcIRgtinVg",
+  "name": "NEONTRIP Event Receiver v3.3",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2025-12-14T19:42:53.420Z",
+  "updatedAt": "2026-05-20T09:02:22.556Z",
+  "activeVersionId": "a969dc93-9ec2-4d19-83d5-bc04bdfc96bd",
+  "versionCreatedAt": "2026-05-20T09:02:22.560Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pandadoc-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e375d722-fc9c-466e-b5a9-cb4ba97ea554",
+      "name": "PandaDoc Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -5152,
+        400
+      ],
+      "webhookId": "32e9ec2c-fd57-4531-a95c-31a82fdd80c7",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "c2532175-5268-4480-98a3-85b65460d6b8",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -4928,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// NORMALIZE v3.5 - Supports real PandaDoc array webhook payloads\nconst root = $input.first().json;\nconst rawBody = root.body ?? root;\nconst payload = Array.isArray(rawBody) ? (rawBody[0] || {}) : rawBody;\n\nconst eventObject = payload.event && typeof payload.event === 'object' ? payload.event : payload;\nconst eventName = typeof payload.event === 'string'\n  ? payload.event\n  : (eventObject.event_type || eventObject.type || payload.event_type || payload.type || 'unknown');\n\nconst document =\n  payload.data?.document ||\n  eventObject.data?.document ||\n  payload.document ||\n  payload.data ||\n  eventObject.document ||\n  root.document ||\n  payload;\n\nconst recipients = document.recipients || eventObject.data?.recipients || payload.data?.recipients || [];\nconst recipient = recipients[0] || {};\nconst email = (recipient.email || document.email || payload.email || '').toLowerCase().trim();\nconst status = (document.status || eventObject.status || payload.status || '').toLowerCase();\nconst value = parseFloat(document.grand_total?.amount || document.grand_total || document.value || payload.value || 0) || 0;\n\nif (!email || email === 'unknown') {\n  console.log('[NORMALIZE] Keine Email gefunden - Skip');\n  return [{ json: { skip: true, reason: 'no_email' } }];\n}\n\nconst eventLower = String(eventName || '').toLowerCase();\nlet simpleEvent = 'unknown';\nif (eventLower.includes('completed') || status === 'completed' || status === 'document.completed') {\n  simpleEvent = 'completed';\n} else if (eventLower.includes('viewed') || status === 'viewed' || status === 'document.viewed') {\n  simpleEvent = 'viewed';\n} else if (eventLower.includes('sent') || status === 'sent' || status === 'document.sent') {\n  simpleEvent = 'sent';\n} else if (eventLower.includes('state_changed') || eventLower.includes('status')) {\n  if (status === 'completed' || status === 'document.completed') simpleEvent = 'completed';\n  else if (status === 'viewed' || status === 'document.viewed') simpleEvent = 'viewed';\n  else if (status === 'sent' || status === 'document.sent') simpleEvent = 'sent';\n}\n\nconst domain = email.split('@')[1] || '';\nconst freemails = ['gmail.com','gmx.de','gmx.net','web.de','yahoo.com','yahoo.de','t-online.de','icloud.com','outlook.com','outlook.de','hotmail.com','hotmail.de','aol.com','mail.de','freenet.de','posteo.de','protonmail.com','live.de','live.com','me.com','googlemail.com'];\nconst company = (recipient.company || document.metadata?.company || '').trim();\n\nconst documentId = document.id || payload.id || 'unknown';\nconst idempotencyKey = documentId + '_' + simpleEvent;\n\nconst pandadocCustomerLink = recipient.shared_link || recipient.recipient_url || null;\nif (pandadocCustomerLink) {\n  console.log('[NORMALIZE] PandaDoc Link gefunden: ' + pandadocCustomerLink);\n} else {\n  console.log('[NORMALIZE] Kein PandaDoc Link im Webhook');\n}\n\nconst docName = (document.name || payload.name || '').toLowerCase();\nconst BUSINESS_KEYWORDS = /restaurant|bar|cafe|café|gastro|hotel|club|salon|studio|shop|store|gmbh|ug |ag |ohg|kg |gbr|e\\.v\\.|verein|praxis|kanzlei|event|messe|firma|unternehmen|betrieb|lounge|bistro|pizz|bäcker|friseur|tattoo|fitness|gym|yoga|consulting|agentur|agency|media|film|produktion|catering/i;\nconst hasBusinessSignal = BUSINESS_KEYWORDS.test(docName) || BUSINESS_KEYWORDS.test(company);\n\nconst isFreemail = freemails.includes(domain);\nconst isObviousPrivate = isFreemail && !company && !hasBusinessSignal && value < 500;\n\nconsole.log('[NORMALIZE] Event: ' + eventName + ' | Status: ' + status + ' | Simple: ' + simpleEvent + ' | Key: ' + idempotencyKey + ' | Freemail: ' + isFreemail + ' | ObviousPrivate: ' + isObviousPrivate + ' | BusinessSignal: ' + hasBusinessSignal + ' | Value: ' + value);\n\nreturn [{ json: {\n  skip: false,\n  idempotency_key: idempotencyKey,\n  event_type: eventName,\n  document_status: status,\n  simple_event: simpleEvent,\n  document_id: documentId,\n  document_name: document.name || payload.name || 'Angebot',\n  customer_name: ((recipient.first_name || '') + ' ' + (recipient.last_name || '')).trim() || 'Kunde',\n  customer_email: email,\n  customer_company: company,\n  email_domain: domain,\n  is_freemail: isFreemail,\n  is_obvious_private: isObviousPrivate,\n  value,\n  currency: document.grand_total?.currency || document.currency || 'EUR',\n  received_at: new Date().toISOString(),\n  pandadoc_customer_link: pandadocCustomerLink\n}}];"
+      },
+      "id": "ac56e1d7-22c7-4de3-802c-571a3f27d317",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4704,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              },
+              "id": "ae34fa90-69d9-40c1-9468-a21582415996"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "84a916e2-83c6-4b62-9057-824be9d62f47",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -4480,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/processed_events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idempotency_key",
+              "value": "=eq.{{ $json.idempotency_key }}"
+            },
+            {
+              "name": "select",
+              "value": "id,idempotency_key,processed_at"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "48467706-25ce-42e4-842e-3a4cc69ca16e",
+      "name": "Check Already Processed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -4256,
+        400
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 1,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "is-new-event",
+              "leftValue": "={{ Array.isArray($json) ? $json.length === 0 : !$json.id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8bda35f5-0d09-4625-9c99-49b38af66179",
+      "name": "Is New Event?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -4032,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prev = $('Normalize').first().json;\nconsole.log(`[SKIP] Duplicate event: ${prev.idempotency_key}`);\nreturn [{ json: { skipped: true, reason: 'duplicate_event', key: prev.idempotency_key } }];"
+      },
+      "id": "32ed9c9b-c97c-4754-9dfe-bfda7d7168d9",
+      "name": "Skip (Duplicate)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3808,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/processed_events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"idempotency_key\": \"{{ $('Normalize').first().json.idempotency_key }}\",\n  \"document_id\": \"{{ $('Normalize').first().json.document_id }}\",\n  \"event_type\": \"{{ $('Normalize').first().json.simple_event }}\",\n  \"customer_email\": \"{{ $('Normalize').first().json.customer_email }}\",\n  \"processed_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "2ee8b246-f5c5-49c8-a042-5917eaaf8ee5",
+      "name": "Mark as Processed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -3840,
+        144
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalized = $('Normalize').first().json;\nreturn [{ json: normalized }];"
+      },
+      "id": "be8d0fe3-f836-40ed-9357-697fc5de5e44",
+      "name": "Restore Normalized Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.pandadoc.com/public/v1/documents/{{ $json.document_id }}/details",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -3360,
+        304
+      ],
+      "id": "2a1cf76a-382e-4b26-8094-6bf2cf38218d",
+      "name": "Fetch PandaDoc Details",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MpPnODlQq5wOkRvR",
+          "name": "Header Auth account | Pandadoc"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// EXTRACT PANDADOC DETAILS\nconst pdResponse = $input.first().json;\nconst prevData = $('Restore Normalized Data').first().json;\n\nif (!pdResponse || pdResponse.error || !pdResponse.id) {\n  return [{\n    json: {\n      ...prevData,\n      pandadoc_context: {\n        products: [],\n        product_summary: '',\n        total: prevData.value || 0,\n        fetch_failed: true\n      }\n    }\n  }];\n}\n\nconst pricing = pdResponse.pricing || {};\nconst tables = pricing.tables || [];\nconst items = tables.flatMap(t => t.items || []);\n\nconst products = items.map(item => ({\n  name: (item.name || '').substring(0, 100),\n  description: (item.description || '').substring(0, 200),\n  price: parseFloat(item.price) || 0,\n  qty: parseFloat(item.qty) || 1\n})).filter(p => p.name);\n\nconst productSummary = products.map(p => {\n  let line = `- ${p.name}`;\n  if (p.qty > 1) line += ` (${p.qty}x)`;\n  if (p.description) line += `: ${p.description.substring(0, 80)}`;\n  return line;\n}).join('\\n');\n\nreturn [{\n  json: {\n    ...prevData,\n    pandadoc_context: {\n      products: products,\n      product_summary: productSummary,\n      product_count: products.length,\n      total: parseFloat(pricing.total) || prevData.value || 0,\n      fetch_failed: false\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3136,
+        304
+      ],
+      "id": "23b98ea0-6d98-438f-a73d-ff0ce0389658",
+      "name": "Extract PandaDoc Data"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 5,
+        "filtersUI": {
+          "values": {
+            "filters": {
+              "receivedAfter": "={{ $now.minus({ days: 30 }).toISO() }}",
+              "sender": "={{ $json.customer_email }}"
+            }
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        -2912,
+        304
+      ],
+      "id": "28c08cc8-1588-4e7b-9988-7b3bdc49fff7",
+      "name": "Fetch Email Context",
+      "webhookId": "4280ef62-ab4b-4590-97e3-37dfacbacac4",
+      "alwaysOutputData": true,
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ENRICH CONTEXT - Kombiniert PandaDoc + Email (fuller context for shadow planning)\nconst prevData = $('Extract PandaDoc Data').first().json;\nconst emailResponse = $input.all();\n\nlet emails = [];\nif (Array.isArray(emailResponse) && emailResponse.length > 0) {\n  emails = emailResponse.map(e => e.json).filter(e => e.id);\n}\n\nfunction stripHtml(value) {\n  return String(value || '')\n    .replace(/<br\\s*\\/?\\>/gi, '\\n')\n    .replace(/<\\/p>/gi, '\\n')\n    .replace(/<\\/div>/gi, '\\n')\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"')\n    .replace(/&#39;/g, \"'\")\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nconst emailContext = emails.slice(0, 5).map(email => {\n  const fullText = stripHtml(email.body?.content || email.bodyPreview || '');\n  return {\n    subject: (email.subject || '').substring(0, 150),\n    date: email.receivedDateTime,\n    preview: (email.bodyPreview || fullText || '').substring(0, 300),\n    text: fullText.substring(0, 3000)\n  };\n});\n\nlet emailSummary = '';\nif (emailContext.length > 0) {\n  emailSummary = emailContext.map(e => {\n    const date = e.date ? new Date(e.date).toLocaleDateString('de-DE') : '';\n    return '[' + date + '] ' + e.subject + ': ' + (e.preview || '').substring(0, 180) + '...';\n  }).join('\\n');\n}\n\nconst enrichedContext = {\n  pandadoc: prevData.pandadoc_context || {},\n  email_history: {\n    count: emailContext.length,\n    emails: emailContext,\n    summary: emailSummary\n  }\n};\n\nreturn [{\n  json: {\n    ...prevData,\n    enriched_context: enrichedContext,\n    has_product_context: (prevData.pandadoc_context?.products?.length || 0) > 0,\n    has_email_context: emailContext.length > 0\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2688,
+        304
+      ],
+      "id": "baffb9a7-5030-4a65-b539-578655d03cbc",
+      "name": "Enrich Context"
+    },
+    {
+      "parameters": {
+        "url": "https://neontrip35090.api-us1.com/api/3/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $json.customer_email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "86d2b571-dc27-48e3-9809-7c6d79550cc9",
+      "name": "AC: Find Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -2464,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// AC CONTACT EXTRAHIEREN\nconst response = $input.first().json;\nconst prevData = $('Enrich Context').first().json;\nconst contacts = response.contacts || [];\n\nif (contacts.length === 0) {\n  console.log('[AC] Kein Kontakt gefunden für:', prevData.customer_email);\n  return [{\n    json: {\n      ...prevData,\n      ac_contact_found: false,\n      ac_contact_id: null\n    }\n  }];\n}\n\nconst contact = contacts[0];\nconsole.log('[AC] Kontakt gefunden:', contact.id, contact.firstName, contact.lastName);\n\nreturn [{\n  json: {\n    ...prevData,\n    ac_contact_found: true,\n    ac_contact_id: contact.id,\n    ac_contact_name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim()\n  }\n}];"
+      },
+      "id": "c961eb6e-5950-495d-9a33-9e6ba9f037a6",
+      "name": "AC: Extract Contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2240,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-ac-contact",
+              "leftValue": "={{ $json.ac_contact_found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ccd4a222-ebff-421e-9641-64c3e1440ba4",
+      "name": "AC Contact Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2016,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://neontrip35090.api-us1.com/api/3/contacts/{{ $json.ac_contact_id }}/deals",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "options": {}
+      },
+      "id": "1bead1c6-bea8-4e7e-81a8-e74020a38439",
+      "name": "AC: Get Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1792,
+        208
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// DEAL EXTRAHIEREN\nconst response = $input.first().json;\nconst prevData = $('AC: Extract Contact').first().json;\nconst deals = response.deals || [];\n\nif (deals.length === 0) {\n  console.log('[AC] Kein Deal gefunden');\n  return [{\n    json: {\n      ...prevData,\n      ac_deal_found: false,\n      ac_deal_id: null\n    }\n  }];\n}\n\n// Neuesten Deal nehmen\nconst deal = deals[0];\nconsole.log('[AC] Deal gefunden:', deal.id, deal.title);\n\nreturn [{\n  json: {\n    ...prevData,\n    ac_deal_found: true,\n    ac_deal_id: deal.id,\n    ac_deal_title: deal.title,\n    ac_deal_value: deal.value\n  }\n}];"
+      },
+      "id": "39553d54-0c04-4a34-b6c2-48b6d2099720",
+      "name": "AC: Extract Deal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1568,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-ac-deal",
+              "leftValue": "={{ $json.ac_deal_found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8da6474a-161f-44ca-bcb8-06160760fb5c",
+      "name": "AC Deal Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1344,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://neontrip35090.api-us1.com/api/3/deals/{{ $json.ac_deal_id }}/notes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "options": {}
+      },
+      "id": "63e5f42d-2ce9-4f53-8bc8-1802e5cf21f3",
+      "name": "AC: Get Deal Notes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1120,
+        112
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// DEAL NOTES + PANDADOC LINK (Webhook primaer, AC Fallback)\nconst response = $input.first().json;\nconst prevData = $('AC: Extract Deal').first().json;\nconst notes = response.notes || [];\n\n// Letzte 5 Notizen extrahieren\nconst callNotes = notes.slice(0, 5).map(note => ({\n  date: note.cdate,\n  content: (note.note || '').substring(0, 500)\n}));\n\nlet notesSummary = '';\nif (callNotes.length > 0) {\n  notesSummary = callNotes\n    .map(n => '[' + (n.date ? new Date(n.date).toLocaleDateString('de-DE') : '') + '] ' + n.content)\n    .join('\\n\\n');\n}\n\nconsole.log(`[AC] ${callNotes.length} Deal Notes gefunden`);\n\n// === PANDADOC LINK: Webhook primaer, AC Custom Field als Fallback ===\nlet pandadocCustomerLink = prevData.pandadoc_customer_link || null; // Aus Webhook (Normalize)\nlet linkSource = pandadocCustomerLink ? 'webhook' : null;\n\n// Fallback: AC Custom Field\nif (!pandadocCustomerLink) {\n  try {\n    const fieldsResponse = $('AC: Get Deal Fields').first().json;\n    const customFields = fieldsResponse.dealCustomFieldData || [];\n    \n    const linkField = customFields.find(f => \n      (f.fieldLabel && f.fieldLabel.toLowerCase().includes('pandadoc')) ||\n      (f.fieldLabel && f.fieldLabel.toLowerCase().includes('kunden')) ||\n      (f.fieldValue && typeof f.fieldValue === 'string' && f.fieldValue.includes('pandadoc'))\n    );\n    \n    if (linkField && linkField.fieldValue) {\n      pandadocCustomerLink = linkField.fieldValue;\n      linkSource = 'activecampaign';\n      console.log('[AC] PandaDoc Link aus AC Custom Field:', pandadocCustomerLink);\n    }\n  } catch (e) {\n    console.log('[AC] Fehler beim AC Custom Field:', e.message);\n  }\n}\n\nif (pandadocCustomerLink) {\n  console.log(`[AC] PandaDoc Link (${linkSource}): ${pandadocCustomerLink}`);\n} else {\n  console.log('[AC] Kein PandaDoc Link gefunden (weder Webhook noch AC)');\n}\n\n// Enriched Context erweitern\nconst enrichedContext = prevData.enriched_context || {};\nenrichedContext.call_notes = {\n  count: callNotes.length,\n  notes: callNotes,\n  summary: notesSummary\n};\n\nreturn [{\n  json: {\n    ...prevData,\n    enriched_context: enrichedContext,\n    has_call_notes: callNotes.length > 0,\n    pandadoc_customer_link: pandadocCustomerLink,\n    pandadoc_link_source: linkSource\n  }\n}];"
+      },
+      "id": "5835a13d-0efe-4e06-816c-44d201de8af8",
+      "name": "AC: Combine Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AC: SKIP (No Contact) v3.4 - Fallback NT-9 statt NT-8\nconst prevData = $('Enrich Context').first().json;\n\nconsole.warn(`[AC] ⚠️ Kein ActiveCampaign Kontakt gefunden für: ${prevData.customer_email} - Fallback auf NT-9 (Kleinunternehmen)`);\n\nreturn [{\n  json: {\n    ...prevData,\n    ac_contact_found: false,\n    ac_contact_id: null,\n    ac_deals: [],\n    deal_stage: null,\n    deal_value: null,\n    has_call_notes: false,\n    call_notes_summary: ''\n  }\n}];"
+      },
+      "id": "94c4654d-c604-4a97-8da3-e3fc77eb1801",
+      "name": "AC: Skip Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SKIP - Kein AC Kontakt (aber Link durchleiten!)\nconst prevData = $input.first().json;\nconsole.log('[AC] Kein Kontakt - Skip AC');\nconsole.warn(`[AC] ⚠️ Kein ActiveCampaign Kontakt gefunden für: ${prevData.customer_email} - Fallback auf NT-8`);\n\nconst enrichedContext = prevData.enriched_context || {};\nenrichedContext.call_notes = {\n  count: 0,\n  notes: [],\n  summary: ''\n};\n\nreturn [{\n  json: {\n    ...prevData,\n    enriched_context: enrichedContext,\n    has_call_notes: false,\n    pandadoc_customer_link: prevData.pandadoc_customer_link || null,\n    pandadoc_link_source: prevData.pandadoc_customer_link ? 'webhook' : null,\n    ac_warning: 'no_contact_found_fallback_nt8'\n  }\n}];"
+      },
+      "id": "10400d38-b86b-4d0a-9afa-f39238705d54",
+      "name": "AC: Skip (No Contact)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1792,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "1e07ceab-70da-46ce-8db1-e8191ca9d67e",
+      "name": "Merge All Context",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -672,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.simple_event }}",
+                    "rightValue": "completed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b91d15e1-7be0-418d-bac4-c8229cbd718f"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Completed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.simple_event }}",
+                    "rightValue": "sent",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Sent"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.simple_event }}",
+                    "rightValue": "viewed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Viewed"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "2ecfd5de-04b3-43dc-9e2f-ca20fd35bbc7",
+      "name": "Event Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/followup_queue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "document_id",
+              "value": "=eq.{{ $json.document_id }}"
+            },
+            {
+              "name": "status",
+              "value": "=in.(pending,processing)"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"cancelled\",\n  \"cancelled_at\": \"{{ $now.toISO() }}\",\n  \"cancel_reason\": \"document_completed\"\n}",
+        "options": {}
+      },
+      "id": "365c6ba5-a862-49db-8bf1-2fcf05f730e7",
+      "name": "Cancel All",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -224,
+        -32
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 1,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_obvious_private }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "0e074698-1147-4ce6-bc43-0be88e96cd7a"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1333e986-78ae-470b-b500-e591a28addbd",
+      "name": "Obvious Private?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -224,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// QUICK SEGMENT v3.5 - Obvious private default is NT-8\nconst prev = $input.first().json;\n\nconst NT_TO_S = {\n  'NT-1':'S2','NT-2':'S3','NT-3':'S1','NT-4':'S2','NT-5':'S2','NT-6':'S2','NT-7':'S1','NT-8':'S3',\n  'NT-9':'S3','NT-10':'S4','NT-11':'S2','NT-12':'S3','NT-13':'S4','NT-14':'S2','NT-15':'S3','NT-16':'S2','NT-17':'S3','NT-18':'S4'\n};\n\nconst QUICK = {\n  'NT-3': ['event','messe','expo','fair','kongress','promotion'],\n  'NT-7': ['film','produktion','production','tv','video','media','studio'],\n  'NT-2': ['restaurant','bar','cafe','café','gastro','hotel','bistro','club','lounge'],\n  'NT-13': ['praxis','arzt','zahnarzt','anwalt','kanzlei','steuer','notar'],\n  'NT-10': ['amt','stadt','gemeinde','behörde','verwaltung','rathaus'],\n  'NT-4': ['gmbh','ag ','ohg','kg ','ug ','gbr','consulting','agentur','agency'],\n  'NT-12': ['salon','friseur','kosmetik','beauty','tattoo','piercing','nail']\n};\n\nconst text = `${prev.customer_company || ''} ${prev.email_domain || ''} ${prev.document_name || ''}`.toLowerCase().replace(/[-_\\.]/g, ' ');\n\nlet segment = 'NT-8';\nlet reasoning = 'Quick-Segment: Freemail ohne Firma und ohne Business-Signal - als Privatkunde klassifiziert (NT-8)';\n\nfor (const [seg, kws] of Object.entries(QUICK)) {\n  if (kws.some(k => text.includes(k))) {\n    segment = seg;\n    reasoning = `Quick-Segment: Keyword-Match für ${seg} gefunden in: ${kws.filter(k => text.includes(k)).join(', ')}`;\n    break;\n  }\n}\n\nconst sKat = NT_TO_S[segment];\nconst anrede = ['NT-2','NT-3','NT-7','NT-8','NT-9','NT-12','NT-15','NT-17'].includes(segment) ? 'Du' : 'Sie';\n\nconst sched = new Date();\nsched.setHours(sched.getHours() + 24);\nlet h = sched.getHours();\nif (h < 8) sched.setHours(8,0,0,0);\nelse if (h >= 21) { sched.setDate(sched.getDate()+1); sched.setHours(8,0,0,0); }\nif (sched.getDay() === 0) sched.setDate(sched.getDate()+1);\n\nconsole.log(`[QUICK] ${segment} (${sKat}) | ${prev.customer_email} | ${reasoning}`);\n\nreturn [{ json: {\n  ...prev,\n  segment,\n  s_kategorie: sKat,\n  anrede,\n  is_urgent: false,\n  segment_reasoning: reasoning,\n  followup_type: 'initial_reminder',\n  followup_number: 1,\n  scheduled_for: sched.toISOString()\n}}];"
+      },
+      "id": "e21e195e-bde2-48b3-9fec-396fcb604ed0",
+      "name": "Quick Segment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Du bist ein Senior Lead Research Experte für NEONTRIP (Hersteller von LED Neon Schildern). Deine Aufgabe ist es, eingehende Leads präzise zu qualifizieren.\n\n## KUNDE DATEN:\n- Name: {{ $json.customer_name }}\n- Firma: {{ $json.customer_company || 'Unbekannt' }}\n- E-Mail: {{ $json.customer_email }}\n- Domain: {{ $json.email_domain }}\n- Dokument: {{ $json.document_name }}\n- Wert: {{ $json.value }}€\n\n## SCHRITT 1: E-MAIL-DOMAIN ANALYSE (WICHTIG!)\n\n**PERSÖNLICHE DOMAINS (→ NT-8 Privat):**\ngmail.com, googlemail.com, gmx.de, gmx.net, gmx.at, gmx.ch, web.de, freenet.de, t-online.de, outlook.com, outlook.de, hotmail.com, hotmail.de, yahoo.com, yahoo.de, icloud.com, me.com, aol.com, protonmail.com, mail.de, live.de, live.com, posteo.de, mailbox.org\n\n**→ Wenn die E-Mail-Domain eine der obigen PERSÖNLICHEN DOMAINS ist UND keine Firma angegeben ist: NT-8 (Privat)**\n\n**FIRMEN-DOMAINS (→ Weiter mit Recherche):**\nAlle anderen Domains (eigene Domain = Firma!)\n\n## SCHRITT 2: Recherche (nur bei Firmen-Domain)\nFühre eine Google-Suche durch um den Geschäftszweck zu ermitteln:\n- Suche nach: \"{Domain}\" OR \"{Firma}\" Tätigkeitsfeld\n\n## SCHRITT 3: Segmentierung\n\n### **S1 High-Urgency**\n* **NT-3: Event/Messe** (Exhibition, Standbau, Eventmanagement, Veranstaltung)\n* **NT-7: Film/TV/Media** (Produktion, Studio, Broadcasting, Filmproduktion)\n\n### **S2 Normale B2B**\n* **NT-4: Werbeagentur** (Branding, Design, Marketing, Werbung, Kreativagentur)\n* **NT-1: Ladenbauer** (Innenausbau, Retail Design, Shopfitting)\n* **NT-11: Architekt** (Planungsbüro, Innenarchitektur, Architekten)\n* **NT-14: Immobilien** (Real Estate, Makler, Hausverwaltung)\n* **NT-16: Recruiting** (Personalvermittlung, HR, Headhunter)\n* **NT-5: Franchise** (Systemgastronomie, Filialist, Kette)\n* **NT-6: Konzern** (AG, Holding, Corporate, GmbH > 100 MA)\n\n### **S4 Formal**\n* **NT-13: Praxen/Kanzleien** (Dr. med., Rechtsanwalt, Steuerberater, Notar)\n* **NT-10: Behörde** (Stadtverwaltung, e.V., Verein, Gemeinde, Amt)\n* **NT-18: Luxus** (Boutique, High-Fashion, Premium, Juwelier)\n\n### **S3 B2C/Locker**\n* **NT-8: Privat** ⚠️ NUR bei persönlichen E-Mail-Domains (gmail, gmx, web.de etc.) OHNE erkennbare Firma\n* **NT-2: Gastronomie** (Bar, Café, Restaurant, Bistro, Club)\n* **NT-15: Fitness** (Gym, CrossFit, Yoga, Sportstudio)\n* **NT-12: Creator** (YouTuber, Influencer, Content Creator, Streamer)\n* **NT-17: Startup** (App, SaaS, Tech-Startup)\n* **NT-9: Kleine Firma** (FALLBACK für B2B wenn kein anderes Segment passt)\n\n## ENTSCHEIDUNGSLOGIK:\n\n1. **Persönliche E-Mail + keine Firma erkennbar** → NT-8 (Privat)\n2. **Persönliche E-Mail + Firma im Namen/Dokument erkennbar** → Passende B2B Kategorie\n3. **Firmen-Domain** → Google-Recherche → Passende Kategorie\n4. **Firmen-Domain ohne klare Zuordnung** → NT-9 (Kleine Firma)\n\n## ANREDE:\n- \"Du\": NT-2, NT-3, NT-7, NT-8, NT-9, NT-12, NT-15, NT-17\n- \"Sie\": NT-1, NT-4, NT-5, NT-6, NT-10, NT-11, NT-13, NT-14, NT-16, NT-18\n\n## OUTPUT (NUR JSON):\n```json\n{\n\"segment\": \"NT-X\",\n\"anrede\": \"Du oder Sie\",\n\"reasoning\": \"Kurze Begründung inkl. Domain-Analyse\"\n}\n```",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Segmentierungs-Agent. Nutze google_search für Firmen-Domains. Antworte NUR mit validem JSON. WICHTIG: Prüfe ZUERST ob die E-Mail-Domain persönlich (gmail, gmx, web.de etc.) oder eine Firmen-Domain ist!"
+        }
+      },
+      "id": "4677179f-459d-445a-86ce-7cdf69bcaf2c",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        64,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Search Google/Serper for company information, business details, and online presence. Use this to research companies by their domain or name to determine their size, industry, and business type.",
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"q\": \"{query}\"}"
+      },
+      "id": "d5ce1c76-1dbb-486c-b736-d95b9a343b10",
+      "name": "Google Search",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        128,
+        432
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "v9qodASbhqQNo8G8",
+          "name": "Header Auth account | Serper"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{ \"segment\": \"NT-3\", \"anrede\": \"Sie\", \"reasoning\": \"Messebau-Firma\" }"
+      },
+      "id": "de638856-556a-4881-bdf6-02c867278174",
+      "name": "JSON Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        256,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "e3f28453-3f7c-452a-ae86-aee842740e1b",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        0,
+        432
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "StsVoyuEzSmCM5jg",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// PROCESS AGENT OUTPUT v3.5 - NT contract validation and private-domain guard\nconst agent = $input.first().json;\nconst prev = $('Merge All Context').first().json;\n\nconst PERSONAL_DOMAINS = [\n  'gmail.com', 'googlemail.com', 'gmx.de', 'gmx.net', 'gmx.at', 'gmx.ch',\n  'web.de', 'freenet.de', 't-online.de', 'outlook.com', 'outlook.de',\n  'hotmail.com', 'hotmail.de', 'yahoo.com', 'yahoo.de', 'icloud.com',\n  'me.com', 'aol.com', 'protonmail.com', 'mail.de', 'live.de', 'live.com',\n  'posteo.de', 'mailbox.org', 'arcor.de', 'vodafone.de', 'o2online.de'\n];\n\nconst NT_TO_S = {\n  'NT-1':'S2','NT-2':'S3','NT-3':'S1','NT-4':'S2','NT-5':'S2','NT-6':'S2','NT-7':'S1','NT-8':'S3',\n  'NT-9':'S3','NT-10':'S4','NT-11':'S2','NT-12':'S3','NT-13':'S4','NT-14':'S2','NT-15':'S3','NT-16':'S2','NT-17':'S3','NT-18':'S4'\n};\n\nconst B2B_FORMAL_SEGMENTS = ['NT-1', 'NT-4', 'NT-5', 'NT-6', 'NT-10', 'NT-11', 'NT-13', 'NT-14', 'NT-16', 'NT-18'];\nconst DU_SEGMENTS = ['NT-2','NT-3','NT-7','NT-8','NT-9','NT-12','NT-15','NT-17'];\nconst BUSINESS_KEYWORDS = /restaurant|bar|cafe|café|gastro|hotel|club|salon|studio|shop|store|gmbh|ug |ag |ohg|kg |gbr|e\\.v\\.|verein|praxis|kanzlei|event|messe|firma|unternehmen|betrieb|lounge|bistro|pizz|bäcker|friseur|tattoo|fitness|gym|yoga|consulting|agentur|agency|media|film|produktion|catering/i;\n\nconst S_TIMING = {\n  'S1': { delay: 24, urgentDelay: 12 },\n  'S2': { delay: 24, urgentDelay: 12 },\n  'S3': { delay: 24, urgentDelay: 12 },\n  'S4': { delay: 48, urgentDelay: 24 }\n};\n\nlet segment = 'NT-9';\nlet anrede = 'Du';\nlet reasoning = '';\n\nconst emailDomain = (prev.email_domain || '').toLowerCase().trim();\nconst isPersonalDomain = PERSONAL_DOMAINS.includes(emailDomain);\nconst companyValue = (prev.customer_company || '').trim();\nconst hasCompany = companyValue !== '' && companyValue.toLowerCase() !== 'unbekannt';\nconst signalText = `${prev.customer_company || ''} ${prev.document_name || ''} ${prev.email_domain || ''}`;\nconst hasBusinessSignal = BUSINESS_KEYWORDS.test(signalText);\n\ntry {\n  const data = agent.output || agent;\n  \n  if (data.segment && NT_TO_S[data.segment]) {\n    segment = data.segment;\n    anrede = data.anrede || (DU_SEGMENTS.includes(segment) ? 'Du' : 'Sie');\n    reasoning = data.reasoning || '';\n    \n    // SAFETY CHECK 1: Personal domain + no company + no business signal = NT-8.\n    if (isPersonalDomain && !hasCompany && !hasBusinessSignal && B2B_FORMAL_SEGMENTS.includes(segment)) {\n      const originalSegment = segment;\n      segment = 'NT-8';\n      anrede = 'Du';\n      reasoning = `[OVERRIDE] ${originalSegment} -> NT-8: Persönliche E-Mail (${emailDomain}) ohne Firma und ohne Business-Signal. Original: ${reasoning}`;\n      console.log(`[SAFETY] Override ${originalSegment} -> NT-8 for personal domain ${emailDomain}`);\n    }\n    \n    // SAFETY CHECK 2: Company domain + NT-8 = NT-9.\n    if (!isPersonalDomain && segment === 'NT-8') {\n      segment = 'NT-9';\n      anrede = 'Du';\n      reasoning = `[OVERRIDE] NT-8 -> NT-9: Firmen-Domain (${emailDomain}) sollte nicht Privat sein. Original: ${reasoning}`;\n      console.log(`[SAFETY] Override NT-8 -> NT-9 for company domain ${emailDomain}`);\n    }\n  } else if (data.segment && /^S[1-4]$/.test(data.segment)) {\n    segment = isPersonalDomain && !hasCompany && !hasBusinessSignal ? 'NT-8' : 'NT-9';\n    anrede = 'Du';\n    reasoning = `[OVERRIDE] Ungültiges Segment ${data.segment} -> ${segment}: Agent lieferte S-Kategorie statt NT-Segment.`;\n  }\n} catch (e) {\n  segment = isPersonalDomain && !hasCompany && !hasBusinessSignal ? 'NT-8' : 'NT-9';\n  anrede = 'Du';\n  reasoning = `Parse-Error, Fallback zu ${segment}`;\n}\n\nif (!NT_TO_S[segment]) {\n  const originalSegment = segment;\n  segment = isPersonalDomain && !hasCompany && !hasBusinessSignal ? 'NT-8' : 'NT-9';\n  anrede = 'Du';\n  reasoning = `[OVERRIDE] Ungültiges Segment ${originalSegment || 'leer'} -> ${segment}. ${reasoning}`;\n}\n\nconst sKat = NT_TO_S[segment] || 'S3';\nanrede = DU_SEGMENTS.includes(segment) ? 'Du' : 'Sie';\nconst timing = S_TIMING[sKat];\nconst docLower = (prev.document_name || '').toLowerCase();\nconst isUrgent = /dringend|express|eilig|asap|urgent|messe|event|eröffnung|shooting|deadline/.test(docLower);\nconst delay = isUrgent ? timing.urgentDelay : timing.delay;\n\nconst sched = new Date();\nsched.setHours(sched.getHours() + delay);\n\nif (!isUrgent) {\n  let h = sched.getHours();\n  if (sKat === 'S3') {\n    if (h < 8) sched.setHours(8,0,0,0);\n    else if (h >= 21) { sched.setDate(sched.getDate()+1); sched.setHours(8,0,0,0); }\n    if (sched.getDay() === 0) sched.setDate(sched.getDate()+1);\n  } else {\n    if (h < 9) sched.setHours(9,0,0,0);\n    else if (h >= 18) { sched.setDate(sched.getDate()+1); sched.setHours(9,0,0,0); }\n    let d = sched.getDay();\n    if (d === 0) sched.setDate(sched.getDate()+1);\n    if (d === 6) sched.setDate(sched.getDate()+2);\n  }\n}\n\nconsole.log(`[AGENT] ${segment} (${sKat}) | ${prev.customer_company || emailDomain} | Personal: ${isPersonalDomain} | BusinessSignal: ${hasBusinessSignal} | ${reasoning}`);\n\nreturn [{ json: {\n  ...prev,\n  segment,\n  s_kategorie: sKat,\n  anrede,\n  is_personal_domain: isPersonalDomain,\n  has_business_signal: hasBusinessSignal,\n  is_urgent: isUrgent,\n  segment_reasoning: reasoning,\n  followup_type: 'initial_reminder',\n  followup_number: 1,\n  scheduled_for: sched.toISOString()\n}}];"
+      },
+      "id": "b8bd5a5b-3f34-4d51-9518-ced77cea09bc",
+      "name": "Process Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2c300fcf-677c-46fe-a181-5a6f00e6768f",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        688,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/followup_queue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "document_id,followup_number"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"document_id\": \"{{ $json.document_id }}\",\n  \"document_name\": \"{{ ($json.document_name || '').replace(/\"/g, '') }}\",\n  \"customer_name\": \"{{ ($json.customer_name || '').replace(/\"/g, '') }}\",\n  \"customer_email\": \"{{ $json.customer_email }}\",\n  \"customer_company\": \"{{ ($json.customer_company || '').replace(/\"/g, '') }}\",\n  \"segment\": \"{{ /^NT-\\\\d+$/.test(String($json.segment || '')) ? $json.segment : 'NT-9' }}\",\n  \"anrede\": \"{{ $json.anrede }}\",\n  \"is_urgent\": {{ $json.is_urgent || false }},\n  \"value\": {{ $json.value || 0 }},\n  \"currency\": \"{{ $json.currency || 'EUR' }}\",\n  \"followup_type\": \"{{ $json.followup_type }}\",\n  \"followup_number\": {{ $json.followup_number }},\n  \"scheduled_for\": \"{{ $json.scheduled_for }}\",\n  \"status\": \"pending\",\n  \"retry_count\": 0,\n  \"segment_reasoning\": \"{{ ($json.segment_reasoning || '').replace(/\"/g, '').substring(0, 500) }}\",\n  \"pandadoc_customer_link\": {{ $json.pandadoc_customer_link ? '\"' + $json.pandadoc_customer_link + '\"' : 'null' }},\n  \"enriched_context\": {{ JSON.stringify($json.enriched_context || {}) }},\n  \"context_updated_at\": \"{{ $now.toISO() }}\",\n  \"request_id\": {{ $json.request_id ? '\"' + $json.request_id + '\"' : 'null' }}\n}",
+        "options": {}
+      },
+      "id": "2c87b68d-267d-4356-a24b-bf1502cf72fa",
+      "name": "Upsert FU",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1712,
+        144
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconsole.log(`[UPSERT] ${d.segment} (${d.s_kategorie}) | ${d.customer_email} | Notes: ${d.has_call_notes}`);\nreturn [{ json: { success: true, segment: d.segment, has_call_notes: d.has_call_notes } }];"
+      },
+      "id": "b54ad7f6-6445-46ef-be2d-2ec8debe0b83",
+      "name": "Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// VIEWED HANDLER v3.4 - Fallback NT-9 statt NT-8\nconst prev = $input.first().json;\n\nconst NT_TO_S = {'NT-1':'S2','NT-2':'S3','NT-3':'S1','NT-4':'S2','NT-5':'S2','NT-6':'S2','NT-7':'S1','NT-8':'S3','NT-9':'S3','NT-10':'S4','NT-11':'S2','NT-12':'S3','NT-13':'S4','NT-14':'S2','NT-15':'S3','NT-16':'S2','NT-17':'S3','NT-18':'S4'};\n\nconst QUICK = {\n  'NT-3': ['event','messe','expo','fair','kongress','promotion'],\n  'NT-7': ['film','produktion','production','tv','video','media','studio'],\n  'NT-2': ['restaurant','bar','cafe','café','gastro','hotel','bistro','club','lounge'],\n  'NT-13': ['praxis','arzt','zahnarzt','anwalt','kanzlei','steuer','notar'],\n  'NT-10': ['amt','stadt','gemeinde','behörde','verwaltung','rathaus'],\n  'NT-4': ['gmbh','ag ','ohg','kg ','ug ','gbr','consulting','agentur','agency'],\n  'NT-12': ['salon','friseur','kosmetik','beauty','tattoo','piercing','nail']\n};\n\nconst text = `${prev.customer_company} ${prev.email_domain} ${prev.document_name || ''}`.toLowerCase().replace(/[-_\\.]/g, ' ');\n\nlet segment = 'NT-9';\nfor (const [seg, kws] of Object.entries(QUICK)) {\n  if (kws.some(k => text.includes(k))) { segment = seg; break; }\n}\n\nconst sKat = NT_TO_S[segment];\nconst anrede = ['NT-2','NT-7','NT-8','NT-9','NT-12','NT-15','NT-17'].includes(segment) ? 'Du' : 'Sie';\n\nif (sKat === 'S4') {\n  console.log(`[VIEWED] S4 skip | ${prev.customer_email}`);\n  return [{ json: { skip: true, reason: 'S4_no_viewed' } }];\n}\n\nconst sched = new Date();\nsched.setMinutes(sched.getMinutes() + 2);\n\nconsole.log(`[VIEWED] ${segment} (${sKat}) | ${prev.customer_email}`);\n\nreturn [{ json: { ...prev, segment, s_kategorie: sKat, anrede, followup_type: 'viewed_immediate', followup_number: 0, scheduled_for: sched.toISOString() } }];"
+      },
+      "id": "3db41ad3-4a71-4b27-8704-6dcfafa3e259",
+      "name": "Viewed Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "leftValue": "={{ $json.send_now }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b0118de9-5f8b-418b-88d0-d0dd70db4f65",
+      "name": "Send?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        128,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/followup_queue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "document_id",
+              "value": "=eq.{{ $json.document_id }}"
+            },
+            {
+              "name": "status",
+              "value": "=eq.pending"
+            },
+            {
+              "name": "followup_number",
+              "value": "=eq.1"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"cancelled\",\n  \"cancelled_at\": \"{{ $now.toISO() }}\",\n  \"cancel_reason\": \"viewed_triggered\"\n}",
+        "options": {}
+      },
+      "id": "c570fe03-2e1b-4842-a928-8189912c58a3",
+      "name": "Cancel FU1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        464,
+        608
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/followup_queue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "document_id,followup_number"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"document_id\": \"{{ $json.document_id }}\",\n  \"document_name\": \"{{ ($json.document_name || '').replace(/\"/g, '') }}\",\n  \"customer_name\": \"{{ ($json.customer_name || '').replace(/\"/g, '') }}\",\n  \"customer_email\": \"{{ $json.customer_email }}\",\n  \"customer_company\": \"{{ ($json.customer_company || '').replace(/\"/g, '') }}\",\n  \"segment\": \"{{ $json.segment }}\",\n  \"anrede\": \"{{ $json.anrede }}\",\n  \"is_urgent\": false,\n  \"value\": {{ $json.value || 0 }},\n  \"currency\": \"{{ $json.currency || 'EUR' }}\",\n  \"followup_type\": \"viewed_immediate\",\n  \"followup_number\": 0,\n  \"scheduled_for\": \"{{ $json.scheduled_for }}\",\n  \"status\": \"pending\",\n  \"retry_count\": 0,\n  \"enriched_context\": {{ JSON.stringify($json.enriched_context || {}) }}\n}",
+        "options": {}
+      },
+      "id": "da108da3-a112-43d4-a2a1-4833d78af125",
+      "name": "Upsert Viewed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        688,
+        608
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nfor (const item of items) {\n  console.log('[UNKNOWN]', item.json.event_type);\n}\nreturn [{ json: { skipped: true } }];"
+      },
+      "id": "4e929b44-28ed-4085-abbd-fd1d0fbee284",
+      "name": "Handle Unknown Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://neontrip35090.api-us1.com/api/3/deals/{{ $json.ac_deal_id }}/dealCustomFieldData",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "options": {}
+      },
+      "id": "ac-deal-fields",
+      "name": "AC: Get Deal Fields",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1008,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/followup_queue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "document_id",
+              "value": "=eq.{{ $('Viewed Handler').item.json.document_id }}"
+            },
+            {
+              "name": "followup_type",
+              "value": "eq.viewed_email"
+            },
+            {
+              "name": "sent_at",
+              "value": "not.is.null"
+            },
+            {
+              "name": "select",
+              "value": "id"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-first-view",
+      "name": "Check First View",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        800
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 1,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.length || 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              },
+              "id": "condition-1770034941584-16ah916rj"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-first-view",
+      "name": "Is First View?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "minutes"
+      },
+      "id": "wait-1-min",
+      "name": "Wait 1 Min",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        752
+      ],
+      "webhookId": "7e0253c7-6f4d-44fd-9f02-7f0f516e0dbb"
+    },
+    {
+      "parameters": {
+        "toRecipients": "=  {{ $('Viewed Handler').item.json.customer_email }}                                             ",
+        "subject": "=  {{ $('Viewed Handler').item.json.customer_name.split(' ')[0] }}, noch Fragen zum Angebot?                 ",
+        "bodyContent": "=<p style=\"margin:0 0 1em 0;\">{{ $('Viewed Handler').item.json.anrede === 'Du' ? 'Hey ' + ($('Viewed Handler').item.json.customer_name || '').split(' ')[0] + ',' : 'Guten Tag,' }}</p>\n\n<p style=\"margin:0 0 1em 0;\">Nur eine kurze Info: Falls Fragen zu {{ $('Viewed Handler').item.json.anrede === 'Du' ? 'deinem' : 'Ihrem' }} Angebot aufkommen, bin ich jetzt telefonisch erreichbar und kann alles direkt klären.</p>\n\n<p style=\"margin:0 0 1em 0;\"><strong>{{ $('Viewed Handler').item.json.anrede === 'Du' ? 'Ruf mich einfach kurz an' : 'Rufen Sie mich einfach kurz an' }}:</strong> <a href=\"tel:+4921154257240\" style=\"color:#0066cc;\">+49 211 54257240</a></p>\n\n<p style=\"margin:0 0 1em 0;\">Ich {{ $('Viewed Handler').item.json.anrede === 'Du' ? 'freu mich' : 'freue mich' }} auf {{ $('Viewed Handler').item.json.anrede === 'Du' ? 'dich' : 'Sie' }}!</p>\n\n<br><br>\n<!-- NEONTRIP Signature -->\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-family: Arial, Helvetica, sans-serif; color:#111111;\">\n  <tbody>\n    <tr>\n      <td style=\"padding:0;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"max-width:600px; width:100%;\">\n          <tbody>\n            <tr>\n              <td style=\"padding:16px 0;\">\n                <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                  <tbody>\n                    <tr>\n                      <td valign=\"top\" style=\"width:140px; padding-right:16px;\">\n                        <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" alt=\"Fabienne Trapp\" width=\"120\" height=\"120\" style=\"display:block; width:120px; height:120px; border-radius:60px; border:2px solid #111111; object-fit:cover;\">\n                      </td>\n                      <td valign=\"top\" style=\"padding-top:2px;\">\n                        <div style=\"font-size:16px; font-weight:700; color:#111111; margin:0 0 4px 0;\">Fabienne Trapp</div>\n                        <div style=\"font-size:12px; color:#6b7280; margin:0 0 10px 0;\">Beratung &amp; Realisierung</div>\n                        <div style=\"font-size:13px; font-weight:700; color:#111111; margin:0 0 8px 0;\">NEONTRIP&reg;</div>\n                        <div style=\"font-size:13px; line-height:1.6; color:#111111;\">Tel: <a href=\"tel:+4921154257240\" style=\"color:#111111; text-decoration:none;\">+49 211 54257240</a><br>E-Mail: <a href=\"mailto:support@neontrip.de\" style=\"color:#111111; text-decoration:none;\">support@neontrip.de</a><br>Web: <a href=\"https://www.neontrip.de\" style=\"color:#111111; text-decoration:none;\">www.neontrip.de</a><br>Adresse: Bilker Allee 29, 40219 Duesseldorf</div>\n                      </td>\n                    </tr>\n                  </tbody>\n                </table>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:0;\">\n                <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color:#121212; border-radius:10px;\">\n                  <tbody>\n                    <tr>\n                      <td align=\"center\" style=\"padding:18px 16px;\">\n                        <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450\" alt=\"NEONTRIP\" width=\"420\" style=\"display:block; width:100%; max-width:420px; height:auto; border:0; outline:none; text-decoration:none;\">\n                        <div style=\"margin-top:8px; font-size:11px; font-weight:700; letter-spacing:0.6px; color:#ffffff;\">UNIQUE LIGHTING AND BRANDING</div>\n                      </td>\n                    </tr>\n                  </tbody>\n                </table>\n              </td>\n            </tr>\n          </tbody>\n        </table>\n      </td>\n    </tr>\n  </tbody>\n</table>",
+        "additionalFields": {}
+      },
+      "id": "send-viewed-email",
+      "name": "Send Viewed Email (Fabienne)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        672,
+        752
+      ],
+      "webhookId": "688040d5-ef35-4b1c-b3c8-126116e4c710",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/followup_queue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "document_id,followup_type"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"document_id\": \"{{ $('Viewed Handler').item.json.document_id }}\",\n  \"document_name\": \"{{ ($('Viewed Handler').item.json.document_name || '').replace(/\"/g, '') }}\",\n  \"customer_name\": \"{{ ($('Viewed Handler').item.json.customer_name || '').replace(/\"/g, '') }}\",\n  \"customer_email\": \"{{ $('Viewed Handler').item.json.customer_email }}\",\n  \"followup_type\": \"viewed_email\",\n  \"followup_number\": 0,\n  \"status\": \"sent\",\n  \"sent_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "mark-viewed-email-sent",
+      "name": "Mark Viewed Email Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/document_journey?on_conflict=pandadoc_id",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"pandadoc_id\": \"{{ $('Calculate Lead Shadow Plan').first().json.document_id }}\",\n  \"customer_email\": \"{{ $('Calculate Lead Shadow Plan').first().json.customer_email }}\",\n  \"segment\": \"{{ $('Calculate Lead Shadow Plan').first().json.segment || 'NT-1' }}\",\n  \"total_value\": {{ $('Calculate Lead Shadow Plan').first().json.value || 0 }}\n}",
+        "options": {}
+      },
+      "id": "fdaf0a30-3e9e-4b33-bac6-702bc37587fa",
+      "name": "Upsert Document Journey",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/workflow_audit_log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"document_id\": \"{{ $('Calculate Lead Shadow Plan').first().json.document_id }}\",\n  \"workflow_name\": \"Event Receiver v3.3\",\n  \"action\": \"event_received\",\n  \"status\": \"success\"\n}",
+        "options": {}
+      },
+      "id": "4d63a06c-a32e-4634-80a9-3086135db589",
+      "name": "Audit Log Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1584,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "b7b7adb6-9e1b-4885-aec7-277acfd5bfb3",
+      "name": "On Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -5152,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "toRecipients": "info@neontrip.de",
+        "subject": "=ERROR: Event Receiver v3.3 - {{ $json.error.message }}",
+        "bodyContent": "=<p><strong>Workflow:</strong> Event Receiver v3.3</p>\n<p><strong>Error:</strong> {{ $json.error.message }}</p>\n<p><strong>Time:</strong> {{ $now.toISO() }}</p>\n<p><strong>Node:</strong> {{ $json.error.node?.name || 'Unknown' }}</p>",
+        "additionalFields": {}
+      },
+      "id": "5cc30693-c651-4926-840a-dbffa65efbd8",
+      "name": "Error Alert Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        -4928,
+        704
+      ],
+      "webhookId": "cc48dd11-d80c-42b6-89e0-81f959c6b92a",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// GESCHÄFTSZEITEN-CHECK für Viewed-Email\n// Mo-Fr: 08:00 - 19:00 Uhr\n// Sa: 09:00 - 14:00 Uhr\n// So: Kein Versand\n\nconst now = new Date();\nconst berlinTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));\nconst hour = berlinTime.getHours();\nconst day = berlinTime.getDay(); // 0 = Sonntag, 6 = Samstag\n\n// Sonntag = kein Versand\nif (day === 0) {\n  return [];\n}\n\n// Samstag = nur 09:00-14:00\nif (day === 6) {\n  if (hour < 9 || hour >= 14) {\n    return [];\n  }\n  return $input.all();\n}\n\n// Mo-Fr: 08:00 - 19:00\nif (hour < 8 || hour >= 19) {\n  return [];\n}\n\nreturn $input.all();"
+      },
+      "id": "34b6d0de-b0da-41e3-8dec-6b75b8080aa9",
+      "name": "Business Hours Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        752
+      ]
+    },
+    {
+      "id": "786858c2-f3e5-437f-97a7-23fb34ca2935",
+      "name": "Lookup Quote Request ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        290
+      ],
+      "parameters": {
+        "jsCode": "// REQUEST-ID LOOKUP PASS-THROUGH v1\n// Never return 0 items. Extract request_id deterministically from current context.\nconst current = $input.first()?.json || {};\nconst merged = $('Merge').first().json || {};\n\nfunction extractRequestIdFromText(value) {\n  const match = String(value || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);\n  return match ? match[0] : null;\n}\n\nconst requestId =\n  current.request_id ||\n  merged.request_id ||\n  extractRequestIdFromText(current.document_name) ||\n  extractRequestIdFromText(merged.document_name) ||\n  extractRequestIdFromText(current.ac_deal_title) ||\n  extractRequestIdFromText(merged.ac_deal_title) ||\n  null;\n\nconsole.log('[LOOKUP REQ_ID PASS] ' + (merged.customer_email || current.customer_email || 'unknown') + ' | doc=' + (merged.document_id || current.document_id || 'unknown') + ' -> request_id=' + (requestId || 'NULL'));\n\nreturn [{\n  json: {\n    request_id: requestId,\n    request_id_source: requestId ? 'context_document_name' : 'missing',\n    lookup_returned_item: true\n  }\n}];"
+      },
+      "alwaysOutputData": false
+    },
+    {
+      "id": "96162bef-f4aa-45a2-af9a-f6bb117c531a",
+      "name": "Inject Request ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        290
+      ],
+      "parameters": {
+        "jsCode": "// Merges request_id from upstream lookup/pass-through back into context.\n// This node must also work when upstream only returns an empty placeholder.\nconst prev = $('Merge').first().json;\nconst input = ($input.first() || { json: {} }).json || {};\n\nfunction extractRequestIdFromText(value) {\n  const match = String(value || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);\n  return match ? match[0] : null;\n}\n\nconst upstreamRequestId = input.request_id || null;\nconst fallbackRequestId =\n  extractRequestIdFromText(prev.document_name) ||\n  extractRequestIdFromText(prev.ac_deal_title) ||\n  null;\n\nconst requestId = upstreamRequestId || fallbackRequestId;\nconst source = upstreamRequestId\n  ? (input.request_id_source || 'upstream_lookup')\n  : (fallbackRequestId ? 'pandadoc_document_name' : 'missing');\n\nconsole.log('[INJECT REQ_ID] ' + prev.customer_email + ' | doc=' + prev.document_id + ' -> request_id=' + (requestId || 'NULL') + ' | source=' + source);\nreturn [{ json: { ...prev, request_id: requestId || null, request_id_source: source } }];"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// LEAD FOLLOW-UP SHADOW PLAN v1.1\n// Deterministic scoring only. Does not change live cadence or create calls.\nconst item = $input.first().json;\nconst ctx = item.enriched_context || {};\nconst emailHistory = ctx.email_history || {};\nconst callNotes = ctx.call_notes || {};\nconst pandadoc = ctx.pandadoc || {};\n\nfunction clamp(value) {\n  const n = Number(value) || 0;\n  return Math.max(0, Math.min(10, Math.round(n)));\n}\nfunction asText(value) {\n  if (value === null || value === undefined) return '';\n  if (typeof value === 'string') return value;\n  try { return JSON.stringify(value); } catch (e) { return String(value); }\n}\nfunction has(pattern, text) {\n  return pattern.test(text);\n}\nfunction addReason(reasons, label, points) {\n  if (points > 0) reasons.push(label + ' +' + points);\n}\nfunction safeIso(date) {\n  return date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;\n}\n\nconst emailTexts = Array.isArray(emailHistory.emails)\n  ? emailHistory.emails.map(e => [e.subject, e.preview, e.text].map(asText).join(' ')).join('\\n')\n  : '';\nconst noteTexts = Array.isArray(callNotes.notes)\n  ? callNotes.notes.map(n => [n.date, n.content].map(asText).join(' ')).join('\\n')\n  : '';\nconst productText = [pandadoc.product_summary, pandadoc.products].map(asText).join(' ');\nconst customerText = [\n  item.document_name,\n  item.customer_company,\n  item.email_domain,\n  item.segment_reasoning,\n  emailTexts,\n  noteTexts\n].map(asText).join('\\n').toLowerCase();\n\n// Product lines often contain optional offer text like Rabatt, Express, or Eilauftrag.\n// They stay in raw_context, but customer intent signals must come only from customer/CRM text.\nconst combined = customerText;\n\nconst signals = {\n  deadline_found: has(/\\b(deadline|frist|bis\\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)|bis\\s+\\d{1,2}[\\.\\/-]\\d{1,2}|eröffnung|eroeffnung|messe|event|shooting|dreh|veranstaltung)\\b/i, combined),\n  express_or_rush: has(/\\b(express|eilauftrag|eilig|dringend|asap|so schnell wie möglich|schnellstmöglich|urgent)\\b/i, combined),\n  discount_asked: has(/\\b(rabatt|nachlass|preisnachlass|discount|skonto|entgegenkommen)\\b/i, combined),\n  budget_mentioned: has(/\\b(budget|budgetrahmen|kostet|kosten|preis|zu teuer|teuer|günstiger|guenstiger|billiger)\\b/i, combined),\n  too_expensive_signal: has(/\\b(zu teuer|teuer|günstiger|guenstiger|billiger|anderer anbieter|vergleichsangebot)\\b/i, combined),\n  internal_approval_needed: has(/\\b(intern abstimmen|rücksprache|ruecksprache|geschäftsführung|geschaeftsfuehrung|chef|chefin|freigabe|einkauf|vorstand|team besprechen|entscheiden lassen)\\b/i, combined),\n  specific_question: has(/[?？]|\\b(können sie|koennen sie|kann man|wie lange|lieferzeit|montage|befestigung|rechnung|angebot anpassen|ändern|aendern)\\b/i, combined),\n  do_not_contact: has(/\\b(nicht mehr melden|nicht kontaktieren|keine weiteren mails|unsubscribe|abmelden|kein interesse|nicht interessiert)\\b/i, combined),\n  call_requested: has(/\\b(anrufen|telefonieren|rückruf|rueckruf|telefonisch|call|kurz sprechen)\\b/i, combined),\n  waiting_for_customer: has(/\\b(melde mich|melden uns|brauche zeit|brauchen zeit|überlegen|ueberlegen|besprechen|prüfen|pruefen)\\b/i, combined)\n};\n\nconst reasons = [];\nlet urgency = 0;\nlet intent = 1;\nlet price = 0;\nlet complexity = 0;\n\nif (item.is_urgent) { urgency += 3; addReason(reasons, 'existing is_urgent flag', 3); }\nif (signals.express_or_rush) { urgency += 3; addReason(reasons, 'rush/express wording', 3); }\nif (signals.deadline_found) { urgency += 4; addReason(reasons, 'deadline/event signal', 4); }\nif (['NT-3', 'NT-7'].includes(item.segment)) { urgency += 2; addReason(reasons, 'urgent segment ' + item.segment, 2); }\nif ((Number(item.value) || 0) >= 1500) { intent += 1; addReason(reasons, 'high value', 1); }\nif (item.simple_event === 'viewed') { intent += 2; addReason(reasons, 'document viewed event', 2); }\nif (item.simple_event === 'sent') { intent += 1; addReason(reasons, 'document sent event', 1); }\nif (signals.specific_question) { intent += 2; addReason(reasons, 'specific question/context', 2); }\nif ((pandadoc.product_count || (Array.isArray(pandadoc.products) ? pandadoc.products.length : 0)) > 0) { intent += 1; addReason(reasons, 'product context present', 1); }\nif (signals.call_requested) { intent += 2; addReason(reasons, 'call requested', 2); }\nif (signals.discount_asked) { price += 4; addReason(reasons, 'discount asked', 4); }\nif (signals.budget_mentioned) { price += 2; addReason(reasons, 'budget/price wording', 2); }\nif (signals.too_expensive_signal) { price += 4; addReason(reasons, 'too expensive/comparison signal', 4); }\nif ((Number(item.value) || 0) < 500 && item.is_freemail) { price += 1; addReason(reasons, 'low value freemail', 1); }\nif (signals.internal_approval_needed) { complexity += 4; addReason(reasons, 'internal approval signal', 4); }\nif (['S4'].includes(item.s_kategorie)) { complexity += 2; addReason(reasons, 'formal S4 category', 2); }\nif (['NT-6', 'NT-10', 'NT-13', 'NT-16'].includes(item.segment)) { complexity += 2; addReason(reasons, 'complex segment ' + item.segment, 2); }\nif ((Number(item.value) || 0) >= 3000) { complexity += 1; addReason(reasons, 'larger deal value', 1); }\nif (signals.waiting_for_customer) { complexity += 1; addReason(reasons, 'customer needs time', 1); }\n\nurgency = clamp(urgency);\nintent = clamp(intent);\nprice = clamp(price);\ncomplexity = clamp(complexity);\n\nlet contactability = 'allowed';\nif (signals.do_not_contact) contactability = 'blocked_signal';\n\nlet strategy = 'normal_consultative';\nlet cadence = 'normal';\nlet angle = 'offer_fit_check';\nlet callRecommendation = 'none';\nlet callAfter = null;\nlet maxCallAttempts = 0;\n\nif (contactability !== 'allowed') {\n  strategy = 'do_not_contact_shadow';\n  cadence = 'none';\n  angle = 'none';\n} else if (urgency >= 7 && intent >= 5) {\n  strategy = 'fast_helpful';\n  cadence = 'fast';\n  angle = 'deadline_help_and_final_questions';\n  callRecommendation = 'recommended';\n  const d = new Date();\n  d.setHours(d.getHours() + 4);\n  callAfter = safeIso(d);\n  maxCallAttempts = 1;\n} else if (price >= 6) {\n  strategy = 'price_sensitive';\n  cadence = 'soft';\n  angle = 'value_explanation_and_alternatives';\n} else if (complexity >= 6) {\n  strategy = 'complex_decision';\n  cadence = 'slower_formal';\n  angle = 'decision_support_and_next_steps';\n  callRecommendation = urgency >= 5 || signals.call_requested ? 'manual_review' : 'none';\n} else if (signals.call_requested) {\n  strategy = 'customer_requested_call';\n  cadence = 'normal';\n  angle = 'offer_fit_check';\n  callRecommendation = 'recommended';\n  const d = new Date();\n  d.setHours(d.getHours() + 24);\n  callAfter = safeIso(d);\n  maxCallAttempts = 1;\n}\n\nconst plan = {\n  document_id: item.document_id,\n  customer_email: item.customer_email,\n  request_id: item.request_id || null,\n  event_type: item.event_type || null,\n  simple_event: item.simple_event || null,\n  segment: item.segment || null,\n  s_kategorie: item.s_kategorie || null,\n  urgency_score: urgency,\n  intent_score: intent,\n  price_sensitivity_score: price,\n  decision_complexity_score: complexity,\n  lead_signals: signals,\n  followup_strategy: strategy,\n  email_cadence: cadence,\n  next_email_angle: angle,\n  call_recommendation: callRecommendation,\n  call_after: callAfter,\n  max_call_attempts: maxCallAttempts,\n  contactability_status: contactability,\n  planning_reason: reasons.join('; ').substring(0, 1000) || 'shadow_v1 default scoring',\n  planning_version: 'shadow_v1_1',\n  source_workflow_id: 'TLLSwYTcIRgtinVg',\n  source_workflow_name: 'NEONTRIP Event Receiver v3.3',\n  raw_context: {\n    has_email_context: !!item.has_email_context,\n    email_count: emailHistory.count || 0,\n    has_call_notes: !!item.has_call_notes,\n    call_note_count: callNotes.count || 0,\n    has_product_context: !!item.has_product_context,\n    value: item.value || 0,\n    email_summary: asText(emailHistory.summary).substring(0, 2000),\n    call_notes_summary: asText(callNotes.summary).substring(0, 2000),\n    product_summary: asText(pandadoc.product_summary).substring(0, 2000)\n  },\n  updated_at: new Date().toISOString()\n};\n\nconsole.log('[SHADOW PLAN] ' + item.customer_email + ' | ' + item.document_id + ' | U/I/P/D=' + [urgency, intent, price, complexity].join('/') + ' | ' + strategy + ' | call=' + callRecommendation);\n\nreturn [{ json: { ...item, lead_followup_plan: plan } }];"
+      },
+      "id": "lead-shadow-plan-v1",
+      "name": "Calculate Lead Shadow Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        290
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/lead_followup_plans",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "document_id,simple_event,planning_version"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.lead_followup_plan) }}",
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "id": "upsert-lead-shadow-plan-v1",
+      "name": "Supabase: Upsert Lead Shadow Plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1712,
+        432
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "request-id-found-guard-v1",
+      "name": "Request ID Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1264,
+        290
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "request-id-not-empty",
+              "leftValue": "={{ $json.request_id }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notify-missing-request-id-v1",
+      "name": "Notify Missing Request ID",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        496
+      ],
+      "parameters": {
+        "toRecipients": "info@neontrip.de",
+        "subject": "=⚠️ Event Receiver gestoppt: Request-ID fehlt - {{ $json.customer_email || $json.document_id }}",
+        "bodyContent": "=<div style=\"font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#111\"><p><strong>Event Receiver hat Follow-up/Shadow gestoppt, weil keine Request-ID gefunden wurde.</strong></p><ul><li>PandaDoc-ID: {{ $json.document_id }}</li><li>Kunde: {{ $json.customer_name }} &lt;{{ $json.customer_email }}&gt;</li><li>Dokument: {{ $json.document_name }}</li><li>Event: {{ $json.simple_event }}</li><li>Status: {{ $json.document_status }}</li><li>Zeit: {{ $now.toISO() }}</li></ul><p>Es wurde kein Follow-up fuer dieses Event erzeugt.</p></div>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "687d5df2-0212-42da-8f88-80a8547bfd94"
+    }
+  ],
+  "connections": {
+    "PandaDoc Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 200 OK": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Check Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Already Processed": {
+      "main": [
+        [
+          {
+            "node": "Is New Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Event?": {
+      "main": [
+        [
+          {
+            "node": "Mark as Processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip (Duplicate)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Processed": {
+      "main": [
+        [
+          {
+            "node": "Restore Normalized Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Normalized Data": {
+      "main": [
+        [
+          {
+            "node": "Fetch PandaDoc Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PandaDoc Details": {
+      "main": [
+        [
+          {
+            "node": "Extract PandaDoc Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PandaDoc Data": {
+      "main": [
+        [
+          {
+            "node": "Fetch Email Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Email Context": {
+      "main": [
+        [
+          {
+            "node": "Enrich Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Context": {
+      "main": [
+        [
+          {
+            "node": "AC: Find Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Find Contact": {
+      "main": [
+        [
+          {
+            "node": "AC: Extract Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Extract Contact": {
+      "main": [
+        [
+          {
+            "node": "AC Contact Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC Contact Found?": {
+      "main": [
+        [
+          {
+            "node": "AC: Get Deals",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AC: Skip (No Contact)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Get Deals": {
+      "main": [
+        [
+          {
+            "node": "AC: Extract Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Extract Deal": {
+      "main": [
+        [
+          {
+            "node": "AC Deal Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC Deal Found?": {
+      "main": [
+        [
+          {
+            "node": "AC: Get Deal Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AC: Skip Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Get Deal Notes": {
+      "main": [
+        [
+          {
+            "node": "AC: Combine Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Combine Notes": {
+      "main": [
+        [
+          {
+            "node": "Merge All Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Skip Notes": {
+      "main": [
+        [
+          {
+            "node": "Merge All Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Skip (No Contact)": {
+      "main": [
+        [
+          {
+            "node": "Merge All Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Context": {
+      "main": [
+        [
+          {
+            "node": "Event Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Switch": {
+      "main": [
+        [
+          {
+            "node": "Cancel All",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Obvious Private?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Viewed Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Unknown Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obvious Private?": {
+      "main": [
+        [
+          {
+            "node": "Quick Segment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quick Segment": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Process Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSON Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Output": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Upsert FU": {
+      "main": [
+        [
+          {
+            "node": "Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Viewed Handler": {
+      "main": [
+        [
+          {
+            "node": "Check First View",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send?": {
+      "main": [
+        [
+          {
+            "node": "Cancel FU1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancel FU1": {
+      "main": [
+        [
+          {
+            "node": "Upsert Viewed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AC: Get Deal Fields": {
+      "main": [
+        [
+          {
+            "node": "AC: Get Deal Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check First View": {
+      "main": [
+        [
+          {
+            "node": "Is First View?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1 Min": {
+      "main": [
+        [
+          {
+            "node": "Send Viewed Email (Fabienne)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Viewed Email (Fabienne)": {
+      "main": [
+        [
+          {
+            "node": "Mark Viewed Email Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log": {
+      "main": [
+        [
+          {
+            "node": "Upsert Document Journey",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Document Journey": {
+      "main": [
+        [
+          {
+            "node": "Audit Log Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Error": {
+      "main": [
+        [
+          {
+            "node": "Error Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is First View?": {
+      "main": [
+        [
+          {
+            "node": "Business Hours Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Hours Check": {
+      "main": [
+        [
+          {
+            "node": "Wait 1 Min",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Lookup Quote Request ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Quote Request ID": {
+      "main": [
+        [
+          {
+            "node": "Inject Request ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inject Request ID": {
+      "main": [
+        [
+          {
+            "node": "Request ID Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Lead Shadow Plan": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Upsert Lead Shadow Plan",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upsert FU",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request ID Found?": {
+      "main": [
+        [
+          {
+            "node": "Calculate Lead Shadow Plan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Missing Request ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,475 @@
+{
+  "id": "btJd34v7PJFVej6G",
+  "name": "NEONTRIP Design-Erinnerung v1.2",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2026-01-12T11:18:54.498Z",
+  "updatedAt": "2026-05-28T09:47:59.159Z",
+  "activeVersionId": "560bf069-451f-455a-819a-c18eb6236115",
+  "versionCreatedAt": "2026-05-28T09:47:59.162Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-design",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -208,
+        -156
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folderMessage",
+        "folderId": {
+          "__rl": true,
+          "value": "AAMkADZlYTRmMzdjLTE2YzYtNDliNC1hMzI1LTc5YmYyYWI5ZjZkYQAuAAAAAAD0ifHJSBrVT7Zi_VLOlDtkAQDrKRiGFbKcT4wszOze7HIcAAAe4uwuAAA=",
+          "mode": "list",
+          "cachedResultName": "01_Neue Anfragen"
+        },
+        "returnAll": true,
+        "output": "raw",
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "id": "get-folder-emails",
+      "name": "Get Emails from Folder",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -156
+      ],
+      "webhookId": "8e1733da-0cc4-497e-b4ba-47db1507b38d",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-attachment",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.hasAttachments }}",
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-no-attachment",
+      "name": "Hat Anhang?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        -156
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analysiere diese Kundenanfrage für LED-Neonschilder:\n\n**Betreff:** {{ $json.subject }}\n**Nachricht:**\n{{ $json.body.content }}\n\n---\n\nDer Kunde hat KEINEN Anhang (kein Logo/Design-Datei) mitgeschickt. Entscheide:\n\n## BEWUSST_KEIN_DESIGN (Kunde will Design von NEONTRIP):\n- Nennt einen konkreten TEXT/Schriftzug (z.B. \"follow your dreams\", \"Café Müller\", \"Open/Closed\")\n- Beschreibt gewünschten Stil (Schreibschrift, kursiv, Block, etc.)\n- Bittet um Gestaltung/Design durch NEONTRIP\n- Sagt \"Schriftzug anfertigen\", \"Text erstellen\", \"gestalten\"\n- Hat KEINE Datei zum Hochladen aber konkrete Vorstellungen\n\n**Falls BEWUSST_KEIN_DESIGN, prüfe zusätzlich ob PRIVAT oder GESCHAEFT:**\n\n### PRIVAT:\n- Kein Firmenname erwähnt\n- Einfache Text-Wünsche (\"Home Sweet Home\", \"Familie Müller\", \"Follow your dreams\")\n- Private Anlässe: Hochzeit, Geburtstag, Deko, Wohnzimmer, Schlafzimmer\n- Keine speziellen Schriftart-Anforderungen\n- Keine Logo-/Branding-Erwähnung\n\n### GESCHAEFT:\n- Firmenname genannt (Café, Bar, Restaurant, Salon, Praxis, etc.)\n- Geschäftsräume erwähnt (Laden, Büro, Empfang, Schaufenster)\n- Corporate/Branding/Logo erwähnt\n- Professionelle Anforderungen (Markenfarben, CI)\n\n## DESIGN_VERGESSEN (Kunde hat vermutlich vergessen):\n- Erwähnt \"mein Logo\", \"unser Design\", \"unsere Datei\" OHNE sie anzuhängen\n- Sehr kurze/unvollständige Nachricht ohne Details\n- Fragt nur nach Preis ohne jegliche Angaben\n- Sagt \"anbei\" oder \"im Anhang\" aber nichts ist da\n\n## WICHTIG:\n- Wenn der Kunde einen KONKRETEN TEXT nennt (z.B. \"follow your dreams\") → BEWUSST_KEIN_DESIGN\n- Wenn der Kunde Stil-Wünsche hat (Schreibschrift, kursiv, Farbe) → BEWUSST_KEIN_DESIGN\n- Im Zweifel bei konkreten Textangaben → BEWUSST_KEIN_DESIGN\n\nAntworte NUR mit JSON:\n```json\n{\n  \"decision\": \"DESIGN_VERGESSEN\" oder \"BEWUSST_KEIN_DESIGN\",\n  \"customerType\": \"PRIVAT\" oder \"GESCHAEFT\" (nur bei BEWUSST_KEIN_DESIGN),\n  \"confidence\": 0.0-1.0,\n  \"reasoning\": \"Kurze Begründung\"\n}\n```",
+        "options": {
+          "systemMessage": "Du bist ein Assistent für NEONTRIP, einen Hersteller von LED-Neonschildern. Analysiere Kundenanfragen und entscheide ob der Kunde:\n\n1. BEWUSST kein Design hat und möchte dass NEONTRIP einen Schriftzug/Text gestaltet\n   - Falls ja: Ist es ein PRIVAT-Kunde (einfacher Text für Zuhause) oder GESCHAEFT-Kunde (Firma/Laden)?\n2. Vermutlich VERGESSEN hat sein Logo/Design anzuhängen\n\nWICHTIG: Wenn ein Kunde einen konkreten Text nennt (z.B. 'follow your dreams', 'Willkommen', etc.) dann will er dass NEONTRIP diesen Text gestaltet - das ist BEWUSST_KEIN_DESIGN!\n\nNur wenn der Kunde von 'seinem Logo' oder 'seiner Datei' spricht ohne sie anzuhängen, ist es DESIGN_VERGESSEN.\n\nBei BEWUSST_KEIN_DESIGN:\n- PRIVAT = Kein Firmenname, einfacher Text für Zuhause, private Anlässe\n- GESCHAEFT = Firmenname genannt, Geschäftsräume, Corporate/Branding",
+          "maxIterations": 3
+        }
+      },
+      "id": "ai-agent",
+      "name": "KI: Design vergessen?",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        912,
+        -8
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "openai-model",
+      "name": "OpenAI GPT-4o-mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        984,
+        216
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "StsVoyuEzSmCM5jg",
+          "name": "OpenAi account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response\nconst aiOutput = $input.item.json.output || $input.item.json.text || '';\n\nlet decision = 'DESIGN_VERGESSEN';\nlet customerType = 'GESCHAEFT';\nlet confidence = 0.5;\nlet reasoning = 'Konnte KI-Antwort nicht parsen';\n\ntry {\n  const jsonMatch = aiOutput.match(/\\{[\\s\\S]*?\\}/);\n  if (jsonMatch) {\n    const parsed = JSON.parse(jsonMatch[0]);\n    decision = parsed.decision || decision;\n    customerType = parsed.customerType || customerType;\n    confidence = parsed.confidence || confidence;\n    reasoning = parsed.reasoning || reasoning;\n  }\n} catch (e) {\n  if (aiOutput.toLowerCase().includes('bewusst_kein_design')) {\n    decision = 'BEWUSST_KEIN_DESIGN';\n  }\n  if (aiOutput.toLowerCase().includes('privat')) {\n    customerType = 'PRIVAT';\n  }\n}\n\n// Get original email data from IF node\nconst emailData = $('Hat Anhang?').item.json;\n\n// RAW output: body.content contains full HTML\nlet bodyContent = '';\nif (emailData.body && typeof emailData.body === 'object' && emailData.body.content) {\n  bodyContent = emailData.body.content;\n} else if (typeof emailData.body === 'string') {\n  bodyContent = emailData.body;\n} else if (emailData.bodyPreview) {\n  bodyContent = emailData.bodyPreview;\n}\n\nlet vorname = '';\nlet nachname = '';\nlet customerEmail = '';\n\n// Known form field labels used as delimiters for bodyPreview parsing\nconst fieldLabels = ['Name','Vorname','Nachname','Firma','E-Mail','Telefon','Produkt','Farbe','Groesse','Größe','Ort','Zeitrahmen','Website','Quelle','Design','Request-ID','Nachricht','Kommentar','Anmerkung'];\nconst delimiterPattern = fieldLabels.map(l => l.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')).join('|');\n\n// ============================================\n// HELPER: Wert aus HTML extrahieren\n// Unterstuetzt 4 Formate:\n//   1. <strong>Label</strong>: Wert\n//   2. <td>Label:</td><td>Wert</td> (Tabelle)\n//   3. Label: Wert (bodyPreview) — mit naechstem Feld als Delimiter\n//   4. E-Mail spezifisch: Email-Pattern Extraktion\n// ============================================\nfunction extractField(html, label) {\n  let m;\n  // Format 1: <strong>Label</strong>: Wert\n  m = html.match(new RegExp('<strong>' + label + '</strong>\\\\s*:\\\\s*([^<\\\\r\\\\n]+)', 'i'));\n  if (m && m[1]) return m[1].trim();\n  m = html.match(new RegExp(label + '</strong>:\\\\s*([^<\\\\r\\\\n]+)', 'i'));\n  if (m && m[1]) return m[1].trim();\n  // Format 2: <td...>Label:</td><td...>Wert</td> (Tabelle)\n  m = html.match(new RegExp('<td[^>]*>\\\\s*' + label + ':\\\\s*</td>\\\\s*<td[^>]*>\\\\s*([^<]*)', 'i'));\n  if (m) return (m[1] || '').trim();\n  // Format 3+4: bodyPreview mit Delimiter\n  if (emailData.bodyPreview) {\n    // Spezialfall E-Mail: direkt Email-Pattern extrahieren\n    if (label === 'E-Mail') {\n      m = emailData.bodyPreview.match(/E-Mail:\\s*([^\\s@]+@[^\\s@]+\\.[^\\s@]+)/i);\n      if (m && m[1]) return m[1].trim();\n    }\n    // Allgemein: Match bis zum naechsten bekannten Feld-Label\n    m = emailData.bodyPreview.match(new RegExp(label + ':\\\\s*(.+?)(?=(?:' + delimiterPattern + '):|$)', 'i'));\n    if (m && m[1]) return m[1].replace(/<[^>]*>/g, '').trim();\n  }\n  return '';\n}\n\n// 1. Vorname extrahieren (altes Formular)\nvorname = extractField(bodyContent, 'Vorname');\n\n// 2. Fallback: Name-Feld (neues Formular) -> Vorname extrahieren\nif (!vorname || vorname === '-') {\n  const fullName = extractField(bodyContent, 'Name');\n  if (fullName && fullName !== '-') {\n    const parts = fullName.split(/\\s+/);\n    vorname = parts[0];\n    if (parts.length > 1) nachname = parts.slice(1).join(' ');\n  }\n}\n\n// E-Mail extrahieren\ncustomerEmail = extractField(bodyContent, 'E-Mail');\n\n// Nachname nur wenn noch nicht gesetzt\nif (!nachname) {\n  nachname = extractField(bodyContent, 'Nachname');\n  if (nachname === '-') nachname = '';\n}\n\nvorname = vorname.replace(/<[^>]*>/g, '').replace(/^\\s+|\\s+$/g, '');\ncustomerEmail = customerEmail.replace(/<[^>]*>/g, '').replace(/^\\s+|\\s+$/g, '');\nnachname = nachname.replace(/<[^>]*>/g, '').replace(/^\\s+|\\s+$/g, '');\n\n// E-Mail Fallback: from-Adresse (nur wenn nicht die eigene)\nif (!customerEmail && emailData.from) {\n  if (typeof emailData.from === 'object' && emailData.from.emailAddress) {\n    const fromAddr = emailData.from.emailAddress.address;\n    if (!fromAddr.includes('neontrip.de')) {\n      customerEmail = fromAddr;\n    }\n  } else if (typeof emailData.from === 'string' && !emailData.from.includes('neontrip.de')) {\n    customerEmail = emailData.from;\n  }\n}\n\n// E-Mail Validierung: Muss ein @ und einen Punkt enthalten\nconst isValidEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail);\nif (!isValidEmail) {\n  customerEmail = '';\n}\n\nif (!vorname || vorname === '-') vorname = 'Kunde';\n\nconsole.log(`[PARSE] Name: ${vorname} ${nachname} | Email: ${customerEmail} | Decision: ${decision} | Valid: ${isValidEmail}`);\n\n// Conservative send gate:\n// Upstream nodes already filtered to: old enough, not our own email,\n// no Outlook attachment, no design field value, and no file/upload URL.\n// Send only when the customer likely forgot a file, not when they describe\n// a text/sign that NEONTRIP should design from scratch.\nfunction plain(value) {\n  return String(value || '')\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nconst messageText = plain(\n  extractField(bodyContent, 'Nachricht') ||\n  extractField(bodyContent, 'Kommentar') ||\n  extractField(bodyContent, 'Anmerkung') ||\n  emailData.bodyPreview ||\n  ''\n);\nconst normalizedMessage = messageText.toLowerCase();\nconst compactMessage = normalizedMessage.replace(/[^a-z0-9äöüß]+/gi, '');\n\nconst hasAttachmentReference = /\\b(anbei|anhang|angehaengt|angehängt|beigefuegt|beigefügt|hochgeladen|upload|datei|vektor|pdf|svg|eps|png|jpe?g)\\b/i.test(normalizedMessage);\nconst hasLogoReference = /\\b(mein|meine|unser|unsere|das|dem|vom)?\\s*(logo|design|grafik|datei|vorlage)\\b/i.test(normalizedMessage);\nconst isEmptyOrMinimal = compactMessage.length < 18 || /^(hallo|bitte|angebot|preis|anfrage|neonschild|led|ledneonschild|test)$/i.test(compactMessage);\nconst asksOnlyForPrice = /\\b(preis|kosten|angebot|kostenvoranschlag)\\b/i.test(normalizedMessage) && compactMessage.length < 45;\nconst describesDesignToCreate = /\\b(schriftzug|spruch|slogan|text|wort|woerter|wörter|buchstaben|name|namen|schreibschrift|kursiv|blockschrift|font|schriftart|gestalten|designen|entwerfen|soll\\s+(stehen|lauten)|drauf\\s*(stehen|sein))\\b/i.test(normalizedMessage) || /[\"'“”„][^\"'“”„]{2,}[\"'“”„]/.test(messageText);\n\nconst deterministicMissingDesign =\n  !describesDesignToCreate &&\n  (isEmptyOrMinimal || asksOnlyForPrice || hasAttachmentReference || hasLogoReference);\n\nconst shouldSendReminder = deterministicMissingDesign && isValidEmail;\nconst shouldSendConfigurator = false;\nconst sendDecisionSource = shouldSendReminder\n  ? 'conservative_forgot_upload_gate'\n  : (!isValidEmail ? 'blocked_invalid_customer_email' : 'blocked_customer_describes_design_or_unclear');\n\nreturn {\n  json: {\n    decision,\n    customerType,\n    confidence,\n    reasoning,\n    shouldSendReminder,\n    shouldSendConfigurator,\n    sendDecisionSource,\n    deterministicMissingDesign,\n    customer: {\n      vorname,\n      nachname,\n      email: customerEmail\n    },\n    originalEmail: {\n      id: emailData.id,\n      subject: emailData.subject,\n      conversationId: emailData.conversationId\n    }\n  }\n};"
+      },
+      "id": "code-parse-decision",
+      "name": "Parse KI-Entscheidung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        -8
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "check-reminder",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.shouldSendReminder }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-send-reminder",
+      "name": "Erinnerung senden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1488,
+        -8
+      ]
+    },
+    {
+      "parameters": {
+        "toRecipients": "={{ $json.customer.email }}",
+        "subject": "Ihre Anfrage bei NEONTRIP - Design benötigt",
+        "bodyContent": "=<div style=\"font-family: Arial, Helvetica, sans-serif; color: #111111; line-height: 1.6;\">\n<p>Hallo {{ $json.customer.vorname }},</p>\n\n<p>vielen Dank für Ihre Anfrage für ein individuelles LED-Neonschild!</p>\n\n<p>Uns ist aufgefallen, dass Ihrer Nachricht noch kein Design beigefügt war. Um Ihnen ein passendes Angebot mit Visualisierung erstellen zu können, benötigen wir Ihr Logo oder Design.</p>\n\n<p>Falls vorhanden, senden Sie uns bitte eine Vektordatei (PDF, SVG, AI oder EPS) – aber auch jedes andere Format wie PNG oder JPG ist willkommen.</p>\n\n<p>Wir freuen uns auf Ihre Rückmeldung!</p>\n</div>\n\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-family: Arial, Helvetica, sans-serif; color:#111111; margin-top: 30px;\">\n  <tbody>\n    <tr>\n      <td style=\"padding:0;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"max-width:600px; width:100%;\">\n          <tbody>\n            <tr>\n              <td style=\"padding:16px 0;\">\n                <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                  <tbody>\n                    <tr>\n                      <td valign=\"top\" style=\"width:140px; padding-right:16px;\">\n                        <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" alt=\"Fabienne Trapp\" width=\"120\" height=\"120\" style=\"display:block; width:120px; height:120px; border-radius:60px; border:2px solid #111111; object-fit:cover;\">\n                      </td>\n                      <td valign=\"top\" style=\"padding-top:2px;\">\n                        <div style=\"font-size:16px; font-weight:700; color:#111111; margin:0 0 4px 0;\">Fabienne Trapp</div>\n                        <div style=\"font-size:12px; color:#6b7280; margin:0 0 10px 0;\">Beratung &amp; Realisierung</div>\n                        <div style=\"font-size:13px; font-weight:700; color:#111111; margin:0 0 8px 0;\">NEONTRIP®</div>\n                        <div style=\"font-size:13px; line-height:1.6; color:#111111;\">\n                          Tel: <a href=\"tel:+4921154257240\" style=\"color:#111111; text-decoration:none;\">+49 211 54257240</a><br>\n                          E-Mail: <a href=\"mailto:support@neontrip.de\" style=\"color:#111111; text-decoration:none;\">support@neontrip.de</a><br>\n                          Web: <a href=\"https://www.neontrip.de\" style=\"color:#111111; text-decoration:none;\">www.neontrip.de</a><br>\n                          Adresse: Bilker Allee 29, 40219 Düsseldorf\n                        </div>\n                      </td>\n                    </tr>\n                  </tbody>\n                </table>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:0;\">\n                <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color:#121212; border-radius:10px;\">\n                  <tbody>\n                    <tr>\n                      <td align=\"center\" style=\"padding:18px 16px;\">\n                        <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450\" alt=\"NEONTRIP\" width=\"420\" style=\"display:block; width:100%; max-width:420px; height:auto; border:0; outline:none; text-decoration:none;\">\n                        <div style=\"margin-top:8px; font-size:11px; font-weight:700; letter-spacing:0.6px; color:#ffffff;\">UNIQUE LIGHTING AND BRANDING</div>\n                      </td>\n                    </tr>\n                  </tbody>\n                </table>\n              </td>\n            </tr>\n          </tbody>\n        </table>\n      </td>\n    </tr>\n  </tbody>\n</table>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "id": "send-reminder-email",
+      "name": "Erinnerung senden",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1936,
+        -200
+      ],
+      "webhookId": "1fc904e9-520d-469e-8e25-43ef0a77666b",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## NEONTRIP Design-Erinnerung v1.2\n\n**Ordner:** \"01_Neue Anfragen\"\n**Trigger:** Schedule (jede Minute) + Get Emails\n\n### Flow:\n1. Neue Email ohne Anhang\n2. KI analysiert:\n   - **DESIGN_VERGESSEN** → Erinnerungs-Email\n   - **BEWUSST_KEIN_DESIGN + PRIVAT** → Konfigurator-Link\n   - **BEWUSST_KEIN_DESIGN + GESCHAEFT** → Manuelle Bearbeitung\n3. Email wird archiviert",
+        "height": 280,
+        "width": 400
+      },
+      "id": "sticky-note-info",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -248,
+        -276
+      ]
+    },
+    {
+      "parameters": {
+        "content": "**BEWUSST_KEIN_DESIGN + PRIVAT**\n\n→ Konfigurator-Email mit Link:\nhttps://www.neontrip.de/products/custom-neon",
+        "height": 120,
+        "width": 280
+      },
+      "id": "sticky-note-no-action",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "content": "**Geschäftskunde**\n\nKeine automatische Email.\nManuelle Bearbeitung erforderlich.",
+        "height": 100,
+        "width": 250
+      },
+      "id": "sticky-geschaeft",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nur E-Mails verarbeiten die mindestens 10 Minuten alt sind\n// Damit der AutoReply (6 Min Wait) zuerst ankommt\nconst TEN_MINUTES_MS = 10 * 60 * 1000;\nconst now = Date.now();\nconst results = [];\n\nfor (const item of $input.all()) {\n  const received = item.json.receivedDateTime || item.json.createdDateTime;\n  if (!received) {\n    // Kein Datum -> sicherheitshalber durchlassen\n    results.push(item);\n    continue;\n  }\n  const age = now - new Date(received).getTime();\n  if (age >= TEN_MINUTES_MS) {\n    results.push(item);\n  } else {\n    console.log(`[AGE-FILTER] Skip: E-Mail erst ${Math.round(age / 1000)}s alt (< 10 Min)`);\n  }\n}\n\nconsole.log(`[AGE-FILTER] ${results.length} von ${$input.all().length} E-Mails sind alt genug`);\nreturn results;"
+      },
+      "id": "age-filter-10min",
+      "name": "Mind. 10 Min alt?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -156
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dedup-Gate: Jede relevante Kandidaten-Email wird max. 3x verarbeitet, mit 30 Min Cooldown\n// v4: Retry erst nach Design-/Attachment-Filtern; alte v3-Zaehler werden bewusst ignoriert\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.processedEmails_v4) staticData.processedEmails_v4 = {};\n\nconst MAX_RETRIES = 3;\nconst COOLDOWN_MS = 30 * 60 * 1000; // 30 Minuten zwischen Versuchen\nconst CLEANUP_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 Tage\nconst now = Date.now();\n\n// Alte Eintraege aufraeumen\nfor (const [id, entry] of Object.entries(staticData.processedEmails_v4)) {\n  if (now - entry.firstSeen > CLEANUP_AGE_MS) {\n    delete staticData.processedEmails_v4[id];\n  }\n}\n\nconst results = [];\nlet skipped = 0;\nlet cooldown = 0;\n\nfor (const item of $input.all()) {\n  const emailId = item.json.id;\n  if (!emailId) { results.push(item); continue; }\n\n  if (!staticData.processedEmails_v4[emailId]) {\n    staticData.processedEmails_v4[emailId] = { count: 0, firstSeen: now, lastAttempt: 0 };\n  }\n\n  const entry = staticData.processedEmails_v4[emailId];\n\n  // Max Versuche erreicht -> dauerhaft skippen\n  if (entry.count >= MAX_RETRIES) {\n    skipped++;\n    continue;\n  }\n\n  // Cooldown: Nicht zu oft verarbeiten\n  if (entry.count > 0 && (now - entry.lastAttempt) < COOLDOWN_MS) {\n    cooldown++;\n    continue;\n  }\n\n  entry.count++;\n  entry.lastAttempt = now;\n\n  console.log(`[RETRY] Email ${emailId.substring(0, 40)}... -- Versuch ${entry.count}/${MAX_RETRIES}`);\n  results.push(item);\n}\n\nif (skipped > 0) console.log(`[RETRY] ${skipped} Email(s) uebersprungen (max Versuche erreicht)`);\nif (cooldown > 0) console.log(`[RETRY] ${cooldown} Email(s) im Cooldown`);\nconsole.log(`[RETRY] ${results.length} von ${$input.all().length} Emails zur Verarbeitung`);\n\nreturn results;"
+      },
+      "id": "retry-limiter",
+      "name": "Max 3 Versuche",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        -156
+      ]
+    },
+    {
+      "id": "design-check-filter",
+      "name": "Hat Design im Body?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -156
+      ],
+      "parameters": {
+        "jsCode": "// FILTER: Eigene Emails + Design-Check im Body\n// Filtert raus:\n// 1. Emails VON neontrip.de (eigene Antworten) -- AUSSER LP-Benachrichtigungen\n// 2. Emails wo der Kunde bereits ein Design hochgeladen hat\n// 3. Emails mit Datei-URLs im Body (NerdyForms Uploads)\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const email = item.json;\n  \n  // 1. Eigene Emails rausfiltern (aber LP-Benachrichtigungen durchlassen)\n  let fromAddress = '';\n  if (email.from && email.from.emailAddress) {\n    fromAddress = email.from.emailAddress.address || '';\n  } else if (typeof email.from === 'string') {\n    fromAddress = email.from;\n  }\n  \n  const body = email.body?.content || '';\n  const preview = email.bodyPreview || '';\n  const fullText = body + ' ' + preview;\n  const subject = email.subject || '';\n  \n  // LP-Benachrichtigungen erkennen (von neontrip.de, aber Formular-Notification)\n  const isLpNotification = (\n    fullText.includes('Neue Anfrage ueber Landing Page') ||\n    fullText.includes('Neue Anfrage \\u00fcber Landing Page') ||\n    (subject.includes('Neue Anfrage') && fullText.includes('Request-ID:')) ||\n    (subject.includes('Neue Anfrage') && fullText.includes('E-Mail:') && fullText.includes('Produkt:'))\n  );\n  \n  if (fromAddress.toLowerCase().includes('neontrip.de') && !isLpNotification) {\n    console.log(`[DESIGN-CHECK] Skip: Eigene Email von ${fromAddress}`);\n    continue;\n  }\n  \n  // 2. Design-Feld im Body pruefen\n  let designValue = '';\n  \n  // Format: <strong>Design</strong>: Ja/Nein/URL\n  let m = fullText.match(/<strong>Design<\\/strong>\\s*:\\s*([^<\\r\\n]+)/i);\n  if (m) designValue = m[1].trim();\n  \n  // Format: <td>Design:</td><td>Wert</td>\n  if (!designValue) {\n    m = fullText.match(/<td[^>]*>\\s*Design:\\s*<\\/td>\\s*<td[^>]*>\\s*([^<]*)/i);\n    if (m) designValue = m[1].trim();\n  }\n  \n  // Format: Design: Wert (bodyPreview)\n  if (!designValue) {\n    m = preview.match(/Design:\\s*(.+?)(?=\\s+(?:Request-ID|Nachricht|Kommentar|Quelle|$))/i);\n    if (m) designValue = m[1].trim();\n  }\n  \n  if (designValue && designValue !== 'Nein' && designValue !== '-' && designValue !== '') {\n    console.log(`[DESIGN-CHECK] Skip: Design vorhanden = \"${designValue}\"`);\n    continue;\n  }\n  \n  // 3. Datei-URLs im Body pruefen\n  const urlPatterns = [\n    /https?:\\/\\/[^\\s\"<]+\\.(?:png|jpg|jpeg|gif|svg|pdf|ai|eps|cdr)/i,\n    /https?:\\/\\/storage\\.googleapis\\.com/i,\n    /https?:\\/\\/[^\\s\"<]*nerdyforms[^\\s\"<]*/i,\n    /https?:\\/\\/[^\\s\"<]*uploads?[^\\s\"<]*\\.(?:png|jpg|jpeg|gif|svg|pdf|ai|eps)/i\n  ];\n  let hasFileUrl = false;\n  for (const pattern of urlPatterns) {\n    if (pattern.test(fullText)) { hasFileUrl = true; break; }\n  }\n  if (hasFileUrl) {\n    console.log(`[DESIGN-CHECK] Skip: Datei-URL im Body gefunden`);\n    continue;\n  }\n  \n  console.log(`[DESIGN-CHECK] Durchgelassen: ${email.subject?.substring(0, 50)}`);\n  results.push(item);\n}\n\nconsole.log(`[DESIGN-CHECK] ${results.length} von ${$input.all().length} Emails ohne Design`);\nif (results.length === 0) return [];\nreturn results;"
+      }
+    },
+    {
+      "id": "39ce408c-709f-4601-a76b-6c0b185318ca",
+      "name": "Email archivieren",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -100
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "move",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $('Parse KI-Entscheidung').item.json.originalEmail.id }}",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "archive",
+          "mode": "id"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "539071c6-951c-4922-926a-a79ffa8b4ef2"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Emails from Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hat Anhang?": {
+      "main": [
+        [
+          {
+            "node": "Max 3 Versuche",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-4o-mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "KI: Design vergessen?",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Design vergessen?": {
+      "main": [
+        [
+          {
+            "node": "Parse KI-Entscheidung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse KI-Entscheidung": {
+      "main": [
+        [
+          {
+            "node": "Erinnerung senden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erinnerung senden?": {
+      "main": [
+        [
+          {
+            "node": "Erinnerung senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email archivieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Emails from Folder": {
+      "main": [
+        [
+          {
+            "node": "Mind. 10 Min alt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mind. 10 Min alt?": {
+      "main": [
+        [
+          {
+            "node": "Hat Design im Body?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hat Design im Body?": {
+      "main": [
+        [
+          {
+            "node": "Hat Anhang?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Max 3 Versuche": {
+      "main": [
+        [
+          {
+            "node": "KI: Design vergessen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erinnerung senden": {
+      "main": [
+        [
+          {
+            "node": "Email archivieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

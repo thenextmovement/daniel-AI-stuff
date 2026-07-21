@@ -1,0 +1,529 @@
+{
+  "id": "btJd34v7PJFVej6G",
+  "name": "NEONTRIP Design-Erinnerung v2 — DB Draft Loop",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2026-01-12T11:18:54.498Z",
+  "updatedAt": "2026-05-28T09:47:59.159Z",
+  "activeVersionId": "560bf069-451f-455a-819a-c18eb6236115",
+  "versionCreatedAt": "2026-05-28T09:47:59.162Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-design",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -208,
+        -156
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folderMessage",
+        "folderId": {
+          "__rl": true,
+          "value": "AAMkADZlYTRmMzdjLTE2YzYtNDliNC1hMzI1LTc5YmYyYWI5ZjZkYQAuAAAAAAD0ifHJSBrVT7Zi_VLOlDtkAQDrKRiGFbKcT4wszOze7HIcAAAe4uwuAAA=",
+          "mode": "list",
+          "cachedResultName": "01_Neue Anfragen"
+        },
+        "returnAll": true,
+        "output": "raw",
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "id": "get-folder-emails",
+      "name": "Get Emails from Folder",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -156
+      ],
+      "webhookId": "8e1733da-0cc4-497e-b4ba-47db1507b38d",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-attachment",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.hasAttachments }}",
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-no-attachment",
+      "name": "Hat Anhang?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        -156
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const email = $input.first().json || {};\nconst sourceId = String(email.id || '').trim();\nif (!sourceId) throw new Error('Design reminder source message ID is missing.');\n\nconst bodyContent = typeof email.body?.content === 'string'\n  ? email.body.content\n  : (typeof email.body === 'string' ? email.body : String(email.bodyPreview || ''));\nconst preview = String(email.bodyPreview || '');\nconst fullText = bodyContent + ' ' + preview;\n\nfunction clean(value, max = 320) {\n  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/\\s+/g, ' ').trim().slice(0, max);\n}\nfunction field(label) {\n  const strong = new RegExp('<strong>' + label + '<\\\\/strong>\\\\s*:\\\\s*([^<\\\\r\\\\n]+)', 'i').exec(bodyContent);\n  if (strong?.[1]) return clean(strong[1]);\n  const cell = new RegExp('<td[^>]*>\\\\s*' + label + ':?\\\\s*<\\\\/td>\\\\s*<td[^>]*>\\\\s*([^<]*)', 'i').exec(bodyContent);\n  if (cell?.[1]) return clean(cell[1]);\n  return '';\n}\n\nlet firstName = field('Vorname');\nif (!firstName || firstName === '-') firstName = clean(field('Name')).split(/\\s+/)[0] || '';\nif (!firstName || firstName === '-') firstName = 'Guten Tag';\nfirstName = clean(firstName, 80);\n\nlet recipient = field('E-Mail').toLowerCase();\nif (!recipient) {\n  const match = preview.match(/E-Mail:\\s*([^\\s@]+@[^\\s@]+\\.[^\\s@]+)/i);\n  if (match?.[1]) recipient = clean(match[1]).toLowerCase();\n}\nif (!recipient && email.from?.emailAddress?.address) {\n  recipient = clean(email.from.emailAddress.address).toLowerCase();\n}\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(recipient) || /@(neontrip\\.de|example\\.|test$)/i.test(recipient)) {\n  throw new Error('Design reminder customer email is invalid or internal.');\n}\n\nconst messageText = clean(field('Nachricht') || field('Kommentar') || field('Anmerkung') || preview, 4000);\nconst normalized = messageText.toLowerCase();\nconst compact = normalized.replace(/[^a-z0-9äöüß]+/gi, '');\nconst attachmentReference = /\\b(anbei|anhang|angehaengt|angehängt|beigefuegt|beigefügt|hochgeladen|upload|datei|vektor|pdf|svg|eps|png|jpe?g)\\b/i.test(normalized);\nconst logoReference = /\\b(mein|meine|unser|unsere|das|dem|vom)?\\s*(logo|design|grafik|datei|vorlage)\\b/i.test(normalized);\nconst minimal = compact.length < 18 || /^(hallo|bitte|angebot|preis|anfrage|neonschild|led|ledneonschild|test)$/i.test(compact);\nconst priceOnly = /\\b(preis|kosten|angebot|kostenvoranschlag)\\b/i.test(normalized) && compact.length < 45;\nconst describesDesign = /\\b(schriftzug|spruch|slogan|text|wort|woerter|wörter|buchstaben|name|namen|schreibschrift|kursiv|blockschrift|font|schriftart|gestalten|designen|entwerfen|soll\\s+(stehen|lauten)|drauf\\s*(stehen|sein))\\b/i.test(normalized) || /[\"'“”„][^\"'“”„]{2,}[\"'“”„]/.test(messageText);\nif (describesDesign || !(minimal || priceOnly || attachmentReference || logoReference)) return [];\n\nconst escapeHtml = value => String(value).replace(/[&<>\"']/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;', \"'\":'&#39;' }[character]));\nreturn [{ json: {\n  communicationKind: 'design_reminder',\n  policyVersion: 'design-reminder-deterministic-v2',\n  sourceId,\n  recipient,\n  escapedFirstName: firstName === 'Guten Tag' ? 'Guten Tag' : escapeHtml(firstName),\n  automaticSendAllowed: false,\n  humanApprovalRequired: true,\n} }];"
+      },
+      "id": "code-parse-decision",
+      "name": "BuildValidatedDraft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $('BuildValidatedDraft').item.json.recipient }}",
+        "subject": "Ihre Anfrage bei NEONTRIP – Design benötigt",
+        "bodyContent": "=<div style=\"font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.6\"><p>{{ $('BuildValidatedDraft').item.json.escapedFirstName === 'Guten Tag' ? 'Guten Tag,' : 'Hallo ' + $('BuildValidatedDraft').item.json.escapedFirstName + ',' }}</p><p>vielen Dank für Ihre Anfrage für ein individuelles LED-Neonschild.</p><p>Für ein passendes Angebot mit Visualisierung benötigen wir noch Ihr Logo oder Design. Falls vorhanden, antworten Sie bitte mit einer Vektordatei (PDF, SVG, AI oder EPS); PNG oder JPG ist ebenfalls möglich.</p><p>Viele Grüße<br>Fabienne Trapp<br>NEONTRIP®</p></div>",
+        "additionalFields": {
+          "bodyContentType": "html",
+          "saveAsDraft": true
+        }
+      },
+      "id": "send-reminder-email",
+      "name": "CreateOutlookDraft",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        -200
+      ],
+      "webhookId": "1fc904e9-520d-469e-8e25-43ef0a77666b",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const minimumAgeMs = 10 * 60 * 1000;\nconst maximumAgeMs = 48 * 60 * 60 * 1000;\nconst now = Date.now();\nreturn $input.all().filter(item => {\n  const received = item.json.receivedDateTime || item.json.createdDateTime;\n  if (!received) return false;\n  const timestamp = new Date(received).getTime();\n  return Number.isFinite(timestamp)\n    && timestamp <= now - minimumAgeMs\n    && timestamp >= now - maximumAgeMs;\n});"
+      },
+      "id": "age-filter-10min",
+      "name": "Mind. 10 Min alt?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -156
+      ]
+    },
+    {
+      "id": "design-check-filter",
+      "name": "Hat Design im Body?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -156
+      ],
+      "parameters": {
+        "jsCode": "// FILTER: Eigene Emails + Design-Check im Body\n// Filtert raus:\n// 1. Emails VON neontrip.de (eigene Antworten) -- AUSSER LP-Benachrichtigungen\n// 2. Emails wo der Kunde bereits ein Design hochgeladen hat\n// 3. Emails mit Datei-URLs im Body (NerdyForms Uploads)\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const email = item.json;\n  \n  // 1. Eigene Emails rausfiltern (aber LP-Benachrichtigungen durchlassen)\n  let fromAddress = '';\n  if (email.from && email.from.emailAddress) {\n    fromAddress = email.from.emailAddress.address || '';\n  } else if (typeof email.from === 'string') {\n    fromAddress = email.from;\n  }\n  \n  const body = email.body?.content || '';\n  const preview = email.bodyPreview || '';\n  const fullText = body + ' ' + preview;\n  const subject = email.subject || '';\n  \n  // LP-Benachrichtigungen erkennen (von neontrip.de, aber Formular-Notification)\n  const isLpNotification = (\n    fullText.includes('Neue Anfrage ueber Landing Page') ||\n    fullText.includes('Neue Anfrage \\u00fcber Landing Page') ||\n    (subject.includes('Neue Anfrage') && fullText.includes('Request-ID:')) ||\n    (subject.includes('Neue Anfrage') && fullText.includes('E-Mail:') && fullText.includes('Produkt:'))\n  );\n  \n  if (fromAddress.toLowerCase().includes('neontrip.de') && !isLpNotification) {\n    console.log(`[DESIGN-CHECK] Skip: Eigene Email von ${fromAddress}`);\n    continue;\n  }\n  \n  // 2. Design-Feld im Body pruefen\n  let designValue = '';\n  \n  // Format: <strong>Design</strong>: Ja/Nein/URL\n  let m = fullText.match(/<strong>Design<\\/strong>\\s*:\\s*([^<\\r\\n]+)/i);\n  if (m) designValue = m[1].trim();\n  \n  // Format: <td>Design:</td><td>Wert</td>\n  if (!designValue) {\n    m = fullText.match(/<td[^>]*>\\s*Design:\\s*<\\/td>\\s*<td[^>]*>\\s*([^<]*)/i);\n    if (m) designValue = m[1].trim();\n  }\n  \n  // Format: Design: Wert (bodyPreview)\n  if (!designValue) {\n    m = preview.match(/Design:\\s*(.+?)(?=\\s+(?:Request-ID|Nachricht|Kommentar|Quelle|$))/i);\n    if (m) designValue = m[1].trim();\n  }\n  \n  if (designValue && designValue !== 'Nein' && designValue !== '-' && designValue !== '') {\n    console.log(`[DESIGN-CHECK] Skip: Design vorhanden = \"${designValue}\"`);\n    continue;\n  }\n  \n  // 3. Datei-URLs im Body pruefen\n  const urlPatterns = [\n    /https?:\\/\\/[^\\s\"<]+\\.(?:png|jpg|jpeg|gif|svg|pdf|ai|eps|cdr)/i,\n    /https?:\\/\\/storage\\.googleapis\\.com/i,\n    /https?:\\/\\/[^\\s\"<]*nerdyforms[^\\s\"<]*/i,\n    /https?:\\/\\/[^\\s\"<]*uploads?[^\\s\"<]*\\.(?:png|jpg|jpeg|gif|svg|pdf|ai|eps)/i\n  ];\n  let hasFileUrl = false;\n  for (const pattern of urlPatterns) {\n    if (pattern.test(fullText)) { hasFileUrl = true; break; }\n  }\n  if (hasFileUrl) {\n    console.log(`[DESIGN-CHECK] Skip: Datei-URL im Body gefunden`);\n    continue;\n  }\n  \n  console.log(`[DESIGN-CHECK] Durchgelassen: ${email.subject?.substring(0, 50)}`);\n  results.push(item);\n}\n\nconsole.log(`[DESIGN-CHECK] ${results.length} von ${$input.all().length} Emails ohne Design`);\nif (results.length === 0) return [];\nreturn results;"
+      }
+    },
+    {
+      "id": "claim-design-draft",
+      "name": "ClaimDesignDraft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1220,
+        -120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_customer_communication_draft",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_communication_kind: $('BuildValidatedDraft').item.json.communicationKind, p_source_id: $('BuildValidatedDraft').item.json.sourceId, p_policy_version: $('BuildValidatedDraft').item.json.policyVersion, p_workflow_execution_id: String($execution.id), p_lease_seconds: 900 }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "route-design-draft",
+      "name": "RouteDesignDraftClaim",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        -120
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-design-draft-draft",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "draft",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "draft"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-design-draft-continue",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "continue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "continue"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "stop"
+        }
+      }
+    },
+    {
+      "id": "complete-design-draft",
+      "name": "CompleteDesignDraft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1880,
+        -220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/complete_customer_communication_draft",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_communication_kind: $('BuildValidatedDraft').item.json.communicationKind, p_source_id: $('BuildValidatedDraft').item.json.sourceId, p_claim_token: $('ClaimDesignDraft').item.json.claim_token, p_draft_id: String($json.id || $json.body?.id || $json.messageId || ''), p_workflow_execution_id: String($execution.id) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "unknown-design-draft",
+      "name": "MarkDesignDraftUnknown",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1880,
+        -40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/mark_customer_communication_draft_unknown",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_communication_kind: $('BuildValidatedDraft').item.json.communicationKind, p_source_id: $('BuildValidatedDraft').item.json.sourceId, p_claim_token: $('ClaimDesignDraft').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_error_code: 'outlook_draft_failed' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "stop-design-draft",
+      "name": "StopDesignDraftSafely",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        -40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const reason = String($input.first()?.json?.reason || 'draft_unknown');\nconst allowed = new Set(['active_lease', 'manual_review_required', 'stale_lease_draft_unknown', 'draft_unknown']);\nthrow new Error('Customer draft loop stopped safely: ' + (allowed.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');\nreturn [];"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Emails from Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Emails from Folder": {
+      "main": [
+        [
+          {
+            "node": "Mind. 10 Min alt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mind. 10 Min alt?": {
+      "main": [
+        [
+          {
+            "node": "Hat Design im Body?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hat Design im Body?": {
+      "main": [
+        [
+          {
+            "node": "Hat Anhang?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hat Anhang?": {
+      "main": [
+        [
+          {
+            "node": "BuildValidatedDraft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "BuildValidatedDraft": {
+      "main": [
+        [
+          {
+            "node": "ClaimDesignDraft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ClaimDesignDraft": {
+      "main": [
+        [
+          {
+            "node": "RouteDesignDraftClaim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RouteDesignDraftClaim": {
+      "main": [
+        [
+          {
+            "node": "CreateOutlookDraft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [
+          {
+            "node": "StopDesignDraftSafely",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CreateOutlookDraft": {
+      "main": [
+        [
+          {
+            "node": "CompleteDesignDraft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkDesignDraftUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MarkDesignDraftUnknown": {
+      "main": [
+        [
+          {
+            "node": "StopDesignDraftSafely",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "meta": {
+    "hardeningSourceVersionId": "560bf069-451f-455a-819a-c18eb6236115",
+    "hardeningReason": "deterministic database-backed draft-only reminder loop"
+  }
+}

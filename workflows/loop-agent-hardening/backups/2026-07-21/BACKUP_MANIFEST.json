@@ -92,6 +92,46 @@
       "serverBackupVersionIds": [],
       "publishedActiveSha256": "8852bb71c0fc90b892164328046fbb92f1f68b07770904a4c1c1430f2d6d0732",
       "capturedAt": "2026-07-21T19:05:00+02:00"
+    },
+    {
+      "key": "pandadoc_event_receiver_agent",
+      "id": "TLLSwYTcIRgtinVg",
+      "name": "NEONTRIP Event Receiver v3.3",
+      "activeVersionId": "a969dc93-9ec2-4d19-83d5-bc04bdfc96bd",
+      "publishedActiveSha256": "8fe13518a333e3fea6bf0ee4bc2aa15961aa90e859d48b9117b33c307ca4d8fc",
+      "capturedAt": "2026-07-21T20:08:00+02:00"
+    },
+    {
+      "key": "telegram_github_controller_agent",
+      "id": "geeNR1aVW9tZjPuN",
+      "name": "Telegram GitHub Controller",
+      "activeVersionId": "67ba642a-e490-4d64-85d3-a0d55b1845ef",
+      "publishedActiveSha256": "ffa0033f7842f118d991d19fbd388dd605850e3a06b7b8d156231b4d81cf7188",
+      "capturedAt": "2026-07-21T20:08:00+02:00"
+    },
+    {
+      "key": "winback_agent",
+      "id": "cqbB8GIwhP2guGIb",
+      "name": "NEONTRIP Win-Back Agent v1.0",
+      "activeVersionId": "ed1a00d8-7942-4460-87dc-1f6e95b838ab",
+      "publishedActiveSha256": "135799ed0980006fa7041418ef71b8296989f98a629c7a1a2289d090bdddfecc",
+      "capturedAt": "2026-07-21T20:08:00+02:00"
+    },
+    {
+      "key": "telegram_fabienne_agent",
+      "id": "dljSoxks55YNqFbf",
+      "name": "Telegram AI Agent - Fabienne v3 (erweitert)",
+      "activeVersionId": "ad837b2b-7965-4652-b6fa-dec9a8ac380e",
+      "publishedActiveSha256": "e9a6c57bc60b67f723d7add8bb18bfcd95926c266419be5cc83ceff66e065d44",
+      "capturedAt": "2026-07-21T20:08:00+02:00"
+    },
+    {
+      "key": "design_reminder_agent",
+      "id": "btJd34v7PJFVej6G",
+      "name": "NEONTRIP Design-Erinnerung v1.2",
+      "activeVersionId": "560bf069-451f-455a-819a-c18eb6236115",
+      "publishedActiveSha256": "17be0281861a36924261bae599317eb0aec8f1f1f3b478d77eab223273d97a28",
+      "capturedAt": "2026-07-21T20:08:00+02:00"
     }
   ]
 }

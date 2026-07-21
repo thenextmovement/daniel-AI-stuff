@@ -1,0 +1,755 @@
+{
+  "id": "cqbB8GIwhP2guGIb",
+  "name": "NEONTRIP Win-Back Agent v1.0",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "executionTimeout": 1800,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "createdAt": "2026-01-12T13:56:49.806Z",
+  "updatedAt": "2026-06-12T12:01:24.638Z",
+  "activeVersionId": "ed1a00d8-7942-4460-87dc-1f6e95b838ab",
+  "versionCreatedAt": "2026-06-12T12:01:24.640Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Config-Werte fuer Win-Back Agent\nreturn [{\n  json: {\n    ac_api_url: 'https://neontrip35090.activehosted.com/api/3',\n    days_cutoff: 90,\n    days_inactive: 30,\n    winback_tag_name: 'WINBACK',\n    cooldown_days: 90,\n    max_emails_per_run: 10,\n\n    // Safety gates: do not send automated win-back emails to active projects\n    // or sensitive B2B partner segments like Ladenbauer / Shopfitting.\n    skip_open_deals_as_active_projects: true,\n    skip_contacts_with_open_deal: true,\n    excluded_segments: ['NT-1'],\n    excluded_segment_keywords: [\n      'ladenbauer',\n      'ladenbau',\n      'shopfitting',\n      'shop fitting',\n      'retail design',\n      'innenausbau',\n      'ladeneinrichtung',\n      'laden einrichtung',\n      'store design'\n    ]\n  }\n}];"
+      },
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://neontrip35090.activehosted.com/api/3/deals",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "filters[status]",
+              "value": "2"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fetch-lost",
+      "name": "Hole verlorene Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        0
+      ],
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://neontrip35090.activehosted.com/api/3/deals",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "filters[status]",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fetch-inactive",
+      "name": "Hole inaktive Deals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        192
+      ],
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Daten von den drei parallelen Branches\nconst config = $('Config').first().json;\n\n// Lost Deals und offene Deals (ActiveCampaign status=0).\n// Offene Deals werden als aktive Projekte behandelt und standardmaessig NICHT\n// als Win-Back Kandidaten versendet.\nconst lostDealsRaw = $('Hole verlorene Deals').first().json.deals || [];\nconst openDealsRaw = $('Hole inaktive Deals').first().json.deals || [];\n\n// WINBACK Tag Info (von Normalisiere Tag Info - immer vorhanden)\nconst tagInfo = $('Normalisiere Tag Info').first().json;\nconst tagId = tagInfo.tagId;\n\nconsole.log(`WINBACK Tag ID: ${tagId}`);\n\n// Kontakte die bereits den WINBACK-Tag haben\nlet taggedContactIds = new Set();\ntry {\n  const taggedContactsRaw = $('Hole Kontakte mit WINBACK-Tag').first().json.contacts || [];\n  taggedContactIds = new Set(taggedContactsRaw.map(c => String(c.id)));\n  console.log(`Gefunden: ${taggedContactIds.size} Kontakte mit WINBACK-Tag`);\n} catch (e) {\n  console.log('Keine Kontakte mit WINBACK-Tag (Tag war neu)');\n}\n\nconst now = new Date();\nconst cutoffDate = new Date();\nconst daysCutoff = config.days_cutoff || 90;\ncutoffDate.setDate(now.getDate() - daysCutoff);\n\nconst daysInactive = config.days_inactive || 30;\nconst inactiveCutoff = new Date();\ninactiveCutoff.setDate(now.getDate() - daysInactive);\n\nconst excludedSegments = new Set((config.excluded_segments || ['NT-1']).map(s => String(s).toUpperCase()));\nconst excludedKeywords = (config.excluded_segment_keywords || []).map(s => String(s).toLowerCase());\nconst skipOpenDeals = config.skip_open_deals_as_active_projects !== false;\nconst skipContactsWithOpenDeal = config.skip_contacts_with_open_deal !== false;\n\nfunction contactIdOf(deal) {\n  return String(deal && deal.contact ? deal.contact : '');\n}\n\nfunction flattenText(value, depth = 0) {\n  if (value == null || depth > 3) return '';\n  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {\n    return String(value);\n  }\n  if (Array.isArray(value)) {\n    return value.map(v => flattenText(v, depth + 1)).join(' ');\n  }\n  if (typeof value === 'object') {\n    return Object.values(value).map(v => flattenText(v, depth + 1)).join(' ');\n  }\n  return '';\n}\n\nfunction hasExcludedSegment(deal) {\n  const haystack = flattenText(deal).toLowerCase();\n  if (/\\bnt[-_\\s]?1\\b/i.test(haystack)) return { skip: true, reason: 'segment NT-1' };\n  for (const segment of excludedSegments) {\n    if (haystack.includes(segment.toLowerCase())) {\n      return { skip: true, reason: `segment ${segment}` };\n    }\n  }\n  for (const keyword of excludedKeywords) {\n    if (keyword && haystack.includes(keyword)) {\n      return { skip: true, reason: `keyword ${keyword}` };\n    }\n  }\n  return { skip: false, reason: null };\n}\n\nconsole.log(`Lost deals raw: ${lostDealsRaw.length}, Open deals raw: ${openDealsRaw.length}`);\nconsole.log(`Cutoff date: ${cutoffDate.toISOString()} (Deals AELTER als ${daysCutoff} Tage)`);\n\nconst openContactIds = new Set(openDealsRaw.map(contactIdOf).filter(Boolean));\nconsole.log(`Kontakte mit offenem AC-Deal/status=0: ${openContactIds.size}`);\n\n// Filter verlorene Deals - NUR Deals AELTER als 90 Tage (Abkuehlzeit respektieren)\nconst filteredLost = lostDealsRaw.filter(d => {\n  const cdate = new Date(d.cdate);\n  return cdate < cutoffDate;\n}).map(d => ({ ...d, source: 'lost' }));\n\nconsole.log(`Verlorene Deals aelter als ${daysCutoff} Tage: ${filteredLost.length}`);\n\nlet filteredInactive = [];\nif (!skipOpenDeals) {\n  filteredInactive = openDealsRaw.filter(d => {\n    const cdate = new Date(d.cdate);\n    const mdate = new Date(d.mdate);\n    return cdate < cutoffDate && mdate < inactiveCutoff;\n  }).map(d => ({ ...d, source: 'inactive' }));\n  console.log(`Inaktive offene Deals aelter als ${daysCutoff} Tage: ${filteredInactive.length}`);\n} else {\n  console.log(`Offene Deals/status=0 werden als aktive Projekte uebersprungen: ${openDealsRaw.length}`);\n}\n\nconst timeFilteredDeals = [...filteredLost, ...filteredInactive];\nconsole.log(`Nach Zeitfilter: ${timeFilteredDeals.length} Deals`);\n\n// Deals ausschliessen deren Kontakt bereits den WINBACK-Tag hat\nconst dealsWithoutTag = timeFilteredDeals.filter(d => {\n  const contactId = contactIdOf(d);\n  const hasTag = taggedContactIds.has(contactId);\n  if (hasTag) {\n    console.log(`Skip: Kontakt ${contactId} hat bereits WINBACK-Tag`);\n  }\n  return !hasTag;\n});\n\nconsole.log(`Nach WINBACK-Tag Filter: ${dealsWithoutTag.length} Deals`);\n\n// Kontakte mit offenem Deal/status=0 ausschliessen, damit laufende Projekte\n// nicht automatisiert mit einer Win-Back Email angeschrieben werden.\nconst dealsWithoutActiveProject = dealsWithoutTag.filter(d => {\n  const contactId = contactIdOf(d);\n  const hasOpenDeal = skipContactsWithOpenDeal && d.source !== 'inactive' && openContactIds.has(contactId);\n  if (hasOpenDeal) {\n    console.log(`Skip: Kontakt ${contactId} hat ein offenes aktives Projekt/status=0`);\n  }\n  return !hasOpenDeal;\n});\n\nconsole.log(`Nach Active-Project Filter: ${dealsWithoutActiveProject.length} Deals`);\n\n// Ladenbauer / NT-1 und verwandte Shopfitting-Signale ausschliessen.\nconst dealsWithoutExcludedSegments = dealsWithoutActiveProject.filter(d => {\n  const result = hasExcludedSegment(d);\n  if (result.skip) {\n    console.log(`Skip: Deal ${d.id} ausgeschlossen wegen ${result.reason}`);\n  }\n  return !result.skip;\n});\n\nconsole.log(`Nach Segment-Ausnahme Filter: ${dealsWithoutExcludedSegments.length} Deals`);\n\n// Deduplizieren\nconst uniqueDeals = [];\nconst seenIds = new Set();\nfor (const deal of dealsWithoutExcludedSegments) {\n  if (!seenIds.has(deal.id)) {\n    seenIds.add(deal.id);\n    uniqueDeals.push(deal);\n  }\n}\n\nconst maxEmails = config.max_emails_per_run || 10;\nconsole.log(`Nach Deduplizierung: ${uniqueDeals.length} Deals`);\n\nif (uniqueDeals.length === 0) {\n  console.log('Keine Deals zu verarbeiten');\n  return [];\n}\n\nconst limitedDeals = uniqueDeals.slice(0, maxEmails);\nconsole.log(`Verarbeite ${limitedDeals.length} Deals (max: ${maxEmails})`);\n\nreturn limitedDeals.map(deal => ({ json: { ...deal, winbackTagId: tagId } }));"
+      },
+      "id": "filter-deals",
+      "name": "Filter & Dedupliziere",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "split-deals",
+      "name": "Für jeden Deal",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        992,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://neontrip35090.activehosted.com/api/3/contacts/{{ $json.contact }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "options": {}
+      },
+      "id": "get-contact",
+      "name": "Hole Kontakt Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1216,
+        80
+      ],
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deal kommt direkt vom splitInBatches\nconst deal = $('Für jeden Deal').first().json;\nconst response = $input.first().json;\n\n// Falls noDeals Flag gesetzt ist, abbrechen\nif (deal.noDeals) {\n  return [];\n}\n\n// ActiveCampaign gibt contacts als Array zurück\nconst contactData = response.contacts?.[0] || response.contact || {};\n\nconst vorname = contactData.firstName || 'Kunde';\nconst nachname = contactData.lastName || '';\nconst email = contactData.email || '';\nconst firma = contactData.orgname || '';\nconst contactId = contactData.id || deal.contact; // Kontakt-ID für Tag-Setzen\n\n// Deal Info\nconst dealTitle = deal.title || '';\nconst dealValue = deal.value || '';\nconst dealSource = deal.source; // 'lost' oder 'inactive'\nconst dealCdate = deal.cdate;\nconst daysSinceCreated = Math.floor((new Date() - new Date(dealCdate)) / (1000 * 60 * 60 * 24));\n\n// Versuche Produkt aus Deal-Titel zu extrahieren\nlet produktInteresse = dealTitle;\nif (dealTitle.includes('|')) {\n  produktInteresse = dealTitle.split('|')[0].trim();\n}\n\nreturn [{\n  json: {\n    contact: {\n      id: contactId, // WICHTIG: Für Tag-Setzen\n      vorname,\n      nachname,\n      email,\n      firma,\n      fullName: `${vorname} ${nachname}`.trim()\n    },\n    deal: {\n      id: deal.id,\n      title: dealTitle,\n      value: dealValue,\n      source: dealSource,\n      daysSinceCreated,\n      produktInteresse\n    },\n    emailContext: {\n      grund: dealSource === 'lost' ? 'Kunde hat abgesagt' : 'Keine Reaktion seit längerem',\n      zeitraum: `${daysSinceCreated} Tagen`\n    }\n  }\n}];"
+      },
+      "id": "prepare-context",
+      "name": "Bereite KI-Kontext vor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Schreibe eine freundliche, persönliche Win-Back Email für NEONTRIP (LED Neon Schilder).\n\nKONTEXT:\n- Kunde: {{ $json.contact.vorname }} {{ $json.contact.nachname }}\n- Firma: {{ $json.contact.firma || 'nicht angegeben' }}\n- Ursprüngliches Interesse: {{ $json.deal.produktInteresse }}\n- Grund für Kontakt: {{ $json.emailContext.grund }}\n- Letzte Aktivität: vor {{ $json.emailContext.zeitraum }}\n\nANWEISUNGEN:\n1. Schreibe auf Deutsch, freundlich und nicht aufdringlich\n2. Beginne mit 'Hallo {{ $json.contact.vorname }},'\n3. Erwähne das ursprüngliche Interesse/Produkt\n4. Frage ob sie noch Interesse haben oder ob sich ihre Wünsche geändert haben\n5. Biete an, ein neues unverbindliches Angebot zu erstellen\n6. Halte die Email kurz (max 5-6 Sätze)\n7. KEINE Signatur am Ende (wird automatisch hinzugefügt)\n8. Gib NUR den Email-Text zurück, keine Betreffzeile",
+        "options": {
+          "systemMessage": "Du bist ein freundlicher Email-Schreiber für NEONTRIP, einen Hersteller von LED Neon Schildern in Düsseldorf. Schreibe natürliche, nicht zu förmliche Emails die Kunden zurückgewinnen sollen ohne aufdringlich zu sein."
+        }
+      },
+      "id": "ai-agent",
+      "name": "KI: Schreibe Win-Back Email",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        80
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.first().json.output || $input.first().json.text || '';\nconst context = $('Bereite KI-Kontext vor').first().json;\n\n// Email-Text formatieren (Zeilenumbrueche zu <br>)\nconst emailText = aiOutput.replace(/\\n/g, '<br>');\n\n// Neutraler Betreff ohne dynamische Deal-, Produkt- oder Kundennamen.\nconst betreff = 'Kurze Rückfrage von NEONTRIP';\n\nreturn [{\n  json: {\n    to: context.contact.email,\n    subject: betreff,\n    body: emailText,\n    contact: context.contact,\n    deal: context.deal\n  }\n}];"
+      },
+      "id": "parse-email",
+      "name": "Parse Email + Signatur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "toRecipients": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "=<!DOCTYPE html>\n<html lang=\"de\">\n<head>\n  <meta charset=\"UTF-8\">\n</head>\n<body style=\"font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;\">\n  <div style=\"max-width: 600px;\">\n    {{ $json.body }}\n    <br><br>\n    <p style=\"margin: 0;\">Liebe Grüße,<br>\n    <strong>Fabienne Trapp</strong><br>\n    Kundenbetreuung</p>\n    <br>\n    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"font-family: Arial, sans-serif; font-size: 14px;\">\n      <tr>\n        <td style=\"padding-right: 15px; vertical-align: top;\">\n          <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" width=\"100\" style=\"border-radius: 50%;\" alt=\"Fabienne Trapp\">\n        </td>\n        <td style=\"vertical-align: top;\">\n          <p style=\"margin: 0 0 5px 0;\"><strong>NEONTRIP</strong></p>\n          <p style=\"margin: 0 0 3px 0; color: #666;\">Tel: +49 211 97178995</p>\n          <p style=\"margin: 0 0 3px 0; color: #666;\">Email: info@neontrip.de</p>\n          <p style=\"margin: 0 0 10px 0;\"><a href=\"https://neontrip.de\" style=\"color: #e91e63;\">www.neontrip.de</a></p>\n          <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450\" width=\"120\" alt=\"NEONTRIP Logo\" style=\"background: #000; padding: 8px; border-radius: 4px;\">\n        </td>\n      </tr>\n    </table>\n  </div>\n</body>\n</html>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "id": "send-email",
+      "name": "Sende Email (Outlook)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        80
+      ],
+      "webhookId": "e883237f-addc-4db9-ac99-ca4511bbd8d2",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const emailData = $('Parse Email + Signatur').first().json;\n\nreturn [{\n  json: {\n    success: true,\n    sentTo: emailData.to,\n    subject: emailData.subject,\n    dealId: emailData.deal.id,\n    dealTitle: emailData.deal.title,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-success",
+      "name": "Log Erfolg",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 28
+      },
+      "id": "wait",
+      "name": "Warte 30s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2912,
+        192
+      ],
+      "webhookId": "8922384c-4442-47ae-a55b-819d3449084e"
+    },
+    {
+      "parameters": {},
+      "id": "no-deals",
+      "name": "Keine Deals",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-20250514",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        1744,
+        304
+      ],
+      "id": "037e4aa3-0540-446c-91ed-232ba20d83f1",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "kZCDxC1N8hTos1iS",
+          "name": "Anthropic account | droninehandel@gmail.com"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "merge-deals",
+      "name": "Warte auf alle drei",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        544,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://neontrip35090.activehosted.com/api/3/tags",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search",
+              "value": "WINBACK"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-tagged",
+      "name": "Hole WINBACK-Tag Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -352,
+        480
+      ],
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://neontrip35090.activehosted.com/api/3/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "tagid",
+              "value": "={{ $json.tags && $json.tags[0] ? $json.tags[0].id : '' }}"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fetch-tagged-contacts",
+      "name": "Hole Kontakte mit WINBACK-Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        96,
+        368
+      ],
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://neontrip35090.activehosted.com/api/3/contactTags",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contactTag: { contact: $('Bereite KI-Kontext vor').first().json.contact.id, tag: $('Normalisiere Tag Info').first().json.tagId } }) }}",
+        "options": {}
+      },
+      "id": "set-winback-tag",
+      "name": "Setze WINBACK Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2464,
+        80
+      ],
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "tag-exists-check",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.tags ? $json.tags.length : 0 }}",
+              "rightValue": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-tag-exists",
+      "name": "Tag existiert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -128,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://neontrip35090.activehosted.com/api/3/tags",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "activeCampaignApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tag: { tag: 'WINBACK', tagType: 'contact', description: 'Win-Back Email gesendet' } }) }}",
+        "options": {}
+      },
+      "id": "create-tag",
+      "name": "Erstelle WINBACK Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        96,
+        560
+      ],
+      "credentials": {
+        "activeCampaignApi": {
+          "id": "uPuMq1Vzs1uVvTzK",
+          "name": "ActiveCampaign account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dieser Code normalisiert die Tag-Info\n// Input kann von zwei Quellen kommen:\n// 1. TRUE Branch: Hole Kontakte mit WINBACK-Tag (hat .contacts)\n// 2. FALSE Branch: Erstelle WINBACK Tag (hat .tag)\n\nconst input = $input.first().json;\nlet tagId, tagName;\n\nif (input.tag) {\n  // FALSE Branch: Neu erstellter Tag\n  tagId = input.tag.id;\n  tagName = input.tag.tag;\n  console.log(`Neuer Tag erstellt: ${tagName} (ID: ${tagId})`);\n} else if (input.contacts !== undefined) {\n  // TRUE Branch: Kam von 'Hole Kontakte mit WINBACK-Tag'\n  // Tag-Info muss von 'Hole WINBACK-Tag Info' geholt werden\n  const tagInfo = $('Hole WINBACK-Tag Info').first().json;\n  if (tagInfo.tags && tagInfo.tags.length > 0) {\n    tagId = tagInfo.tags[0].id;\n    tagName = tagInfo.tags[0].tag;\n    console.log(`Existierender Tag aus WINBACK-Tag Info: ${tagName} (ID: ${tagId})`);\n  } else {\n    throw new Error('Tag nicht gefunden in Hole WINBACK-Tag Info');\n  }\n} else if (input.tags && input.tags.length > 0) {\n  // Direkter Input mit tags Array\n  tagId = input.tags[0].id;\n  tagName = input.tags[0].tag;\n  console.log(`Existierender Tag: ${tagName} (ID: ${tagId})`);\n} else {\n  throw new Error('Kein Tag gefunden oder erstellt! Input: ' + JSON.stringify(Object.keys(input)));\n}\n\nreturn [{\n  json: {\n    tagId: tagId,\n    tagName: tagName,\n    tags: [{ id: tagId, tag: tagName }]\n  }\n}];"
+      },
+      "id": "normalize-tag",
+      "name": "Normalisiere Tag Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                5
+              ],
+              "triggerAtHour": 10,
+              "triggerAtMinute": 7
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "Wöchentlich (Freitag 10:07 Uhr)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        224
+      ]
+    }
+  ],
+  "connections": {
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Hole verlorene Deals",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hole inaktive Deals",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hole WINBACK-Tag Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter & Dedupliziere": {
+      "main": [
+        [
+          {
+            "node": "Für jeden Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Für jeden Deal": {
+      "main": [
+        [
+          {
+            "node": "Keine Deals",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hole Kontakt Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hole Kontakt Details": {
+      "main": [
+        [
+          {
+            "node": "Bereite KI-Kontext vor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bereite KI-Kontext vor": {
+      "main": [
+        [
+          {
+            "node": "KI: Schreibe Win-Back Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Schreibe Win-Back Email": {
+      "main": [
+        [
+          {
+            "node": "Parse Email + Signatur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email + Signatur": {
+      "main": [
+        [
+          {
+            "node": "Sende Email (Outlook)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Erfolg": {
+      "main": [
+        [
+          {
+            "node": "Warte 30s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warte 30s": {
+      "main": [
+        [
+          {
+            "node": "Für jeden Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "KI: Schreibe Win-Back Email",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hole verlorene Deals": {
+      "main": [
+        [
+          {
+            "node": "Warte auf alle drei",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hole inaktive Deals": {
+      "main": [
+        [
+          {
+            "node": "Warte auf alle drei",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Warte auf alle drei": {
+      "main": [
+        [
+          {
+            "node": "Filter & Dedupliziere",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hole Kontakte mit WINBACK-Tag": {
+      "main": [
+        [
+          {
+            "node": "Normalisiere Tag Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sende Email (Outlook)": {
+      "main": [
+        [
+          {
+            "node": "Setze WINBACK Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Setze WINBACK Tag": {
+      "main": [
+        [
+          {
+            "node": "Log Erfolg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hole WINBACK-Tag Info": {
+      "main": [
+        [
+          {
+            "node": "Tag existiert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag existiert?": {
+      "main": [
+        [
+          {
+            "node": "Hole Kontakte mit WINBACK-Tag",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erstelle WINBACK Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erstelle WINBACK Tag": {
+      "main": [
+        [
+          {
+            "node": "Normalisiere Tag Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalisiere Tag Info": {
+      "main": [
+        [
+          {
+            "node": "Warte auf alle drei",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Wöchentlich (Freitag 10:07 Uhr)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

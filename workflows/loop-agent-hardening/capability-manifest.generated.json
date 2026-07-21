@@ -1,0 +1,2316 @@
+{
+  "generatedAt": "2026-07-21T18:02:44.617Z",
+  "sourceGeneratedAt": "2026-07-21T19:00:00+02:00",
+  "scope": "all_active_n8n_workflows",
+  "counts": {
+    "total": 152,
+    "canonicalKeep": 91,
+    "refactorOrReview": 61,
+    "deactivate": 5,
+    "critical": 8
+  },
+  "workflows": [
+    {
+      "id": "TLLSwYTcIRgtinVg",
+      "name": "NEONTRIP Event Receiver v3.3",
+      "current": {
+        "nodeCount": 58,
+        "triggerCount": 2,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers",
+          "ai_and_customer_communication",
+          "true_agent_node"
+        ]
+      },
+      "capability": "pandadoc_event_lifecycle",
+      "classification": "canonical_refactor",
+      "targetMode": "split_loop_with_bounded_ai_enrichment",
+      "decision": "split_receiver_error_handler_enrichment_and_customer_projection",
+      "priority": "critical"
+    },
+    {
+      "id": "9FoJMH6OUdsi36FB",
+      "name": "KI-Video Generator v1.0 - Neue Angebote schicken + KI-Video",
+      "current": {
+        "nodeCount": 124,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded",
+          "ai_and_customer_communication",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "quote_video_and_delivery",
+      "classification": "canonical_refactor",
+      "targetMode": "event_intake_video_job_worker_delivery_worker",
+      "decision": "split_oversized_customer_delivery_monolith",
+      "priority": "critical"
+    },
+    {
+      "id": "CS4jhqo9tdd0cPe4",
+      "name": "NEONTRIP Follow-up Queue Processor v3.6 (AI Reply Detection)",
+      "current": {
+        "nodeCount": 101,
+        "triggerCount": 3,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers",
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "followup_queue",
+      "classification": "canonical_refactor",
+      "targetMode": "claim_loop_reply_classifier_delivery_executor",
+      "decision": "split_three_trigger_monolith",
+      "priority": "critical"
+    },
+    {
+      "id": "X5etVW0msgSzHMMG",
+      "name": "NEONTRIP Quote Ready SIMPLE v1.1",
+      "current": {
+        "nodeCount": 70,
+        "triggerCount": 2,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "quote_ready",
+      "classification": "canonical_refactor",
+      "targetMode": "event_intake_offer_job_projection",
+      "decision": "split_two_trigger_trello_authority_monolith",
+      "priority": "high"
+    },
+    {
+      "id": "fcPiGDWq41htB5mV",
+      "name": "RH | Unstrukturierte Anfragen - OUTLOOK",
+      "current": {
+        "nodeCount": 39,
+        "triggerCount": 2,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers",
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "unstructured_inquiry",
+      "classification": "canonical_refactor",
+      "targetMode": "email_intake_bounded_extraction_human_review_draft",
+      "decision": "split_two_trigger_ai_communication_workflow",
+      "priority": "high"
+    },
+    {
+      "id": "uRYt9I30bzzVTB2D",
+      "name": "Inflatables EU-Anfrage | PRODUKTION | 20 Lieferanten",
+      "current": {
+        "nodeCount": 36,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded",
+          "ai_and_customer_communication",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "inflatable_supplier_request",
+      "classification": "canonical_refactor",
+      "targetMode": "database_recipient_delivery_loop",
+      "decision": "replace_trello_delivery_authority",
+      "priority": "high"
+    },
+    {
+      "id": "FgkQvBFkg9qSqfNC",
+      "name": "Customs CI Cleanup (LÖSCHEN)",
+      "current": {
+        "nodeCount": 28,
+        "triggerCount": 1,
+        "flags": [
+          "active_name_state_conflict",
+          "polling_or_recovery_workflow",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "customs_operations",
+      "classification": "deactivation_review",
+      "targetMode": "inactive_after_dependency_check",
+      "decision": "active_name_indicates_legacy_or_draft",
+      "priority": "high"
+    },
+    {
+      "id": "kpU6b9m34KWnKsSq",
+      "name": "Buffer Draft Generator v1.0",
+      "current": {
+        "nodeCount": 17,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers",
+          "active_name_state_conflict",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "Rmv4Ht895SiIgUOC",
+      "name": "Gemini Mockup Generator v1.1",
+      "current": {
+        "nodeCount": 98,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded",
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "gemini_mockup",
+      "classification": "legacy_deactivate_after_replay",
+      "targetMode": "inactive",
+      "decision": "duplicate_v1_1_variant",
+      "priority": "high"
+    },
+    {
+      "id": "T4mdDxLquLMJ6FMl",
+      "name": "Gemini Mockup Generator v1.2 - KI Mockup erstellen",
+      "current": {
+        "nodeCount": 85,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded",
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "gemini_mockup",
+      "classification": "canonical_refactor",
+      "targetMode": "asset_intake_generation_job_projection",
+      "decision": "split_oversized_v1_2_and_fix_cleanup_credentials",
+      "priority": "critical"
+    },
+    {
+      "id": "9MHAajzPsdk2Wt2X",
+      "name": "Customs CI Generator",
+      "current": {
+        "nodeCount": 84,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "customs_ci",
+      "classification": "canonical_refactor",
+      "targetMode": "customs_job_worker_document_projection",
+      "decision": "split_trello_authority_monolith",
+      "priority": "high"
+    },
+    {
+      "id": "HIFQvcfBKPEK9oSN",
+      "name": "KI-Video Generator v1.0",
+      "current": {
+        "nodeCount": 74,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "video_generation",
+      "classification": "canonical_worker_refactor",
+      "targetMode": "database_video_job_worker",
+      "decision": "split_generation_from_projection",
+      "priority": "high"
+    },
+    {
+      "id": "ThfkcnArNJ75XnX6",
+      "name": "Customs Difference Invoice",
+      "current": {
+        "nodeCount": 67,
+        "triggerCount": 3,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "customs_difference_invoice",
+      "classification": "canonical_refactor",
+      "targetMode": "single_trigger_job_loop_plus_manual_adapter",
+      "decision": "split_three_trigger_invoice_monolith",
+      "priority": "high"
+    },
+    {
+      "id": "Gb01bGXui65eOJCP",
+      "name": "Customs Monthly Supplier Invoice",
+      "current": {
+        "nodeCount": 67,
+        "triggerCount": 3,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "customs_monthly_invoice",
+      "classification": "canonical_refactor",
+      "targetMode": "single_trigger_month_job_loop_plus_manual_adapter",
+      "decision": "split_three_trigger_invoice_monolith",
+      "priority": "high"
+    },
+    {
+      "id": "ESDlD5V0yxFKxF8x",
+      "name": "Customs Supplier Invoice From CI Log",
+      "current": {
+        "nodeCount": 60,
+        "triggerCount": 3,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "customs_supplier_invoice",
+      "classification": "canonical_refactor",
+      "targetMode": "single_trigger_ci_job_loop_plus_manual_adapter",
+      "decision": "split_three_trigger_invoice_monolith",
+      "priority": "high"
+    },
+    {
+      "id": "GTcIwaTHdaxdSM3f",
+      "name": "Placetel Notizen V4 - KOMPLETT FERTIG",
+      "current": {
+        "nodeCount": 40,
+        "triggerCount": 2,
+        "flags": [
+          "node_limit_exceeded",
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "placetel_notes",
+      "classification": "canonical_refactor",
+      "targetMode": "call_event_intake_note_worker",
+      "decision": "split_two_trigger_monolith",
+      "priority": "medium"
+    },
+    {
+      "id": "aE1v0KxbgXbWjUm8",
+      "name": "AI Email Agent v7 — Resolve First Quality v5 — Draft Only",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication",
+          "active_name_state_conflict"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "safety_review_required",
+      "targetMode": "bounded_ai_proposal_deterministic_gate",
+      "decision": "ai_and_external_communication",
+      "priority": "high"
+    },
+    {
+      "id": "geeNR1aVW9tZjPuN",
+      "name": "Telegram GitHub Controller",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication",
+          "true_agent_node"
+        ]
+      },
+      "capability": "internal_github_control",
+      "classification": "deactivate",
+      "targetMode": "inactive_until_owner_allowlist_and_two_step_approval",
+      "decision": "unsafe_unused_write_agent",
+      "priority": "critical"
+    },
+    {
+      "id": "FjovLIqnIQ4Zdp4K",
+      "name": "Buffer Publisher v0.1",
+      "current": {
+        "nodeCount": 27,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers",
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "cqbB8GIwhP2guGIb",
+      "name": "NEONTRIP Win-Back Agent v1.0",
+      "current": {
+        "nodeCount": 22,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication",
+          "true_agent_node"
+        ]
+      },
+      "capability": "winback_outreach",
+      "classification": "canonical_replacement_ready",
+      "targetMode": "database_claim_bounded_ai_draft_human_send",
+      "decision": "replace_agent_auto_send_with_draft_loop",
+      "priority": "critical"
+    },
+    {
+      "id": "dljSoxks55YNqFbf",
+      "name": "Telegram AI Agent - Fabienne v3 (erweitert)",
+      "current": {
+        "nodeCount": 20,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication",
+          "true_agent_node"
+        ]
+      },
+      "capability": "internal_telegram_assistant",
+      "classification": "deactivate",
+      "targetMode": "inactive_until_owner_allowlist_read_only_tools_and_approval_wrappers",
+      "decision": "unsafe_unused_unrestricted_tool_agent",
+      "priority": "critical"
+    },
+    {
+      "id": "btJd34v7PJFVej6G",
+      "name": "NEONTRIP Design-Erinnerung v1.2",
+      "current": {
+        "nodeCount": 15,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication",
+          "true_agent_node"
+        ]
+      },
+      "capability": "missing_design_reminder",
+      "classification": "canonical_replacement_ready",
+      "targetMode": "deterministic_database_claim_draft_human_send",
+      "decision": "remove_agent_and_auto_send",
+      "priority": "critical"
+    },
+    {
+      "id": "Jj8U6Zip8sRB4vmK",
+      "name": "NEONTRIP Follow-up Stuck Recovery v1.2",
+      "current": {
+        "nodeCount": 11,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers",
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "followup_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "7UJW9mgP42m0ulbj",
+      "name": "PandaDoc sent → Update AC Deal + Stage (Rate Limit Protected)",
+      "current": {
+        "nodeCount": 62,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded"
+        ]
+      },
+      "capability": "pandadoc_sent_sync",
+      "classification": "canonical_refactor",
+      "targetMode": "pandadoc_event_job_activecampaign_projection",
+      "decision": "split_oversized_sync_monolith",
+      "priority": "high"
+    },
+    {
+      "id": "FQ7lf36yje4B1eE3",
+      "name": "LP Anfrage Webhook v1.0",
+      "current": {
+        "nodeCount": 36,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded"
+        ]
+      },
+      "capability": "landingpage_inquiry_intake",
+      "classification": "canonical_refactor",
+      "targetMode": "webhook_validation_job_enqueue",
+      "decision": "split_oversized_intake",
+      "priority": "high"
+    },
+    {
+      "id": "X497QfsvfE2Od0Vj",
+      "name": "Customs Rebuild Month Overview",
+      "current": {
+        "nodeCount": 33,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded"
+        ]
+      },
+      "capability": "customs_month_rebuild",
+      "classification": "canonical_refactor",
+      "targetMode": "bounded_month_rebuild_job",
+      "decision": "split_oversized_rebuild",
+      "priority": "medium"
+    },
+    {
+      "id": "nUrqyTSnGE8j9QT8",
+      "name": "NEONTRIP AC Deal AutoReply v1",
+      "current": {
+        "nodeCount": 32,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded"
+        ]
+      },
+      "capability": "activecampaign_auto_reply",
+      "classification": "canonical_refactor",
+      "targetMode": "validated_template_or_human_review_draft_loop",
+      "decision": "split_customer_communication_boundary",
+      "priority": "high"
+    },
+    {
+      "id": "2fRdyqdyVDMWwH4O",
+      "name": "NEONTRIP Qonto Webhook v2 Aktiv",
+      "current": {
+        "nodeCount": 32,
+        "triggerCount": 1,
+        "flags": [
+          "node_limit_exceeded"
+        ]
+      },
+      "capability": "qonto_webhook",
+      "classification": "canonical_refactor",
+      "targetMode": "webhook_validation_finance_job_projection",
+      "decision": "split_oversized_finance_intake",
+      "priority": "high"
+    },
+    {
+      "id": "oyF3lAhAOLUgWbzg",
+      "name": "AI Email Agent — Retry Recovery v1",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "Xqt27WSNfJYVGROP",
+      "name": "RH | V3 Anfragen + Mail Anfragen Aktiv",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "safety_review_required",
+      "targetMode": "bounded_ai_proposal_deterministic_gate",
+      "decision": "ai_and_external_communication",
+      "priority": "high"
+    },
+    {
+      "id": "AcYSau5MGsAxeAqL",
+      "name": "RH | Unstruktuierte Anfragen Aktiv",
+      "current": {
+        "nodeCount": 29,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "safety_review_required",
+      "targetMode": "bounded_ai_proposal_deterministic_gate",
+      "decision": "ai_and_external_communication",
+      "priority": "high"
+    },
+    {
+      "id": "Hzf3fcJwmcCxExnx",
+      "name": "EU Supplier Request on Trello Move",
+      "current": {
+        "nodeCount": 27,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "trello_projection",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "rYmSl4D0nNmEEU0M",
+      "name": "NEONTRIP Inbound Shipping Agent v0.1",
+      "current": {
+        "nodeCount": 27,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "shipping_operations",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "8PlBdlnG8gwtYTc7",
+      "name": "Trello Update Auto-Email → Outlook mit PandaDoc Link",
+      "current": {
+        "nodeCount": 27,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "bvRcF5Xaj3eGY0J4",
+      "name": "NEONTRIP - Quote Ready QC Check v3",
+      "current": {
+        "nodeCount": 23,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "quote_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "IdFouG1kp8Uo23W5",
+      "name": "Create Order in Shopify - 2025 (migrated from Make)",
+      "current": {
+        "nodeCount": 22,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "shopify_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "7AvW1d4JBNDFuNsv",
+      "name": "NEONTRIP Anfrage → Telegram Approval v1.0",
+      "current": {
+        "nodeCount": 22,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "internal_telegram",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "6ZCFSn6XGN4AMwk5",
+      "name": "NEONTRIP Review Request Processor v1.0",
+      "current": {
+        "nodeCount": 21,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "MZhNgpQa8XP55jbg",
+      "name": "Trello: Bestehendes Angebot erneut versenden v1.0",
+      "current": {
+        "nodeCount": 20,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "trello_projection",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "RmtnAQZUBD2bHXhp",
+      "name": "NEONTRIP PandaDoc Viewed → Follow-up Email v1.0",
+      "current": {
+        "nodeCount": 19,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "OScsDR4hRqkfCqlh",
+      "name": "Anthropic API Cost Monitor v1.0",
+      "current": {
+        "nodeCount": 16,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "safety_review_required",
+      "targetMode": "bounded_ai_proposal_deterministic_gate",
+      "decision": "ai_and_external_communication",
+      "priority": "high"
+    },
+    {
+      "id": "hlEjOgERRNOCLYsI",
+      "name": "PandaDoc Link Watchdog",
+      "current": {
+        "nodeCount": 16,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "pandadoc_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "MiZTcLbgzcU9cszp",
+      "name": "Trello zu Outlook - E-Mail Archivierung FINAL",
+      "current": {
+        "nodeCount": 16,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "ozqdbVghFvqQXqCW",
+      "name": "Email-Anfrage → Quote Ready (Nacht) v1.0",
+      "current": {
+        "nodeCount": 15,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "p7BXBzTkM2OF4eBu",
+      "name": "AC Deals → Supabase Import (Auto-Schedule)",
+      "current": {
+        "nodeCount": 14,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "activecampaign_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "BH9zlclRi8G1Yk2A",
+      "name": "Customs CI Regenerate From Sheet",
+      "current": {
+        "nodeCount": 14,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "customs_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "1zRpwNShjVJRoLcH",
+      "name": "Customer Match Sync v1.0",
+      "current": {
+        "nodeCount": 13,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "0lsUb5gvvGcU1Vpi",
+      "name": "Follow-up Link Recovery Webhook v1.0",
+      "current": {
+        "nodeCount": 13,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "followup_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "vseFp5GZU975CeOM",
+      "name": "NEONTRIP KI-Modell-Update-Monitor v1.0",
+      "current": {
+        "nodeCount": 13,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "safety_review_required",
+      "targetMode": "bounded_ai_proposal_deterministic_gate",
+      "decision": "ai_and_external_communication",
+      "priority": "high"
+    },
+    {
+      "id": "j3GCBHSxfOW3SP1c",
+      "name": "NEONTRIP Post-Delivery Flow v1.0",
+      "current": {
+        "nodeCount": 13,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "safety_review_required",
+      "targetMode": "bounded_ai_proposal_deterministic_gate",
+      "decision": "ai_and_external_communication",
+      "priority": "high"
+    },
+    {
+      "id": "enm0dD2EatTXVGLj",
+      "name": "NEONTRIP Apify o Apollo CSV Import",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "cW08nxn9ANfGFEou",
+      "name": "NEONTRIP Repeat Business v1.0",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 1,
+        "flags": [
+          "ai_and_customer_communication"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "safety_review_required",
+      "targetMode": "bounded_ai_proposal_deterministic_gate",
+      "decision": "ai_and_external_communication",
+      "priority": "high"
+    },
+    {
+      "id": "RzS4MbbtHDvdrOI4",
+      "name": "RH | easybill Sync → Supabase",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "7R8uFPpFrKwk9VQr",
+      "name": "RIESENOBJEKTE Trello → Angebot",
+      "current": {
+        "nodeCount": 11,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "trello_projection",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "SUjbDk41kyR7aJ8T",
+      "name": "MAKE PandaDoc Sheet Fallback from Supabase v1",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "pandadoc_operations",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "7YRFB56vbc4Iem6A",
+      "name": "NEONTRIP Quote Ready Size Ladder Preparation v1.1",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "quote_operations",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "uwz7hQahhZpolNQH",
+      "name": "NEONTRIP Cleanup Stuck Items v1.0",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "M4waCIoRvl9D3ANQ",
+      "name": "NEONTRIP LinkedIn Scraper v1.0",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "sEP7CFh1qr6EpO0V",
+      "name": "NEONTRIP Payment Reminder Scheduler v1.1 (Polling)",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "LiBUAn5qRXtWm4Ig",
+      "name": "Google Ads Monday Check v1.0",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "pEkn7OpvZbFwAhab",
+      "name": "NT · Quote Latency Monitor v1.0",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "quote_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "T0F00SlJIzoqvTVY",
+      "name": "RH | Mahn-Mail senden (Webhook)",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "PsymhpsiEs8Qj6vN",
+      "name": "Voice Agent — Call Status Poller v1.0",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "h2Eye2kArl2CBx3k",
+      "name": "NEONTRIP Supplier Payment Reminder Email v0.1 (INACTIVE DRAFT)",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 1,
+        "flags": [
+          "active_name_state_conflict"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "deactivation_review",
+      "targetMode": "inactive_after_dependency_check",
+      "decision": "active_name_indicates_legacy_or_draft",
+      "priority": "high"
+    },
+    {
+      "id": "e7z5bWMyzpMV2OI5",
+      "name": "Shopify Bezahlt → Trello 💰 Emoji",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "trello_projection",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "aI2ZLBVjeLJkeLC4",
+      "name": "RIESENOBJEKTE Supplier Reply Tracker | IMAP info@riesenobjekte.de | v2",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 0,
+        "flags": [
+          "no_detected_trigger"
+        ]
+      },
+      "capability": "supplier_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "6EwCpB5HRoqgs1ul",
+      "name": "Trello: Auto-Reclaim KI-Video Timeout (20min) v1.0",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "trello_projection",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "fiDudR4FqkND92G0",
+      "name": "Mockup Processing Label Cleanup v1.0",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "design_generation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "LmK72JkDSVyLF76g",
+      "name": "NEONTRIP Trello Offer Structure Preview v1.0",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": [
+          "trello_source_candidate"
+        ]
+      },
+      "capability": "trello_projection",
+      "classification": "source_of_truth_review_required",
+      "targetMode": "database_loop_trello_projection",
+      "decision": "trello_authority_candidate",
+      "priority": "high"
+    },
+    {
+      "id": "m6VJ0hvDT7I40xy0",
+      "name": "RH | Shopify Orders Sync → Supabase",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 2,
+        "flags": [
+          "multiple_detected_triggers"
+        ]
+      },
+      "capability": "shopify_operations",
+      "classification": "trigger_split_required",
+      "targetMode": "canonical_single_trigger_loop_plus_adapters",
+      "decision": "multiple_or_missing_trigger",
+      "priority": "medium"
+    },
+    {
+      "id": "WSBR7iygxxfIxJvW",
+      "name": "Trello: Auto-Reclaim Update Auto-Email (20min) v1.0",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": [
+          "polling_or_recovery_workflow"
+        ]
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "bX807BBPK804CCyE",
+      "name": "NEONTRIP AC ↔ PandaDoc Stage Sync (Webhook) v1.4 (Pre-Dedupe Env Guard + Central Stages + Clean Flags)",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "pandadoc_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "HzMgctp78bcMq44A",
+      "name": "NEONTRIP Payment Reminder Processor v1.1",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "6otS4c8KAuQKSdxz",
+      "name": "NEONTRIP Reply Detector v2.7",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "evkTXwRgxDOFPPDr",
+      "name": "RIESENOBJEKTE Inflatable Video Worker via xAI v1.0",
+      "current": {
+        "nodeCount": 30,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "video_generation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "QtG2XHw7DsvOEPtQ",
+      "name": "NEONTRIP Shipping Agent v0.1",
+      "current": {
+        "nodeCount": 27,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shipping_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "SEKwtYAVRR7zeKnl",
+      "name": "NEONTRIP Offers → Shopify Order v1",
+      "current": {
+        "nodeCount": 26,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "hPFmuX35rmu8Y5nQ",
+      "name": "NEONTRIP Telegram Approval Handler v1.0",
+      "current": {
+        "nodeCount": 26,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "internal_telegram",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "1EjFCTTp84otDKgG",
+      "name": "Google Ads Offline Upload v1.1 (hourly)",
+      "current": {
+        "nodeCount": 21,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "ELpwCfdWOCRZ22gy",
+      "name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+      "current": {
+        "nodeCount": 20,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "YCjuwXGnxTjhj40i",
+      "name": "LP Synthetic Monitor v1.0",
+      "current": {
+        "nodeCount": 19,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "CueMwrLRaeoQDLxA",
+      "name": "SEA Agent: Daily Collector v1.0",
+      "current": {
+        "nodeCount": 18,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "nzSsJr3tC6RQNZC0",
+      "name": "SEA Agent: Action Executor v1.0",
+      "current": {
+        "nodeCount": 16,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "NHLfS4jbY9Ldub4a",
+      "name": "Alte Deals → Verloren (90 Tage)",
+      "current": {
+        "nodeCount": 15,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "Z9SvIuIw4ISzsfuW",
+      "name": "CS Demo Processor v1.0",
+      "current": {
+        "nodeCount": 15,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "jYfFUwgxdVSqMc6e",
+      "name": "Deals → Verloren (14 Tage in 1. Deal Stufe)",
+      "current": {
+        "nodeCount": 14,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "TqzCGpwfuJDBS86b",
+      "name": "NEONTRIP Preview Delivery v1 (Live)",
+      "current": {
+        "nodeCount": 14,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "mFSeeALvHqYN2ypa",
+      "name": "RIESENOBJEKTE Supplier Refresh | Admin Button",
+      "current": {
+        "nodeCount": 14,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "supplier_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "FZuDdaV7xPnVrW8z",
+      "name": "MIKA | NEONTRIP AC Follow-up Email Messebau v1.0",
+      "current": {
+        "nodeCount": 13,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "0V7o1JysBxqNm1i7",
+      "name": "RIESENOBJEKTE Supplier Reply Tracker | Outlook support@neontrip.de",
+      "current": {
+        "nodeCount": 13,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "DeWOEFIuq7hZdkka",
+      "name": "SEA Agent: Alert Monitor v1.0",
+      "current": {
+        "nodeCount": 13,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "Q9gjAfWlp7EESxm2",
+      "name": "NEONTRIP Approval Nacht-Timeout v1.0",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "EV74uCUqszwRKOLr",
+      "name": "NEONTRIP Health Check v3.5 (Accurate Stats + Safe Repair)",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "rBggMnVkWwiVXXXO",
+      "name": "PROD — Shopify Configurator → Trello 2D Assets",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "trello_projection",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "hucy9EMXPblxJsCm",
+      "name": "Trello Inflatable Mockup Generator v1.0",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "trello_projection",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "a4o6IEDynr6mBXsy",
+      "name": "Voice Agent — Post-Call Processing v1.0",
+      "current": {
+        "nodeCount": 12,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "kvcTDJjbLmxYrWmy",
+      "name": "Zapier Shopify Configurator Request ID Sidecar",
+      "current": {
+        "nodeCount": 11,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "kAoVEdqFiuJ6IzjR",
+      "name": "LP Form Smoke Alert v1.0",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "VV8WTqZP7Kg1shL7",
+      "name": "NEONTRIP AC Lost Deal Sync v1.0",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "activecampaign_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "RdIWdbDefpDMJBdI",
+      "name": "NEONTRIP Offer Customer Color Mockup QA v2 (PRODUCTION)",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "design_generation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "cj6Me3DNQmlDBgLs",
+      "name": "NEONTRIP Quote Variant Extractor v1.0",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "quote_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "5maan9rdlyXD0sO7",
+      "name": "RIESENOBJEKTE FormSubmit AutoReply v1 — Deterministic",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "ZIQWGun8m0sMJKzy",
+      "name": "Shopify Monatsumsatz monatlich an Frank",
+      "current": {
+        "nodeCount": 10,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "DldbjbPaVbAS3Avs",
+      "name": "AI Email Commerce Evidence Resolver v1 — Read Only",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "Hrd08cXctM1LO9T3",
+      "name": "AI Email Commerce Evidence Resolver v2 — Read Only",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "lLZAPo43xNunBrS3",
+      "name": "NEONTRIP Lead Scoring v1.0",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "o9FNf0wFBbRQCrvW",
+      "name": "NEONTRIP WhatsApp → Email",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "SahGezm5DPnVuvzN",
+      "name": "PandaDoc Express-Versand Benachrichtigung",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "pandadoc_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "UTJaUNRP9LNXzapE",
+      "name": "RH | Mark Paid → Shopify + easybill (Webhook)",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "2wu8PLbC6zb3nLuL",
+      "name": "Trello: 3D Angebot erstellen -> KI-Video (15min) v1.0",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "trello_projection",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "olifFMiIsFML9FRl",
+      "name": "Trello: Angebot ueberprueft -> KI-Video (15min) v1.0",
+      "current": {
+        "nodeCount": 9,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "trello_projection",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "pbgr9n5xRgpCyLBd",
+      "name": "LP Health Check v1.0",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "LZPbWCFNNvH4i3ug",
+      "name": "NEONTRIP | Offer Update Mail via Outlook",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "LHiIOKYuk2DqzfD7",
+      "name": "NEONTRIP Email → WhatsApp",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "ArT3LN25Mb1PAuBE",
+      "name": "NEONTRIP Error Alerting v1.0",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "wxi9BgBL9dHmdhZH",
+      "name": "NEONTRIP Offer Update WhatsApp via WhatsAble v0.1",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "Ka4L6C7uLdO3ASQg",
+      "name": "NEONTRIP Shopify → Review Queue v1.0",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "p4lm3w9jPHnaP4VX",
+      "name": "NEONTRIP Supplier Order Confirmation Email v0.1",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "YvpZsctzOYvnCquT",
+      "name": "NT · Ads LP Health Monitor v1.0",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "I9vCp27sS3jcH1am",
+      "name": "Shopify → Supabase Sync (4x täglich)",
+      "current": {
+        "nodeCount": 8,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "7TxHQRyeUxVbpOrl",
+      "name": "AI Email Agent — Sent Delta Indexer v1",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "vCDQuqaWOALmMd56",
+      "name": "Google Ads Offline Conversions v2.0",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "REUwgbUIRHXoUsAA",
+      "name": "NEONTRIP Outlook Customer Email Sync v1.0",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "CMNPNypIgSZJlSoo",
+      "name": "PandaDoc zu Trello - Produkte und Optionen",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "pandadoc_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "NJTficzVI4aSTYeL",
+      "name": "RIESENOBJEKTE Supplier Quote Extractor | HUMAN REVIEW",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "supplier_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "Ujeb4B9h500noRgM",
+      "name": "VIP Deal Behandlung - PandaDoc zu ActiveCampaign",
+      "current": {
+        "nodeCount": 7,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "pandadoc_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "x2TwRO9kDncNz0YB",
+      "name": "🔍 NT · System · Error Monitor & Digest v1.0",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "LvXVkIhWZH0w0Y1x",
+      "name": "AI Email Agent — Decision Shadow v2",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "PE6E2YgtokQjP3XC",
+      "name": "Auto-Complete Previous Deal Tasks (AC)",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "DIodOuoB6JUu4m79",
+      "name": "Auto-Follow-Up bei Nicht-Erreicht (AC)",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "followup_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "3MIiPTmR7RMjLS7a",
+      "name": "Customs Daily Status Email",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "Q2qw3RVWGgBKHpfb",
+      "name": "Customs Weekly Consistency Email",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "E1Mi6EEB0c3sglJg",
+      "name": "GAds Upload Health Check v1.0",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "QadPKWZ2cmZDCk2W",
+      "name": "NEONTRIP Workflow Monitor v2.0",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "DomnXhPG8ambg9qb",
+      "name": "RH | Mahnwesen 2026 Neontrip",
+      "current": {
+        "nodeCount": 6,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "2FhaSbG9w8QeS70e",
+      "name": "AI Email Agent — Open Inbox Backfill v1",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "bAXM54PasUD8IFNx",
+      "name": "AI Email Agent — Review Feedback Matcher v3",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "email_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "M4uG1HAtN9Zggxww",
+      "name": "Error Notification → info@NeonTrip.de",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "SH5HK6TqLCyaitXu",
+      "name": "NEONTRIP Internal Alert Router v1 — SHADOW",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "xFQTm4E7qw38C9cF",
+      "name": "NEONTRIP Supplier Completed Offers Sync v0.1",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "supplier_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "WlSmT7zlLcR4TlUG",
+      "name": "NEONTRIP Supplier Shopify Tag Sync v0.1",
+      "current": {
+        "nodeCount": 5,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "rhdkU6uRLCn7GLFl",
+      "name": "Customs Error Notifier",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "customs_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "1zP17gxz5vPgke0U",
+      "name": "GitHub Claude Notifier",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "PllHsez3Tp1Q4MTN",
+      "name": "NEONTRIP Archive DHL Mail After Label Print v0.5",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "eSKKKiqDIzBpKRCN",
+      "name": "NEONTRIP Mockup Late-Backfill v1.0",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "design_generation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "FyZCGkPNoA6EQI3N",
+      "name": "RH | Qonto Sync → Supabase (Webhook)",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "finance_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "FdIQ7n3CTpWHGZRW",
+      "name": "RH | Shopify Tag setzen (Webhook)",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "shopify_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "jC4p5BhLzuPSygqz",
+      "name": "RIESENOBJEKTE | Angebotsmail via SMTP",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "quote_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "CeFRGEedO19V9rNR",
+      "name": "RIESENOBJEKTE Inflatable Video Intake v1.0",
+      "current": {
+        "nodeCount": 4,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "video_generation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "wfQbVpKGgmWhfx1R",
+      "name": "Backfill GAds Conversion: Angebot versendet",
+      "current": {
+        "nodeCount": 3,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "quote_operations",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "efV72NrTmKx89MSC",
+      "name": "Form Fail Report Receiver v1.0",
+      "current": {
+        "nodeCount": 3,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "general_automation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    },
+    {
+      "id": "R8dm9WmITF8OYwF4",
+      "name": "NEONTRIP Preview Video Proxy v1",
+      "current": {
+        "nodeCount": 3,
+        "triggerCount": 1,
+        "flags": []
+      },
+      "capability": "video_generation",
+      "classification": "canonical_keep",
+      "targetMode": "deterministic_loop_or_adapter",
+      "decision": "within_current_structural_boundary",
+      "priority": "normal"
+    }
+  ]
+}
