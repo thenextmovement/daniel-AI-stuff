@@ -202,6 +202,14 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Production cutover passed commit `a9739caab5a453d3402a3a216425119b990c3d98`, `codex-safe-push-main`, and `codex-predeploy ops`. The production migration then passed a fully rolled-back transaction covering parallel claim exclusion, transition replays, payment-reminder exclusion, confirmed completion, ambiguous delivery, stale-lease recovery, service-role-only execution, RLS, and zero synthetic residue.
 - Published workflow `whey5GnTeSjiuZxD`, active version `b04c66fc-fb9f-4e97-ae53-3a57d80f9b06`, matches the versioned graph and settings exactly after ignoring only provider-managed Outlook webhook IDs. Strict production validation reports 19 enabled nodes, one trigger, 22 valid connections, no invalid connection, and no error.
 
+### Preview-delivery decomposition
+
+- Production evidence shows the 124-node preview/video workflow loading 548 complete Trello cards every minute even when the canonical database queue is empty. A second 74-node legacy video workflow independently loads 349 cards every three minutes.
+- The exact active 124-node graph/version is backed up. Reachability analysis found 42 nodes that cannot be reached from its only schedule trigger, including the legacy direct customer-email and WhatsApp branch.
+- The first split candidates replace list polling with a six-node Trello-event intake and reduce the scheduled worker to its 79 reachable database-claim nodes. The event intake accepts only moves into the two approved preview lists or deliberate removal of a sent label, re-reads current card state, and enqueues one stable event-keyed database job.
+- Before any graph cutover, production queue RPC privileges were corrected at commit `031fe2b7d438d8434cbdce65c96167fb5cd0b272`: `anon` and `authenticated` can no longer enqueue, claim, or finish `SECURITY DEFINER` preview jobs; `service_role` remains allowed and subsequent production n8n runs stayed successful.
+- The 79-node worker is explicitly an interim first split, not the final target. Video preparation/generation, QC, offer delivery, and projection still require separate stage workers below the 30-node boundary.
+
 ## Defects found so far
 
 1. Open-inbox and email-agent claims could race on alternate message identities.
@@ -243,6 +251,11 @@ Keep the previous workflow active version and full JSON backup until the replace
 37. The legacy business-hours node contains hardcoded address-based bypasses, including a personal mailbox, so selected records could run outside the published schedule instead of following a policy-controlled test mode.
 38. The legacy claim is a retried REST `PATCH` with `continueRegularOutput`; an error-shaped response can continue into normalization rather than producing an explicit durable claim failure.
 39. The n8n create interface silently omitted the candidate's `callerPolicy` and `availableInMCP: false` settings. The inactive graph comparison caught the drift; a full settings update restored the exact artifact before publication.
+40. All preview-delivery queue RPCs were `SECURITY DEFINER` yet executable by `anon` and `authenticated`; callers could bypass table RLS to enqueue, lease, or finish jobs. Production privileges now allow only `service_role`.
+41. The 124-node preview workflow downloads 548 full Trello cards every minute and normally exits after seven nodes with an empty queue, retaining about 2.7 MB of card data per no-op execution.
+42. Forty-two of its 124 nodes are unreachable from the only trigger, including an entire legacy direct email/WhatsApp delivery branch and a disconnected PandaDoc resolver branch.
+43. A second active 74-node video workflow scans another 349-card Trello list every three minutes and normally exits after three nodes, duplicating the same polling architecture with volatile static-data leases.
+44. `finish_preview_delivery_job` accepts only a job ID and requested state; it has no claim token or worker ownership check, so a stale execution can finish a later lease. A token-bound v2 state transition is required before the final stage split.
 
 ## Validation ledger
 
@@ -268,5 +281,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Follow-up behavior tests cover recipient/link validation, modern-offer closed/ambiguous state, PandaDoc terminal state, reply evidence, lookup failure, HTML/name injection, deterministic copy, one-attempt send routing, and durable completion/unknown branches.
 - Follow-up PostgreSQL 17 tests cover real parallel claim (`process`/`stop` with one attempt/event), payment-reminder exclusion, completion replay, next-step idempotency, preflight block, ambiguous send, stale lease, service-role-only RPCs, rollback revoke, and reapply.
 - Follow-up production transaction smoke passed all claim/replay/failure/RLS assertions and rolled back with zero queue, attempt, or event residue. The published production graph is exact and strict-valid at 19 nodes, 1 trigger, 22 valid connections, and 0 errors.
+- Preview split behavior tests pass event filtering, stable event idempotency, current-list/sent-label revalidation, request identity extraction, durable-enqueue assertions, graph reachability, removal of direct customer delivery nodes, and JavaScript compilation. The consolidated target suite now covers 12 workflows; the 79-node first-split worker is tested separately until its stage decomposition is complete.
+- Production preview RPC privilege smoke passed nine assertions: anonymous/authenticated enqueue, claim, and finish are blocked while all three service-role paths remain executable. Five subsequent scheduled n8n executions completed successfully.
 - Dependency audit: 0 vulnerabilities after the locked transitive update.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.

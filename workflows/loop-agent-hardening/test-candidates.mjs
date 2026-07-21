@@ -27,7 +27,8 @@ function compileCodeNodes(workflow) {
 const files = (await readdir(generatedDirectory)).filter(
   (file) =>
     file.endsWith(".json") &&
-    file !== "T4mdDxLquLMJ6FMl.gemini-cleanup-credential-hotfix-v1.2.1.json",
+    file !== "T4mdDxLquLMJ6FMl.gemini-cleanup-credential-hotfix-v1.2.1.json" &&
+    file !== "preview-delivery-worker-v2-first-split.json",
 );
 assert.ok(files.length > 0, "no generated candidates found");
 

@@ -1,0 +1,204 @@
+{
+  "name": "NEONTRIP Preview Delivery Intake v1 — Trello Event to DB",
+  "active": false,
+  "nodes": [
+    {
+      "id": "preview-event-trigger",
+      "name": "Trello Preview Board Events",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "id": "63d10c34105771f01ccf4296"
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "normalize-preview-event",
+      "name": "Normalize Relevant Preview Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const action = $json.action || {};\nconst data = action.data || {};\nconst card = data.card || {};\nconst TARGET_LISTS = new Set([\n  '6a18389f5e45294188451924',\n  '69ea22fe1431c2e7d7e7b3c4',\n]);\nconst SENT_LABELS = new Set([\n  '69ea8cb44dafe69b2a31350c',\n  '63d13d82858ce1c1b71045c0',\n]);\nconst actionId = String(action.id || '').trim();\nconst cardId = String(card.id || '').trim();\nconst actionType = String(action.type || '').trim();\nconst listAfterId = String(data.listAfter?.id || '').trim();\nconst listBeforeId = String(data.listBefore?.id || '').trim();\nconst labelId = String(data.label?.id || '').trim();\nconst movedToSource = actionType === 'updateCard' && TARGET_LISTS.has(listAfterId) && listBeforeId !== listAfterId;\nconst sentLabelRemoved = actionType === 'removeLabelFromCard' && SENT_LABELS.has(labelId);\nif (!movedToSource && !sentLabelRemoved) return [];\nif (!/^[0-9a-f]{24}$/i.test(actionId) || !/^[0-9a-f]{24}$/i.test(cardId)) {\n  throw new Error('trello_preview_event_identity_invalid');\n}\nreturn [{ json: {\n  trello_action_id: actionId,\n  trello_card_id: cardId,\n  event_kind: movedToSource ? 'moved_to_preview_source' : 'sent_label_removed_for_resend',\n  expected_source_list_id: movedToSource ? listAfterId : null,\n  removed_label_id: sentLabelRemoved ? labelId : null,\n  event_at: action.date || new Date().toISOString(),\n} }];"
+      }
+    },
+    {
+      "id": "get-current-preview-card",
+      "name": "Get Current Preview Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "url": "=https://api.trello.com/1/cards/{{ $json.trello_card_id }}?fields=id,name,desc,idLabels,shortUrl,url,pos,dateLastActivity,idList",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "build-preview-queue-event",
+      "name": "Build Preview Queue Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const event = $('Normalize Relevant Preview Event').item.json;\nconst card = $json || {};\nconst SOURCE_LISTS = new Set([\n  '6a18389f5e45294188451924',\n  '69ea22fe1431c2e7d7e7b3c4',\n]);\nconst SENT_LABELS = new Set([\n  '69ea8cb44dafe69b2a31350c',\n  '63d13d82858ce1c1b71045c0',\n]);\nconst cardId = String(card.id || '').trim();\nconst sourceListId = String(card.idList || '').trim();\nconst labels = Array.isArray(card.idLabels) ? card.idLabels.map(String) : [];\nif (cardId !== event.trello_card_id) throw new Error('trello_preview_card_identity_mismatch');\nif (!SOURCE_LISTS.has(sourceListId)) return [];\nif (labels.some((id) => SENT_LABELS.has(id))) return [];\nconst desc = String(card.desc || '');\nconst match = desc.match(/(?:request[_ -]?id|nerdyforms?[_ -]?id|anfrage[_ -]?id)\\s*[:#-]?\\s*([a-zA-Z0-9_-]+)/i);\nconst requestId = match ? String(match[1]).trim() : '';\nconst cycleKey = 'trello_event_' + event.trello_action_id;\nconst job = {\n  trello_card_id: cardId,\n  trello_card_url: String(card.shortUrl || card.url || ('https://trello.com/c/' + cardId)),\n  request_id: requestId || null,\n  card_name: String(card.name || '').slice(0, 500),\n  source_list_id: sourceListId,\n  priority: event.event_kind === 'sent_label_removed_for_resend' ? 120 : 100,\n  max_attempts: 3,\n  delivery_cycle_key: cycleKey,\n  idempotency_key: 'preview-delivery:' + (requestId || 'unknown') + ':' + cardId + ':' + cycleKey + ':v3',\n  metadata: {\n    source: 'trello_preview_event_intake_v1',\n    trello_action_id: event.trello_action_id,\n    trello_event_kind: event.event_kind,\n    trello_event_at: event.event_at,\n    trello_pos: card.pos || null,\n    trello_date_last_activity: card.dateLastActivity || null,\n    request_id_source: requestId ? 'trello_description' : 'worker_card_detail_fallback',\n  },\n};\nreturn [{ json: { event, job } }];"
+      }
+    },
+    {
+      "id": "enqueue-preview-event",
+      "name": "Enqueue Preview Delivery Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/enqueue_preview_delivery_jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_jobs: [$json.job], p_video_sent_card_ids: [] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "assert-preview-enqueue",
+      "name": "Assert Durable Preview Enqueue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const result = $json || {};\nconst submitted = $('Build Preview Queue Event').item.json;\nconst accepted = Number(result.touched || 0) === 1 ||\n  Number(result.terminal_conflict_count || 0) === 1 ||\n  Number(result.skipped_active || 0) === 1;\nif (result.ok !== true || Number(result.job_count || 0) !== 1 || !accepted) {\n  throw new Error('preview_delivery_event_enqueue_not_durable');\n}\nreturn [{ json: {\n  ok: true,\n  trello_action_id: submitted.event.trello_action_id,\n  trello_card_id: submitted.job.trello_card_id,\n  idempotency_key: submitted.job.idempotency_key,\n  durable_outcome: Number(result.touched || 0) === 1 ? 'queued_or_updated' : 'already_terminal_or_active',\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "Trello Preview Board Events": {
+      "main": [
+        [
+          {
+            "node": "Normalize Relevant Preview Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Relevant Preview Event": {
+      "main": [
+        [
+          {
+            "node": "Get Current Preview Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Preview Card": {
+      "main": [
+        [
+          {
+            "node": "Build Preview Queue Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Preview Queue Event": {
+      "main": [
+        [
+          {
+            "node": "Enqueue Preview Delivery Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enqueue Preview Delivery Event": {
+      "main": [
+        [
+          {
+            "node": "Assert Durable Preview Enqueue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  }
+}
