@@ -112,6 +112,24 @@ test("closed-loop workflow attempts are event driven, private, serialized and re
   assert.match(rollback, /delete from public\.company_brain_action_policies where action_key = 'retry_media_pipeline'/i);
 });
 
+test("preview delivery queue is registered before Company Brain incidents reference it", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20260721144500_register_preview_delivery_queue_source.sql",
+    "utf8",
+  );
+  const rollback = readFileSync(
+    "supabase/rollbacks/20260721144500_register_preview_delivery_queue_source_rollback.sql",
+    "utf8",
+  );
+
+  assert.match(migration, /insert into public\.company_source_registry/i);
+  assert.match(migration, /'preview_delivery_queue'/i);
+  assert.match(migration, /'automation'[\s\S]*'operational'[\s\S]*'critical'/i);
+  assert.match(migration, /on conflict \(source_key\) do update/i);
+  assert.match(rollback, /rollback_retained_for_referential_integrity/i);
+  assert.match(rollback, /delete from public\.company_source_registry/i);
+});
+
 test("workflow audit status contract accepts lifecycle events and has a reversible rollback", () => {
   const migration = readFileSync(
     "supabase/migrations/20260720192300_workflow_audit_status_contract.sql",
