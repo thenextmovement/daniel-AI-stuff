@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
 export const DEFAULT_BROWSER_TOKEN_SERVICE = "NEONTRIP EasyDPD Browser Worker API Token";
-export const DEFAULT_CF_SECRET_SERVICE = "NEONTRIP Cloudflare Access Client Secret";
+export const DEFAULT_CF_SECRET_SERVICE = "NEONTRIP_ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET";
 
 export class BrowserWorkerError extends Error {
   constructor(message, exitCode = 1, { postDispatch = false } = {}) {

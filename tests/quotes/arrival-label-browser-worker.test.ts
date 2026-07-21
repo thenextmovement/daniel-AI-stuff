@@ -80,6 +80,8 @@ test("LaunchAgent has no plaintext token and defaults to a harmless dry-run inst
   assert.match(plist, /StartInterval/);
   assert.match(readme, /install --mode dry_run/);
   assert.match(readme, /niemals automatisch/i);
+  const library = await readFile("scripts/easydpd_browser_worker_lib.mjs", "utf8");
+  assert.match(library, /NEONTRIP_ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET/);
 });
 
 test("Coolify sync supports a dedicated browser-worker secret and an exact delete rollback", async () => {
