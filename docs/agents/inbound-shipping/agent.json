@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0.0",
+  "id": "inbound-shipping",
+  "parent_agent_id": "logistics-fulfillment-agent",
+  "name": "NEONTRIP Inbound Shipping Diagnostic Agent",
+  "topic": "Inbound Shipping, 17TRACK, quota control and exception handling",
+  "repository_path": ".",
+  "schedule_supported": false,
+  "execution_model": "diagnostic_and_exception_only",
+  "scope": [
+    "src/app/ops/customer-records/inbound-shipping",
+    "src/app/api/ops/customer-records/inbound-shipping/route.ts",
+    "src/app/api/internal/inbound-shipping/17track-register/route.ts",
+    "src/app/api/internal/inbound-shipping/17track-sync/route.ts",
+    "src/app/api/internal/inbound-shipping/17track-webhook/route.ts",
+    "src/app/api/internal/shipping/17track-register/route.ts",
+    "src/app/api/internal/shipping/17track-sync/route.ts",
+    "src/lib/ops/inbound-shipping.ts",
+    "src/lib/ops/seventeen-track.ts",
+    "tests/quotes/inbound-shipping-route.test.ts",
+    "tests/quotes/seventeen-track.test.ts",
+    "supabase/migrations/20260605201640_create_inbound_shipping_ops.sql",
+    "supabase/migrations/20260606173000_add_inbound_17track_registration.sql",
+    "supabase/migrations/20260607173607_add_inbound_17track_tracking_sync.sql",
+    "supabase/migrations/20260623124500_add_shipping_17track_outbound.sql",
+    "supabase/migrations/20260702162807_add_17track_daily_registration_cap.sql",
+    "supabase/rollbacks/20260702162807_add_17track_daily_registration_cap_rollback.sql"
+  ],
+  "status": "ready_for_handoff_with_known_issues",
+  "evidence_status": "verified_against_git_code_tests_ci_and_read_only_n8n",
+  "capabilities": [
+    "diagnose_inbound_shipping_state_without_mutation",
+    "inspect_17track_registration_and_sync_architecture",
+    "review_quota_counts_and_explain_counting_limits",
+    "classify_registration_tracking_and_incident_failures",
+    "review_inbound_board_and_exception_actions",
+    "verify_published_n8n_schedule_and_structure_read_only",
+    "run_focused_local_tests",
+    "prepare_reversible_change_plans_in_a_dedicated_worktree"
+  ],
+  "forbidden_actions": [
+    "run_as_a_scheduler_or_recurring_registration_loop",
+    "trigger_or_activate_any_n8n_workflow",
+    "register_or_sync_shipments_with_17track",
+    "purchase_17track_quota_or_any_paid_service",
+    "read_or_document_secret_values",
+    "send_customer_or_internal_communication",
+    "mutate_incident_shipment_registration_or_tracking_state",
+    "treat_trello_as_source_of_truth",
+    "modify_product_logic_as_part_of_diagnosis",
+    "modify_production_without_backup_diff_rollback_and_explicit_approval",
+    "work_directly_in_the_legacy_ops_main_checkout",
+    "push_to_main_without_explicit_approval",
+    "deploy_without_codex_predeploy_ops",
+    "deploy_a_commit_other_than_the_exact_preflight_commit"
+  ],
+  "source_of_truth": {
+    "operational_shipments": "Ops Supabase inbound_shipments and shipping_shipments",
+    "provider_registrations": "Ops Supabase inbound_tracking_registrations and shipping_tracking_registrations",
+    "tracking_events": "Ops Supabase event tables with stable event keys",
+    "exceptions": "Ops Supabase inbound_incidents and shipping_incidents",
+    "workflow_transport": "n8n deterministic schedule and transport only",
+    "current_architecture_exception": "Inbound candidate discovery still originates from Trello and is marked for database-loop migration",
+    "trello_target_role": "projection_only"
+  },
+  "deterministic_loops": [
+    {
+      "workflow_id": "rYmSl4D0nNmEEU0M",
+      "name": "NEONTRIP Inbound Shipping Agent v0.1",
+      "responsibility": "inbound discovery notifications 17track registration and sync",
+      "schedule": "hourly trigger gated to 09:00 11:00 and 13:00 Europe/Berlin",
+      "agent_owned": false
+    },
+    {
+      "workflow_id": "QtG2XHw7DsvOEPtQ",
+      "name": "NEONTRIP Shipping Agent v0.1",
+      "responsibility": "outbound shipping projection notifications 17track registration and sync",
+      "schedule": "hourly trigger gated to 09:00 11:00 and 13:00 Europe/Berlin",
+      "agent_owned": false
+    }
+  ],
+  "entrypoints": {
+    "ui": "src/app/ops/customer-records/inbound-shipping/page-client.tsx",
+    "api": "src/app/api/ops/customer-records/inbound-shipping/route.ts",
+    "domain": "src/lib/ops/inbound-shipping.ts",
+    "provider_adapter": "src/lib/ops/seventeen-track.ts",
+    "inbound_register": "src/app/api/internal/inbound-shipping/17track-register/route.ts",
+    "inbound_sync": "src/app/api/internal/inbound-shipping/17track-sync/route.ts",
+    "inbound_webhook": "src/app/api/internal/inbound-shipping/17track-webhook/route.ts",
+    "outbound_register": "src/app/api/internal/shipping/17track-register/route.ts",
+    "outbound_sync": "src/app/api/internal/shipping/17track-sync/route.ts",
+    "quota_migration": "supabase/migrations/20260702162807_add_17track_daily_registration_cap.sql"
+  },
+  "documentation": {
+    "handoff": "docs/agents/inbound-shipping/HANDOFF.md",
+    "system_map": "docs/agents/inbound-shipping/SYSTEM-MAP.md",
+    "decisions": "docs/agents/inbound-shipping/DECISIONS.md",
+    "operations": "docs/agents/inbound-shipping/OPERATIONS.md",
+    "known_issues": "docs/agents/inbound-shipping/KNOWN-ISSUES.md",
+    "verification": "docs/agents/inbound-shipping/VERIFICATION.md"
+  },
+  "document_paths": [
+    "docs/agents/inbound-shipping/HANDOFF.md",
+    "docs/agents/inbound-shipping/SYSTEM-MAP.md",
+    "docs/agents/inbound-shipping/DECISIONS.md",
+    "docs/agents/inbound-shipping/OPERATIONS.md",
+    "docs/agents/inbound-shipping/KNOWN-ISSUES.md",
+    "docs/agents/inbound-shipping/VERIFICATION.md",
+    "docs/agents/inbound-shipping/agent.json"
+  ],
+  "verification_commands": [
+    "npm ci --ignore-scripts",
+    "node --import tsx --test tests/quotes/seventeen-track.test.ts tests/quotes/inbound-shipping-route.test.ts",
+    "npm run test:quotes",
+    "npx tsc --noEmit",
+    "npm run build"
+  ],
+  "verification_notes": [
+    "Focused local suite passed 17 of 17 tests on the verified commit.",
+    "A fresh GitHub Actions run for the direct parent passed the full quote suite typecheck and production build; the verified commit changed only unrelated ActiveCampaign artifacts and passed the focused suite.",
+    "Both published n8n workflows were read-only verified active with the 09 11 13 Europe Berlin gate and zero strict validation errors.",
+    "The nominal daily cap counts rows touched today and does not guarantee a maximum of 100 provider registration calls.",
+    "No production mutation workflow trigger customer communication paid action or secret read occurred during handoff creation."
+  ],
+  "last_verified_commit": "c76e7e526bf0933b47b1b68936601137f7721309",
+  "last_verified_at": "2026-07-21T20:28:36+02:00",
+  "provenance": {
+    "source_host_id": "slingshot:env_e_6a2857bf92f0832c93ad0366dcc4c6ed",
+    "source_thread_id": "019f80f5-59a0-7ed0-8da5-35c5f33caf2b",
+    "method": "Relevant thread evidence separated from current repository Git test CI and read-only n8n verification",
+    "contains_secrets": false
+  }
+}
