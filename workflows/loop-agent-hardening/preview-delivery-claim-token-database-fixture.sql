@@ -39,6 +39,17 @@ alter table public.preview_delivery_jobs enable row level security;
 grant select, insert, update, delete, truncate, references, trigger
   on table public.preview_delivery_jobs to anon, authenticated, service_role;
 
+create function public.enqueue_preview_delivery_jobs(
+  p_card jsonb
+) returns jsonb language sql security definer set search_path = public
+as $$ select jsonb_build_object('legacy_fixture', true, 'card', p_card) $$;
+
+create function public.enqueue_preview_delivery_jobs(
+  p_card jsonb,
+  p_event jsonb
+) returns jsonb language sql security definer set search_path = public
+as $$ select jsonb_build_object('legacy_fixture', true, 'card', p_card, 'event', p_event) $$;
+
 create function public.claim_next_preview_delivery_job(
   p_worker_id text,
   p_lease_seconds integer default 1200,
@@ -59,4 +70,8 @@ as $$ select jsonb_build_object('legacy_fixture', true) $$;
 grant execute on function public.claim_next_preview_delivery_job(text, integer, integer)
   to service_role;
 grant execute on function public.finish_preview_delivery_job(uuid, text, text, text, text, jsonb)
+  to service_role;
+grant execute on function public.enqueue_preview_delivery_jobs(jsonb)
+  to service_role;
+grant execute on function public.enqueue_preview_delivery_jobs(jsonb, jsonb)
   to service_role;
