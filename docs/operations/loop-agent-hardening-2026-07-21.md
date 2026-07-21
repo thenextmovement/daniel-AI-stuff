@@ -150,6 +150,20 @@ Keep the previous workflow active version and full JSON backup until the replace
 - The five true agent workflows have individual decisions: replace win-back and design reminder with draft loops; split the PandaDoc event receiver into bounded loops; deactivate the unused Telegram GitHub controller and Fabienne assistant until owner allowlists and approval/tool wrappers exist.
 - The manifest contains no target architecture that relies on an autonomous agent. AI remains only as a bounded proposal or enrichment step where deterministic logic is insufficient.
 
+### Agent cutover evidence
+
+- Production migration `customer_communication_draft_jobs` was applied after commit and predeploy gates.
+- A transactional production smoke test proved first claim, duplicate suppression, completion, ambiguous-result quarantine, RLS, service-role-only execution, security-invoker functions, and complete rollback of synthetic rows.
+- Published design workflow version `97fce4ef-81ae-41a2-b0f5-b6d963f51e15` exactly matches the 12-node candidate graph and passes strict validation with zero errors.
+- Published win-back workflow version `be9da2da-adce-4b4c-83a9-a95c1a145a34` exactly matches the 19-node candidate graph and passes strict validation with zero errors.
+- The unused Telegram GitHub controller and Fabienne tool agent were renamed with their explicit reactivation gates and are inactive.
+
+### Immediate legacy hotfix candidates
+
+- Added a strict-valid Gemini v1.2.1 hotfix that restores the missing credential binding on the terminal processing-label cleanup and disables retries on that cleanup write. This is a containment change; the 85-node workflow still requires the planned split.
+- Added a strict-valid Supplier Shopify Tag Sync v0.2 candidate that removes three-attempt POST retry behavior, restores TLS certificate verification, and uses one bounded 60-second attempt.
+- Captured versioned backups for the active-but-labelled-inactive payment-reminder webhook, the unused Gemini v1.1 duplicate, and the active Customs cleanup workflow before any state/name decision.
+
 ## Defects found so far
 
 1. Open-inbox and email-agent claims could race on alternate message identities.
@@ -170,6 +184,10 @@ Keep the previous workflow active version and full JSON backup until the replace
 16. The Fabienne Telegram assistant had no owner/chat allowlist while exposing Outlook send, calendar create, Shopify, ActiveCampaign, mail, and calendar tools; the current published version had no execution evidence.
 17. The first generated win-back validator contained incorrectly escaped regular-expression sequences inside a template literal; the code-node compilation test caught the defect before publication.
 18. The first design-draft cutover plan would have considered the full historical source folder because the new database ledger starts empty; a 48-hour freshness ceiling now blocks that backfill.
+19. The workflow named `Supplier Payment Reminder ... (INACTIVE DRAFT)` was actually active and exposed an unauthenticated webhook that accepted caller-controlled recipients and links, then retried Outlook sending up to three times. It had no execution history and is scheduled for immediate deactivation.
+20. Gemini Mockup v1.2 completed a long series of real card/image operations but failed on its terminal processing-label cleanup because that node alone had no credential binding.
+21. Supplier Shopify Tag Sync disabled TLS certificate verification and repeated an ambiguous POST up to three times; one incident lasted about 100 seconds after repeated 30-second timeouts.
+22. `Customs CI Cleanup (LÖSCHEN)` is not an obsolete workflow: it has current successful executions and performs database deletions plus invoice generation from a Trello event. It must be refactored, not blindly deactivated.
 
 ## Validation ledger
 
@@ -182,4 +200,6 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Win-back draft-loop strict validation: 19 nodes, 1 trigger, 22 valid connections, 0 errors.
 - Customer draft database tests: first claim, replay, completion, ambiguous outcome, expired lease, role isolation, real parallel claim, rollback, and reapply passed on PostgreSQL 17.
 - Outlook draft create/delete diagnostic completed without a node error and the temporary workflow was deleted.
+- Gemini cleanup hotfix candidate: 85 nodes, 1 trigger, 101 valid connections, 0 errors; retained only as immediate containment pending split.
+- Supplier tag-sync hotfix candidate: 4 enabled nodes, 1 trigger, 3 valid connections, 0 errors.
 - Secret-pattern scan: no Telegram bot URL, OpenAI key pattern, or JWT pattern remains in the scoped artifacts.

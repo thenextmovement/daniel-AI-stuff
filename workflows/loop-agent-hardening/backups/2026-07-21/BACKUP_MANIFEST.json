@@ -132,6 +132,30 @@
       "activeVersionId": "560bf069-451f-455a-819a-c18eb6236115",
       "publishedActiveSha256": "17be0281861a36924261bae599317eb0aec8f1f1f3b478d77eab223273d97a28",
       "capturedAt": "2026-07-21T20:08:00+02:00"
+    },
+    {
+      "key": "supplier_payment_reminder_unsafe_active_draft",
+      "id": "h2Eye2kArl2CBx3k",
+      "name": "NEONTRIP Supplier Payment Reminder Email v0.1 (INACTIVE DRAFT)",
+      "activeVersionId": "82289523-9a23-4afa-860d-b75f9b2cb078",
+      "publishedActiveSha256": "e681e46500b1ebaf066ca6f18d544b85b91a682c3582505e04068283b7ffac79",
+      "capturedAt": "2026-07-21T20:11:59+02:00"
+    },
+    {
+      "key": "gemini_mockup_v11_legacy",
+      "id": "Rmv4Ht895SiIgUOC",
+      "name": "Gemini Mockup Generator v1.1",
+      "activeVersionId": "e4cba1cf-9988-48d7-a26f-7fff19c13fc5",
+      "publishedActiveSha256": "d3917e09875e69ffeba35b7cbac675ec3eb28a57b904472b5f9d769faa35da2c",
+      "capturedAt": "2026-07-21T20:11:59+02:00"
+    },
+    {
+      "key": "customs_ci_cleanup_pre_rename",
+      "id": "FgkQvBFkg9qSqfNC",
+      "name": "Customs CI Cleanup (LÖSCHEN)",
+      "activeVersionId": "c794940a-afec-4086-87cc-774496e6ca07",
+      "publishedActiveSha256": "c78f54b1305ce3de57a3fdc3ef3d71231cb6ccd15460543637143cca015deffe",
+      "capturedAt": "2026-07-21T20:11:59+02:00"
     }
   ]
 }

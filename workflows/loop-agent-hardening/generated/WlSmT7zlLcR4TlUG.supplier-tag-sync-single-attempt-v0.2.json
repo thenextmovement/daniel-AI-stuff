@@ -1,0 +1,176 @@
+{
+  "id": "WlSmT7zlLcR4TlUG",
+  "name": "NEONTRIP Supplier Shopify Tag Sync v0.2 — single attempt",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "id": "workflow-notes",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -220
+      ],
+      "parameters": {
+        "content": "Inactive draft. Regularly asks the Ops app to reconcile active Sales-Vergabe rows against Shopify Admin tags, especially Quentin (noch bezahlen). Supabase/Ops remains source of truth; Shopify is the external signal; Trello is not read. The Ops endpoint is bounded, idempotent, and authenticated via an internal bearer token from n8n environment variables. No customer communication is sent.",
+        "height": 300,
+        "width": 560
+      }
+    },
+    {
+      "id": "schedule-5-min",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -520,
+        160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -260,
+        160
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ops-api-url",
+              "name": "opsApiUrl",
+              "value": "={{ ($env.NEONTRIP_OPS_BASE_URL || 'https://coolify-proxy').replace(/\\/$/, '') + '/api/ops/supplier-sales' }}",
+              "type": "string"
+            },
+            {
+              "id": "agent-token",
+              "name": "agentToken",
+              "value": "={{ $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.SUPPLIER_SALES_AGENT_API_TOKEN || $env.NEONTRIP_OFFERS_INTERNAL_API_KEY || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "limit",
+              "name": "limit",
+              "value": 50,
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config-preflight",
+      "name": "Config Preflight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const cfg = $input.first()?.json || {};\nconst errors = [];\n\nfunction cleanUrl(value) {\n  return String(value || '').trim().replace(/\\/+$/, '');\n}\n\nconst opsApiUrl = cleanUrl(cfg.opsApiUrl);\nconst agentToken = String(cfg.agentToken || '').trim();\nconst limit = Math.min(Math.max(Number(cfg.limit || 50), 1), 100);\n\nif (!/^https:\\/\\//i.test(opsApiUrl)) errors.push('NEONTRIP_OPS_BASE_URL/opsApiUrl must resolve to an https URL');\nif (!agentToken) errors.push('OPS_INTERNAL_API_KEY/QUOTE_INTERNAL_API_TOKEN/SUPPLIER_SALES_AGENT_API_TOKEN/NEONTRIP_OFFERS_INTERNAL_API_KEY missing');\nif (!Number.isFinite(limit) || limit < 1 || limit > 100) errors.push('limit must be 1..100');\n\nif (errors.length) {\n  throw new Error('Supplier Shopify Tag Sync config failed: ' + errors.join('; '));\n}\n\nreturn [{\n  json: {\n    opsApiUrl,\n    limit,\n    authorizationHeader: 'Bearer ' + agentToken,\n    correlationId: 'supplier-shopify-tag-sync:' + new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "ops-sync-shopify-tags",
+      "name": "Ops: Sync Shopify Supplier Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        160
+      ],
+      "retryOnFail": false,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsApiUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "ops.neontrip.de"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorizationHeader }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-NEONTRIP-Correlation-ID",
+              "value": "={{ $json.correlationId }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { action: 'sync_shopify_supplier_tags', limit: $json.limit, operatorName: 'n8n Supplier Shopify Tag Sync' } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 60000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Config Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Preflight": {
+      "main": [
+        [
+          {
+            "node": "Ops: Sync Shopify Supplier Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

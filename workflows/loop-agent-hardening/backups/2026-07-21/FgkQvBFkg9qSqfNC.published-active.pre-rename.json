@@ -1,0 +1,1085 @@
+{
+  "id": "FgkQvBFkg9qSqfNC",
+  "name": "Customs CI Cleanup (LÖSCHEN)",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "rhdkU6uRLCn7GLFl"
+  },
+  "createdAt": "2026-05-14T10:59:26.410Z",
+  "updatedAt": "2026-05-26T13:51:03.251Z",
+  "activeVersionId": "c794940a-afec-4086-87cc-774496e6ca07",
+  "versionCreatedAt": "2026-05-26T13:51:03.254Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "trello_trigger",
+      "name": "TrelloTrigger",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        304
+      ],
+      "parameters": {
+        "id": "62bae9b97705e7419ed64593"
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "webhookId": "060dae54-113d-44bb-af8d-2c28ade15c1a"
+    },
+    {
+      "id": "pre_filter",
+      "name": "Pre-Filter: Move to Problem Resolved",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ],
+      "parameters": {
+        "jsCode": "const event = $input.first().json;\nconst action = event.action || event;\nif (!action || action.type !== 'updateCard') return [];\nconst data = action.data || {};\nconst card = data.card || {};\nconst list = data.list || {};\nconst listAfter = data.listAfter || {};\nconst old = data.old || {};\nconst listBefore = data.listBefore || {};\nconst currentListId = list.id || listAfter.id;\nconst oldListId = old.idList || listBefore.id;\nconst TARGET_LIST = '646b8c9613dc4e7000f6657e';\nif (currentListId !== TARGET_LIST) return [];\nif (!oldListId || oldListId === TARGET_LIST) return [];\nreturn [{ json: { cardId: card.id, cardShortId: card.idShort, cardShortLink: card.shortLink, movedFromListId: oldListId } }];"
+      }
+    },
+    {
+      "id": "fetch_card",
+      "name": "Fetch Card with Custom Fields",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        688,
+        304
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $('Pre-Filter: Move to Problem Resolved').first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "customFieldItems",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,idShort,name,shortLink,shortUrl,url,desc,idList"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "parse_check",
+      "name": "Parse + Check LÖSCHEN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        304
+      ],
+      "parameters": {
+        "jsCode": "const card = $input.first().json;\nconst customFieldItems = card.customFieldItems || [];\nconst labels = card.labels || [];\nconst FIELD_IDS = {\n  manualDeclValue: '69ff02de827000773aed11bc',\n  nerdyFormsId: '67a1ffdba5fb813971f92d9c',\n  finalProductionPrice: '69ef59d6cea033d41d2c478b',\n  finalShippingPrice: '69ef59edc28eb4c6deb1f61b',\n  trackingNumber: '69ef5a77cea033d41d2df139',\n  art: '69d644102d51b2950054c5ac',\n};\nconst ART_OPTIONS = { '69f9d4426d20c460ecd8ab16':'LNF', '69d644102d51b2950054c5ae':'3DF', '69d644102d51b2950054c5ad':'3DB', '69d644102d51b2950054c5af':'3DN', '69f9d446e239eb69e1ed2d19':'LB' };\nconst LABEL_CI_DELETED = '6a0adeac4b31249c6946a529';\nconst getFI = id => customFieldItems.find(c => c.idCustomField === id);\nconst getTN = it => !it || !it.value ? null : (it.value.text !== undefined ? it.value.text : null);\nconst getDD = (it, m, fb) => !it || !it.idValue ? fb : (m[it.idValue] || fb);\nconst getNum = it => { if (!it || !it.value || it.value.number === undefined) return null; const n = parseFloat(it.value.number); return Number.isFinite(n) ? n : null; };\nconst manualDeclRaw = getTN(getFI(FIELD_IDS.manualDeclValue));\nconst manualDeclValueRawStr = manualDeclRaw === null || manualDeclRaw === undefined ? '' : String(manualDeclRaw);\nconst manualDeclValueMagic = manualDeclValueRawStr === 'LÖSCHEN' ? 'LÖSCHEN' : manualDeclValueRawStr === 'RECHNUNG' ? 'RECHNUNG' : null;\nconst requestId = String(getTN(getFI(FIELD_IDS.nerdyFormsId)) || '').trim();\nconst alreadyCleaned = labels.some(l => l && l.id === LABEL_CI_DELETED);\nconst finalProductionPriceUsd = getNum(getFI(FIELD_IDS.finalProductionPrice));\nconst finalShippingPriceUsd = getNum(getFI(FIELD_IDS.finalShippingPrice));\nconst trackingRaw = getTN(getFI(FIELD_IDS.trackingNumber));\nconst trackingNumber = trackingRaw ? String(trackingRaw).trim() : '';\nconst productType = getDD(getFI(FIELD_IDS.art), ART_OPTIONS, 'LNF');\nreturn [{ json: { cardId: card.id, cardShortId: card.idShort, cardShortLink: card.shortLink, cardName: card.name, cardUrl: card.shortUrl || card.url, manualDeclValueRaw: manualDeclValueRawStr, manualDeclValueMagic, alreadyCleaned, requestId, finalProductionPriceUsd, finalShippingPriceUsd, trackingNumber, productType, timestamp: new Date().toISOString() } }];"
+      }
+    },
+    {
+      "id": "if_loeschen",
+      "name": "IF: Is LÖSCHEN?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1136,
+        304
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "is-loeschen",
+              "leftValue": "={{ $json.manualDeclValueMagic }}",
+              "rightValue": "LÖSCHEN",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "if_already_cleaned",
+      "name": "IF: Already Cleaned?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        304
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "is-already-cleaned",
+              "leftValue": "={{ $json.alreadyCleaned }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "sheet_delete",
+      "name": "Sheet: Delete Card Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1360,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxEhI1-KL88oHY6aBqnEd0AXUhvppZt7aaE84i_T7QK85aLCziv63M0K7hn_guxkqsZ/exec",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "kJ7vN3pQ9xR2mY8wL5cT4bF6sH1aD0gE"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ action: 'delete_card_data', card_short_id: String($('Parse + Check LÖSCHEN').first().json.cardShortId), request_id: $('Parse + Check LÖSCHEN').first().json.requestId, card_id: $('Parse + Check LÖSCHEN').first().json.cardId }) }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "sb_delete_ci_log",
+      "name": "Supabase: Delete ci_log",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        304
+      ],
+      "parameters": {
+        "useCustomSchema": true,
+        "schema": "customs_automation",
+        "operation": "delete",
+        "tableId": "ci_log",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "card_short_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Parse + Check LÖSCHEN').first().json.cardShortId }}"
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "ltVzJYHApbH4WUOE",
+          "name": "Supabase account | dronlinehandel"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "sb_delete_supplier",
+      "name": "Supabase: Delete supplier_invoice_log",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1808,
+        304
+      ],
+      "parameters": {
+        "useCustomSchema": true,
+        "schema": "customs_automation",
+        "operation": "delete",
+        "tableId": "supplier_invoice_log",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "card_short_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Parse + Check LÖSCHEN').first().json.cardShortId }}"
+            }
+          ]
+        }
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "ltVzJYHApbH4WUOE",
+          "name": "Supabase account | dronlinehandel"
+        }
+      }
+    },
+    {
+      "id": "trello_comment",
+      "name": "Trello Comment: Cleanup Done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2032,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=🗑 CI data deleted (Manual_Decl_Value=LÖSCHEN)\n\nSheet rows deleted: {{ $('Sheet: Delete Card Data').first().json.total_deleted }}\nSupabase ci_log + supplier_invoice_log purged for card {{ $('Parse + Check LÖSCHEN').first().json.cardShortId }}.\n\nPDF attachments on this card are preserved.\nMove back to Create Invoice (With Tracking) to regenerate."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "trigger_overview_rebuild",
+      "name": "Trigger Overview Rebuild",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2240,
+        304
+      ],
+      "executeOnce": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://fuajob.online/webhook/customs-rebuild-month-overview",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ month_yyyymm: new Date().toISOString().slice(0,7).replace(\"-\", \"\") }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "remove_label_ci_created",
+      "name": "Cleanup: Remove Label Commercial Invoice Created",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2448,
+        304
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/idLabels/69f10fd614d4465ac8ec65d3",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "remove_label_already_exists",
+      "name": "Cleanup: Remove Label CI Already Exists",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2656,
+        304
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/idLabels/69f2452dab67ffd1c194c8f8",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "remove_label_uebersprungen",
+      "name": "Cleanup: Remove Label übersprungen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2864,
+        304
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/idLabels/6a05a1fde4bcd75aa0ccca1e",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "remove_label_error",
+      "name": "Cleanup: Remove Label ERROR CHECK COMMENTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3072,
+        304
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/idLabels/69f11205941cd45936db77eb",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "add_label_ci_deleted",
+      "name": "Cleanup: Add Label CI DELETED FROM DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3280,
+        304
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "6a0adeac4b31249c6946a529"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "comment_already_cleaned",
+      "name": "Trello Comment: Already Cleaned",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1360,
+        600
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=ℹ️ Karte ist bereits gecleant (Label 'CI DELETED FROM DB' ist gesetzt). Keine erneute Datenbank-Aktion ausgeführt. Wenn du eine neue CI erzeugen willst, schiebe die Karte zurück nach 'Create Invoice (With Tracking)'."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "add_label_cleanup_error",
+      "name": "Cleanup: Add Label CLEANUP ERROR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1808,
+        480
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/idLabels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "6a0adeb1d9e440034bd423e0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "rechnung_if",
+      "name": "IF: Is RECHNUNG?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1136,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "is-rechnung",
+              "leftValue": "={{ $json.manualDeclValueMagic }}",
+              "rightValue": "RECHNUNG",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "rechnung_master_data",
+      "name": "RECHNUNG: Sheet Master Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1360,
+        640
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://script.google.com/macros/s/AKfycbxEhI1-KL88oHY6aBqnEd0AXUhvppZt7aaE84i_T7QK85aLCziv63M0K7hn_guxkqsZ/exec",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "kJ7vN3pQ9xR2mY8wL5cT4bF6sH1aD0gE"
+            },
+            {
+              "name": "action",
+              "value": "master_data"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "rechnung_frankfurter",
+      "name": "RECHNUNG: Frankfurter API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1584,
+        640
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.frankfurter.dev/v1/{{ $('RECHNUNG: Parse CI Invoice Info').first().json.ciDateStr }}?from=USD&to=EUR",
+        "options": {}
+      }
+    },
+    {
+      "id": "rechnung_build",
+      "name": "RECHNUNG: Build Invoice Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const parsed = $('RECHNUNG: Parse CI Invoice Info').first().json;\nconst masterData = $('RECHNUNG: Sheet Master Data').first().json;\nconst fx = $input.first().json;\nconst shipper = masterData.shipper || {};\nconst buyer = masterData.default_consignee || {};\nconst rate = Number(fx.rates && fx.rates.EUR) || 0;\nconst fxDate = fx.date || parsed.ciDateStr || new Date().toISOString().slice(0,10);\n// Match W4 format: convert date to ISO timestamp (midnight local = UTC-2h in CET)\nconst rateDateISO = fxDate ? new Date(fxDate + 'T00:00:00+01:00').toISOString() : fxDate;\n// Invoice date from CI date\nconst ciDateStr = parsed.ciDateStr || fxDate;\nconst ciDateParts = ciDateStr.split('-');\nconst invoiceDateObj = new Date(Number(ciDateParts[0]), Number(ciDateParts[1])-1, Number(ciDateParts[2]));\nconst invoiceDate = invoiceDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });\nconst invoiceNumber = parsed.supplierInvoiceNumber;\nconst productionUsd = Number(parsed.finalProductionPriceUsd) || 0;\nconst shippingUsd = Number(parsed.finalShippingPriceUsd) || 0;\nconst totalUsd = productionUsd + shippingUsd;\nconst totalEur = Math.round(totalUsd * rate * 100) / 100;\nconst productType = parsed.productType || 'LNF';\nconst itemCode = 'NT' + productType + '-' + parsed.cardShortId;\nconst tracking = parsed.trackingNumber || '';\nconst descByType = { LNF: 'Custom LED acrylic sign with LED strip mounted on acrylic backboard, for advertising use', '3DF': 'Custom 3D frontlit LED channel-letter sign with face illumination, for advertising use', '3DB': 'Custom 3D backlit LED sign for advertising use', LB: 'Custom LED lightbox sign with LED backlight and acrylic front, for advertising use', '3DN': 'Custom 3D non-lit sign for advertising use' };\nconst description = descByType[productType] || descByType.LNF;\nconst paymentInfo = 'Payment needs to be made once the goods are received and are of good quality\\nBeneficiary Name Dongguan Best Advertising Sign Co., Ltd.\\nBeneficiary account number 10151130658005\\nCountry/Region Singapore\\nSwift Code CHASSGSGXXX or CHASSGSG\\nChangi City, Changi Business Park Central 1, Singapore\\nBeneficiary Bank JPMorgan Chase Bank N.A., Singapore Branch\\nBeneficiary Bank Address 168 Robinson Road, Capital Tower 17-00, Singapore 068912\\nBank Code 7153\\nBranch Code 001';\nconst trackingSuffix = tracking ? '_' + tracking.replace(/\\s+/g,'') : '';\nconst filename = 'Supplier Invoice ' + invoiceNumber + trackingSuffix + '.pdf';\nconst invoice = {\n  invoice_number: invoiceNumber,\n  invoice_date: invoiceDate,\n  payment_terms: 'Net 30',\n  payment_information: paymentInfo,\n  fx: { rate, date: rateDateISO, source: 'Reference rate published by the European Central Bank' },\n  supplier: { company: shipper.company_name || 'Dongguan Best Advertising Sign Co., Ltd.', address_1: shipper.address_line_1 || '', address_2: shipper.address_line_2 || '', address_3: shipper.address_line_3 || '', country: shipper.country || 'CHINA', phone: shipper.phone || '' },\n  buyer: { company: buyer.company_name || 'DARA NOVA GmbH', address_1: buyer.address_line_1 || '', address_2: buyer.address_line_2 || '', country: buyer.country || 'GERMANY', eori: buyer.eori || '', vat: buyer.vat || '', phone: buyer.phone || '', email: buyer.email || '' },\n  rows: [{ invoice_number: invoiceNumber, trello_ref: String(parsed.cardShortId), tracking, item_code: itemCode, design_safe_label: 'Custom Sign', description, qty: 1, unit: 'piece', unit_price_usd: productionUsd, shipping_usd: shippingUsd, amount_usd: totalUsd, amount_eur: totalEur }]\n};\nreturn [{ json: { ...parsed, invoice, filename, invoiceNumber } }];"
+      }
+    },
+    {
+      "id": "rechnung_render",
+      "name": "RECHNUNG: Render Invoice HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const prepared = $input.first().json || {};\nconst invoice = prepared.invoice || prepared;\n\nconst esc = value => String(value === null || value === undefined ? '' : value)\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/'/g, '&#039;');\nconst clean = value => String(value === null || value === undefined ? '' : value).trim();\nconst usdMoney = value => {\n  const number = Number(value);\n  const safe = Number.isFinite(number) ? number : 0;\n  return safe.toLocaleString('en-US', {\n    minimumFractionDigits: 2,\n    maximumFractionDigits: 2,\n  }) + ' USD';\n};\nconst eurMoney = value => {\n  const number = Number(value);\n  const safe = Number.isFinite(number) ? number : 0;\n  return safe.toLocaleString('de-DE', {\n    minimumFractionDigits: 2,\n    maximumFractionDigits: 2,\n  }) + ' EUR';\n};\nconst qty = value => {\n  const number = Number(value);\n  if (!Number.isFinite(number)) return '0';\n  return number.toLocaleString('en-US', {\n    minimumFractionDigits: number % 1 === 0 ? 0 : 2,\n    maximumFractionDigits: 2,\n  });\n};\nconst roundMoney = value => {\n  const number = Number(value);\n  const safe = Number.isFinite(number) ? number : 0;\n  return Math.round(safe * 100) / 100;\n};\nconst lines = values => values\n  .map(clean)\n  .filter(Boolean)\n  .map(esc)\n  .join('<br>');\nconst sum = (rows, field) => rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);\n\nconst rows = Array.isArray(invoice.rows) ? invoice.rows.map(row => ({\n  ...row,\n  unit_price_usd: Number(row.unit_price_usd) || 0,\n  shipping_usd: Number(row.shipping_usd) || 0,\n  amount_usd: Number(row.amount_usd) || 0,\n  amount_eur: Number(row.amount_eur) || 0,\n  qty: Number(row.qty) || 1,\n})) : [];\nconst hideShippingColumn = invoice.hide_shipping_column === true;\nconst isServiceInvoice = invoice.layout === 'service_invoice' ||\n  invoice.invoice_type === 'service_invoice' ||\n  Array.isArray(invoice.service_allocation);\n\nconst supplier = invoice.supplier || {};\nconst buyer = invoice.buyer || {};\nconst supplierAddress = lines([\n  supplier.address_1,\n  supplier.address_2,\n  supplier.address_3,\n  supplier.country,\n  supplier.phone ? 'Phone: ' + supplier.phone : '',\n]);\nconst buyerAddress = lines([\n  buyer.company,\n  buyer.address_1,\n  buyer.address_2,\n  buyer.country,\n  buyer.vat ? 'VAT: ' + buyer.vat : '',\n  buyer.phone ? 'Phone: ' + buyer.phone : '',\n  buyer.email ? 'E-Mail: ' + buyer.email : '',\n]);\n\nconst rowsHtml = rows.map((row, index) => {\n  const detail = [row.item_code, row.design_safe_label || row.design_category || 'Custom Sign'].filter(Boolean).join(' ');\n  const shippingCell = hideShippingColumn ? '' : `<td class=\"amount\">${usdMoney(row.shipping_usd)}</td>`;\n  return `\n  <tr>\n    <td class=\"line-number\">${index + 1}</td>\n    <td class=\"description\">\n      <span class=\"strong\">${esc(row.description)}</span>\n      ${detail ? `<div class=\"small\">${esc(detail)}</div>` : ''}\n    </td>\n    <td class=\"amount\">${usdMoney(row.unit_price_usd)}</td>\n    ${shippingCell}\n    <td class=\"qty\">${qty(row.qty)}</td>\n    <td class=\"amount strong\">${usdMoney(row.amount_usd)}</td>\n  </tr>`;\n}).join('');\nconst shippingHeader = hideShippingColumn ? '' : '<th class=\"amount\">Shipping</th>';\n\nconst exchangeRate = Number(invoice.fx && invoice.fx.rate) || Number(invoice.exchange_rate_usd_eur) || 0;\nconst usesLineItemEurTotals = invoice.eur_total_mode === 'sum_of_line_items';\nconst exchangeNoteTitle = usesLineItemEurTotals ? '' : 'Exchange Rate';\nconst exchangeNote = usesLineItemEurTotals\n  ? ''\n  : lines([\n      exchangeRate ? '1 USD = ' + exchangeRate.toFixed(5) + ' EUR' : '',\n      invoice.exchange_rate_date || (invoice.fx && invoice.fx.date) ? 'Rate date: ' + clean(invoice.exchange_rate_date || (invoice.fx && invoice.fx.date)) : '',\n      invoice.exchange_rate_source || (invoice.fx && invoice.fx.source) ? clean(invoice.exchange_rate_source || (invoice.fx && invoice.fx.source)) : '',\n    ]);\n\nconst paymentInformation = lines((invoice.payment_information || '').split(/\\r?\\n/));\nconst totalUsd = roundMoney(sum(rows, 'amount_usd'));\nconst totalEur = roundMoney(sum(rows, 'amount_eur'));\n\nif (isServiceInvoice) {\n  const servicePeriod = clean(invoice.service_period || [\n    invoice.period_start,\n    invoice.period_end,\n  ].map(clean).filter(Boolean).join(' to '));\n  const serviceLinePeriod = clean(invoice.service_period_label || invoice.service_month || invoice.month_label || servicePeriod);\n  const documentTitle = clean(invoice.document_title || 'INVOICE');\n  const discountUsd = roundMoney(invoice.discount_usd);\n  const discountEur = roundMoney(invoice.discount_eur);\n  const netUsd = roundMoney(invoice.invoice_total_usd || Math.max(0, totalUsd - discountUsd));\n  const netEur = roundMoney(invoice.invoice_total_eur || Math.max(0, totalEur - discountEur));\n  const vatId = clean(buyer.vat || invoice.buyer_vat || '');\n  const discountDisplay = discountUsd > 0 ? '-' + usdMoney(discountUsd) : usdMoney(0);\n  const serviceRowsHtml = rows.map((row, index) => {\n    const rowPeriod = clean(row.period || row.service_period || serviceLinePeriod || invoice.invoice_date || '');\n    return `\n  <tr>\n    <td class=\"service-number\">${String(index + 1).padStart(2, '0')}</td>\n    <td class=\"service-description\">\n      <span class=\"service-name\">${esc(row.description)}</span>\n    </td>\n    <td class=\"service-period\">${esc(rowPeriod)}</td>\n    <td class=\"service-amount\">${usdMoney(row.amount_usd)}</td>\n  </tr>`;\n  }).join('');\n  const serviceSummary = lines([\n    serviceLinePeriod ? 'Billing period: ' + serviceLinePeriod : (servicePeriod ? 'Billing period: ' + servicePeriod : ''),\n  ]);\n  const serviceHtml = `<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>${esc(documentTitle)} ${esc(invoice.invoice_number)}</title>\n  <style>\n    @page {\n      size: A4 portrait;\n      margin: 13mm 12mm;\n    }\n    * { box-sizing: border-box; }\n    body {\n      margin: 0;\n      font-family: Verdana, Geneva, Tahoma, sans-serif;\n      color: #202426;\n      background: #fff;\n      font-size: 7.9pt;\n      line-height: 1.32;\n    }\n    .page { min-height: 271mm; display: flex; flex-direction: column; }\n    .topline {\n      display: grid;\n      grid-template-columns: 1fr 62mm;\n      gap: 13mm;\n      padding-bottom: 5mm;\n      border-bottom: 0.8pt solid #202426;\n    }\n    .issuer-title {\n      font-size: 7pt;\n      text-transform: uppercase;\n      letter-spacing: 1.2pt;\n      color: #5d6367;\n      margin-bottom: 2.5mm;\n    }\n    .issuer-name {\n      font-size: 15pt;\n      font-weight: 700;\n      letter-spacing: 0;\n      margin-bottom: 2mm;\n    }\n    .issuer-address {\n      font-size: 8pt;\n      line-height: 1.35;\n      color: #343a3e;\n    }\n    .doc-panel {\n      border: 0;\n      border-top: 1.05pt solid #202426;\n      padding: 3mm 0 2.7mm;\n      min-height: 0;\n    }\n    .doc-title {\n      font-size: 17pt;\n      font-weight: 700;\n      letter-spacing: 1pt;\n      text-align: right;\n      margin-bottom: 1.7mm;\n    }\n    .doc-number {\n      font-size: 8.5pt;\n      font-weight: 700;\n      text-align: right;\n      word-break: break-word;\n      padding-bottom: 2mm;\n      border-bottom: 0.55pt solid #c7cbce;\n    }\n    .doc-meta {\n      margin-top: 2.2mm;\n      display: grid;\n      grid-template-columns: 1fr;\n      gap: 1.2mm;\n      text-align: right;\n    }\n    .doc-meta strong {\n      display: block;\n      margin-top: 0.8mm;\n      font-size: 7.8pt;\n    }\n    .label {\n      text-transform: uppercase;\n      letter-spacing: 0.9pt;\n      font-size: 6.4pt;\n      color: #646b70;\n      font-weight: 700;\n    }\n    .party-row {\n      display: grid;\n      grid-template-columns: 1fr 1fr;\n      gap: 8mm;\n      margin-top: 5mm;\n      margin-bottom: 4.5mm;\n    }\n    .party-box {\n      border-left: 0.8pt solid #202426;\n      padding-left: 3mm;\n      min-height: 29mm;\n    }\n    .party-content {\n      margin-top: 1.8mm;\n      font-size: 8pt;\n      line-height: 1.35;\n    }\n    .facts {\n      display: grid;\n      grid-template-columns: repeat(4, 1fr);\n      border-top: 0.7pt solid #9aa0a4;\n      border-bottom: 0.7pt solid #9aa0a4;\n      margin-bottom: 6mm;\n    }\n    .fact {\n      padding: 2.1mm 2mm;\n      border-right: 0.7pt solid #d0d4d7;\n      min-height: 13mm;\n    }\n    .fact:last-child { border-right: 0; }\n    .fact-value {\n      margin-top: 1mm;\n      font-weight: 700;\n      font-size: 8pt;\n    }\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      table-layout: fixed;\n    }\n    thead { display: table-header-group; }\n    tr { break-inside: avoid; }\n    th {\n      background: #e7e9ea;\n      color: #202426;\n      font-size: 6.4pt;\n      text-transform: uppercase;\n      letter-spacing: 0.7pt;\n      padding: 1.8mm 1.3mm;\n      text-align: left;\n      border-top: 0.8pt solid #202426;\n      border-bottom: 0.8pt solid #202426;\n    }\n    td {\n      border-bottom: 0.55pt solid #c7cbce;\n      padding: 1.35mm 1.2mm;\n      vertical-align: top;\n      font-size: 6.9pt;\n    }\n    .service-number { width: 11mm; color: #5d6367; }\n    .service-description { width: auto; }\n    .service-name { font-weight: 700; }\n    .service-period { width: 31mm; color: #343a3e; }\n    .service-amount {\n      width: 27mm;\n      text-align: right;\n      white-space: nowrap;\n      font-weight: 700;\n    }\n    .closing {\n      display: grid;\n      grid-template-columns: 1fr 72mm;\n      gap: 10mm;\n      margin-top: 7mm;\n      align-items: start;\n      break-inside: avoid;\n    }\n    .statement-note {\n      font-size: 7.2pt;\n      color: #454b4f;\n      line-height: 1.4;\n    }\n    .totals-box {\n      border-top: 1pt solid #202426;\n      padding-top: 2mm;\n    }\n    .total-line {\n      display: grid;\n      grid-template-columns: 1fr 25mm;\n      gap: 4mm;\n      padding: 1.5mm 0;\n      border-bottom: 0.55pt solid #c7cbce;\n    }\n    .total-line.main {\n      border-bottom: 1pt solid #202426;\n      font-size: 9pt;\n      font-weight: 700;\n    }\n    .total-line.eur-line {\n      border-bottom: 0;\n    }\n    .tax-note { font-size: 6.3pt; color: #555d62; }\n    .total-value { text-align: right; white-space: nowrap; }\n    .service-footer {\n      margin-top: auto;\n      padding-top: 2.6mm;\n      border-top: 0.8pt solid #202426;\n      display: grid;\n      grid-template-columns: 40mm 1fr;\n      gap: 6mm;\n      break-inside: avoid;\n    }\n    .service-footer-text {\n      columns: 2;\n      column-gap: 7mm;\n      color: #202426;\n      font-size: 6.4pt;\n      line-height: 1.24;\n    }\n  </style>\n</head>\n<body>\n  <main class=\"page\">\n    <section class=\"topline\">\n      <div>\n        <div class=\"issuer-title\">Issued by</div>\n        <div class=\"issuer-name\">${esc(supplier.company || 'Shenzhen Beister Advertising Logo Co., Ltd.')}</div>\n        <div class=\"issuer-address\">${supplierAddress}</div>\n      </div>\n      <div class=\"doc-panel\">\n        <div class=\"doc-title\">${esc(documentTitle)}</div>\n        <div class=\"doc-number\">${esc(invoice.invoice_number)}</div>\n        <div class=\"doc-meta\">\n          <div><span class=\"label\">Currency</span><strong>USD</strong></div>\n          <div><span class=\"label\">Date</span><strong>${esc(invoice.invoice_date)}</strong></div>\n        </div>\n      </div>\n    </section>\n\n    <section class=\"party-row\">\n      <div class=\"party-box\">\n        <div class=\"label\">Client</div>\n        <div class=\"party-content\">${buyerAddress}</div>\n      </div>\n      <div class=\"party-box\">\n        <div class=\"label\">Statement</div>\n        <div class=\"party-content\">${serviceSummary || 'Professional services supplied as listed below.'}</div>\n      </div>\n    </section>\n\n    <table>\n      <thead>\n        <tr>\n          <th class=\"service-number\">Pos.</th>\n          <th class=\"service-description\">Description of Work</th>\n          <th class=\"service-period\">Period</th>\n          <th class=\"service-amount\">Amount</th>\n        </tr>\n      </thead>\n      <tbody>\n        ${serviceRowsHtml}\n      </tbody>\n    </table>\n\n    <section class=\"closing\">\n      <div class=\"statement-note\">\n        <div class=\"label\">Notes</div>\n        Positions listed above are billed as professional support, preparation, handling, inspection and coordination services.\n      </div>\n      <div class=\"totals-box\">\n        <div class=\"total-line\">\n          <div>Subtotal</div>\n          <div class=\"total-value\">${usdMoney(totalUsd)}</div>\n        </div>\n        <div class=\"total-line\">\n          <div>Discount</div>\n          <div class=\"total-value\">${discountDisplay}</div>\n        </div>\n        <div class=\"total-line\">\n          <div>VAT 0%${vatId ? ` <span class=\"tax-note\">(VAT ID: ${esc(vatId)})</span>` : ''}</div>\n          <div class=\"total-value\">${usdMoney(0)}</div>\n        </div>\n        <div class=\"total-line main\">\n          <div>Total Due</div>\n          <div class=\"total-value\">${usdMoney(netUsd)}</div>\n        </div>\n        <div class=\"total-line eur-line\">\n          <div></div>\n          <div class=\"total-value\">${eurMoney(netEur)}</div>\n        </div>\n      </div>\n    </section>\n\n    <footer class=\"service-footer\">\n      <div class=\"label\">Payment Information</div>\n      <div class=\"service-footer-text\">${paymentInformation || 'Payment details to be provided by the issuer.'}</div>\n    </footer>\n  </main>\n</body>\n</html>`;\n\n  return [{\n    json: {\n      ...prepared,\n      rendered_html: serviceHtml,\n      filename: prepared.filename || 'service-invoice-' + clean(invoice.invoice_number || 'draft') + '.pdf',\n    },\n  }];\n}\n\nconst html = `<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Supplier Invoice ${esc(invoice.invoice_number)}</title>\n  <style>\n    @page {\n      size: A4 portrait;\n      margin: 10mm;\n\n      @bottom-right {\n        content: counter(page) \"/\" counter(pages);\n        font-family: Arial, Helvetica, sans-serif;\n        font-size: 7pt;\n        color: #111827;\n      }\n    }\n    * { box-sizing: border-box; }\n    body {\n      margin: 0;\n      font-family: Arial, Helvetica, sans-serif;\n      color: #111827;\n      background: #fff;\n      font-size: 8pt;\n      line-height: 1.25;\n    }\n    .page { min-height: 277mm; display: flex; flex-direction: column; }\n    .header {\n      display: grid;\n      grid-template-columns: 1fr 62mm;\n      gap: 10mm;\n      padding-bottom: 5mm;\n      border-bottom: 1.4pt solid #111827;\n    }\n    .supplier-name {\n      font-size: 13pt;\n      font-weight: 800;\n      margin-bottom: 2mm;\n      color: #111827;\n    }\n    .document-title {\n      text-align: right;\n      font-size: 25pt;\n      font-weight: 800;\n      letter-spacing: 0;\n    }\n    .document-number {\n      text-align: right;\n      margin-top: 1mm;\n      font-size: 10pt;\n      font-weight: 800;\n      color: #111827;\n    }\n    .party-grid {\n      width: 96mm;\n      margin-top: 6mm;\n      margin-bottom: 5mm;\n    }\n    .block-label {\n      text-transform: uppercase;\n      color: #6b7280;\n      font-size: 6.8pt;\n      font-weight: 800;\n      margin-bottom: 1.5mm;\n    }\n    .billto-box {\n      border: 0.7pt solid #d1d5db;\n      padding: 3mm;\n      min-height: 28mm;\n    }\n    .meta {\n      display: grid;\n      grid-template-columns: repeat(3, 1fr);\n      border: 0.7pt solid #d1d5db;\n      margin-bottom: 5mm;\n    }\n    .meta-cell {\n      padding: 2mm;\n      border-right: 0.7pt solid #d1d5db;\n      min-height: 13mm;\n    }\n    .meta-cell:last-child { border-right: 0; }\n    .meta-label {\n      color: #6b7280;\n      font-size: 6.5pt;\n      text-transform: uppercase;\n      font-weight: 800;\n      margin-bottom: 1mm;\n    }\n    .meta-value {\n      font-size: 8.3pt;\n      font-weight: 800;\n    }\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      table-layout: fixed;\n    }\n    thead { display: table-header-group; }\n    tr { break-inside: avoid; }\n    th {\n      background: #111827;\n      color: #fff;\n      font-size: 5.7pt;\n      text-transform: uppercase;\n      padding: 1.35mm 1mm;\n      text-align: left;\n      border-right: 0.5pt solid #374151;\n    }\n    th:last-child { border-right: 0; }\n    td {\n      border: 0.65pt solid #d1d5db;\n      border-top: 0;\n      padding: 1.4mm 1mm;\n      vertical-align: top;\n      font-size: 6.3pt;\n    }\n    .line-number { text-align: center; width: 6mm; }\n    .description { width: auto; }\n    .qty { width: 9mm; text-align: center; }\n    .amount { width: 20mm; text-align: right; white-space: nowrap; }\n    .strong { font-weight: 800; }\n    .small {\n      margin-top: 0.8mm;\n      font-size: 5.8pt;\n      color: #6b7280;\n    }\n    .summary {\n      display: grid;\n      grid-template-columns: 1fr 66mm;\n      gap: 8mm;\n      margin-top: 5mm;\n      align-items: start;\n      break-inside: avoid;\n    }\n    .exchange-note { color: #4b5563; font-size: 7pt; line-height: 1.35; }\n    .totals { border: 0; }\n    .total-row {\n      display: grid;\n      grid-template-columns: 1fr 30mm;\n      border-bottom: 0.75pt solid #111827;\n    }\n    .total-label,\n    .total-value {\n      padding: 1.5mm 0;\n    }\n    .total-label { font-weight: 800; }\n    .total-value { text-align: right; font-weight: 800; }\n    .total-eur {\n      border-bottom: 0;\n      font-size: 8pt;\n    }\n    .total-eur .total-label,\n    .total-eur .total-value {\n      font-weight: 400;\n      padding-top: 1mm;\n    }\n    .payment {\n      margin-top: 7mm;\n      break-inside: avoid;\n    }\n    .payment-title {\n      font-size: 8.2pt;\n      font-weight: 800;\n      margin-bottom: 1.5mm;\n    }\n    .payment-box {\n      border: 0.75pt solid #111827;\n      padding: 1.5mm;\n      font-size: 7pt;\n      line-height: 1.1;\n    }\n  </style>\n</head>\n<body>\n  <main class=\"page\">\n    <section class=\"header\">\n      <div>\n        <div class=\"supplier-name\">${esc(supplier.company || 'Dongguan Best Advertising Sign Co., Ltd.')}</div>\n        <div>${supplierAddress}</div>\n      </div>\n      <div>\n        <div class=\"document-title\">INVOICE</div>\n        <div class=\"document-number\">${esc(invoice.invoice_number)}</div>\n      </div>\n    </section>\n\n    <section class=\"party-grid\">\n      <div>\n        <div class=\"block-label\">Bill To</div>\n        <div class=\"billto-box\">${buyerAddress}</div>\n      </div>\n    </section>\n\n    <section class=\"meta\">\n      <div class=\"meta-cell\">\n        <div class=\"meta-label\">Invoice Date</div>\n        <div class=\"meta-value\">${esc(invoice.invoice_date)}</div>\n      </div>\n      <div class=\"meta-cell\">\n        <div class=\"meta-label\">Payment Terms</div>\n        <div class=\"meta-value\">${esc(invoice.payment_terms || 'Net 30')}</div>\n      </div>\n      <div class=\"meta-cell\">\n        <div class=\"meta-label\">Currency</div>\n        <div class=\"meta-value\">USD</div>\n      </div>\n    </section>\n\n    <table>\n      <thead>\n        <tr>\n          <th class=\"line-number\">#</th>\n          <th class=\"description\">Description</th>\n          <th class=\"amount\">Unit Price</th>\n          ${shippingHeader}\n          <th class=\"qty\">Qty</th>\n          <th class=\"amount\">Total Price</th>\n        </tr>\n      </thead>\n      <tbody>\n        ${rowsHtml}\n      </tbody>\n    </table>\n\n    <section class=\"summary\">\n      <div class=\"exchange-note\">\n        <div class=\"block-label\">${esc(exchangeNoteTitle)}</div>\n        ${exchangeNote}\n      </div>\n      <div class=\"totals\">\n        <div class=\"total-row\">\n          <div class=\"total-label\">Total</div>\n          <div class=\"total-value\">${usdMoney(totalUsd)}</div>\n        </div>\n        <div class=\"total-row total-eur\">\n          <div class=\"total-label\"></div>\n          <div class=\"total-value\">${eurMoney(totalEur)}</div>\n        </div>\n      </div>\n    </section>\n\n    <section class=\"payment\">\n      <div class=\"payment-title\">Payment Information:</div>\n      <div class=\"payment-box\">${paymentInformation}</div>\n    </section>\n  </main>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    ...prepared,\n    rendered_html: html,\n    filename: prepared.filename || 'supplier-invoice-' + clean(invoice.invoice_number || 'draft') + '.pdf',\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "rechnung_pdfshift",
+      "name": "RECHNUNG: PDFShift",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2256,
+        640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pdfshift.io/v3/convert/pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Basic YXBpOnNrXzY3M2FhNmVlNjFmODUwYjY0YzY2M2FjMmIxNTZhNTdlMzY3Yzk3ODE="
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: $json.rendered_html, format: 'A4', margin: '12mm' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "rechnung_attach",
+      "name": "RECHNUNG: Trello Attach PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2480,
+        640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/attachments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "name",
+              "value": "={{ $('RECHNUNG: Render Invoice HTML').first().json.filename }}"
+            },
+            {
+              "name": "mimeType",
+              "value": "application/pdf"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "rechnung_comment",
+      "name": "RECHNUNG: Trello Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2704,
+        640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "SI ✅"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "rechnung_fetch_attachments",
+      "name": "RECHNUNG: Fetch CI Attachments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1360,
+        800
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $('Parse + Check LÖSCHEN').first().json.cardId }}/attachments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "name,mimeType"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "rechnung_parse_ci",
+      "name": "RECHNUNG: Parse CI Invoice Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        800
+      ],
+      "parameters": {
+        "jsCode": "const attachments = $input.all().map(i => i.json);\nconst parsed = $('Parse + Check LÖSCHEN').first().json;\n// Find CI PDF: 'commercial invoice YYYYMMDD-cardId-NNNN_v1.pdf'\nconst ciPattern = /commercial invoice (\\d{8}-\\d+-\\d{4})_v1/i;\nlet ciInvoiceNumber = null;\nlet ciDateStr = null;\nfor (const att of attachments) {\n  const match = ciPattern.exec(att.name || '');\n  if (match) { ciInvoiceNumber = match[1]; break; }\n}\nif (ciInvoiceNumber) {\n  const d = ciInvoiceNumber.slice(0, 8);\n  ciDateStr = d.slice(0,4) + '-' + d.slice(4,6) + '-' + d.slice(6,8);\n}\n// Fallback: today\nconst now = new Date();\nconst fallbackDate = now.toISOString().slice(0,10);\nreturn [{ json: {\n  ...parsed,\n  ciInvoiceNumber,\n  ciDateStr: ciDateStr || fallbackDate,\n  supplierInvoiceNumber: ciInvoiceNumber ? 'INV-' + ciInvoiceNumber : 'INV-' + now.toISOString().slice(0,10).replace(/-/g,'') + '-' + parsed.cardShortId,\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "TrelloTrigger": {
+      "main": [
+        [
+          {
+            "node": "Pre-Filter: Move to Problem Resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-Filter: Move to Problem Resolved": {
+      "main": [
+        [
+          {
+            "node": "Fetch Card with Custom Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Card with Custom Fields": {
+      "main": [
+        [
+          {
+            "node": "Parse + Check LÖSCHEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Check LÖSCHEN": {
+      "main": [
+        [
+          {
+            "node": "IF: Is LÖSCHEN?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Is LÖSCHEN?": {
+      "main": [
+        [
+          {
+            "node": "IF: Already Cleaned?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF: Is RECHNUNG?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Already Cleaned?": {
+      "main": [
+        [
+          {
+            "node": "Trello Comment: Already Cleaned",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sheet: Delete Card Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Delete Card Data": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Delete ci_log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleanup: Add Label CLEANUP ERROR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Delete ci_log": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Delete supplier_invoice_log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleanup: Add Label CLEANUP ERROR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Delete supplier_invoice_log": {
+      "main": [
+        [
+          {
+            "node": "Trello Comment: Cleanup Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleanup: Add Label CLEANUP ERROR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello Comment: Cleanup Done": {
+      "main": [
+        [
+          {
+            "node": "Trigger Overview Rebuild",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Overview Rebuild": {
+      "main": [
+        [
+          {
+            "node": "Cleanup: Remove Label Commercial Invoice Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup: Remove Label Commercial Invoice Created": {
+      "main": [
+        [
+          {
+            "node": "Cleanup: Remove Label CI Already Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup: Remove Label CI Already Exists": {
+      "main": [
+        [
+          {
+            "node": "Cleanup: Remove Label übersprungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup: Remove Label übersprungen": {
+      "main": [
+        [
+          {
+            "node": "Cleanup: Remove Label ERROR CHECK COMMENTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup: Remove Label ERROR CHECK COMMENTS": {
+      "main": [
+        [
+          {
+            "node": "Cleanup: Add Label CI DELETED FROM DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Is RECHNUNG?": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Sheet Master Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: Sheet Master Data": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Fetch CI Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: Frankfurter API": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Build Invoice Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: Build Invoice Data": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Render Invoice HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: Render Invoice HTML": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: PDFShift",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: PDFShift": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Trello Attach PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: Trello Attach PDF": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Trello Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: Fetch CI Attachments": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Parse CI Invoice Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RECHNUNG: Parse CI Invoice Info": {
+      "main": [
+        [
+          {
+            "node": "RECHNUNG: Frankfurter API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
