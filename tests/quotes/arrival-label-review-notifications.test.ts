@@ -20,6 +20,7 @@ function blockedDecision(note: string | null = "Abholer; Details unter https://e
       name: "#NEONT100",
       adminUrl: "https://neontrip.myshopify.com/admin/orders/100",
       customerName: "Ada Beispiel",
+      financialStatus: "paid",
       note,
       shippingAddress: {
         name: "Ada Beispiel",

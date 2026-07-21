@@ -21,6 +21,7 @@ function austriaDecision(lineItemCount = 1): ArrivalCaseDecision {
       name: "#NEONT100",
       adminUrl: "https://neontrip.myshopify.com/admin/orders/100",
       customerName: "Marlene Muster",
+      financialStatus: "paid",
       note: null,
       shippingAddress: {
         name: "Marlene Muster",
