@@ -15,22 +15,40 @@ import {
   RefreshCcw,
   Search,
   ShoppingCart,
+  Timer,
   Zap,
 } from "lucide-react";
-import type {
-  SupplierSale,
-  SupplierSaleBoard,
-  SupplierSalePaymentDecision,
+import {
+  supplierSaleCompletionHideAt,
+  supplierSaleReadyForProduction,
+  supplierSaleShopifyConfirmed,
+  supplierSaleTrelloConfirmed,
+  supplierSaleVisibleInActiveOverview,
+} from "@/lib/ops/supplier-sale-completion";
+import {
+  type SupplierSale,
+  type SupplierSaleBoard,
+  type SupplierSalePaymentDecision,
 } from "@/lib/ops/supplier-sales";
 import { defaultSupplierSelection, shouldSuggestSaeid, type SupplierSelection } from "@/lib/ops/supplier-selection";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 
+type SupplierSaleTrelloDescriptionSnapshot = {
+  cardId: string;
+  cardUrl: string;
+  cardName: string | null;
+  description: string;
+  suggestedPrependText: string;
+  fetchedAt: string;
+};
+
 type SupplierSalesApiResponse = {
   ok: boolean;
   board?: SupplierSaleBoard;
   sale?: SupplierSale;
+  trelloDescription?: SupplierSaleTrelloDescriptionSnapshot;
   liveCheck?: SupplierSalesLiveCheck;
   deadlineTasks?: {
     checked: number;
@@ -317,6 +335,13 @@ function formatPostOrderCountdown(ms: number) {
   return `${hours}h ${String(minutes).padStart(2, "0")}m`;
 }
 
+function formatCompletionCountdown(ms: number) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function postOrderRemainingMs(sale: SupplierSale, now: number) {
   const expiresAt = sale.postOrderReview.expiresAt ? new Date(sale.postOrderReview.expiresAt).getTime() : NaN;
   return Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now) : 0;
@@ -386,6 +411,12 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
     if (payload?.sale?.shopifyTagSyncStatus === "synced") return "Shopify-Tag wurde gesetzt.";
     return "Shopify-Tag erneut geprueft. Bitte Sync-Status pruefen.";
   }
+  if (action === "retry_trello_projection") {
+    if (payload?.sale?.trelloProjectionStatus === "synced") return "Trello-Karte wurde gefunden und aktualisiert.";
+    return "Trello-Karte erneut geprueft. Bitte Sync-Status pruefen.";
+  }
+  if (action === "prepend_trello_description") return "Trello-Description wurde bestaetigt. Der neue Block steht oben; vorhandener Text blieb erhalten.";
+  if (action === "mark_in_production") return "Zur Produktion gegeben. Die Karte verschwindet in 10 Minuten aus der aktiven Uebersicht.";
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
   if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
   if (action === "send_order_confirmation_email") {
@@ -686,7 +717,7 @@ function SaleCard({
   sale: SupplierSale;
   operatorName: string;
   saving: boolean;
-  onAction: (body: Record<string, unknown>) => Promise<void>;
+  onAction: (body: Record<string, unknown>) => Promise<SupplierSalesApiResponse | null>;
 }) {
   const [supplier, setSupplier] = useState<SupplierSelection>(defaultSupplierSelection(sale));
   const [specialSupplierName, setSpecialSupplierName] = useState(sale.specialSupplierName || "");
@@ -696,6 +727,12 @@ function SaleCard({
   const [assignmentNote, setAssignmentNote] = useState("");
   const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
   const [reviewNow, setReviewNow] = useState(() => Date.now());
+  const [completionNow, setCompletionNow] = useState(() => Date.now());
+  const [trelloDescription, setTrelloDescription] = useState<SupplierSaleTrelloDescriptionSnapshot | null>(null);
+  const [trelloPrependText, setTrelloPrependText] = useState("");
+  const [trelloDescriptionBusy, setTrelloDescriptionBusy] = useState(false);
+  const [trelloDescriptionError, setTrelloDescriptionError] = useState<string | null>(null);
+  const [trelloDescriptionSaved, setTrelloDescriptionSaved] = useState(false);
   useEffect(() => {
     setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
@@ -703,6 +740,10 @@ function SaleCard({
     setDeliveryDate(sale.supplierDueDate || sale.customerDueDate || "");
     setPaymentDecision(defaultPaymentDecision(sale));
     setReminderLink(sale.paymentLink || sale.shopifyOrderUrl || "");
+    setTrelloDescription(null);
+    setTrelloPrependText("");
+    setTrelloDescriptionError(null);
+    setTrelloDescriptionSaved(false);
   }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.productSummary, sale.items, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
 
   useEffect(() => {
@@ -711,9 +752,22 @@ function SaleCard({
     return () => window.clearInterval(timer);
   }, [sale.postOrderReview.status, sale.postOrderReview.expiresAt]);
 
+  useEffect(() => {
+    if (sale.assignmentStatus !== "in_production" || !sale.productionConfirmedAt) return;
+    const timer = window.setInterval(() => setCompletionNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [sale.assignmentStatus, sale.productionConfirmedAt]);
+
   const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
   const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.assignedSupplier !== "special" && sale.shopifyTagSyncStatus !== "synced";
+  const canRetryTrello = sale.assignmentStatus === "assigned" && !supplierSaleTrelloConfirmed(sale);
+  const shopifyConfirmed = supplierSaleShopifyConfirmed(sale);
+  const trelloConfirmed = supplierSaleTrelloConfirmed(sale);
+  const readyForProduction = supplierSaleReadyForProduction(sale);
+  const productionHideAt = supplierSaleCompletionHideAt(sale);
+  const productionRemainingMs = productionHideAt ? Math.max(0, new Date(productionHideAt).getTime() - completionNow) : null;
+  const assignmentSaved = sale.assignmentStatus === "assigned" || sale.assignmentStatus === "in_production";
   const lastOrderConfirmationEmail = sale.orderConfirmationEmail;
   const reviewBlocksAssignment = postOrderReviewBlocksAssignment(sale);
   const reviewWindowOpen = postOrderReviewWindowOpen(sale, reviewNow);
@@ -722,13 +776,58 @@ function SaleCard({
   const priorPaidPriority = priorPaidCustomerPriority(sale);
   const saeidSuggestion = !sale.assignedSupplier && shouldSuggestSaeid(sale);
   const assignBlockReason = assignmentBlockReason(sale, supplier, deliveryDate, paymentDecision, specialSupplierName, shopifySupplierTagConfirmed);
-  const directTrelloCardUrl = sale.supplierTrelloCardUrl || sale.sourceTrelloCardUrl;
+  const directTrelloCardUrl = sale.quentinTrelloCardUrl;
   const trelloSearchFallbackUrl = directTrelloCardUrl ? null : sale.quentinTrelloSearchUrl || sale.quentinTrelloBoardUrl;
   const reminderBlockReason = !sale.customerEmail
     ? "Kunden-E-Mail fehlt."
     : !reminderLink
       ? "Bezahllink fehlt. Erst Sync laden oder Link manuell eintragen."
       : null;
+
+  async function loadTrelloDescription() {
+    setTrelloDescriptionBusy(true);
+    setTrelloDescriptionError(null);
+    setTrelloDescriptionSaved(false);
+    try {
+      const response = await fetchWithTimeout(
+        `/api/ops/supplier-sales?action=trello_description&saleId=${encodeURIComponent(sale.id)}`,
+        { cache: "no-store" },
+        30_000,
+      );
+      const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
+      if (!response.ok || !payload?.ok || !payload.trelloDescription) throw new Error(formatApiError(payload));
+      setTrelloDescription(payload.trelloDescription);
+      setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
+    } catch (error) {
+      setTrelloDescriptionError(formatUnknownError(error, "Trello-Karte konnte nicht ausgelesen werden."));
+    } finally {
+      setTrelloDescriptionBusy(false);
+    }
+  }
+
+  async function confirmTrelloDescription() {
+    if (!trelloDescription || !trelloPrependText.trim()) return;
+    if (!confirmAction("Diesen Textblock oben in die aktuelle Quentin-Trello-Description einfuegen? Der vorhandene Text bleibt vollstaendig erhalten.")) return;
+    setTrelloDescriptionBusy(true);
+    setTrelloDescriptionError(null);
+    setTrelloDescriptionSaved(false);
+    try {
+      const payload = await onAction({
+        action: "prepend_trello_description",
+        saleId: sale.id,
+        prependText: trelloPrependText,
+        operatorName,
+      });
+      if (!payload?.trelloDescription) throw new Error("Trello-Bestaetigung konnte nicht geladen werden.");
+      setTrelloDescription(payload.trelloDescription);
+      setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
+      setTrelloDescriptionSaved(true);
+    } catch (error) {
+      setTrelloDescriptionError(formatUnknownError(error, "Trello-Description konnte nicht bestaetigt werden."));
+    } finally {
+      setTrelloDescriptionBusy(false);
+    }
+  }
 
   return (
     <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : priorPaidPriority ? "border-amber-300 ring-2 ring-amber-100" : "border-stone-200"}`}>
@@ -793,12 +892,6 @@ function SaleCard({
               <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-800">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 ueberfaellig
-              </span>
-            ) : null}
-            {sale.rushOrder ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900">
-                <Zap className="h-3.5 w-3.5" />
-                Eil/Express
               </span>
             ) : null}
             {priorPaidPriority ? (
@@ -874,6 +967,19 @@ function SaleCard({
 
         <div className="min-w-0 rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
           <div className="grid gap-3">
+            {sale.rushOrderDetails ? (
+              <div className="rounded-[0.5rem] border-2 border-rose-500 bg-rose-50 p-4 text-rose-950 shadow-sm">
+                <div className="flex items-center gap-2 text-lg font-black uppercase tracking-wide">
+                  <Zap className="h-5 w-5 fill-rose-500 text-rose-600" />
+                  {sale.rushOrderDetails.label}
+                  {sale.rushOrderDetails.serviceDays ? ` · ${sale.rushOrderDetails.serviceDays} Tage` : ""}
+                </div>
+                <div className="mt-2 grid gap-1 text-xs font-semibold sm:grid-cols-2">
+                  <span>Bestellt: {formatDateTime(sale.rushOrderDetails.orderedAt)}</span>
+                  <span>Zustellung bis: {formatDate(sale.rushOrderDetails.deliveryDate)}</span>
+                </div>
+              </div>
+            ) : null}
             {sale.postOrderReview.status === "change_requested" ? (
               <div className="rounded-[0.5rem] border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">
                 <p className="font-semibold">Kunde hat nach Bestellung eine Aenderung gemeldet.</p>
@@ -910,10 +1016,61 @@ function SaleCard({
               </div>
             ) : null}
 
+            {assignmentSaved ? (
+              <div className="grid gap-2 rounded-[0.5rem] border border-stone-200 bg-white p-3">
+                <p className="text-sm font-semibold text-stone-950">Vergabe-Bestaetigung</p>
+                <div className={`flex items-start gap-2 rounded-[0.5rem] border px-3 py-2 text-xs font-medium ${shopifyConfirmed ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                  {shopifyConfirmed ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
+                  <span>
+                    {shopifyConfirmed
+                      ? sale.assignedSupplier === "special" ? "Shopify Supplier-Tag manuell bestaetigt." : "Shopify Supplier-Tag gesetzt."
+                      : sale.shopifyTagSyncStatus === "failed" ? "Shopify Supplier-Tag fehlgeschlagen." : "Shopify Supplier-Tag noch offen."}
+                  </span>
+                </div>
+                <div className={`flex items-start gap-2 rounded-[0.5rem] border px-3 py-2 text-xs font-medium ${trelloConfirmed ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                  {trelloConfirmed ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
+                  <span>
+                    {trelloConfirmed
+                      ? "Trello-Karte gefunden und aktualisiert."
+                      : sale.trelloProjectionStatus === "failed" ? "Trello-Aktualisierung fehlgeschlagen." : "Trello-Aktualisierung noch offen."}
+                  </span>
+                </div>
+                {sale.assignmentStatus === "in_production" && sale.productionConfirmedAt ? (
+                  <div className="rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>Zur Produktion gegeben{sale.productionConfirmedBy ? ` von ${sale.productionConfirmedBy}` : ""}.</span>
+                    </div>
+                    {productionRemainingMs !== null ? (
+                      <div className="mt-2 flex items-center gap-2 text-emerald-800">
+                        <Timer className="h-4 w-4" />
+                        Verschwindet aus Aktive Sales in {formatCompletionCountdown(productionRemainingMs)}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={saving || !readyForProduction}
+                    title={readyForProduction ? "Produktionsstart bestaetigen" : "Erst Shopify und Trello vollstaendig bestaetigen."}
+                    onClick={() => {
+                      if (!confirmAction("Bestaetigen, dass der Auftrag vollstaendig an den Supplier uebergeben und zur Produktion gegeben wurde? Danach bleibt er noch 10 Minuten sichtbar.")) return;
+                      void onAction({ action: "mark_in_production", saleId: sale.id, operatorName });
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-emerald-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+                  >
+                    <Factory className="h-4 w-4" />
+                    Zur Produktion gegeben
+                  </button>
+                )}
+              </div>
+            ) : null}
+
             <label className="grid gap-1.5">
               <span className="text-xs font-medium text-stone-600">Wann soll geliefert werden?</span>
               <input
                 type="date"
+                disabled={assignmentSaved}
                 value={deliveryDate}
                 onChange={(event) => setDeliveryDate(event.target.value)}
                 aria-label="Lieferdatum"
@@ -924,6 +1081,7 @@ function SaleCard({
             <label className="grid min-w-0 gap-1.5">
               <span className="text-xs font-medium text-stone-600">Supplier</span>
               <select
+                disabled={assignmentSaved}
                 value={supplier}
                 onChange={(event) => {
                   setSupplier(event.target.value as SupplierSelection);
@@ -957,6 +1115,7 @@ function SaleCard({
             {supplier === "special" ? (
               <div className="grid gap-2 rounded-[0.5rem] border border-amber-300 bg-amber-50 p-3">
                 <input
+                  disabled={assignmentSaved}
                   value={specialSupplierName}
                   onChange={(event) => setSpecialSupplierName(event.target.value)}
                   aria-label="Name weiterer Supplier"
@@ -967,6 +1126,7 @@ function SaleCard({
                 <label className="flex items-start gap-2 text-xs text-amber-950">
                   <input
                     type="checkbox"
+                    disabled={assignmentSaved}
                     checked={shopifySupplierTagConfirmed}
                     onChange={(event) => setShopifySupplierTagConfirmed(event.target.checked)}
                     aria-label="Shopify-Supplier-Tag bestaetigt"
@@ -980,7 +1140,7 @@ function SaleCard({
             {needsManualPaymentRelease ? (
               <label className="grid gap-1.5">
                 <span className="text-xs font-medium text-stone-600">Zahlungsentscheidung</span>
-                <select value={paymentDecision} onChange={(event) => setPaymentDecision(event.target.value as SupplierSalePaymentDecision)} aria-label="Zahlungsentscheidung" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+                <select disabled={assignmentSaved} value={paymentDecision} onChange={(event) => setPaymentDecision(event.target.value as SupplierSalePaymentDecision)} aria-label="Zahlungsentscheidung" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
                   <option value="manual_approved_unpaid">Trotz offener Zahlung vergeben</option>
                   <option value="wait_for_payment">Auf Zahlung warten</option>
                 </select>
@@ -988,6 +1148,7 @@ function SaleCard({
             ) : null}
 
             <textarea
+              disabled={assignmentSaved}
               value={assignmentNote}
               onChange={(event) => setAssignmentNote(event.target.value)}
               aria-label="Notiz fuer Vergabe"
@@ -998,8 +1159,8 @@ function SaleCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving || Boolean(assignBlockReason)}
-                title={assignBlockReason || "Sale vergeben"}
+                disabled={saving || assignmentSaved || Boolean(assignBlockReason)}
+                title={assignmentSaved ? "Sale ist bereits vergeben." : assignBlockReason || "Sale vergeben"}
                 onClick={() => {
                   const selectedSupplier = supplierLabel(supplier, specialSupplierName);
                   const confirmationMessage =
@@ -1040,6 +1201,20 @@ function SaleCard({
                 >
                   <RefreshCcw className="h-4 w-4" />
                   Shopify erneut
+                </button>
+              ) : null}
+              {canRetryTrello ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    if (!confirmAction("Trello-Karte fuer diese vergebene Sale erneut finden und aktualisieren?")) return;
+                    void onAction({ action: "retry_trello_projection", saleId: sale.id, operatorName });
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  Trello erneut
                 </button>
               ) : null}
               <button
@@ -1097,6 +1272,81 @@ function SaleCard({
                 </button>
               ) : null}
             </div>
+
+            {supplier === "quentin" ? (
+              <div className="grid gap-3 rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-stone-950">Quentin-Trello-Description</p>
+                    <p className="text-xs leading-5 text-stone-600">Bestehender Text wird niemals geloescht. Bestaetigter Text wird nur oben eingefuegt.</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saving || trelloDescriptionBusy}
+                    title="Exakte Karte auf dem Quentin-Board suchen und aktuelle Description laden"
+                    onClick={() => void loadTrelloDescription()}
+                    className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+                  >
+                    <RefreshCcw className={`h-4 w-4 ${trelloDescriptionBusy ? "animate-spin" : ""}`} />
+                    Trello-Description abgleichen
+                  </button>
+                </div>
+
+                {trelloDescriptionError ? (
+                  <p className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{trelloDescriptionError}</p>
+                ) : null}
+                {trelloDescriptionSaved ? (
+                  <p className="flex items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+                    <CheckCircle2 className="h-4 w-4" />
+                    In Trello bestaetigt und direkt danach erneut verifiziert.
+                  </p>
+                ) : null}
+
+                {trelloDescription ? (
+                  <div className="grid gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600">
+                      <span>{trelloDescription.cardName || "Quentin-Karte"}</span>
+                      <a href={trelloDescription.cardUrl} target="_blank" rel="noreferrer" className="font-medium text-stone-900 underline">
+                        Karte oeffnen
+                      </a>
+                    </div>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold text-stone-700">Neuer Block – editierbar und nur oben eingefuegt</span>
+                      <textarea
+                        value={trelloPrependText}
+                        onChange={(event) => {
+                          setTrelloPrependText(event.target.value);
+                          setTrelloDescriptionSaved(false);
+                        }}
+                        maxLength={5000}
+                        aria-label="Neuer Textblock fuer Quentin Trello"
+                        className="min-h-40 w-full rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 font-mono text-xs leading-5 text-stone-900"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={saving || trelloDescriptionBusy || !trelloPrependText.trim()}
+                      onClick={() => void confirmTrelloDescription()}
+                      className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-emerald-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Oben in Trello speichern
+                    </button>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold text-stone-700">Aktuelle bestehende Description – geschuetzt und unveraendert</span>
+                      <textarea
+                        readOnly
+                        value={trelloDescription.description}
+                        aria-label="Aktuelle geschuetzte Quentin Trello Description"
+                        className="min-h-48 w-full rounded-[0.5rem] border border-stone-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-stone-700"
+                        placeholder="Die Trello-Description ist aktuell leer."
+                      />
+                    </label>
+                    <p className="text-[11px] text-stone-500">Zuletzt direkt aus Trello geladen: {formatDateTime(trelloDescription.fetchedAt)}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {lastOrderConfirmationEmail ? (
               <p className={`rounded-[0.5rem] border px-3 py-2 text-xs ${lastOrderConfirmationEmail.status === "sent" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
@@ -1172,6 +1422,7 @@ export function SupplierSalesClient({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [liveCheck, setLiveCheck] = useState<SupplierSalesLiveCheck | null>(null);
+  const [boardNow, setBoardNow] = useState(() => Date.now());
   const canRunDeadlineTasks = Boolean(board) && !loading && savingSaleId !== "deadline-tasks";
   const canCleanupAssignmentTasks = Boolean(board) && !loading && savingSaleId !== "assignment-task-cleanup";
 
@@ -1192,7 +1443,19 @@ export function SupplierSalesClient({
     if (hasSession || localMode) void loadBoard();
   }, [hasSession, localMode, scope, supplier, payment, urgency, visibleLimit]);
 
-  const items = useMemo(() => board?.items || [], [board]);
+  const boardItems = useMemo(() => board?.items || [], [board]);
+  useEffect(() => {
+    if (scope !== "active" || !boardItems.some((sale) => sale.assignmentStatus === "in_production")) return;
+    const timer = window.setInterval(() => setBoardNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [scope, boardItems]);
+
+  const items = useMemo(
+    () => scope === "active"
+      ? boardItems.filter((sale) => supplierSaleVisibleInActiveOverview(sale, new Date(boardNow)))
+      : boardItems,
+    [boardItems, scope, boardNow],
+  );
   const visibleItems = useMemo(() => {
     if (quickFilter === "paid_priority") return items.filter(paidAssignmentPriority);
     if (quickFilter === "prior_paid_customer") return items.filter(priorPaidCustomerPriority);
@@ -1301,8 +1564,10 @@ export function SupplierSalesClient({
       } catch (refreshError) {
         setError(`Aktion gespeichert, aber Liste konnte nicht aktualisiert werden: ${formatUnknownError(refreshError, "Bitte neu laden.")}`);
       }
+      return payload;
     } catch (actionError) {
       setError(formatUnknownError(actionError, "Aktion fehlgeschlagen."));
+      return null;
     } finally {
       setSavingSaleId(null);
     }
