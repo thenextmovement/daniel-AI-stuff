@@ -82,6 +82,17 @@ export type TrelloListCard = {
   closed?: boolean;
 };
 
+export type TrelloBoardSearchCard = {
+  id: string;
+  name: string;
+  desc: string;
+  idBoard: string;
+  url: string | null;
+  closed: boolean;
+  dateLastActivity: string | null;
+  customFieldValues: string[];
+};
+
 export type CreatedTrelloCard = {
   id: string;
   idBoard?: string;
@@ -670,6 +681,46 @@ export async function getTrelloBoardLists(boardId: string) {
     `/boards/${encodeURIComponent(boardId)}/lists?fields=id,name,closed,pos`,
   );
   return (lists || []).filter((list) => !list.closed);
+}
+
+export async function getTrelloBoardSearchCards(boardId: string): Promise<TrelloBoardSearchCard[]> {
+  const [cards, fields] = await Promise.all([
+    trelloFetch<Array<{
+      id: string;
+      name?: string;
+      desc?: string;
+      idBoard?: string;
+      url?: string;
+      shortUrl?: string;
+      closed?: boolean;
+      dateLastActivity?: string;
+      customFieldItems?: TrelloCustomFieldItem[];
+    }>>(
+      `/boards/${encodeURIComponent(boardId)}/cards/open?fields=id,name,desc,idBoard,url,shortUrl,closed,dateLastActivity&customFieldItems=true&limit=1000`,
+    ),
+    getTrelloBoardCustomFields(boardId),
+  ]);
+  const fieldsById = new Map(fields.map((field) => [field.id, field]));
+
+  return (cards || [])
+    .filter((card) => !card.closed && card.idBoard === boardId)
+    .map((card) => ({
+      id: card.id,
+      name: String(card.name || ""),
+      desc: String(card.desc || ""),
+      idBoard: String(card.idBoard || ""),
+      url: card.url || card.shortUrl || null,
+      closed: Boolean(card.closed),
+      dateLastActivity: card.dateLastActivity || null,
+      customFieldValues: (card.customFieldItems || []).map((item) => {
+        const field = fieldsById.get(item.idCustomField);
+        if (item.idValue) {
+          return fieldOptions(field || { id: item.idCustomField, name: "" })
+            .find((option) => option.id === item.idValue)?.text || "";
+        }
+        return customFieldValue(item);
+      }).filter(Boolean),
+    }));
 }
 
 export async function getTrelloList(listId: string) {

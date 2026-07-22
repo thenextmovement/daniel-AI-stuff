@@ -15,6 +15,7 @@ import {
   deriveAssignmentStatus,
   derivePaymentDecisionStatus,
   deriveSupplierRecommendation,
+  enrichSupplierSalesFromQuentinBoard,
   enrichSupplierSalesWithUniqueRequestTrelloCards,
   generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
@@ -712,6 +713,41 @@ test("supplier sales resolve one exact Trello card from the Nerdyforms request i
   assert.equal(rows[0]?.trello_card_id, "abc12345");
   assert.equal(rows[1]?.trello_card_id, null);
   assert.equal(rows[2]?.trello_card_id, "stored-card");
+});
+
+test("supplier sales resolve Quentin cards by identifiers and newest exact customer-name match", () => {
+  const rows = enrichSupplierSalesFromQuentinBoard(
+    [
+      saleRow({ id: "sale-request", request_id: "Nerdy-ABC-77", customer_name: "Wrong Person", trello_card_id: null }),
+      saleRow({ id: "sale-order", request_id: null, shopify_order_name: "#NEONT4536", customer_name: "Carole Bropsom", trello_card_id: null }),
+      saleRow({ id: "sale-name", request_id: null, shopify_order_name: null, customer_name: "Anna Müller", trello_card_id: null }),
+      saleRow({ id: "sale-stored", request_id: "Nerdy-ABC-77", trello_card_id: "stored-card" }),
+    ],
+    [
+      { id: "request-card", name: "Request", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-20T10:00:00Z", customFieldValues: ["Nerdy-ABC-77"] },
+      { id: "order-card", name: "#NEONT4536 | KONF | Carole Bropsom", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-21T10:00:00Z", customFieldValues: [] },
+      { id: "old-name-card", name: "Müller Anna | LED Neon", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-19T10:00:00Z", customFieldValues: [] },
+      { id: "new-name-card", name: "Anna Müller | 3D", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-22T10:00:00Z", customFieldValues: [] },
+      { id: "wrong-board", name: "Anna Müller", desc: "Nerdy-ABC-77", idBoard: "other-board", url: null, closed: false, dateLastActivity: "2026-07-23T10:00:00Z", customFieldValues: [] },
+    ],
+  );
+
+  assert.equal(rows[0]?.trello_card_id, "request-card");
+  assert.equal(rows[1]?.trello_card_id, "order-card");
+  assert.equal(rows[2]?.trello_card_id, "new-name-card");
+  assert.equal(rows[3]?.trello_card_id, "stored-card");
+});
+
+test("supplier sales keep an equally current name-only Trello match unresolved", () => {
+  const rows = enrichSupplierSalesFromQuentinBoard(
+    [saleRow({ id: "sale-ambiguous-name", request_id: null, shopify_order_name: null, customer_name: "Same Name", trello_card_id: null })],
+    [
+      { id: "same-a", name: "Same Name | A", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-22T10:00:00Z", customFieldValues: [] },
+      { id: "same-b", name: "Name Same | B", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-22T10:00:00Z", customFieldValues: [] },
+    ],
+  );
+
+  assert.equal(rows[0]?.trello_card_id, null);
 });
 
 test("supplier production details keep all manufacturing options and remove non-production data", () => {

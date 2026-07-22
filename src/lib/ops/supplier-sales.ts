@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
-import { createTrelloCard, getTrelloCard, updateTrelloCard } from "@/lib/quotes/trello";
+import {
+  createTrelloCard,
+  getTrelloBoardSearchCards,
+  getTrelloCard,
+  updateTrelloCard,
+  type TrelloBoardSearchCard,
+} from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -1719,6 +1725,7 @@ function trelloCardUrlFromId(value: unknown) {
 function supplierSaleTrelloSearchUrl(row: SupplierSaleRow) {
   const query = nullableText(
     row.request_id ||
+      row.customer_name ||
       row.shopify_order_name ||
       row.offer_number ||
       row.document_reference ||
@@ -1728,6 +1735,78 @@ function supplierSaleTrelloSearchUrl(row: SupplierSaleRow) {
   );
   if (!query) return QUENTIN_NEON_BOARD_URL;
   return `https://trello.com/search?q=${encodeURIComponent(`${query} board:${QUENTIN_NEON_BOARD_ID}`)}`;
+}
+
+function normalizeTrelloMatchText(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function exactTrelloPhrase(haystack: string, value: unknown) {
+  const phrase = normalizeTrelloMatchText(value);
+  return phrase.length >= 3 && ` ${haystack} `.includes(` ${phrase} `);
+}
+
+function trelloCardMatchScore(row: SupplierSaleRow, card: TrelloBoardSearchCard) {
+  if (card.closed || card.idBoard !== QUENTIN_NEON_BOARD_ID) return 0;
+  const searchable = normalizeTrelloMatchText([
+    card.name,
+    card.desc,
+    ...card.customFieldValues,
+  ].join(" "));
+  const strongIdentifiers: Array<[unknown, number]> = [
+    [row.request_id, 500],
+    [row.shopify_order_name, 450],
+    [row.offer_number, 425],
+    [row.document_reference, 400],
+    [row.offer_id, 375],
+  ];
+  for (const [identifier, score] of strongIdentifiers) {
+    if (exactTrelloPhrase(searchable, identifier)) return score;
+  }
+
+  const customerName = normalizeTrelloMatchText(row.customer_name);
+  const nameParts = customerName.split(" ").filter(Boolean);
+  if (nameParts.length < 2) return 0;
+  const forward = nameParts.join(" ");
+  const reverse = [...nameParts].reverse().join(" ");
+  return exactTrelloPhrase(searchable, forward) || exactTrelloPhrase(searchable, reverse) ? 200 : 0;
+}
+
+function trelloCardTimestamp(card: TrelloBoardSearchCard) {
+  const timestamp = card.dateLastActivity ? new Date(card.dateLastActivity).getTime() : NaN;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+export function enrichSupplierSalesFromQuentinBoard(
+  saleRows: SupplierSaleRow[],
+  cards: TrelloBoardSearchCard[],
+) {
+  return saleRows.map((row) => {
+    if (trelloCardIdFromValue(row.trello_card_id)) return row;
+    const matches = cards
+      .map((card) => ({ card, score: trelloCardMatchScore(row, card) }))
+      .filter((match) => match.score > 0)
+      .sort((left, right) =>
+        right.score - left.score ||
+        trelloCardTimestamp(right.card) - trelloCardTimestamp(left.card),
+      );
+    const best = matches[0];
+    if (!best) return row;
+    const next = matches[1];
+    if (
+      next &&
+      next.score === best.score &&
+      trelloCardTimestamp(next.card) === trelloCardTimestamp(best.card)
+    ) return row;
+    return { ...row, trello_card_id: best.card.id };
+  });
 }
 
 function supplierSaleHasRushSignal(row: SupplierSaleRow, items: SupplierSaleItem[] = []) {
@@ -3863,6 +3942,10 @@ export async function listSupplierSalesBoard(options?: {
       limit: Math.min(Math.max(unresolvedRequestIds.length * 4, 100), 1000),
     }).catch(() => []);
     saleRows = enrichSupplierSalesWithUniqueRequestTrelloCards(saleRows, masterRows);
+  }
+  if (trelloConfigured() && saleRows.some((row) => !trelloCardIdFromValue(row.trello_card_id))) {
+    const quentinCards = await getTrelloBoardSearchCards(QUENTIN_NEON_BOARD_ID).catch(() => []);
+    saleRows = enrichSupplierSalesFromQuentinBoard(saleRows, quentinCards);
   }
   const counts = buildSupplierSaleCountsFromRows(statsRows, now);
   if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts);
