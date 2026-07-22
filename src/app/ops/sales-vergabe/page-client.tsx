@@ -21,8 +21,8 @@ import type {
   SupplierSale,
   SupplierSaleBoard,
   SupplierSalePaymentDecision,
-  SupplierSaleSupplier,
 } from "@/lib/ops/supplier-sales";
+import { defaultSupplierSelection, isConfiguratorSale, type SupplierSelection } from "@/lib/ops/supplier-selection";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -300,7 +300,8 @@ function syncSummary(sale: SupplierSale) {
   return parts.join(" · ");
 }
 
-function assignmentBlockReason(sale: SupplierSale, deliveryDate: string, paymentDecision: SupplierSalePaymentDecision) {
+function assignmentBlockReason(sale: SupplierSale, supplier: SupplierSelection, deliveryDate: string, paymentDecision: SupplierSalePaymentDecision) {
+  if (!supplier) return "Supplier fehlt.";
   if (!deliveryDate) return "Lieferdatum fehlt.";
   if (sale.shopifyPaymentStatus !== "paid" && paymentDecision === "wait_for_payment") return "Zahlungsentscheidung steht auf Auf Zahlung warten.";
   return null;
@@ -464,13 +465,6 @@ function QuickFilterButton({
       {children}
     </button>
   );
-}
-
-function defaultSupplier(sale: SupplierSale): SupplierSaleSupplier {
-  if (sale.assignedSupplier) return sale.assignedSupplier;
-  if (sale.recommendedSupplier === "quentin") return "quentin";
-  if (sale.recommendedSupplier === "said") return "said";
-  return "said";
 }
 
 function defaultPaymentDecision(sale: SupplierSale): SupplierSalePaymentDecision {
@@ -691,21 +685,22 @@ function SaleCard({
   saving: boolean;
   onAction: (body: Record<string, unknown>) => Promise<void>;
 }) {
-  const [supplier, setSupplier] = useState<SupplierSaleSupplier>(defaultSupplier(sale));
+  const [supplier, setSupplier] = useState<SupplierSelection>(defaultSupplierSelection(sale));
   const [specialSupplierName, setSpecialSupplierName] = useState(sale.specialSupplierName || "");
   const [deliveryDate, setDeliveryDate] = useState(sale.supplierDueDate || sale.customerDueDate || "");
   const [paymentDecision, setPaymentDecision] = useState<SupplierSalePaymentDecision>(defaultPaymentDecision(sale));
   const [assignmentNote, setAssignmentNote] = useState("");
   const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
   const [reviewNow, setReviewNow] = useState(() => Date.now());
+  const configuratorSale = isConfiguratorSale(sale);
 
   useEffect(() => {
-    setSupplier(defaultSupplier(sale));
+    setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
     setDeliveryDate(sale.supplierDueDate || sale.customerDueDate || "");
     setPaymentDecision(defaultPaymentDecision(sale));
     setReminderLink(sale.paymentLink || sale.shopifyOrderUrl || "");
-  }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
+  }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.productSummary, sale.items, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
 
   useEffect(() => {
     if (sale.postOrderReview.status !== "open") return;
@@ -722,7 +717,7 @@ function SaleCard({
   const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
   const paidPriority = paidAssignmentPriority(sale);
   const priorPaidPriority = priorPaidCustomerPriority(sale);
-  const assignBlockReason = assignmentBlockReason(sale, deliveryDate, paymentDecision);
+  const assignBlockReason = assignmentBlockReason(sale, supplier, deliveryDate, paymentDecision);
   const reminderBlockReason = !sale.customerEmail
     ? "Kunden-E-Mail fehlt."
     : !reminderLink
@@ -775,7 +770,7 @@ function SaleCard({
               {paymentLabel(sale.shopifyPaymentStatus)}
             </span>
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${supplierTone(sale)}`}>
-              Empfehlung: {supplierLabel(sale.recommendedSupplier)}
+              {configuratorSale ? "Supplier manuell waehlen" : `Empfehlung: ${supplierLabel(sale.recommendedSupplier)}`}
             </span>
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusTone(sale)}`}>
               {sale.assignmentStatus}
@@ -923,7 +918,8 @@ function SaleCard({
 
             <label className="grid min-w-0 gap-1.5">
               <span className="text-xs font-medium text-stone-600">Supplier</span>
-              <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSaleSupplier)} aria-label="Supplier auswaehlen" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+              <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSelection)} aria-label="Supplier auswaehlen" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
+                <option value="">Supplier waehlen</option>
                 <option value="quentin">Quentin</option>
                 <option value="said">Saeid</option>
                 <option value="special">Sonder</option>

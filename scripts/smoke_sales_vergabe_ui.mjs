@@ -99,6 +99,23 @@ function sale(overrides = {}) {
 }
 
 const paidSale = sale({ id: "sale-paid", offerNumber: "NT-PAID", customerName: "Bezahlter Kunde" });
+const configuratorSale = sale({
+  id: "sale-configurator",
+  offerNumber: "NT-CONFIGURATOR",
+  customerName: "Konfigurator Sale",
+  productSummary: "Neon Schriftzug Konfigurator",
+  recommendedSupplier: "said",
+  items: [
+    {
+      ...sale().items[0],
+      id: "sale-configurator-item",
+      saleId: "sale-configurator",
+      lineItemKey: "sale-configurator-line",
+      title: "Neon Schriftzug Konfigurator",
+      sku: "Default_cpc_QA",
+    },
+  ],
+});
 const unpaidSale = sale({
   id: "sale-unpaid",
   offerNumber: "NT-UNPAID",
@@ -149,11 +166,11 @@ const syncFailedSale = sale({
 });
 
 const board = {
-  items: [paidSale, unpaidSale, specialSale, rushSale, openReviewSale, syncFailedSale],
+  items: [paidSale, configuratorSale, unpaidSale, specialSale, rushSale, openReviewSale, syncFailedSale],
   counts: {
-    total: 6,
-    paidUnassigned: 4,
-    readyToAssign: 4,
+    total: 7,
+    paidUnassigned: 5,
+    readyToAssign: 5,
     paymentOpen: 1,
     assigned: 1,
     dueSoon: 4,
@@ -161,7 +178,7 @@ const board = {
     rushOrders: 1,
     missingPaymentLinks: 0,
     quentinRecommended: 1,
-    saidRecommended: 3,
+    saidRecommended: 4,
     syncIssues: 1,
   },
   diagnostics: {
@@ -411,15 +428,22 @@ async function main() {
   await page.getByRole("heading", { name: "#QA-sale-unpaid" }).waitFor({ timeout: 10_000 });
 
   const paidCard = page.locator("article").filter({ hasText: "#QA-sale-paid" });
+  const configuratorCard = page.locator("article").filter({ hasText: "#QA-sale-configurator" });
   const unpaidCard = page.locator("article").filter({ hasText: "#QA-sale-unpaid" });
   const specialCard = page.locator("article").filter({ hasText: "#QA-sale-special" });
   const openReviewCard = page.locator("article").filter({ hasText: "#QA-sale-open-review" });
 
   assert(await paidCard.count() === 1, "paid sale card fehlt");
+  assert(await configuratorCard.count() === 1, "configurator sale card fehlt");
   assert(await unpaidCard.count() === 1, "unpaid sale card fehlt");
   assert(await specialCard.count() === 1, "special sale card fehlt");
   assert(await openReviewCard.count() === 1, "open-review sale card fehlt");
   assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
+  assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "", "Konfigurator-Sale waehlt automatisch einen Supplier");
+  assert(await configuratorCard.getByText("Supplier manuell waehlen").isVisible(), "Konfigurator-Sale zeigt weiterhin eine automatische Supplier-Empfehlung");
+  assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Konfigurator-Sale ist ohne bewusste Supplier-Auswahl vergebbar");
+  await configuratorCard.getByLabel("Supplier auswaehlen").selectOption("quentin");
+  assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale bleibt nach Supplier-Auswahl gesperrt");
 
   await unpaidCard.getByLabel("Zahlungsentscheidung").selectOption("wait_for_payment");
   assert(await unpaidCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Vergeben bleibt bei Warten nicht disabled");
