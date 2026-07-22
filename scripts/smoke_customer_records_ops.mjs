@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 const defaultPaths = [
   "/ops/customer-records",
   "/ops/customer-records/calls",
@@ -58,8 +60,14 @@ async function request(baseUrl, path, cookie) {
   return { path, status: response.status, contentType, body };
 }
 
-function assertProtectedResult(result) {
+export function assertProtectedResult(result) {
   if ([401, 403, 302, 303, 307, 308].includes(result.status)) return;
+
+  const cloudflareAccessLogin = result.status === 200
+    && result.contentType.includes("text/html")
+    && /<title>\s*Sign in[^<]*Cloudflare Access\s*<\/title>/i.test(result.body)
+    && /<meta\s+name=["']robots["']\s+content=["']noindex["']/i.test(result.body);
+  if (cloudflareAccessLogin) return;
 
   throw new Error(
     `${result.path} sollte ohne Cloudflare-Access-Login geblockt sein, bekam aber HTTP ${result.status}: ${result.body}`,
@@ -119,10 +127,12 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(`Customer Records Ops Smoke fehlgeschlagen: ${error.message}`);
-  if (error.cause?.message) {
-    console.error(`Ursache: ${error.cause.message}`);
-  }
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`Customer Records Ops Smoke fehlgeschlagen: ${error.message}`);
+    if (error.cause?.message) {
+      console.error(`Ursache: ${error.cause.message}`);
+    }
+    process.exit(1);
+  });
+}
