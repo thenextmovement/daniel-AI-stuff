@@ -14,7 +14,7 @@ import {
   uploadArtifact,
 } from "./easydpd_browser_worker_lib.mjs";
 
-const EASYDPD_DASHBOARD = "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/fulfillments";
+const EASYDPD_DASHBOARD = "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services";
 
 async function launchContext(configuration) {
   ensurePrivateProfileDirectory(configuration.profileDirectory);
