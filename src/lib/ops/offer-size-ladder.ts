@@ -22,6 +22,8 @@ export const OFFER_SIZE_LADDER_MODEL_VERSION = "anchored_offer_size_ladder_v1";
 export const OFFER_SIZE_LADDER_MAX_OFFER_ITEMS = 300;
 export const OFFER_SIZE_LADDER_MAX_OPTIONS = 300;
 export const TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS = 16_384;
+const OFFER_SIZE_LADDER_NUMERIC_12_2_MAX_ABS = 10_000_000_000;
+const OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE = "generated_price_out_of_supported_range";
 
 export type OfferSizeLadderCoreAnchorRole = "minimum" | "requested" | "max_250";
 export type OfferSizeLadderAnchorRole = OfferSizeLadderCoreAnchorRole | `anchor_${number}`;
@@ -886,6 +888,20 @@ function roundDimension(value: number) {
 
 function roundConfidence(value: number) {
   return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+}
+
+function isPersistableNumeric12_2(value: number) {
+  return Number.isFinite(value) && Math.abs(value) < OFFER_SIZE_LADDER_NUMERIC_12_2_MAX_ABS;
+}
+
+function hasOutOfRangeStoredPrice(option: OfferSizeLadderOption) {
+  return [
+    option.areaCm2,
+    option.productionPriceEstimated,
+    option.shippingPriceEstimated,
+    option.supplierTotalEstimated,
+    option.customerUnitPriceNet,
+  ].some((value) => !isPersistableNumeric12_2(value));
 }
 
 function numberFromRow(value: number | string | null | undefined, fallback = 0) {
@@ -1770,12 +1786,34 @@ export async function ensureManualReleaseSizeLadder(
   const quoteReadySizeLadder = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card, {
     ...input,
     trelloCard: input.trelloCard,
+    // Classify first. Unsupported or invalid ladders must not reach Supabase.
+    persist: false,
     projectToTrello: false,
     commentToTrello: false,
   });
   const classification = classifyManualReleaseSizeLadderPreflight(quoteReadySizeLadder);
   let offerItemsProjected = false;
   let optionCount = 0;
+
+  if (classification.decision === "ready" && input.persist !== false) {
+    for (const design of quoteReadySizeLadder.designs) {
+      design.sizeLadder.persisted = await persistOfferSizeLadder({
+        trelloCardId,
+        trelloCardUrl: quoteReadySizeLadder.trelloCardUrl,
+        offerId: input.offerId,
+        offerItemId: input.offerItemId,
+        designId: design.designId,
+        productModel: design.productModel,
+        sourceText: input.sourceText,
+        anchors: design.sizeLadder.anchorList,
+        stepCm: input.stepCm,
+        maxLongSideCm: input.maxLongSideCm,
+        customerFactor: design.sizeLadder.customerFactor,
+        createdBy: input.createdBy,
+        persist: false,
+      }, design.sizeLadder);
+    }
+  }
 
   if (classification.decision === "ready" && input.projectToTrello !== false) {
     try {
@@ -2004,6 +2042,14 @@ function stableSetKey(input: { trelloCardId: string; offerId?: string | null; of
 }
 
 async function persistOfferSizeLadder(input: OfferSizeLadderGenerateInput, result: OfferSizeLadderResult) {
+  if (result.options.some(hasOutOfRangeStoredPrice)) {
+    throw new QuoteValidationError(
+      "Groessenleiter enthaelt einen unplausiblen berechneten Preis und wurde nicht gespeichert.",
+      [OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE],
+      422,
+    );
+  }
+
   const existingRows = await supabaseRequest<OfferSizeLadderAnchorSetRow[]>("offer_size_quote_anchor_sets", undefined, {
     select: "id",
     set_key: `eq.${result.setKey}`,
@@ -2250,11 +2296,9 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
     score -= issues.length * 0.2;
     return roundConfidence(score);
   })();
-  const setStatus: OfferSizeLadderSetStatus = issues.length ? "blocked" : warnings.length ? "needs_review" : "draft";
-
   const largestSupplierAnchorLongSide = anchors.max_250.longSideCm;
   const longSides = ladderLongSides(anchors.minimum.longSideCm, maxLongSideCm, stepCm, allAnchors.map((anchor) => anchor.longSideCm));
-  const options = longSides.map<OfferSizeLadderOption>((longSideCm, index) => {
+  let options = longSides.map<OfferSizeLadderOption>((longSideCm, index) => {
     const exactAnchor = allAnchors.find((anchor) => Math.abs(anchor.longSideCm - longSideCm) < 0.5);
     const dimensions = exactAnchor || optionDimensionsForLongSide(anchors.minimum, longSideCm);
     const widthCm = roundDimension(dimensions.widthCm);
@@ -2304,6 +2348,21 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
       },
     };
   });
+
+  if (options.some(hasOutOfRangeStoredPrice)) {
+    if (!issues.includes(OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE)) {
+      issues.push(OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE);
+    }
+    options = options.map((option) => ({
+      ...option,
+      confidence: Math.min(option.confidence, 0.1),
+      reviewStatus: "blocked",
+      reviewReason: OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE,
+      issues: [...new Set([...option.issues, OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE])],
+    }));
+  }
+
+  const setStatus: OfferSizeLadderSetStatus = issues.length ? "blocked" : warnings.length ? "needs_review" : "draft";
 
   const result: OfferSizeLadderResult = {
     setKey: stableSetKey({ trelloCardId, offerId: input.offerId, offerItemId: input.offerItemId, anchors: allAnchors }),

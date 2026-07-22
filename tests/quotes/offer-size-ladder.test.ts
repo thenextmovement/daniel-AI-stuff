@@ -10,6 +10,7 @@ import {
   buildOfferSizeLadderOfferPatch,
   buildQuoteReadySizeLadderPreflightFromTrelloCard,
   classifyManualReleaseSizeLadderPreflight,
+  ensureManualReleaseSizeLadder,
   extractOfferSizeLadderAnchorsFromTrelloFields,
   formatQuoteReadySizeLadderPreflightComment,
   generateOfferSizeLadder,
@@ -589,6 +590,155 @@ test("quote ready preflight blocks unsupported full glow and missing source mock
   assert.ok(missingMockups.issues.includes("source_mockups_missing"));
   assert.equal(missingMockups.offerItemsJson, null);
   assert.equal(classifyManualReleaseSizeLadderPreflight(missingMockups).decision, "blocked");
+});
+
+test("manual release skips an unsupported overflowing ladder before any Supabase write", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+  let supabaseCalls = 0;
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.startsWith("https://api.trello.com/1/cards/cardManualOverflow")) {
+      return new Response(JSON.stringify({
+        id: "cardManualOverflow",
+        idBoard: "board-overflow",
+        name: "2 Designs double line and full glow | smallest size+120cm height+150cm height",
+        desc: "Please quote double line and full glow.",
+        customFieldItems: [
+          { idCustomField: "size-1", value: { text: "142x102cm" } },
+          { idCustomField: "price-1", value: { text: "344" } },
+          { idCustomField: "size-2", value: { text: "144x120cm" } },
+          { idCustomField: "price-2", value: { text: "897" } },
+          { idCustomField: "size-3", value: { text: "165x140cm" } },
+          { idCustomField: "price-3", value: { text: "1216" } },
+          { idCustomField: "size-4", value: { text: "177x127cm" } },
+          { idCustomField: "price-4", value: { text: "408" } },
+          { idCustomField: "product-1", value: { text: "Full Glow" } },
+          { idCustomField: "factor", value: { text: "2.7" } },
+        ],
+        attachments: [
+          { id: "att-1", name: "Mockup01.jpg" },
+          { id: "att-2", name: "Mockup02.jpg" },
+        ],
+        actions: [],
+      }), { status: 200 });
+    }
+    if (url.startsWith("https://api.trello.com/1/boards/board-overflow/customFields")) {
+      return new Response(JSON.stringify([
+        { id: "size-1", name: "Size_1", type: "text" },
+        { id: "price-1", name: "Price_1", type: "text" },
+        { id: "size-2", name: "Size_2", type: "text" },
+        { id: "price-2", name: "Price_2", type: "text" },
+        { id: "size-3", name: "Size_3", type: "text" },
+        { id: "price-3", name: "Price_3", type: "text" },
+        { id: "size-4", name: "Size_4", type: "text" },
+        { id: "price-4", name: "Price_4", type: "text" },
+        { id: "product-1", name: "Product_1", type: "text" },
+        { id: "factor", name: "NT-Number", type: "text" },
+      ]), { status: 200 });
+    }
+    if (url.includes("supabase.co")) {
+      supabaseCalls += 1;
+      return new Response("unexpected Supabase write", { status: 500 });
+    }
+    return new Response(`unexpected ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const release = await ensureManualReleaseSizeLadder({
+      trelloCard: "cardManualOverflow",
+      maxLongSideCm: 250,
+      persist: true,
+      projectToTrello: true,
+    });
+
+    assert.equal(release.decision, "skipped");
+    assert.equal(release.reason, "special_product_uses_existing_offer_flow");
+    assert.equal(release.offerItemsProjected, false);
+    assert.equal(supabaseCalls, 0);
+    assert.ok(release.quoteReadySizeLadder.issues.includes("design_1:generated_price_out_of_supported_range"));
+    assert.ok(release.quoteReadySizeLadder.designs[0]?.sizeLadder.options.every((option) => option.reviewStatus === "blocked"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+  }
+});
+
+test("manual release still persists a valid Neon ladder after classification", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+  process.env.SUPABASE_URL = "https://test-project.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+  let supabaseCalls = 0;
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    if (url.startsWith("https://api.trello.com/1/cards/cardManualValid")) {
+      return new Response(JSON.stringify({
+        id: "cardManualValid",
+        idBoard: "board-valid",
+        name: "LED Flex valid ladder",
+        customFieldItems: [
+          { idCustomField: "size-1", value: { text: "100x50cm" } },
+          { idCustomField: "price-1", value: { text: "300" } },
+          { idCustomField: "product-1", value: { text: "LED Flex" } },
+        ],
+        attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+        actions: [],
+      }), { status: 200 });
+    }
+    if (url.startsWith("https://api.trello.com/1/boards/board-valid/customFields")) {
+      return new Response(JSON.stringify([
+        { id: "size-1", name: "Size_1", type: "text" },
+        { id: "price-1", name: "Price_1", type: "text" },
+        { id: "product-1", name: "Product_1", type: "text" },
+      ]), { status: 200 });
+    }
+    if (url.startsWith("https://test-project.supabase.co/rest/v1/")) {
+      supabaseCalls += 1;
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url.includes("/offer_size_quote_anchor_sets") && method === "POST") {
+        return new Response(JSON.stringify([{ id: "set-valid" }]), { status: 201 });
+      }
+      return new Response(JSON.stringify([]), { status: method === "POST" ? 201 : 200 });
+    }
+    return new Response(`unexpected ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const release = await ensureManualReleaseSizeLadder({
+      trelloCard: "cardManualValid",
+      maxLongSideCm: 120,
+      persist: true,
+      projectToTrello: false,
+    });
+
+    assert.equal(release.decision, "ready");
+    assert.ok(supabaseCalls > 0);
+    assert.equal(release.quoteReadySizeLadder.designs[0]?.sizeLadder.persisted?.anchorSetId, "set-valid");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+    if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalSupabaseUrl;
+    if (originalSupabaseKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalSupabaseKey;
+  }
 });
 
 test("manual Trello move approves Neonflex review warnings without consulting QC labels", async () => {
