@@ -822,8 +822,8 @@ test("supplier production details keep all manufacturing options and remove non-
   ]);
 
   const description = supplierProductionDescription([item]);
-  assert.match(description, /^Product Type: LED Neon Flex/m);
-  assert.match(description, /Adhesive mounting kit: YES ❗/);
+  assert.match(description, /Product Type: LED Neon Flex/);
+  assert.match(description, /^Adhesive Strips ❗/m);
   assert.doesNotMatch(description, /Must not reach supplier|379|Hanging set|Height|Sonderangebot|Power plug/);
 });
 
@@ -852,8 +852,93 @@ test("supplier production description supports normal offers and multiple produc
   assert.match(description, /Size: 150x132cm/);
   assert.match(description, /Color: Gold/);
   assert.match(description, /Power plug: United Kingdom/);
-  assert.match(description, /Accessory: Dimmer with remote control/);
+  assert.doesNotMatch(description, /Dimmer|remote control/);
   assert.doesNotMatch(description, /Kunde|E-Mail|Shopify-Link|Preis/);
+});
+
+test("supplier production description keeps only real products and essential English production details", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-clean-production-description", source: "neontrip-offers" })],
+    [
+      itemRow({
+        id: "item-priority-production",
+        sale_id: "sale-clean-production-description",
+        title: "Priorisierte Produktion 12 Tage",
+        product_type: "Priorisierte Produktion 12 Tage",
+      }),
+      itemRow({
+        id: "item-generic-sign",
+        sale_id: "sale-clean-production-description",
+        title: "Leuchtschild Design",
+        product_type: "Leuchtschild Design",
+      }),
+      itemRow({
+        id: "item-adhesive",
+        sale_id: "sale-clean-production-description",
+        title: "Klebe-Set",
+        product_type: "Klebe-Set",
+        quantity: 2,
+      }),
+      itemRow({
+        id: "item-white-power-supply",
+        sale_id: "sale-clean-production-description",
+        title: "Weißes Netzteil Premium-Version",
+        product_type: "Zusatzoptionen",
+      }),
+      itemRow({
+        id: "item-standard-dimmer",
+        sale_id: "sale-clean-production-description",
+        title: "Dimmer mit Bluetooth und Fernbedienung",
+        product_type: "Zusatzoptionen",
+      }),
+      itemRow({
+        id: "item-shipping",
+        sale_id: "sale-clean-production-description",
+        title: "Standardversand 20 Werktage",
+        product_type: "Liefertermin",
+      }),
+    ],
+    [],
+  );
+
+  assert.equal(
+    supplierProductionDescription(board.items[0]?.items || []),
+    "2x Adhesive Strips ❗\nPower Supply: White",
+  );
+});
+
+test("supplier production description prioritizes cable position and keeps outdoor, RGB and product quantity", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-special-production-details", source: "neontrip-offers" })],
+    [
+      itemRow({
+        id: "item-rgb-outdoor",
+        sale_id: "sale-special-production-details",
+        title: "Neon Schriftzug Konfigurator",
+        product_type: "Neon Schriftzug Konfigurator",
+        quantity: 2,
+        raw_line_item: {
+          properties: [
+            { name: "Farbe", value: "RGB" },
+            { name: "Nutzung", value: "Draußen" },
+            { name: "Kabelabgang", value: "unten mittig" },
+          ],
+        },
+      }),
+    ],
+    [],
+  );
+
+  assert.equal(
+    supplierProductionDescription(board.items[0]?.items || []),
+    [
+      "Cable Position: Bottom-Center ❗",
+      "Product Type: LED Neon Flex",
+      "Color: RGB",
+      "Use: Outdoor",
+      "Quantity: 2 Pieces",
+    ].join("\n"),
+  );
 });
 
 test("supplier Trello description is freshly read and prepended without deleting existing text", async () => {
