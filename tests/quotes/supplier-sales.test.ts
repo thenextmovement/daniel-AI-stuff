@@ -199,13 +199,14 @@ test("supplier recommendation sends UV print, outdoor, 3D and acrylic light boxe
   assert.equal(result.lineItems[0].requiresQuentin, true);
 });
 
-test("supplier recommendation keeps standard LED neon flex with Saeid", () => {
+test("supplier recommendation keeps standard LED neon flex with Quentin by default", () => {
   const result = deriveSupplierRecommendation([
     { title: "LED Neon Flex Schild", description: "Standard LED-Neon-Flex warmweiss" },
     { title: "Standard-Versand", section: "shipping" },
   ]);
 
-  assert.equal(result.recommendedSupplier, "said");
+  assert.equal(result.recommendedSupplier, "quentin");
+  assert.ok(result.recommendationReasons.includes("standard_neon_flex"));
   assert.equal(result.lineItems[0].requiresQuentin, false);
 });
 
@@ -311,7 +312,7 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
     message: null,
     eventId: null,
   });
-  assert.equal(deriveSupplierRecommendation(parsed.sale.lineItems).recommendedSupplier, "said");
+  assert.equal(deriveSupplierRecommendation(parsed.sale.lineItems).recommendedSupplier, "quentin");
 });
 
 test("supplier sale board exposes post-order review status and change message", () => {

@@ -45,7 +45,7 @@ export type SupplierSaleAssignmentStatus = (typeof SUPPLIER_ASSIGNMENT_STATUSES)
 export type SupplierSaleSyncStatus = (typeof SUPPLIER_SYNC_STATUSES)[number];
 export type SupplierSaleUrgencyFilter = "all" | "rush" | "standard";
 
-export const SUPPLIER_RULE_VERSION = "supplier_rules_v1_20260609";
+export const SUPPLIER_RULE_VERSION = "supplier_rules_v2_20260722";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -812,8 +812,8 @@ export function deriveSupplierRecommendation(items: SupplierLineItemInput[]): Su
 
   if (productionItems.length && productionItems.every((item) => isStandardNeonFlex(lineItemText(item)))) {
     return {
-      recommendedSupplier: "said",
-      recommendationReasons: [`${SUPPLIER_RULE_VERSION}:standard_neon_flex`],
+      recommendedSupplier: "quentin",
+      recommendationReasons: [`${SUPPLIER_RULE_VERSION}:quentin_default`, "standard_neon_flex"],
       lineItems: decorated,
     };
   }
