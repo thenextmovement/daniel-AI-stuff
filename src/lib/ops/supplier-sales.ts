@@ -45,7 +45,7 @@ export type SupplierSaleAssignmentStatus = (typeof SUPPLIER_ASSIGNMENT_STATUSES)
 export type SupplierSaleSyncStatus = (typeof SUPPLIER_SYNC_STATUSES)[number];
 export type SupplierSaleUrgencyFilter = "all" | "rush" | "standard";
 
-export const SUPPLIER_RULE_VERSION = "supplier_rules_v1_20260609";
+export const SUPPLIER_RULE_VERSION = "supplier_rules_v2_20260722";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -371,6 +371,7 @@ export type SupplierSaleAssignInput = {
   supplier: SupplierSaleSupplier;
   requestedDeliveryDate: string;
   specialSupplierName?: string | null;
+  shopifySupplierTagConfirmed?: boolean;
   assignmentNote?: string | null;
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
   operatorName?: string | null;
@@ -811,8 +812,8 @@ export function deriveSupplierRecommendation(items: SupplierLineItemInput[]): Su
 
   if (productionItems.length && productionItems.every((item) => isStandardNeonFlex(lineItemText(item)))) {
     return {
-      recommendedSupplier: "said",
-      recommendationReasons: [`${SUPPLIER_RULE_VERSION}:standard_neon_flex`],
+      recommendedSupplier: "quentin",
+      recommendationReasons: [`${SUPPLIER_RULE_VERSION}:quentin_default`, "standard_neon_flex"],
       lineItems: decorated,
     };
   }
@@ -989,7 +990,7 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
     shopifyAdminReady && requiredSupplierTagsReady ? "ok" : requiredSupplierTagsReady ? "warning" : "missing",
     "Shopify-Tags",
     shopifyAdminReady && requiredSupplierTagsReady
-      ? `Quentin/Saeid Tags sind konfiguriert${specialTagReady ? ", Sonder-Supplier ebenfalls." : "."}`
+      ? `Quentin/Saeid Tags sind konfiguriert${specialTagReady ? ", Weitere Supplier ebenfalls." : "."}`
       : requiredSupplierTagsReady
         ? "Quentin/Saeid Tags sind vorbereitet; fuer den Shopify-Abgleich fehlt noch die Shopify Admin API."
       : "Shopify Admin API plus SUPPLIER_TAG_QUENTIN und SUPPLIER_TAG_SAID muessen gesetzt sein, damit Vergaben in Shopify getaggt werden.",
@@ -1016,7 +1017,7 @@ export function buildSupplierSalesDiagnostics(): SupplierSalesDiagnostics {
     !supplierTrelloEnabled
       ? "Supplier-Trello-Projektion ist deaktiviert; bei Vergaben werden keine Supplier-Karten erstellt."
       : trelloAuthReady && quentinListReady && saidListReady
-        ? `Quentin/Saeid Listen sind konfiguriert${specialListReady ? ", Sonder-Supplier ebenfalls." : "."}`
+        ? `Quentin/Saeid Listen sind konfiguriert${specialListReady ? ", Weitere Supplier ebenfalls." : "."}`
         : "Trello-Projektion wird uebersprungen, bis TRELLO_API_KEY/TRELLO_TOKEN und die Supplier-Listen-IDs gesetzt sind.",
   ));
 
@@ -1717,11 +1718,11 @@ function trelloCardUrlFromId(value: unknown) {
 
 function supplierSaleTrelloSearchUrl(row: SupplierSaleRow) {
   const query = nullableText(
-    row.shopify_order_name ||
+    row.request_id ||
+      row.shopify_order_name ||
       row.offer_number ||
       row.document_reference ||
       row.offer_id ||
-      row.request_id ||
       row.sale_key,
     180,
   );
@@ -2831,6 +2832,34 @@ async function listRequestTrelloCardIds(requestId: string | null, fallbackCardId
   return [...ids];
 }
 
+export function enrichSupplierSalesWithUniqueRequestTrelloCards(
+  saleRows: SupplierSaleRow[],
+  masterRows: Array<{
+    request_id?: string | null;
+    trello_card_id?: string | null;
+    trello_card_url?: string | null;
+  }>,
+) {
+  const cardsByRequest = new Map<string, Set<string>>();
+  for (const masterRow of masterRows) {
+    const requestId = nullableText(masterRow.request_id, 160);
+    const cardId = trelloCardIdFromValue(masterRow.trello_card_id) || trelloCardIdFromValue(masterRow.trello_card_url);
+    if (!requestId || !cardId) continue;
+    const cardIds = cardsByRequest.get(requestId) || new Set<string>();
+    cardIds.add(cardId);
+    cardsByRequest.set(requestId, cardIds);
+  }
+
+  return saleRows.map((row) => {
+    if (trelloCardIdFromValue(row.trello_card_id)) return row;
+    const requestId = nullableText(row.request_id, 160);
+    if (!requestId) return row;
+    const cardIds = cardsByRequest.get(requestId);
+    if (!cardIds || cardIds.size !== 1) return row;
+    return { ...row, trello_card_id: [...cardIds][0] };
+  });
+}
+
 async function syncShopifyOrderNumberToSourceTrelloCards(row: SupplierSaleRow, actor?: SupplierSaleActor | null) {
   const orderPrefix = normalizeShopifyOrderTitlePrefix(row.shopify_order_name);
   if (!orderPrefix || !trelloConfigured()) return;
@@ -3802,6 +3831,7 @@ export async function listSupplierSalesBoard(options?: {
       row.shopify_order_name,
       row.offer_number,
       row.document_reference,
+      row.request_id,
       row.product_summary,
     ].some((value) => String(value || "").toLowerCase().includes(search));
     saleRows = saleRows.filter(matchesSearch);
@@ -3821,6 +3851,19 @@ export async function listSupplierSalesBoard(options?: {
   statsRows = markPriorPaidCustomers(statsRows, priorPaidHistoryRows);
   saleRows = markPriorPaidCustomers(saleRows, priorPaidHistoryRows);
   saleRows = saleRows.slice(0, requestedLimit);
+  const unresolvedRequestIds = [...new Set(saleRows
+    .filter((row) => !trelloCardIdFromValue(row.trello_card_id))
+    .map((row) => nullableText(row.request_id, 160))
+    .filter((requestId): requestId is string => Boolean(requestId)))];
+  if (unresolvedRequestIds.length) {
+    const masterRows = await supabaseRequest<MasterRequestTrelloRow[]>("master_requests", undefined, {
+      select: "request_id,trello_card_id,trello_card_url,updated_at",
+      request_id: inList(unresolvedRequestIds),
+      order: "updated_at.desc",
+      limit: Math.min(Math.max(unresolvedRequestIds.length * 4, 100), 1000),
+    }).catch(() => []);
+    saleRows = enrichSupplierSalesWithUniqueRequestTrelloCards(saleRows, masterRows);
+  }
   const counts = buildSupplierSaleCountsFromRows(statsRows, now);
   if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts);
   const saleIds = saleRows.map((row) => row.id);
@@ -3844,7 +3887,7 @@ export async function listSupplierSalesBoard(options?: {
 function supplierLabel(supplier: SupplierSaleSupplier, specialSupplierName?: string | null) {
   if (supplier === "quentin") return "Quentin";
   if (supplier === "said") return "Saeid";
-  return nullableText(specialSupplierName, 120) || "Sonder-Supplier";
+  return nullableText(specialSupplierName, 120) || "Weitere Supplier";
 }
 
 function supplierTagValue(supplier: SupplierSaleSupplier) {
@@ -5026,7 +5069,7 @@ export async function createSupplierDeadlineTasks(actor?: SupplierSaleActor | nu
 function assertSupplier(value: unknown): SupplierSaleSupplier {
   const supplier = cleanText(value, 40) as SupplierSaleSupplier;
   if (!SUPPLIER_SALE_SUPPLIERS.includes(supplier)) {
-    throw new QuoteValidationError("Supplier ist ungueltig.", ["Bitte Quentin, Saeid oder Sonder-Supplier waehlen."], 422);
+    throw new QuoteValidationError("Supplier ist ungueltig.", ["Bitte Quentin, Saeid oder Weitere Supplier waehlen."], 422);
   }
   return supplier;
 }
@@ -5118,6 +5161,7 @@ async function reserveSupplierAssignmentAttempt(input: {
   tagValue: string | null;
   assigneeLabel: string | null;
   specialSupplierName: string | null;
+  shopifySupplierTagConfirmed: boolean;
 }) {
   try {
     await supabaseRequest("supplier_assignment_attempts", {
@@ -5135,6 +5179,7 @@ async function reserveSupplierAssignmentAttempt(input: {
         metadata: {
           assignee_label: input.assigneeLabel,
           special_supplier_name: input.specialSupplierName,
+          shopify_supplier_tag_confirmed: input.shopifySupplierTagConfirmed,
         },
       }),
       headers: { Prefer: "return=minimal" },
@@ -5167,11 +5212,16 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     ], 422);
   }
   if (supplier === "special" && !nullableText(input.specialSupplierName, 120)) {
-    throw new QuoteValidationError("Sonder-Supplier fehlt.", ["Bitte Namen des Sonder-Suppliers eintragen."], 422);
+    throw new QuoteValidationError("Weiterer Supplier fehlt.", ["Bitte Namen des weiteren Suppliers eintragen."], 422);
+  }
+  if (supplier === "special" && input.shopifySupplierTagConfirmed !== true) {
+    throw new QuoteValidationError("Shopify-Supplier-Tag ist nicht bestaetigt.", [
+      "Bitte den Supplier als Tag in Shopify eintragen und die Bestaetigung aktivieren.",
+    ], 422);
   }
 
   const now = new Date().toISOString();
-  const tagValue = supplierTagValue(supplier);
+  const tagValue = supplier === "special" ? null : supplierTagValue(supplier);
   const attemptKey = `supplier-sale:${sale.id}:assign:${supplier}:${requestedDeliveryDate}`;
   const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
   const assignmentNote = nullableText(input.assignmentNote, 1000);
@@ -5189,6 +5239,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     tagValue,
     assigneeLabel: nullableText(input.assigneeLabel, 120),
     specialSupplierName: nullableText(input.specialSupplierName, 120),
+    shopifySupplierTagConfirmed: supplier === "special" && input.shopifySupplierTagConfirmed === true,
   });
   if (!reserved) return getSupplierSale(sale.id);
 
@@ -5205,7 +5256,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     payment_decision_status: decision,
     shopify_tag_value: tagValue,
     shopify_tag_sync_status: tagValue ? "pending" : "skipped",
-    shopify_tag_error: tagValue ? null : "Supplier-Tag ist nicht konfiguriert.",
+    shopify_tag_error: supplier === "special" ? null : tagValue ? null : "Supplier-Tag ist nicht konfiguriert.",
     trello_projection_status: trelloProjectionEnabled && trelloListId ? "pending" : "skipped",
     trello_projection_error: trelloProjectionEnabled
       ? trelloListId ? null : "Supplier-Trello-Liste ist nicht konfiguriert."
@@ -5232,22 +5283,29 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     eventType: "assignment_confirmed",
     actor: actor || { operatorName: input.operatorName || null },
     idempotencyKey: attemptKey,
-    payload: { supplier, requested_delivery_date: requestedDeliveryDate, payment_decision_status: decision },
+    payload: {
+      supplier,
+      requested_delivery_date: requestedDeliveryDate,
+      payment_decision_status: decision,
+      shopify_supplier_tag_confirmed: supplier === "special" && input.shopifySupplierTagConfirmed === true,
+    },
   });
 
-  try {
-    const tagSync = await syncShopifySupplierTag(row, tagValue);
-    row = await patchSaleRow(sale.id, {
-      shopify_order_id: row.shopify_order_id || tagSync.orderGid || null,
-      shopify_tag_sync_status: tagSync.status,
-      shopify_tag_synced_at: tagSync.status === "synced" ? new Date().toISOString() : null,
-      shopify_tag_error: tagSync.error,
-    });
-  } catch (error) {
-    row = await patchSaleRow(sale.id, {
-      shopify_tag_sync_status: "failed",
-      shopify_tag_error: error instanceof Error ? error.message : "Shopify Tag-Sync fehlgeschlagen.",
-    });
+  if (supplier !== "special") {
+    try {
+      const tagSync = await syncShopifySupplierTag(row, tagValue);
+      row = await patchSaleRow(sale.id, {
+        shopify_order_id: row.shopify_order_id || tagSync.orderGid || null,
+        shopify_tag_sync_status: tagSync.status,
+        shopify_tag_synced_at: tagSync.status === "synced" ? new Date().toISOString() : null,
+        shopify_tag_error: tagSync.error,
+      });
+    } catch (error) {
+      row = await patchSaleRow(sale.id, {
+        shopify_tag_sync_status: "failed",
+        shopify_tag_error: error instanceof Error ? error.message : "Shopify Tag-Sync fehlgeschlagen.",
+      });
+    }
   }
 
   try {

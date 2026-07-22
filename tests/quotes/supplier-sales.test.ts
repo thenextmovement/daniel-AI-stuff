@@ -15,6 +15,7 @@ import {
   deriveAssignmentStatus,
   derivePaymentDecisionStatus,
   deriveSupplierRecommendation,
+  enrichSupplierSalesWithUniqueRequestTrelloCards,
   generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
   normalizeDateOnly,
@@ -198,13 +199,14 @@ test("supplier recommendation sends UV print, outdoor, 3D and acrylic light boxe
   assert.equal(result.lineItems[0].requiresQuentin, true);
 });
 
-test("supplier recommendation keeps standard LED neon flex with Saeid", () => {
+test("supplier recommendation keeps standard LED neon flex with Quentin by default", () => {
   const result = deriveSupplierRecommendation([
     { title: "LED Neon Flex Schild", description: "Standard LED-Neon-Flex warmweiss" },
     { title: "Standard-Versand", section: "shipping" },
   ]);
 
-  assert.equal(result.recommendedSupplier, "said");
+  assert.equal(result.recommendedSupplier, "quentin");
+  assert.ok(result.recommendationReasons.includes("standard_neon_flex"));
   assert.equal(result.lineItems[0].requiresQuentin, false);
 });
 
@@ -310,7 +312,7 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
     message: null,
     eventId: null,
   });
-  assert.equal(deriveSupplierRecommendation(parsed.sale.lineItems).recommendedSupplier, "said");
+  assert.equal(deriveSupplierRecommendation(parsed.sale.lineItems).recommendedSupplier, "quentin");
 });
 
 test("supplier sale board exposes post-order review status and change message", () => {
@@ -659,6 +661,7 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
       saleRow({
         id: "sale-selection-details",
         shopify_order_name: "#NEONT7777",
+        request_id: "nerdy-request-7777",
         trello_card_id: "6a267a745c0826d898eec8fd",
       }),
     ],
@@ -682,12 +685,33 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
   assert.equal(sale?.sourceTrelloCardUrl, "https://trello.com/c/6a267a745c0826d898eec8fd");
   assert.equal(sale?.quentinTrelloBoardUrl, "https://trello.com/b/9QNAfkv4/quentin-neon-signs");
   assert.match(sale?.quentinTrelloSearchUrl || "", /board%3A62bae9b97705e7419ed64593/);
+  assert.match(decodeURIComponent(sale?.quentinTrelloSearchUrl || ""), /nerdy-request-7777 board:62bae9b97705e7419ed64593/);
+  assert.doesNotMatch(decodeURIComponent(sale?.quentinTrelloSearchUrl || ""), /#NEONT7777/);
   assert.equal(sale?.items[0]?.description, "Ausgewaehlte Produktion laut Snapshot.");
   assert.ok(sale?.items[0]?.selectionDetails.includes("Product Type: LED Neon Flex"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Size: 120cm"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Color: warmweiss"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Cut: Cut to shape"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Backboard: Acryl klar"));
+});
+
+test("supplier sales resolve one exact Trello card from the Nerdyforms request id and keep ambiguity closed", () => {
+  const rows = enrichSupplierSalesWithUniqueRequestTrelloCards(
+    [
+      saleRow({ id: "sale-exact", request_id: "request-exact", trello_card_id: null }),
+      saleRow({ id: "sale-ambiguous", request_id: "request-ambiguous", trello_card_id: null }),
+      saleRow({ id: "sale-stored", request_id: "request-exact", trello_card_id: "stored-card" }),
+    ],
+    [
+      { request_id: "request-exact", trello_card_url: "https://trello.com/c/abc12345/the-card" },
+      { request_id: "request-ambiguous", trello_card_id: "first-card" },
+      { request_id: "request-ambiguous", trello_card_id: "second-card" },
+    ],
+  );
+
+  assert.equal(rows[0]?.trello_card_id, "abc12345");
+  assert.equal(rows[1]?.trello_card_id, null);
+  assert.equal(rows[2]?.trello_card_id, "stored-card");
 });
 
 test("supplier production details keep all manufacturing options and remove non-production data", () => {
@@ -869,6 +893,69 @@ test("supplier sale deadline task eligibility is due-date based and idempotent",
   assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-12" }), now), false);
   assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-10", assignment_status: "completed" }), now), false);
   assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-10", metadata: { deadline_task_id: "task-1" } }), now), false);
+});
+
+test("additional supplier assignment requires and audits the manual Shopify tag confirmation", async () => {
+  let currentRow = saleRow({
+    id: "sale-additional-supplier",
+    assignment_status: "ready_to_assign",
+    payment_decision_status: "paid_confirmed",
+    assigned_supplier: null,
+    special_supplier_name: null,
+  });
+  let externalWriteCount = 0;
+  let attemptMetadata: Record<string, unknown> | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin !== "https://supabase.test") {
+      externalWriteCount += 1;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "POST") {
+      attemptMetadata = JSON.parse(String(init?.body || "{}")).metadata || null;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "PATCH") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      assignSupplierSale({
+        saleId: currentRow.id,
+        supplier: "special",
+        specialSupplierName: "Supplier Test",
+        requestedDeliveryDate: "2026-07-30",
+        paymentDecisionStatus: "paid_confirmed",
+      }),
+      /Shopify-Supplier-Tag ist nicht bestaetigt/,
+    );
+
+    const assigned = await assignSupplierSale({
+      saleId: currentRow.id,
+      supplier: "special",
+      specialSupplierName: "Supplier Test",
+      shopifySupplierTagConfirmed: true,
+      requestedDeliveryDate: "2026-07-30",
+      paymentDecisionStatus: "paid_confirmed",
+    });
+
+    assert.equal(assigned.assignedSupplier, "special");
+    assert.equal(assigned.specialSupplierName, "Supplier Test");
+    assert.equal(assigned.shopifyTagValue, null);
+    assert.equal(assigned.shopifyTagSyncStatus, "skipped");
+    assert.equal(assigned.shopifyTagError, null);
+  });
+
+  assert.equal(externalWriteCount, 0);
+  assert.equal(attemptMetadata?.shopify_supplier_tag_confirmed, true);
 });
 
 test("supplier assignment duplicate attempt does not rerun projections", async () => {

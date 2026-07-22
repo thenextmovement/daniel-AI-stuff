@@ -99,6 +99,30 @@ function sale(overrides = {}) {
 }
 
 const paidSale = sale({ id: "sale-paid", offerNumber: "NT-PAID", customerName: "Bezahlter Kunde" });
+const configuratorSale = sale({
+  id: "sale-configurator",
+  offerNumber: "NT-CONFIGURATOR",
+  customerName: "Konfigurator Sale",
+  totalPrice: 1200,
+  trelloCardId: null,
+  sourceTrelloCardUrl: null,
+  supplierTrelloCardId: null,
+  supplierTrelloCardUrl: null,
+  requestId: "nerdy-request-configurator",
+  productSummary: "Neon Schriftzug Konfigurator",
+  recommendedSupplier: "said",
+  items: [
+    {
+      ...sale().items[0],
+      id: "sale-configurator-item",
+      saleId: "sale-configurator",
+      lineItemKey: "sale-configurator-line",
+      title: "Neon Schriftzug Konfigurator",
+      sku: "Default_cpc_QA",
+      selectionDetails: ["Product Type: LED Neon Flex", "Color: Warm white", "Use: Indoor"],
+    },
+  ],
+});
 const unpaidSale = sale({
   id: "sale-unpaid",
   offerNumber: "NT-UNPAID",
@@ -149,11 +173,11 @@ const syncFailedSale = sale({
 });
 
 const board = {
-  items: [paidSale, unpaidSale, specialSale, rushSale, openReviewSale, syncFailedSale],
+  items: [paidSale, configuratorSale, unpaidSale, specialSale, rushSale, openReviewSale, syncFailedSale],
   counts: {
-    total: 6,
-    paidUnassigned: 4,
-    readyToAssign: 4,
+    total: 7,
+    paidUnassigned: 5,
+    readyToAssign: 5,
     paymentOpen: 1,
     assigned: 1,
     dueSoon: 4,
@@ -161,7 +185,7 @@ const board = {
     rushOrders: 1,
     missingPaymentLinks: 0,
     quentinRecommended: 1,
-    saidRecommended: 3,
+    saidRecommended: 4,
     syncIssues: 1,
   },
   diagnostics: {
@@ -411,15 +435,26 @@ async function main() {
   await page.getByRole("heading", { name: "#QA-sale-unpaid" }).waitFor({ timeout: 10_000 });
 
   const paidCard = page.locator("article").filter({ hasText: "#QA-sale-paid" });
+  const configuratorCard = page.locator("article").filter({ hasText: "#QA-sale-configurator" });
   const unpaidCard = page.locator("article").filter({ hasText: "#QA-sale-unpaid" });
   const specialCard = page.locator("article").filter({ hasText: "#QA-sale-special" });
   const openReviewCard = page.locator("article").filter({ hasText: "#QA-sale-open-review" });
 
   assert(await paidCard.count() === 1, "paid sale card fehlt");
+  assert(await configuratorCard.count() === 1, "configurator sale card fehlt");
   assert(await unpaidCard.count() === 1, "unpaid sale card fehlt");
   assert(await specialCard.count() === 1, "special sale card fehlt");
   assert(await openReviewCard.count() === 1, "open-review sale card fehlt");
   assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
+  assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "quentin", "Konfigurator-Sale startet nicht mit Quentin");
+  assert(await configuratorCard.getByText("Standard: Quentin").isVisible(), "Quentin-Standard fehlt");
+  assert(await configuratorCard.getByText(/Saeid pruefen/).isVisible(), "Bedingter Saeid-Hinweis fehlt");
+  assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale ist mit Quentin nicht vergebbar");
+  assert(await paidCard.getByRole("link", { name: "Trello-Karte oeffnen" }).count() === 1, "Bekannte Trello-Karte wird nicht direkt verlinkt");
+  assert(await paidCard.getByRole("link", { name: "Quentin-Suche" }).count() === 0, "Quentin-Suche bleibt trotz bekannter Trello-Karte sichtbar");
+  assert(await configuratorCard.getByRole("link", { name: "Trello per Request-ID finden" }).count() === 1, "Request-ID-Fallback fehlt ohne bekannte Trello-Karte");
+  await configuratorCard.getByRole("button", { name: "Saeid waehlen" }).click();
+  assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "said", "Saeid-Hinweis waehlt Saeid nicht bewusst aus");
 
   await unpaidCard.getByLabel("Zahlungsentscheidung").selectOption("wait_for_payment");
   assert(await unpaidCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Vergeben bleibt bei Warten nicht disabled");
@@ -462,7 +497,11 @@ async function main() {
   assert(posts.length === 5 && posts[4].body.action === "send_order_confirmation_email", "Auftragsbestaetigung sendet falsche Action");
 
   await specialCard.getByLabel("Supplier auswaehlen").selectOption("special");
-  assert(await specialCard.getByLabel("Name Sonder-Supplier").isVisible(), "Sonder-Supplier Eingabe ist nicht sichtbar");
+  assert(await specialCard.getByLabel("Name weiterer Supplier").isVisible(), "Eingabe fuer weitere Supplier ist nicht sichtbar");
+  assert(await specialCard.getByText("Bitte in Shopify den Supplier als Tag eintragen.").isVisible(), "Shopify-Tag-Hinweis fehlt");
+  assert(await specialCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Weitere Supplier sind ohne Shopify-Tag-Bestaetigung vergebbar");
+  await specialCard.getByLabel("Shopify-Supplier-Tag bestaetigt").check();
+  assert(await specialCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Weitere Supplier bleiben trotz Shopify-Tag-Bestaetigung gesperrt");
 
   page.once("dialog", dialogHandler(dialogs, "dismiss-deadline", false));
   await page.getByRole("button", { name: "Deadline-Aufgaben pruefen" }).click();
