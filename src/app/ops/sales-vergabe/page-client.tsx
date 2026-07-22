@@ -718,6 +718,8 @@ function SaleCard({
   const paidPriority = paidAssignmentPriority(sale);
   const priorPaidPriority = priorPaidCustomerPriority(sale);
   const assignBlockReason = assignmentBlockReason(sale, supplier, deliveryDate, paymentDecision);
+  const directTrelloCardUrl = sale.supplierTrelloCardUrl || sale.sourceTrelloCardUrl;
+  const trelloSearchFallbackUrl = directTrelloCardUrl ? null : sale.quentinTrelloSearchUrl || sale.quentinTrelloBoardUrl;
   const reminderBlockReason = !sale.customerEmail
     ? "Kunden-E-Mail fehlt."
     : !reminderLink
@@ -860,9 +862,8 @@ function SaleCard({
             <QuickLink href={supplierSalesPdfUrl(sale.id, "order_confirmation_pdf")} label="AB-PDF" />
             <QuickLink href={sale.shopifyOrderUrl} label="Shopify" />
             <QuickLink href={sale.paymentLink} label="Bezahlen" />
-            <QuickLink href={sale.supplierTrelloCardUrl} label="Supplier-Karte" />
-            <QuickLink href={sale.sourceTrelloCardUrl} label="Ursprung-Trello" />
-            <QuickLink href={sale.quentinTrelloSearchUrl || sale.quentinTrelloBoardUrl} label="Quentin-Suche" />
+            <QuickLink href={directTrelloCardUrl} label="Trello-Karte oeffnen" />
+            <QuickLink href={trelloSearchFallbackUrl} label={sale.requestId ? "Trello per Request-ID finden" : "Trello-Karte finden"} />
             {sale.requestId ? <QuickLink href={`/ops/customer-records?query=${encodeURIComponent(sale.requestId)}`} label="Kundenakte" /> : null}
           </div>
         </div>

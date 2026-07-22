@@ -659,6 +659,7 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
       saleRow({
         id: "sale-selection-details",
         shopify_order_name: "#NEONT7777",
+        request_id: "nerdy-request-7777",
         trello_card_id: "6a267a745c0826d898eec8fd",
       }),
     ],
@@ -682,6 +683,8 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
   assert.equal(sale?.sourceTrelloCardUrl, "https://trello.com/c/6a267a745c0826d898eec8fd");
   assert.equal(sale?.quentinTrelloBoardUrl, "https://trello.com/b/9QNAfkv4/quentin-neon-signs");
   assert.match(sale?.quentinTrelloSearchUrl || "", /board%3A62bae9b97705e7419ed64593/);
+  assert.match(decodeURIComponent(sale?.quentinTrelloSearchUrl || ""), /nerdy-request-7777 board:62bae9b97705e7419ed64593/);
+  assert.doesNotMatch(decodeURIComponent(sale?.quentinTrelloSearchUrl || ""), /#NEONT7777/);
   assert.equal(sale?.items[0]?.description, "Ausgewaehlte Produktion laut Snapshot.");
   assert.ok(sale?.items[0]?.selectionDetails.includes("Product Type: LED Neon Flex"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Size: 120cm"));

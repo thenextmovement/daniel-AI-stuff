@@ -1717,11 +1717,11 @@ function trelloCardUrlFromId(value: unknown) {
 
 function supplierSaleTrelloSearchUrl(row: SupplierSaleRow) {
   const query = nullableText(
-    row.shopify_order_name ||
+    row.request_id ||
+      row.shopify_order_name ||
       row.offer_number ||
       row.document_reference ||
       row.offer_id ||
-      row.request_id ||
       row.sale_key,
     180,
   );

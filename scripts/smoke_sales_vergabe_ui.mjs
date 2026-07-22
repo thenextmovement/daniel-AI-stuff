@@ -103,6 +103,11 @@ const configuratorSale = sale({
   id: "sale-configurator",
   offerNumber: "NT-CONFIGURATOR",
   customerName: "Konfigurator Sale",
+  trelloCardId: null,
+  sourceTrelloCardUrl: null,
+  supplierTrelloCardId: null,
+  supplierTrelloCardUrl: null,
+  requestId: "nerdy-request-configurator",
   productSummary: "Neon Schriftzug Konfigurator",
   recommendedSupplier: "said",
   items: [
@@ -442,6 +447,9 @@ async function main() {
   assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "", "Konfigurator-Sale waehlt automatisch einen Supplier");
   assert(await configuratorCard.getByText("Supplier manuell waehlen").isVisible(), "Konfigurator-Sale zeigt weiterhin eine automatische Supplier-Empfehlung");
   assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Konfigurator-Sale ist ohne bewusste Supplier-Auswahl vergebbar");
+  assert(await paidCard.getByRole("link", { name: "Trello-Karte oeffnen" }).count() === 1, "Bekannte Trello-Karte wird nicht direkt verlinkt");
+  assert(await paidCard.getByRole("link", { name: "Quentin-Suche" }).count() === 0, "Quentin-Suche bleibt trotz bekannter Trello-Karte sichtbar");
+  assert(await configuratorCard.getByRole("link", { name: "Trello per Request-ID finden" }).count() === 1, "Request-ID-Fallback fehlt ohne bekannte Trello-Karte");
   await configuratorCard.getByLabel("Supplier auswaehlen").selectOption("quentin");
   assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale bleibt nach Supplier-Auswahl gesperrt");
 
