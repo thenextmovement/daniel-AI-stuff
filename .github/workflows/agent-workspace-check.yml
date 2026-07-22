@@ -1,0 +1,64 @@
+name: Agent Workspace Check
+
+on:
+  push:
+    branches:
+      - "codex/**"
+
+concurrency:
+  group: agent-workspace-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: No-secret, no-network verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build dependency image without project scripts
+        run: >-
+          docker build --pull
+          --file .github/agent-workspace.Dockerfile
+          --tag neontrip-agent-check:${GITHUB_SHA}
+          .
+      - name: Run full verification without network or secrets
+        run: >-
+          docker run --rm
+          --network none
+          --cap-drop ALL
+          --security-opt no-new-privileges
+          --pids-limit 512
+          --memory 4g
+          --cpus 2
+          --tmpfs /tmp:rw,nosuid,nodev,size=512m
+          neontrip-agent-check:${GITHUB_SHA}
+
+  record-result:
+    name: Publish immutable result ref
+    if: ${{ always() }}
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      contents: write
+    steps:
+      - name: Record result for the exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.verify.result }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ref="refs/tags/agent-checks/${SHA}-${RESULT}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/agent-checks/${SHA}-${RESULT}" >/dev/null 2>&1; then
+            exit 0
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=${ref}" \
+            -f "sha=${SHA}" >/dev/null

@@ -9,7 +9,6 @@ tmp
 backups
 audits
 digests
-deploy
 deploy-clean-*
 deploy-preview
 deploy.backup-*
@@ -18,3 +17,4 @@ _reference
 .env
 .env.*
 !.env.example
+!.env.ops.example
