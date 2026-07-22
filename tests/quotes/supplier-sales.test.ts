@@ -28,6 +28,7 @@ import {
   retrySupplierSaleShopifyTag,
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
+  setSupplierSaleQuentinTrelloCard,
   supplierProductionDescription,
   supplierSaleCompletionHideAt,
   supplierSaleNeedsDeadlineTask,
@@ -821,8 +822,8 @@ test("supplier production details keep all manufacturing options and remove non-
   ]);
 
   const description = supplierProductionDescription([item]);
-  assert.match(description, /^Product Type: LED Neon Flex/m);
-  assert.match(description, /Adhesive mounting kit: YES ❗/);
+  assert.match(description, /Product Type: LED Neon Flex/);
+  assert.match(description, /^Adhesive Strips ❗/m);
   assert.doesNotMatch(description, /Must not reach supplier|379|Hanging set|Height|Sonderangebot|Power plug/);
 });
 
@@ -851,8 +852,93 @@ test("supplier production description supports normal offers and multiple produc
   assert.match(description, /Size: 150x132cm/);
   assert.match(description, /Color: Gold/);
   assert.match(description, /Power plug: United Kingdom/);
-  assert.match(description, /Accessory: Dimmer with remote control/);
+  assert.doesNotMatch(description, /Dimmer|remote control/);
   assert.doesNotMatch(description, /Kunde|E-Mail|Shopify-Link|Preis/);
+});
+
+test("supplier production description keeps only real products and essential English production details", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-clean-production-description", source: "neontrip-offers" })],
+    [
+      itemRow({
+        id: "item-priority-production",
+        sale_id: "sale-clean-production-description",
+        title: "Priorisierte Produktion 12 Tage",
+        product_type: "Priorisierte Produktion 12 Tage",
+      }),
+      itemRow({
+        id: "item-generic-sign",
+        sale_id: "sale-clean-production-description",
+        title: "Leuchtschild Design",
+        product_type: "Leuchtschild Design",
+      }),
+      itemRow({
+        id: "item-adhesive",
+        sale_id: "sale-clean-production-description",
+        title: "Klebe-Set",
+        product_type: "Klebe-Set",
+        quantity: 2,
+      }),
+      itemRow({
+        id: "item-white-power-supply",
+        sale_id: "sale-clean-production-description",
+        title: "Weißes Netzteil Premium-Version",
+        product_type: "Zusatzoptionen",
+      }),
+      itemRow({
+        id: "item-standard-dimmer",
+        sale_id: "sale-clean-production-description",
+        title: "Dimmer mit Bluetooth und Fernbedienung",
+        product_type: "Zusatzoptionen",
+      }),
+      itemRow({
+        id: "item-shipping",
+        sale_id: "sale-clean-production-description",
+        title: "Standardversand 20 Werktage",
+        product_type: "Liefertermin",
+      }),
+    ],
+    [],
+  );
+
+  assert.equal(
+    supplierProductionDescription(board.items[0]?.items || []),
+    "2x Adhesive Strips ❗\nPower Supply: White",
+  );
+});
+
+test("supplier production description prioritizes cable position and keeps outdoor, RGB and product quantity", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-special-production-details", source: "neontrip-offers" })],
+    [
+      itemRow({
+        id: "item-rgb-outdoor",
+        sale_id: "sale-special-production-details",
+        title: "Neon Schriftzug Konfigurator",
+        product_type: "Neon Schriftzug Konfigurator",
+        quantity: 2,
+        raw_line_item: {
+          properties: [
+            { name: "Farbe", value: "RGB" },
+            { name: "Nutzung", value: "Draußen" },
+            { name: "Kabelabgang", value: "unten mittig" },
+          ],
+        },
+      }),
+    ],
+    [],
+  );
+
+  assert.equal(
+    supplierProductionDescription(board.items[0]?.items || []),
+    [
+      "Cable Position: Bottom-Center ❗",
+      "Product Type: LED Neon Flex",
+      "Color: RGB",
+      "Use: Outdoor",
+      "Quantity: 2 Pieces",
+    ].join("\n"),
+  );
 });
 
 test("supplier Trello description is freshly read and prepended without deleting existing text", async () => {
@@ -1008,6 +1094,132 @@ test("supplier Trello description ignores an Anfrage Management source card and 
     assert.equal(result.cardUrl, `https://trello.com/c/${quentinCardId}`);
     assert.equal(result.description, "Existing Quentin production note");
   });
+});
+
+test("manual Quentin Trello link is verified, stored separately and invalidates the old confirmation", async () => {
+  const sourceCardId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const previousSupplierCardId = "bbbbbbbbbbbbbbbbbbbbbbbb";
+  const nextSupplierCardId = "cccccccccccccccccccccccc";
+  let currentRow = saleRow({
+    id: "sale-manual-trello-link",
+    trello_card_id: sourceCardId,
+    supplier_trello_card_id: previousSupplierCardId,
+    supplier_trello_card_url: `https://trello.com/c/${previousSupplierCardId}`,
+    trello_projection_status: "synced",
+    assignment_status: "assigned",
+    assigned_supplier: "quentin",
+    metadata: {
+      trello_description_confirmed_at: "2026-07-22T12:00:00.000Z",
+      trello_description_confirmed_card_id: previousSupplierCardId,
+    },
+  });
+  let trelloWriteCount = 0;
+  let eventType: string | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (method !== "GET") trelloWriteCount += 1;
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      return Response.json({
+        id: nextSupplierCardId,
+        idBoard: "62bae9b97705e7419ed64593",
+        idList: "new-sketch",
+        name: "Correct Quentin production card",
+        desc: "Existing supplier note",
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      eventType = JSON.parse(String(init?.body || "{}")).event_type;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    const result = await setSupplierSaleQuentinTrelloCard({
+      saleId: currentRow.id,
+      trelloCard: `https://trello.com/c/${nextSupplierCardId}/correct-card`,
+      operatorName: "Rahim",
+    });
+    assert.equal(result.changed, true);
+    assert.equal(result.trelloDescription.cardId, nextSupplierCardId);
+    assert.equal(result.trelloDescription.description, "Existing supplier note");
+  });
+
+  assert.equal(trelloWriteCount, 0, "relinking must not modify the Trello card itself");
+  assert.equal(currentRow.trello_card_id, sourceCardId, "the Anfrage Management source card must stay intact");
+  assert.equal(currentRow.supplier_trello_card_id, nextSupplierCardId);
+  assert.equal(currentRow.trello_projection_status, "not_started");
+  assert.equal(currentRow.metadata.trello_description_confirmed_card_id, null);
+  assert.equal(eventType, "supplier_trello_card_relinked");
+});
+
+test("manual Quentin Trello link rejects a foreign board without changing the stored card", async () => {
+  const previousSupplierCardId = "bbbbbbbbbbbbbbbbbbbbbbbb";
+  const foreignCardId = "dddddddddddddddddddddddd";
+  const row = saleRow({
+    id: "sale-foreign-manual-trello-link",
+    supplier_trello_card_id: previousSupplierCardId,
+    supplier_trello_card_url: `https://trello.com/c/${previousSupplierCardId}`,
+  });
+  let supplierSalePatchCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      return Response.json({
+        id: foreignCardId,
+        idBoard: "anfrage-management-board",
+        name: "Wrong board",
+        desc: "Do not use",
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      });
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") supplierSalePatchCount += 1;
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      setSupplierSaleQuentinTrelloCard({ saleId: row.id, trelloCard: `https://trello.com/c/${foreignCardId}` }),
+      /gehoert nicht zum Quentin-Board/,
+    );
+  });
+
+  assert.equal(supplierSalePatchCount, 0);
+  assert.equal(row.supplier_trello_card_id, previousSupplierCardId);
+});
+
+test("manual Quentin Trello link rejects malformed input before Trello access", async () => {
+  const row = saleRow({ id: "sale-invalid-manual-trello-link" });
+  let trelloRequestCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") trelloRequestCount += 1;
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      setSupplierSaleQuentinTrelloCard({ saleId: row.id, trelloCard: "not a Trello link" }),
+      /ungueltig/,
+    );
+  });
+
+  assert.equal(trelloRequestCount, 0);
 });
 
 test("supplier sales board sorts newest sales first by accepted snapshot", () => {

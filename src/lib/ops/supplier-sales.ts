@@ -427,6 +427,12 @@ export type SupplierSaleTrelloDescriptionInput = {
   operatorName?: string | null;
 };
 
+export type SupplierSaleTrelloCardInput = {
+  saleId: string;
+  trelloCard: string;
+  operatorName?: string | null;
+};
+
 export type SupplierSaleTrelloDescriptionSnapshot = {
   cardId: string;
   cardUrl: string;
@@ -1544,8 +1550,9 @@ const SUPPLIER_PRODUCTION_LABELS: Record<string, string> = {
   waterproof: "Waterproof",
   waterproofwaterproofpowersupply: "Waterproof",
   remote: "Remote",
-  kabelabgang: "Cable exit",
-  cableexit: "Cable exit",
+  kabelabgang: "Cable Position",
+  cableexit: "Cable Position",
+  cableposition: "Cable Position",
   kabelfarbe: "Cable color",
   cablecolor: "Cable color",
 };
@@ -1590,6 +1597,26 @@ function supplierProductionValue(label: string, value: string) {
   }
   if (label === "Color") {
     return clean.replace(/\bwarm white\b/i, "Warm white").replace(/\bcold white\b/i, "Cold white");
+  }
+  if (label === "Cable Position") {
+    if (!clean) return null;
+    const positions: Record<string, string> = {
+      untenmitte: "Bottom-Center",
+      untenmittig: "Bottom-Center",
+      bottomcenter: "Bottom-Center",
+      untenlinks: "Bottom-Left",
+      bottomleft: "Bottom-Left",
+      untenrechts: "Bottom-Right",
+      bottomright: "Bottom-Right",
+      obenmitte: "Top-Center",
+      obenmittig: "Top-Center",
+      topcenter: "Top-Center",
+      obenlinks: "Top-Left",
+      topleft: "Top-Left",
+      obenrechts: "Top-Right",
+      topright: "Top-Right",
+    };
+    return `${positions[normalized] || clean} ❗`;
   }
   if (label === "Power plug" && /deutschland|germany|europa|europe/i.test(clean)) return null;
   if (!clean || /^(none|null|undefined|nichtgewaehlt)$/.test(normalized)) return null;
@@ -4230,6 +4257,93 @@ export async function readSupplierSaleTrelloDescription(saleId: string) {
   return trelloDescriptionSnapshot(row, items, cardId, card);
 }
 
+export async function setSupplierSaleQuentinTrelloCard(
+  input: SupplierSaleTrelloCardInput,
+  actor?: SupplierSaleActor | null,
+) {
+  const row = await fetchSaleRowById(input.saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  if (row.assigned_supplier && row.assigned_supplier !== "quentin") {
+    throw new QuoteValidationError("Die Sale ist einem anderen Supplier zugeordnet.", [
+      "Die Quentin-Trello-Karte kann nur fuer unzugeordnete oder Quentin-Sales geaendert werden.",
+    ], 409);
+  }
+  if (["completed", "canceled"].includes(row.assignment_status)) {
+    throw new QuoteValidationError("Die Trello-Zuordnung ist gesperrt.", [
+      "Abgeschlossene oder stornierte Sales koennen nicht neu zugeordnet werden.",
+    ], 409);
+  }
+
+  const cardId = trelloCardIdFromValue(input.trelloCard);
+  if (!cardId) {
+    throw new QuoteValidationError("Trello-Link oder Card-ID ist ungueltig.", [
+      "Bitte eine Trello-Karten-URL wie https://trello.com/c/... oder eine gueltige Card-ID eintragen.",
+    ], 422);
+  }
+
+  let card: Awaited<ReturnType<typeof getTrelloCard>>;
+  try {
+    card = await getTrelloCard(cardId);
+  } catch {
+    throw new QuoteValidationError("Trello-Karte konnte nicht geladen werden.", [
+      "Bitte Link beziehungsweise Card-ID pruefen. Die bisherige Zuordnung blieb unveraendert.",
+    ], 422);
+  }
+  if (card.idBoard !== QUENTIN_NEON_BOARD_ID) {
+    throw new QuoteValidationError("Die Trello-Karte gehoert nicht zum Quentin-Board.", [
+      "Aus Sicherheitsgruenden wurde die bisherige Zuordnung nicht geaendert.",
+    ], 422);
+  }
+
+  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const previousCardId = trelloCardIdFromValue(row.supplier_trello_card_id);
+  if (previousCardId === cardId) {
+    return {
+      sale: await getSupplierSale(row.id),
+      trelloDescription: trelloDescriptionSnapshot(row, items, cardId, card),
+      changed: false,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  await patchSaleRow(row.id, {
+    supplier_trello_card_id: cardId,
+    supplier_trello_card_url: `https://trello.com/c/${cardId}`,
+    trello_projection_status: "not_started",
+    trello_projection_error: null,
+    metadata: {
+      ...jsonRecord(row.metadata),
+      trello_description_confirmed_at: null,
+      trello_description_confirmed_by: null,
+      trello_description_confirmed_card_id: null,
+      trello_description_prepend_hash: null,
+      trello_description_previous_hash: null,
+      trello_card_manually_linked_at: now,
+      trello_card_manually_linked_by: operatorName,
+    },
+  });
+  await insertEvent({
+    saleId: row.id,
+    eventType: "supplier_trello_card_relinked",
+    actor: actor || { operatorName },
+    idempotencyKey: `supplier-sale:${row.id}:trello-card:${cardId}`,
+    payload: {
+      previous_trello_card_id: previousCardId,
+      trello_card_id: cardId,
+      board_id: QUENTIN_NEON_BOARD_ID,
+    },
+  });
+
+  const freshRow = await fetchSaleRowById(row.id);
+  if (!freshRow) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  return {
+    sale: await getSupplierSale(row.id),
+    trelloDescription: trelloDescriptionSnapshot(freshRow, items, cardId, card),
+    changed: true,
+  };
+}
+
 export async function prependSupplierSaleTrelloDescription(
   input: SupplierSaleTrelloDescriptionInput,
   actor?: SupplierSaleActor | null,
@@ -4481,30 +4595,116 @@ function supplierProductionItemKind(item: SupplierSaleItem) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-  if (/(liefer|versand|delivery|termin)/.test(text)) return "delivery";
-  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|kleber|adhesive|haengeset|hanging set|power plug|stromstecker)/.test(text)) return "addon";
+  if (/(liefer|versand|delivery|termin|priorisierte? produktion|prioritized production|eilproduktion|express production|rush production)/.test(text)) return "delivery";
+  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|klebe|adhesive|haengeset|hanging set|power plug|stromstecker)/.test(text)) return "addon";
   return "product";
+}
+
+type SupplierAccessoryLine = {
+  key: "adhesive" | "hanging" | "cable" | "mounting" | "rgb" | "power_supply";
+  line: string;
+  trailing?: boolean;
+};
+
+function supplierItemSignal(item: SupplierSaleItem) {
+  return [item.title, item.productType, item.variantTitle, ...item.selectionDetails]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss");
+}
+
+function supplierAccessoryLine(item: SupplierSaleItem): SupplierAccessoryLine | null {
+  const text = supplierItemSignal(item);
+  const quantityPrefix = item.quantity > 1 ? `${item.quantity}x ` : "";
+  if (/dimmer|fernbedienung|remote control/.test(text)) return null;
+  if (/klebe|adhesive|command strip/.test(text)) {
+    return { key: "adhesive", line: `${quantityPrefix}Adhesive Strips ❗` };
+  }
+  if (/haenge|hange|hanging set|hanging kit/.test(text)) {
+    return { key: "hanging", line: `${quantityPrefix}Hanging Set ❗` };
+  }
+  if (/kabelabgang|cable exit|cable position/.test(text)) {
+    const explicit = item.selectionDetails.find((detail) => /^Cable Position:/i.test(detail));
+    const rawPosition = explicit?.split(":").slice(1).join(":").trim().replace(/\s*❗$/, "")
+      || item.title.replace(/.*?(kabelabgang|cable exit|cable position)\s*[:\-]?\s*/i, "").trim();
+    const value = supplierProductionValue("Cable Position", rawPosition);
+    return value ? { key: "cable", line: `Cable Position: ${value}` } : null;
+  }
+  if (/wandmontage|wall mount|mounting kit/.test(text)) {
+    return { key: "mounting", line: `${quantityPrefix}Wall Mounting Set ❗` };
+  }
+  if (/\brgb\b/.test(text)) return { key: "rgb", line: "Color: RGB" };
+  if (/netzteil|power supply/.test(text)) {
+    if (/weiss|white/.test(text)) return { key: "power_supply", line: "Power Supply: White", trailing: true };
+    if (/schwarz|black/.test(text)) return { key: "power_supply", line: "Power Supply: Black", trailing: true };
+    return null;
+  }
+  return null;
+}
+
+function productionDescriptionDetail(
+  detail: string,
+  priority: Map<SupplierAccessoryLine["key"], string>,
+  trailing: Map<SupplierAccessoryLine["key"], string>,
+) {
+  const [rawLabel, ...rest] = detail.split(":");
+  const label = rawLabel.trim();
+  const value = rest.join(":").trim();
+  const normalizedLabel = supplierProductionKey(label);
+  const normalizedValue = supplierProductionKey(value);
+  if (normalizedLabel === "producttype" && /^(leuchtschilddesign|leuchtschilder|productionitem|products?)$/.test(normalizedValue)) return null;
+  if (normalizedLabel === "adhesivemountingkit") {
+    priority.set("adhesive", "Adhesive Strips ❗");
+    return null;
+  }
+  if (normalizedLabel === "hangingset") {
+    priority.set("hanging", "Hanging Set ❗");
+    return null;
+  }
+  if (normalizedLabel === "cableposition") {
+    priority.set("cable", `Cable Position: ${value.replace(/\s*❗$/, "")} ❗`);
+    return null;
+  }
+  if (normalizedLabel === "powersupply") {
+    trailing.set("power_supply", `Power Supply: ${value}`);
+    return null;
+  }
+  return detail;
 }
 
 export function supplierProductionDescription(items: SupplierSaleItem[], note?: string | null) {
   const products = items.filter((item) => supplierProductionItemKind(item) === "product");
   const addons = items.filter((item) => supplierProductionItemKind(item) === "addon");
+  const priority = new Map<SupplierAccessoryLine["key"], string>();
+  const trailing = new Map<SupplierAccessoryLine["key"], string>();
   const lines: string[] = [];
 
-  products.forEach((item, index) => {
-    if (products.length > 1) lines.push(`Product: ${index + 1}`);
-    lines.push(...item.selectionDetails);
-    if (item.quantity > 1) lines.push(`Quantity: ${item.quantity}`);
-    if (index < products.length - 1) lines.push("");
-  });
+  const productBlocks = products.map((item) => {
+    const details = item.selectionDetails
+      .map((detail) => productionDescriptionDetail(detail, priority, trailing))
+      .filter((detail): detail is string => Boolean(detail));
+    if (item.quantity > 1) details.push(`Quantity: ${item.quantity} Pieces`);
+    return details;
+  }).filter((details) => details.length > 0);
 
   for (const item of addons) {
-    const quantity = item.quantity > 1 ? ` x${item.quantity}` : "";
-    lines.push(`Accessory: ${item.title}${quantity}`);
+    const accessory = supplierAccessoryLine(item);
+    if (!accessory) continue;
+    (accessory.trailing ? trailing : priority).set(accessory.key, accessory.line);
   }
+
+  lines.push(...priority.values());
+  productBlocks.forEach((details, index) => {
+    if (productBlocks.length > 1) lines.push(`Product ${index + 1}`);
+    lines.push(...details);
+  });
 
   const cleanNote = nullableText(note, 1000);
   if (cleanNote) lines.push(`Note: ${cleanNote}`);
+  lines.push(...trailing.values());
   return lines.filter((line, index) => line !== "" || lines[index - 1] !== "").join("\n").trim();
 }
 
