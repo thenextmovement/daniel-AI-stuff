@@ -29,6 +29,11 @@ test("macOS print manager separates A6 and A4, uses Keychain, and requires an ex
   assert.match(launcher, /find-generic-password/);
   assert.doesNotMatch(plist, /ARRIVAL_LABEL_PRINT_API_TOKEN/);
   assert.match(plist, /ARRIVAL_LABEL_PRINT_LIVE_ENABLED/);
+  const makeExistingRunnerWritable = manager.indexOf("if (existsSync(target)) chmodSync(target, 0o700)");
+  const overwriteStagedRunner = manager.indexOf("copyFileSync(join(SOURCE_ROOT, \"scripts\", filename), target)");
+  const lockStagedRunner = manager.indexOf("chmodSync(target, 0o500)");
+  assert.ok(makeExistingRunnerWritable >= 0 && overwriteStagedRunner > makeExistingRunnerWritable);
+  assert.ok(lockStagedRunner > overwriteStagedRunner, "re-staging must restore executable files to read-only mode");
 });
 
 test("systemd worker runs unprivileged and keeps secrets outside the unit", async () => {

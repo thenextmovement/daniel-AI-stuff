@@ -90,8 +90,10 @@ function stageVersion(commit) {
   mkdirSync(join(versionDir, "scripts"), { recursive: true, mode: 0o700 });
   mkdirSync(join(versionDir, "src", "lib", "ops", "arrival-labels"), { recursive: true, mode: 0o700 });
   for (const filename of ["run_arrival_label_print_worker_launcher.mjs", "run_arrival_label_print_worker.ts"]) {
-    copyFileSync(join(SOURCE_ROOT, "scripts", filename), join(versionDir, "scripts", filename));
-    chmodSync(join(versionDir, "scripts", filename), 0o500);
+    const target = join(versionDir, "scripts", filename);
+    if (existsSync(target)) chmodSync(target, 0o700);
+    copyFileSync(join(SOURCE_ROOT, "scripts", filename), target);
+    chmodSync(target, 0o500);
   }
   copyFileSync(join(SOURCE_ROOT, "src", "lib", "ops", "arrival-labels", "printing.ts"), join(versionDir, "src", "lib", "ops", "arrival-labels", "printing.ts"));
   for (const filename of ["package.json", "package-lock.json"]) copyFileSync(join(SOURCE_ROOT, "deploy", "local-print-worker", filename), join(versionDir, filename));
