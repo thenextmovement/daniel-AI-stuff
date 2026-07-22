@@ -10,6 +10,8 @@ import {
   generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
   markSupplierSaleInProduction,
+  prependSupplierSaleTrelloDescription,
+  readSupplierSaleTrelloDescription,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
   retrySupplierSaleTrelloProjection,
@@ -45,6 +47,7 @@ type SupplierSalesPostBody = {
     | "send_order_confirmation_email"
     | "retry_shopify_tag"
     | "retry_trello_projection"
+    | "prepend_trello_description"
     | "mark_in_production"
     | "apply_no_payment_reminder_tag"
     | "create_deadline_tasks"
@@ -61,6 +64,7 @@ type SupplierSalesPostBody = {
   specialSupplierName?: string | null;
   shopifySupplierTagConfirmed?: boolean | null;
   assignmentNote?: string | null;
+  prependText?: string | null;
   reviewNote?: string | null;
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
   paymentDueAt?: string | null;
@@ -235,6 +239,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    if (params.get("action") === "trello_description") {
+      const trelloDescription = await readSupplierSaleTrelloDescription(String(params.get("saleId") || ""));
+      return NextResponse.json({
+        ok: true,
+        trelloDescription,
+      }, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
     const board = await listSupplierSalesBoard({
       scope: (params.get("scope") || "active") as "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all",
       supplier: (params.get("supplier") || "all") as SupplierSaleSupplier | SupplierSaleRecommendation | "all",
@@ -380,6 +394,15 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale });
+    }
+
+    if (action === "prepend_trello_description") {
+      const result = await prependSupplierSaleTrelloDescription({
+        saleId: String(body.saleId || ""),
+        prependText: String(body.prependText || ""),
+        operatorName: body.operatorName || null,
+      }, actor);
+      return NextResponse.json({ ok: true, action, sale: result.sale, trelloDescription: result.trelloDescription });
     }
 
     if (action === "mark_in_production") {

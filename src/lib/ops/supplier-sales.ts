@@ -411,6 +411,21 @@ export type SupplierSaleTrelloRetryInput = {
   operatorName?: string | null;
 };
 
+export type SupplierSaleTrelloDescriptionInput = {
+  saleId: string;
+  prependText: string;
+  operatorName?: string | null;
+};
+
+export type SupplierSaleTrelloDescriptionSnapshot = {
+  cardId: string;
+  cardUrl: string;
+  cardName: string | null;
+  description: string;
+  suggestedPrependText: string;
+  fetchedAt: string;
+};
+
 export type SupplierSalePostOrderReviewInput = {
   saleId: string;
   operatorName?: string | null;
@@ -4059,6 +4074,137 @@ function supplierTrelloProjectionEnabled() {
     .toLowerCase() === "true";
 }
 
+const MAX_TRELLO_DESCRIPTION_CHARS = 16_000;
+const MAX_TRELLO_PREPEND_CHARS = 5_000;
+
+function supplierSaleQuentinCardId(row: SupplierSaleRow) {
+  return trelloCardIdFromValue(row.trello_card_id) || trelloCardIdFromValue(row.supplier_trello_card_id);
+}
+
+function validatedTrelloPrependText(value: unknown) {
+  const text = String(value || "").replace(/\r\n/g, "\n").trim();
+  if (!text) {
+    throw new QuoteValidationError("Trello-Text fehlt.", ["Bitte den Text eintragen, der oben hinzugefuegt werden soll."], 422);
+  }
+  if (text.length > MAX_TRELLO_PREPEND_CHARS) {
+    throw new QuoteValidationError("Trello-Text ist zu lang.", [`Maximal ${MAX_TRELLO_PREPEND_CHARS} Zeichen sind erlaubt.`], 422);
+  }
+  return text;
+}
+
+function prependWithoutDeletingExistingDescription(existingDescription: unknown, prependText: unknown) {
+  const existing = String(existingDescription || "").replace(/\r\n/g, "\n");
+  const prefix = validatedTrelloPrependText(prependText);
+  if (existing === prefix || existing.startsWith(`${prefix}\n\n`)) {
+    return { description: existing, changed: false, prefix };
+  }
+  const description = existing ? `${prefix}\n\n${existing}` : prefix;
+  if (description.length > MAX_TRELLO_DESCRIPTION_CHARS) {
+    throw new QuoteValidationError("Trello-Description waere zu lang.", [
+      "Der vorhandene Text bleibt geschuetzt. Bitte den neuen Block kuerzen.",
+    ], 422);
+  }
+  return { description, changed: true, prefix };
+}
+
+async function readExactQuentinCard(row: SupplierSaleRow) {
+  const cardId = supplierSaleQuentinCardId(row);
+  if (!cardId) {
+    throw new QuoteValidationError("Keine eindeutige Quentin-Karte gefunden.", [
+      "Die Description kann erst ausgelesen werden, wenn genau eine Quentin-Karte zugeordnet ist.",
+    ], 422);
+  }
+  const card = await getTrelloCard(cardId);
+  if (card.idBoard !== QUENTIN_NEON_BOARD_ID) {
+    throw new QuoteValidationError("Die gefundene Trello-Karte gehoert nicht zum Quentin-Board.", [
+      "Aus Sicherheitsgruenden wurde nichts gelesen oder geaendert.",
+    ], 422);
+  }
+  return { cardId, card };
+}
+
+function trelloDescriptionSnapshot(
+  row: SupplierSaleRow,
+  items: SupplierSaleItem[],
+  cardId: string,
+  card: Awaited<ReturnType<typeof getTrelloCard>>,
+): SupplierSaleTrelloDescriptionSnapshot {
+  return {
+    cardId,
+    cardUrl: `https://trello.com/c/${cardId}`,
+    cardName: nullableText(card.name, 500),
+    description: String(card.desc || ""),
+    suggestedPrependText: supplierProductionDescription(items, row.assignment_note),
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+export async function readSupplierSaleTrelloDescription(saleId: string) {
+  const row = await fetchSaleRowById(saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const { cardId, card } = await readExactQuentinCard(row);
+  return trelloDescriptionSnapshot(row, items, cardId, card);
+}
+
+export async function prependSupplierSaleTrelloDescription(
+  input: SupplierSaleTrelloDescriptionInput,
+  actor?: SupplierSaleActor | null,
+) {
+  const row = await fetchSaleRowById(input.saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+
+  // Trello is deliberately re-read immediately before every write. The latest
+  // existing description is always appended unchanged behind the new block.
+  const { cardId, card } = await readExactQuentinCard(row);
+  const next = prependWithoutDeletingExistingDescription(card.desc, input.prependText);
+  if (next.changed) await updateTrelloCard(cardId, { desc: next.description });
+
+  const verifiedCard = await getTrelloCard(cardId);
+  if (verifiedCard.idBoard !== QUENTIN_NEON_BOARD_ID || String(verifiedCard.desc || "") !== next.description) {
+    throw new QuoteValidationError("Trello-Bestaetigung konnte nicht verifiziert werden.", [
+      "Bitte die Karte erneut auslesen. Die Vergabe bleibt sichtbar und unbestaetigt.",
+    ], 409);
+  }
+
+  const now = new Date().toISOString();
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  await patchSaleRow(row.id, {
+    trello_projection_status: "synced",
+    supplier_trello_card_id: cardId,
+    supplier_trello_card_url: `https://trello.com/c/${cardId}`,
+    trello_projection_error: null,
+    metadata: {
+      ...jsonRecord(row.metadata),
+      trello_description_confirmed_at: now,
+      trello_description_confirmed_by: operatorName,
+      trello_description_confirmed_card_id: cardId,
+      trello_description_prepend_hash: hashPayload(next.prefix),
+      trello_description_previous_hash: hashPayload(String(card.desc || "")),
+    },
+  });
+  await insertEvent({
+    saleId: row.id,
+    eventType: "supplier_trello_description_confirmed",
+    actor: actor || { operatorName },
+    idempotencyKey: `supplier-sale:${row.id}:trello-description:${cardId}:${hashPayload(next.prefix)}`,
+    payload: {
+      trello_card_id: cardId,
+      changed: next.changed,
+      prepend_length: next.prefix.length,
+      previous_description_length: String(card.desc || "").length,
+    },
+  });
+
+  const freshRow = await fetchSaleRowById(row.id);
+  if (!freshRow) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  return {
+    sale: await getSupplierSale(row.id),
+    trelloDescription: trelloDescriptionSnapshot(freshRow, items, cardId, verifiedCard),
+  };
+}
+
 function supplierAssignmentTasksEnabled() {
   return String(process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED || "")
     .trim()
@@ -4305,6 +4451,33 @@ async function projectSupplierTrelloCard(
   deliveryDate: string,
   note?: string | null,
 ) {
+  const metadata = jsonRecord(row.metadata);
+  const confirmedCardId = trelloCardIdFromValue(metadata.trello_description_confirmed_card_id);
+  const sourceQuentinCardId = trelloCardIdFromValue(row.trello_card_id);
+  if (supplier === "quentin" && confirmedCardId && confirmedCardId === sourceQuentinCardId) {
+    const { cardId, card } = await readExactQuentinCard(row);
+    return {
+      status: "synced" as const,
+      cardId,
+      cardUrl: `https://trello.com/c/${cardId}`,
+      error: null,
+      existingDescription: String(card.desc || ""),
+    };
+  }
+
+  if (supplier === "quentin" && sourceQuentinCardId) {
+    const { cardId, card } = await readExactQuentinCard(row);
+    const next = prependWithoutDeletingExistingDescription(card.desc, supplierProductionDescription(items, note));
+    if (next.changed) await updateTrelloCard(cardId, { desc: next.description });
+    return {
+      status: "synced" as const,
+      cardId,
+      cardUrl: `https://trello.com/c/${cardId}`,
+      error: null,
+      existingDescription: next.description,
+    };
+  }
+
   if (!supplierTrelloProjectionEnabled()) {
     return {
       status: "skipped" as const,

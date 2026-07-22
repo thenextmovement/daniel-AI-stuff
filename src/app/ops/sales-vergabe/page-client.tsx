@@ -35,10 +35,20 @@ import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 
+type SupplierSaleTrelloDescriptionSnapshot = {
+  cardId: string;
+  cardUrl: string;
+  cardName: string | null;
+  description: string;
+  suggestedPrependText: string;
+  fetchedAt: string;
+};
+
 type SupplierSalesApiResponse = {
   ok: boolean;
   board?: SupplierSaleBoard;
   sale?: SupplierSale;
+  trelloDescription?: SupplierSaleTrelloDescriptionSnapshot;
   liveCheck?: SupplierSalesLiveCheck;
   deadlineTasks?: {
     checked: number;
@@ -405,6 +415,7 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
     if (payload?.sale?.trelloProjectionStatus === "synced") return "Trello-Karte wurde gefunden und aktualisiert.";
     return "Trello-Karte erneut geprueft. Bitte Sync-Status pruefen.";
   }
+  if (action === "prepend_trello_description") return "Trello-Description wurde bestaetigt. Der neue Block steht oben; vorhandener Text blieb erhalten.";
   if (action === "mark_in_production") return "Zur Produktion gegeben. Die Karte verschwindet in 10 Minuten aus der aktiven Uebersicht.";
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
   if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
@@ -706,7 +717,7 @@ function SaleCard({
   sale: SupplierSale;
   operatorName: string;
   saving: boolean;
-  onAction: (body: Record<string, unknown>) => Promise<void>;
+  onAction: (body: Record<string, unknown>) => Promise<SupplierSalesApiResponse | null>;
 }) {
   const [supplier, setSupplier] = useState<SupplierSelection>(defaultSupplierSelection(sale));
   const [specialSupplierName, setSpecialSupplierName] = useState(sale.specialSupplierName || "");
@@ -717,6 +728,11 @@ function SaleCard({
   const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
   const [reviewNow, setReviewNow] = useState(() => Date.now());
   const [completionNow, setCompletionNow] = useState(() => Date.now());
+  const [trelloDescription, setTrelloDescription] = useState<SupplierSaleTrelloDescriptionSnapshot | null>(null);
+  const [trelloPrependText, setTrelloPrependText] = useState("");
+  const [trelloDescriptionBusy, setTrelloDescriptionBusy] = useState(false);
+  const [trelloDescriptionError, setTrelloDescriptionError] = useState<string | null>(null);
+  const [trelloDescriptionSaved, setTrelloDescriptionSaved] = useState(false);
   useEffect(() => {
     setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
@@ -724,6 +740,10 @@ function SaleCard({
     setDeliveryDate(sale.supplierDueDate || sale.customerDueDate || "");
     setPaymentDecision(defaultPaymentDecision(sale));
     setReminderLink(sale.paymentLink || sale.shopifyOrderUrl || "");
+    setTrelloDescription(null);
+    setTrelloPrependText("");
+    setTrelloDescriptionError(null);
+    setTrelloDescriptionSaved(false);
   }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.productSummary, sale.items, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
 
   useEffect(() => {
@@ -763,6 +783,51 @@ function SaleCard({
     : !reminderLink
       ? "Bezahllink fehlt. Erst Sync laden oder Link manuell eintragen."
       : null;
+
+  async function loadTrelloDescription() {
+    setTrelloDescriptionBusy(true);
+    setTrelloDescriptionError(null);
+    setTrelloDescriptionSaved(false);
+    try {
+      const response = await fetchWithTimeout(
+        `/api/ops/supplier-sales?action=trello_description&saleId=${encodeURIComponent(sale.id)}`,
+        { cache: "no-store" },
+        30_000,
+      );
+      const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
+      if (!response.ok || !payload?.ok || !payload.trelloDescription) throw new Error(formatApiError(payload));
+      setTrelloDescription(payload.trelloDescription);
+      setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
+    } catch (error) {
+      setTrelloDescriptionError(formatUnknownError(error, "Trello-Karte konnte nicht ausgelesen werden."));
+    } finally {
+      setTrelloDescriptionBusy(false);
+    }
+  }
+
+  async function confirmTrelloDescription() {
+    if (!trelloDescription || !trelloPrependText.trim()) return;
+    if (!confirmAction("Diesen Textblock oben in die aktuelle Quentin-Trello-Description einfuegen? Der vorhandene Text bleibt vollstaendig erhalten.")) return;
+    setTrelloDescriptionBusy(true);
+    setTrelloDescriptionError(null);
+    setTrelloDescriptionSaved(false);
+    try {
+      const payload = await onAction({
+        action: "prepend_trello_description",
+        saleId: sale.id,
+        prependText: trelloPrependText,
+        operatorName,
+      });
+      if (!payload?.trelloDescription) throw new Error("Trello-Bestaetigung konnte nicht geladen werden.");
+      setTrelloDescription(payload.trelloDescription);
+      setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
+      setTrelloDescriptionSaved(true);
+    } catch (error) {
+      setTrelloDescriptionError(formatUnknownError(error, "Trello-Description konnte nicht bestaetigt werden."));
+    } finally {
+      setTrelloDescriptionBusy(false);
+    }
+  }
 
   return (
     <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : priorPaidPriority ? "border-amber-300 ring-2 ring-amber-100" : "border-stone-200"}`}>
@@ -1201,6 +1266,81 @@ function SaleCard({
               ) : null}
             </div>
 
+            {supplier === "quentin" ? (
+              <div className="grid gap-3 rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-stone-950">Quentin-Trello-Description</p>
+                    <p className="text-xs leading-5 text-stone-600">Bestehender Text wird niemals geloescht. Bestaetigter Text wird nur oben eingefuegt.</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saving || trelloDescriptionBusy || !directTrelloCardUrl}
+                    title={directTrelloCardUrl ? "Aktuelle Description direkt aus Trello laden" : "Noch keine eindeutige Quentin-Karte gefunden."}
+                    onClick={() => void loadTrelloDescription()}
+                    className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+                  >
+                    <RefreshCcw className={`h-4 w-4 ${trelloDescriptionBusy ? "animate-spin" : ""}`} />
+                    Trello-Karte auslesen
+                  </button>
+                </div>
+
+                {trelloDescriptionError ? (
+                  <p className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{trelloDescriptionError}</p>
+                ) : null}
+                {trelloDescriptionSaved ? (
+                  <p className="flex items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+                    <CheckCircle2 className="h-4 w-4" />
+                    In Trello bestaetigt und direkt danach erneut verifiziert.
+                  </p>
+                ) : null}
+
+                {trelloDescription ? (
+                  <div className="grid gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600">
+                      <span>{trelloDescription.cardName || "Quentin-Karte"}</span>
+                      <a href={trelloDescription.cardUrl} target="_blank" rel="noreferrer" className="font-medium text-stone-900 underline">
+                        Karte oeffnen
+                      </a>
+                    </div>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold text-stone-700">Neuer Block – editierbar und nur oben eingefuegt</span>
+                      <textarea
+                        value={trelloPrependText}
+                        onChange={(event) => {
+                          setTrelloPrependText(event.target.value);
+                          setTrelloDescriptionSaved(false);
+                        }}
+                        maxLength={5000}
+                        aria-label="Neuer Textblock fuer Quentin Trello"
+                        className="min-h-40 w-full rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 font-mono text-xs leading-5 text-stone-900"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={saving || trelloDescriptionBusy || !trelloPrependText.trim()}
+                      onClick={() => void confirmTrelloDescription()}
+                      className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-emerald-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Bestaetigen und oben in Trello einfuegen
+                    </button>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold text-stone-700">Aktuelle bestehende Description – geschuetzt und unveraendert</span>
+                      <textarea
+                        readOnly
+                        value={trelloDescription.description}
+                        aria-label="Aktuelle geschuetzte Quentin Trello Description"
+                        className="min-h-48 w-full rounded-[0.5rem] border border-stone-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-stone-700"
+                        placeholder="Die Trello-Description ist aktuell leer."
+                      />
+                    </label>
+                    <p className="text-[11px] text-stone-500">Zuletzt direkt aus Trello geladen: {formatDateTime(trelloDescription.fetchedAt)}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {lastOrderConfirmationEmail ? (
               <p className={`rounded-[0.5rem] border px-3 py-2 text-xs ${lastOrderConfirmationEmail.status === "sent" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
                 AB-Mail: {lastOrderConfirmationEmail.status === "sent" ? `gesendet an ${lastOrderConfirmationEmail.recipientEmail || "Kunde"}` : lastOrderConfirmationEmail.error || lastOrderConfirmationEmail.status}
@@ -1417,8 +1557,10 @@ export function SupplierSalesClient({
       } catch (refreshError) {
         setError(`Aktion gespeichert, aber Liste konnte nicht aktualisiert werden: ${formatUnknownError(refreshError, "Bitte neu laden.")}`);
       }
+      return payload;
     } catch (actionError) {
       setError(formatUnknownError(actionError, "Aktion fehlgeschlagen."));
+      return null;
     } finally {
       setSavingSaleId(null);
     }
