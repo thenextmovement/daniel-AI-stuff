@@ -1,0 +1,27 @@
+{
+  "incident": {
+    "executionId": "3421843",
+    "observedAt": "2026-07-22T12:46:47.212Z",
+    "errorCode": "42703",
+    "errorMessage": "column quote_approvals.correlation_id does not exist"
+  },
+  "workflow": {
+    "id": "7AvW1d4JBNDFuNsv",
+    "name": "NEONTRIP Anfrage → Telegram Approval v1.1 — Credential Safe",
+    "activeVersionIdObserved": "181a0f62-8e16-4879-b347-1056f9590879",
+    "nodeId": "corrApproval",
+    "nodeName": "Correction: Pending Approval",
+    "fieldPath": "parameters.url"
+  },
+  "backup": {
+    "value": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/quote_approvals?card_id=eq.{{ $json.card_id }}&status=eq.pending&select=card_id,change_log,status,correlation_id"
+  },
+  "patch": {
+    "find": "&select=card_id,change_log,status,correlation_id",
+    "replace": "&select=card_id,change_log,status"
+  },
+  "rollback": {
+    "find": "&select=card_id,change_log,status",
+    "replace": "&select=card_id,change_log,status,correlation_id"
+  }
+}
