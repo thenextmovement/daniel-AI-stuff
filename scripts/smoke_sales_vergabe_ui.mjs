@@ -103,6 +103,7 @@ const configuratorSale = sale({
   id: "sale-configurator",
   offerNumber: "NT-CONFIGURATOR",
   customerName: "Konfigurator Sale",
+  totalPrice: 1200,
   trelloCardId: null,
   sourceTrelloCardUrl: null,
   supplierTrelloCardId: null,
@@ -118,6 +119,7 @@ const configuratorSale = sale({
       lineItemKey: "sale-configurator-line",
       title: "Neon Schriftzug Konfigurator",
       sku: "Default_cpc_QA",
+      selectionDetails: ["Product Type: LED Neon Flex", "Color: Warm white", "Use: Indoor"],
     },
   ],
 });
@@ -444,14 +446,15 @@ async function main() {
   assert(await specialCard.count() === 1, "special sale card fehlt");
   assert(await openReviewCard.count() === 1, "open-review sale card fehlt");
   assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
-  assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "", "Konfigurator-Sale waehlt automatisch einen Supplier");
-  assert(await configuratorCard.getByText("Supplier manuell waehlen").isVisible(), "Konfigurator-Sale zeigt weiterhin eine automatische Supplier-Empfehlung");
-  assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Konfigurator-Sale ist ohne bewusste Supplier-Auswahl vergebbar");
+  assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "quentin", "Konfigurator-Sale startet nicht mit Quentin");
+  assert(await configuratorCard.getByText("Standard: Quentin").isVisible(), "Quentin-Standard fehlt");
+  assert(await configuratorCard.getByText(/Saeid pruefen/).isVisible(), "Bedingter Saeid-Hinweis fehlt");
+  assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale ist mit Quentin nicht vergebbar");
   assert(await paidCard.getByRole("link", { name: "Trello-Karte oeffnen" }).count() === 1, "Bekannte Trello-Karte wird nicht direkt verlinkt");
   assert(await paidCard.getByRole("link", { name: "Quentin-Suche" }).count() === 0, "Quentin-Suche bleibt trotz bekannter Trello-Karte sichtbar");
   assert(await configuratorCard.getByRole("link", { name: "Trello per Request-ID finden" }).count() === 1, "Request-ID-Fallback fehlt ohne bekannte Trello-Karte");
-  await configuratorCard.getByLabel("Supplier auswaehlen").selectOption("quentin");
-  assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale bleibt nach Supplier-Auswahl gesperrt");
+  await configuratorCard.getByRole("button", { name: "Saeid waehlen" }).click();
+  assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "said", "Saeid-Hinweis waehlt Saeid nicht bewusst aus");
 
   await unpaidCard.getByLabel("Zahlungsentscheidung").selectOption("wait_for_payment");
   assert(await unpaidCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Vergeben bleibt bei Warten nicht disabled");
@@ -494,7 +497,11 @@ async function main() {
   assert(posts.length === 5 && posts[4].body.action === "send_order_confirmation_email", "Auftragsbestaetigung sendet falsche Action");
 
   await specialCard.getByLabel("Supplier auswaehlen").selectOption("special");
-  assert(await specialCard.getByLabel("Name Sonder-Supplier").isVisible(), "Sonder-Supplier Eingabe ist nicht sichtbar");
+  assert(await specialCard.getByLabel("Name weiterer Supplier").isVisible(), "Eingabe fuer weitere Supplier ist nicht sichtbar");
+  assert(await specialCard.getByText("Bitte in Shopify den Supplier als Tag eintragen.").isVisible(), "Shopify-Tag-Hinweis fehlt");
+  assert(await specialCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Weitere Supplier sind ohne Shopify-Tag-Bestaetigung vergebbar");
+  await specialCard.getByLabel("Shopify-Supplier-Tag bestaetigt").check();
+  assert(await specialCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Weitere Supplier bleiben trotz Shopify-Tag-Bestaetigung gesperrt");
 
   page.once("dialog", dialogHandler(dialogs, "dismiss-deadline", false));
   await page.getByRole("button", { name: "Deadline-Aufgaben pruefen" }).click();

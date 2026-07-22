@@ -55,6 +55,7 @@ type SupplierSalesPostBody = {
   supplier?: SupplierSaleSupplier | null;
   requestedDeliveryDate?: string | null;
   specialSupplierName?: string | null;
+  shopifySupplierTagConfirmed?: boolean | null;
   assignmentNote?: string | null;
   reviewNote?: string | null;
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
@@ -357,9 +358,10 @@ export async function POST(request: NextRequest) {
     if (action === "assign_supplier") {
       const sale = await assignSupplierSale({
         saleId: String(body.saleId || ""),
-        supplier: body.supplier || "said",
+        supplier: body.supplier || "quentin",
         requestedDeliveryDate: String(body.requestedDeliveryDate || ""),
         specialSupplierName: body.specialSupplierName || null,
+        shopifySupplierTagConfirmed: body.shopifySupplierTagConfirmed === true,
         assignmentNote: body.assignmentNote || null,
         paymentDecisionStatus: body.paymentDecisionStatus || null,
         operatorName: body.operatorName || null,

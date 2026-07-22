@@ -22,7 +22,7 @@ import type {
   SupplierSaleBoard,
   SupplierSalePaymentDecision,
 } from "@/lib/ops/supplier-sales";
-import { defaultSupplierSelection, isConfiguratorSale, type SupplierSelection } from "@/lib/ops/supplier-selection";
+import { defaultSupplierSelection, shouldSuggestSaeid, type SupplierSelection } from "@/lib/ops/supplier-selection";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -197,7 +197,7 @@ function decisionLabel(status: string) {
 function supplierLabel(value: string | null | undefined, special?: string | null) {
   if (value === "quentin") return "Quentin";
   if (value === "said") return "Saeid";
-  if (value === "special") return special || "Sonder-Supplier";
+  if (value === "special") return special || "Weitere Supplier";
   if (value === "manual_review") return "Pruefen";
   return "Unklar";
 }
@@ -277,12 +277,6 @@ function syncHealthTone(sale: SupplierSale) {
   return "border-emerald-200 bg-emerald-50 text-emerald-900";
 }
 
-function supplierTone(sale: SupplierSale) {
-  if (sale.recommendedSupplier === "quentin") return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900";
-  if (sale.recommendedSupplier === "said") return "border-sky-200 bg-sky-50 text-sky-900";
-  return "border-amber-200 bg-amber-50 text-amber-900";
-}
-
 function statusTone(sale: SupplierSale) {
   if (sale.assignmentStatus === "assigned" || sale.assignmentStatus === "in_production") return "border-emerald-200 bg-emerald-50 text-emerald-900";
   if (sale.assignmentStatus === "ready_to_assign") return "border-sky-200 bg-sky-50 text-sky-900";
@@ -300,8 +294,17 @@ function syncSummary(sale: SupplierSale) {
   return parts.join(" · ");
 }
 
-function assignmentBlockReason(sale: SupplierSale, supplier: SupplierSelection, deliveryDate: string, paymentDecision: SupplierSalePaymentDecision) {
+function assignmentBlockReason(
+  sale: SupplierSale,
+  supplier: SupplierSelection,
+  deliveryDate: string,
+  paymentDecision: SupplierSalePaymentDecision,
+  specialSupplierName: string,
+  shopifySupplierTagConfirmed: boolean,
+) {
   if (!supplier) return "Supplier fehlt.";
+  if (supplier === "special" && !specialSupplierName.trim()) return "Name des weiteren Suppliers fehlt.";
+  if (supplier === "special" && !shopifySupplierTagConfirmed) return "Shopify-Supplier-Tag muss bestaetigt werden.";
   if (!deliveryDate) return "Lieferdatum fehlt.";
   if (sale.shopifyPaymentStatus !== "paid" && paymentDecision === "wait_for_payment") return "Zahlungsentscheidung steht auf Auf Zahlung warten.";
   return null;
@@ -687,16 +690,16 @@ function SaleCard({
 }) {
   const [supplier, setSupplier] = useState<SupplierSelection>(defaultSupplierSelection(sale));
   const [specialSupplierName, setSpecialSupplierName] = useState(sale.specialSupplierName || "");
+  const [shopifySupplierTagConfirmed, setShopifySupplierTagConfirmed] = useState(false);
   const [deliveryDate, setDeliveryDate] = useState(sale.supplierDueDate || sale.customerDueDate || "");
   const [paymentDecision, setPaymentDecision] = useState<SupplierSalePaymentDecision>(defaultPaymentDecision(sale));
   const [assignmentNote, setAssignmentNote] = useState("");
   const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
   const [reviewNow, setReviewNow] = useState(() => Date.now());
-  const configuratorSale = isConfiguratorSale(sale);
-
   useEffect(() => {
     setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
+    setShopifySupplierTagConfirmed(false);
     setDeliveryDate(sale.supplierDueDate || sale.customerDueDate || "");
     setPaymentDecision(defaultPaymentDecision(sale));
     setReminderLink(sale.paymentLink || sale.shopifyOrderUrl || "");
@@ -710,14 +713,15 @@ function SaleCard({
 
   const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
-  const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.shopifyTagSyncStatus !== "synced";
+  const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.assignedSupplier !== "special" && sale.shopifyTagSyncStatus !== "synced";
   const lastOrderConfirmationEmail = sale.orderConfirmationEmail;
   const reviewBlocksAssignment = postOrderReviewBlocksAssignment(sale);
   const reviewWindowOpen = postOrderReviewWindowOpen(sale, reviewNow);
   const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
   const paidPriority = paidAssignmentPriority(sale);
   const priorPaidPriority = priorPaidCustomerPriority(sale);
-  const assignBlockReason = assignmentBlockReason(sale, supplier, deliveryDate, paymentDecision);
+  const saeidSuggestion = !sale.assignedSupplier && shouldSuggestSaeid(sale);
+  const assignBlockReason = assignmentBlockReason(sale, supplier, deliveryDate, paymentDecision, specialSupplierName, shopifySupplierTagConfirmed);
   const directTrelloCardUrl = sale.supplierTrelloCardUrl || sale.sourceTrelloCardUrl;
   const trelloSearchFallbackUrl = directTrelloCardUrl ? null : sale.quentinTrelloSearchUrl || sale.quentinTrelloBoardUrl;
   const reminderBlockReason = !sale.customerEmail
@@ -771,8 +775,8 @@ function SaleCard({
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${paymentTone(sale)}`}>
               {paymentLabel(sale.shopifyPaymentStatus)}
             </span>
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${supplierTone(sale)}`}>
-              {configuratorSale ? "Supplier manuell waehlen" : `Empfehlung: ${supplierLabel(sale.recommendedSupplier)}`}
+            <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-[11px] font-medium text-fuchsia-900">
+              Standard: Quentin
             </span>
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusTone(sale)}`}>
               {sale.assignmentStatus}
@@ -919,22 +923,58 @@ function SaleCard({
 
             <label className="grid min-w-0 gap-1.5">
               <span className="text-xs font-medium text-stone-600">Supplier</span>
-              <select value={supplier} onChange={(event) => setSupplier(event.target.value as SupplierSelection)} aria-label="Supplier auswaehlen" className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm">
-                <option value="">Supplier waehlen</option>
+              <select
+                value={supplier}
+                onChange={(event) => {
+                  setSupplier(event.target.value as SupplierSelection);
+                  setShopifySupplierTagConfirmed(false);
+                }}
+                aria-label="Supplier auswaehlen"
+                className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
+              >
                 <option value="quentin">Quentin</option>
                 <option value="said">Saeid</option>
-                <option value="special">Sonder</option>
+                <option value="special">Weitere Supplier</option>
               </select>
             </label>
 
+            {saeidSuggestion ? (
+              <div className="flex items-center justify-between gap-3 rounded-[0.5rem] border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                <span className="inline-flex items-center gap-2 font-semibold">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
+                  Saeid pruefen: einfarbiges Indoor-Neon-Flex ueber 1.000 EUR.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSupplier("said")}
+                  className="shrink-0 rounded-[0.5rem] border border-amber-400 bg-white px-2.5 py-1 font-semibold hover:border-amber-700"
+                >
+                  Saeid waehlen
+                </button>
+              </div>
+            ) : null}
+
             {supplier === "special" ? (
-              <input
-                value={specialSupplierName}
-                onChange={(event) => setSpecialSupplierName(event.target.value)}
-                aria-label="Name Sonder-Supplier"
-                className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
-                placeholder="Name Sonder-Supplier"
-              />
+              <div className="grid gap-2 rounded-[0.5rem] border border-amber-300 bg-amber-50 p-3">
+                <input
+                  value={specialSupplierName}
+                  onChange={(event) => setSpecialSupplierName(event.target.value)}
+                  aria-label="Name weiterer Supplier"
+                  className="h-10 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 text-sm"
+                  placeholder="Name weiterer Supplier"
+                />
+                <p className="text-xs font-semibold text-amber-950">Bitte in Shopify den Supplier als Tag eintragen.</p>
+                <label className="flex items-start gap-2 text-xs text-amber-950">
+                  <input
+                    type="checkbox"
+                    checked={shopifySupplierTagConfirmed}
+                    onChange={(event) => setShopifySupplierTagConfirmed(event.target.checked)}
+                    aria-label="Shopify-Supplier-Tag bestaetigt"
+                    className="mt-0.5 h-4 w-4 rounded border-amber-400"
+                  />
+                  Supplier-Tag wurde in Shopify eingetragen.
+                </label>
+              </div>
             ) : null}
 
             {needsManualPaymentRelease ? (
@@ -973,6 +1013,7 @@ function SaleCard({
                     supplier,
                     requestedDeliveryDate: deliveryDate,
                     specialSupplierName,
+                    shopifySupplierTagConfirmed,
                     assignmentNote,
                     paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed",
                     operatorName,
@@ -1481,7 +1522,7 @@ export function SupplierSalesClient({
               <option value="all">Alle Supplier</option>
               <option value="quentin">Quentin</option>
               <option value="said">Saeid</option>
-              <option value="special">Sonder</option>
+              <option value="special">Weitere Supplier</option>
               <option value="manual_review">Pruefen</option>
             </select>
             <select value={payment} onChange={(event) => selectPayment(event.target.value as PaymentFilter)} aria-label="Zahlungsstatus filtern" className="rounded-[0.5rem] border border-stone-300 px-3 py-2 text-sm">

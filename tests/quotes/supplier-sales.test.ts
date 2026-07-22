@@ -894,6 +894,69 @@ test("supplier sale deadline task eligibility is due-date based and idempotent",
   assert.equal(supplierSaleNeedsDeadlineTask(saleRow({ supplier_due_date: "2026-06-10", metadata: { deadline_task_id: "task-1" } }), now), false);
 });
 
+test("additional supplier assignment requires and audits the manual Shopify tag confirmation", async () => {
+  let currentRow = saleRow({
+    id: "sale-additional-supplier",
+    assignment_status: "ready_to_assign",
+    payment_decision_status: "paid_confirmed",
+    assigned_supplier: null,
+    special_supplier_name: null,
+  });
+  let externalWriteCount = 0;
+  let attemptMetadata: Record<string, unknown> | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin !== "https://supabase.test") {
+      externalWriteCount += 1;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "POST") {
+      attemptMetadata = JSON.parse(String(init?.body || "{}")).metadata || null;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "PATCH") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      assignSupplierSale({
+        saleId: currentRow.id,
+        supplier: "special",
+        specialSupplierName: "Supplier Test",
+        requestedDeliveryDate: "2026-07-30",
+        paymentDecisionStatus: "paid_confirmed",
+      }),
+      /Shopify-Supplier-Tag ist nicht bestaetigt/,
+    );
+
+    const assigned = await assignSupplierSale({
+      saleId: currentRow.id,
+      supplier: "special",
+      specialSupplierName: "Supplier Test",
+      shopifySupplierTagConfirmed: true,
+      requestedDeliveryDate: "2026-07-30",
+      paymentDecisionStatus: "paid_confirmed",
+    });
+
+    assert.equal(assigned.assignedSupplier, "special");
+    assert.equal(assigned.specialSupplierName, "Supplier Test");
+    assert.equal(assigned.shopifyTagValue, null);
+    assert.equal(assigned.shopifyTagSyncStatus, "skipped");
+    assert.equal(assigned.shopifyTagError, null);
+  });
+
+  assert.equal(externalWriteCount, 0);
+  assert.equal(attemptMetadata?.shopify_supplier_tag_confirmed, true);
+});
+
 test("supplier assignment duplicate attempt does not rerun projections", async () => {
   let supplierSalePatchCount = 0;
   let attemptPostCount = 0;
