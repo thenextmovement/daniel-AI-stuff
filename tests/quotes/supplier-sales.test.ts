@@ -22,6 +22,8 @@ import {
   markSupplierSaleInProduction,
   normalizeDateOnly,
   normalizeShopifyPaymentStatus,
+  prependSupplierSaleTrelloDescription,
+  readSupplierSaleTrelloDescription,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
   runSupplierSalesLiveCheck,
@@ -833,6 +835,112 @@ test("supplier production description supports normal offers and multiple produc
   assert.match(description, /Power plug: United Kingdom/);
   assert.match(description, /Accessory: Dimmer with remote control/);
   assert.doesNotMatch(description, /Kunde|E-Mail|Shopify-Link|Preis/);
+});
+
+test("supplier Trello description is freshly read and prepended without deleting existing text", async () => {
+  const originalDescription = "Manual supplier note\nDo not remove this line.";
+  let currentDescription = originalDescription;
+  let currentRow = saleRow({
+    id: "sale-trello-description",
+    trello_card_id: "abcdef1234567890abcdef12",
+    assignment_status: "assigned",
+    assigned_supplier: "quentin",
+  });
+  let trelloPutCount = 0;
+  let eventPayload: Record<string, unknown> | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      if (method === "PUT") {
+        trelloPutCount += 1;
+        currentDescription = String(url.searchParams.get("desc") || "");
+        return Response.json({ id: currentRow.trello_card_id });
+      }
+      return Response.json({
+        id: currentRow.trello_card_id,
+        idBoard: "62bae9b97705e7419ed64593",
+        idList: "new-sketch",
+        name: "KONF | Example",
+        desc: currentDescription,
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      return Response.json([itemRow({ sale_id: currentRow.id, raw_line_item: { size: "75cm", color: "warm white" } })]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      eventPayload = JSON.parse(String(init?.body || "{}")).payload;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    const loaded = await readSupplierSaleTrelloDescription(currentRow.id);
+    assert.equal(loaded.description, "Manual supplier note\nDo not remove this line.");
+    assert.match(loaded.suggestedPrependText, /Product Type:/);
+
+    const result = await prependSupplierSaleTrelloDescription({
+      saleId: currentRow.id,
+      prependText: "Product Type: LED Neon Flex\nSize: 75cm",
+      operatorName: "Rahim",
+    });
+    assert.equal(result.trelloDescription.description, "Product Type: LED Neon Flex\nSize: 75cm\n\nManual supplier note\nDo not remove this line.");
+    assert.equal(result.sale.trelloProjectionStatus, "synced");
+    assert.equal(result.sale.supplierTrelloCardId, currentRow.trello_card_id);
+
+    await prependSupplierSaleTrelloDescription({
+      saleId: currentRow.id,
+      prependText: "Product Type: LED Neon Flex\nSize: 75cm",
+      operatorName: "Rahim",
+    });
+  });
+
+  assert.equal(trelloPutCount, 1, "the exact same confirmed block must be idempotent");
+  assert.equal(currentDescription.endsWith("Manual supplier note\nDo not remove this line."), true);
+  assert.equal(eventPayload?.previous_description_length, currentDescription.length);
+});
+
+test("supplier Trello description blocks a card outside the exact Quentin board", async () => {
+  let trelloPutCount = 0;
+  const row = saleRow({ id: "sale-wrong-trello-board", trello_card_id: "abcdef1234567890abcdef12" });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (method === "PUT") trelloPutCount += 1;
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      return Response.json({
+        id: row.trello_card_id,
+        idBoard: "another-board",
+        name: "Wrong board",
+        desc: "Keep me",
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      });
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      prependSupplierSaleTrelloDescription({ saleId: row.id, prependText: "Do not write" }),
+      /gehoert nicht zum Quentin-Board/,
+    );
+  });
+
+  assert.equal(trelloPutCount, 0);
 });
 
 test("supplier sales board sorts newest sales first by accepted snapshot", () => {
