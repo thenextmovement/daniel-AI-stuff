@@ -66,6 +66,7 @@ test("worker marks dispatching before exactly one purchase click and routes late
   const source = await readFile("scripts/run_easydpd_browser_worker.mjs", "utf8");
   assert.match(source, /const EASYDPD_DASHBOARD = "https:\/\/admin[.]shopify[.]com\/store\/galaxybuzzdk\/apps\/dpd-versand-services";/);
   assert.doesNotMatch(source, /const EASYDPD_DASHBOARD = .*\/fulfillments";/);
+  assert.match(source, /--restore-last-session/);
   const dispatch = source.indexOf('updateJob(configuration, job, "dispatching")');
   const click = source.indexOf("createButton.click");
   assert.ok(dispatch >= 0 && click > dispatch);
