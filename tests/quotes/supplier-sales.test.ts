@@ -23,6 +23,7 @@ import {
   retrySupplierSaleShopifyTag,
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
+  supplierProductionDescription,
   supplierSaleNeedsDeadlineTask,
   syncCompletedOffersFromOffersApp,
   upsertSupplierSale,
@@ -682,10 +683,90 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
   assert.equal(sale?.quentinTrelloBoardUrl, "https://trello.com/b/9QNAfkv4/quentin-neon-signs");
   assert.match(sale?.quentinTrelloSearchUrl || "", /board%3A62bae9b97705e7419ed64593/);
   assert.equal(sale?.items[0]?.description, "Ausgewaehlte Produktion laut Snapshot.");
-  assert.ok(sale?.items[0]?.selectionDetails.includes("Groesse: 120cm"));
-  assert.ok(sale?.items[0]?.selectionDetails.includes("Farbe: warmweiss"));
-  assert.ok(sale?.items[0]?.selectionDetails.includes("Zuschnitt: Konturschnitt"));
-  assert.ok(sale?.items[0]?.selectionDetails.includes("Rueckwand: Acryl klar"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Product Type: LED Neon Flex"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Size: 120cm"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Color: warmweiss"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Cut: Cut to shape"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Backboard: Acryl klar"));
+});
+
+test("supplier production details keep all manufacturing options and remove non-production data", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-configurator", customer_name: "Must not reach supplier", total_price: 379 })],
+    [
+      itemRow({
+        sale_id: "sale-configurator",
+        title: "Neon Schriftzug Konfigurator",
+        product_type: "Neon Schriftzug Konfigurator",
+        raw_line_item: {
+          properties: [
+            { name: "Text", value: "Frederik" },
+            { name: "Größe", value: "Medium" },
+            { name: "Höhe", value: "10-30cm" },
+            { name: "Breite", value: "75cm" },
+            { name: "Farbe", value: "warm_white" },
+            { name: "Schriftart", value: "Avante" },
+            { name: "Nutzung", value: "Drinnen" },
+            { name: "Hintergrund Zuschnitt", value: "Formzuschnitt" },
+            { name: "Stromstecker", value: "Deutschland/Europa" },
+            { name: "Hintergrund", value: "Transparent" },
+            { name: "Klebeset", value: "JA" },
+            { name: "Hängeset", value: "NEIN" },
+            { name: "Sonderangebot", value: "JA" },
+            { name: "Price", value: "379" },
+          ],
+        },
+      }),
+    ],
+    [],
+  );
+  const item = board.items[0]?.items[0];
+  assert.ok(item);
+  assert.deepEqual(item.selectionDetails, [
+    "Product Type: LED Neon Flex",
+    "Text: Frederik",
+    "Size: 75cm",
+    "Color: Warm white",
+    "Font: Avante",
+    "Use: Indoor",
+    "Cut: Cut to shape",
+    "Backboard: Transparent",
+    "Adhesive mounting kit: YES ❗",
+  ]);
+
+  const description = supplierProductionDescription([item]);
+  assert.match(description, /^Product Type: LED Neon Flex/m);
+  assert.match(description, /Adhesive mounting kit: YES ❗/);
+  assert.doesNotMatch(description, /Must not reach supplier|379|Hanging set|Height|Sonderangebot|Power plug/);
+});
+
+test("supplier production description supports normal offers and multiple products", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-normal-offer", source: "neontrip-offers" })],
+    [
+      itemRow({
+        id: "item-backlit",
+        sale_id: "sale-normal-offer",
+        title: "3D letters",
+        product_type: "Leuchtschilder",
+        raw_line_item: { description: "Produktart: 3D\nBeleuchtungsart: Backlit / rückbeleuchtet\nGröße: 150x132cm\nFarbe: Gold\nStromstecker: United Kingdom" },
+      }),
+      itemRow({
+        id: "item-addon",
+        sale_id: "sale-normal-offer",
+        title: "Dimmer with remote control",
+        product_type: "Zusatzoptionen",
+      }),
+    ],
+    [],
+  );
+  const description = supplierProductionDescription(board.items[0]?.items || []);
+  assert.match(description, /Product Type: 3D Backlit/);
+  assert.match(description, /Size: 150x132cm/);
+  assert.match(description, /Color: Gold/);
+  assert.match(description, /Power plug: United Kingdom/);
+  assert.match(description, /Accessory: Dimmer with remote control/);
+  assert.doesNotMatch(description, /Kunde|E-Mail|Shopify-Link|Preis/);
 });
 
 test("supplier sales board sorts newest sales first by accepted snapshot", () => {
