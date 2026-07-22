@@ -123,6 +123,13 @@ type ManualImportDraft = {
   createTrelloCard: boolean;
 };
 
+type TrelloReplayDraft = {
+  cardUrl: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
 type ManualImportResponse = {
   ok: boolean;
   result?: {
@@ -167,6 +174,15 @@ function defaultManualImportDraft(): ManualImportDraft {
     priority: "standard",
     dueAt: "",
     createTrelloCard: true,
+  };
+}
+
+function defaultTrelloReplayDraft(): TrelloReplayDraft {
+  return {
+    cardUrl: "",
+    firstName: "",
+    lastName: "",
+    email: "",
   };
 }
 
@@ -4005,7 +4021,7 @@ type TrelloCardDuplicateResponse = {
   ok: boolean;
   result?: {
     requestId: string;
-    sourceRequestId: string;
+    sourceRequestId: string | null;
     customerId: string;
     cardId: string;
     cardUrl: string | null;
@@ -21083,6 +21099,9 @@ export function CustomerRecordsClient({
   const [showManualImport, setShowManualImport] = useState(false);
   const [manualImportSaving, setManualImportSaving] = useState(false);
   const [manualImportDraft, setManualImportDraft] = useState<ManualImportDraft>(() => defaultManualImportDraft());
+  const [showTrelloReplay, setShowTrelloReplay] = useState(false);
+  const [trelloReplaySaving, setTrelloReplaySaving] = useState(false);
+  const [trelloReplayDraft, setTrelloReplayDraft] = useState<TrelloReplayDraft>(() => defaultTrelloReplayDraft());
   const [query, setQuery] = useState("");
   const [inbox, setInbox] = useState<CustomerSearchResult[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
@@ -21533,6 +21552,59 @@ export function CustomerRecordsClient({
 
   function updateManualImportDraft<K extends keyof ManualImportDraft>(key: K, value: ManualImportDraft[K]) {
     setManualImportDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateTrelloReplayDraft<K extends keyof TrelloReplayDraft>(key: K, value: TrelloReplayDraft[K]) {
+    setTrelloReplayDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function replayTrelloCardAsNewRequest() {
+    setTrelloReplaySaving(true);
+    setError(null);
+    setMessage(null);
+
+    const idempotencyKey = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    try {
+      const response = await fetch("/api/ops/customer-records/trello-card/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          duplicate: {
+            cardUrl: trelloReplayDraft.cardUrl,
+            customer: {
+              firstName: trelloReplayDraft.firstName,
+              lastName: trelloReplayDraft.lastName,
+              email: trelloReplayDraft.email,
+            },
+            idempotencyKey,
+          } satisfies CustomerTrelloCardDuplicateInput,
+          operatorName,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as TrelloCardDuplicateResponse | null;
+
+      if (response.status === 401) {
+        setHasSession(false);
+        setError("Zugang abgelaufen. Bitte erneut entsperren.");
+        return;
+      }
+      if (!response.ok || !payload?.ok || !payload.result) {
+        throw new Error(formatApiError(payload));
+      }
+
+      const warningText = payload.result.warnings.length ? ` ${payload.result.warnings.join(" ")}` : "";
+      setTrelloReplayDraft(defaultTrelloReplayDraft());
+      setShowTrelloReplay(false);
+      applyRecordUpdate(payload.result.record);
+      await loadRecordByRequestId(payload.result.requestId, "trello");
+      setMessage(`Trello-Karte wurde mit neuer Kundenakte und Request-ID neu eingespielt.${warningText}`);
+      void loadInbox();
+      void loadWorkboard();
+    } catch (replayError) {
+      setError(replayError instanceof Error ? replayError.message : "Trello-Karte konnte nicht neu eingespielt werden.");
+    } finally {
+      setTrelloReplaySaving(false);
+    }
   }
 
   async function createManualImport() {
@@ -23579,6 +23651,88 @@ export function CustomerRecordsClient({
                     {loading ? "Fall wird geladen..." : "Fall laden"}
                     {!loading ? <ArrowRight className="h-4 w-4" /> : null}
                   </button>
+                </div>
+
+                <div className="rounded-2xl border border-black/10 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-black/40">Trello erneut einspielen</div>
+                      <div className="mt-1 text-sm font-semibold text-black">Bestehende Karte als neue Anfrage kopieren</div>
+                      <div className="mt-1 max-w-2xl text-sm leading-6 text-black/58">
+                        Kopiert Karte, Anhänge und Felder. Nur Name und E-Mail werden ersetzt; Supabase und das Feld `nerdy-forms-id` erhalten eine neue UUID. Es wird nichts an Kunden versendet.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTrelloReplay((current) => !current)}
+                      className="rounded-full border border-black/10 bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/85"
+                    >
+                      {showTrelloReplay ? "Schließen" : "Trello-Karte kopieren"}
+                    </button>
+                  </div>
+
+                  {showTrelloReplay ? (
+                    <div className="mt-5 space-y-5 border-t border-black/10 pt-5">
+                      <Field
+                        label="Trello-Kartenlink"
+                        hint="Zum Beispiel https://trello.com/c/…"
+                        value={trelloReplayDraft.cardUrl}
+                        onChange={(value) => updateTrelloReplayDraft("cardUrl", value)}
+                        icon={<ExternalLink className="h-4 w-4" />}
+                      />
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <Field
+                          label="Vorname"
+                          hint="Name der neuen Kundenakte."
+                          value={trelloReplayDraft.firstName}
+                          onChange={(value) => updateTrelloReplayDraft("firstName", value)}
+                          icon={<UserRound className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="Nachname"
+                          hint="Kann leer bleiben, wenn nicht bekannt."
+                          value={trelloReplayDraft.lastName}
+                          onChange={(value) => updateTrelloReplayDraft("lastName", value)}
+                          icon={<UserRound className="h-4 w-4" />}
+                        />
+                        <Field
+                          label="E-Mail"
+                          hint="Echte Kundenadresse, keine interne Adresse."
+                          value={trelloReplayDraft.email}
+                          onChange={(value) => updateTrelloReplayDraft("email", value)}
+                          type="email"
+                          icon={<AtSign className="h-4 w-4" />}
+                        />
+                      </div>
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900">
+                        Die Quellkarte und ihre bestehende Kundenakte bleiben unverändert. Bei einem Teilfehler werden neue Karte und neue Kundenakte zurückgerollt.
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void replayTrelloCardAsNewRequest()}
+                          disabled={
+                            trelloReplaySaving ||
+                            !trelloReplayDraft.cardUrl.trim() ||
+                            !trelloReplayDraft.email.trim() ||
+                            !(trelloReplayDraft.firstName.trim() || trelloReplayDraft.lastName.trim())
+                          }
+                          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0A0A0A] px-6 py-3 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20"
+                        >
+                          {trelloReplaySaving ? "Kopie wird geprüft..." : "Als neue Anfrage einspielen"}
+                          {!trelloReplaySaving ? <Copy className="h-4 w-4" /> : null}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTrelloReplayDraft(defaultTrelloReplayDraft())}
+                          disabled={trelloReplaySaving}
+                          className="rounded-full border border-black/10 bg-white px-4 py-3 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:opacity-50"
+                        >
+                          Leeren
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="rounded-2xl border border-black/10 bg-white p-4">

@@ -814,9 +814,19 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
   const listId = "64ca588f8bd547afc087a6ea";
   const sourceCardId = "64ca588f8bd547afc087a6eb";
   const copiedCardId = "650000000000000000000001";
-  const sourceDesc = "Beschreibung der Karte\nmit zweiter Zeile";
+  const sourceName = "LED Flex | Ada Lovelace | 100 cm";
+  const copiedName = "LED Flex | Grace Hopper | 100 cm";
+  const sourceDesc = "Beschreibung fuer kunde@example.com\nmit zweiter Zeile";
+  const copiedDesc = "Beschreibung fuer grace@example.com\nmit zweiter Zeile";
   let createdRequest: any = null;
-  let copiedRequestFieldValue = "source-request";
+  let createdCustomer: any = null;
+  const copiedFieldValues = new Map<string, string | null>([
+    ["field-request-id", "source-request"],
+    ["field-usage", "Ladenfront"],
+    ["field-email", "kunde@example.com"],
+    ["field-first-name", "Ada"],
+    ["field-last-name", "Lovelace"],
+  ]);
 
   process.env.SUPABASE_URL = "https://supabase.example.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
@@ -864,6 +874,9 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
   const customFields = [
     { id: "field-request-id", name: "nerdy-forms-id", type: "text" },
     { id: "field-usage", name: "Usage", type: "text" },
+    { id: "field-email", name: "customer_email", type: "text" },
+    { id: "field-first-name", name: "customer_first_name", type: "text" },
+    { id: "field-last-name", name: "customer_last_name", type: "text" },
   ];
   const attachments = [
     { id: "attachment-1", name: "image.png", mimeType: "image/png", url: "https://trello.example/image.png" },
@@ -884,7 +897,7 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
       if (url.pathname === "/1/search") {
         const query = url.searchParams.get("query");
         const cardId = query === createdRequest?.request_id ? copiedCardId : sourceCardId;
-        return json({ cards: [{ id: cardId, name: "Musterkarte", idBoard: boardId, url: `https://trello.com/c/${cardId}` }] });
+        return json({ cards: [{ id: cardId, name: copiedName, idBoard: boardId, url: `https://trello.com/c/${cardId}` }] });
       }
       if (url.pathname === `/1/boards/${boardId}/customFields`) return json(customFields);
       if (url.pathname === `/1/boards/${boardId}/lists`) {
@@ -893,13 +906,16 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
       if (url.pathname === `/1/cards/${sourceCardId}`) {
         return json({
           id: sourceCardId,
-          name: "Musterkarte",
+          name: sourceName,
           desc: sourceDesc,
           idBoard: boardId,
           idList: listId,
           customFieldItems: [
             { idCustomField: "field-request-id", value: { text: "source-request" } },
             { idCustomField: "field-usage", value: { text: "Ladenfront" } },
+            { idCustomField: "field-email", value: { text: "kunde@example.com" } },
+            { idCustomField: "field-first-name", value: { text: "Ada" } },
+            { idCustomField: "field-last-name", value: { text: "Lovelace" } },
           ],
           attachments,
           actions: [],
@@ -914,8 +930,11 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
           shortUrl: `https://trello.com/c/${copiedCardId}`,
         });
       }
-      if (url.pathname === `/1/cards/${copiedCardId}/customField/field-request-id/item` && method === "PUT") {
-        copiedRequestFieldValue = body?.value?.text;
+      const copiedCustomFieldMatch = url.pathname.match(
+        new RegExp(`^/1/cards/${copiedCardId}/customField/([^/]+)/item$`),
+      );
+      if (copiedCustomFieldMatch && method === "PUT") {
+        copiedFieldValues.set(copiedCustomFieldMatch[1], body?.value?.text ?? null);
         return new Response("", { status: 200 });
       }
       if (url.pathname === `/1/cards/${copiedCardId}` && method === "PUT") {
@@ -924,13 +943,15 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
       if (url.pathname === `/1/cards/${copiedCardId}`) {
         return json({
           id: copiedCardId,
-          name: "Musterkarte",
-          desc: sourceDesc,
+          name: copiedName,
+          desc: copiedDesc,
           idBoard: boardId,
           idList: listId,
           customFieldItems: [
-            { idCustomField: "field-request-id", value: { text: copiedRequestFieldValue } },
-            { idCustomField: "field-usage", value: { text: "Ladenfront" } },
+            ...[...copiedFieldValues.entries()].map(([idCustomField, value]) => ({
+              idCustomField,
+              value: { text: value },
+            })),
           ],
           attachments,
           actions: [],
@@ -941,12 +962,17 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
 
     if (url.hostname === "supabase.example.co") {
       if (url.pathname.endsWith("/rest/v1/master_customers")) {
+        if (method === "POST") {
+          createdCustomer = { id: "customer-2", ...body };
+          return json([createdCustomer]);
+        }
         if (method === "PATCH") return new Response(null, { status: 204 });
         if (url.searchParams.get("request_id") === "eq.source-request") return json([customerRow("source-request")]);
         if (createdRequest && url.searchParams.get("request_id") === `eq.${createdRequest.request_id}`) {
-          return json([customerRow(createdRequest.request_id)]);
+          return json([createdCustomer]);
         }
         if (url.searchParams.get("id") === "eq.customer-1") return json([customerRow(createdRequest?.request_id || "source-request")]);
+        if (url.searchParams.get("id") === "eq.customer-2") return json([createdCustomer]);
         return json([]);
       }
       if (url.pathname.endsWith("/rest/v1/master_requests")) {
@@ -955,6 +981,7 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
           return json([createdRequest]);
         }
         if (url.searchParams.has("attribution_raw->>idempotency_key")) return json([]);
+        if (url.searchParams.get("trello_card_id") === `eq.${sourceCardId}`) return json([sourceRequest]);
         if (url.searchParams.get("request_id") === "eq.source-request") return json([sourceRequest]);
         if (createdRequest && url.searchParams.get("request_id") === `eq.${createdRequest.request_id}`) {
           return json([createdRequest]);
@@ -978,15 +1005,24 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
 
   try {
     const result = await duplicateCustomerTrelloCard(
-      "source-request",
-      { boardKey: "anfrage_management", cardId: sourceCardId, idempotencyKey: "duplicate-test-key" },
+      "",
+      {
+        cardUrl: `https://trello.com/c/${sourceCardId}/musterkarte`,
+        customer: { firstName: "Grace", lastName: "Hopper", email: "grace@example.com" },
+        idempotencyKey: "duplicate-test-key",
+      },
       { operatorName: "Daniel", mode: "local_bypass" },
     );
 
     assert.notEqual(result.requestId, "source-request");
+    assert.equal(result.sourceRequestId, "source-request");
+    assert.equal(result.customerId, "customer-2");
     assert.equal(result.cardId, copiedCardId);
     assert.equal(result.record.requestId, result.requestId);
-    assert.equal(copiedRequestFieldValue, result.requestId);
+    assert.equal(copiedFieldValues.get("field-request-id"), result.requestId);
+    assert.equal(copiedFieldValues.get("field-email"), "grace@example.com");
+    assert.equal(copiedFieldValues.get("field-first-name"), "Grace");
+    assert.equal(copiedFieldValues.get("field-last-name"), "Hopper");
 
     const copyCall = calls.find((call) => call.url.hostname === "api.trello.com" && call.url.pathname === "/1/cards" && call.method === "POST");
     assert.equal(copyCall?.url.searchParams.get("idCardSource"), sourceCardId);
@@ -994,14 +1030,26 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
     assert.equal(copyCall?.url.searchParams.get("idList"), listId);
 
     assert.equal(createdRequest?.request_id, result.requestId);
+    assert.equal(createdRequest?.customer_id, "customer-2");
     assert.equal(createdRequest?.status, "new");
     assert.equal(createdRequest?.deal_status, "open");
     assert.equal(createdRequest?.trello_card_id, copiedCardId);
+    assert.equal(createdRequest?.attribution_raw?.auto_reply_suppressed, true);
     assert.equal(createdRequest?.attribution_raw?.idempotency_key, "duplicate-test-key");
     assert.equal(createdRequest?.attribution_raw?.source_request_id, "source-request");
 
-    const customerPatch = calls.find((call) => call.url.pathname.endsWith("/rest/v1/master_customers") && call.method === "PATCH");
-    assert.equal(customerPatch?.body?.request_id, result.requestId);
+    assert.equal(createdCustomer?.request_id, result.requestId);
+    assert.equal(createdCustomer?.email, "grace@example.com");
+    assert.equal(createdCustomer?.name, "Grace Hopper");
+    assert.equal(
+      calls.some(
+        (call) =>
+          call.url.pathname.endsWith("/rest/v1/master_customers") &&
+          call.method === "PATCH" &&
+          call.url.searchParams.get("id") === "eq.customer-1",
+      ),
+      false,
+    );
     assert.equal(
       calls.some((call) => call.url.pathname.endsWith("/rest/v1/sales_tasks") && call.method === "POST" && call.body?.task_type === "call_new_inquiry"),
       true,

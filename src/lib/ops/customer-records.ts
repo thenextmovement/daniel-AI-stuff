@@ -502,6 +502,28 @@ const CUSTOMER_RECORD_REQUEST_ID_FIELD_NAMES = [
   "NerdyForms ID",
   "request_id",
 ];
+const CUSTOMER_RECORD_EMAIL_FIELD_NAMES = [
+  "customer_email",
+  "customer email",
+  "kunden email",
+  "kunden e-mail",
+  "e-mail",
+  "email",
+];
+const CUSTOMER_RECORD_FIRST_NAME_FIELD_NAMES = [
+  "customer_first_name",
+  "customer first name",
+  "first_name",
+  "vorname",
+  "kunden vorname",
+];
+const CUSTOMER_RECORD_LAST_NAME_FIELD_NAMES = [
+  "customer_last_name",
+  "customer last name",
+  "last_name",
+  "nachname",
+  "kunden nachname",
+];
 
 const TRELLO_BOARD_CONFIGS = [
   {
@@ -1221,14 +1243,20 @@ export type CustomerTrelloCardUpdateInput = {
 };
 
 export type CustomerTrelloCardDuplicateInput = {
-  boardKey: string;
-  cardId: string;
+  boardKey?: string | null;
+  cardId?: string | null;
+  cardUrl?: string | null;
+  customer?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  };
   idempotencyKey?: string | null;
 };
 
 export type CustomerTrelloCardDuplicateResult = {
   requestId: string;
-  sourceRequestId: string;
+  sourceRequestId: string | null;
   customerId: string;
   cardId: string;
   cardUrl: string | null;
@@ -6060,6 +6088,19 @@ type ExistingTrelloDuplicate = {
   cardUrl: string | null;
 };
 
+type TrelloDuplicateContact = {
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  displayName: string;
+};
+
+type TrelloDuplicateCustomerMutation = {
+  row: MasterCustomerRow;
+  created: boolean;
+  previous: MasterCustomerRow | null;
+};
+
 function preserveTrelloText(value: string | null | undefined) {
   const text = String(value ?? "").trim();
   return text || null;
@@ -6081,6 +6122,211 @@ function trelloAttachmentSignature(attachments: TrelloAttachment[]) {
 function sameStringList(left: string[], right: string[]) {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
+}
+
+function trelloDuplicateFieldKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function findTrelloDuplicateField(fields: TrelloEditableCustomField[], names: string[]) {
+  const wanted = new Set(names.map(trelloDuplicateFieldKey));
+  return fields.find((field) => wanted.has(trelloDuplicateFieldKey(field.name || ""))) || null;
+}
+
+function normalizeTrelloDuplicateName(value: unknown, label: string) {
+  const normalized = trimNullable(typeof value === "string" ? value : null);
+  if (normalized && normalized.length > 120) {
+    throw new QuoteValidationError(`${label} ist zu lang.`, ["Maximal 120 Zeichen verwenden."]);
+  }
+  return normalized;
+}
+
+function resolveTrelloDuplicateContact(
+  input: CustomerTrelloCardDuplicateInput,
+  sourceMaster: MasterCustomerRow | null,
+  sourceFields: TrelloEditableCustomField[],
+): TrelloDuplicateContact {
+  const sourceEmailField = findTrelloDuplicateField(sourceFields, CUSTOMER_RECORD_EMAIL_FIELD_NAMES);
+  const sourceFirstNameField = findTrelloDuplicateField(sourceFields, CUSTOMER_RECORD_FIRST_NAME_FIELD_NAMES);
+  const sourceLastNameField = findTrelloDuplicateField(sourceFields, CUSTOMER_RECORD_LAST_NAME_FIELD_NAMES);
+  const emailInput =
+    trimNullable(input.customer?.email) ||
+    sourceMaster?.email ||
+    trimNullable(typeof sourceEmailField?.value === "string" ? sourceEmailField.value : null);
+  const email = normalizeOptionalEmail(emailInput);
+  if (!email) {
+    throw new QuoteValidationError("Gueltige Kunden-E-Mail fuer die neue Anfrage erforderlich.");
+  }
+
+  const firstName = normalizeTrelloDuplicateName(
+    input.customer?.firstName ?? sourceMaster?.first_name ?? sourceFirstNameField?.value,
+    "Vorname",
+  );
+  const lastName = normalizeTrelloDuplicateName(
+    input.customer?.lastName ?? sourceMaster?.last_name ?? sourceLastNameField?.value,
+    "Nachname",
+  );
+  const displayName = buildCustomerName(firstName, lastName) || trimNullable(sourceMaster?.name);
+  if (!displayName) {
+    throw new QuoteValidationError("Kundenname fuer die neue Anfrage erforderlich.", [
+      "Mindestens Vorname oder Nachname eintragen.",
+    ]);
+  }
+
+  return { firstName, lastName, email, displayName };
+}
+
+function replaceTrelloDuplicateContactText(
+  value: string,
+  sourceMaster: MasterCustomerRow | null,
+  sourceFields: TrelloEditableCustomField[],
+  contact: TrelloDuplicateContact,
+) {
+  const sourceEmailField = findTrelloDuplicateField(sourceFields, CUSTOMER_RECORD_EMAIL_FIELD_NAMES);
+  const sourceFirstNameField = findTrelloDuplicateField(sourceFields, CUSTOMER_RECORD_FIRST_NAME_FIELD_NAMES);
+  const sourceLastNameField = findTrelloDuplicateField(sourceFields, CUSTOMER_RECORD_LAST_NAME_FIELD_NAMES);
+  const sourceFirstName =
+    trimNullable(sourceMaster?.first_name) ||
+    trimNullable(typeof sourceFirstNameField?.value === "string" ? sourceFirstNameField.value : null);
+  const sourceLastName =
+    trimNullable(sourceMaster?.last_name) ||
+    trimNullable(typeof sourceLastNameField?.value === "string" ? sourceLastNameField.value : null);
+  const sourceDisplayName =
+    buildCustomerName(sourceFirstName, sourceLastName) || trimNullable(sourceMaster?.name);
+  const replacements = [
+    {
+      from:
+        normalizeStoredEmail(sourceMaster?.email) ||
+        trimNullable(typeof sourceEmailField?.value === "string" ? sourceEmailField.value : null),
+      to: contact.email,
+    },
+    { from: sourceDisplayName, to: contact.displayName },
+  ].filter((entry): entry is { from: string; to: string } => Boolean(entry.from && entry.to && entry.from !== entry.to));
+
+  return replacements.reduce((current, entry) => {
+    const escaped = entry.from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return current.replace(new RegExp(escaped, "gi"), entry.to);
+  }, value);
+}
+
+async function findMasterRequestByTrelloCard(
+  cardId: string,
+  cardUrl: string | null,
+  fields: TrelloEditableCustomField[],
+) {
+  const directRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+    select: "*",
+    trello_card_id: `eq.${cardId}`,
+    order: "updated_at.desc",
+    limit: 1,
+  });
+  if (directRows[0]) return directRows[0];
+
+  const requestIdField = findTrelloDuplicateField(fields, CUSTOMER_RECORD_REQUEST_ID_FIELD_NAMES);
+  const requestId = trimNullable(typeof requestIdField?.value === "string" ? requestIdField.value : null);
+  if (requestId) {
+    const requestRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+      select: "*",
+      request_id: `eq.${requestId}`,
+      limit: 1,
+    });
+    if (requestRows[0]) return requestRows[0];
+  }
+
+  const shortId = parseTrelloCardIdentifier(cardUrl);
+  if (!shortId) return null;
+  const urlRows = await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
+    select: "*",
+    trello_card_url: `ilike.*${shortId}*`,
+    order: "updated_at.desc",
+    limit: 1,
+  });
+  return urlRows[0] || null;
+}
+
+async function findMasterCustomerByDuplicateEmail(email: string) {
+  const rows = await selectMasterCustomerRows({
+    email: `eq.${postgrestEmailValue(email)}`,
+    order: "updated_at.desc",
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+async function upsertTrelloDuplicateCustomer(input: {
+  contact: TrelloDuplicateContact;
+  sourceMaster: MasterCustomerRow | null;
+  requestId: string;
+}): Promise<TrelloDuplicateCustomerMutation> {
+  const existing =
+    input.sourceMaster && normalizeStoredEmail(input.sourceMaster.email) === input.contact.email
+      ? input.sourceMaster
+      : await findMasterCustomerByDuplicateEmail(input.contact.email);
+  const now = new Date().toISOString();
+  const patch = {
+    request_id: input.requestId,
+    email: input.contact.email,
+    billing_email: input.contact.email,
+    first_name: input.contact.firstName,
+    last_name: input.contact.lastName,
+    name: input.contact.displayName,
+    updated_at: now,
+  };
+
+  if (existing?.id) {
+    const rows = await supabaseRequest<MasterCustomerRow[]>(
+      "master_customers",
+      {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+        headers: { Prefer: "return=representation" },
+      },
+      { id: `eq.${existing.id}` },
+    );
+    return { row: rows[0] || { ...existing, ...patch }, created: false, previous: existing };
+  }
+
+  const source = input.sourceMaster;
+  const rows = await supabaseRequest<MasterCustomerRow[]>("master_customers", {
+    method: "POST",
+    body: JSON.stringify({
+      ...patch,
+      cc_emails: [],
+      original_email: input.contact.email,
+      phone: trimNullable(source?.phone),
+      original_phone: trimNullable(source?.original_phone) || trimNullable(source?.phone),
+      company: companyValue(source || { company: null, company_name: null }),
+      company_name: companyValue(source || { company: null, company_name: null }),
+      source: "customer_records_trello_duplicate",
+      total_requests: 1,
+      total_orders: 0,
+      total_revenue: 0,
+    }),
+    headers: { Prefer: "return=representation" },
+  });
+  const row = rows[0];
+  if (!row?.id) {
+    throw new SupabaseRestError("Neue Kundenakte konnte nicht angelegt werden.", 500);
+  }
+  return { row, created: true, previous: null };
+}
+
+async function rollbackTrelloDuplicateCustomer(mutation: TrelloDuplicateCustomerMutation | null) {
+  if (!mutation?.row.id) return;
+  if (mutation.created) {
+    await deleteById("master_customers", mutation.row.id);
+    return;
+  }
+  if (!mutation.previous) return;
+  await patchById("master_customers", mutation.row.id, {
+    request_id: mutation.previous.request_id,
+    email: mutation.previous.email,
+    billing_email: mutation.previous.billing_email || null,
+    first_name: mutation.previous.first_name || null,
+    last_name: mutation.previous.last_name || null,
+    name: mutation.previous.name || null,
+    updated_at: mutation.previous.updated_at || new Date().toISOString(),
+  });
 }
 
 async function findExistingTrelloDuplicateByIdempotencyKey(idempotencyKey: string): Promise<ExistingTrelloDuplicate | null> {
@@ -6138,7 +6384,7 @@ async function insertDuplicatedMasterRequest(input: {
   sourceRequest: MasterRequestRow | null;
   customerId: string;
   requestId: string;
-  sourceRequestId: string;
+  sourceRequestId: string | null;
   sourceCardId: string;
   copiedCardId: string;
   copiedCardUrl: string | null;
@@ -6185,6 +6431,7 @@ async function insertDuplicatedMasterRequest(input: {
       landing_page_url: trimNullable(source?.landing_page_url),
       attribution_raw: {
         source: "customer_records_trello_duplicate",
+        auto_reply_suppressed: true,
         idempotency_key: input.idempotencyKey,
         source_request_id: input.sourceRequestId,
         source_trello_card_id: input.sourceCardId,
@@ -6207,6 +6454,7 @@ async function verifyCopiedTrelloCard(input: {
   sourceDesc: string;
   requestIdFieldId: string;
   newRequestId: string;
+  fieldOverrides: Map<string, string | boolean | null>;
 }) {
   const sourceDetail = await getTrelloCard(input.sourceCardId);
   let latestCopied = await getTrelloCard(input.copiedCardId);
@@ -6234,8 +6482,10 @@ async function verifyCopiedTrelloCard(input: {
         issues.push(`Custom Field "${sourceField.name}" fehlt auf der Trello-Kopie.`);
         continue;
       }
-      const expected =
-        sourceField.id === input.requestIdFieldId
+      const overrideValue = input.fieldOverrides.get(sourceField.id);
+      const expected = input.fieldOverrides.has(sourceField.id)
+        ? trelloFieldComparableValue({ type: sourceField.type, value: overrideValue ?? null })
+        : sourceField.id === input.requestIdFieldId
           ? input.newRequestId
           : trelloFieldComparableValue(sourceField);
       const actual = trelloFieldComparableValue(copiedField);
@@ -6263,23 +6513,59 @@ export async function duplicateCustomerTrelloCard(
   input: CustomerTrelloCardDuplicateInput,
   actor?: UpdateActor,
 ): Promise<CustomerTrelloCardDuplicateResult> {
-  const normalizedRequestId = normalizeRequestSearch(requestId);
-  const boardKey = trimNullable(input?.boardKey);
-  const cardId = trimNullable(input?.cardId);
+  const requestedRequestId = trimNullable(requestId);
+  const cardUrl = trimNullable(input?.cardUrl);
+  const cardReference =
+    parseTrelloCardIdentifier(cardUrl) ||
+    parseTrelloCardIdentifier(input?.cardId) ||
+    trimNullable(input?.cardId);
   const idempotencyKey = trimNullable(input?.idempotencyKey) || randomUUID();
 
-  if (!boardKey || !cardId) {
+  if (!cardReference) {
     throw new QuoteValidationError("Trello-Karte fuer die Duplizierung fehlt.");
   }
 
-  const context = await fetchCustomerContextByRequestId(normalizedRequestId);
+  const sourceDetail = await getTrelloCard(cardReference);
+  const boardConfig = TRELLO_BOARD_CONFIGS.find((board) => board.id === sourceDetail.idBoard) || null;
+  if (!boardConfig) {
+    throw new QuoteValidationError("Diese Trello-Karte liegt nicht auf einem freigegebenen NEONTRIP Board.");
+  }
+  const requestedBoardKey = trimNullable(input?.boardKey);
+  if (requestedBoardKey && requestedBoardKey !== boardConfig.key) {
+    throw new QuoteValidationError("Die Trello-Karte gehoert nicht zum erwarteten Board.");
+  }
+
+  let sourceContext: CustomerContext | null = null;
+  let sourceRequest: MasterRequestRow | null = null;
+  if (requestedRequestId) {
+    sourceContext = await fetchCustomerContextByRequestId(requestedRequestId);
+    sourceRequest = sourceContext.request;
+    const linkedCardIds = new Set([
+      trimNullable(sourceContext.request?.trello_card_id),
+      ...(sourceContext.trello?.cards.map((card) => trimNullable(card.cardId)) || []),
+    ].filter((value): value is string => Boolean(value)));
+    if (linkedCardIds.size && !linkedCardIds.has(sourceDetail.id) && !linkedCardIds.has(cardReference)) {
+      throw new QuoteValidationError("Die gewaehlte Trello-Karte ist fuer diesen Fall nicht verfuegbar.", [], 404);
+    }
+  } else {
+    sourceRequest = await findMasterRequestByTrelloCard(
+      sourceDetail.id,
+      cardUrl,
+      sourceDetail.editableFields || [],
+    );
+    if (sourceRequest?.request_id) {
+      sourceContext = await fetchCustomerContextByRequestId(sourceRequest.request_id);
+    }
+  }
+  const sourceRequestId = sourceRequest?.request_id || requestedRequestId || null;
+
   const existing = await findExistingTrelloDuplicateByIdempotencyKey(idempotencyKey);
   if (existing) {
     if (existing.customerId) await setCustomerCurrentRequest(existing.customerId, existing.requestId);
     return {
       requestId: existing.requestId,
-      sourceRequestId: normalizedRequestId,
-      customerId: existing.customerId || context.master.id,
+      sourceRequestId,
+      customerId: existing.customerId || sourceContext?.master.id || "",
       cardId: existing.cardId || "",
       cardUrl: existing.cardUrl,
       warnings: ["Diese Kartenduplizierung wurde bereits verarbeitet."],
@@ -6287,22 +6573,15 @@ export async function duplicateCustomerTrelloCard(
     };
   }
 
-  const boardCard = context.trello?.cards.find((card) => card.boardKey === boardKey && card.cardId === cardId) || null;
-  if (!boardCard || !boardCard.cardId) {
-    throw new QuoteValidationError("Die gewaehlte Trello-Karte ist fuer diesen Fall nicht verfuegbar.", [], 404);
-  }
-
-  const sourceDetail = await getTrelloCard(cardId);
-  if (sourceDetail.idBoard && sourceDetail.idBoard !== boardCard.boardId) {
-    throw new QuoteValidationError("Die Trello-Karte gehoert nicht zum erwarteten Board.");
-  }
-
-  const targetListId = trimNullable(sourceDetail.idList) || boardCard.listId;
+  const targetListId = trimNullable(sourceDetail.idList);
   if (!targetListId) {
     throw new QuoteValidationError("Die Quellkarte hat keine Trello-Liste. Kopie kann nicht sicher erstellt werden.");
   }
 
-  const boardId = sourceDetail.idBoard || boardCard.boardId;
+  const boardId = sourceDetail.idBoard;
+  if (!boardId) {
+    throw new QuoteValidationError("Die Quellkarte hat keine Trello-Board-ID.");
+  }
   const requestIdField = await findTrelloCustomFieldByName(boardId, CUSTOMER_RECORD_REQUEST_ID_FIELD_NAMES);
   if (!requestIdField) {
     throw new QuoteValidationError("Request-ID Custom Field auf dem Trello-Board nicht gefunden.", [
@@ -6315,16 +6594,34 @@ export async function duplicateCustomerTrelloCard(
     ]);
   }
 
+  const contact = resolveTrelloDuplicateContact(
+    input,
+    sourceContext?.master || null,
+    sourceDetail.editableFields || [],
+  );
   const newRequestId = randomUUID();
-  const sourceName = sourceDetail.name || boardCard.cardName || "Trello-Kopie";
-  const sourceDesc = sourceDetail.desc || "";
+  const originalSourceName = sourceDetail.name || "Trello-Kopie";
+  const originalSourceDesc = sourceDetail.desc || "";
+  const sourceName = replaceTrelloDuplicateContactText(
+    originalSourceName,
+    sourceContext?.master || null,
+    sourceDetail.editableFields || [],
+    contact,
+  );
+  const sourceDesc = replaceTrelloDuplicateContactText(
+    originalSourceDesc,
+    sourceContext?.master || null,
+    sourceDetail.editableFields || [],
+    contact,
+  );
   const warnings: string[] = [];
   let copiedCard: Awaited<ReturnType<typeof copyTrelloCard>> | null = null;
+  let customerMutation: TrelloDuplicateCustomerMutation | null = null;
   let requestInserted = false;
 
   try {
     copiedCard = await copyTrelloCard({
-      sourceCardId: cardId,
+      sourceCardId: sourceDetail.id,
       listId: targetListId,
       name: sourceName,
       desc: sourceDesc,
@@ -6343,22 +6640,55 @@ export async function duplicateCustomerTrelloCard(
       value: newRequestId,
     });
 
+    const fieldOverrides = new Map<string, string | boolean | null>([
+      [requestIdField.id, newRequestId],
+    ]);
+    const contactFieldUpdates: Array<{ names: string[]; value: string | null; label: string }> = [
+      { names: CUSTOMER_RECORD_EMAIL_FIELD_NAMES, value: contact.email, label: "Kunden-E-Mail" },
+      { names: CUSTOMER_RECORD_FIRST_NAME_FIELD_NAMES, value: contact.firstName, label: "Vorname" },
+      { names: CUSTOMER_RECORD_LAST_NAME_FIELD_NAMES, value: contact.lastName, label: "Nachname" },
+    ];
+    for (const fieldUpdate of contactFieldUpdates) {
+      const field = findTrelloDuplicateField(sourceDetail.editableFields || [], fieldUpdate.names);
+      if (!field) {
+        warnings.push(`${fieldUpdate.label} ist auf diesem Trello-Board nicht als Custom Field vorhanden.`);
+        continue;
+      }
+      if ((field.type || "text") !== "text") {
+        throw new QuoteValidationError(`Trello Custom Field "${field.name}" ist kein Textfeld.`);
+      }
+      await updateTrelloCustomField({
+        cardId: copiedCard.id,
+        fieldId: field.id,
+        type: field.type || "text",
+        value: fieldUpdate.value,
+      });
+      fieldOverrides.set(field.id, fieldUpdate.value);
+    }
+
     const copiedDetail = await verifyCopiedTrelloCard({
-      sourceCardId: cardId,
+      sourceCardId: sourceDetail.id,
       copiedCardId: copiedCard.id,
       sourceName,
       sourceDesc,
       requestIdFieldId: requestIdField.id,
       newRequestId,
+      fieldOverrides,
     });
     const copiedCardUrl = copiedCard.url || copiedCard.shortUrl || null;
 
-    const insertedRequest = await insertDuplicatedMasterRequest({
-      sourceRequest: context.request,
-      customerId: context.master.id,
+    customerMutation = await upsertTrelloDuplicateCustomer({
+      contact,
+      sourceMaster: sourceContext?.master || null,
       requestId: newRequestId,
-      sourceRequestId: normalizedRequestId,
-      sourceCardId: cardId,
+    });
+
+    const insertedRequest = await insertDuplicatedMasterRequest({
+      sourceRequest,
+      customerId: customerMutation.row.id,
+      requestId: newRequestId,
+      sourceRequestId,
+      sourceCardId: sourceDetail.id,
       copiedCardId: copiedCard.id,
       copiedCardUrl,
       cardName: sourceName,
@@ -6368,8 +6698,6 @@ export async function duplicateCustomerTrelloCard(
     });
     requestInserted = true;
 
-    await setCustomerCurrentRequest(context.master.id, newRequestId);
-
     let salesTaskCreated = false;
     try {
       const task = await upsertSalesTask({
@@ -6377,7 +6705,7 @@ export async function duplicateCustomerTrelloCard(
         taskType: "call_new_inquiry",
         status: "open",
         title: taskTitle("call_new_inquiry"),
-        detail: preserveTrelloText(sourceDesc) || `Aus Trello-Karte ${cardId} neu eingespielt.`,
+        detail: preserveTrelloText(sourceDesc) || `Aus Trello-Karte ${sourceDetail.id} neu eingespielt.`,
         dueAt: new Date().toISOString(),
         priorityTier: "standard",
         assigneeLabel: actorLabel(actor),
@@ -6387,8 +6715,8 @@ export async function duplicateCustomerTrelloCard(
         payload: {
           trello_duplicate: true,
           idempotency_key: idempotencyKey,
-          source_request_id: normalizedRequestId,
-          source_trello_card_id: cardId,
+          source_request_id: sourceRequestId,
+          source_trello_card_id: sourceDetail.id,
         },
       });
       salesTaskCreated = Boolean(task);
@@ -6402,17 +6730,20 @@ export async function duplicateCustomerTrelloCard(
         requestId: newRequestId,
         action: CUSTOMER_RECORDS_TRELLO_DUPLICATE_ACTION,
         status: "success",
-        summary: `${boardCard.boardName} Karte als neue Anfrage dupliziert`,
-        changedFields: ["request_id", "trello_card", "customer_current_request"],
+        summary: `${boardConfig.name} Karte als neue Anfrage dupliziert`,
+        changedFields: ["request_id", "trello_card", "customer_identity"],
         actor,
         extraMetadata: {
           request_id: insertedRequest.request_id,
-          customer_id: context.master.id,
+          customer_id: customerMutation.row.id,
+          customer_created: customerMutation.created,
+          customer_email: contact.email,
+          customer_name: contact.displayName,
           idempotency_key: idempotencyKey,
-          source_request_id: normalizedRequestId,
-          source_trello_card_id: cardId,
-          source_trello_board_key: boardKey,
-          source_trello_board_name: boardCard.boardName,
+          source_request_id: sourceRequestId,
+          source_trello_card_id: sourceDetail.id,
+          source_trello_board_key: boardConfig.key,
+          source_trello_board_name: boardConfig.name,
           source_trello_list_id: targetListId,
           trello_card_id: copiedCard.id,
           trello_card_url: copiedCardUrl,
@@ -6430,8 +6761,8 @@ export async function duplicateCustomerTrelloCard(
 
     return {
       requestId: newRequestId,
-      sourceRequestId: normalizedRequestId,
-      customerId: context.master.id,
+      sourceRequestId,
+      customerId: customerMutation.row.id,
       cardId: copiedCard.id,
       cardUrl: copiedCardUrl,
       warnings,
@@ -6439,15 +6770,28 @@ export async function duplicateCustomerTrelloCard(
     };
   } catch (error) {
     if (copiedCard?.id && !requestInserted) {
+      const rollbackErrors: string[] = [];
+      try {
+        await rollbackTrelloDuplicateCustomer(customerMutation);
+      } catch (rollbackError) {
+        rollbackErrors.push(
+          `Kundenakte: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+        );
+      }
       try {
         await archiveTrelloCard(copiedCard.id);
       } catch (rollbackError) {
+        rollbackErrors.push(
+          `Trello-Karte: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+        );
+      }
+      if (rollbackErrors.length) {
         throw new SupabaseRestError(
-          "Trello-Kopie fehlgeschlagen und Rollback konnte die neue Karte nicht archivieren.",
+          "Trello-Kopie fehlgeschlagen und Rollback war nicht vollstaendig.",
           500,
           {
             originalError: error instanceof Error ? error.message : String(error),
-            rollbackError: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+            rollbackErrors,
             copiedCardId: copiedCard.id,
           },
         );

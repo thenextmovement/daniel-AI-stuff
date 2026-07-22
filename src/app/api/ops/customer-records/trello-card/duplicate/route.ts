@@ -52,6 +52,9 @@ export async function POST(request: NextRequest) {
       duplicate?: CustomerTrelloCardDuplicateInput;
       operatorName?: string | null;
     };
+    if (!body.duplicate || typeof body.duplicate !== "object") {
+      throw new QuoteValidationError("Trello-Karte fuer die Duplizierung fehlt.");
+    }
 
     const actor: UpdateActor = {
       host,
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     const result = await duplicateCustomerTrelloCard(
       String(body.requestId || ""),
-      body.duplicate as CustomerTrelloCardDuplicateInput,
+      body.duplicate,
       actor,
     );
     return NextResponse.json({ ok: true, result });
