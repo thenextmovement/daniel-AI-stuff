@@ -19,6 +19,7 @@ import {
   enrichSupplierSalesWithUniqueRequestTrelloCards,
   generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
+  markSupplierSaleInProduction,
   normalizeDateOnly,
   normalizeShopifyPaymentStatus,
   requestSupplierPaymentReminder,
@@ -26,7 +27,12 @@ import {
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
   supplierProductionDescription,
+  supplierSaleCompletionHideAt,
   supplierSaleNeedsDeadlineTask,
+  supplierSaleReadyForProduction,
+  supplierSaleShopifyConfirmed,
+  supplierSaleTrelloConfirmed,
+  supplierSaleVisibleInActiveOverview,
   syncCompletedOffersFromOffersApp,
   upsertSupplierSale,
   type SupplierSaleItemRow,
@@ -1306,7 +1312,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       const limit = url.searchParams.get("limit");
       supplierSalesGetLimits.push(limit || "");
-      if (limit === "200") assert.equal(url.searchParams.get("assignment_status"), "not.in.(assigned,in_production,completed,canceled)");
+      if (limit === "200") assert.equal(url.searchParams.get("assignment_status"), "not.in.(completed,canceled)");
       return Response.json([taggedRow, fulfilledRow, similarTagRow, unassignedRow]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
@@ -1328,6 +1334,104 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
 
   assert.deepEqual(supplierSalesGetLimits, ["2000", "200"]);
   assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-visible)");
+});
+
+test("supplier production completion is fail-closed and remains visible for exactly ten minutes", () => {
+  const confirmedAt = "2026-07-22T12:00:00.000Z";
+  const sale = buildSupplierSaleBoardFromRows([
+    saleRow({
+      assignment_status: "assigned",
+      assigned_supplier: "quentin",
+      shopify_tag_sync_status: "synced",
+      trello_projection_status: "synced",
+      supplier_trello_card_id: "trello-confirmed",
+      supplier_trello_card_url: "https://trello.test/c/confirmed",
+    }),
+  ], []).items[0];
+  assert.ok(sale);
+  assert.equal(supplierSaleShopifyConfirmed(sale), true);
+  assert.equal(supplierSaleTrelloConfirmed(sale), true);
+  assert.equal(supplierSaleReadyForProduction(sale), true);
+
+  const missingTrello = { ...sale, trelloProjectionStatus: "failed" as const, supplierTrelloCardId: null, supplierTrelloCardUrl: null };
+  assert.equal(supplierSaleReadyForProduction(missingTrello), false);
+
+  const specialWithoutConfirmation = { ...sale, assignedSupplier: "special" as const, shopifyTagSyncStatus: "skipped" as const, manualShopifySupplierTagConfirmedAt: null };
+  assert.equal(supplierSaleShopifyConfirmed(specialWithoutConfirmation), false);
+  assert.equal(supplierSaleShopifyConfirmed({ ...specialWithoutConfirmation, manualShopifySupplierTagConfirmedAt: confirmedAt }), true);
+
+  const inProduction = { ...sale, assignmentStatus: "in_production" as const, productionConfirmedAt: confirmedAt };
+  assert.equal(supplierSaleCompletionHideAt(inProduction), "2026-07-22T12:10:00.000Z");
+  assert.equal(supplierSaleVisibleInActiveOverview(inProduction, new Date("2026-07-22T12:09:59.999Z")), true);
+  assert.equal(supplierSaleVisibleInActiveOverview(inProduction, new Date("2026-07-22T12:10:00.000Z")), false);
+});
+
+test("supplier sales active board keeps assigned and recently confirmed production rows but drops expired confirmations", async () => {
+  const now = Date.now();
+  const assigned = saleRow({ id: "sale-assigned-visible", assignment_status: "assigned", assigned_supplier: "quentin" });
+  const recentProduction = saleRow({
+    id: "sale-production-recent",
+    assignment_status: "in_production",
+    assigned_supplier: "quentin",
+    metadata: { production_confirmed_at: new Date(now - 9 * 60 * 1000).toISOString() },
+  });
+  const expiredProduction = saleRow({
+    id: "sale-production-expired",
+    assignment_status: "in_production",
+    assigned_supplier: "quentin",
+    metadata: { production_confirmed_at: new Date(now - 11 * 60 * 1000).toISOString() },
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      return Response.json([assigned, recentProduction, expiredProduction]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    assert.deepEqual(new Set(board.items.map((item) => item.id)), new Set([assigned.id, recentProduction.id]));
+  });
+});
+
+test("production confirmation is persisted once and duplicate clicks are idempotent", async () => {
+  let currentRow = saleRow({
+    id: "sale-production-confirm",
+    assignment_status: "assigned",
+    assigned_supplier: "quentin",
+    assigned_at: "2026-07-22T12:00:00.000Z",
+    shopify_tag_sync_status: "synced",
+    trello_projection_status: "synced",
+    supplier_trello_card_id: "trello-production-confirm",
+    supplier_trello_card_url: "https://trello.test/c/production-confirm",
+  });
+  let patchCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      patchCount += 1;
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    return Response.json([]);
+  }, async () => {
+    const first = await markSupplierSaleInProduction({ saleId: currentRow.id, operatorName: "Rahim" });
+    assert.equal(first.assignmentStatus, "in_production");
+    assert.ok(first.productionConfirmedAt);
+    assert.equal(first.productionConfirmedBy, "Rahim");
+
+    const second = await markSupplierSaleInProduction({ saleId: currentRow.id, operatorName: "Rahim" });
+    assert.equal(second.productionConfirmedAt, first.productionConfirmedAt);
+  });
+
+  assert.equal(patchCount, 1);
 });
 
 test("supplier sales board reads payment link from offer snapshot fallback", async () => {

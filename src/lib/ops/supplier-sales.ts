@@ -1,6 +1,20 @@
 import { createHash } from "node:crypto";
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
 import {
+  supplierSaleReadyForProduction,
+  supplierSaleShopifyConfirmed,
+  supplierSaleTrelloConfirmed,
+  supplierSaleVisibleInActiveOverview,
+} from "@/lib/ops/supplier-sale-completion";
+export {
+  SUPPLIER_SALE_COMPLETION_HOLD_MS,
+  supplierSaleCompletionHideAt,
+  supplierSaleReadyForProduction,
+  supplierSaleShopifyConfirmed,
+  supplierSaleTrelloConfirmed,
+  supplierSaleVisibleInActiveOverview,
+} from "@/lib/ops/supplier-sale-completion";
+import {
   createTrelloCard,
   getTrelloBoardSearchCards,
   getTrelloCard,
@@ -227,6 +241,9 @@ export type SupplierSale = {
   assignmentNote: string | null;
   assignedAt: string | null;
   assignedBy: string | null;
+  productionConfirmedAt: string | null;
+  productionConfirmedBy: string | null;
+  manualShopifySupplierTagConfirmedAt: string | null;
   shopifyTagSyncStatus: SupplierSaleSyncStatus;
   shopifyTagValue: string | null;
   shopifyTagSyncedAt: string | null;
@@ -382,6 +399,16 @@ export type SupplierSaleAssignInput = {
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
   operatorName?: string | null;
   assigneeLabel?: string | null;
+};
+
+export type SupplierSaleProductionInput = {
+  saleId: string;
+  operatorName?: string | null;
+};
+
+export type SupplierSaleTrelloRetryInput = {
+  saleId: string;
+  operatorName?: string | null;
 };
 
 export type SupplierSalePostOrderReviewInput = {
@@ -1831,6 +1858,7 @@ function supplierSaleHasRushSignal(row: SupplierSaleRow, items: SupplierSaleItem
 
 function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEvent: SupplierSaleEvent | null = null): SupplierSale {
   const itemImage = items.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || null;
+  const metadata = jsonRecord(row.metadata);
   return {
     id: row.id,
     saleKey: row.sale_key,
@@ -1873,6 +1901,9 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     assignmentNote: row.assignment_note,
     assignedAt: row.assigned_at,
     assignedBy: row.assigned_by,
+    productionConfirmedAt: nullableText(metadata.production_confirmed_at, 80),
+    productionConfirmedBy: nullableText(metadata.production_confirmed_by, 120),
+    manualShopifySupplierTagConfirmedAt: nullableText(metadata.shopify_supplier_tag_confirmed_at, 80),
     shopifyTagSyncStatus: row.shopify_tag_sync_status,
     shopifyTagValue: row.shopify_tag_value,
     shopifyTagSyncedAt: row.shopify_tag_synced_at,
@@ -2505,6 +2536,15 @@ function rowFromSale(sale: SupplierSale): SupplierSaleRow {
     offer_snapshot: {},
     metadata: {
       ...(sale.paymentLink ? { payment_link: sale.paymentLink } : {}),
+      ...(sale.productionConfirmedAt
+        ? {
+            production_confirmed_at: sale.productionConfirmedAt,
+            production_confirmed_by: sale.productionConfirmedBy,
+          }
+        : {}),
+      ...(sale.manualShopifySupplierTagConfirmedAt
+        ? { shopify_supplier_tag_confirmed_at: sale.manualShopifySupplierTagConfirmedAt }
+        : {}),
       ...(sale.priorPaidCustomer.hasPriorPaidOrder
         ? {
             prior_paid_customer: {
@@ -3838,7 +3878,7 @@ export async function listSupplierSalesBoard(options?: {
     query.assignment_status = "not.in.(completed,canceled)";
     query.or = `(supplier_due_date.lte.${dueSoon},and(supplier_due_date.is.null,customer_due_date.lte.${dueSoon}))`;
   }
-  else if (scope === "active") query.assignment_status = "not.in.(assigned,in_production,completed,canceled)";
+  else if (scope === "active") query.assignment_status = "not.in.(completed,canceled)";
   else if (scope !== "all") query.assignment_status = "not.in.(completed,canceled)";
 
   const payment = options?.payment;
@@ -3883,7 +3923,16 @@ export async function listSupplierSalesBoard(options?: {
 
   let statsRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, statsQuery);
   let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
-  if (scope === "active" || scope === "ready" || scope === "payment") {
+  if (scope === "active") {
+    saleRows = saleRows.filter((row) => {
+      if (row.assignment_status === "assigned") return true;
+      if (row.assignment_status === "in_production") {
+        const productionConfirmedAt = nullableText(jsonRecord(row.metadata).production_confirmed_at, 80);
+        return supplierSaleVisibleInActiveOverview({ assignmentStatus: row.assignment_status, productionConfirmedAt }, now);
+      }
+      return !hasExternalSupplierAssignmentSignal(row) && !hasCompletedShopifyFulfillmentSignal(row);
+    });
+  } else if (scope === "ready" || scope === "payment") {
     saleRows = saleRows.filter((row) => !hasExternalSupplierAssignmentSignal(row) && !hasCompletedShopifyFulfillmentSignal(row));
   }
   if (scope === "sync") {
@@ -5309,6 +5358,8 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
   const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
   const assignmentNote = nullableText(input.assignmentNote, 1000);
   const specialSupplierName = supplier === "special" ? nullableText(input.specialSupplierName, 120) : null;
+  const currentRow = await fetchSaleRowById(sale.id);
+  if (!currentRow) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
   const trelloProjectionEnabled = supplierTrelloProjectionEnabled();
   const trelloListId = supplierTrelloListId(supplier);
   const reserved = await reserveSupplierAssignmentAttempt({
@@ -5346,6 +5397,15 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
       : "Supplier-Trello-Projektion ist deaktiviert; es wird keine Supplier-Karte erstellt.",
     task_sync_status: supplierAssignmentTasksEnabled() ? "pending" : "skipped",
     task_sync_error: null,
+    metadata: {
+      ...jsonRecord(currentRow.metadata),
+      ...(supplier === "special"
+        ? {
+            shopify_supplier_tag_confirmed_at: now,
+            shopify_supplier_tag_confirmed_by: operatorName,
+          }
+        : {}),
+    },
   };
 
   let row: SupplierSaleRow;
@@ -5438,6 +5498,96 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     attempt_key: `eq.${attemptKey}`,
   }).catch(() => null);
   return fresh;
+}
+
+export async function retrySupplierSaleTrelloProjection(
+  input: SupplierSaleTrelloRetryInput,
+  actor?: SupplierSaleActor | null,
+) {
+  const sale = await getSupplierSale(input.saleId);
+  if (!sale.assignedSupplier || !["assigned", "in_production"].includes(sale.assignmentStatus)) {
+    throw new QuoteValidationError("Sale ist noch nicht vergeben.", [
+      "Die Trello-Karte kann erst nach einer gespeicherten Supplier-Vergabe aktualisiert werden.",
+    ], 422);
+  }
+  const row = await fetchSaleRowById(sale.id);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  const deliveryDate = sale.supplierDueDate || sale.customerDueDate;
+  if (!deliveryDate) {
+    throw new QuoteValidationError("Lieferdatum fehlt.", ["Ohne Lieferdatum kann die Trello-Karte nicht aktualisiert werden."], 422);
+  }
+
+  await patchSaleRow(sale.id, { trello_projection_status: "pending", trello_projection_error: null });
+  try {
+    const trello = await projectSupplierTrelloCard(row, sale.items, sale.assignedSupplier, deliveryDate, sale.assignmentNote);
+    await patchSaleRow(sale.id, {
+      trello_projection_status: trello.status,
+      supplier_trello_card_id: trello.cardId,
+      supplier_trello_card_url: trello.cardUrl,
+      trello_projection_error: trello.error,
+    });
+  } catch (error) {
+    await patchSaleRow(sale.id, {
+      trello_projection_status: "failed",
+      trello_projection_error: error instanceof Error ? error.message : "Trello-Projektion fehlgeschlagen.",
+    });
+  }
+
+  const fresh = await getSupplierSale(sale.id);
+  await insertEvent({
+    saleId: sale.id,
+    eventType: fresh.trelloProjectionStatus === "synced" ? "assignment_side_effect_synced" : "assignment_side_effect_failed",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: `supplier-sale:${sale.id}:trello-retry:${new Date().toISOString()}`,
+    payload: {
+      kind: "trello_projection_retry",
+      status: fresh.trelloProjectionStatus,
+      trello_card_id: fresh.supplierTrelloCardId,
+    },
+  });
+  return fresh;
+}
+
+export async function markSupplierSaleInProduction(
+  input: SupplierSaleProductionInput,
+  actor?: SupplierSaleActor | null,
+) {
+  const sale = await getSupplierSale(input.saleId);
+  if (sale.assignmentStatus === "in_production" && sale.productionConfirmedAt) return sale;
+  if (!supplierSaleReadyForProduction(sale)) {
+    const issues = [
+      !sale.assignedSupplier ? "Supplier-Vergabe fehlt." : null,
+      !supplierSaleShopifyConfirmed(sale) ? "Shopify-Supplier-Kennzeichnung ist nicht bestaetigt." : null,
+      !supplierSaleTrelloConfirmed(sale) ? "Trello-Karte wurde noch nicht erfolgreich gefunden und aktualisiert." : null,
+    ].filter((issue): issue is string => Boolean(issue));
+    throw new QuoteValidationError("Produktion kann noch nicht bestaetigt werden.", issues, 422);
+  }
+
+  const row = await fetchSaleRowById(sale.id);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  const now = new Date().toISOString();
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  await patchSaleRow(sale.id, {
+    assignment_status: "in_production",
+    metadata: {
+      ...jsonRecord(row.metadata),
+      production_confirmed_at: now,
+      production_confirmed_by: operatorName,
+      production_confirmation_version: 1,
+    },
+  });
+  await insertEvent({
+    saleId: sale.id,
+    eventType: "status_changed",
+    actor: actor || { operatorName: input.operatorName || null },
+    idempotencyKey: `supplier-sale:${sale.id}:in-production:${sale.assignedAt || sale.updatedAt}`,
+    payload: {
+      from: sale.assignmentStatus,
+      to: "in_production",
+      production_confirmed_at: now,
+    },
+  });
+  return getSupplierSale(sale.id);
 }
 
 export async function retrySupplierSaleShopifyTag(input: SupplierShopifyTagRetryInput, actor?: SupplierSaleActor | null) {
