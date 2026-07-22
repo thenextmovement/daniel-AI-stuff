@@ -1,6 +1,6 @@
 # NEONTRIP EasyDPD Browser-Worker
 
-Der lokale macOS-Worker verarbeitet ausschließlich bereits in Postgres freigegebene EasyDPD-Kaufaufträge. Er verwendet ein separates Chrome-Profil, klickt pro Auftrag höchstens einmal auf `Create label` und wiederholt nach dem Dispatch niemals automatisch einen Kauf.
+Der lokale macOS-Worker verarbeitet ausschließlich bereits in Postgres freigegebene EasyDPD-Kaufaufträge. Er verwendet ein separates Chrome-Profil in einem dauerhaft laufenden Browserprozess, klickt pro Auftrag höchstens einmal auf `Create label` und wiederholt nach dem Dispatch niemals automatisch einen Kauf. Der langlebige Prozess ist erforderlich, weil die Shopify-Sitzung beim Beenden dieses separaten Browsers nicht zuverlässig erhalten bleibt.
 
 ## Sicherheitsgrenzen
 
@@ -13,22 +13,24 @@ Der lokale macOS-Worker verarbeitet ausschließlich bereits in Postgres freigege
 - Erst nach QA und privatem Storage-Upload entsteht ein A6-Druckauftrag. Die vorhandene Druckkette archiviert danach die DHL-Express-Mail.
 - Shopify-Versandbestätigung wird nur durch die aktivierte EasyDPD-Einstellung ausgelöst; der Worker sendet keine zweite Kundenmail.
 
-## Installation
+## Installation und Freigabereihenfolge
 
 Das API-Token liegt im macOS-Schlüsselbund unter `NEONTRIP EasyDPD Browser Worker API Token`. Cloudflare Access nutzt bei Bedarf den vorhandenen Service-Token. Das LaunchAgent-Plist enthält keine Geheimnisse.
 
 ```bash
 npm run arrival-labels:browser-worker:manage -- install --mode dry_run --interval-seconds 300
-npm run arrival-labels:browser-worker:manage -- setup-session
-npm run arrival-labels:browser-worker:manage -- self-test
 npm run arrival-labels:browser-worker:manage -- status
 ```
 
-Der Live-Wechsel erfolgt erst nach kontrolliertem Probekauf:
+Der Produktionswechsel erfolgt in dieser Reihenfolge: Zuerst bleiben `worker_enabled` und `live_purchase_enabled` in Postgres ausgeschaltet. Dann wird der lokale Prozess mit seiner separaten Live-Bestätigung installiert. Solange die beiden Server-Gates aus sind, kann er keinen Auftrag reservieren oder kaufen.
 
 ```bash
 npm run arrival-labels:browser-worker:manage -- install --mode live --interval-seconds 300 --acknowledge-production-write
+npm run arrival-labels:browser-worker:manage -- setup-session
+npm run arrival-labels:browser-worker:manage -- self-test
 ```
+
+`setup-session` öffnet keinen zweiten Browserprozess. Es bestätigt, dass der LaunchAgent läuft; die Anmeldung erfolgt im bereits geöffneten NEONTRIP-Chrome. `self-test` liest anschließend den frischen lokalen Heartbeat und klickt keinen Kaufbutton. Erst nach diesem grünen Test werden die beiden Postgres-Gates kontrolliert aktiviert.
 
 Rollback und Deaktivierung sind reversibel:
 
@@ -37,4 +39,4 @@ npm run arrival-labels:browser-worker:manage -- rollback
 npm run arrival-labels:browser-worker:manage -- uninstall
 ```
 
-Der Worker läuft nur, wenn der Mac eingeschaltet, ein Benutzer angemeldet und die separate Shopify-Sitzung gültig ist. Nach Neustart startet `launchd` automatisch wieder.
+Der Worker läuft nur, wenn der Mac eingeschaltet, ein Benutzer angemeldet und die separate Shopify-Sitzung im laufenden Browser gültig ist. Nach Neustart startet `launchd` automatisch wieder, setzt ohne gültige Sitzung aber nur den Zustand `authentication_required`; Käufe bleiben dann aus, bis Shopify im offenen NEONTRIP-Chrome erneut angemeldet wurde.

@@ -91,6 +91,7 @@ export function renderPlist(template, values) {
     "{{WORKER_ID}}": xml(values.workerId),
     "{{PROFILE_DIR}}": xml(values.profileDir),
     "{{LOCK_PATH}}": xml(values.lockPath),
+    "{{STATUS_PATH}}": xml(join(values.logDir, "status.json")),
     "{{LIVE_ENABLED}}": values.mode === "live" ? "true" : "false",
     "{{CF_CLIENT_ID_ENV}}": values.cfClientId ? `    <key>ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID</key>\n    <string>${xml(values.cfClientId)}</string>` : "",
     "{{INTERVAL_SECONDS}}": String(values.intervalSeconds),
@@ -141,6 +142,9 @@ function install(options) {
   mkdirSync(dirname(target.plist), { recursive: true, mode: 0o700 });
   mkdirSync(target.logDir, { recursive: true, mode: 0o700 });
   mkdirSync(target.profileDir, { recursive: true, mode: 0o700 });
+  const statusFile = join(target.logDir, "status.json");
+  const previousStatus = existsSync(statusFile) ? `${statusFile}.previous-${Date.now()}` : null;
+  if (previousStatus) renameSync(statusFile, previousStatus);
   const backup = backupPlist(target.plist, join(target.runtimeRoot, "plist-backups"));
   const template = readFileSync(join(SOURCE_ROOT, "deploy", "local-easydpd-browser-worker", `${LABEL}.plist.template`), "utf8");
   const rendered = renderPlist(template, {
@@ -164,13 +168,14 @@ function install(options) {
     writeFileSync(target.currentFile, `${commit}\n`, { mode: 0o600 });
   } catch (error) {
     launchctl(["bootout", launchDomain(), target.plist], true);
+    if (previousStatus && !existsSync(statusFile)) renameSync(previousStatus, statusFile);
     if (backup) {
       copyFileSync(backup, target.plist);
       launchctl(["bootstrap", launchDomain(), target.plist], true);
     }
     throw error;
   }
-  return { ok: true, action: "installed", label: LABEL, commit, mode: options.mode, intervalSeconds: options.intervalSeconds, backup };
+  return { ok: true, action: "installed", label: LABEL, commit, mode: options.mode, intervalSeconds: options.intervalSeconds, backup, previousStatus };
 }
 
 function currentRunner() {
@@ -183,28 +188,39 @@ function currentRunner() {
 
 function runInteractive(command) {
   const target = destinations();
-  const runtime = requiredRuntimeEnvironment();
-  const args = [currentRunner(), command === "setup-session" ? "--setup-session" : "--self-test", "--mode", "dry_run"];
-  const result = spawnSync(process.execPath, args, {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      NEONTRIP_KEYCHAIN_ACCOUNT: runtime.account,
-      NEONTRIP_OPS_BASE_URL: runtime.opsBaseUrl,
-      ARRIVAL_LABEL_BROWSER_WORKER_ID: runtime.workerId,
-      ARRIVAL_LABEL_BROWSER_PROFILE_DIR: target.profileDir,
-      ARRIVAL_LABEL_BROWSER_LOCK_PATH: target.lockPath,
-      ...(runtime.cfClientId ? { ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID: runtime.cfClientId } : {}),
-    },
-  });
-  if (result.status !== 0) throw new BrowserWorkerError(`${command} fehlgeschlagen.`, result.status || 1);
-  return { ok: true, action: command };
+  const launchState = launchctl(["print", `${launchDomain()}/${LABEL}`], true);
+  if (launchState.status !== 0) throw new BrowserWorkerError("Browser-Worker ist nicht geladen.", 66);
+  const statusPath = join(target.logDir, "status.json");
+  let heartbeat = null;
+  if (existsSync(statusPath)) {
+    try { heartbeat = JSON.parse(readFileSync(statusPath, "utf8")); } catch {}
+  }
+  if (command === "setup-session") {
+    return {
+      ok: true,
+      action: "setup-session",
+      instruction: "Im offenen NEONTRIP-Chrome bei Shopify anmelden. Der laufende Worker prueft EasyDPD automatisch erneut.",
+      heartbeat,
+    };
+  }
+  if (!heartbeat || heartbeat.sessionReady !== true || !["ready", "idle"].includes(heartbeat.state)) {
+    throw new BrowserWorkerError("EasyDPD-Sitzung ist im laufenden Browser-Worker noch nicht bereit.", 65);
+  }
+  const updatedAt = Date.parse(String(heartbeat.updatedAt || ""));
+  const maximumAge = Math.max(120_000, (Number(heartbeat.intervalSeconds) || 300) * 2_000 + 60_000);
+  if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > maximumAge) throw new BrowserWorkerError("Browser-Worker-Heartbeat ist veraltet.", 65);
+  return { ok: true, action: "self-test", sessionReady: true, purchaseClicked: false, heartbeat };
 }
 
 function status() {
   const target = destinations();
   const result = launchctl(["print", `${launchDomain()}/${LABEL}`], true);
-  return { ok: result.status === 0, action: "status", label: LABEL, plistInstalled: existsSync(target.plist), loaded: result.status === 0, currentCommit: existsSync(target.currentFile) ? readFileSync(target.currentFile, "utf8").trim() : null };
+  let heartbeat = null;
+  const statusPath = join(target.logDir, "status.json");
+  if (existsSync(statusPath)) {
+    try { heartbeat = JSON.parse(readFileSync(statusPath, "utf8")); } catch {}
+  }
+  return { ok: result.status === 0, action: "status", label: LABEL, plistInstalled: existsSync(target.plist), loaded: result.status === 0, currentCommit: existsSync(target.currentFile) ? readFileSync(target.currentFile, "utf8").trim() : null, heartbeat };
 }
 
 function rollback() {

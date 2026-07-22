@@ -17,25 +17,41 @@ export class BrowserWorkerError extends Error {
 }
 
 export function parseWorkerArgs(argv) {
-  const options = { mode: "dry_run", once: false, selfTest: false, setupSession: false, acknowledgeProductionWrite: false };
+  const options = {
+    mode: "dry_run",
+    once: false,
+    daemon: false,
+    intervalSeconds: 300,
+    selfTest: false,
+    setupSession: false,
+    acknowledgeProductionWrite: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--once") options.once = true;
+    else if (arg === "--daemon") options.daemon = true;
     else if (arg === "--self-test") options.selfTest = true;
     else if (arg === "--setup-session") options.setupSession = true;
     else if (arg === "--acknowledge-production-write") options.acknowledgeProductionWrite = true;
-    else if (arg === "--mode") {
+    else if (["--mode", "--interval-seconds"].includes(arg)) {
       const value = argv[index + 1];
-      if (!value || value.startsWith("--")) throw new BrowserWorkerError("Wert fuer --mode fehlt.", 64);
-      options.mode = value;
+      if (!value || value.startsWith("--")) throw new BrowserWorkerError(`Wert fuer ${arg} fehlt.`, 64);
+      if (arg === "--mode") options.mode = value;
+      else options.intervalSeconds = Number(value);
       index += 1;
     } else throw new BrowserWorkerError(`Unbekanntes Argument: ${arg}`, 64);
   }
   if (!["dry_run", "live"].includes(options.mode)) throw new BrowserWorkerError("Modus muss dry_run oder live sein.", 64);
-  if (options.mode === "live" && (!options.acknowledgeProductionWrite || !options.once)) {
-    throw new BrowserWorkerError("Live-Modus braucht --once und --acknowledge-production-write.", 64);
+  if (!Number.isSafeInteger(options.intervalSeconds) || options.intervalSeconds < 60 || options.intervalSeconds > 86_400) {
+    throw new BrowserWorkerError("Intervall muss zwischen 60 und 86400 Sekunden liegen.", 64);
   }
-  if (options.setupSession && (options.selfTest || options.mode === "live")) throw new BrowserWorkerError("Session-Setup ist ein eigener schreibfreier Modus.", 64);
+  if (options.once && options.daemon) throw new BrowserWorkerError("--once und --daemon duerfen nicht kombiniert werden.", 64);
+  if (options.mode === "live" && (!options.acknowledgeProductionWrite || (!options.once && !options.daemon))) {
+    throw new BrowserWorkerError("Live-Modus braucht --once oder --daemon sowie --acknowledge-production-write.", 64);
+  }
+  if ((options.setupSession || options.selfTest) && (options.once || options.daemon || options.mode === "live")) {
+    throw new BrowserWorkerError("Session-Setup und Selbsttest sind eigene schreibfreie Modi.", 64);
+  }
   return options;
 }
 
@@ -80,6 +96,7 @@ export function resolveWorkerConfig(options, env = process.env) {
   }
   const profileDirectory = resolve(String(env.ARRIVAL_LABEL_BROWSER_PROFILE_DIR || `${homedir()}/Library/Application Support/NEONTRIP/easydpd-browser-worker/profile`));
   const lockPath = resolve(String(env.ARRIVAL_LABEL_BROWSER_LOCK_PATH || `${homedir()}/Library/Application Support/NEONTRIP/easydpd-browser-worker/worker.lock`));
+  const statusPath = resolve(String(env.ARRIVAL_LABEL_BROWSER_STATUS_PATH || `${homedir()}/Library/Logs/NEONTRIP/easydpd-browser-worker/status.json`));
   return {
     apiBaseUrl: apiUrl.toString().replace(/\/$/, ""),
     token,
@@ -87,6 +104,7 @@ export function resolveWorkerConfig(options, env = process.env) {
     mode: options.mode,
     profileDirectory,
     lockPath,
+    statusPath,
     cfClientId,
     cfClientSecret,
   };

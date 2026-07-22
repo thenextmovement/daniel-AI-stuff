@@ -29,8 +29,11 @@ function claimedJob(overrides: Record<string, unknown> = {}) {
 
 test("worker and manager require two independent live acknowledgements", () => {
   assert.throws(() => parseWorkerArgs(["--mode", "live", "--once"]), /acknowledge-production-write/);
-  assert.throws(() => parseWorkerArgs(["--mode", "live", "--acknowledge-production-write"]), /--once/);
+  assert.throws(() => parseWorkerArgs(["--mode", "live", "--acknowledge-production-write"]), /--once oder --daemon/);
   assert.equal(parseWorkerArgs(["--mode", "live", "--once", "--acknowledge-production-write"]).mode, "live");
+  assert.equal(parseWorkerArgs(["--mode", "live", "--daemon", "--interval-seconds", "300", "--acknowledge-production-write"]).daemon, true);
+  assert.throws(() => parseWorkerArgs(["--mode", "live", "--once", "--daemon", "--acknowledge-production-write"]), /nicht kombiniert/);
+  assert.throws(() => parseWorkerArgs(["--daemon", "--interval-seconds", "59"]), /zwischen 60 und 86400/);
   assert.throws(() => parseManagerArgs(["install", "--mode", "live"]), /acknowledge-production-write/);
 });
 
@@ -75,15 +78,23 @@ test("worker marks dispatching before exactly one purchase click and routes late
   assert.match(source, /page\.waitForEvent\("download"/);
   assert.doesNotMatch(source, /reload\(|while\s*\([^)]*createButton/);
   assert.match(source, /weight of the shipment/i);
+  assert.match(source, /async function runDaemon\(configuration, intervalSeconds\)/);
+  assert.match(source, /state: "authentication_required"/);
+  assert.match(source, /const context = await launchContext\(configuration\);[\s\S]+while \(!control\.isStopped\(\)\)/);
+  assert.match(source, /processLiveJob\(configuration, page, job\)/);
 });
 
 test("LaunchAgent has no plaintext token and defaults to a harmless dry-run install", async () => {
   const plist = await readFile("deploy/local-easydpd-browser-worker/de.neontrip.easydpd-browser-worker.plist.template", "utf8");
   const readme = await readFile("deploy/local-easydpd-browser-worker/README.md", "utf8");
   assert.doesNotMatch(plist, /ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN/);
-  assert.match(plist, /StartInterval/);
+  assert.doesNotMatch(plist, /StartInterval/);
+  assert.match(plist, /<string>--daemon<\/string>/);
+  assert.match(plist, /<key>KeepAlive<\/key>[\s\S]+<true\/>/);
+  assert.match(plist, /ARRIVAL_LABEL_BROWSER_STATUS_PATH/);
   assert.match(readme, /install --mode dry_run/);
   assert.match(readme, /niemals automatisch/i);
+  assert.match(readme, /dauerhaft laufenden Browserprozess/i);
   const library = await readFile("scripts/easydpd_browser_worker_lib.mjs", "utf8");
   assert.match(library, /NEONTRIP_ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET/);
 });

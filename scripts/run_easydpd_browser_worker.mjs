@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import {
   BrowserWorkerError,
@@ -15,6 +15,45 @@ import {
 } from "./easydpd_browser_worker_lib.mjs";
 
 const EASYDPD_DASHBOARD = "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services";
+const SESSION_RECHECK_MILLISECONDS = 15_000;
+
+async function writeWorkerStatus(configuration, status) {
+  await mkdir(dirname(configuration.statusPath), { recursive: true, mode: 0o700 });
+  const temporary = `${configuration.statusPath}.tmp-${process.pid}-${Date.now()}`;
+  const payload = {
+    version: 1,
+    workerId: configuration.workerId,
+    mode: configuration.mode,
+    pid: process.pid,
+    updatedAt: new Date().toISOString(),
+    ...status,
+  };
+  await writeFile(temporary, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  await rename(temporary, configuration.statusPath);
+}
+
+function stopController() {
+  let stopped = false;
+  let resolveStop;
+  const stoppedPromise = new Promise((resolvePromise) => { resolveStop = resolvePromise; });
+  const stop = () => {
+    stopped = true;
+    resolveStop();
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  return {
+    isStopped: () => stopped,
+    wait: (milliseconds) => new Promise((resolvePromise) => {
+      if (stopped) return resolvePromise();
+      const timer = setTimeout(resolvePromise, milliseconds);
+      stoppedPromise.then(() => {
+        clearTimeout(timer);
+        resolvePromise();
+      });
+    }),
+  };
+}
 
 async function launchContext(configuration) {
   ensurePrivateProfileDirectory(configuration.profileDirectory);
@@ -92,12 +131,10 @@ async function selfTest(configuration) {
   }
 }
 
-async function processLiveJob(configuration, job) {
+async function processLiveJob(configuration, page, job) {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "neontrip-easydpd-"));
-  const context = await launchContext(configuration);
   let dispatchStarted = false;
   try {
-    const page = context.pages()[0] || await context.newPage();
     await page.goto(job.orderUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const { createButton } = await assertShopifyOrderPage(page, job);
     await updateJob(configuration, job, "validated");
@@ -125,8 +162,94 @@ async function processLiveJob(configuration, job) {
       { postDispatch },
     );
   } finally {
-    await context.close();
     await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+async function runOnce(configuration) {
+  const job = await claimJob(configuration);
+  if (!job) {
+    process.stdout.write(`${JSON.stringify({ ok: true, action: "no_job", mode: configuration.mode })}\n`);
+    return;
+  }
+  if (configuration.mode !== "live") throw new BrowserWorkerError("Dry-Run darf keinen Browser-Auftrag reservieren.", 70);
+  const context = await launchContext(configuration);
+  try {
+    const page = context.pages()[0] || await context.newPage();
+    await processLiveJob(configuration, page, job);
+  } finally {
+    await context.close();
+  }
+}
+
+async function runDaemon(configuration, intervalSeconds) {
+  const control = stopController();
+  const context = await launchContext(configuration);
+  let page = context.pages()[0] || await context.newPage();
+  const updateStatus = (status) => writeWorkerStatus(configuration, { intervalSeconds, ...status });
+  await updateStatus({ state: "starting", sessionReady: false, purchaseClicked: false });
+  try {
+    while (!control.isStopped()) {
+      try {
+        if (page.isClosed()) page = await context.newPage();
+        await page.goto(EASYDPD_DASHBOARD, { waitUntil: "domcontentloaded", timeout: 45_000 });
+        await easyDpdFrame(page);
+      } catch (error) {
+        if (context.browser()?.isConnected() === false) throw error;
+        await updateStatus({
+          state: "authentication_required",
+          sessionReady: false,
+          purchaseClicked: false,
+          lastError: error instanceof Error ? error.message.slice(0, 500) : "Shopify-Anmeldung erforderlich.",
+        });
+        await control.wait(SESSION_RECHECK_MILLISECONDS);
+        continue;
+      }
+
+      await updateStatus({ state: "ready", sessionReady: true, purchaseClicked: false, lastError: null });
+      let job;
+      try {
+        job = await claimJob(configuration);
+      } catch (error) {
+        await updateStatus({
+          state: "api_retry",
+          sessionReady: true,
+          purchaseClicked: false,
+          lastError: error instanceof Error ? error.message.slice(0, 500) : "Ops API ist voruebergehend nicht erreichbar.",
+        });
+        await control.wait(intervalSeconds * 1000);
+        continue;
+      }
+
+      if (!job) {
+        await updateStatus({ state: "idle", sessionReady: true, purchaseClicked: false, lastError: null });
+        await control.wait(intervalSeconds * 1000);
+        continue;
+      }
+      if (configuration.mode !== "live") throw new BrowserWorkerError("Dry-Run darf keinen Browser-Auftrag reservieren.", 70);
+
+      await updateStatus({ state: "processing", sessionReady: true, purchaseClicked: false, jobId: job.id, lastError: null });
+      try {
+        await processLiveJob(configuration, page, job);
+      } catch (error) {
+        const postDispatch = Boolean(error?.postDispatch);
+        await updateStatus({
+          state: postDispatch ? "manual_review" : "job_retry",
+          sessionReady: false,
+          purchaseClicked: postDispatch,
+          jobId: job.id,
+          lastError: error instanceof Error ? error.message.slice(0, 500) : "Browser-Auftrag fehlgeschlagen.",
+        });
+        process.stderr.write(`${JSON.stringify({ ok: false, action: "job_failed", jobId: job.id, postDispatch, error: error instanceof Error ? error.message : "Unbekannter Fehler." })}\n`);
+        await control.wait(intervalSeconds * 1000);
+        continue;
+      }
+      await updateStatus({ state: "idle", sessionReady: true, purchaseClicked: true, jobId: job.id, lastError: null });
+      await control.wait(intervalSeconds * 1000);
+    }
+  } finally {
+    await updateStatus({ state: "stopping", sessionReady: false, purchaseClicked: false }).catch(() => undefined);
+    await context.close();
   }
 }
 
@@ -137,13 +260,8 @@ async function main() {
   try {
     if (options.setupSession) return await setupSession(configuration);
     if (options.selfTest) return await selfTest(configuration);
-    const job = await claimJob(configuration);
-    if (!job) {
-      process.stdout.write(`${JSON.stringify({ ok: true, action: "no_job", mode: configuration.mode })}\n`);
-      return;
-    }
-    if (configuration.mode !== "live") throw new BrowserWorkerError("Dry-Run darf keinen Browser-Auftrag reservieren.", 70);
-    await processLiveJob(configuration, job);
+    if (options.daemon) return await runDaemon(configuration, options.intervalSeconds);
+    await runOnce(configuration);
   } finally {
     releaseLock();
   }

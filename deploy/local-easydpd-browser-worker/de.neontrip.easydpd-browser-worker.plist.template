@@ -8,9 +8,11 @@
   <array>
     <string>{{NODE_PATH}}</string>
     <string>{{RUNNER_PATH}}</string>
-    <string>--once</string>
+    <string>--daemon</string>
     <string>--mode</string>
     <string>{{MODE}}</string>
+    <string>--interval-seconds</string>
+    <string>{{INTERVAL_SECONDS}}</string>
 {{LIVE_ACK_ARGUMENT}}
   </array>
   <key>EnvironmentVariables</key>
@@ -27,14 +29,18 @@
     <string>{{PROFILE_DIR}}</string>
     <key>ARRIVAL_LABEL_BROWSER_LOCK_PATH</key>
     <string>{{LOCK_PATH}}</string>
+    <key>ARRIVAL_LABEL_BROWSER_STATUS_PATH</key>
+    <string>{{STATUS_PATH}}</string>
     <key>ARRIVAL_LABEL_BROWSER_LIVE_ENABLED</key>
     <string>{{LIVE_ENABLED}}</string>
 {{CF_CLIENT_ID_ENV}}
   </dict>
-  <key>StartInterval</key>
-  <integer>{{INTERVAL_SECONDS}}</integer>
   <key>RunAtLoad</key>
   <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
   <key>ProcessType</key>
   <string>Interactive</string>
   <key>StandardOutPath</key>
