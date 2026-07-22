@@ -499,25 +499,14 @@ function supplierSalesPdfUrl(saleId: string, action: "snapshot_pdf" | "order_con
 }
 
 function itemKind(item: SupplierSale["items"][number]) {
-  const text = [item.title, item.productType, item.variantTitle, item.selectionDetails.join(" ")]
+  const text = [item.title, item.productType, item.variantTitle]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
   if (/(liefer|versand|delivery|termin)/.test(text)) return "delivery";
-  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|kleber|radseil|deckenabh)/.test(text)) return "addon";
+  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|kleber|adhesive|hanging set|power plug|radseil|deckenabh)/.test(text)) return "addon";
   return "product";
 }
-
-const IMPORTANT_PRODUCT_DETAIL_LABELS = new Set([
-  "Groesse",
-  "Breite",
-  "Hoehe",
-  "Farbe",
-  "Zuschnitt",
-  "Rueckwand",
-  "Montage",
-  "Outdoor",
-]);
 
 function splitSelectionDetail(detail: string) {
   const [label, ...rest] = detail.split(":");
@@ -525,40 +514,21 @@ function splitSelectionDetail(detail: string) {
   return { label: label.trim(), value };
 }
 
-function importantProductDetails(item: SupplierSale["items"][number]) {
-  return item.selectionDetails
-    .map((detail) => ({ detail, ...splitSelectionDetail(detail) }))
-    .filter(({ label, value }) => value && IMPORTANT_PRODUCT_DETAIL_LABELS.has(label))
-    .slice(0, 8);
-}
-
-function remainingProductDetails(item: SupplierSale["items"][number]) {
-  const highlighted = new Set(importantProductDetails(item).map(({ detail }) => detail));
-  return item.selectionDetails.filter((detail) => !highlighted.has(detail)).slice(0, 8);
-}
-
 function ProductSelectionDetails({ item }: { item: SupplierSale["items"][number] }) {
-  const important = importantProductDetails(item);
-  const remaining = remainingProductDetails(item);
+  const details = item.selectionDetails
+    .map((detail) => ({ detail, ...splitSelectionDetail(detail) }))
+    .filter(({ value }) => Boolean(value));
   return (
     <>
       {item.description ? (
         <p className="mt-1 text-xs leading-5 text-stone-600">{item.description}</p>
       ) : null}
-      {important.length ? (
-        <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-          {important.map(({ detail, label, value }) => (
-            <div key={detail} className="rounded-[0.5rem] border border-stone-200 bg-stone-50 px-2.5 py-2">
-              <p className="text-[10px] font-black uppercase tracking-[0.08em] text-stone-500">{label}</p>
-              <p className="mt-0.5 text-xs font-semibold leading-4 text-stone-950">{value}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {remaining.length ? (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
-          {remaining.map((detail) => (
-            <span key={detail}>{detail}</span>
+      {details.length ? (
+        <div className="mt-2 grid gap-1 text-xs leading-5 text-stone-800 sm:grid-cols-2">
+          {details.map(({ detail, label, value }) => (
+            <p key={detail} className="min-w-0 break-words">
+              <span className="font-semibold text-stone-950">{label}:</span> {value}
+            </p>
           ))}
         </div>
       ) : null}
@@ -617,7 +587,7 @@ function SnapshotSelection({ sale }: { sale: SupplierSale }) {
         <SnapshotSelectionGroup
           title="Zusatzoptionen"
           items={addonItems}
-          renderDetails={() => null}
+          renderDetails={(item) => <ProductSelectionDetails item={item} />}
         />
         <SnapshotSelectionGroup
           title="Liefertermin"

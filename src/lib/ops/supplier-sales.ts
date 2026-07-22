@@ -1430,6 +1430,155 @@ function optionDetailLines(value: unknown) {
   }).filter((line): line is string => Boolean(line));
 }
 
+const SUPPLIER_PRODUCTION_LABELS: Record<string, string> = {
+  produktart: "Product Type",
+  producttype: "Product Type",
+  schildart: "Product Type",
+  groesse: "Size",
+  grosse: "Size",
+  size: "Size",
+  breite: "Size",
+  width: "Size",
+  farbe: "Color",
+  color: "Color",
+  leuchtfarbe: "Color",
+  lightcolor: "Color",
+  einsatzort: "Use",
+  einsatzbereich: "Use",
+  indooroutdoor: "Use",
+  nutzung: "Use",
+  use: "Use",
+  outdoor: "Use",
+  rueckwand: "Backboard",
+  ruckwand: "Backboard",
+  backboard: "Backboard",
+  hintergrund: "Backboard",
+  backing: "Backboard",
+  zuschnitt: "Cut",
+  cut: "Cut",
+  cuttype: "Cut",
+  hintergrundzuschnitt: "Cut",
+  schriftart: "Font",
+  font: "Font",
+  text: "Text",
+  beleuchtungsart: "Lighting",
+  lighting: "Lighting",
+  klebeset: "Adhesive mounting kit",
+  adhesivemountingkit: "Adhesive mounting kit",
+  haengeset: "Hanging set",
+  hangeset: "Hanging set",
+  hangingset: "Hanging set",
+  hangingkit: "Hanging set",
+  stromstecker: "Power plug",
+  powerplug: "Power plug",
+  countryplug: "Power plug",
+  adhesivecommandstrips: "Adhesive mounting kit",
+  montage: "Mounting",
+  mounting: "Mounting",
+  wallmount: "Wall mount",
+  material: "Material",
+  oberflaechegehaeusefarbe: "Surface color",
+  oberflachegehausefarbe: "Surface color",
+  surfacecolor: "Surface color",
+  acryliccolor: "Backboard color",
+  uv: "UV print",
+  waterproof: "Waterproof",
+  waterproofwaterproofpowersupply: "Waterproof",
+  remote: "Remote",
+  kabelabgang: "Cable exit",
+  cableexit: "Cable exit",
+  kabelfarbe: "Cable color",
+  cablecolor: "Cable color",
+};
+
+const SUPPLIER_PRODUCTION_IGNORED_LABELS = new Set([
+  "bereich",
+  "variante",
+  "variant",
+  "sku",
+  "price",
+  "preis",
+  "sonderangebot",
+  "style",
+  "hoehe",
+  "hohe",
+  "height",
+]);
+
+function supplierProductionKey(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function supplierProductionValue(label: string, value: string) {
+  const clean = value.trim().replace(/_/g, " ").replace(/\s+/g, " ");
+  const normalized = supplierProductionKey(clean);
+  const accessory = ["Adhesive mounting kit", "Hanging set"].includes(label);
+  if (accessory && /^(nein|no|false|0|none|nichtgewaehlt)$/.test(normalized)) return null;
+  if (accessory && /^(ja|yes|true|1|gewaehlt)$/.test(normalized)) return "YES ❗";
+  if (label === "Use") {
+    if (/^(drinnen|innen|indoor|innenbereich)$/.test(normalized)) return "Indoor";
+    if (/^(draussen|aussen|outdoor|aussenbereich|yes|ja|true)$/.test(normalized)) return "Outdoor";
+    if (/^(no|nein|false)$/.test(normalized)) return "Indoor";
+  }
+  if (label === "Cut") {
+    if (/^(formzuschnitt|cuttoshape|konturschnitt)$/.test(normalized)) return "Cut to shape";
+    if (/^(feinzuschnitt|verytightcuttoshape)$/.test(normalized)) return "Very tight cut to shape";
+  }
+  if (label === "Color") {
+    return clean.replace(/\bwarm white\b/i, "Warm white").replace(/\bcold white\b/i, "Cold white");
+  }
+  if (label === "Power plug" && /deutschland|germany|europa|europe/i.test(clean)) return null;
+  if (!clean || /^(none|null|undefined|nichtgewaehlt)$/.test(normalized)) return null;
+  return clean;
+}
+
+function productionTypeForItem(row: SupplierSaleItemRow) {
+  const raw = jsonRecord(row.raw_line_item);
+  const text = searchableSignalText([
+    row.title,
+    row.product_type,
+    row.variant_title,
+    raw.description,
+    raw.properties,
+    raw.options,
+  ]);
+  const is3d = /\b3d\b|3d[- ]?buchstaben|profilbuchstaben/.test(text);
+  if (is3d && /backlit|rueckbeleuchtet|ruckbeleuchtet|hinterleuchtet|halo[- ]?lit/.test(text)) return "3D Backlit";
+  if (is3d && /frontlit|frontbeleuchtet|vorderseitig beleuchtet/.test(text)) return "3D Frontlit";
+  if (/non[- ]?lit|unbeleuchtet|nicht beleuchtet|ohne beleuchtung/.test(text)) return "Non-Lit";
+  if (/led[- ]?neon|neon[- ]?flex|neonschild|neon schriftzug|\bneon\b/.test(text)) return "LED Neon Flex";
+  if (/light[- ]?box|leuchtkasten|acrylbox/.test(text)) return "Light Box";
+  return nullableText(row.product_type, 160) || nullableText(row.title, 160) || "Production item";
+}
+
+function descriptionDetailLines(value: unknown) {
+  const text = nullableText(value, 4000);
+  if (!text) return [];
+  return text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.includes(":"));
+}
+
+function normalizeSupplierProductionDetails(row: SupplierSaleItemRow, details: string[]) {
+  const normalized = new Map<string, string>();
+  normalized.set("Product Type", productionTypeForItem(row));
+  for (const detail of details) {
+    const [rawLabel, ...rest] = detail.split(":");
+    const rawValue = rest.join(":").trim();
+    const key = supplierProductionKey(rawLabel || "");
+    if (!rawValue || key.startsWith("_") || SUPPLIER_PRODUCTION_IGNORED_LABELS.has(key)) continue;
+    const label = SUPPLIER_PRODUCTION_LABELS[key];
+    if (!label || label === "Product Type") continue;
+    const value = supplierProductionValue(label, rawValue);
+    if (!value) continue;
+    normalized.set(label, value);
+  }
+  return [...normalized.entries()].map(([label, value]) => `${label}: ${value}`);
+}
+
 function itemSelectionDetails(row: SupplierSaleItemRow) {
   const raw = jsonRecord(row.raw_line_item);
   const details = [
@@ -1447,9 +1596,10 @@ function itemSelectionDetails(row: SupplierSaleItemRow) {
     ...optionDetailLines(raw.options),
     ...optionDetailLines(raw.properties),
     ...optionDetailLines(raw.selectedOptions),
+    ...descriptionDetailLines(raw.description),
   ].filter((line): line is string => Boolean(line));
 
-  return [...new Set(details)].slice(0, 10);
+  return normalizeSupplierProductionDetails(row, [...new Set(details)]);
 }
 
 function mapItem(row: SupplierSaleItemRow): SupplierSaleItem {
@@ -3919,7 +4069,39 @@ async function syncShopifySupplierTag(row: SupplierSaleRow, tagValue: string | n
 function trelloCardName(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, specialSupplierName?: string | null) {
   const label = supplierLabel(supplier, specialSupplierName);
   const order = row.shopify_order_name || row.offer_number || row.document_reference || row.sale_key;
-  return `${label} | ${order} | ${row.customer_name || row.customer_company || "Kunde"} | ${deliveryDate}`.slice(0, 180);
+  return `${label} | ${order} | ${deliveryDate}`.slice(0, 180);
+}
+
+function supplierProductionItemKind(item: SupplierSaleItem) {
+  const text = [item.title, item.productType, item.variantTitle]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/(liefer|versand|delivery|termin)/.test(text)) return "delivery";
+  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|kleber|adhesive|haengeset|hanging set|power plug|stromstecker)/.test(text)) return "addon";
+  return "product";
+}
+
+export function supplierProductionDescription(items: SupplierSaleItem[], note?: string | null) {
+  const products = items.filter((item) => supplierProductionItemKind(item) === "product");
+  const addons = items.filter((item) => supplierProductionItemKind(item) === "addon");
+  const lines: string[] = [];
+
+  products.forEach((item, index) => {
+    if (products.length > 1) lines.push(`Product: ${index + 1}`);
+    lines.push(...item.selectionDetails);
+    if (item.quantity > 1) lines.push(`Quantity: ${item.quantity}`);
+    if (index < products.length - 1) lines.push("");
+  });
+
+  for (const item of addons) {
+    const quantity = item.quantity > 1 ? ` x${item.quantity}` : "";
+    lines.push(`Accessory: ${item.title}${quantity}`);
+  }
+
+  const cleanNote = nullableText(note, 1000);
+  if (cleanNote) lines.push(`Note: ${cleanNote}`);
+  return lines.filter((line, index) => line !== "" || lines[index - 1] !== "").join("\n").trim();
 }
 
 function assignmentDescription(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, note?: string | null) {
@@ -3941,7 +4123,13 @@ function assignmentDescription(row: SupplierSaleRow, supplier: SupplierSaleSuppl
   ].filter(Boolean).join("\n");
 }
 
-async function projectSupplierTrelloCard(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, note?: string | null) {
+async function projectSupplierTrelloCard(
+  row: SupplierSaleRow,
+  items: SupplierSaleItem[],
+  supplier: SupplierSaleSupplier,
+  deliveryDate: string,
+  note?: string | null,
+) {
   if (!supplierTrelloProjectionEnabled()) {
     return {
       status: "skipped" as const,
@@ -3955,7 +4143,7 @@ async function projectSupplierTrelloCard(row: SupplierSaleRow, supplier: Supplie
   const card = await createTrelloCard({
     listId,
     name: trelloCardName(row, supplier, deliveryDate, row.special_supplier_name),
-    desc: assignmentDescription(row, supplier, deliveryDate, note),
+    desc: supplierProductionDescription(items, note),
   });
   return { status: "synced" as const, cardId: card.id, cardUrl: card.url || card.shortUrl || null, error: null };
 }
@@ -5063,7 +5251,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
   }
 
   try {
-    const trello = await projectSupplierTrelloCard(row, supplier, requestedDeliveryDate, input.assignmentNote);
+    const trello = await projectSupplierTrelloCard(row, sale.items, supplier, requestedDeliveryDate, input.assignmentNote);
     row = await patchSaleRow(sale.id, {
       trello_projection_status: trello.status,
       supplier_trello_card_id: trello.cardId,
