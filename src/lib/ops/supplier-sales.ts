@@ -2831,6 +2831,34 @@ async function listRequestTrelloCardIds(requestId: string | null, fallbackCardId
   return [...ids];
 }
 
+export function enrichSupplierSalesWithUniqueRequestTrelloCards(
+  saleRows: SupplierSaleRow[],
+  masterRows: Array<{
+    request_id?: string | null;
+    trello_card_id?: string | null;
+    trello_card_url?: string | null;
+  }>,
+) {
+  const cardsByRequest = new Map<string, Set<string>>();
+  for (const masterRow of masterRows) {
+    const requestId = nullableText(masterRow.request_id, 160);
+    const cardId = trelloCardIdFromValue(masterRow.trello_card_id) || trelloCardIdFromValue(masterRow.trello_card_url);
+    if (!requestId || !cardId) continue;
+    const cardIds = cardsByRequest.get(requestId) || new Set<string>();
+    cardIds.add(cardId);
+    cardsByRequest.set(requestId, cardIds);
+  }
+
+  return saleRows.map((row) => {
+    if (trelloCardIdFromValue(row.trello_card_id)) return row;
+    const requestId = nullableText(row.request_id, 160);
+    if (!requestId) return row;
+    const cardIds = cardsByRequest.get(requestId);
+    if (!cardIds || cardIds.size !== 1) return row;
+    return { ...row, trello_card_id: [...cardIds][0] };
+  });
+}
+
 async function syncShopifyOrderNumberToSourceTrelloCards(row: SupplierSaleRow, actor?: SupplierSaleActor | null) {
   const orderPrefix = normalizeShopifyOrderTitlePrefix(row.shopify_order_name);
   if (!orderPrefix || !trelloConfigured()) return;
@@ -3802,6 +3830,7 @@ export async function listSupplierSalesBoard(options?: {
       row.shopify_order_name,
       row.offer_number,
       row.document_reference,
+      row.request_id,
       row.product_summary,
     ].some((value) => String(value || "").toLowerCase().includes(search));
     saleRows = saleRows.filter(matchesSearch);
@@ -3821,6 +3850,19 @@ export async function listSupplierSalesBoard(options?: {
   statsRows = markPriorPaidCustomers(statsRows, priorPaidHistoryRows);
   saleRows = markPriorPaidCustomers(saleRows, priorPaidHistoryRows);
   saleRows = saleRows.slice(0, requestedLimit);
+  const unresolvedRequestIds = [...new Set(saleRows
+    .filter((row) => !trelloCardIdFromValue(row.trello_card_id))
+    .map((row) => nullableText(row.request_id, 160))
+    .filter((requestId): requestId is string => Boolean(requestId)))];
+  if (unresolvedRequestIds.length) {
+    const masterRows = await supabaseRequest<MasterRequestTrelloRow[]>("master_requests", undefined, {
+      select: "request_id,trello_card_id,trello_card_url,updated_at",
+      request_id: inList(unresolvedRequestIds),
+      order: "updated_at.desc",
+      limit: Math.min(Math.max(unresolvedRequestIds.length * 4, 100), 1000),
+    }).catch(() => []);
+    saleRows = enrichSupplierSalesWithUniqueRequestTrelloCards(saleRows, masterRows);
+  }
   const counts = buildSupplierSaleCountsFromRows(statsRows, now);
   if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts);
   const saleIds = saleRows.map((row) => row.id);

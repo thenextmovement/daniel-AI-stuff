@@ -15,6 +15,7 @@ import {
   deriveAssignmentStatus,
   derivePaymentDecisionStatus,
   deriveSupplierRecommendation,
+  enrichSupplierSalesWithUniqueRequestTrelloCards,
   generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
   normalizeDateOnly,
@@ -691,6 +692,25 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
   assert.ok(sale?.items[0]?.selectionDetails.includes("Color: warmweiss"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Cut: Cut to shape"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Backboard: Acryl klar"));
+});
+
+test("supplier sales resolve one exact Trello card from the Nerdyforms request id and keep ambiguity closed", () => {
+  const rows = enrichSupplierSalesWithUniqueRequestTrelloCards(
+    [
+      saleRow({ id: "sale-exact", request_id: "request-exact", trello_card_id: null }),
+      saleRow({ id: "sale-ambiguous", request_id: "request-ambiguous", trello_card_id: null }),
+      saleRow({ id: "sale-stored", request_id: "request-exact", trello_card_id: "stored-card" }),
+    ],
+    [
+      { request_id: "request-exact", trello_card_url: "https://trello.com/c/abc12345/the-card" },
+      { request_id: "request-ambiguous", trello_card_id: "first-card" },
+      { request_id: "request-ambiguous", trello_card_id: "second-card" },
+    ],
+  );
+
+  assert.equal(rows[0]?.trello_card_id, "abc12345");
+  assert.equal(rows[1]?.trello_card_id, null);
+  assert.equal(rows[2]?.trello_card_id, "stored-card");
 });
 
 test("supplier production details keep all manufacturing options and remove non-production data", () => {
