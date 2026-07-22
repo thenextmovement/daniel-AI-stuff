@@ -636,7 +636,17 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   const board = buildSupplierSaleBoardFromRows(
     [
       saleRow({ id: "sale-ready", assignment_status: "ready_to_assign", shopify_payment_status: "paid", supplier_due_date: "2026-06-10" }),
-      saleRow({ id: "sale-payment", assignment_status: "payment_open", shopify_payment_status: "pending", payment_decision_status: "wait_for_payment", supplier_due_date: "2026-06-08", product_summary: "Eilauftrag LED Neon Logo" }),
+      saleRow({
+        id: "sale-payment",
+        assignment_status: "payment_open",
+        shopify_payment_status: "pending",
+        payment_decision_status: "wait_for_payment",
+        customer_due_date: "2026-06-08",
+        supplier_due_date: "2026-06-08",
+        product_summary: "Express 7 Werktage LED Neon Logo",
+        raw_shopify: { created_at: "2026-06-01T09:30:00.000Z" },
+        offer_snapshot: { delivery: { requestedDays: 7 } },
+      }),
       saleRow({ id: "sale-assigned", assignment_status: "assigned", assigned_supplier: "quentin", recommended_supplier: "quentin", shopify_tag_sync_status: "failed", supplier_due_date: "2026-06-11" }),
     ],
     [
@@ -660,6 +670,12 @@ test("supplier sales board counts deadlines, payment, assignment and sync issues
   assert.equal(board.counts.quentinRecommended, 1);
   assert.equal(board.counts.syncIssues, 1);
   assert.equal(board.items.find((item) => item.id === "sale-payment")?.rushOrder, true);
+  assert.deepEqual(board.items.find((item) => item.id === "sale-payment")?.rushOrderDetails, {
+    label: "Express",
+    serviceDays: 7,
+    orderedAt: "2026-06-01T09:30:00.000Z",
+    deliveryDate: "2026-06-08",
+  });
   assert.equal(board.items[0].id, "sale-ready");
   assert.ok(board.diagnostics.items.length);
 });
@@ -740,10 +756,12 @@ test("supplier sales resolve Quentin cards by identifiers and newest exact custo
     ],
   );
 
-  assert.equal(rows[0]?.trello_card_id, "request-card");
-  assert.equal(rows[1]?.trello_card_id, "order-card");
-  assert.equal(rows[2]?.trello_card_id, "new-name-card");
-  assert.equal(rows[3]?.trello_card_id, "stored-card");
+  assert.equal(rows[0]?.trello_card_id, null);
+  assert.equal(rows[0]?.quentin_trello_card_id, "request-card");
+  assert.equal(rows[1]?.quentin_trello_card_id, "order-card");
+  assert.equal(rows[2]?.quentin_trello_card_id, "new-name-card");
+  assert.equal(rows[3]?.trello_card_id, "stored-card", "the Anfrage Management source card must remain intact");
+  assert.equal(rows[3]?.quentin_trello_card_id, "request-card", "the Quentin card is tracked separately");
 });
 
 test("supplier sales keep an equally current name-only Trello match unresolved", () => {
@@ -755,7 +773,7 @@ test("supplier sales keep an equally current name-only Trello match unresolved",
     ],
   );
 
-  assert.equal(rows[0]?.trello_card_id, null);
+  assert.equal(rows[0]?.quentin_trello_card_id ?? null, null);
 });
 
 test("supplier production details keep all manufacturing options and remove non-production data", () => {
@@ -941,6 +959,55 @@ test("supplier Trello description blocks a card outside the exact Quentin board"
   });
 
   assert.equal(trelloPutCount, 0);
+});
+
+test("supplier Trello description ignores an Anfrage Management source card and resolves the Quentin card", async () => {
+  const sourceCardId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const quentinCardId = "bbbbbbbbbbbbbbbbbbbbbbbb";
+  const row = saleRow({
+    id: "sale-source-and-quentin",
+    trello_card_id: sourceCardId,
+    supplier_trello_card_id: null,
+    request_id: "Nerdy-Quentin-991",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      if (url.pathname.includes("/boards/62bae9b97705e7419ed64593/cards/open")) {
+        return Response.json([{
+          id: quentinCardId,
+          idBoard: "62bae9b97705e7419ed64593",
+          name: "Nerdy-Quentin-991 | Production",
+          desc: "Existing Quentin production note",
+          closed: false,
+          dateLastActivity: "2026-07-22T14:00:00.000Z",
+          customFieldItems: [],
+        }]);
+      }
+      const requestedId = url.pathname.split("/").filter(Boolean).at(-1);
+      return Response.json({
+        id: requestedId,
+        idBoard: requestedId === quentinCardId ? "62bae9b97705e7419ed64593" : "anfrage-management-board",
+        idList: "list-1",
+        name: requestedId === quentinCardId ? "Nerdy-Quentin-991 | Production" : "Anfrage Management source",
+        desc: requestedId === quentinCardId ? "Existing Quentin production note" : "Customer intake note",
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      });
+    }
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const result = await readSupplierSaleTrelloDescription(row.id);
+    assert.equal(result.cardId, quentinCardId);
+    assert.equal(result.cardUrl, `https://trello.com/c/${quentinCardId}`);
+    assert.equal(result.description, "Existing Quentin production note");
+  });
 });
 
 test("supplier sales board sorts newest sales first by accepted snapshot", () => {
