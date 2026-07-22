@@ -37,5 +37,5 @@ See `README.md`.
 
 ## Rollback
 
-Use the exact reverse patch in `hotfix.json`; workflow version `635` is the
-broader fallback if a node-level rollback is insufficient.
+Use the exact reverse patch in `hotfix.json`; n8n workflow backup version `664`
+is the exact pre-change fallback if a node-level rollback is insufficient.

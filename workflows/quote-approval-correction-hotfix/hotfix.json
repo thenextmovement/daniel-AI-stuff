@@ -20,6 +20,12 @@
     "find": "&select=card_id,change_log,status,correlation_id",
     "replace": "&select=card_id,change_log,status"
   },
+  "deployment": {
+    "repositoryCommit": "747889a0fdd5323c47668227a492c15861bfea67",
+    "preChangeWorkflowBackupVersion": 664,
+    "publishedActiveVersionId": "c80c6190-1124-4939-a95b-07124ce179f7",
+    "publishedAt": "2026-07-22T12:59:08.165Z"
+  },
   "rollback": {
     "find": "&select=card_id,change_log,status",
     "replace": "&select=card_id,change_log,status,correlation_id"

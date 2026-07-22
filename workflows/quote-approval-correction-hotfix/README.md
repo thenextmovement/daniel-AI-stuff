@@ -49,6 +49,6 @@ the stable `quote_correction_v1:<card>:<analysis>` entry ID.
 ## Rollback
 
 Patch the same node field atomically in reverse using the values in
-`hotfix.json`. If the workflow becomes structurally invalid, restore workflow
-version `635` as the broader fallback; that fallback predates the correction
-branch and therefore disables correction learning until the branch is restored.
+`hotfix.json`. n8n workflow backup version `664` contains the exact active
+pre-change workflow and is the full-workflow rollback target if a node-level
+rollback is insufficient.
