@@ -427,6 +427,12 @@ export type SupplierSaleTrelloDescriptionInput = {
   operatorName?: string | null;
 };
 
+export type SupplierSaleTrelloCardInput = {
+  saleId: string;
+  trelloCard: string;
+  operatorName?: string | null;
+};
+
 export type SupplierSaleTrelloDescriptionSnapshot = {
   cardId: string;
   cardUrl: string;
@@ -4228,6 +4234,93 @@ export async function readSupplierSaleTrelloDescription(saleId: string) {
   const items = (await fetchItemsForSale(row.id)).map(mapItem);
   const { cardId, card } = await readExactQuentinCard(row);
   return trelloDescriptionSnapshot(row, items, cardId, card);
+}
+
+export async function setSupplierSaleQuentinTrelloCard(
+  input: SupplierSaleTrelloCardInput,
+  actor?: SupplierSaleActor | null,
+) {
+  const row = await fetchSaleRowById(input.saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  if (row.assigned_supplier && row.assigned_supplier !== "quentin") {
+    throw new QuoteValidationError("Die Sale ist einem anderen Supplier zugeordnet.", [
+      "Die Quentin-Trello-Karte kann nur fuer unzugeordnete oder Quentin-Sales geaendert werden.",
+    ], 409);
+  }
+  if (["completed", "canceled"].includes(row.assignment_status)) {
+    throw new QuoteValidationError("Die Trello-Zuordnung ist gesperrt.", [
+      "Abgeschlossene oder stornierte Sales koennen nicht neu zugeordnet werden.",
+    ], 409);
+  }
+
+  const cardId = trelloCardIdFromValue(input.trelloCard);
+  if (!cardId) {
+    throw new QuoteValidationError("Trello-Link oder Card-ID ist ungueltig.", [
+      "Bitte eine Trello-Karten-URL wie https://trello.com/c/... oder eine gueltige Card-ID eintragen.",
+    ], 422);
+  }
+
+  let card: Awaited<ReturnType<typeof getTrelloCard>>;
+  try {
+    card = await getTrelloCard(cardId);
+  } catch {
+    throw new QuoteValidationError("Trello-Karte konnte nicht geladen werden.", [
+      "Bitte Link beziehungsweise Card-ID pruefen. Die bisherige Zuordnung blieb unveraendert.",
+    ], 422);
+  }
+  if (card.idBoard !== QUENTIN_NEON_BOARD_ID) {
+    throw new QuoteValidationError("Die Trello-Karte gehoert nicht zum Quentin-Board.", [
+      "Aus Sicherheitsgruenden wurde die bisherige Zuordnung nicht geaendert.",
+    ], 422);
+  }
+
+  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const previousCardId = trelloCardIdFromValue(row.supplier_trello_card_id);
+  if (previousCardId === cardId) {
+    return {
+      sale: await getSupplierSale(row.id),
+      trelloDescription: trelloDescriptionSnapshot(row, items, cardId, card),
+      changed: false,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  await patchSaleRow(row.id, {
+    supplier_trello_card_id: cardId,
+    supplier_trello_card_url: `https://trello.com/c/${cardId}`,
+    trello_projection_status: "not_started",
+    trello_projection_error: null,
+    metadata: {
+      ...jsonRecord(row.metadata),
+      trello_description_confirmed_at: null,
+      trello_description_confirmed_by: null,
+      trello_description_confirmed_card_id: null,
+      trello_description_prepend_hash: null,
+      trello_description_previous_hash: null,
+      trello_card_manually_linked_at: now,
+      trello_card_manually_linked_by: operatorName,
+    },
+  });
+  await insertEvent({
+    saleId: row.id,
+    eventType: "supplier_trello_card_relinked",
+    actor: actor || { operatorName },
+    idempotencyKey: `supplier-sale:${row.id}:trello-card:${cardId}`,
+    payload: {
+      previous_trello_card_id: previousCardId,
+      trello_card_id: cardId,
+      board_id: QUENTIN_NEON_BOARD_ID,
+    },
+  });
+
+  const freshRow = await fetchSaleRowById(row.id);
+  if (!freshRow) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  return {
+    sale: await getSupplierSale(row.id),
+    trelloDescription: trelloDescriptionSnapshot(freshRow, items, cardId, card),
+    changed: true,
+  };
 }
 
 export async function prependSupplierSaleTrelloDescription(

@@ -28,6 +28,7 @@ import {
   retrySupplierSaleShopifyTag,
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
+  setSupplierSaleQuentinTrelloCard,
   supplierProductionDescription,
   supplierSaleCompletionHideAt,
   supplierSaleNeedsDeadlineTask,
@@ -1008,6 +1009,132 @@ test("supplier Trello description ignores an Anfrage Management source card and 
     assert.equal(result.cardUrl, `https://trello.com/c/${quentinCardId}`);
     assert.equal(result.description, "Existing Quentin production note");
   });
+});
+
+test("manual Quentin Trello link is verified, stored separately and invalidates the old confirmation", async () => {
+  const sourceCardId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const previousSupplierCardId = "bbbbbbbbbbbbbbbbbbbbbbbb";
+  const nextSupplierCardId = "cccccccccccccccccccccccc";
+  let currentRow = saleRow({
+    id: "sale-manual-trello-link",
+    trello_card_id: sourceCardId,
+    supplier_trello_card_id: previousSupplierCardId,
+    supplier_trello_card_url: `https://trello.com/c/${previousSupplierCardId}`,
+    trello_projection_status: "synced",
+    assignment_status: "assigned",
+    assigned_supplier: "quentin",
+    metadata: {
+      trello_description_confirmed_at: "2026-07-22T12:00:00.000Z",
+      trello_description_confirmed_card_id: previousSupplierCardId,
+    },
+  });
+  let trelloWriteCount = 0;
+  let eventType: string | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (method !== "GET") trelloWriteCount += 1;
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      return Response.json({
+        id: nextSupplierCardId,
+        idBoard: "62bae9b97705e7419ed64593",
+        idList: "new-sketch",
+        name: "Correct Quentin production card",
+        desc: "Existing supplier note",
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      eventType = JSON.parse(String(init?.body || "{}")).event_type;
+      return Response.json({});
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    const result = await setSupplierSaleQuentinTrelloCard({
+      saleId: currentRow.id,
+      trelloCard: `https://trello.com/c/${nextSupplierCardId}/correct-card`,
+      operatorName: "Rahim",
+    });
+    assert.equal(result.changed, true);
+    assert.equal(result.trelloDescription.cardId, nextSupplierCardId);
+    assert.equal(result.trelloDescription.description, "Existing supplier note");
+  });
+
+  assert.equal(trelloWriteCount, 0, "relinking must not modify the Trello card itself");
+  assert.equal(currentRow.trello_card_id, sourceCardId, "the Anfrage Management source card must stay intact");
+  assert.equal(currentRow.supplier_trello_card_id, nextSupplierCardId);
+  assert.equal(currentRow.trello_projection_status, "not_started");
+  assert.equal(currentRow.metadata.trello_description_confirmed_card_id, null);
+  assert.equal(eventType, "supplier_trello_card_relinked");
+});
+
+test("manual Quentin Trello link rejects a foreign board without changing the stored card", async () => {
+  const previousSupplierCardId = "bbbbbbbbbbbbbbbbbbbbbbbb";
+  const foreignCardId = "dddddddddddddddddddddddd";
+  const row = saleRow({
+    id: "sale-foreign-manual-trello-link",
+    supplier_trello_card_id: previousSupplierCardId,
+    supplier_trello_card_url: `https://trello.com/c/${previousSupplierCardId}`,
+  });
+  let supplierSalePatchCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      return Response.json({
+        id: foreignCardId,
+        idBoard: "anfrage-management-board",
+        name: "Wrong board",
+        desc: "Do not use",
+        customFieldItems: [],
+        attachments: [],
+        actions: [],
+      });
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") supplierSalePatchCount += 1;
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      setSupplierSaleQuentinTrelloCard({ saleId: row.id, trelloCard: `https://trello.com/c/${foreignCardId}` }),
+      /gehoert nicht zum Quentin-Board/,
+    );
+  });
+
+  assert.equal(supplierSalePatchCount, 0);
+  assert.equal(row.supplier_trello_card_id, previousSupplierCardId);
+});
+
+test("manual Quentin Trello link rejects malformed input before Trello access", async () => {
+  const row = saleRow({ id: "sale-invalid-manual-trello-link" });
+  let trelloRequestCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") trelloRequestCount += 1;
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      setSupplierSaleQuentinTrelloCard({ saleId: row.id, trelloCard: "not a Trello link" }),
+      /ungueltig/,
+    );
+  });
+
+  assert.equal(trelloRequestCount, 0);
 });
 
 test("supplier sales board sorts newest sales first by accepted snapshot", () => {

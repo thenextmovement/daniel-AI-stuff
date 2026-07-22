@@ -12,10 +12,12 @@ import {
   ExternalLink,
   Factory,
   Mail,
+  Pencil,
   RefreshCcw,
   Search,
   ShoppingCart,
   Timer,
+  X,
   Zap,
 } from "lucide-react";
 import {
@@ -416,6 +418,7 @@ function actionMessage(action: unknown, payload: SupplierSalesApiResponse | null
     return "Trello-Karte erneut geprueft. Bitte Sync-Status pruefen.";
   }
   if (action === "prepend_trello_description") return "Trello-Description wurde bestaetigt. Der neue Block steht oben; vorhandener Text blieb erhalten.";
+  if (action === "set_trello_card") return "Quentin-Trello-Karte wurde geprueft und neu zugeordnet.";
   if (action === "mark_in_production") return "Zur Produktion gegeben. Die Karte verschwindet in 10 Minuten aus der aktiven Uebersicht.";
   if (action === "update_payment_decision") return "Zahlungsentscheidung gespeichert.";
   if (action === "request_payment_reminder") return "Zahlungserinnerung verarbeitet. Bitte Status pruefen, falls kein Versand bestaetigt ist.";
@@ -733,6 +736,9 @@ function SaleCard({
   const [trelloDescriptionBusy, setTrelloDescriptionBusy] = useState(false);
   const [trelloDescriptionError, setTrelloDescriptionError] = useState<string | null>(null);
   const [trelloDescriptionSaved, setTrelloDescriptionSaved] = useState(false);
+  const [trelloLinkEditing, setTrelloLinkEditing] = useState(false);
+  const [trelloLinkInput, setTrelloLinkInput] = useState("");
+  const [trelloLinkSaved, setTrelloLinkSaved] = useState(false);
   useEffect(() => {
     setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
@@ -744,6 +750,9 @@ function SaleCard({
     setTrelloPrependText("");
     setTrelloDescriptionError(null);
     setTrelloDescriptionSaved(false);
+    setTrelloLinkEditing(false);
+    setTrelloLinkInput("");
+    setTrelloLinkSaved(false);
   }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.productSummary, sale.items, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
 
   useEffect(() => {
@@ -776,7 +785,7 @@ function SaleCard({
   const priorPaidPriority = priorPaidCustomerPriority(sale);
   const saeidSuggestion = !sale.assignedSupplier && shouldSuggestSaeid(sale);
   const assignBlockReason = assignmentBlockReason(sale, supplier, deliveryDate, paymentDecision, specialSupplierName, shopifySupplierTagConfirmed);
-  const directTrelloCardUrl = sale.quentinTrelloCardUrl;
+  const directTrelloCardUrl = sale.quentinTrelloCardUrl || sale.supplierTrelloCardUrl;
   const trelloSearchFallbackUrl = directTrelloCardUrl ? null : sale.quentinTrelloSearchUrl || sale.quentinTrelloBoardUrl;
   const reminderBlockReason = !sale.customerEmail
     ? "Kunden-E-Mail fehlt."
@@ -824,6 +833,44 @@ function SaleCard({
       setTrelloDescriptionSaved(true);
     } catch (error) {
       setTrelloDescriptionError(formatUnknownError(error, "Trello-Description konnte nicht bestaetigt werden."));
+    } finally {
+      setTrelloDescriptionBusy(false);
+    }
+  }
+
+  function startTrelloLinkEdit() {
+    setTrelloLinkInput(trelloDescription?.cardUrl || directTrelloCardUrl || "");
+    setTrelloDescriptionError(null);
+    setTrelloLinkSaved(false);
+    setTrelloLinkEditing(true);
+  }
+
+  async function saveTrelloLink() {
+    const nextLink = trelloLinkInput.trim();
+    if (!nextLink) {
+      setTrelloDescriptionError("Bitte Trello-Link oder Card-ID eintragen.");
+      return;
+    }
+    if (!confirmAction("Diese Karte als Quentin-Produktionskarte zuordnen? Die Karte wird zuerst serverseitig auf dem Quentin-Board geprueft.")) return;
+    setTrelloDescriptionBusy(true);
+    setTrelloDescriptionError(null);
+    setTrelloDescriptionSaved(false);
+    setTrelloLinkSaved(false);
+    try {
+      const payload = await onAction({
+        action: "set_trello_card",
+        saleId: sale.id,
+        trelloCard: nextLink,
+        operatorName,
+      });
+      if (!payload?.trelloDescription) throw new Error("Die bestaetigte Quentin-Karte konnte nicht geladen werden.");
+      setTrelloDescription(payload.trelloDescription);
+      setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
+      setTrelloLinkInput(payload.trelloDescription.cardUrl);
+      setTrelloLinkEditing(false);
+      setTrelloLinkSaved(true);
+    } catch (error) {
+      setTrelloDescriptionError(formatUnknownError(error, "Trello-Zuordnung konnte nicht gespeichert werden."));
     } finally {
       setTrelloDescriptionBusy(false);
     }
@@ -1280,17 +1327,70 @@ function SaleCard({
                     <p className="text-sm font-semibold text-stone-950">Quentin-Trello-Description</p>
                     <p className="text-xs leading-5 text-stone-600">Bestehender Text wird niemals geloescht. Bestaetigter Text wird nur oben eingefuegt.</p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={saving || trelloDescriptionBusy}
-                    title="Exakte Karte auf dem Quentin-Board suchen und aktuelle Description laden"
-                    onClick={() => void loadTrelloDescription()}
-                    className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
-                  >
-                    <RefreshCcw className={`h-4 w-4 ${trelloDescriptionBusy ? "animate-spin" : ""}`} />
-                    Trello-Description abgleichen
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={saving || trelloDescriptionBusy}
+                      title="Trello-Link oder Card-ID korrigieren"
+                      aria-label="Trello-Link bearbeiten"
+                      onClick={startTrelloLinkEdit}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-[0.5rem] border border-stone-300 bg-white text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving || trelloDescriptionBusy}
+                      title="Exakte Karte auf dem Quentin-Board suchen und aktuelle Description laden"
+                      onClick={() => void loadTrelloDescription()}
+                      className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+                    >
+                      <RefreshCcw className={`h-4 w-4 ${trelloDescriptionBusy ? "animate-spin" : ""}`} />
+                      Trello-Description abgleichen
+                    </button>
+                  </div>
                 </div>
+
+                {trelloLinkEditing ? (
+                  <div className="grid gap-2 rounded-[0.5rem] border border-sky-200 bg-sky-50 p-3">
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold text-sky-950">Quentin-Trello-Link oder Card-ID</span>
+                      <input
+                        value={trelloLinkInput}
+                        onChange={(event) => setTrelloLinkInput(event.target.value)}
+                        maxLength={1000}
+                        autoFocus
+                        aria-label="Quentin Trello Link oder Card ID"
+                        placeholder="https://trello.com/c/..."
+                        className="h-10 w-full rounded-[0.5rem] border border-sky-300 bg-white px-3 text-sm text-stone-900"
+                      />
+                    </label>
+                    <p className="text-[11px] leading-4 text-sky-900">Gespeichert wird nur eine erreichbare Karte auf dem Quentin-Board. Die bisherige Zuordnung bleibt bei einem Fehler erhalten.</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={saving || trelloDescriptionBusy || !trelloLinkInput.trim()}
+                        onClick={() => void saveTrelloLink()}
+                        className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-sky-800 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-stone-300"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Pruefen und speichern
+                      </button>
+                      <button
+                        type="button"
+                        disabled={trelloDescriptionBusy}
+                        onClick={() => {
+                          setTrelloLinkEditing(false);
+                          setTrelloDescriptionError(null);
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
+                      >
+                        <X className="h-4 w-4" />
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 {trelloDescriptionError ? (
                   <p className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{trelloDescriptionError}</p>
@@ -1299,6 +1399,12 @@ function SaleCard({
                   <p className="flex items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
                     <CheckCircle2 className="h-4 w-4" />
                     In Trello bestaetigt und direkt danach erneut verifiziert.
+                  </p>
+                ) : null}
+                {trelloLinkSaved ? (
+                  <p className="flex items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Quentin-Karte geprueft, neu zugeordnet und Description geladen.
                   </p>
                 ) : null}
 
