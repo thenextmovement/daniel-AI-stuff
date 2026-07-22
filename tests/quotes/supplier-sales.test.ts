@@ -865,7 +865,7 @@ test("supplier Trello description is freshly read and prepended without deleting
     assigned_supplier: "quentin",
   });
   let trelloPutCount = 0;
-  let eventPayload: Record<string, unknown> | null = null;
+  const eventPayload: { current?: Record<string, unknown> } = {};
 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
@@ -895,7 +895,7 @@ test("supplier Trello description is freshly read and prepended without deleting
     }
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
-      eventPayload = JSON.parse(String(init?.body || "{}")).payload;
+      eventPayload.current = JSON.parse(String(init?.body || "{}")).payload;
       return Response.json({});
     }
     if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
@@ -926,7 +926,7 @@ test("supplier Trello description is freshly read and prepended without deleting
 
   assert.equal(trelloPutCount, 1, "the exact same confirmed block must be idempotent");
   assert.equal(currentDescription.endsWith("Manual supplier note\nDo not remove this line."), true);
-  assert.equal(eventPayload?.previous_description_length, currentDescription.length);
+  assert.equal(eventPayload.current?.previous_description_length, currentDescription.length);
 });
 
 test("supplier Trello description blocks a card outside the exact Quentin board", async () => {
