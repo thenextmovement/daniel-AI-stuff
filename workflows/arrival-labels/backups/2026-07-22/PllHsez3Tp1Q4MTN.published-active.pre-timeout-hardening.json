@@ -1,0 +1,158 @@
+{
+  "capturedAt": "2026-07-22T12:37:01.314Z",
+  "purpose": "Pre-change rollback snapshot for archive timeout hardening",
+  "source": {
+    "n8nWorkflowId": "PllHsez3Tp1Q4MTN",
+    "mode": "active",
+    "readOnly": true
+  },
+  "rollback": {
+    "workflowVersionId": 593,
+    "note": "Restore version 593 with n8n workflow version rollback if the v0.6 activation must be reverted."
+  },
+  "workflow": {
+    "id": "PllHsez3Tp1Q4MTN",
+    "name": "NEONTRIP Archive DHL Mail After Label Print v0.5",
+    "active": true,
+    "isArchived": false,
+    "tags": [],
+    "settings": {
+      "executionOrder": "v1",
+      "timezone": "Europe/Berlin",
+      "saveDataErrorExecution": "none",
+      "saveDataSuccessExecution": "none",
+      "executionTimeout": 90,
+      "errorWorkflow": "ArT3LN25Mb1PAuBE"
+    },
+    "createdAt": "2026-07-20T17:08:38.724Z",
+    "updatedAt": "2026-07-20T18:45:57.819Z",
+    "activeVersionId": "3f4e9b37-3b1d-4546-8be5-ce8175f1c166",
+    "versionCreatedAt": "2026-07-20T18:26:51.743Z",
+    "versionName": null,
+    "nodes": [
+      {
+        "id": "archive-safety-notes",
+        "name": "Safety Notes",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "width": 940,
+          "height": 220,
+          "content": "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Cloudflare Access and the Ops bearer token are both required. Pre-dispatch errors may retry; any uncertainty after move dispatch becomes manual review and never auto-retries. Execution payloads are not persisted because the HTTP credential carries security headers; Postgres is the audit source of truth. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable the database archive setting."
+        }
+      },
+      {
+        "id": "archive-schedule",
+        "name": "Archive Outbox Schedule",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          0,
+          300
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "* * * * *"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "archive-preflight",
+        "name": "Validate Archive Worker Config",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          260,
+          300
+        ],
+        "onError": "stopWorkflow",
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "const baseUrl = 'https://ops.neontrip.de';\nconst workflowPart = String($workflow.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);\nconst executionPart = String($execution.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);\nconst workerId = ('n8n-outlook-archive:' + workflowPart + ':' + executionPart).slice(0, 96);\nif (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(workerId)) throw new Error('Outlook archive worker id is invalid');\nreturn [{ json: { baseUrl, workerId } }];"
+        }
+      },
+      {
+        "id": "process-archive",
+        "name": "Process One Exact DHL Archive",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          560,
+          300
+        ],
+        "onError": "stopWorkflow",
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpCustomAuth",
+          "method": "POST",
+          "url": "={{ $json.baseUrl + '/api/internal/arrival-labels/outlook-archives/process' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Neontrip-Outlook-Archive-Worker",
+                "value": "={{ $json.workerId }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "application/json",
+          "body": "={{ JSON.stringify({ workerId: $json.workerId }) }}",
+          "options": {
+            "timeout": 60000,
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "httpCustomAuth": {
+            "id": "HJHHkJXK8B7QCtCQ",
+            "name": "NEONTRIP Ops Archive Worker"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Archive Outbox Schedule": {
+        "main": [
+          [
+            {
+              "node": "Validate Archive Worker Config",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate Archive Worker Config": {
+        "main": [
+          [
+            {
+              "node": "Process One Exact DHL Archive",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  }
+}

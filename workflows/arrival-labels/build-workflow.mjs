@@ -403,7 +403,7 @@ return { json: { dispatchReceiptId } };`,
 };
 
 const outlookArchiveWorkflow = {
-  name: "NEONTRIP Archive DHL Mail After Label Print v0.5 (INACTIVE)",
+  name: "NEONTRIP Archive DHL Mail After Label Print v0.6 (INACTIVE)",
   active: false,
   nodes: [
     {
@@ -415,7 +415,7 @@ const outlookArchiveWorkflow = {
       parameters: {
         width: 940,
         height: 220,
-        content: "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Cloudflare Access and the Ops bearer token are both required. Pre-dispatch errors may retry; any uncertainty after move dispatch becomes manual review and never auto-retries. Execution payloads are not persisted because the HTTP credential carries security headers; Postgres is the audit source of truth. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable the database archive setting.",
+        content: "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. A retryable GET /api/health readiness gate runs before the single-attempt archive processor POST. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Cloudflare Access and the Ops bearer token are both required. Only the read-only readiness GET may retry; the archive POST never retries automatically. Any uncertainty after move dispatch becomes manual review. Execution payloads are not persisted because the HTTP credential carries security headers; Postgres is the audit source of truth. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow, restore workflow version 593, and disable the database archive setting.",
       },
     },
     {
@@ -445,11 +445,53 @@ return [{ json: { baseUrl, workerId } }];`,
       },
     },
     {
+      id: "archive-readiness",
+      name: "Check Ops Readiness",
+      type: "n8n-nodes-base.httpRequest",
+      typeVersion: 4.4,
+      position: [540, 300],
+      retryOnFail: true,
+      maxTries: 4,
+      waitBetweenTries: 10000,
+      onError: "stopWorkflow",
+      parameters: {
+        authentication: "genericCredentialType",
+        genericAuthType: "httpCustomAuth",
+        method: "GET",
+        url: "={{ $json.baseUrl + '/api/health' }}",
+        options: { timeout: 10000, response: { response: { responseFormat: "json" } } },
+      },
+      credentials: {
+        httpCustomAuth: {
+          id: "HJHHkJXK8B7QCtCQ",
+          name: "NEONTRIP Ops Archive Worker",
+        },
+      },
+    },
+    {
+      id: "archive-readiness-validation",
+      name: "Validate Ops Readiness",
+      type: "n8n-nodes-base.code",
+      typeVersion: 2,
+      position: [820, 300],
+      onError: "stopWorkflow",
+      parameters: {
+        mode: "runOnceForAllItems",
+        language: "javaScript",
+        jsCode: String.raw`const config = $('Validate Archive Worker Config').first().json;
+const health = $input.first()?.json || {};
+if (health.ok !== true || health.service !== 'neontrip-ops') throw new Error('Ops readiness response is invalid');
+const opsCommit = String(health.commit || '').trim().toLowerCase();
+if (!/^(?:[a-f0-9]{40}|unknown)$/.test(opsCommit)) throw new Error('Ops readiness commit is invalid');
+return [{ json: { baseUrl: config.baseUrl, workerId: config.workerId, opsCommit } }];`,
+      },
+    },
+    {
       id: "process-archive",
       name: "Process One Exact DHL Archive",
       type: "n8n-nodes-base.httpRequest",
       typeVersion: 4.4,
-      position: [560, 300],
+      position: [1100, 300],
       onError: "stopWorkflow",
       parameters: {
         authentication: "genericCredentialType",
@@ -477,17 +519,19 @@ return [{ json: { baseUrl, workerId } }];`,
   ],
   connections: {
     "Archive Outbox Schedule": { main: [[{ node: "Validate Archive Worker Config", type: "main", index: 0 }]] },
-    "Validate Archive Worker Config": { main: [[{ node: "Process One Exact DHL Archive", type: "main", index: 0 }]] },
+    "Validate Archive Worker Config": { main: [[{ node: "Check Ops Readiness", type: "main", index: 0 }]] },
+    "Check Ops Readiness": { main: [[{ node: "Validate Ops Readiness", type: "main", index: 0 }]] },
+    "Validate Ops Readiness": { main: [[{ node: "Process One Exact DHL Archive", type: "main", index: 0 }]] },
   },
   settings: {
     executionOrder: "v1",
     timezone: "Europe/Berlin",
     saveDataErrorExecution: "none",
     saveDataSuccessExecution: "none",
-    executionTimeout: 90,
+    executionTimeout: 180,
     errorWorkflow: "ArT3LN25Mb1PAuBE",
   },
-  versionId: "arrival-outlook-archive-after-print-v0-5",
+  versionId: "arrival-outlook-archive-after-print-v0-6",
   meta: { templateCredsSetupCompleted: true },
   tags: [],
 };
