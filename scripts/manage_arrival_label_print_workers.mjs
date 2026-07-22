@@ -104,6 +104,7 @@ function stageVersion(commit) {
 function renderPlist(template, values) {
   const replacements = {
     "{{LABEL}}": xml(values.worker.label), "{{NODE_PATH}}": xml(process.execPath), "{{RUNNER_PATH}}": xml(values.runnerPath),
+    "{{WORKING_DIRECTORY}}": xml(dirname(dirname(values.runnerPath))),
     "{{KIND}}": xml(values.worker.kind), "{{HOME}}": xml(values.home), "{{OPS_BASE_URL}}": xml(values.opsBaseUrl),
     "{{KEYCHAIN_ACCOUNT}}": xml(values.account), "{{CF_CLIENT_ID_ENV}}": values.cfClientId ? `    <key>ARRIVAL_LABEL_PRINT_CF_ACCESS_CLIENT_ID</key>\n    <string>${xml(values.cfClientId)}</string>` : "",
     "{{STDOUT_PATH}}": xml(join(values.logDir, `${values.worker.logName}.log`)), "{{STDERR_PATH}}": xml(join(values.logDir, `${values.worker.logName}.error.log`)),

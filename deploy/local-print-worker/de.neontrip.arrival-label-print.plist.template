@@ -14,6 +14,8 @@
     <string>{{KIND}}</string>
     <string>--acknowledge-production-write</string>
   </array>
+  <key>WorkingDirectory</key>
+  <string>{{WORKING_DIRECTORY}}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key><string>{{HOME}}</string>
