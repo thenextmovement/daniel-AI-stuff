@@ -9,8 +9,10 @@ import {
   createSupplierDeadlineTasks,
   generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
+  markSupplierSaleInProduction,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
+  retrySupplierSaleTrelloProjection,
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
   syncCompletedOffersFromOffersApp,
@@ -42,6 +44,8 @@ type SupplierSalesPostBody = {
     | "request_payment_reminder"
     | "send_order_confirmation_email"
     | "retry_shopify_tag"
+    | "retry_trello_projection"
+    | "mark_in_production"
     | "apply_no_payment_reminder_tag"
     | "create_deadline_tasks"
     | "cleanup_supplier_assignment_tasks"
@@ -366,6 +370,22 @@ export async function POST(request: NextRequest) {
         paymentDecisionStatus: body.paymentDecisionStatus || null,
         operatorName: body.operatorName || null,
         assigneeLabel: body.assigneeLabel || null,
+      }, actor);
+      return NextResponse.json({ ok: true, action, sale });
+    }
+
+    if (action === "retry_trello_projection") {
+      const sale = await retrySupplierSaleTrelloProjection({
+        saleId: String(body.saleId || ""),
+        operatorName: body.operatorName || null,
+      }, actor);
+      return NextResponse.json({ ok: true, action, sale });
+    }
+
+    if (action === "mark_in_production") {
+      const sale = await markSupplierSaleInProduction({
+        saleId: String(body.saleId || ""),
+        operatorName: body.operatorName || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale });
     }
