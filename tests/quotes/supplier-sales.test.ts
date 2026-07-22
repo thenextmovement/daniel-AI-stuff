@@ -904,7 +904,7 @@ test("additional supplier assignment requires and audits the manual Shopify tag 
     special_supplier_name: null,
   });
   let externalWriteCount = 0;
-  let attemptMetadata: Record<string, unknown> | null = null;
+  const attemptMetadata: Array<Record<string, unknown>> = [];
 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
@@ -916,7 +916,8 @@ test("additional supplier assignment requires and audits the manual Shopify tag 
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: currentRow.id })]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "POST") {
-      attemptMetadata = JSON.parse(String(init?.body || "{}")).metadata || null;
+      const metadata = JSON.parse(String(init?.body || "{}")).metadata;
+      if (metadata && typeof metadata === "object") attemptMetadata.push(metadata);
       return Response.json({});
     }
     if (url.pathname.endsWith("/supplier_assignment_attempts") && method === "PATCH") return Response.json({});
@@ -955,7 +956,7 @@ test("additional supplier assignment requires and audits the manual Shopify tag 
   });
 
   assert.equal(externalWriteCount, 0);
-  assert.equal(attemptMetadata?.shopify_supplier_tag_confirmed, true);
+  assert.equal(attemptMetadata[0]?.shopify_supplier_tag_confirmed, true);
 });
 
 test("supplier assignment duplicate attempt does not rerun projections", async () => {
