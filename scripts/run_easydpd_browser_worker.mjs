@@ -49,7 +49,7 @@ async function assertShopifyOrderPage(page, job) {
   if (await frame.getByText(job.orderName, { exact: true }).count() < 1) throw new BrowserWorkerError("EasyDPD-Bestellname stimmt nicht mit dem reservierten Auftrag ueberein.", 65);
   const product = frame.getByRole("combobox", { name: "Product", exact: true });
   const format = frame.getByRole("combobox", { name: "Format", exact: true });
-  const weight = frame.getByRole("spinbutton", { name: /Total package weight/i });
+  const weight = frame.getByRole("spinbutton", { name: /^Total (?:package weight|weight of the shipment)(?:\s+(?:g|gr))?$/i });
   const createButton = frame.getByRole("button", { name: "Create label", exact: true });
   for (const [name, locator] of [["Produkt", product], ["Format", format], ["Gesamtgewicht", weight], ["Kaufbutton", createButton]]) {
     if (await locator.count() !== 1) throw new BrowserWorkerError(`EasyDPD-${name} ist nicht eindeutig auffindbar.`, 65);

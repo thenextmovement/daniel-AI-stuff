@@ -105,6 +105,18 @@ export function parseCupsJobId(output: string) {
   return jobId;
 }
 
+export function cupsSupportsMedia(output: string, media: string) {
+  const pageSize = output
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("PageSize/") || line.startsWith("media/"));
+  if (!pageSize) return false;
+  const values = pageSize.slice(pageSize.indexOf(":") + 1)
+    .trim()
+    .split(/\s+/)
+    .map((value) => value.replace(/^\*/, ""));
+  return values.includes(media);
+}
+
 export type ProcessResult = { exitCode: number; stdout: string; stderr: string };
 export type ProcessRunner = (command: string, args: string[], timeoutMs?: number) => Promise<ProcessResult>;
 
@@ -136,11 +148,12 @@ export function createCupsPrinter(input: {
   const runner = input.runner || runBoundedProcess;
   return {
     async selfTest() {
-      const [printer] = await Promise.all([
+      const [printer, options] = await Promise.all([
         runner("lpstat", ["-p", cupsPrinter]),
-        runner("lp", ["--version"]),
+        runner("lpoptions", ["-p", cupsPrinter, "-l"]),
       ]);
-      if (printer.exitCode !== 0) throw new Error("CUPS oder der konfigurierte Drucker ist nicht bereit.");
+      if (printer.exitCode !== 0 || options.exitCode !== 0) throw new Error("CUPS oder der konfigurierte Drucker ist nicht bereit.");
+      if (!cupsSupportsMedia(options.stdout, media)) throw new Error("Der konfigurierte CUPS-Drucker bietet das freigegebene Medium nicht an.");
     },
     async submit(pdfPath: string) {
       const result = await runner("lp", ["-d", cupsPrinter, "-o", `media=${media}`, "-o", "sides=one-sided", pdfPath]);

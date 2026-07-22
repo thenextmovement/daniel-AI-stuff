@@ -57,7 +57,7 @@ export function extractUniqueDpdTrackingNumber(text: string, incomingDhlTracking
 export type BrowserArtifactRecord = {
   id: string;
   case_id: string;
-  artifact_kind: "original_pdf" | "annotated_pdf" | "rendered_preview";
+  artifact_kind: "original_pdf" | "annotated_pdf" | "rendered_preview" | "delivery_note_pdf";
   storage_bucket: string;
   storage_key: string;
   sha256: string;

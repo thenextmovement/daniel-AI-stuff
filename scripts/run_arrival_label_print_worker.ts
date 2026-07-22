@@ -159,6 +159,10 @@ async function main() {
     process.stdout.write("CUPS printer self-test passed (no page printed).\n");
     return;
   }
+  if (String(process.env.ARRIVAL_LABEL_PRINT_LIVE_ENABLED || "").trim().toLowerCase() !== "true"
+    || !process.argv.includes("--acknowledge-production-write")) {
+    throw new Error("Produktiver Druck ist lokal nicht freigegeben.");
+  }
   const once = process.argv.includes("--once");
   do {
     await processOne(configuration, printer).catch((error) => {

@@ -40,6 +40,8 @@ const sendNodes = reviewWorkflow.nodes.filter((node) => node.type === "n8n-nodes
 assert.equal(reviewWorkflow.active, false);
 assert.equal(reviewWorkflow.settings.timezone, "Europe/Berlin");
 assert.equal(reviewWorkflow.settings.errorWorkflow, "ArT3LN25Mb1PAuBE");
+assert.equal(reviewWorkflow.settings.saveDataErrorExecution, "none");
+assert.equal(reviewWorkflow.settings.saveDataSuccessExecution, "none");
 assert.equal(reviewTriggers.length, 1, "review workflow must have exactly one trigger");
 assert.equal(reviewRequests.length, 3);
 assert.equal(sendNodes.length, 1);
@@ -49,13 +51,23 @@ assert.match(reviewSerialized, /info@neontrip[.]de/);
 assert.match(reviewSerialized, /Mark Review Dispatching/);
 assert.match(reviewSerialized, /dispatchReceiptId/);
 assert.match(reviewSerialized, /review-notifications/);
+assert.match(reviewWorkflow.name, /v0[.]2/);
 assert.doesNotMatch(reviewSerialized, /EASYDPD|createLabel|ARRIVAL_LABEL_WRITES_ENABLED|print-jobs/);
 assert.doesNotMatch(reviewSerialized, /continueRegularOutput|continueErrorOutput/);
 assert.ok(reviewWorkflow.nodes.length <= 10, "review orchestration must stay small");
 for (const request of reviewRequests) {
   assert.equal(request.retryOnFail, true);
   assert.ok(request.parameters.options.timeout <= 30000);
+  assert.equal(request.parameters.authentication, "genericCredentialType");
+  assert.equal(request.parameters.genericAuthType, "httpCustomAuth");
+  assert.equal(request.credentials.httpCustomAuth.id, "HJHHkJXK8B7QCtCQ");
+  assert.equal(request.credentials.httpCustomAuth.name, "NEONTRIP Ops Archive Worker");
 }
+assert.doesNotMatch(
+  reviewSerialized,
+  /\$env|ARRIVAL_LABEL_CF_ACCESS_CLIENT|ARRIVAL_LABEL_AGENT_API_TOKEN|CF-Access-Client-Secret/,
+  "review workflow must use the encrypted custom-auth credential instead of environment secrets",
+);
 for (const codeNode of reviewWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.code")) {
   assert.doesNotThrow(() => new Function(codeNode.parameters.jsCode), `${codeNode.name} JavaScript must parse`);
 }

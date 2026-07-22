@@ -21,7 +21,13 @@ type ProductConfigRow = {
 };
 
 type RunRow = { id: string; correlation_id: string };
-type CaseRow = { id: string; idempotency_key: string; status: string };
+type CaseRow = {
+  id: string;
+  idempotency_key: string;
+  status: string;
+  delivery_note_status: string;
+  existing_dpd_tracking: string | null;
+};
 
 export type ArrivalOutlookArchiveJobRow = {
   id: string;
@@ -298,6 +304,25 @@ export async function insertArrivalBrowserArtifact(input: Omit<BrowserArtifactRe
     throw new Error("Artefakt-Idempotenzgrenze ist bereits mit anderem Inhalt belegt.");
   }
   return existing;
+}
+
+export async function loadArrivalArtifact(input: { caseId: string; artifactKind: BrowserArtifactRecord["artifact_kind"] }) {
+  const rows = await supabaseRequest<BrowserArtifactRecord[]>("arrival_label_artifacts", undefined, {
+    select: "id,case_id,artifact_kind,storage_bucket,storage_key,sha256,content_type,byte_size,page_width_points,page_height_points,qa_result",
+    case_id: `eq.${input.caseId}`,
+    artifact_kind: `eq.${input.artifactKind}`,
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+export async function markArrivalDeliveryNoteQaApproved(input: { caseId: string; artifactId: string }) {
+  const rows = await supabaseRpc<CaseRow[]>("arrival_labels_mark_delivery_note_qa_approved", {
+    p_case_id: input.caseId,
+    p_artifact_id: input.artifactId,
+  });
+  if (!rows[0]) throw new Error("Lieferschein-QA konnte nicht freigegeben werden.");
+  return rows[0];
 }
 
 export async function registerArrivalBrowserArtifacts(input: {

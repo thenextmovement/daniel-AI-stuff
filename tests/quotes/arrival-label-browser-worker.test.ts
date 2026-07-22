@@ -71,6 +71,7 @@ test("worker marks dispatching before exactly one purchase click and routes late
   assert.match(source, /postDispatch \? "uncertain" : "retryable_error"/);
   assert.match(source, /page\.waitForEvent\("download"/);
   assert.doesNotMatch(source, /reload\(|while\s*\([^)]*createButton/);
+  assert.match(source, /weight of the shipment/i);
 });
 
 test("LaunchAgent has no plaintext token and defaults to a harmless dry-run install", async () => {
@@ -90,6 +91,29 @@ test("Coolify sync supports a dedicated browser-worker secret and an exact delet
   assert.match(workflow, /delete_ops_arrival_label_browser_worker_token/);
   assert.match(workflow, /ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN: \$\{\{ secrets\.ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN \}\}/);
   assert.match(workflow, /previous: previous \? envSummary\(previous\) : null/);
+});
+
+test("live rollout config keeps the purchase switch off until local workers pass", async () => {
+  const sql = await readFile("supabase/migrations/20260722154500_prepare_arrival_label_live_configuration.sql", "utf8");
+  const rollback = await readFile("supabase/rollbacks/20260722154500_prepare_arrival_label_live_configuration_rollback.sql", "utf8");
+  assert.match(sql, /maximum_purchase_cents\s*=\s*1500/i);
+  assert.match(sql, /worker_enabled\s*=\s*false/i);
+  assert.match(sql, /live_purchase_enabled\s*=\s*false/i);
+  assert.match(sql, /shipping-a6[\s\S]+shipping-a4-delivery-note/i);
+  assert.match(sql, /arrival_labels_mark_delivery_note_qa_approved/i);
+  assert.match(sql, /v_artifact[.]storage_bucket\s*<>\s*coalesce/i);
+  assert.match(sql, /new[.]existing_dpd_tracking\s*:=\s*coalesce\(new[.]existing_dpd_tracking, old[.]existing_dpd_tracking\)/i);
+  assert.match(sql, /old[.]status in \('label_created', 'pdf_processed', 'completed'\)/i);
+  assert.match(rollback, /live_purchase_enabled\s*=\s*false/i);
+});
+
+test("Coolify rollout supports a separate print token, write gate and exact rollback modes", async () => {
+  const workflow = await readFile(".github/workflows/coolify-secret-sync.yml", "utf8");
+  assert.match(workflow, /sync_ops_arrival_label_print_worker_token/);
+  assert.match(workflow, /delete_ops_arrival_label_print_worker_token/);
+  assert.match(workflow, /enable_ops_arrival_label_writes/);
+  assert.match(workflow, /disable_ops_arrival_label_writes/);
+  assert.match(workflow, /ARRIVAL_LABEL_PRINT_API_TOKEN: \$\{\{ secrets\.ARRIVAL_LABEL_PRINT_API_TOKEN \}\}/);
 });
 
 test("browser claim API rejects auth before DB and dry-run never claims", async () => {

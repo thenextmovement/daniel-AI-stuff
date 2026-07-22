@@ -21,6 +21,7 @@
     "arrival-labels:scheduler": "node scripts/run_arrival_label_scheduler.mjs",
     "arrival-labels:scheduler:manage": "node scripts/manage_arrival_label_scheduler.mjs",
     "arrival-labels:print-worker": "node --import tsx scripts/run_arrival_label_print_worker.ts",
+    "arrival-labels:print-workers:manage": "node scripts/manage_arrival_label_print_workers.mjs",
     "arrival-labels:browser-worker": "node scripts/run_easydpd_browser_worker.mjs",
     "arrival-labels:browser-worker:manage": "node scripts/manage_easydpd_browser_worker.mjs",
     "lint": "next lint",

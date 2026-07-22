@@ -1,6 +1,6 @@
 # EasyDPD Browser-Worker – Safety Review und Betrieb
 
-Stand: 2026-07-21
+Stand: 2026-07-22
 
 ## Scope
 
@@ -12,7 +12,7 @@ easyDPD erfüllt die Shopify-Bestellung und löst über seine bereits aktivierte
 
 ### Hoch – Live-Freigabe bleibt bis zum kontrollierten Pilot gesperrt
 
-Die easyDPD-Kaufseite zeigt vor `Create label` keinen maschinenlesbaren Preis. Die Datenbank verlangt deshalb eine von einem Menschen freigegebene Produktzuordnung mit einem festen Maximalpreis von höchstens 1.500 Cent. Diese Zuordnung ist bewusst leer; `worker_enabled=false` und `live_purchase_enabled=false` sind der Produktionsstandard. Vor dem Pilot müssen der tatsächliche Tarif, das exakte easyDPD-Produktlabel und die 15-EUR-Grenze bestätigt werden.
+Die easyDPD-Kaufseite zeigt vor `Create label` keinen maschinenlesbaren Preis. Die Datenbank verlangt deshalb eine von einem Menschen freigegebene Produktzuordnung mit einem festen Maximalpreis von höchstens 1.500 Cent. Daniel Klesse hat im Chat am 22.07.2026 die automatische Buchung bis 15,00 EUR freigegeben. Die geprüften UI-Labels sind `B2C`, `DPD Express 8:30`, `DPD Express 12:00` und `DPD Express 18:00`; EU-Standard verwendet ebenfalls `B2C`. Die vorbereitende Migration trägt diese Zuordnung ein, lässt `worker_enabled=false` und `live_purchase_enabled=false` aber bis zum lokalen Session-/Canary-Gate ausgeschaltet. Der fehlende maschinenlesbare Ist-Preis bleibt ein akzeptiertes Restrisiko und darf nicht als gemessener Preis protokolliert werden.
 
 ### Hoch – Separate Shopify-Sitzung muss einmalig verifiziert werden
 
@@ -38,14 +38,14 @@ Produkt, Format, Gesamtgewicht und Kaufbutton werden über exakte Rollen und Bez
 
 1. Separate Shopify/easyDPD-Sitzung mit `setup-session` einrichten.
 2. `self-test` ohne Kauf erfolgreich ausführen.
-3. Exakte easyDPD-Produktzuordnung und bekannten Preis bis maximal 15,00 EUR dokumentieren und human-approved in `approved_products` speichern.
+3. Exakte easyDPD-Produktzuordnung und die ausdrücklich freigegebene Obergrenze von 15,00 EUR human-approved in `approved_products` speichern.
 4. Einen einzigen kontrollierten Pilotauftrag mit ausdrücklicher Bestätigung ausführen.
 5. DPD-Tracking, Shopify-Fulfillment/Kundenbenachrichtigung, annotierte A6-PDF, CUPS-Druck und Outlook-Archivierung Ende-zu-Ende prüfen.
 6. Erst danach beide Produktionsschalter und den lokalen Live-Modus aktivieren.
 
 ## QA Plan
 
-- 652 Repository-Tests, TypeScript-Typecheck und Next.js-Produktionsbuild müssen grün sein.
+- 670 Repository-Tests, TypeScript-Typecheck, Voice-Runtime-Build und Next.js-Produktionsbuild müssen grün sein.
 - Migration in einer isolierten Postgres-Datenbank ausführen und danach Supabase Advisors prüfen.
 - Unautorisierte API-Aufrufe müssen vor Datenbank-/Storage-Zugriff mit 401 enden.
 - Dry-Run-Claim muss 204 liefern und darf keinen Auftrag reservieren.

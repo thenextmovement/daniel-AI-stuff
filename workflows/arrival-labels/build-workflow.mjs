@@ -198,7 +198,7 @@ return { json: {
 };
 
 const reviewWorkflow = {
-  name: "NEONTRIP Arrival Label Review Mail Outbox v0.1 (INACTIVE)",
+  name: "NEONTRIP Arrival Label Review Mail Outbox v0.2 (INACTIVE)",
   active: false,
   nodes: [
     {
@@ -210,7 +210,7 @@ const reviewWorkflow = {
       parameters: {
         width: 980,
         height: 220,
-        content: "## Internal review-mail outbox\n\nSends only deterministic plain-text notifications from the audited Postgres outbox to the fixed recipient info@neontrip.de. The item is marked dispatching before Outlook send. Unknown send outcomes become manual review and are never automatically resent. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow.",
+        content: "## Internal review-mail outbox\n\nSends only deterministic plain-text notifications from the audited Postgres outbox to the fixed recipient info@neontrip.de. Cloudflare Access and the Ops bearer token remain in the encrypted HTTP credential. The item is marked dispatching before Outlook send. The Outlook send node never retries; unknown outcomes remain dispatching for manual reconciliation and are never automatically resent. Postgres is the audit source of truth. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow.",
       },
     },
     {
@@ -231,11 +231,10 @@ const reviewWorkflow = {
       parameters: {
         mode: "runOnceForAllItems",
         language: "javaScript",
-        jsCode: String.raw`const baseUrl = String($env.NEONTRIP_OPS_BASE_URL || '').replace(/\/$/, '');
-const token = String($env.ARRIVAL_LABEL_AGENT_API_TOKEN || '');
-const workerId = 'n8n-review-mail:' + String($workflow.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 64);
-if (!/^https:\/\//.test(baseUrl)) throw new Error('NEONTRIP_OPS_BASE_URL must use HTTPS');
-if (token.length < 24) throw new Error('ARRIVAL_LABEL_AGENT_API_TOKEN is missing or too short');
+        jsCode: String.raw`const baseUrl = 'https://ops.neontrip.de';
+const workflowPart = String($workflow.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
+const executionPart = String($execution.id || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 32);
+const workerId = ('n8n-review-mail:' + workflowPart + ':' + executionPart).slice(0, 96);
 if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(workerId)) throw new Error('review worker id is invalid');
 return [{ json: { baseUrl, workerId } }];`,
       },
@@ -251,11 +250,12 @@ return [{ json: { baseUrl, workerId } }];`,
       waitBetweenTries: 5000,
       onError: "stopWorkflow",
       parameters: {
+        authentication: "genericCredentialType",
+        genericAuthType: "httpCustomAuth",
         method: "POST",
         url: "={{ $node[\"Validate Review Worker Config\"].json.baseUrl + '/api/internal/arrival-labels/review-notifications/claim' }}",
         sendHeaders: true,
         headerParameters: { parameters: [
-          { name: "Authorization", value: "={{ 'Bearer ' + $env.ARRIVAL_LABEL_AGENT_API_TOKEN }}" },
           { name: "X-Neontrip-Review-Worker", value: "={{ $node[\"Validate Review Worker Config\"].json.workerId }}" },
           { name: "Content-Type", value: "application/json" },
         ] },
@@ -264,6 +264,12 @@ return [{ json: { baseUrl, workerId } }];`,
         rawContentType: "application/json",
         body: "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId }) }}",
         options: { timeout: 30000, response: { response: { responseFormat: "json" } } },
+      },
+      credentials: {
+        httpCustomAuth: {
+          id: "HJHHkJXK8B7QCtCQ",
+          name: "NEONTRIP Ops Archive Worker",
+        },
       },
     },
     {
@@ -297,11 +303,12 @@ return [{ json: { baseUrl, workerId } }];`,
       waitBetweenTries: 3000,
       onError: "stopWorkflow",
       parameters: {
+        authentication: "genericCredentialType",
+        genericAuthType: "httpCustomAuth",
         method: "POST",
         url: "={{ $node[\"Validate Review Worker Config\"].json.baseUrl + '/api/internal/arrival-labels/review-notifications/' + $node[\"Claim Review Notification\"].json.notification.id + '/result' }}",
         sendHeaders: true,
         headerParameters: { parameters: [
-          { name: "Authorization", value: "={{ 'Bearer ' + $env.ARRIVAL_LABEL_AGENT_API_TOKEN }}" },
           { name: "X-Neontrip-Review-Worker", value: "={{ $node[\"Validate Review Worker Config\"].json.workerId }}" },
           { name: "Content-Type", value: "application/json" },
         ] },
@@ -310,6 +317,12 @@ return [{ json: { baseUrl, workerId } }];`,
         rawContentType: "application/json",
         body: "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId, result: 'dispatching' }) }}",
         options: { timeout: 30000, response: { response: { responseFormat: "json" } } },
+      },
+      credentials: {
+        httpCustomAuth: {
+          id: "HJHHkJXK8B7QCtCQ",
+          name: "NEONTRIP Ops Archive Worker",
+        },
       },
     },
     {
@@ -344,10 +357,7 @@ return [{ json: { baseUrl, workerId } }];`,
       parameters: {
         mode: "runOnceForEachItem",
         language: "javaScript",
-        jsCode: String.raw`if ($json.success !== true) {
-  throw new Error('Outlook did not confirm send success; notification remains dispatching for manual reconciliation');
-}
-const notificationId = String($node["Claim Review Notification"].json.notification.id || '');
+        jsCode: String.raw`const notificationId = String($node["Claim Review Notification"].json.notification.id || '');
 const dispatchReceiptId = 'n8n:' + String($execution.id || '') + ':' + notificationId;
 if (dispatchReceiptId.length > 500 || /[\u0000-\u001f\u007f]/.test(dispatchReceiptId)) throw new Error('invalid dispatch receipt');
 return { json: { dispatchReceiptId } };`,
@@ -364,11 +374,12 @@ return { json: { dispatchReceiptId } };`,
       waitBetweenTries: 3000,
       onError: "stopWorkflow",
       parameters: {
+        authentication: "genericCredentialType",
+        genericAuthType: "httpCustomAuth",
         method: "POST",
         url: "={{ $node[\"Validate Review Worker Config\"].json.baseUrl + '/api/internal/arrival-labels/review-notifications/' + $node[\"Claim Review Notification\"].json.notification.id + '/result' }}",
         sendHeaders: true,
         headerParameters: { parameters: [
-          { name: "Authorization", value: "={{ 'Bearer ' + $env.ARRIVAL_LABEL_AGENT_API_TOKEN }}" },
           { name: "X-Neontrip-Review-Worker", value: "={{ $node[\"Validate Review Worker Config\"].json.workerId }}" },
           { name: "Content-Type", value: "application/json" },
         ] },
@@ -377,6 +388,12 @@ return { json: { dispatchReceiptId } };`,
         rawContentType: "application/json",
         body: "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId, result: 'sent', dispatchReceiptId: $json.dispatchReceiptId }) }}",
         options: { timeout: 30000, response: { response: { responseFormat: "json" } } },
+      },
+      credentials: {
+        httpCustomAuth: {
+          id: "HJHHkJXK8B7QCtCQ",
+          name: "NEONTRIP Ops Archive Worker",
+        },
       },
     },
   ],
@@ -392,12 +409,12 @@ return { json: { dispatchReceiptId } };`,
   settings: {
     executionOrder: "v1",
     timezone: "Europe/Berlin",
-    saveDataErrorExecution: "all",
-    saveDataSuccessExecution: "all",
+    saveDataErrorExecution: "none",
+    saveDataSuccessExecution: "none",
     executionTimeout: 120,
     errorWorkflow: "ArT3LN25Mb1PAuBE",
   },
-  versionId: "arrival-review-mail-outbox-v0-1",
+  versionId: "arrival-review-mail-outbox-v0-2",
   meta: { templateCredsSetupCompleted: true },
   tags: [],
 };

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   assertPrintPdf,
   createCupsPrinter,
+  cupsSupportsMedia,
   parseCupsJobId,
   readBoundedJson,
   readBoundedResponseBytes,
@@ -81,6 +82,7 @@ test("CUPS adapter uses argument arrays, A6 media and no scaling option", async 
     calls.push({ command, args });
     if (command === "lp" && args.includes("-d")) return { exitCode: 0, stdout: "request id is Zebra-ZD421-42", stderr: "" };
     if (command === "lpstat" && args.includes("completed")) return { exitCode: 0, stdout: "Zebra-ZD421-42 daniel 1024 Mon", stderr: "" };
+    if (command === "lpoptions") return { exitCode: 0, stdout: "PageSize/Page Size: *A6 A4 4x6", stderr: "" };
     return { exitCode: 0, stdout: "ok", stderr: "" };
   };
   const printer = createCupsPrinter({ cupsPrinter: "Zebra-ZD421", media: "A6", runner });
@@ -91,6 +93,18 @@ test("CUPS adapter uses argument arrays, A6 media and no scaling option", async 
   const submit = calls.find((call) => call.command === "lp" && call.args.includes("-d"));
   assert.deepEqual(submit?.args, ["-d", "Zebra-ZD421", "-o", "media=A6", "-o", "sides=one-sided", "/tmp/controlled-label.pdf"]);
   assert.doesNotMatch(JSON.stringify(submit?.args), /fit-to-page|scaling/);
+  assert.deepEqual(calls.slice(0, 2), [
+    { command: "lpstat", args: ["-p", "Zebra-ZD421"] },
+    { command: "lpoptions", args: ["-p", "Zebra-ZD421", "-l"] },
+  ]);
+});
+
+test("CUPS media inspection requires an exact advertised value", () => {
+  const output = "PageSize/Page Size: 100x150mm *4x6 A4\nDuplex/Duplex: None";
+  assert.equal(cupsSupportsMedia(output, "4x6"), true);
+  assert.equal(cupsSupportsMedia(output, "A4"), true);
+  assert.equal(cupsSupportsMedia(output, "A6"), false);
+  assert.equal(cupsSupportsMedia("PageSize/Page Size: 4x6Borderless", "4x6"), false);
 });
 
 test("CUPS rejection does not fabricate a submitted job", async () => {

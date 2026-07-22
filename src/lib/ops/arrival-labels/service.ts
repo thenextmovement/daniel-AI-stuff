@@ -2,6 +2,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { randomUUID } from "node:crypto";
 import type { ArrivalDataClients } from "./clients";
 import { createRuntimeClients, customerNameHintsFromCard } from "./clients";
+import { generateArrivalDeliveryNotePdf } from "./delivery-note";
 import {
   ARRIVAL_LABEL_TIMEZONE,
   arrivalsFromDhlMessages,
@@ -13,13 +14,19 @@ import {
 import {
   createDatabaseExistingLabelClient,
   enqueueArrivalBrowserPurchase,
+  enqueueArrivalPrintJob,
   enqueueArrivalReviewNotification,
   finishArrivalRun,
+  insertArrivalBrowserArtifact,
+  loadArrivalArtifact,
   loadActiveProductConfig,
+  markArrivalDeliveryNoteQaApproved,
   recordArrivalEvent,
   startArrivalRun,
   upsertArrivalCase,
+  uploadPrivateArrivalArtifact,
 } from "./repository";
+import { renderPdfPagesToPng } from "./pdf";
 import { buildArrivalReviewNotification, type ArrivalReviewNotification } from "./review-notifications";
 
 export type ArrivalRunResult = {
@@ -79,6 +86,55 @@ function assertWriteGate(mode: ArrivalRunMode, productConfig: ProductConfig | nu
     throw new Error("Produktive Labelerstellung ist deaktiviert (ARRIVAL_LABEL_WRITES_ENABLED ist nicht true).");
   }
   if (!productConfig?.enabled) throw new Error("Keine freigegebene DPD-Produktkonfiguration aktiv.");
+}
+
+async function ensureEuDeliveryNote(input: {
+  caseId: string;
+  decision: ArrivalCaseDecision;
+  localDate: string;
+  productConfig: ProductConfig;
+}) {
+  const printerKey = input.productConfig.deliveryNotePrinterKey;
+  const storageBucket = input.productConfig.storageBucket;
+  if (!printerKey || !storageBucket || String(input.productConfig.deliveryNotePrintMedia || "").toUpperCase() !== "A4") {
+    throw new Error("Freigegebene A4-Lieferschein-Konfiguration fehlt.");
+  }
+  let artifact = await loadArrivalArtifact({ caseId: input.caseId, artifactKind: "delivery_note_pdf" });
+  if (!artifact) {
+    const generated = await generateArrivalDeliveryNotePdf({ decision: input.decision, localDate: input.localDate });
+    const renderedPages = await renderPdfPagesToPng(generated.pdf, 2, 20);
+    if (renderedPages.length !== generated.qa.pageCount) throw new Error("Lieferschein-Render-QA ist unvollstaendig.");
+    const storageKey = `cases/${input.caseId}/delivery-notes/${generated.qa.sha256}/delivery-note.pdf`;
+    await uploadPrivateArrivalArtifact({
+      bucket: storageBucket,
+      storageKey,
+      contentType: "application/pdf",
+      bytes: generated.pdf,
+      sha256: generated.qa.sha256,
+    });
+    artifact = await insertArrivalBrowserArtifact({
+      case_id: input.caseId,
+      artifact_kind: "delivery_note_pdf",
+      storage_bucket: storageBucket,
+      storage_key: storageKey,
+      sha256: generated.qa.sha256,
+      content_type: "application/pdf",
+      byte_size: generated.pdf.byteLength,
+      page_width_points: generated.qa.pageWidthPoints,
+      page_height_points: generated.qa.pageHeightPoints,
+      qa_result: { ...generated.qa, renderedPageCount: renderedPages.length },
+    });
+  }
+  if (artifact.content_type !== "application/pdf" || artifact.qa_result?.ok !== true) {
+    throw new Error("Vorhandener Lieferschein hat keinen gueltigen QA-Nachweis.");
+  }
+  await markArrivalDeliveryNoteQaApproved({ caseId: input.caseId, artifactId: artifact.id });
+  return enqueueArrivalPrintJob({
+    caseId: input.caseId,
+    artifactId: artifact.id,
+    printerKey,
+    idempotencyKey: `arrival-delivery-note-print:${input.caseId}:${artifact.sha256}`,
+  });
 }
 
 export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): Promise<ArrivalRunResult> {
@@ -144,7 +200,15 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       for (let index = 0; index < cases.length; index += 1) {
         const stored = await upsertArrivalCase({ runId: run.id, arrival: arrivals[index], decision: cases[index] });
         if (mode === "execute" && cases[index].status === "label_planned") {
-          await enqueueArrivalBrowserPurchase(stored.id);
+          if (!productConfig) throw new Error("Aktive DPD-Produktkonfiguration fehlt.");
+          if (cases[index].deliveryNoteRequired) {
+            if (stored.delivery_note_status === "printed") await enqueueArrivalBrowserPurchase(stored.id);
+            else if (["planned", "qa_approved"].includes(stored.delivery_note_status)) {
+              await ensureEuDeliveryNote({ caseId: stored.id, decision: cases[index], localDate, productConfig });
+            }
+          } else {
+            await enqueueArrivalBrowserPurchase(stored.id);
+          }
         }
         const notification = buildArrivalReviewNotification(cases[index]);
         if (notification) await enqueueArrivalReviewNotification({ caseId: stored.id, notification });
