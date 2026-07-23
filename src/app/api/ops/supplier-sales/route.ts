@@ -20,6 +20,7 @@ import {
   setSupplierSaleQuentinTrelloCard,
   syncCompletedOffersFromOffersApp,
   syncSupplierSalesShopifyTags,
+  uploadSupplierSaleApprovedDesign,
   updateSupplierSalePaymentDecision,
   upsertSupplierSaleFromPayload,
   type SupplierSaleActor,
@@ -50,6 +51,7 @@ type SupplierSalesPostBody = {
     | "retry_trello_projection"
     | "set_trello_card"
     | "prepend_trello_description"
+    | "upload_approved_design"
     | "mark_in_production"
     | "apply_no_payment_reminder_tag"
     | "create_deadline_tasks"
@@ -406,6 +408,18 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale: result.sale, trelloDescription: result.trelloDescription });
+    }
+
+    if (action === "upload_approved_design") {
+      const result = await uploadSupplierSaleApprovedDesign({
+        saleId: String(body.saleId || ""),
+        operatorName: body.operatorName || null,
+      }, actor);
+      return NextResponse.json({
+        ok: true,
+        action,
+        approvedDesignUpload: result.approvedDesignUpload,
+      });
     }
 
     if (action === "set_trello_card") {
