@@ -11,7 +11,10 @@ import {
   readNativeMessage,
   validateBridgeConfig,
 } from "../../scripts/easydpd_existing_chrome_bridge_lib.mjs";
-import { parseExistingChromeManagerArgs } from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
+import {
+  bridgeDestinations,
+  parseExistingChromeManagerArgs,
+} from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
 import { isExecutedEntryPoint } from "../../scripts/run_easydpd_existing_chrome_host.mjs";
 import {
   existingLabelEvidence,
@@ -137,6 +140,11 @@ test("manager requires an independent live acknowledgement", () => {
   assert.equal(parseExistingChromeManagerArgs(["install", "--mode", "dry_run"]).mode, "dry_run");
   assert.throws(() => parseExistingChromeManagerArgs(["install", "--mode", "live"]), /acknowledge-production-write/);
   assert.equal(parseExistingChromeManagerArgs(["install", "--mode", "live", "--acknowledge-production-write"]).mode, "live");
+  assert.equal(
+    bridgeDestinations("/Users/test").runtimeRoot,
+    "/Users/test/Library/Application Support/NEONTRIP/easydpd-existing-chrome-bridge/runtime",
+  );
+  assert.doesNotMatch(bridgeDestinations("/Users/test").runtimeRoot, /Desktop|\/NEONTRIP\/runtime/);
 });
 
 test("service worker reuses an open tab, blocks existing labels and dispatches before one click", async () => {

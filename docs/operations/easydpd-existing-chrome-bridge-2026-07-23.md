@@ -36,6 +36,7 @@ EasyDPD selbst erfüllt die Shopify-Bestellung und löst die dort konfigurierte 
 - Live braucht gleichzeitig Server-Gates, lokale Live-Konfiguration und `--acknowledge-production-write`.
 - Die Erweiterung hat keine `<all_urls>`-Berechtigung. Erlaubt sind nur der feste NEONTRIP-Shopify-App-Pfad und `easydpd.247apps.de`.
 - Der Native Host akzeptiert ausschließlich die feste Erweiterungs-ID `bgfphlbhdameagnafljlgpbpjdajmdhk`.
+- Native Host und Erweiterungsruntime liegen unter `~/Library/Application Support/NEONTRIP/` und damit außerhalb TCC-geschützter Schreibtisch-/Dokumente-Symlinks.
 - API- und Cloudflare-Secrets bleiben im macOS-Schlüsselbund und stehen weder in der Erweiterung noch im Native-Host-Manifest.
 - Der Native Host akzeptiert nur vier Nachrichtentypen und nur API-Pfade, die exakt zur reservierten Job-ID gehören.
 - Der PDF-Pfad muss nach `realpath` unter `~/Downloads` liegen, dem lokalen Benutzer gehören, `.pdf` heißen, innerhalb der Größenbegrenzung liegen und mit `%PDF-` beginnen.

@@ -80,9 +80,9 @@ function launchctl(args, allowFailure = false) {
   return result;
 }
 
-function destinations() {
-  const home = homedir();
-  const runtimeRoot = join(home, "NEONTRIP", "runtime", "easydpd-existing-chrome-bridge");
+export function bridgeDestinations(home = homedir()) {
+  const applicationRoot = join(home, "Library", "Application Support", "NEONTRIP", "easydpd-existing-chrome-bridge");
+  const runtimeRoot = join(applicationRoot, "runtime");
   return {
     home,
     runtimeRoot,
@@ -93,7 +93,7 @@ function destinations() {
     nativeManifest: join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", `${NATIVE_HOST_NAME}.json`),
     oldWorkerPlist: join(home, "Library", "LaunchAgents", `${OLD_WORKER_LABEL}.plist`),
     statusPath: join(home, "Library", "Logs", "NEONTRIP", "easydpd-existing-chrome-bridge", "status.json"),
-    activeJobPath: join(home, "Library", "Application Support", "NEONTRIP", "easydpd-existing-chrome-bridge", "active-job.json"),
+    activeJobPath: join(applicationRoot, "active-job.json"),
     downloadRoot: join(home, "Downloads"),
   };
 }
@@ -185,7 +185,7 @@ function renderNativeManifest(executablePath) {
 
 function install(options) {
   const commit = gitState();
-  const target = destinations();
+  const target = bridgeDestinations();
   const runtime = requiredRuntimeEnvironment();
   const installId = `${commit}-${Date.now()}`;
   const staged = stageVersion(commit, installId, options, target, runtime);
@@ -232,7 +232,7 @@ function install(options) {
 }
 
 function currentVersion() {
-  const target = destinations();
+  const target = bridgeDestinations();
   if (!existsSync(target.currentFile)) throw new BrowserWorkerError("Existing-Chrome-Bridge ist noch nicht installiert.", 66);
   const current = JSON.parse(readFileSync(target.currentFile, "utf8"));
   const commit = String(current.commit || "");
@@ -249,7 +249,7 @@ async function selfTest() {
 }
 
 function status() {
-  const target = destinations();
+  const target = bridgeDestinations();
   let currentCommit = null;
   let config = null;
   let heartbeat = null;
@@ -289,7 +289,7 @@ function latestBackupInstallRecord(target) {
 }
 
 function rollback() {
-  const target = destinations();
+  const target = bridgeDestinations();
   const candidate = latestBackupInstallRecord(target);
   if (!candidate) throw new BrowserWorkerError("Kein Bridge-Installationsdatensatz fuer Rollback vorhanden.", 66);
   const { record } = candidate;

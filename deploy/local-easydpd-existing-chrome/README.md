@@ -22,7 +22,7 @@ npm run arrival-labels:existing-chrome:manage -- install --mode dry_run
 npm run arrival-labels:existing-chrome:manage -- status
 ```
 
-Danach wird einmalig in `chrome://extensions` der Entwicklermodus aktiviert und der vom Status ausgegebene Ordner über **Entpackte Erweiterung laden** ausgewählt. Die feste Erweiterungs-ID ist `bgfphlbhdameagnafljlgpbpjdajmdhk`.
+Danach wird einmalig in `chrome://extensions` der Entwicklermodus aktiviert und der vom Status ausgegebene Ordner unter `~/Library/Application Support/NEONTRIP/` über **Entpackte Erweiterung laden** ausgewählt. Die feste Erweiterungs-ID ist `bgfphlbhdameagnafljlgpbpjdajmdhk`. Die Runtime liegt absichtlich nicht unter einem Schreibtisch-/Dokumente-Symlink, damit ein von Chrome gestarteter Native Host nicht an macOS-Ordnerschutz scheitert.
 
 Der Dry-Run prüft Native Host, Schlüsselbund, normalen Chrome-Tab und easyDPD-Inhalt ohne Auftrag-Claim und ohne Kauf. Live benötigt eine zweite lokale Bestätigung:
 
