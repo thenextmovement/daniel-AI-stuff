@@ -1,5 +1,24 @@
 # QA and rollback — DHL/DPD arrival labels
 
+## Zustellabschluss: zusätzliche Pflichtprüfungen
+
+- PostgreSQL-17-Migration in einer Wegwerf-Datenbank anwenden, zurückrollen und erneut anwenden.
+- Beweisen, dass `delivered_today` monoton bleibt und Outlook-Mail-IDs über spätere Läufe vereinigt werden.
+- Beweisen, dass kein Trello-Job ohne bestätigten Labeldruck, mindestens eine nach Aktivierung archivierte exakte DHL-Mail und vollständig archivierte aktuelle Mail-ID-Menge entsteht.
+- Trello-Read-Prüfungen gegen falsches Board, falsche Liste, geschlossene Karte und abweichende vollständige Sendungsnummer ausführen; in allen Fällen darf kein `PUT` erfolgen.
+- Happy Path muss genau eine Reihenfolge protokollieren: Claim → `dispatching` → ein Trello-`PUT` mit `idList=Sign Arrived` und `pos=top` → `moved`.
+- Timeout/Fehler nach dem `dispatching`-Grenzpunkt muss `manual_review` ergeben und darf keinen automatischen zweiten `PUT` auslösen.
+- Eine bereits exakt in `Sign Arrived` befindliche Karte wird ohne weiteren Move idempotent als abgeschlossen protokolliert.
+- Der n8n-Finalizer muss genau einen Trigger haben. Nur der read-only Healthcheck darf Retries verwenden; Outlook-Archiv- und Trello-Prozessor-POST dürfen nicht automatisch wiederholt werden.
+
+Operativer Sofort-Rollback:
+
+1. `arrival_label_trello_arrival_settings.enabled=false` setzen.
+2. n8n-Finalizer deaktivieren oder auf die gesicherte Vorversion zurücksetzen.
+3. Ausstehende `dispatching`-/`manual_review`-Datensätze gegen Outlook und Trello händisch abgleichen; niemals blind requeue-en.
+4. Falls die Anwendung bereits zurückgerollt ist, anschließend die neue Migration mit dem zugehörigen Rollback-Skript entfernen. Auditdaten vorab sichern.
+5. Bereits archivierte Nachrichten und bereits verschobene Karten bleiben externe, bewusst nicht automatisch rückgängig gemachte Seiteneffekte.
+
 ## QA plan
 
 1. Run TypeScript, full repository tests and production build.

@@ -72,6 +72,47 @@ export async function updateArrivalOutlookArchive(input: {
   return rows[0];
 }
 
+export type ArrivalTrelloArrivalJobRow = {
+  id: string;
+  case_id: string;
+  idempotency_key: string;
+  expected_tracking_number: string;
+  trello_card_id: string;
+  status: "pending" | "claimed" | "dispatching" | "moved" | "retryable_error" | "manual_review" | "cancelled";
+  attempts: number;
+  max_attempts: number;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  moved_card_id: string | null;
+  last_error: string | null;
+};
+
+export async function claimArrivalTrelloArrival(input: { workerId: string; leaseSeconds?: number }) {
+  const rows = await supabaseRpc<ArrivalTrelloArrivalJobRow[]>("arrival_labels_claim_trello_arrival", {
+    p_worker_id: input.workerId,
+    p_lease_seconds: input.leaseSeconds || 180,
+  });
+  return rows[0] || null;
+}
+
+export async function updateArrivalTrelloArrival(input: {
+  jobId: string;
+  workerId: string;
+  result: "dispatching" | "moved" | "retryable_error" | "invalid_target" | "uncertain";
+  movedCardId?: string | null;
+  error?: string | null;
+}) {
+  const rows = await supabaseRpc<ArrivalTrelloArrivalJobRow[]>("arrival_labels_update_trello_arrival", {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_result: input.result,
+    p_moved_card_id: input.movedCardId || null,
+    p_error: input.error || null,
+  });
+  if (!rows[0]) throw new Error("Trello-Arrival-Status konnte nicht aktualisiert werden.");
+  return rows[0];
+}
+
 export type ArrivalReviewNotificationRow = {
   id: string;
   case_id: string;

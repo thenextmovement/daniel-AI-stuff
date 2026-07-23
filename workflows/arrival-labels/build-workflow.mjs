@@ -420,7 +420,7 @@ return { json: { dispatchReceiptId } };`,
 };
 
 const outlookArchiveWorkflow = {
-  name: "NEONTRIP Archive DHL Mail After Label Print v0.6 (INACTIVE)",
+  name: "NEONTRIP Finalize DHL Arrival After Label Print v0.7 (INACTIVE)",
   active: false,
   nodes: [
     {
@@ -432,7 +432,7 @@ const outlookArchiveWorkflow = {
       parameters: {
         width: 940,
         height: 220,
-        content: "## Exact DHL Outlook archive outbox\n\nRuns only after Postgres has recorded the shipping label as printed. A retryable GET /api/health readiness gate runs before the single-attempt archive processor POST. The Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Cloudflare Access and the Ops bearer token are both required. Only the read-only readiness GET may retry; the archive POST never retries automatically. Any uncertainty after move dispatch becomes manual review. Execution payloads are not persisted because the HTTP credential carries security headers; Postgres is the audit source of truth. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow, restore workflow version 593, and disable the database archive setting.",
+        content: "## Exact DHL arrival finalizer\n\nRuns only after Postgres has recorded the shipping label as printed. A retryable GET /api/health readiness gate runs before two single-attempt outbox processors. First, the Ops service claims one exact Outlook message ID, revalidates the allowlisted DHL sender plus full tracking number, marks dispatching, then performs one Graph move to Archive. Only after every exact message for a delivered case is archived can a separate Postgres outbox claim the exact Quentin card, revalidate the board, Sign SHIPPED and Sign Arrived lists plus the full tracking number, and move it once to the top of Sign Arrived. Cloudflare Access and the Ops bearer token are both required. Only the read-only readiness GET may retry; neither side-effect processor retries automatically after dispatch. Any uncertainty becomes manual review. Postgres is the audit source of truth and Trello is only a projection. No carrier purchase, Shopify write or print is possible. Rollback: deactivate this workflow and disable both database finalizer settings.",
       },
     },
     {
@@ -533,12 +533,43 @@ return [{ json: { baseUrl: config.baseUrl, workerId: config.workerId, opsCommit 
         },
       },
     },
+    {
+      id: "process-trello-arrival",
+      name: "Process One Sign Arrived Projection",
+      type: "n8n-nodes-base.httpRequest",
+      typeVersion: 4.4,
+      position: [1380, 300],
+      onError: "stopWorkflow",
+      parameters: {
+        authentication: "genericCredentialType",
+        genericAuthType: "httpCustomAuth",
+        method: "POST",
+        url: "={{ $node[\"Validate Ops Readiness\"].json.baseUrl + '/api/internal/arrival-labels/trello-arrivals/process' }}",
+        sendHeaders: true,
+        headerParameters: { parameters: [
+          { name: "X-Neontrip-Trello-Arrival-Worker", value: "={{ $node[\"Validate Ops Readiness\"].json.workerId }}" },
+          { name: "Content-Type", value: "application/json" },
+        ] },
+        sendBody: true,
+        contentType: "raw",
+        rawContentType: "application/json",
+        body: "={{ JSON.stringify({ workerId: $node[\"Validate Ops Readiness\"].json.workerId }) }}",
+        options: { timeout: 60000, response: { response: { responseFormat: "json" } } },
+      },
+      credentials: {
+        httpCustomAuth: {
+          id: "HJHHkJXK8B7QCtCQ",
+          name: "NEONTRIP Ops Archive Worker",
+        },
+      },
+    },
   ],
   connections: {
     "Archive Outbox Schedule": { main: [[{ node: "Validate Archive Worker Config", type: "main", index: 0 }]] },
     "Validate Archive Worker Config": { main: [[{ node: "Check Ops Readiness", type: "main", index: 0 }]] },
     "Check Ops Readiness": { main: [[{ node: "Validate Ops Readiness", type: "main", index: 0 }]] },
     "Validate Ops Readiness": { main: [[{ node: "Process One Exact DHL Archive", type: "main", index: 0 }]] },
+    "Process One Exact DHL Archive": { main: [[{ node: "Process One Sign Arrived Projection", type: "main", index: 0 }]] },
   },
   settings: {
     executionOrder: "v1",
@@ -548,7 +579,7 @@ return [{ json: { baseUrl: config.baseUrl, workerId: config.workerId, opsCommit 
     executionTimeout: 180,
     errorWorkflow: "ArT3LN25Mb1PAuBE",
   },
-  versionId: "arrival-outlook-archive-after-print-v0-6",
+  versionId: "arrival-finalizer-after-print-v0-7",
   meta: { templateCredsSetupCompleted: true },
   tags: [],
 };

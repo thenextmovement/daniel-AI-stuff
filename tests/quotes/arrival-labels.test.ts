@@ -123,6 +123,22 @@ test("DHL relative dates are evaluated in Europe/Berlin, not by server UTC", () 
   assert.equal(arrivalsFromDhlMessages(messages, "2026-07-19").length, 0);
 });
 
+test("confirmed German and English delivery mails become delivered_today, future notices do not", () => {
+  const base = {
+    receivedAt: "2026-07-20T08:00:00Z",
+    senderAddress: "DHL Express <tracking@express.dhl.com>",
+    bodyText: "DHL Express Sendungsnummer: 2619113486",
+  };
+  for (const subject of ["Ihre Sendung wurde zugestellt", "Your shipment has been delivered", "Delivery complete"]) {
+    const result = arrivalsFromDhlMessages([{ ...base, messageId: subject, subject }], "2026-07-20");
+    assert.equal(result[0]?.deliveryState, "delivered_today", subject);
+  }
+  for (const subject of ["Ihre Sendung wird heute zugestellt", "Your shipment is out for delivery"]) {
+    const result = arrivalsFromDhlMessages([{ ...base, messageId: subject, subject }], "2026-07-20");
+    assert.notEqual(result[0]?.deliveryState, "delivered_today", subject);
+  }
+});
+
 test("Trello matching requires the complete incoming DHL number", () => {
   const cards = [card("2619113486 | #NEONT100"), card("3486 | falscher Kurztreffer")];
   assert.equal(findTrelloCardForTracking(cards, "2619113486").card?.name, cards[0].name);

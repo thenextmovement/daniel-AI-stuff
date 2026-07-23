@@ -375,7 +375,11 @@ export function arrivalsFromDhlMessages(messages: DhlMailEvidence[], localDate: 
       && Temporal.PlainDate.from(receivedLocalDate).add({ days: 1 }).toString() === localDate;
     const explicitDate = dateTextMatches(text, localDate) && /\b(zustell|liefer|delivery|arriv|scheduled)\w*/i.test(text);
     const dueToday = relativeToday || relativeTomorrow || explicitDate;
-    const deliveredToday = /\bzugestellt\b/i.test(text) && dateTextMatches(text, localDate);
+    const futureDelivery = /\b(?:wird|werden)\b.{0,40}\bzugestellt\b|\bin\s+zustellung\b|\bout\s+for\s+delivery\b|\bscheduled\s+for\s+delivery\b/i.test(text);
+    const confirmedDelivery = /\b(?:wurde|ist|erfolgreich)\b.{0,40}\bzugestellt\b|\bhas\s+been\s+delivered\b|\bwas\s+delivered\b|\bdelivered\s+successfully\b|\bdelivery\s+complete\b/i.test(text);
+    const deliveredToday = confirmedDelivery
+      && !futureDelivery
+      && (receivedLocalDate === localDate || dateTextMatches(text, localDate));
     if (!dueToday && !deliveredToday) continue;
 
     for (const trackingNumber of extractDhlTrackingNumbers(text)) {

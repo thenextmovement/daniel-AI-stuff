@@ -1,5 +1,21 @@
 # DHL Express arrivals → DPD labels
 
+## Produktionsabschluss 2026-07-23
+
+Der bislang fehlende Zustellabschluss ist als getrennte, fail-closed Projektion umgesetzt:
+
+1. Ein DHL-Express-Eingang wird wie bisher anhand der vollständigen Sendungsnummer einem Postgres-Fall, einer Shopify-Bestellung und einer Quentin-Karte zugeordnet.
+2. Kauf, Shopify-Tracking, Kundenbenachrichtigung und A6-/gegebenenfalls A4-Druck bleiben die vorgelagerten, bereits getrennt abgesicherten Schritte.
+3. Erst nach einem in Postgres bestätigten A6-Labeldruck darf die exakte DHL-Mail-ID archiviert werden. Sender-Domain und vollständige DHL-Nummer werden unmittelbar vor dem einzelnen Graph-Move erneut geprüft.
+4. Eine bestätigte Zustellmail setzt den Fall monoton auf `delivered_today`; spätere Läufe dürfen diesen Zustand nicht zurückstufen. Frühere und spätere DHL-Mail-IDs werden vereinigt, nicht überschrieben.
+5. Erst wenn **jede** aktuelle DHL-Mail-ID des Falls erfolgreich archiviert ist, darf die separate Trello-Outbox aktiv werden.
+6. Der Trello-Worker prüft unmittelbar vor dem Move: exakte Karten-ID, Quentin-Board, offene Karte, vollständige DHL-Nummer, exakte Quellliste `Sign SHIPPED (NEON TRIP)` und exakte Zielliste `Sign Arrived`. Danach wird die Karte einmalig mit `pos=top` verschoben.
+7. Ein unbekanntes Ergebnis nach Beginn eines Outlook- oder Trello-Moves wird niemals automatisch wiederholt, sondern zu `manual_review`. Postgres bleibt Source of Truth; Trello ist nur Projektion.
+
+Die neue Trello-Outbox ist nach der Migration standardmäßig deaktiviert. Aktivierung und Zeitgrenze liegen in `arrival_label_trello_arrival_settings`; dadurch werden keine historischen Fälle ungeprüft nachverarbeitet. Sofortiger Stopp: Setting deaktivieren und den n8n-Finalizer anhalten. Ein Rollback der Datenbankobjekte steht unter `supabase/rollbacks/20260723103508_finalize_dhl_delivery_to_trello_sign_arrived_rollback.sql`; bereits extern archivierte E-Mails oder verschobene Karten werden nicht automatisch rückgängig gemacht.
+
+Die folgenden Abschnitte dokumentieren zusätzlich den ursprünglichen, read-only-first Entwurf und seine damaligen Aktivierungsgates. Für den aktuellen Live-Zustand sind die datierten Produktions- und Verifikationsnachweise maßgeblich.
+
 Status: implemented as an inactive, read-only-first candidate including a local print-worker design. The automation created no carrier label and submitted no automated print job; no n8n workflow was activated, no local print service was installed, and no database migration was applied. Separately, an operator manually verified, annotated and printed one already existing EasyDPD label (`#NEONT4498`) exactly once; that audited action is not an automation activation.
 
 The binding operator rules, including manual Trello lists, stale-label handling and the six-digit policy, are recorded in [dhl-dpd-arrival-labels-operating-standard.md](dhl-dpd-arrival-labels-operating-standard.md). The four manual photo cases from 2026-07-20 and the separately completed existing-label case are preserved in [dhl-dpd-arrival-labels-manual-batch-2026-07-20.md](dhl-dpd-arrival-labels-manual-batch-2026-07-20.md).

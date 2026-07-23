@@ -82,13 +82,15 @@ assert.equal(archiveWorkflow.settings.errorWorkflow, "ArT3LN25Mb1PAuBE");
 assert.equal(archiveWorkflow.settings.saveDataErrorExecution, "none");
 assert.equal(archiveWorkflow.settings.saveDataSuccessExecution, "none");
 assert.equal(archiveTriggers.length, 1);
-assert.equal(archiveRequests.length, 2);
+assert.equal(archiveRequests.length, 3);
 assert.equal(archiveWorkflow.settings.executionTimeout, 180);
-assert.match(archiveWorkflow.name, /v0[.]6/);
+assert.match(archiveWorkflow.name, /v0[.]7/);
 const readinessRequest = archiveRequests.find((node) => node.name === "Check Ops Readiness");
 const processorRequest = archiveRequests.find((node) => node.name === "Process One Exact DHL Archive");
+const trelloProcessorRequest = archiveRequests.find((node) => node.name === "Process One Sign Arrived Projection");
 assert.ok(readinessRequest, "readiness request is required");
 assert.ok(processorRequest, "archive processor request is required");
+assert.ok(trelloProcessorRequest, "Trello arrival processor request is required");
 assert.equal(readinessRequest.parameters.method, "GET");
 assert.match(readinessRequest.parameters.url, /api\/health/);
 assert.equal(readinessRequest.retryOnFail, true, "only the read-only readiness check may retry");
@@ -98,8 +100,13 @@ assert.ok(readinessRequest.parameters.options.timeout <= 10000);
 assert.equal(processorRequest.retryOnFail, undefined, "move processor request must not retry automatically");
 assert.equal(processorRequest.parameters.method, "POST");
 assert.ok(processorRequest.parameters.options.timeout <= 60000);
+assert.equal(trelloProcessorRequest.retryOnFail, undefined, "Trello move processor request must not retry automatically");
+assert.equal(trelloProcessorRequest.parameters.method, "POST");
+assert.ok(trelloProcessorRequest.parameters.options.timeout <= 60000);
 assert.match(archiveSerialized, /outlook-archives\/process/);
 assert.match(archiveSerialized, /X-Neontrip-Outlook-Archive-Worker/);
+assert.match(archiveSerialized, /trello-arrivals\/process/);
+assert.match(archiveSerialized, /X-Neontrip-Trello-Arrival-Worker/);
 for (const request of archiveRequests) {
   assert.equal(request.parameters.authentication, "genericCredentialType");
   assert.equal(request.parameters.genericAuthType, "httpCustomAuth");
@@ -114,12 +121,17 @@ assert.doesNotMatch(
   "secrets must stay in request headers and never enter the request body",
 );
 assert.doesNotMatch(
+  trelloProcessorRequest.parameters.body,
+  /ARRIVAL_LABEL_CF_ACCESS_CLIENT|ARRIVAL_LABEL_AGENT_API_TOKEN/,
+  "secrets must stay in request headers and never enter the Trello request body",
+);
+assert.doesNotMatch(
   archiveSerialized,
   /\$env|ARRIVAL_LABEL_CF_ACCESS_CLIENT|ARRIVAL_LABEL_AGENT_API_TOKEN|CF-Access-Client-Secret/,
   "archive workflow must use the encrypted custom-auth credential instead of environment secrets",
 );
 assert.doesNotMatch(archiveSerialized, /EASYDPD|createLabel|ARRIVAL_LABEL_WRITES_ENABLED|print-jobs\/claim/);
-assert.ok(archiveWorkflow.nodes.length <= 7, "archive orchestration must stay small");
+assert.ok(archiveWorkflow.nodes.length <= 8, "arrival-finalizer orchestration must stay small");
 for (const codeNode of archiveWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.code")) {
   assert.doesNotThrow(() => new Function(codeNode.parameters.jsCode), `${codeNode.name} JavaScript must parse`);
   assert.doesNotMatch(codeNode.parameters.jsCode, /\$env|ARRIVAL_LABEL_/, "Code runner must not receive production secrets");
