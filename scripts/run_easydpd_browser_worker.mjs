@@ -63,7 +63,8 @@ async function launchContext(configuration) {
     headless: false,
     acceptDownloads: true,
     viewport: { width: 1440, height: 1000 },
-    args: ["--disable-background-networking", "--disable-sync", "--restore-last-session"],
+    ignoreDefaultArgs: ["--disable-sync", "--use-mock-keychain", "--password-store=basic"],
+    args: ["--disable-background-networking", "--restore-last-session"],
   });
 }
 

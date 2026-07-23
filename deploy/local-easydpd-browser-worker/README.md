@@ -2,6 +2,8 @@
 
 Der lokale macOS-Worker verarbeitet ausschließlich bereits in Postgres freigegebene EasyDPD-Kaufaufträge. Er verwendet ein separates Chrome-Profil in einem dauerhaft laufenden Browserprozess, klickt pro Auftrag höchstens einmal auf `Create label` und wiederholt nach dem Dispatch niemals automatisch einen Kauf. Der langlebige Prozess ist erforderlich, weil die Shopify-Sitzung beim Beenden dieses separaten Browsers nicht zuverlässig erhalten bleibt.
 
+Das separate Profil kann mit demselben Google-Konto wie der normale Chrome angemeldet werden, verwendet aber bewusst nicht das normale Chrome-Benutzerdatenverzeichnis. Playwrights Sync- und Mock-Keychain-Standardparameter werden für dieses Profil herausgefiltert, damit Chrome den echten macOS-Schlüsselbund und die normale Profilanmeldung verwenden kann.
+
 ## Sicherheitsgrenzen
 
 - Postgres-Queue und eindeutiger `case_id` sind die Idempotenzgrenze.

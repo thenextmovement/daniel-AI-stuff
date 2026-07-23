@@ -70,6 +70,8 @@ test("worker marks dispatching before exactly one purchase click and routes late
   assert.match(source, /const EASYDPD_DASHBOARD = "https:\/\/admin[.]shopify[.]com\/store\/galaxybuzzdk\/apps\/dpd-versand-services";/);
   assert.doesNotMatch(source, /const EASYDPD_DASHBOARD = .*\/fulfillments";/);
   assert.match(source, /--restore-last-session/);
+  assert.match(source, /ignoreDefaultArgs: \["--disable-sync", "--use-mock-keychain", "--password-store=basic"\]/);
+  assert.doesNotMatch(source, /args: \[[^\]]*"--disable-sync"/);
   const dispatch = source.indexOf('updateJob(configuration, job, "dispatching")');
   const click = source.indexOf("createButton.click");
   assert.ok(dispatch >= 0 && click > dispatch);
