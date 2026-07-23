@@ -1,0 +1,45 @@
+{
+  "incident_date": "2026-07-23",
+  "timezone": "Europe/Berlin",
+  "workflow_backups": {
+    "7AvW1d4JBNDFuNsv": "xocBJAwf4qHVhQZS",
+    "Hzf3fcJwmcCxExnx": "A0bG6Q7nyfoo6w6y",
+    "uRYt9I30bzzVTB2D": "geHePkhCl1bNO5aI",
+    "o3Lckpd5ZiH1hQ4H": "KM0dTjMbGaleGsGZ",
+    "X5etVW0msgSzHMMG": "iVb7i0a79TIoHZXU",
+    "8PlBdlnG8gwtYTc7": "q4lUrgfeo21BCd7e",
+    "M4uG1HAtN9Zggxww": "7BUhJaslYnAV3KkT"
+  },
+  "execution_storage_settings_applied_to": [
+    "7AvW1d4JBNDFuNsv",
+    "Hzf3fcJwmcCxExnx",
+    "uRYt9I30bzzVTB2D",
+    "o3Lckpd5ZiH1hQ4H",
+    "X5etVW0msgSzHMMG",
+    "8PlBdlnG8gwtYTc7"
+  ],
+  "execution_storage_settings": {
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": false
+  },
+  "notifier": {
+    "workflow_id": "M4uG1HAtN9Zggxww",
+    "dedupe_minutes": 15,
+    "global_hourly_email_cap": 20,
+    "send_retry_on_fail": false,
+    "send_max_tries": 1
+  },
+  "rh_validation_repairs": [
+    {
+      "node_id": "get-card-1",
+      "field": "parameters.id",
+      "change": "string expression to resource locator with mode=id"
+    },
+    {
+      "node_id": "1f9f14c5-18ed-4562-a12d-7620946e818c",
+      "field": "continueOnFail",
+      "change": "removed deprecated property; retained onError=continueRegularOutput"
+    }
+  ]
+}
