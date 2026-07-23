@@ -31,6 +31,7 @@ import {
   setSupplierSaleQuentinTrelloCard,
   supplierApprovedDesignSelection,
   supplierProductionDescription,
+  supplierSaleQuentinTrelloCandidates,
   supplierSaleCompletionHideAt,
   supplierSaleNeedsDeadlineTask,
   supplierSaleReadyForProduction,
@@ -757,7 +758,7 @@ test("supplier sales resolve one exact Trello card from the Nerdyforms request i
   assert.equal(rows[2]?.trello_card_id, "stored-card");
 });
 
-test("supplier sales resolve Quentin cards by identifiers and newest exact customer-name match", () => {
+test("supplier sales resolve a single Quentin card by request id or customer name and keep multiple matches unresolved", () => {
   const rows = enrichSupplierSalesFromQuentinBoard(
     [
       saleRow({ id: "sale-request", request_id: "Nerdy-ABC-77", customer_name: "Wrong Person", trello_card_id: null }),
@@ -777,9 +778,24 @@ test("supplier sales resolve Quentin cards by identifiers and newest exact custo
   assert.equal(rows[0]?.trello_card_id, null);
   assert.equal(rows[0]?.quentin_trello_card_id, "request-card");
   assert.equal(rows[1]?.quentin_trello_card_id, "order-card");
-  assert.equal(rows[2]?.quentin_trello_card_id, "new-name-card");
+  assert.equal(rows[2]?.quentin_trello_card_id ?? null, null);
   assert.equal(rows[3]?.trello_card_id, "stored-card", "the Anfrage Management source card must remain intact");
   assert.equal(rows[3]?.quentin_trello_card_id, "request-card", "the Quentin card is tracked separately");
+});
+
+test("Quentin candidates prefer request id over customer name and list every match newest first", () => {
+  const candidates = supplierSaleQuentinTrelloCandidates(
+    saleRow({ request_id: "Nerdy-ABC-77", customer_name: "Anna Müller", trello_card_id: null }),
+    [
+      { id: "request-old", name: "Request old", desc: "Nerdy-ABC-77", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-20T10:00:00Z", customFieldValues: [] },
+      { id: "request-new", name: "Request new", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-22T10:00:00Z", customFieldValues: ["Nerdy-ABC-77"] },
+      { id: "name-newest", name: "Anna Müller | 3D", desc: "", idBoard: "62bae9b97705e7419ed64593", url: null, closed: false, dateLastActivity: "2026-07-23T10:00:00Z", customFieldValues: [] },
+    ],
+  );
+
+  assert.deepEqual(candidates.map((candidate) => candidate.cardId), ["request-new", "request-old"]);
+  assert.ok(candidates.every((candidate) => candidate.matchBasis === "request_id"));
+  assert.ok(candidates.every((candidate) => candidate.cardUrl.startsWith("https://trello.com/c/")));
 });
 
 test("supplier sales keep an equally current name-only Trello match unresolved", () => {

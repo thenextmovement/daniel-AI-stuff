@@ -55,6 +55,14 @@ type SupplierSaleTrelloDescriptionSnapshot = {
   fetchedAt: string;
 };
 
+type SupplierSaleTrelloCandidate = {
+  cardId: string;
+  cardUrl: string;
+  cardName: string;
+  lastActivity: string | null;
+  matchBasis: "request_id" | "customer_name";
+};
+
 type SupplierSaleApprovedDesignUpload = {
   cardId: string;
   cardUrl: string;
@@ -74,6 +82,7 @@ type SupplierSalesApiResponse = {
   board?: SupplierSaleBoard;
   sale?: SupplierSale;
   trelloDescription?: SupplierSaleTrelloDescriptionSnapshot;
+  trelloCandidates?: SupplierSaleTrelloCandidate[];
   approvedDesignUpload?: SupplierSaleApprovedDesignUpload;
   liveCheck?: SupplierSalesLiveCheck;
   deadlineTasks?: {
@@ -756,6 +765,7 @@ function SaleCard({
   const [reviewNow, setReviewNow] = useState(() => Date.now());
   const [completionNow, setCompletionNow] = useState(() => Date.now());
   const [trelloDescription, setTrelloDescription] = useState<SupplierSaleTrelloDescriptionSnapshot | null>(null);
+  const [trelloCandidates, setTrelloCandidates] = useState<SupplierSaleTrelloCandidate[]>([]);
   const [trelloPrependText, setTrelloPrependText] = useState("");
   const [trelloDescriptionBusy, setTrelloDescriptionBusy] = useState(false);
   const [trelloDescriptionError, setTrelloDescriptionError] = useState<string | null>(null);
@@ -773,6 +783,7 @@ function SaleCard({
     setPaymentDecision(defaultPaymentDecision(sale));
     setReminderLink(sale.paymentLink || sale.shopifyOrderUrl || "");
     setTrelloDescription(null);
+    setTrelloCandidates([]);
     setTrelloPrependText("");
     setTrelloDescriptionError(null);
     setTrelloDescriptionSaved(false);
@@ -832,9 +843,18 @@ function SaleCard({
         30_000,
       );
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
-      if (!response.ok || !payload?.ok || !payload.trelloDescription) throw new Error(formatApiError(payload));
-      setTrelloDescription(payload.trelloDescription);
-      setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
+      if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
+      const candidates = payload.trelloCandidates || [];
+      setTrelloCandidates(candidates);
+      if (payload.trelloDescription) {
+        setTrelloDescription(payload.trelloDescription);
+        setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
+      } else if (candidates.length) {
+        setTrelloDescription(null);
+        setTrelloPrependText("");
+      } else {
+        throw new Error("Keine passende Quentin-Karte gefunden.");
+      }
     } catch (error) {
       setTrelloDescriptionError(formatUnknownError(error, "Trello-Karte konnte nicht ausgelesen werden."));
     } finally {
@@ -895,8 +915,8 @@ function SaleCard({
     setTrelloLinkEditing(true);
   }
 
-  async function saveTrelloLink() {
-    const nextLink = trelloLinkInput.trim();
+  async function saveTrelloLink(candidateUrl?: string) {
+    const nextLink = String(candidateUrl || trelloLinkInput).trim();
     if (!nextLink) {
       setTrelloDescriptionError("Bitte Trello-Link oder Card-ID eintragen.");
       return;
@@ -915,6 +935,7 @@ function SaleCard({
       });
       if (!payload?.trelloDescription) throw new Error("Die bestaetigte Quentin-Karte konnte nicht geladen werden.");
       setTrelloDescription(payload.trelloDescription);
+      setTrelloCandidates([]);
       setTrelloPrependText(payload.trelloDescription.suggestedPrependText);
       setTrelloLinkInput(payload.trelloDescription.cardUrl);
       setTrelloLinkEditing(false);
@@ -1444,6 +1465,39 @@ function SaleCard({
 
                 {trelloDescriptionError ? (
                   <p className="rounded-[0.5rem] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{trelloDescriptionError}</p>
+                ) : null}
+                {trelloCandidates.length ? (
+                  <div className="grid gap-2 rounded-[0.5rem] border border-amber-300 bg-amber-50 p-3">
+                    <div>
+                      <p className="text-xs font-semibold text-amber-950">Mehrere passende Quentin-Karten gefunden</p>
+                      <p className="mt-1 text-[11px] leading-4 text-amber-900">
+                        Reihenfolge: Request-ID vor Kundenname; innerhalb der Treffer steht die zuletzt bearbeitete Karte oben. Bitte die richtige Karte bewusst auswaehlen.
+                      </p>
+                    </div>
+                    <div className="grid gap-2">
+                      {trelloCandidates.map((candidate) => (
+                        <div key={candidate.cardId} className="flex flex-wrap items-center justify-between gap-2 rounded-[0.5rem] border border-amber-200 bg-white px-3 py-2">
+                          <div className="min-w-0 text-xs">
+                            <a href={candidate.cardUrl} target="_blank" rel="noreferrer" className="block truncate font-semibold text-stone-950 underline">
+                              {candidate.cardName}
+                            </a>
+                            <span className="text-stone-600">
+                              {candidate.matchBasis === "request_id" ? "Request-ID" : "Kundenname"}
+                              {candidate.lastActivity ? ` · zuletzt ${formatDateTime(candidate.lastActivity)}` : ""}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={saving || trelloDescriptionBusy}
+                            onClick={() => void saveTrelloLink(candidate.cardUrl)}
+                            className="rounded-[0.5rem] bg-amber-800 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-stone-300"
+                          >
+                            Diese Karte verwenden
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
                 {trelloDescriptionSaved ? (
                   <p className="flex items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
