@@ -114,8 +114,15 @@ function stopNode(id, name, position) {
       mode: "runOnceForAllItems",
       jsCode: String.raw`const reason = String($input.first()?.json?.reason || 'draft_unknown');
 const allowed = new Set(['active_lease', 'manual_review_required', 'stale_lease_draft_unknown', 'draft_unknown']);
-throw new Error('Customer draft loop stopped safely: ' + (allowed.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');
-return [];`,
+const safeReason = allowed.has(reason) ? reason : 'draft_unknown';
+return [{ json: {
+  status: 'stopped_safely',
+  reason: safeReason,
+  automaticRetryAllowed: false,
+  automaticSendAllowed: false,
+  humanApprovalRequired: true,
+  shouldReport: false,
+} }];`,
     },
   };
 }

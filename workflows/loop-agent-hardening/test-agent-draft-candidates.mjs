@@ -62,6 +62,17 @@ for (const workflow of [design, winback]) {
   assert.notEqual(draft.retryOnFail, true);
   assert.equal(draft.onError, "continueErrorOutput");
   assert.equal(workflow.connections.CreateOutlookDraft.main.length, 2);
+
+  const safeStop = workflow.nodes.find((node) =>
+    /^Stop.*DraftSafely$/.test(node.name),
+  );
+  assert.ok(safeStop, `${workflow.id} must have a safe stop node`);
+  assert.match(safeStop.parameters.jsCode, /status: 'stopped_safely'/);
+  assert.doesNotMatch(
+    safeStop.parameters.jsCode,
+    /throw new Error\('Customer draft loop stopped safely/,
+    `${workflow.id} expected claim stops must not trigger error alerts`,
+  );
 }
 
 assert.equal(design.nodes.length, 12);
@@ -86,6 +97,27 @@ assert.equal(
 );
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const safeStopCode = nodeByName(
+  design,
+  "StopDesignDraftSafely",
+).parameters.jsCode;
+const runSafeStop = new AsyncFunction("$input", safeStopCode);
+const safeStop = await runSafeStop({
+  first: () => ({ json: { reason: "manual_review_required" } }),
+});
+assert.deepEqual(safeStop, [
+  {
+    json: {
+      status: "stopped_safely",
+      reason: "manual_review_required",
+      automaticRetryAllowed: false,
+      automaticSendAllowed: false,
+      humanApprovalRequired: true,
+      shouldReport: false,
+    },
+  },
+]);
+
 const designCode = nodeByName(design, "BuildValidatedDraft").parameters.jsCode;
 const runDesign = new AsyncFunction("$input", designCode);
 const reminderInput = {

@@ -164,6 +164,15 @@ Keep the previous workflow active version and full JSON backup until the replace
 - Added a strict-valid Supplier Shopify Tag Sync v0.2 candidate that removes three-attempt POST retry behavior, restores TLS certificate verification, and uses one bounded 60-second attempt.
 - Captured versioned backups for the active-but-labelled-inactive payment-reminder webhook, the unused Gemini v1.1 duplicate, and the active Customs cleanup workflow before any state/name decision.
 
+### 2026-07-23 mockup recurrence correction
+
+- The legacy Gemini v1.1 duplicate was reactivated after its retirement decision. Together with canonical v1.2.1, it polled Trello every ten seconds and produced 129 executions in about 35 minutes, including 38 queued/new and 83 crashed executions.
+- Canonical v1.2.1 still had 24 retry-enabled Trello side effects. Its custom error handler and the legacy v1.1 cleanup performed additional bulk Trello comments/label removals with retries, creating a webhook feedback loop during PostgreSQL pool exhaustion.
+- Gemini v1.1, the bulk-Trello error handler, and the legacy v1.1 cleanup are now inactive and explicitly named `DO NOT ACTIVATE`.
+- Interim canonical v1.2.2 polls once per minute, permits one active processing card, caps generation retries at three, disables retries for all Trello writes, and routes errors only to the bounded central notifier.
+- The canonical workflow is still a 96-node containment graph and remains scheduled for decomposition.
+- The design reminder had separately drifted back to automatic send. It is restored to Outlook draft-only, human-review-required behavior, and expected claim stops now complete successfully instead of generating error-alert emails.
+
 ### ActiveCampaign auto-reply draft replacement
 
 - Replaced the 32-node auto-send design with a strict-valid 22-node database draft loop and one webhook trigger.

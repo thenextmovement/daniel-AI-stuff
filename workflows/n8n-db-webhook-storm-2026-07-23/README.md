@@ -4,12 +4,18 @@
 
 Contained, hardened, and restored under bounded concurrency.
 
-- Last n8n error mail in Outlook: `2026-07-23 13:41:32 CEST`.
-- Normal business mail continued afterward.
-- No new failed n8n execution was recorded after `13:47:22 CEST` during
-  restoration.
-- `/healthz` and `/healthz/readiness` returned `200` throughout every
-  post-change sample, including after all affected workflows were restored.
+- The PostgreSQL-timeout mail storm ended at `2026-07-23 13:41:32 CEST`.
+- A separate design-reminder regression produced expected-stop/error alerts
+  through `14:25:25 CEST`; its safe stop is now a successful no-op.
+- Normal business mail continued after the database storm.
+- No global n8n error execution or Outlook n8n error mail appeared after
+  `14:25:25 CEST` during final controlled restoration.
+- The only matching design-reminder customer mail is the already quarantined
+  send at `14:10:26 CEST`; no later automatic customer send appeared.
+- `/healthz` and `/healthz/readiness` returned `200` in 20 consecutive final
+  samples, including after the bounded canonical mockup workflow was restored.
+- The latest 100 stored production executions after restoration were all
+  successful.
 - Current n8n logs contain no new PostgreSQL pool timeout. Separate handled
   `invalid_message_id` messages and calls to formerly inactive webhook paths
   are not database failures and did not affect readiness.
@@ -56,6 +62,12 @@ settings were compared with the source.
 | NEONTRIP Quote Ready SIMPLE v1.1 | `X5etVW0msgSzHMMG` | `iVb7i0a79TIoHZXU` |
 | Trello Update Auto-Email → Outlook mit PandaDoc Link | `8PlBdlnG8gwtYTc7` | `q4lUrgfeo21BCd7e` |
 | Error Notification → info@NeonTrip.de | `M4uG1HAtN9Zggxww` | `7BUhJaslYnAV3KkT` |
+| Gemini Mockup Generator v1.1 legacy duplicate | `Rmv4Ht895SiIgUOC` | `haIxxQLtc7NWN49D` |
+| Gemini Mockup Generator v1.2.1 canonical before bounding | `T4mdDxLquLMJ6FMl` | `GMf4Njo0bqStYwFW` |
+| Design reminder before draft-only restoration | `btJd34v7PJFVej6G` | `5JAEFgo7kxq78rT4` |
+| Design reminder before expected-stop no-op | `btJd34v7PJFVej6G` | `HFyaNKV3rRMddVrP` |
+| Legacy bulk-Trello mockup error handler | `2gTu1lSGwsONtPSH` | `SgEfN0SuVyJUPmES` |
+| Legacy v1.1 mockup cleanup | `fiDudR4FqkND92G0` | `okQts8yB3IdsNx6x` |
 
 The seven production workflows were first deactivated. The n8n application and
 PostgreSQL containers were stopped as one stack without deleting persistent
@@ -130,6 +142,74 @@ Workflows were restored one at a time in this order:
 Readiness remained `200` between every activation. The already-active Preview
 Delivery Worker v2.1 (`S4gjf0YeZjP0pqFR`) remained active and uses its existing
 token-bound database claim loop.
+
+## Second recurrence: exact Trello / mockup trigger
+
+The initial infrastructure repair bounded the blast radius but did not remove
+the workflow-level trigger. Two overlapping Gemini mockup pollers had been
+active against different Trello lists:
+
+- legacy v1.1 `Rmv4Ht895SiIgUOC`;
+- canonical v1.2.1 `T4mdDxLquLMJ6FMl`.
+
+Both ran every ten seconds. In about 35 minutes they created 129 executions:
+38 remained queued/new and 83 crashed. The canonical graph also contained 24
+retry-enabled Trello write nodes. Those writes changed labels, comments,
+attachments, and titles, causing additional board webhook executions while the
+PostgreSQL execution pool was already saturated.
+
+The canonical graph pointed to custom error workflow `2gTu1lSGwsONtPSH`.
+Every workflow error made that handler list all processing-labelled cards,
+comment on each card, and remove labels with retries. Legacy cleanup
+`fiDudR4FqkND92G0` separately polled the retired v1.1 list and also removed
+labels with retries. These were feedback amplifiers, not recovery controls.
+
+The production correction is:
+
+- legacy v1.1 is inactive and explicitly named `DO NOT ACTIVATE`;
+- the bulk-Trello error handler is inactive and no production workflow points
+  to it;
+- the legacy v1.1 cleanup is inactive and explicitly named `DO NOT ACTIVATE`;
+- canonical v1.2.2 polls once per minute, processes at most one active card,
+  uses at most three generation attempts, and never retries Trello writes;
+- canonical errors route to the capped central notifier, not to Trello;
+- canonical success payloads are not persisted and execution timeout is ten
+  minutes.
+
+The 96-node canonical workflow remains an interim bounded implementation. It
+must be decomposed before adding functionality; the incident fix does not
+reclassify the oversized graph as target architecture.
+
+## Separate design-reminder regression
+
+The design reminder had drifted from draft-only to automatic send. Execution
+`3555869` sent one customer message, then failed while recording the provider
+receipt because the Outlook response did not supply the expected draft ID.
+The exact database job
+`bdd5680b-7f3e-4d02-a8d0-4a354eefb819` was moved to `draft_unknown` with
+automatic send and automatic retry disabled.
+
+Production `btJd34v7PJFVej6G` is now:
+
+- Outlook `saveAsDraft: true`;
+- `automaticSendAllowed: false`;
+- `humanApprovalRequired: true`;
+- no Outlook retry;
+- strict-valid with 12 nodes and one trigger;
+- expected `active_lease`, `manual_review_required`, and `draft_unknown`
+  outcomes return a successful `stopped_safely` result instead of throwing an
+  n8n error.
+
+The candidate builder and regression test assert this successful fail-closed
+behavior so a future rebuild cannot reintroduce alert-producing expected
+stops.
+
+Final restoration activated design draft-only first and then canonical mockup
+v1.2.2. Successful runs are intentionally not persisted, so verification used
+the absence of new error executions, the bounded Outlook view, PostgreSQL job
+state, active published graphs, 20 consecutive health/readiness samples, and
+the latest 100 stored executions. The retired v1.1, bulk error handler, and
+legacy cleanup recorded no post-deactivation starts.
 
 ## Residual architecture work
 

@@ -8,7 +8,15 @@
     "o3Lckpd5ZiH1hQ4H": "KM0dTjMbGaleGsGZ",
     "X5etVW0msgSzHMMG": "iVb7i0a79TIoHZXU",
     "8PlBdlnG8gwtYTc7": "q4lUrgfeo21BCd7e",
-    "M4uG1HAtN9Zggxww": "7BUhJaslYnAV3KkT"
+    "M4uG1HAtN9Zggxww": "7BUhJaslYnAV3KkT",
+    "Rmv4Ht895SiIgUOC": "haIxxQLtc7NWN49D",
+    "T4mdDxLquLMJ6FMl": "GMf4Njo0bqStYwFW",
+    "btJd34v7PJFVej6G": [
+      "5JAEFgo7kxq78rT4",
+      "HFyaNKV3rRMddVrP"
+    ],
+    "2gTu1lSGwsONtPSH": "SgEfN0SuVyJUPmES",
+    "fiDudR4FqkND92G0": "okQts8yB3IdsNx6x"
   },
   "execution_storage_settings_applied_to": [
     "7AvW1d4JBNDFuNsv",
@@ -29,6 +37,39 @@
     "global_hourly_email_cap": 20,
     "send_retry_on_fail": false,
     "send_max_tries": 1
+  },
+  "mockup_feedback_loop_correction": {
+    "canonical_workflow_id": "T4mdDxLquLMJ6FMl",
+    "legacy_duplicate_workflow_id": "Rmv4Ht895SiIgUOC",
+    "legacy_error_handler_workflow_id": "2gTu1lSGwsONtPSH",
+    "legacy_cleanup_workflow_id": "fiDudR4FqkND92G0",
+    "poll_interval_minutes": 1,
+    "max_active_processing_cards": 1,
+    "max_generation_retries": 3,
+    "trello_side_effect_retries": 0,
+    "canonical_error_workflow_id": "M4uG1HAtN9Zggxww",
+    "legacy_workflows_active": false
+  },
+  "design_reminder_correction": {
+    "workflow_id": "btJd34v7PJFVej6G",
+    "save_as_draft": true,
+    "automatic_send_allowed": false,
+    "automatic_retry_allowed": false,
+    "human_approval_required": true,
+    "expected_stop_is_successful_noop": true,
+    "quarantined_job_id": "bdd5680b-7f3e-4d02-a8d0-4a354eefb819"
+  },
+  "restoration_verification": {
+    "canonical_mockup_active": true,
+    "design_reminder_active": true,
+    "legacy_mockup_workflows_active": false,
+    "latest_global_error_execution_started_at": "2026-07-23T12:25:23.023Z",
+    "latest_outlook_error_mail_received_at": "2026-07-23T12:25:25Z",
+    "latest_design_customer_mail_received_at": "2026-07-23T12:10:26Z",
+    "consecutive_healthz_200_samples": 10,
+    "consecutive_readiness_200_samples": 10,
+    "latest_stored_execution_sample_size": 100,
+    "latest_stored_execution_success_count": 100
   },
   "rh_validation_repairs": [
     {

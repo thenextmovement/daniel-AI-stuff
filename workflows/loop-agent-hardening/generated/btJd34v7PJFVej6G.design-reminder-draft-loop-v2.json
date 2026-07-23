@@ -390,7 +390,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const reason = String($input.first()?.json?.reason || 'draft_unknown');\nconst allowed = new Set(['active_lease', 'manual_review_required', 'stale_lease_draft_unknown', 'draft_unknown']);\nthrow new Error('Customer draft loop stopped safely: ' + (allowed.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');\nreturn [];"
+        "jsCode": "const reason = String($input.first()?.json?.reason || 'draft_unknown');\nconst allowed = new Set(['active_lease', 'manual_review_required', 'stale_lease_draft_unknown', 'draft_unknown']);\nconst safeReason = allowed.has(reason) ? reason : 'draft_unknown';\nreturn [{ json: {\n  status: 'stopped_safely',\n  reason: safeReason,\n  automaticRetryAllowed: false,\n  automaticSendAllowed: false,\n  humanApprovalRequired: true,\n  shouldReport: false,\n} }];"
       }
     }
   ],
