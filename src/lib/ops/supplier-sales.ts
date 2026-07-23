@@ -1554,6 +1554,8 @@ const SUPPLIER_PRODUCTION_LABELS: Record<string, string> = {
   outdoor: "Use",
   rueckwand: "Backboard",
   ruckwand: "Backboard",
+  rueckplatte: "Backboard",
+  ruckplatte: "Backboard",
   backboard: "Backboard",
   hintergrund: "Backboard",
   backing: "Backboard",
@@ -1686,6 +1688,14 @@ function descriptionDetailLines(value: unknown) {
   return text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.includes(":"));
 }
 
+function embeddedDescriptionDetailLines(value: unknown) {
+  return arrayRecords(value).flatMap((entry) => {
+    const name = supplierProductionKey(recordString(entry, ["name", "label", "title", "key"], 80) || "");
+    if (!["beschreibung", "description", "details"].includes(name)) return [];
+    return descriptionDetailLines(entry.value ?? entry.text ?? entry.selected ?? entry.option);
+  });
+}
+
 function normalizeSupplierProductionDetails(row: SupplierSaleItemRow, details: string[]) {
   const normalized = new Map<string, string>();
   normalized.set("Product Type", productionTypeForItem(row));
@@ -1720,6 +1730,9 @@ function itemSelectionDetails(row: SupplierSaleItemRow) {
     ...optionDetailLines(raw.options),
     ...optionDetailLines(raw.properties),
     ...optionDetailLines(raw.selectedOptions),
+    ...embeddedDescriptionDetailLines(raw.options),
+    ...embeddedDescriptionDetailLines(raw.properties),
+    ...embeddedDescriptionDetailLines(raw.selectedOptions),
     ...descriptionDetailLines(raw.description),
   ].filter((line): line is string => Boolean(line));
 

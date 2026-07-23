@@ -738,6 +738,44 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
   assert.ok(sale?.items[0]?.selectionDetails.includes("Backboard: Acryl klar"));
 });
 
+test("supplier sales expose multiline Shopify description properties for existing sales", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-existing-description-property", shopify_order_name: "#NEONT4459" })],
+    [
+      itemRow({
+        sale_id: "sale-existing-description-property",
+        title: "Leuchtschild Design",
+        product_type: "LED-Leuchtschild",
+        raw_line_item: {
+          properties: [
+            {
+              name: "Beschreibung",
+              value: [
+                "Größe: 140x31cm",
+                "Rückplatte: Formzuschnitt / Mit UV Druck",
+                "Leuchtfarbe: Kaltweiß",
+                "Einsatzort: Innenbereich",
+                "Kabelabgang: Kabelabgang egal",
+              ].join("\n"),
+            },
+            { name: "Bereich", value: "LED-Leuchtschild" },
+          ],
+        },
+      }),
+    ],
+    [],
+  );
+
+  assert.deepEqual(board.items[0]?.items[0]?.selectionDetails, [
+    "Product Type: LED-Leuchtschild",
+    "Size: 140x31cm",
+    "Backboard: Formzuschnitt / Mit UV Druck",
+    "Color: Kaltweiß",
+    "Use: Indoor",
+    "Cable Position: Kabelabgang egal ❗",
+  ]);
+});
+
 test("supplier sales resolve one exact Trello card from the Nerdyforms request id and keep ambiguity closed", () => {
   const rows = enrichSupplierSalesWithUniqueRequestTrelloCards(
     [
