@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowRight, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
 import { OpsAppSwitcher, type OpsAppKey } from "./ops-app-switcher";
 
 type OpsLoginCardProps = {
@@ -30,6 +31,8 @@ export function OpsLoginCard({
   onPasswordChange,
   onSubmit,
 }: OpsLoginCardProps) {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#f7f4ef] px-6 py-10 text-stone-950">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
@@ -79,20 +82,32 @@ export function OpsLoginCard({
                 </span>
               </label>
 
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-stone-800">Passwort</span>
+              <div className="grid gap-2">
+                <label htmlFor="ops-password" className="text-sm font-medium text-stone-800">
+                  Passwort
+                </label>
                 <span className="relative block">
                   <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
                   <input
+                    id="ops-password"
                     value={password}
                     onChange={(event) => onPasswordChange(event.target.value)}
-                    className="h-12 w-full rounded-2xl border border-stone-300 bg-white pl-11 pr-4 text-sm outline-none transition placeholder:text-stone-400 focus:border-stone-950"
+                    className="h-12 w-full rounded-2xl border border-stone-300 bg-white pl-11 pr-12 text-sm outline-none transition placeholder:text-stone-400 focus:border-stone-950"
                     placeholder="Internes Passwort"
-                    type="password"
+                    type={isPasswordVisible ? "text" : "password"}
                     autoComplete="current-password"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setIsPasswordVisible((visible) => !visible)}
+                    className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-950 focus-visible:ring-offset-2"
+                    aria-label={isPasswordVisible ? "Passwort verbergen" : "Passwort anzeigen"}
+                    aria-pressed={isPasswordVisible}
+                  >
+                    {isPasswordVisible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                  </button>
                 </span>
-              </label>
+              </div>
             </div>
 
             {error ? <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}

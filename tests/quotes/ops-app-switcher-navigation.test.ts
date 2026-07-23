@@ -72,6 +72,18 @@ test("secondary ops entry points expose Company Brain", () => {
   assert.match(companyBrainSource, /\/ops\/company-brain\/governance/);
 });
 
+test("ops login can reveal and hide the password accessibly", () => {
+  const source = readFileSync("src/app/ops/ops-login-card.tsx", "utf8");
+
+  assert.match(source, /useState\(false\)/);
+  assert.match(source, /type=\{isPasswordVisible \? "text" : "password"\}/);
+  assert.match(source, /Passwort anzeigen/);
+  assert.match(source, /Passwort verbergen/);
+  assert.match(source, /aria-pressed=\{isPasswordVisible\}/);
+  assert.match(source, /type="button"/);
+  assert.match(source, /htmlFor="ops-password"/);
+});
+
 test("company brain fix center groups risky actions and avoids browser prompts", () => {
   const source = readFileSync("src/app/ops/company-brain/page-client.tsx", "utf8");
 
