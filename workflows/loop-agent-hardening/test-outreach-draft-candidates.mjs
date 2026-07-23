@@ -121,6 +121,43 @@ for (const [workflow, draftName, completeName, unknownName] of [
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
+const stopPostDelivery = new AsyncFunction(
+  "$input",
+  node(workflows.post, "StopPostDeliveryDraftSafely").parameters.jsCode,
+);
+const safeStopResult = await stopPostDelivery({
+  first: () => ({
+    json: {
+      reason: "manual_review_required",
+      status: "draft_unknown",
+    },
+  }),
+});
+assert.deepEqual(safeStopResult, [
+  {
+    json: {
+      route: "safe_stop",
+      reason: "manual_review_required",
+      status: "draft_unknown",
+      automaticSendAllowed: false,
+      automaticRetryAllowed: false,
+      humanApprovalRequired: true,
+    },
+  },
+]);
+await assert.rejects(
+  () =>
+    stopPostDelivery({
+      first: () => ({
+        json: {
+          reason: "stale_lease_draft_unknown",
+          status: "draft_unknown",
+        },
+      }),
+    }),
+  /stale_lease_draft_unknown.*Automatic retry and automatic sending are blocked/,
+);
+
 const normalizePost = new AsyncFunction(
   "$json",
   node(workflows.post, "Determine Outreach Type").parameters.jsCode,

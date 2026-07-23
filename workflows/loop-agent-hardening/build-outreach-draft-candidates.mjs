@@ -165,13 +165,34 @@ function makeRoute(id, name, position) {
   };
 }
 
-function makeStop(id, name, position) {
-  return makeCode(id, name, position, [
+function makeStop(id, name, position, options = {}) {
+  const lines = [
     "const reason = String($input.first()?.json?.reason || 'draft_unknown');",
-    "const allowed = new Set(['active_lease', 'manual_review_required', 'stale_lease_draft_unknown', 'draft_unknown']);",
-    "throw new Error('Customer draft loop stopped safely: ' + (allowed.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');",
-    "return [];",
-  ]);
+  ];
+  if (options.quietKnownStops === true) {
+    lines.push(
+      "const quiet = new Set(['active_lease', 'manual_review_required']);",
+      "if (quiet.has(reason)) {",
+      "  return [{ json: {",
+      "    route: 'safe_stop',",
+      "    reason,",
+      "    status: String($input.first()?.json?.status || 'draft_unknown'),",
+      "    automaticSendAllowed: false,",
+      "    automaticRetryAllowed: false,",
+      "    humanApprovalRequired: true,",
+      "  } }];",
+      "}",
+      "const alertable = new Set(['stale_lease_draft_unknown', 'draft_unknown']);",
+      "throw new Error('Customer draft loop stopped safely: ' + (alertable.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');",
+    );
+  } else {
+    lines.push(
+      "const allowed = new Set(['active_lease', 'manual_review_required', 'stale_lease_draft_unknown', 'draft_unknown']);",
+      "throw new Error('Customer draft loop stopped safely: ' + (allowed.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');",
+      "return [];",
+    );
+  }
+  return makeCode(id, name, position, lines);
 }
 
 function configureDraft(node, name, position) {
@@ -308,7 +329,12 @@ async function buildPostDelivery() {
     [880, 300],
   );
   const route = makeRoute("post-delivery-route", "RoutePostDeliveryDraftClaim", [1100, 300]);
-  const stop = makeStop("post-delivery-stop", "StopPostDeliveryDraftSafely", [1320, 160]);
+  const stop = makeStop(
+    "post-delivery-stop",
+    "StopPostDeliveryDraftSafely",
+    [1320, 160],
+    { quietKnownStops: true },
+  );
 
   const outlook = findNode(workflow, "Lookup Outlook History");
   outlook.position = [1320, 300];

@@ -1,0 +1,93 @@
+{
+  "incidentDate": "2026-07-23",
+  "workflows": [
+    {
+      "workflowId": "hucy9EMXPblxJsCm",
+      "name": "Trello Inflatable Mockup Generator v1.0",
+      "activeVersionBefore": "3b1858a2-c941-4944-9fbe-706812dba635",
+      "backupWorkflowId": "Kmb7tVRnvJkvok8h",
+      "intent": "Reduce Trello token pressure by removing the redundant board-list lookup, polling the stable list every five minutes, and retrying only the idempotent card read.",
+      "operations": [
+        {
+          "type": "updateNode",
+          "nodeId": "schedule-trigger",
+          "updates": {
+            "parameters.rule.interval": [
+              {
+                "field": "minutes",
+                "minutesInterval": 5
+              }
+            ]
+          }
+        },
+        {
+          "type": "updateNode",
+          "nodeId": "get-inflatable-cards",
+          "updates": {
+            "parameters.url": "https://api.trello.com/1/lists/693a941e671842fa697552e9/cards",
+            "retryOnFail": true,
+            "maxTries": 3,
+            "waitBetweenTries": 20000
+          }
+        },
+        {
+          "type": "rewireConnection",
+          "source": "Schedule Trigger",
+          "from": "Get Board Lists",
+          "to": "Get Inflatable Cards"
+        },
+        {
+          "type": "removeNode",
+          "nodeId": "get-board-lists"
+        },
+        {
+          "type": "removeNode",
+          "nodeId": "find-inflatable-list"
+        }
+      ]
+    },
+    {
+      "workflowId": "7AvW1d4JBNDFuNsv",
+      "name": "NEONTRIP Anfrage → Telegram Approval v1.1 — Credential Safe",
+      "activeVersionBefore": "c80c6190-1124-4939-a95b-07124ce179f7",
+      "backupWorkflowId": "qWLH5BYoKii9nyzl",
+      "intent": "Deliver image attachments as Telegram documents so valid files with unsupported photo dimensions no longer abort approval delivery.",
+      "operations": [
+        {
+          "type": "updateNode",
+          "nodeId": "sendphoto",
+          "updates": {
+            "parameters.operation": "sendDocument"
+          }
+        },
+        {
+          "type": "updateNode",
+          "nodeId": "attsend",
+          "updates": {
+            "parameters.operation": "sendDocument"
+          }
+        }
+      ]
+    },
+    {
+      "workflowId": "j3GCBHSxfOW3SP1c",
+      "name": "NEONTRIP Post-Delivery v2 — DB Draft Loop",
+      "activeVersionBefore": "5b515713-2bf9-4952-962a-21bc4f8fcfce",
+      "backupWorkflowId": "yXbmpeI1OEf1VUG8",
+      "intent": "Keep customer drafting fail-closed while treating repeated active-lease and manual-review states as successful safe stops; new ambiguous draft incidents still raise one technical alert.",
+      "operations": [
+        {
+          "type": "patchNodeField",
+          "nodeId": "post-delivery-stop",
+          "fieldPath": "parameters.jsCode",
+          "patches": [
+            {
+              "find": "const reason = String($input.first()?.json?.reason || 'draft_unknown');\nconst allowed = new Set(['active_lease', 'manual_review_required', 'stale_lease_draft_unknown', 'draft_unknown']);\nthrow new Error('Customer draft loop stopped safely: ' + (allowed.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');\nreturn [];",
+              "replace": "const reason = String($input.first()?.json?.reason || 'draft_unknown');\nconst quiet = new Set(['active_lease', 'manual_review_required']);\nif (quiet.has(reason)) {\n  return [{ json: {\n    route: 'safe_stop',\n    reason,\n    status: String($input.first()?.json?.status || 'draft_unknown'),\n    automaticSendAllowed: false,\n    automaticRetryAllowed: false,\n    humanApprovalRequired: true,\n  } }];\n}\nconst alertable = new Set(['stale_lease_draft_unknown', 'draft_unknown']);\nthrow new Error('Customer draft loop stopped safely: ' + (alertable.has(reason) ? reason : 'draft_unknown') + '. Automatic retry and automatic sending are blocked.');"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
