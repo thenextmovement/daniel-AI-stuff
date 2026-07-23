@@ -29,6 +29,7 @@ import {
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
   setSupplierSaleQuentinTrelloCard,
+  supplierApprovedDesignSelection,
   supplierProductionDescription,
   supplierSaleCompletionHideAt,
   supplierSaleNeedsDeadlineTask,
@@ -37,6 +38,7 @@ import {
   supplierSaleTrelloConfirmed,
   supplierSaleVisibleInActiveOverview,
   syncCompletedOffersFromOffersApp,
+  uploadSupplierSaleApprovedDesign,
   upsertSupplierSale,
   type SupplierSaleItemRow,
   type SupplierSaleRow,
@@ -450,6 +452,21 @@ test("neontrip offer completed image fallback reads nested line item images", ()
 
   assert.equal(parsed.sale.primaryImageUrl, "https://cdn.test/nested-line.webp");
   assert.equal(parsed.sale.lineItems[0]?.imageUrl, "https://cdn.test/nested-line.webp");
+});
+
+test("neontrip offer does not stamp one generic offer image onto every purchased line item", () => {
+  const parsed = buildSupplierSaleInputFromPayload({
+    source: "neontrip-offers",
+    event: "offer.completed",
+    offer: { id: "offer_generic_image", offerNumber: "A/N 16002" },
+    customer: { email: "kunde@example.com" },
+    totals: { totalGross: 595 },
+    media: { mockups: [{ url: "https://cdn.test/general-offer-preview.webp" }] },
+    lineItems: [{ id: "line-1", title: "Design 1", quantity: 1 }],
+  });
+
+  assert.equal(parsed.sale.primaryImageUrl, "https://cdn.test/general-offer-preview.webp");
+  assert.equal(parsed.sale.lineItems[0]?.imageUrl, null);
 });
 
 test("shopify order payload preserves payment, images, customer and Quentin recommendation", () => {
@@ -939,6 +956,162 @@ test("supplier production description prioritizes cable position and keeps outdo
       "Quantity: 2 Pieces",
     ].join("\n"),
   );
+});
+
+test("approved design selection uses only real purchased products and names the exact preview", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-approved-design" })],
+    [
+      itemRow({
+        id: "item-design",
+        sale_id: "sale-approved-design",
+        line_item_key: "line-design",
+        title: "LED Neon Flex Logo",
+        image_url: "https://cdn.test/customer-approved-design.png",
+        raw_line_item: { image: { url: "https://cdn.test/customer-approved-design.png" } },
+      }),
+      itemRow({
+        id: "item-shipping",
+        sale_id: "sale-approved-design",
+        title: "Express Versand 12 Tage",
+        product_type: "Liefertermin",
+        image_url: "https://cdn.test/shipping.png",
+      }),
+      itemRow({
+        id: "item-addon",
+        sale_id: "sale-approved-design",
+        title: "Klebe-Set",
+        product_type: "Zusatzoptionen",
+        image_url: "https://cdn.test/adhesive.png",
+      }),
+    ],
+    [],
+  );
+
+  assert.deepEqual(supplierApprovedDesignSelection(board.items[0]?.items || []), {
+    designs: [{
+      itemId: "item-design",
+      lineItemKey: "line-design",
+      title: "LED Neon Flex Logo",
+      imageUrl: "https://cdn.test/customer-approved-design.png",
+      attachmentName: "Approved Design",
+    }],
+    issue: null,
+  });
+});
+
+test("approved design selection fails closed when multiple products share one fallback image", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-ambiguous-designs" })],
+    [
+      itemRow({ id: "design-1", sale_id: "sale-ambiguous-designs", title: "Design 1", image_url: "https://cdn.test/fallback.jpg", raw_line_item: { image: { url: "https://cdn.test/fallback.jpg" } } }),
+      itemRow({ id: "design-2", sale_id: "sale-ambiguous-designs", title: "Design 2", image_url: "https://cdn.test/fallback.jpg", raw_line_item: { image: { url: "https://cdn.test/fallback.jpg" } } }),
+    ],
+    [],
+  );
+
+  const selection = supplierApprovedDesignSelection(board.items[0]?.items || []);
+  assert.deepEqual(selection.designs, []);
+  assert.match(selection.issue || "", /nicht eindeutig zugeordnet/);
+});
+
+test("approved design upload targets only the verified Quentin card and is idempotent", async () => {
+  const cardId = "abcdef1234567890abcdef12";
+  let currentRow = saleRow({
+    id: "sale-approved-design-upload",
+    trello_card_id: "source-anfrage-card",
+    supplier_trello_card_id: cardId,
+    supplier_trello_card_url: `https://trello.com/c/${cardId}`,
+    assigned_supplier: "quentin",
+    assignment_status: "assigned",
+  });
+  const attachments: Array<Record<string, unknown>> = [];
+  let attachmentPostCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") {
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      if (url.pathname.endsWith("/attachments") && method === "POST") {
+        attachmentPostCount += 1;
+        const attachment = {
+          id: `approved-attachment-${attachmentPostCount}`,
+          name: url.searchParams.get("name"),
+          fileName: null,
+          url: url.searchParams.get("url"),
+          mimeType: "image/png",
+          previews: [],
+        };
+        attachments.push(attachment);
+        return Response.json(attachment);
+      }
+      return Response.json({
+        id: cardId,
+        idBoard: "62bae9b97705e7419ed64593",
+        idList: "new-sketch",
+        name: "Exact Quentin production card",
+        desc: "Existing supplier note",
+        customFieldItems: [],
+        attachments,
+        actions: [],
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([currentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      return Response.json([itemRow({
+        id: "item-exact-design",
+        sale_id: currentRow.id,
+        line_item_key: "line-exact-design",
+        title: "Purchased LED Neon Design",
+        image_url: "https://cdn.test/exact-purchased-design.png",
+        raw_line_item: { image: { url: "https://cdn.test/exact-purchased-design.png" } },
+      })]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      currentRow = { ...currentRow, ...JSON.parse(String(init?.body || "{}")) };
+      return Response.json([currentRow]);
+    }
+    return Response.json([]);
+  }, async () => {
+    const first = await uploadSupplierSaleApprovedDesign({ saleId: currentRow.id, operatorName: "Rahim" });
+    assert.equal(first.approvedDesignUpload.uploaded, 1);
+    assert.equal(first.approvedDesignUpload.alreadyPresent, 0);
+    assert.equal(first.approvedDesignUpload.attachments[0]?.name, "Approved Design");
+
+    const second = await uploadSupplierSaleApprovedDesign({ saleId: currentRow.id, operatorName: "Rahim" });
+    assert.equal(second.approvedDesignUpload.uploaded, 0);
+    assert.equal(second.approvedDesignUpload.alreadyPresent, 1);
+  });
+
+  assert.equal(attachmentPostCount, 1, "a retry must not create a duplicate attachment");
+  assert.equal(currentRow.trello_card_id, "source-anfrage-card", "the Anfrage Management source card must stay unchanged");
+  assert.equal(currentRow.metadata.approved_design_card_id, cardId);
+});
+
+test("approved design upload stops before Trello access when the product image is missing", async () => {
+  const row = saleRow({ id: "sale-approved-design-missing", supplier_trello_card_id: "abcdef1234567890abcdef12" });
+  let trelloRequestCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "api.trello.com") trelloRequestCount += 1;
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      return Response.json([itemRow({ sale_id: row.id, image_url: null })]);
+    }
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(
+      uploadSupplierSaleApprovedDesign({ saleId: row.id }),
+      /nicht eindeutig zugeordnet/,
+    );
+  });
+
+  assert.equal(trelloRequestCount, 0);
 });
 
 test("supplier Trello description is freshly read and prepended without deleting existing text", async () => {

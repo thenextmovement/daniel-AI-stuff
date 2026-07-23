@@ -15,6 +15,7 @@ export {
   supplierSaleVisibleInActiveOverview,
 } from "@/lib/ops/supplier-sale-completion";
 import {
+  addTrelloCardAttachment,
   createTrelloCard,
   getTrelloBoardSearchCards,
   getTrelloCard,
@@ -289,6 +290,7 @@ export type SupplierSaleItem = {
   quantity: number;
   productType: string | null;
   imageUrl: string | null;
+  imageIsItemSpecific: boolean;
   requiresQuentin: boolean;
   ruleReasons: string[];
   createdAt: string;
@@ -427,6 +429,38 @@ export type SupplierSaleTrelloDescriptionInput = {
   operatorName?: string | null;
 };
 
+export type SupplierSaleApprovedDesignInput = {
+  saleId: string;
+  operatorName?: string | null;
+};
+
+export type SupplierSaleApprovedDesign = {
+  itemId: string;
+  lineItemKey: string;
+  title: string;
+  imageUrl: string;
+  attachmentName: string;
+};
+
+export type SupplierSaleApprovedDesignSelection = {
+  designs: SupplierSaleApprovedDesign[];
+  issue: string | null;
+};
+
+export type SupplierSaleApprovedDesignUploadResult = {
+  cardId: string;
+  cardUrl: string;
+  uploaded: number;
+  alreadyPresent: number;
+  attachments: Array<{
+    attachmentId: string;
+    name: string;
+    itemId: string;
+    status: "uploaded" | "already_present";
+  }>;
+  verifiedAt: string;
+};
+
 export type SupplierSaleTrelloCardInput = {
   saleId: string;
   trelloCard: string;
@@ -439,6 +473,8 @@ export type SupplierSaleTrelloDescriptionSnapshot = {
   cardName: string | null;
   description: string;
   suggestedPrependText: string;
+  approvedDesigns: SupplierSaleApprovedDesign[];
+  approvedDesignIssue: string | null;
   fetchedAt: string;
 };
 
@@ -1269,8 +1305,10 @@ function firstImageUrlFromValue(value: unknown, depth = 0): string | null {
   return null;
 }
 
-function selectedImageFromOfferItem(item: JsonRecord, payload: JsonRecord) {
-  return firstImageUrlFromValue(item) || selectedImageFromOfferPayload(payload);
+function selectedImageFromOfferItem(item: JsonRecord) {
+  // Never stamp a generic offer-level thumbnail onto every line item. The
+  // Approved Design workflow must be able to distinguish the purchased item.
+  return firstImageUrlFromValue(item);
 }
 
 function selectedImageFromOfferPayload(payload: JsonRecord) {
@@ -1299,7 +1337,7 @@ function parseOfferCompletedPayload(payload: JsonRecord): SupplierSalePayloadPar
     variantTitle: recordString(item, ["variantTitle"], 500),
     quantity: numericValue(item.quantity) || numericValue(item.normalizedQuantity) || 1,
     productType: recordString(item, ["section"], 120),
-    imageUrl: selectedImageFromOfferItem(item, payload),
+    imageUrl: selectedImageFromOfferItem(item),
     section: recordString(item, ["section"], 120),
     description: recordString(item, ["description"], 4000),
     rawLineItem: item,
@@ -1690,6 +1728,7 @@ function itemSelectionDetails(row: SupplierSaleItemRow) {
 
 function mapItem(row: SupplierSaleItemRow): SupplierSaleItem {
   const raw = jsonRecord(row.raw_line_item);
+  const rawItemImage = firstImageUrlFromValue(raw);
   return {
     id: row.id,
     saleId: row.sale_id,
@@ -1702,6 +1741,7 @@ function mapItem(row: SupplierSaleItemRow): SupplierSaleItem {
     quantity: Number(row.quantity || 1),
     productType: row.product_type,
     imageUrl: row.image_url,
+    imageIsItemSpecific: Boolean(row.image_url && rawItemImage && safeApprovedDesignUrl(row.image_url) === safeApprovedDesignUrl(rawItemImage)),
     requiresQuentin: Boolean(row.requires_quentin),
     ruleReasons: row.rule_reasons || [],
     createdAt: row.created_at,
@@ -4239,12 +4279,15 @@ function trelloDescriptionSnapshot(
   cardId: string,
   card: Awaited<ReturnType<typeof getTrelloCard>>,
 ): SupplierSaleTrelloDescriptionSnapshot {
+  const approvedDesignSelection = supplierApprovedDesignSelection(items);
   return {
     cardId,
     cardUrl: `https://trello.com/c/${cardId}`,
     cardName: nullableText(card.name, 500),
     description: String(card.desc || ""),
     suggestedPrependText: supplierProductionDescription(items, row.assignment_note),
+    approvedDesigns: approvedDesignSelection.designs,
+    approvedDesignIssue: approvedDesignSelection.issue,
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -4399,6 +4442,140 @@ export async function prependSupplierSaleTrelloDescription(
   return {
     sale: await getSupplierSale(row.id),
     trelloDescription: trelloDescriptionSnapshot(freshRow, items, cardId, verifiedCard),
+  };
+}
+
+export async function uploadSupplierSaleApprovedDesign(
+  input: SupplierSaleApprovedDesignInput,
+  actor?: SupplierSaleActor | null,
+) {
+  const row = await fetchSaleRowById(input.saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  if (row.assigned_supplier && row.assigned_supplier !== "quentin") {
+    throw new QuoteValidationError("Die Sale ist einem anderen Supplier zugeordnet.", [
+      "Approved Designs duerfen nur an die Quentin-Produktionskarte geladen werden.",
+    ], 409);
+  }
+  if (["completed", "canceled"].includes(row.assignment_status)) {
+    throw new QuoteValidationError("Der Design-Upload ist gesperrt.", [
+      "Abgeschlossene oder stornierte Sales koennen nicht mehr veraendert werden.",
+    ], 409);
+  }
+
+  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const selection = supplierApprovedDesignSelection(items);
+  if (selection.issue || !selection.designs.length) {
+    throw new QuoteValidationError("Approved Design ist nicht eindeutig zugeordnet.", [
+      selection.issue || "Kein geeignetes Produktbild gefunden.",
+      "Es wurde nichts an Trello geschrieben.",
+    ], 422);
+  }
+
+  // Re-read immediately before every write. Only this verified production card
+  // may receive attachments; the Anfrage Management source card stays untouched.
+  const { cardId, card } = await readExactQuentinCard(row);
+  const storedAttachments = arrayRecords(jsonRecord(row.metadata).approved_design_attachments);
+  const plans = selection.designs.map((design) => {
+    const sourceHash = createHash("sha256").update(design.imageUrl).digest("hex");
+    const recorded = storedAttachments.find((entry) =>
+      entry.card_id === cardId && entry.source_hash === sourceHash && entry.item_id === design.itemId
+    );
+    const recordedAttachmentId = nullableText(recorded?.attachment_id, 120);
+    const recordedAttachment = recordedAttachmentId
+      ? card.attachments.find((attachment) => attachment.id === recordedAttachmentId)
+      : null;
+    const exactExisting = card.attachments.find((attachment) =>
+      String(attachment.name || attachment.fileName || "").trim() === design.attachmentName &&
+      safeApprovedDesignUrl(attachment.url) === design.imageUrl
+    );
+    const conflictingName = card.attachments.find((attachment) =>
+      String(attachment.name || attachment.fileName || "").trim() === design.attachmentName &&
+      attachment.id !== exactExisting?.id && attachment.id !== recordedAttachment?.id
+    );
+    return { design, sourceHash, existing: recordedAttachment || exactExisting || null, conflictingName };
+  });
+
+  const conflict = plans.find((plan) => plan.conflictingName);
+  if (conflict) {
+    throw new QuoteValidationError(`${conflict.design.attachmentName} ist bereits mit einem anderen Bild belegt.`, [
+      "Bitte den vorhandenen Trello-Anhang pruefen. Aus Sicherheitsgruenden wurde kein weiteres Bild hochgeladen.",
+    ], 409);
+  }
+
+  const uploaded: SupplierSaleApprovedDesignUploadResult["attachments"] = [];
+  for (const plan of plans) {
+    if (plan.existing) {
+      uploaded.push({
+        attachmentId: plan.existing.id,
+        name: plan.design.attachmentName,
+        itemId: plan.design.itemId,
+        status: "already_present",
+      });
+      continue;
+    }
+    const attachment = await addTrelloCardAttachment({
+      cardId,
+      url: plan.design.imageUrl,
+      name: plan.design.attachmentName,
+    });
+    uploaded.push({
+      attachmentId: attachment.id,
+      name: plan.design.attachmentName,
+      itemId: plan.design.itemId,
+      status: "uploaded",
+    });
+  }
+
+  const verifiedCard = await getTrelloCard(cardId);
+  const verifiedIds = new Set(verifiedCard.attachments.map((attachment) => attachment.id));
+  if (verifiedCard.idBoard !== QUENTIN_NEON_BOARD_ID || uploaded.some((entry) => !verifiedIds.has(entry.attachmentId))) {
+    throw new QuoteValidationError("Approved-Design-Upload konnte nicht verifiziert werden.", [
+      "Bitte die Quentin-Karte erneut auslesen. Ein erneuter Upload setzt dank Idempotenz nur fehlende Anhaenge fort.",
+    ], 409);
+  }
+
+  const verifiedAt = new Date().toISOString();
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  const metadataAttachments = plans.map((plan, index) => ({
+    card_id: cardId,
+    item_id: plan.design.itemId,
+    line_item_key: plan.design.lineItemKey,
+    source_hash: plan.sourceHash,
+    attachment_id: uploaded[index].attachmentId,
+    attachment_name: plan.design.attachmentName,
+  }));
+  await patchSaleRow(row.id, {
+    metadata: {
+      ...jsonRecord(row.metadata),
+      approved_design_attachments: metadataAttachments,
+      approved_design_uploaded_at: verifiedAt,
+      approved_design_uploaded_by: operatorName,
+      approved_design_card_id: cardId,
+    },
+  });
+  await insertEvent({
+    saleId: row.id,
+    eventType: "supplier_approved_design_confirmed",
+    actor: actor || { operatorName },
+    idempotencyKey: `supplier-sale:${row.id}:approved-design:${cardId}:${hashPayload(metadataAttachments.map((entry) => entry.source_hash))}`,
+    payload: {
+      trello_card_id: cardId,
+      uploaded: uploaded.filter((entry) => entry.status === "uploaded").length,
+      already_present: uploaded.filter((entry) => entry.status === "already_present").length,
+      attachment_ids: uploaded.map((entry) => entry.attachmentId),
+    },
+  });
+
+  return {
+    sale: await getSupplierSale(row.id),
+    approvedDesignUpload: {
+      cardId,
+      cardUrl: `https://trello.com/c/${cardId}`,
+      uploaded: uploaded.filter((entry) => entry.status === "uploaded").length,
+      alreadyPresent: uploaded.filter((entry) => entry.status === "already_present").length,
+      attachments: uploaded,
+      verifiedAt,
+    } satisfies SupplierSaleApprovedDesignUploadResult,
   };
 }
 
@@ -4598,6 +4775,66 @@ function supplierProductionItemKind(item: SupplierSaleItem) {
   if (/(liefer|versand|delivery|termin|priorisierte? produktion|prioritized production|eilproduktion|express production|rush production)/.test(text)) return "delivery";
   if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|klebe|adhesive|haengeset|hanging set|power plug|stromstecker)/.test(text)) return "addon";
   return "product";
+}
+
+function safeApprovedDesignUrl(value: unknown) {
+  const raw = nullableText(value, 1000);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.username || url.password) return null;
+    const hostname = url.hostname.toLowerCase();
+    if (
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^169\.254\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname === "::1"
+    ) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function supplierApprovedDesignSelection(items: SupplierSaleItem[]): SupplierSaleApprovedDesignSelection {
+  const products = items.filter((item) => supplierProductionItemKind(item) === "product");
+  if (!products.length) {
+    return { designs: [], issue: "Kein echtes Schildprodukt mit eindeutigem Design gefunden." };
+  }
+  if (products.length > 12) {
+    return { designs: [], issue: "Mehr als 12 Schildprodukte koennen nicht sicher automatisch zugeordnet werden." };
+  }
+
+  const missing = products.filter((item) => !item.imageIsItemSpecific || !safeApprovedDesignUrl(item.imageUrl));
+  if (missing.length) {
+    return {
+      designs: [],
+      issue: `Fuer ${missing.map((item) => item.title).join(", ")} fehlt ein eindeutiges HTTPS-Produktbild.`,
+    };
+  }
+
+  const urls = products.map((item) => safeApprovedDesignUrl(item.imageUrl) as string);
+  if (products.length > 1 && new Set(urls).size !== urls.length) {
+    return {
+      designs: [],
+      issue: "Mehrere Schildprodukte teilen dasselbe Bild. Die gekauften Designs sind deshalb nicht eindeutig zugeordnet.",
+    };
+  }
+
+  return {
+    designs: products.map((item, index) => ({
+      itemId: item.id,
+      lineItemKey: item.lineItemKey,
+      title: item.title,
+      imageUrl: urls[index],
+      attachmentName: products.length === 1 ? "Approved Design" : `Approved Design ${index + 1}`,
+    })),
+    issue: null,
+  };
 }
 
 type SupplierAccessoryLine = {

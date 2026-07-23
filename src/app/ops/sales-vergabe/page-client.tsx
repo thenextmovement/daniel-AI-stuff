@@ -11,6 +11,7 @@ import {
   CreditCard,
   ExternalLink,
   Factory,
+  ImagePlus,
   Mail,
   Pencil,
   RefreshCcw,
@@ -43,7 +44,29 @@ type SupplierSaleTrelloDescriptionSnapshot = {
   cardName: string | null;
   description: string;
   suggestedPrependText: string;
+  approvedDesigns: Array<{
+    itemId: string;
+    lineItemKey: string;
+    title: string;
+    imageUrl: string;
+    attachmentName: string;
+  }>;
+  approvedDesignIssue: string | null;
   fetchedAt: string;
+};
+
+type SupplierSaleApprovedDesignUpload = {
+  cardId: string;
+  cardUrl: string;
+  uploaded: number;
+  alreadyPresent: number;
+  attachments: Array<{
+    attachmentId: string;
+    name: string;
+    itemId: string;
+    status: "uploaded" | "already_present";
+  }>;
+  verifiedAt: string;
 };
 
 type SupplierSalesApiResponse = {
@@ -51,6 +74,7 @@ type SupplierSalesApiResponse = {
   board?: SupplierSaleBoard;
   sale?: SupplierSale;
   trelloDescription?: SupplierSaleTrelloDescriptionSnapshot;
+  approvedDesignUpload?: SupplierSaleApprovedDesignUpload;
   liveCheck?: SupplierSalesLiveCheck;
   deadlineTasks?: {
     checked: number;
@@ -739,6 +763,8 @@ function SaleCard({
   const [trelloLinkEditing, setTrelloLinkEditing] = useState(false);
   const [trelloLinkInput, setTrelloLinkInput] = useState("");
   const [trelloLinkSaved, setTrelloLinkSaved] = useState(false);
+  const [approvedDesignBusy, setApprovedDesignBusy] = useState(false);
+  const [approvedDesignUpload, setApprovedDesignUpload] = useState<SupplierSaleApprovedDesignUpload | null>(null);
   useEffect(() => {
     setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
@@ -753,6 +779,8 @@ function SaleCard({
     setTrelloLinkEditing(false);
     setTrelloLinkInput("");
     setTrelloLinkSaved(false);
+    setApprovedDesignBusy(false);
+    setApprovedDesignUpload(null);
   }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.productSummary, sale.items, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
 
   useEffect(() => {
@@ -835,6 +863,28 @@ function SaleCard({
       setTrelloDescriptionError(formatUnknownError(error, "Trello-Description konnte nicht bestaetigt werden."));
     } finally {
       setTrelloDescriptionBusy(false);
+    }
+  }
+
+  async function uploadApprovedDesign() {
+    if (!trelloDescription?.approvedDesigns.length || trelloDescription.approvedDesignIssue) return;
+    const names = trelloDescription.approvedDesigns.map((design) => design.attachmentName).join(", ");
+    if (!confirmAction(`${names} jetzt an genau diese Quentin-Trello-Karte anhaengen? Die gezeigten Vorschaubilder werden verwendet.`)) return;
+    setApprovedDesignBusy(true);
+    setTrelloDescriptionError(null);
+    setApprovedDesignUpload(null);
+    try {
+      const payload = await onAction({
+        action: "upload_approved_design",
+        saleId: sale.id,
+        operatorName,
+      });
+      if (!payload?.approvedDesignUpload) throw new Error("Approved-Design-Bestaetigung konnte nicht geladen werden.");
+      setApprovedDesignUpload(payload.approvedDesignUpload);
+    } catch (error) {
+      setTrelloDescriptionError(formatUnknownError(error, "Approved Design konnte nicht hochgeladen werden."));
+    } finally {
+      setApprovedDesignBusy(false);
     }
   }
 
@@ -1415,6 +1465,45 @@ function SaleCard({
                       <a href={trelloDescription.cardUrl} target="_blank" rel="noreferrer" className="font-medium text-stone-900 underline">
                         Karte oeffnen
                       </a>
+                    </div>
+                    <div className="grid gap-3 rounded-[0.5rem] border border-violet-200 bg-violet-50 p-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-violet-950">Approved Design</p>
+                        <p className="mt-1 text-[11px] leading-4 text-violet-900">Nur die hier sichtbaren, eindeutig den gekauften Schildprodukten zugeordneten Bilder werden angehaengt.</p>
+                      </div>
+                      {trelloDescription.approvedDesignIssue ? (
+                        <p className="rounded-[0.5rem] border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
+                          {trelloDescription.approvedDesignIssue} Upload gesperrt.
+                        </p>
+                      ) : (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {trelloDescription.approvedDesigns.map((design) => (
+                            <figure key={design.itemId} className="overflow-hidden rounded-[0.5rem] border border-violet-200 bg-white">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={design.imageUrl} alt={`${design.attachmentName}: ${design.title}`} className="h-36 w-full object-contain bg-stone-100" />
+                              <figcaption className="grid gap-0.5 px-3 py-2 text-xs">
+                                <strong className="text-stone-950">{design.attachmentName}</strong>
+                                <span className="truncate text-stone-600">{design.title}</span>
+                              </figcaption>
+                            </figure>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        disabled={saving || trelloDescriptionBusy || approvedDesignBusy || Boolean(trelloDescription.approvedDesignIssue) || !trelloDescription.approvedDesigns.length}
+                        onClick={() => void uploadApprovedDesign()}
+                        className="inline-flex items-center justify-center gap-2 rounded-[0.5rem] bg-violet-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+                      >
+                        <ImagePlus className={`h-4 w-4 ${approvedDesignBusy ? "animate-pulse" : ""}`} />
+                        {approvedDesignBusy ? "Wird geprueft und hochgeladen ..." : "Approved Design zu Trello hochladen"}
+                      </button>
+                      {approvedDesignUpload ? (
+                        <p className="flex items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          Verifiziert: {approvedDesignUpload.uploaded} neu hochgeladen, {approvedDesignUpload.alreadyPresent} bereits vorhanden. Keine Duplikate erstellt.
+                        </p>
+                      ) : null}
                     </div>
                     <label className="grid gap-1.5">
                       <span className="text-xs font-semibold text-stone-700">Neuer Block – editierbar und nur oben eingefuegt</span>
