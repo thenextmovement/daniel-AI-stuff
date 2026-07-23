@@ -9,9 +9,9 @@ import {
   createSupplierDeadlineTasks,
   generateSupplierOrderConfirmationPdf,
   listSupplierSalesBoard,
+  lookupSupplierSaleTrelloDescription,
   markSupplierSaleInProduction,
   prependSupplierSaleTrelloDescription,
-  readSupplierSaleTrelloDescription,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
   retrySupplierSaleTrelloProjection,
@@ -245,10 +245,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (params.get("action") === "trello_description") {
-      const trelloDescription = await readSupplierSaleTrelloDescription(String(params.get("saleId") || ""));
+      const lookup = await lookupSupplierSaleTrelloDescription(String(params.get("saleId") || ""));
       return NextResponse.json({
         ok: true,
-        trelloDescription,
+        ...lookup,
       }, {
         headers: { "Cache-Control": "no-store" },
       });

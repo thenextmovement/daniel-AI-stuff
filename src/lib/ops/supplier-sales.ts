@@ -467,6 +467,14 @@ export type SupplierSaleTrelloCardInput = {
   operatorName?: string | null;
 };
 
+export type SupplierSaleTrelloCandidate = {
+  cardId: string;
+  cardUrl: string;
+  cardName: string;
+  lastActivity: string | null;
+  matchBasis: "request_id" | "customer_name";
+};
+
 export type SupplierSaleTrelloDescriptionSnapshot = {
   cardId: string;
   cardUrl: string;
@@ -1872,35 +1880,58 @@ function exactTrelloPhrase(haystack: string, value: unknown) {
   return phrase.length >= 3 && ` ${haystack} `.includes(` ${phrase} `);
 }
 
-function trelloCardMatchScore(row: SupplierSaleRow, card: TrelloBoardSearchCard) {
-  if (card.closed || card.idBoard !== QUENTIN_NEON_BOARD_ID) return 0;
-  const searchable = normalizeTrelloMatchText([
+function trelloCardTimestamp(card: TrelloBoardSearchCard) {
+  const timestamp = card.dateLastActivity ? new Date(card.dateLastActivity).getTime() : NaN;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function trelloCardSearchableText(card: TrelloBoardSearchCard) {
+  return normalizeTrelloMatchText([
     card.name,
     card.desc,
     ...card.customFieldValues,
   ].join(" "));
-  const strongIdentifiers: Array<[unknown, number]> = [
-    [row.request_id, 500],
-    [row.shopify_order_name, 450],
-    [row.offer_number, 425],
-    [row.document_reference, 400],
-    [row.offer_id, 375],
-  ];
-  for (const [identifier, score] of strongIdentifiers) {
-    if (exactTrelloPhrase(searchable, identifier)) return score;
-  }
-
-  const customerName = normalizeTrelloMatchText(row.customer_name);
-  const nameParts = customerName.split(" ").filter(Boolean);
-  if (nameParts.length < 2) return 0;
-  const forward = nameParts.join(" ");
-  const reverse = [...nameParts].reverse().join(" ");
-  return exactTrelloPhrase(searchable, forward) || exactTrelloPhrase(searchable, reverse) ? 200 : 0;
 }
 
-function trelloCardTimestamp(card: TrelloBoardSearchCard) {
-  const timestamp = card.dateLastActivity ? new Date(card.dateLastActivity).getTime() : NaN;
-  return Number.isFinite(timestamp) ? timestamp : 0;
+function trelloCandidate(card: TrelloBoardSearchCard, matchBasis: SupplierSaleTrelloCandidate["matchBasis"]): SupplierSaleTrelloCandidate {
+  return {
+    cardId: card.id,
+    cardUrl: `https://trello.com/c/${card.id}`,
+    cardName: card.name || "Quentin-Karte",
+    lastActivity: card.dateLastActivity || null,
+    matchBasis,
+  };
+}
+
+export function supplierSaleQuentinTrelloCandidates(
+  row: SupplierSaleRow,
+  cards: TrelloBoardSearchCard[],
+): SupplierSaleTrelloCandidate[] {
+  const boardCards = cards.filter((card) => !card.closed && card.idBoard === QUENTIN_NEON_BOARD_ID);
+  const requestId = normalizeTrelloMatchText(row.request_id);
+  const requestMatches = requestId.length >= 3
+    ? boardCards.filter((card) => exactTrelloPhrase(trelloCardSearchableText(card), requestId))
+    : [];
+
+  let matchBasis: SupplierSaleTrelloCandidate["matchBasis"] = "request_id";
+  let matches = requestMatches;
+  if (!matches.length) {
+    const customerName = normalizeTrelloMatchText(row.customer_name);
+    const nameParts = customerName.split(" ").filter(Boolean);
+    if (nameParts.length >= 2) {
+      const forward = nameParts.join(" ");
+      const reverse = [...nameParts].reverse().join(" ");
+      matches = boardCards.filter((card) => {
+        const searchable = trelloCardSearchableText(card);
+        return exactTrelloPhrase(searchable, forward) || exactTrelloPhrase(searchable, reverse);
+      });
+    }
+    matchBasis = "customer_name";
+  }
+
+  return matches
+    .sort((left, right) => trelloCardTimestamp(right) - trelloCardTimestamp(left))
+    .map((card) => trelloCandidate(card, matchBasis));
 }
 
 function uniqueBestQuentinCard(row: SupplierSaleRow, cards: TrelloBoardSearchCard[]) {
@@ -1913,22 +1944,9 @@ function uniqueBestQuentinCard(row: SupplierSaleRow, cards: TrelloBoardSearchCar
     if (exact) return exact;
   }
 
-  const matches = boardCards
-    .map((card) => ({ card, score: trelloCardMatchScore(row, card) }))
-    .filter((match) => match.score > 0)
-    .sort((left, right) =>
-      right.score - left.score ||
-      trelloCardTimestamp(right.card) - trelloCardTimestamp(left.card),
-    );
-  const best = matches[0];
-  if (!best) return null;
-  const next = matches[1];
-  if (
-    next &&
-    next.score === best.score &&
-    trelloCardTimestamp(next.card) === trelloCardTimestamp(best.card)
-  ) return null;
-  return best.card;
+  const candidates = supplierSaleQuentinTrelloCandidates(row, boardCards);
+  if (candidates.length !== 1) return null;
+  return boardCards.find((card) => card.id === candidates[0]?.cardId) || null;
 }
 
 export function enrichSupplierSalesFromQuentinBoard(
@@ -4243,7 +4261,7 @@ function prependWithoutDeletingExistingDescription(existingDescription: unknown,
   return { description, changed: true, prefix };
 }
 
-async function readExactQuentinCard(row: SupplierSaleRow) {
+async function lookupExactQuentinCard(row: SupplierSaleRow) {
   const candidateIds = [row.quentin_trello_card_id, row.supplier_trello_card_id, row.trello_card_id]
     .map(trelloCardIdFromValue)
     .filter((cardId): cardId is string => Boolean(cardId))
@@ -4252,18 +4270,26 @@ async function readExactQuentinCard(row: SupplierSaleRow) {
   for (const cardId of candidateIds) {
     const card = await getTrelloCard(cardId).catch(() => null);
     if (!card) continue;
-    if (card.idBoard === QUENTIN_NEON_BOARD_ID) return { cardId, card };
+    if (card.idBoard === QUENTIN_NEON_BOARD_ID) return { cardId, card, candidates: [] as SupplierSaleTrelloCandidate[], rejectedForeignBoard };
     rejectedForeignBoard = true;
   }
 
   const cards = await getTrelloBoardSearchCards(QUENTIN_NEON_BOARD_ID).catch(() => []);
-  const matched = uniqueBestQuentinCard(row, cards);
-  if (matched) {
-    const card = await getTrelloCard(matched.id);
-    if (card.idBoard === QUENTIN_NEON_BOARD_ID) return { cardId: matched.id, card };
+  const candidates = supplierSaleQuentinTrelloCandidates(row, cards);
+  if (candidates.length === 1) {
+    const cardId = candidates[0].cardId;
+    const card = await getTrelloCard(cardId);
+    if (card.idBoard === QUENTIN_NEON_BOARD_ID) return { cardId, card, candidates, rejectedForeignBoard };
   }
 
-  if (rejectedForeignBoard) {
+  return { cardId: null, card: null, candidates, rejectedForeignBoard };
+}
+
+async function readExactQuentinCard(row: SupplierSaleRow) {
+  const lookup = await lookupExactQuentinCard(row);
+  if (lookup.cardId && lookup.card) return { cardId: lookup.cardId, card: lookup.card };
+
+  if (lookup.rejectedForeignBoard) {
     throw new QuoteValidationError("Die bisher verknuepfte Trello-Karte gehoert nicht zum Quentin-Board.", [
       "Es wurde keine eindeutige Ersatzkarte auf dem Quentin-Board gefunden. Aus Sicherheitsgruenden wurde nichts gelesen oder geaendert.",
     ], 422);
@@ -4298,6 +4324,33 @@ export async function readSupplierSaleTrelloDescription(saleId: string) {
   const items = (await fetchItemsForSale(row.id)).map(mapItem);
   const { cardId, card } = await readExactQuentinCard(row);
   return trelloDescriptionSnapshot(row, items, cardId, card);
+}
+
+export async function lookupSupplierSaleTrelloDescription(saleId: string) {
+  const row = await fetchSaleRowById(saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const lookup = await lookupExactQuentinCard(row);
+  if (lookup.cardId && lookup.card) {
+    return {
+      trelloDescription: trelloDescriptionSnapshot(row, items, lookup.cardId, lookup.card),
+      trelloCandidates: [] as SupplierSaleTrelloCandidate[],
+    };
+  }
+  if (lookup.candidates.length) {
+    return {
+      trelloDescription: null,
+      trelloCandidates: lookup.candidates,
+    };
+  }
+  if (lookup.rejectedForeignBoard) {
+    throw new QuoteValidationError("Die bisher verknuepfte Trello-Karte gehoert nicht zum Quentin-Board.", [
+      "Es wurde keine passende Ersatzkarte anhand Request-ID oder Kundenname gefunden. Aus Sicherheitsgruenden wurde nichts gelesen oder geaendert.",
+    ], 422);
+  }
+  throw new QuoteValidationError("Keine passende Quentin-Karte gefunden.", [
+    "Es wurde keine offene Karte mit passender Request-ID oder passendem Kundennamen gefunden.",
+  ], 422);
 }
 
 export async function setSupplierSaleQuentinTrelloCard(
