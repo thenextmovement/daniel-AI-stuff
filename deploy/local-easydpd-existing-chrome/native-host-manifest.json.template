@@ -1,0 +1,9 @@
+{
+  "name": "de.neontrip.easydpd_existing_chrome",
+  "description": "NEONTRIP EasyDPD bridge for the already-open normal Chrome profile",
+  "path": "{{HOST_EXECUTABLE}}",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://bgfphlbhdameagnafljlgpbpjdajmdhk/"
+  ]
+}

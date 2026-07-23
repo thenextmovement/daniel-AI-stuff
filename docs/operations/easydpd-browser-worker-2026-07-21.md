@@ -2,6 +2,8 @@
 
 Stand: 2026-07-22
 
+> Legacy seit 2026-07-23: Dieser separate Playwright-Profil-Worker wird durch die [Existing-Chrome-Bridge](easydpd-existing-chrome-bridge-2026-07-23.md) ersetzt. Er darf nicht gleichzeitig mit deren Live-Modus laufen. Die Datei bleibt als Rollback- und Historiennachweis erhalten.
+
 ## Scope
 
 Der Worker reserviert freigegebene Arrival-Label-Fälle aus Postgres, öffnet die konkrete Shopify/easyDPD-Bestellung in einem separaten lokalen Chrome-Profil, setzt das freigegebene Produkt, `Einzeln auf A6` und 500 g und klickt im Live-Modus genau einmal auf `Create label`. Die heruntergeladene PDF wird serverseitig geprüft, mit den letzten sechs Ziffern der eingehenden DHL-Sendungsnummer ergänzt, privat gespeichert und in die vorhandene A6-Druckqueue eingereiht. Die vorhandene Druck-/Archivkette archiviert die zugehörige DHL-Express-Mail erst nach bestätigt erfolgreichem Druck.

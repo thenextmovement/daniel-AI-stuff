@@ -4,6 +4,8 @@ Version: 1.0, festgehalten am 20.07.2026.
 
 Status: verbindlicher Safety-Baseline für die weitere Umsetzung. Der produktive EasyDPD-Schreibpfad bleibt deaktiviert. Dieser Standard erlaubt keine Aktivierung, keinen Kauf und keinen automatischen Druck.
 
+Implementierungsstand 23.07.2026: Der vorgesehene lokale Browserpfad ist die [Existing-Chrome-Bridge](easydpd-existing-chrome-bridge-2026-07-23.md). Sie verwendet ausschließlich einen bereits geöffneten, angemeldeten easyDPD-Auftragstab im normalen Chrome-Profil. Ohne diesen Tab wird kein Auftrag reserviert; ein neues Fenster oder separates Profil wird nicht automatisch geöffnet. Die Live-Freigabe bleibt an die dokumentierten Canary-Gates gebunden.
+
 ## Quellen und Entscheidungsgrenze
 
 - Outlook liefert die DHL-Express-Eingangsmeldung und die vollständige DHL-Sendungsnummer.

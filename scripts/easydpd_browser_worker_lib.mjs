@@ -204,11 +204,17 @@ export async function claimJob(configuration) {
   return validateClaimedJob(payload.job);
 }
 
-export async function updateJob(configuration, job, result, error = null) {
+export async function updateJob(configuration, job, result, error = null, detail = {}) {
   await apiRequest(configuration, job.resultPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workerId: configuration.workerId, result, error: error ? String(error).slice(0, 500) : null }),
+    body: JSON.stringify({
+      workerId: configuration.workerId,
+      result,
+      error: error ? String(error).slice(0, 500) : null,
+      existingDpdTracking: detail.existingDpdTracking || null,
+      evidence: detail.evidence || null,
+    }),
   });
 }
 

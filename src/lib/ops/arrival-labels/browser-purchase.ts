@@ -11,7 +11,7 @@ export const EASYDPD_PRODUCT_LABELS = [
 ] as const;
 
 export type EasyDpdProductLabel = (typeof EASYDPD_PRODUCT_LABELS)[number];
-export type BrowserPurchaseResult = "validated" | "dispatching" | "retryable_error" | "uncertain";
+export type BrowserPurchaseResult = "validated" | "dispatching" | "retryable_error" | "uncertain" | "existing_label";
 
 export function validateBrowserWorkerId(value: string) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(value)) throw new PrintInputError("Ungueltige Browser-Worker-ID.");

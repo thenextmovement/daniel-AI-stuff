@@ -244,6 +244,24 @@ export async function updateArrivalBrowserPurchase(input: {
   return rows[0];
 }
 
+export async function blockArrivalBrowserPurchaseForExistingLabel(input: {
+  jobId: string;
+  workerId: string;
+  existingDpdTracking?: string | null;
+  evidence?: Record<string, unknown> | null;
+  error?: string | null;
+}) {
+  const rows = await supabaseRpc<ArrivalBrowserPurchaseJobRow[]>("arrival_labels_block_browser_purchase_existing_label", {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_existing_dpd_tracking: input.existingDpdTracking || null,
+    p_evidence: input.evidence || {},
+    p_error: input.error || null,
+  });
+  if (!rows[0]) throw new Error("Vorhandenes EasyDPD-Label konnte nicht als Kaufstopper gespeichert werden.");
+  return rows[0];
+}
+
 function privateStorageConfiguration() {
   const url = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
   const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
