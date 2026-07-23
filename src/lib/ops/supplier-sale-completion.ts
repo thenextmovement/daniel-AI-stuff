@@ -36,10 +36,13 @@ export function supplierSaleCompletionHideAt(sale: Pick<SupplierSaleCompletionSn
 }
 
 export function supplierSaleVisibleInActiveOverview(
-  sale: Pick<SupplierSaleCompletionSnapshot, "assignmentStatus" | "productionConfirmedAt">,
+  sale: SupplierSaleCompletionSnapshot,
   now = new Date(),
 ) {
   if (["completed", "canceled"].includes(sale.assignmentStatus)) return false;
+  if (sale.assignmentStatus === "assigned") {
+    return !(supplierSaleShopifyConfirmed(sale) && supplierSaleTrelloConfirmed(sale));
+  }
   if (sale.assignmentStatus !== "in_production") return true;
   const hideAt = supplierSaleCompletionHideAt(sale);
   return !hideAt || new Date(hideAt).getTime() > now.getTime();
