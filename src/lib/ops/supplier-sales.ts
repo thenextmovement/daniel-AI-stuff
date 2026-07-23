@@ -2957,7 +2957,12 @@ function hasConfiguredSupplierTag(tags: Set<string>, candidates: Array<string | 
 
 function supplierTagCandidates(supplier: SupplierSaleSupplier) {
   const configured = supplierTagValue(supplier);
-  if (supplier === "quentin") return [configured, "Quentin (schon bezahlt)"];
+  if (supplier === "quentin") {
+    return [configured, "Quentin (schon bezahlt)", "Quentin (noch bezahlen)", "Quentin (noch zahlen)"];
+  }
+  if (supplier === "said") {
+    return [configured, "Saeid (schon bezahlt)", "Saeid", "Said", "Saed"];
+  }
   return [configured];
 }
 
@@ -3067,10 +3072,10 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
     assigned_supplier: assignedSupplier,
     special_supplier_name: existing?.special_supplier_name || null,
     assignment_status: assignmentStatus,
-    shopify_tag_value: existing?.shopify_tag_value || detectedTagValue || null,
-    shopify_tag_sync_status: existingTagStatus && existingTagStatus !== "not_started"
-      ? existingTagStatus
-      : detectedTagValue ? "synced" : existingTagStatus || "not_started",
+    shopify_tag_value: detectedTagValue || existing?.shopify_tag_value || null,
+    shopify_tag_sync_status: detectedTagValue
+      ? "synced"
+      : existingTagStatus || "not_started",
     shopify_tag_synced_at: existing?.shopify_tag_synced_at || (detectedTagValue ? new Date().toISOString() : null),
     shopify_tag_error: detectedTagValue ? null : existing?.shopify_tag_error || null,
     product_summary: nullableText(input.productSummary, 600) || lineItems.map((item) => cleanText(item.title, 120)).filter(Boolean).slice(0, 3).join(", ") || existing?.product_summary || null,
@@ -3777,13 +3782,23 @@ async function syncActiveSupplierSalesFromShopifyAdmin(
   }
 
   const limit = Math.min(Math.max(Number(options?.limit || 50), 1), 100);
-  const activeRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+  const staleAssignedRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
     select: "*",
-    assignment_status: "not.in.(assigned,in_production,completed,canceled)",
+    assignment_status: "eq.assigned",
+    shopify_tag_sync_status: "not.eq.synced",
     shopify_order_id: "not.is.null",
     order: "updated_at.desc,created_at.desc",
     limit,
   });
+  const remainingLimit = Math.max(limit - staleAssignedRows.length, 0);
+  const unassignedRows = remainingLimit > 0 ? await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    select: "*",
+    assignment_status: "not.in.(assigned,in_production,completed,canceled)",
+    shopify_order_id: "not.is.null",
+    order: "updated_at.desc,created_at.desc",
+    limit: remainingLimit,
+  }) : [];
+  const activeRows = [...staleAssignedRows, ...unassignedRows];
 
   const errors: Array<{ offerId: string | null; error: string }> = [];
   const warnings: string[] = [];
@@ -4151,6 +4166,7 @@ export async function listSupplierSalesBoard(options?: {
   if (scope === "active") {
     saleRows = saleRows.filter((row) => {
       if (row.assignment_status === "assigned" || row.assignment_status === "in_production") {
+        if (row.assignment_status === "assigned" && assignedSupplierFromRowTags(row)) return false;
         const productionConfirmedAt = nullableText(jsonRecord(row.metadata).production_confirmed_at, 80);
         return supplierSaleVisibleInActiveOverview({
           assignmentStatus: row.assignment_status,
