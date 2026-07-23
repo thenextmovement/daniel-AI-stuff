@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { realpathSync, writeFileSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ExistingChromeBridgeError,
   encodeNativeMessage,
@@ -39,7 +39,16 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+export function isExecutedEntryPoint(argvPath = process.argv[1], moduleUrl = import.meta.url) {
+  if (!argvPath) return false;
+  try {
+    return realpathSync(argvPath) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return moduleUrl === pathToFileURL(argvPath).href;
+  }
+}
+
+if (isExecutedEntryPoint()) {
   main().catch((error) => {
     process.stderr.write(`${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "Unbekannter Fehler." })}\n`);
     process.exitCode = error instanceof ExistingChromeBridgeError ? error.exitCode : 1;

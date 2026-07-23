@@ -106,14 +106,25 @@ export function validateNativeRequest(message) {
 export async function readNativeMessage(input) {
   const chunks = [];
   let byteLength = 0;
+  let declared = null;
   for await (const chunk of input) {
     byteLength += chunk.length;
     if (byteLength > MAX_NATIVE_MESSAGE_BYTES + 4) throw new ExistingChromeBridgeError("Native-Bridge-Nachricht ist zu gross.", 65);
     chunks.push(chunk);
+    if (declared === null && byteLength >= 4) {
+      declared = Buffer.concat(chunks).readUInt32LE(0);
+      if (declared < 2 || declared > MAX_NATIVE_MESSAGE_BYTES) {
+        throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtenlaenge ist ungueltig.", 65);
+      }
+    }
+    if (declared !== null) {
+      if (byteLength > declared + 4) throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtenlaenge ist ungueltig.", 65);
+      if (byteLength === declared + 4) break;
+    }
   }
   const buffer = Buffer.concat(chunks);
   if (buffer.length < 4) throw new ExistingChromeBridgeError("Native-Bridge-Nachricht ist unvollstaendig.", 65);
-  const declared = buffer.readUInt32LE(0);
+  declared ??= buffer.readUInt32LE(0);
   if (declared < 2 || declared > MAX_NATIVE_MESSAGE_BYTES || buffer.length !== declared + 4) {
     throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtenlaenge ist ungueltig.", 65);
   }

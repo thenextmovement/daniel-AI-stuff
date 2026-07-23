@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { Readable } from "node:stream";
+import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
+import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   EXPECTED_EXTENSION_ID,
   encodeNativeMessage,
@@ -10,6 +12,7 @@ import {
   validateBridgeConfig,
 } from "../../scripts/easydpd_existing_chrome_bridge_lib.mjs";
 import { parseExistingChromeManagerArgs } from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
+import { isExecutedEntryPoint } from "../../scripts/run_easydpd_existing_chrome_host.mjs";
 import {
   existingLabelEvidence,
   matchingDownloadedPdf,
@@ -83,11 +86,28 @@ test("download capture requires a PDF from the same Shopify tab after dispatch",
 test("native protocol is length-prefixed, bounded and allowlisted", async () => {
   const encoded = encodeNativeMessage({ type: "status" });
   assert.deepEqual(await readNativeMessage(Readable.from([encoded])), { type: "status" });
+  const stillOpen = new PassThrough();
+  const withoutEof = readNativeMessage(stillOpen);
+  stillOpen.write(encoded.subarray(0, 3));
+  stillOpen.write(encoded.subarray(3));
+  assert.deepEqual(await withoutEof, { type: "status" });
   const bad = Buffer.from(encoded);
   bad.writeUInt32LE(encoded.length + 10, 0);
   await assert.rejects(() => readNativeMessage(Readable.from([bad])), /Nachrichtenlaenge/);
   const denied = encodeNativeMessage({ type: "shell" });
   await assert.rejects(() => readNativeMessage(Readable.from([denied])), /nicht freigegeben/);
+});
+
+test("native host recognizes a symlinked installed entry point", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "neontrip-native-entry-"));
+  const source = join(process.cwd(), "scripts/run_easydpd_existing_chrome_host.mjs");
+  const linked = join(directory, "native-host.mjs");
+  try {
+    await symlink(source, linked);
+    assert.equal(isExecutedEntryPoint(linked, pathToFileURL(source).href), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("bridge config requires HTTPS, fixed extension id and narrow download root", () => {
