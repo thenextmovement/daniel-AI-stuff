@@ -2414,6 +2414,18 @@ function exactIlikeAnyFilter(column: string, values: string[]) {
   return ilikeAnyFilter(column, values, (value) => encodeFilterValue(value));
 }
 
+async function safePriorPaidHistoryRequest<T>(source: string, request: () => Promise<T[]>) {
+  try {
+    return await request();
+  } catch (error) {
+    console.warn("[supplier-sales] prior paid customer history source unavailable", {
+      source,
+      error: compactErrorMessage(error, "Historische Zahlungsquelle konnte nicht gelesen werden."),
+    });
+    return [];
+  }
+}
+
 async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
   const { emails, domains, names } = priorPaidLookupKeys(saleRows);
   if (!emails.length && !domains.length && !names.length) return [];
@@ -2422,12 +2434,12 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   const crmSelect = "id,shopify_order_id,shopify_order_number,shopify_order_name,financial_status,customer_name,customer_email,total_price,shopify_created_at,created_at";
 
   for (const batch of batchesOf(emails, 75)) {
-    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
+    const rows = await safePriorPaidHistoryRequest("v_orders_by_email:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
       select: orderSelect,
       email: inList(batch),
       order: "created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
-    });
+    }));
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
@@ -2445,12 +2457,12 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(domains, 50)) {
     const or = ilikeAnyFilter("email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
     if (!or) continue;
-    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
+    const rows = await safePriorPaidHistoryRequest("v_orders_by_email:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
       select: orderSelect,
       or,
       order: "created_at.desc",
       limit: Math.min(Math.max(batch.length * 20, 100), 1000),
-    });
+    }));
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
@@ -2466,12 +2478,12 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   }
 
   for (const batch of batchesOf(emails, 75)) {
-    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+    const rows = await safePriorPaidHistoryRequest("crm_sales:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
       select: crmSelect,
       customer_email: inList(batch),
       order: "shopify_created_at.desc,created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
-    });
+    }));
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
@@ -2490,12 +2502,12 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(domains, 50)) {
     const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
     if (!or) continue;
-    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+    const rows = await safePriorPaidHistoryRequest("crm_sales:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
       select: crmSelect,
       or,
       order: "shopify_created_at.desc,created_at.desc",
       limit: Math.min(Math.max(batch.length * 20, 100), 1000),
-    });
+    }));
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
@@ -2514,12 +2526,12 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(names, 50)) {
     const or = exactIlikeAnyFilter("customer_name", batch);
     if (!or) continue;
-    const rows = await supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+    const rows = await safePriorPaidHistoryRequest("crm_sales:customer_name", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
       select: crmSelect,
       or,
       order: "shopify_created_at.desc,created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
-    });
+    }));
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
@@ -4128,7 +4140,7 @@ export async function listSupplierSalesBoard(options?: {
   }
   const [supplierPaidHistoryRows, shopifyPaidHistoryRows] = await Promise.all([
     fetchPriorPaidCustomerHistory(saleRows),
-    fetchShopifyProjectionPaidCustomerHistory(saleRows).catch(() => []),
+    fetchShopifyProjectionPaidCustomerHistory(saleRows),
   ]);
   const priorPaidHistoryRows = [...supplierPaidHistoryRows, ...shopifyPaidHistoryRows];
   statsRows = markPriorPaidCustomers(statsRows, priorPaidHistoryRows);
