@@ -2058,6 +2058,36 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     assignment_status: "ready_to_assign",
     raw_shopify: { tags: ["Quentin - schon bezahlt"] },
   });
+  const assignedTaggedRow = saleRow({
+    id: "sale-assigned-tagged",
+    sale_key: "shopify:order:assigned-tagged",
+    shopify_order_id: "assigned-tagged",
+    assignment_status: "assigned",
+    assigned_supplier: "quentin",
+    shopify_tag_sync_status: "failed",
+    trello_projection_status: "skipped",
+    raw_shopify: { tags: ["Quentin (noch zahlen)"] },
+  });
+  const assignedSaidTaggedRow = saleRow({
+    id: "sale-assigned-said-tagged",
+    sale_key: "shopify:order:assigned-said-tagged",
+    shopify_order_id: "assigned-said-tagged",
+    assignment_status: "assigned",
+    assigned_supplier: "said",
+    shopify_tag_sync_status: "failed",
+    trello_projection_status: "skipped",
+    raw_shopify: { tags: ["Saed"] },
+  });
+  const assignedWithoutTagRow = saleRow({
+    id: "sale-assigned-without-tag",
+    sale_key: "shopify:order:assigned-without-tag",
+    shopify_order_id: "assigned-without-tag",
+    assignment_status: "assigned",
+    assigned_supplier: "quentin",
+    shopify_tag_sync_status: "failed",
+    trello_projection_status: "skipped",
+    raw_shopify: { tags: [] },
+  });
   const supplierSalesGetLimits: string[] = [];
   let itemSaleFilter: string | null = null;
 
@@ -2068,7 +2098,15 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
       const limit = url.searchParams.get("limit");
       supplierSalesGetLimits.push(limit || "");
       if (limit === "200") assert.equal(url.searchParams.get("assignment_status"), "not.in.(completed,canceled)");
-      return Response.json([taggedRow, fulfilledRow, similarTagRow, unassignedRow]);
+      return Response.json([
+        taggedRow,
+        fulfilledRow,
+        similarTagRow,
+        assignedTaggedRow,
+        assignedSaidTaggedRow,
+        assignedWithoutTagRow,
+        unassignedRow,
+      ]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
       itemSaleFilter = url.searchParams.get("sale_id");
@@ -2081,14 +2119,17 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     return Response.json([]);
   }, async () => {
     const board = await listSupplierSalesBoard({ scope: "active" });
-    assert.deepEqual(new Set(board.items.map((item) => item.id)), new Set(["sale-visible", "sale-similar-tag"]));
+    assert.deepEqual(
+      new Set(board.items.map((item) => item.id)),
+      new Set(["sale-visible", "sale-similar-tag", "sale-assigned-without-tag"]),
+    );
     const visible = board.items.find((item) => item.id === "sale-visible");
     assert.equal(visible?.primaryImageUrl, "https://cdn.test/item-fallback.jpg");
     assert.equal(visible?.paymentLink, "https://shopify.test/orders/visible/status");
   });
 
   assert.deepEqual(supplierSalesGetLimits, ["2000", "200"]);
-  assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-visible)");
+  assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-assigned-without-tag,sale-visible)");
 });
 
 test("supplier production completion is fail-closed and remains visible for exactly ten minutes", () => {
@@ -3383,10 +3424,10 @@ test("completed offers sync reconciles existing active supplier rows against Sho
     source: "shopify",
     shopify_order_id: "987654777",
     shopify_order_name: "#1277",
-    assigned_supplier: null,
-    assignment_status: "ready_to_assign",
-    shopify_tag_value: null,
-    shopify_tag_sync_status: "not_started",
+    assigned_supplier: "quentin",
+    assignment_status: "assigned",
+    shopify_tag_value: "Quentin (noch bezahlen)",
+    shopify_tag_sync_status: "failed",
     raw_shopify: { tags: [] },
   });
 
@@ -3406,7 +3447,7 @@ test("completed offers sync reconciles existing active supplier rows against Sho
             id: "gid://shopify/Order/987654777",
             name: "#1277",
             email: "tagged@example.com",
-            tags: ["Quentin (schon bezahlt)"],
+            tags: ["Quentin (noch zahlen)"],
             statusPageUrl: "https://galaxybuzzdk.myshopify.com/orders/status",
             createdAt: "2026-05-01T12:00:00Z",
             processedAt: "2026-05-01T12:01:00Z",
@@ -3427,13 +3468,18 @@ test("completed offers sync reconciles existing active supplier rows against Sho
     assert.equal(url.origin, "https://supabase.test");
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       if (
-        url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" &&
+        url.searchParams.get("assignment_status") === "eq.assigned" &&
+        url.searchParams.get("shopify_tag_sync_status") === "not.eq.synced" &&
         url.searchParams.get("shopify_order_id") === "not.is.null"
       ) {
         activeRowsLookupCount += 1;
         activeRowsLookupLimit = url.searchParams.get("limit");
         return Response.json([existingRow]);
       }
+      if (
+        url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" &&
+        url.searchParams.get("shopify_order_id") === "not.is.null"
+      ) return Response.json([]);
       if (
         url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" &&
         url.searchParams.get("shopify_order_id") === "is.null"
