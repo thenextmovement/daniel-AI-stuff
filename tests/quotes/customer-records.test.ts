@@ -8,12 +8,14 @@ import {
   buildCustomerUpdatePlan,
   buildCustomerUpdatePreview,
   customerOrganizationEmailDomains,
+  customerPhoneSearchVariants,
   deriveCustomerOpsState,
   duplicateCustomerTrelloCard,
   getCustomerRecordByRequestId,
   listMockupTrelloAttachments,
   parseTrelloCardIdentifier,
   resolveCustomerSearchMode,
+  searchCustomerRecordSuggestions,
   searchCustomerRecords,
   selectReferenceTrelloAttachment,
 } from "../../src/lib/ops/customer-records";
@@ -353,32 +355,98 @@ test("resolveCustomerSearchMode keeps ids and emails exact, names fuzzy", () => 
   assert.equal(resolveCustomerSearchMode("trello:FYXcIQ9K"), "trello");
 });
 
-test("searchCustomerRecords builds fuzzy name filters without double encoding", async () => {
+test("customerPhoneSearchVariants maps German international and national prefixes", () => {
+  assert.deepEqual(customerPhoneSearchVariants("+49 1590"), ["491590", "00491590", "01590"]);
+  assert.deepEqual(customerPhoneSearchVariants("0049 1590"), ["00491590", "491590", "01590"]);
+  assert.deepEqual(customerPhoneSearchVariants("01590"), ["01590", "491590", "00491590"]);
+  assert.deepEqual(customerPhoneSearchVariants("123"), []);
+});
+
+test("searchCustomerRecords searches names, contact fields and request ids together", async () => {
   const url = await captureSupabaseSearch("Samuele Micacchioni", "/rest/v1/master_customers");
 
-  assert.equal(
-    url.searchParams.get("or"),
-    "(name.ilike.*Samuele Micacchioni*,first_name.ilike.*Samuele Micacchioni*,last_name.ilike.*Samuele Micacchioni*,company.ilike.*Samuele Micacchioni*,company_name.ilike.*Samuele Micacchioni*)",
-  );
+  const filters = url.searchParams.get("or") || "";
+  assert.equal(filters.includes("request_id.ilike.*Samuele Micacchioni*"), true);
+  assert.equal(filters.includes("email.ilike.*Samuele Micacchioni*"), true);
+  assert.equal(filters.includes("name.ilike.*Samuele Micacchioni*"), true);
+  assert.equal(filters.includes("company_name.ilike.*Samuele Micacchioni*"), true);
 });
 
-test("searchCustomerRecords builds phone filters without encoded wildcards", async () => {
+test("searchCustomerRecords builds punctuation-tolerant phone filters for all German prefixes", async () => {
   const url = await captureSupabaseSearch("+49 177 7390126", "/rest/v1/master_customers");
 
-  assert.equal(
-    url.searchParams.get("or"),
-    "(phone.ilike.*+49 177 7390126*,original_phone.ilike.*+49 177 7390126*,phone.ilike.*+491777390126*,original_phone.ilike.*+491777390126*)",
-  );
+  const filters = url.searchParams.get("or") || "";
+  assert.equal(filters.includes("phone.ilike.*4*9*1*7*7*7*3*9*0*1*2*6*"), true);
+  assert.equal(filters.includes("phone.ilike.*0*0*4*9*1*7*7*7*3*9*0*1*2*6*"), true);
+  assert.equal(filters.includes("phone.ilike.*0*1*7*7*7*3*9*0*1*2*6*"), true);
+  assert.equal(filters.includes("original_phone.ilike.*0*1*7*7*7*3*9*0*1*2*6*"), true);
 });
 
-test("searchCustomerRecords builds email filters without double encoding", async () => {
+test("searchCustomerRecords supports partial email filters without double encoding", async () => {
   const url = await captureSupabaseSearch("samuele@example.com", "/rest/v1/master_customers");
 
+  const filters = url.searchParams.get("or") || "";
+  assert.equal(filters.includes("email.ilike.*samuele@example.com*"), true);
+  assert.equal(filters.includes("billing_email.ilike.*samuele@example.com*"), true);
+  assert.equal(filters.includes("original_email.ilike.*samuele@example.com*"), true);
+  assert.equal(filters.includes("cc_emails.cs.{samuele@example.com}"), true);
+  assert.equal(url.searchParams.get("or")?.includes("%40"), false);
+});
+
+test("searchCustomerRecords also checks Nerdyforms form ids", async () => {
+  const url = await captureSupabaseSearch("Nerdy-4711", "/rest/v1/master_requests");
   assert.equal(
     url.searchParams.get("or"),
-    "(email.eq.samuele@example.com,billing_email.eq.samuele@example.com,original_email.eq.samuele@example.com,cc_emails.cs.{samuele@example.com})",
+    "(request_id.ilike.*Nerdy-4711*,form_id.ilike.*Nerdy-4711*)",
   );
-  assert.equal(url.searchParams.get("or")?.includes("%40"), false);
+  assert.equal(url.searchParams.get("limit"), "10");
+});
+
+test("customer suggestions are capped at ten and do not hydrate downstream customer data", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const calls: URL[] = [];
+
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    calls.push(url);
+    if (url.pathname.endsWith("/rest/v1/master_customers")) {
+      return Response.json([
+        {
+          id: "customer_1",
+          request_id: "request_1",
+          email: "samuele@example.com",
+          first_name: "Samuele",
+          last_name: "Micacchioni",
+          phone: "+49 1590 123456",
+          company: "NEONTRIP",
+          updated_at: "2026-07-23T08:00:00.000Z",
+        },
+      ]);
+    }
+    return Response.json([]);
+  }) as typeof fetch;
+
+  try {
+    const suggestions = await searchCustomerRecordSuggestions("Samuele", 99);
+    assert.equal(suggestions.length, 1);
+    assert.equal(suggestions[0]?.requestId, "request_1");
+    assert.equal(calls.find((url) => url.pathname.endsWith("/rest/v1/master_customers"))?.searchParams.get("limit"), "10");
+    assert.equal(calls.some((url) => url.pathname.endsWith("/rest/v1/followup_queue")), false);
+    assert.deepEqual(
+      [...new Set(calls.map((url) => url.pathname))].sort(),
+      ["/rest/v1/master_customers", "/rest/v1/master_requests"],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
 });
 
 test("searchCustomerRecords builds trello filters without double encoding", async () => {

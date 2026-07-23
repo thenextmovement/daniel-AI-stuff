@@ -36,6 +36,7 @@ import type {
   CustomerAuditEntry,
   CustomerCommunicationEntry,
   CustomerOpsNote,
+  CustomerSearchSuggestion,
   CustomerSearchResult,
   CustomerSpecialCaseInput,
   CustomerTeamStateInput,
@@ -97,6 +98,7 @@ type CustomerPreviewResponse = {
 type SearchResponse = {
   ok: boolean;
   results?: CustomerSearchResult[];
+  suggestions?: CustomerSearchSuggestion[];
   sections?: CustomerWorkboardSection[];
   error?: string;
   issues?: string[];
@@ -21103,6 +21105,10 @@ export function CustomerRecordsClient({
   const [trelloReplaySaving, setTrelloReplaySaving] = useState(false);
   const [trelloReplayDraft, setTrelloReplayDraft] = useState<TrelloReplayDraft>(() => defaultTrelloReplayDraft());
   const [query, setQuery] = useState("");
+  const [searchSuggestions, setSearchSuggestions] = useState<CustomerSearchSuggestion[]>([]);
+  const [searchSuggestionsLoading, setSearchSuggestionsLoading] = useState(false);
+  const [searchSuggestionsVisible, setSearchSuggestionsVisible] = useState(false);
+  const suppressedSuggestionQueryRef = useRef<string | null>(null);
   const [inbox, setInbox] = useState<CustomerSearchResult[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
   const [workboard, setWorkboard] = useState<CustomerWorkboardSection[]>([]);
@@ -21153,6 +21159,51 @@ export function CustomerRecordsClient({
       void loadWorkboard();
     }
   }, [hasSession, localMode, opsEnabled]);
+
+  useEffect(() => {
+    const normalized = query.trim();
+    const digitCount = normalized.replace(/\D/g, "").length;
+    const hasLetters = /[a-z@]/i.test(normalized);
+    const eligible = hasLetters ? normalized.length >= 2 : digitCount >= 4;
+    const canSearch = !opsEnabled || hasSession || localMode;
+
+    if (!eligible || !canSearch || suppressedSuggestionQueryRef.current === normalized) {
+      setSearchSuggestions([]);
+      setSearchSuggestionsLoading(false);
+      return;
+    }
+
+    setSearchSuggestions([]);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSearchSuggestionsLoading(true);
+      try {
+        const response = await fetch(
+          `/api/ops/customer-records?mode=suggestions&limit=10&query=${encodeURIComponent(normalized)}`,
+          { signal: controller.signal },
+        );
+        const payload = (await response.json().catch(() => null)) as SearchResponse | null;
+        if (controller.signal.aborted) return;
+        if (response.status === 401) {
+          setHasSession(false);
+          setSearchSuggestions([]);
+          return;
+        }
+        setSearchSuggestions(response.ok && payload?.ok ? payload.suggestions || [] : []);
+        setSearchSuggestionsVisible(true);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSearchSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setSearchSuggestionsLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [hasSession, localMode, opsEnabled, query]);
 
   function activateOperatorView(name: string) {
     setOperatorName(name);
@@ -21486,7 +21537,7 @@ export function CustomerRecordsClient({
     setError(null);
   }
 
-  async function search() {
+  async function runCustomerSearch(searchQuery: string) {
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -21497,7 +21548,7 @@ export function CustomerRecordsClient({
     setRecordPreferredTab(null);
 
     try {
-      const response = await fetch(`/api/ops/customer-records?query=${encodeURIComponent(query)}`);
+      const response = await fetch(`/api/ops/customer-records?query=${encodeURIComponent(searchQuery)}`);
       const payload = (await response.json().catch(() => null)) as SearchResponse | null;
 
       if (response.status === 401) {
@@ -21523,7 +21574,7 @@ export function CustomerRecordsClient({
         setFocusSession({
           source: "workboard",
           badgeLabel: leadSessionMeta?.badgeLabel,
-          label: `Suche • ${query.trim()}`,
+          label: `Suche • ${searchQuery.trim()}`,
           requestIds: foundResults.map((entry) => entry.requestId),
           currentIndex: 0,
           preferredTab: leadSessionMeta?.preferredTab ?? null,
@@ -21548,6 +21599,65 @@ export function CustomerRecordsClient({
     } finally {
       setLoading(false);
     }
+  }
+
+  async function search() {
+    const searchQuery = query.trim();
+    if (!searchQuery) return;
+    setSearchSuggestionsVisible(false);
+    setSearchSuggestions([]);
+    await runCustomerSearch(searchQuery);
+  }
+
+  function handleCustomerSearchQueryChange(value: string) {
+    suppressedSuggestionQueryRef.current = null;
+    setQuery(value);
+    setSearchSuggestionsVisible(true);
+  }
+
+  async function openCustomerSearchSuggestion(suggestion: CustomerSearchSuggestion) {
+    suppressedSuggestionQueryRef.current = suggestion.requestId;
+    setQuery(suggestion.requestId);
+    setSearchSuggestionsVisible(false);
+    setSearchSuggestions([]);
+    await runCustomerSearch(suggestion.requestId);
+  }
+
+  function renderCustomerSearchSuggestions() {
+    if (!searchSuggestionsVisible || (!searchSuggestionsLoading && !searchSuggestions.length)) return null;
+
+    return (
+      <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
+        <div className="border-b border-black/8 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40">
+          {searchSuggestionsLoading
+            ? "Passende Kunden werden gesucht ..."
+            : `${searchSuggestions.length} passende${searchSuggestions.length === 1 ? "r Kunde" : " Kunden"}`}
+        </div>
+        {searchSuggestions.map((suggestion) => {
+          const title = suggestion.displayName || suggestion.company || suggestion.email || "Kunde ohne Namen";
+          const organization = suggestion.company && suggestion.company !== title ? suggestion.company : null;
+          return (
+            <button
+              key={`${suggestion.masterCustomerId}-${suggestion.requestId}`}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void openCustomerSearchSuggestion(suggestion)}
+              className="flex w-full items-start justify-between gap-4 border-b border-black/6 px-4 py-3 text-left transition last:border-b-0 hover:bg-[#fa31a2]/[0.06] focus:bg-[#fa31a2]/[0.06] focus:outline-none"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-black">{title}</span>
+                <span className="mt-0.5 block truncate text-xs text-black/55">
+                  {[organization, suggestion.email, suggestion.phone].filter(Boolean).join(" • ") || "Keine Kontaktdaten"}
+                </span>
+              </span>
+              <span className="max-w-[12rem] shrink-0 truncate rounded-full border border-black/8 bg-black/[0.025] px-2.5 py-1 font-mono text-[10px] text-black/45">
+                {suggestion.requestId}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
   function updateManualImportDraft<K extends keyof ManualImportDraft>(key: K, value: ManualImportDraft[K]) {
@@ -23520,16 +23630,25 @@ export function CustomerRecordsClient({
                 ) : null}
                 {showSimpleRecordSwitcher ? (
                   <div className="flex flex-col gap-3 md:flex-row">
-                    <label className="flex min-w-0 flex-1 items-center gap-3 rounded-full border-2 border-black/10 bg-white px-5 py-3.5 transition-all focus-within:border-[#fa31a2] focus-within:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]">
-                      <Search className="h-4 w-4 text-black/40" />
-                      <input
-                        type="text"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Name, E-Mail, Telefon oder Fall-ID"
-                        className="w-full bg-transparent text-sm text-black outline-none placeholder:text-black/40"
-                      />
-                    </label>
+                    <div className="relative min-w-0 flex-1">
+                      <label className="flex items-center gap-3 rounded-full border-2 border-black/10 bg-white px-5 py-3.5 transition-all focus-within:border-[#fa31a2] focus-within:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]">
+                        <Search className="h-4 w-4 text-black/40" />
+                        <input
+                          type="text"
+                          value={query}
+                          onChange={(event) => handleCustomerSearchQueryChange(event.target.value)}
+                          onFocus={() => setSearchSuggestionsVisible(true)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") return;
+                            event.preventDefault();
+                            void search();
+                          }}
+                          placeholder="Name, E-Mail, Firma, Telefon oder Nerdyforms-ID"
+                          className="w-full bg-transparent text-sm text-black outline-none placeholder:text-black/40"
+                        />
+                      </label>
+                      {renderCustomerSearchSuggestions()}
+                    </div>
                     <button
                       type="button"
                       onClick={search}
@@ -23632,16 +23751,25 @@ export function CustomerRecordsClient({
                   </div>
                 )}
                 <div className="flex flex-col gap-3 md:flex-row">
-                  <label className="flex min-w-0 flex-1 items-center gap-3 rounded-full border-2 border-black/10 bg-white px-5 py-4 transition-all focus-within:border-[#fa31a2] focus-within:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]">
-                    <Search className="h-4 w-4 text-black/40" />
-                      <input
-                        type="text"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Fall-ID, E-Mail oder Name"
-                        className="w-full bg-transparent text-sm text-black outline-none placeholder:text-black/40"
-                      />
-                  </label>
+                  <div className="relative min-w-0 flex-1">
+                    <label className="flex items-center gap-3 rounded-full border-2 border-black/10 bg-white px-5 py-4 transition-all focus-within:border-[#fa31a2] focus-within:shadow-[0_0_0_2px_rgba(250,49,162,0.12)]">
+                      <Search className="h-4 w-4 text-black/40" />
+                        <input
+                          type="text"
+                          value={query}
+                          onChange={(event) => handleCustomerSearchQueryChange(event.target.value)}
+                          onFocus={() => setSearchSuggestionsVisible(true)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") return;
+                            event.preventDefault();
+                            void search();
+                          }}
+                          placeholder="Name, E-Mail, Firma, Telefon oder Nerdyforms-ID"
+                          className="w-full bg-transparent text-sm text-black outline-none placeholder:text-black/40"
+                        />
+                    </label>
+                    {renderCustomerSearchSuggestions()}
+                  </div>
                   <button
                     type="button"
                     onClick={search}
