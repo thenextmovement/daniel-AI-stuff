@@ -27,6 +27,7 @@ test("schema has durable unique delivery, reply and alert identities",()=>{
  assert.match(store,/recordDeliveryDraft/);
  assert.match(store,/provider_conversation_id:`eq\.\$\{conversationId\}`/);
  assert.match(store,/matchedDeliveries\.length===1\?matchedDeliveries\[0\]\.request_id:null/);
+ assert.match(store,/eu_supplier_offers[\s\S]+request_id:`eq\.\$\{requestId\}`[\s\S]+organization_id:`eq\.\$\{organizationId\}`/);
 });
 test("workflow contracts have one trigger, bounded nodes and safe alerts",()=>{
  assert.equal(contracts.workflows.length,4);

@@ -75,6 +75,8 @@ export async function ingestReply(input:{internetMessageId?:unknown;conversation
 }
 export async function selectOrganization(input:{requestId?:unknown;organizationId?:unknown;operatorName?:unknown;note?:unknown}) {
   const requestId=required(input.requestId,"requestId"),organizationId=required(input.organizationId,"organizationId"),operatorName=required(input.operatorName,"operatorName");
+  const offers=await supabaseRequest<Array<{id:string}>>("eu_supplier_offers",undefined,{select:"id",request_id:`eq.${requestId}`,organization_id:`eq.${organizationId}`,review_status:"in.(verified,needs_review)",limit:1});
+  if(!offers[0])throw new QuoteValidationError("Supplier besitzt fuer diese Anfrage kein auswaehlbares Angebot.",["organizationId"],409);
   const rows=await supabaseRequest<RequestRow[]>("eu_supplier_requests",{method:"PATCH",body:JSON.stringify({status:"selected",selected_organization_id:organizationId,selected_by:operatorName,selected_at:new Date().toISOString(),selection_note:String(input.note||"").slice(0,1000)||null,updated_at:new Date().toISOString()}),headers:{Prefer:"return=representation"}},{id:`eq.${requestId}`,status:"in.(collecting,ready,needs_review,selected)"});
   if(!rows[0]) throw new QuoteValidationError("Anfrage konnte nicht ausgewaehlt werden.",["requestId"],409); return rows[0];
 }
