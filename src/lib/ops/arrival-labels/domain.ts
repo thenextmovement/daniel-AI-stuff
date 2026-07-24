@@ -494,8 +494,8 @@ function standardAttributes(attributes: ShopifyOrderEvidence["customAttributes"]
   const pdfUrlId = values.get("NEONTRIP PDF Snapshot")?.match(PDF_URL)?.[1] || "";
   return OFFER_ID.test(offerId)
     && OFFER_NUMBER.test(values.get("NEONTRIP Offer Number") || "")
-    && offerUrlId === offerId
-    && pdfUrlId === offerId
+    && Boolean(offerUrlId)
+    && pdfUrlId === offerUrlId
     && /^[a-f0-9]{24}$/i.test(values.get("Trello Card ID") || "")
     && values.get("Idempotency Key") === `offer:${offerId}:shopify-sale:v1`
     && ["yes_private_email", "business_email_no_shopify_receipt"].includes(values.get("Invoice Mail Intended") || "");

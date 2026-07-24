@@ -272,22 +272,32 @@ test("refunded, voided and expired orders remain manual-review cases", () => {
 
 test("only the exact NEONTRIP offer note and attribute schema passes the Shopify gate", () => {
   const offerId = "cmabc123456789";
+  const publicToken = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
   const note = [
     "NEONTRIP Angebot: A/N 14258",
-    `Angebotslink: https://angebote.neontrip.de/offer/${offerId}`,
-    `PDF Snapshot: https://angebote.neontrip.de/offer/${offerId}/pdf`,
+    `Angebotslink: https://angebote.neontrip.de/offer/${publicToken}`,
+    `PDF Snapshot: https://angebote.neontrip.de/offer/${publicToken}/pdf`,
     "Netto: 903 / MwSt: 171.57 / Brutto: 1074.57",
   ].join("\n");
   const customAttributes = [
     { key: "NEONTRIP Offer ID", value: offerId },
     { key: "NEONTRIP Offer Number", value: "A/N 14258" },
-    { key: "NEONTRIP Offer URL", value: `https://angebote.neontrip.de/offer/${offerId}` },
-    { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/offer/${offerId}/pdf` },
+    { key: "NEONTRIP Offer URL", value: `https://angebote.neontrip.de/offer/${publicToken}` },
+    { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/offer/${publicToken}/pdf` },
     { key: "Trello Card ID", value: "0123456789abcdef01234567" },
     { key: "Idempotency Key", value: `offer:${offerId}:shopify-sale:v1` },
     { key: "Invoice Mail Intended", value: "yes_private_email" },
   ];
   assert.equal(assessShopifyAutomationGate({ ...standardOrder, note, customAttributes }).blocked, false);
+  const mismatchedPdfToken = assessShopifyAutomationGate({
+    ...standardOrder,
+    note,
+    customAttributes: customAttributes.map((attribute) => attribute.key === "NEONTRIP PDF Snapshot"
+      ? { ...attribute, value: "https://angebote.neontrip.de/offer/differentToken123/pdf" }
+      : attribute),
+  });
+  assert.equal(mismatchedPdfToken.blocked, true);
+  assert.ok(mismatchedPdfToken.reasonCodes.includes("non_standard_shopify_attribute"));
   const extraLine = assessShopifyAutomationGate({ ...standardOrder, note: `${note}\nBitte hinten ablegen`, customAttributes });
   assert.equal(extraLine.blocked, true);
   assert.ok(extraLine.reasonCodes.includes("non_standard_shopify_note"));
