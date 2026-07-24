@@ -18,6 +18,11 @@ function graphIdentifier(value:unknown,field:string){
  if(text.length>500||!/^[A-Za-z0-9+/_=.:-]+$/.test(text))throw new QuoteValidationError(`${field} ist ungueltig.`,[field],400);
  return text;
 }
+function internetMessageIdentifier(value:unknown){
+ const text=required(value,"internetMessageId");
+ if(text.length>998||!/^[A-Za-z0-9+/_=.@<>:-]+$/.test(text))throw new QuoteValidationError("internetMessageId ist ungueltig.",["internetMessageId"],400);
+ return text;
+}
 function mapOrg(row: OrgRow) { return { id:row.id,name:row.name,canonicalDomain:row.canonical_domain,emailDomains:row.email_domains||[],contactEmails:row.contact_emails||[],websiteUrl:row.website_url,countryCode:row.country_code,research:row.research||{} }; }
 export async function listOrganizations() {
   const rows = await supabaseRequest<OrgRow[]>("eu_supplier_organizations", undefined, { select:"*", active:"eq.true", order:"name.asc" });
@@ -64,14 +69,27 @@ export async function recordDeliveryDraft(input:{deliveryId?:unknown;providerMes
  if(!rows[0])throw new QuoteValidationError("Graph-Entwurf konnte nicht eindeutig gespeichert werden.",["deliveryId"],409);
  return rows[0];
 }
-export async function ingestReply(input:{internetMessageId?:unknown;conversationId?:unknown;senderEmail?:unknown;receivedAt?:unknown;subject?:unknown;bodyExcerpt?:unknown;attachments?:unknown;requestId?:unknown;extraction?:unknown}) {
-  const organizations=await listOrganizations(); const senderEmail=normalizeEmail(input.senderEmail); const match=findOrganizationByEmail(organizations,senderEmail);
-  const conversationId=input.conversationId?graphIdentifier(input.conversationId,"conversationId"):null;
-  const matchedDeliveries=conversationId?await supabaseRequest<Array<{request_id:string}>>("eu_supplier_deliveries",undefined,{select:"request_id",provider_conversation_id:`eq.${conversationId}`,status:"eq.sent",limit:2}):[];
-  const requestId=matchedDeliveries.length===1?matchedDeliveries[0].request_id:null; const extraction=input.extraction===undefined?null:validateOfferExtraction(input.extraction);
-  const replyRows=await supabaseRequest<Array<{id:string}>>("eu_supplier_replies",{method:"POST",body:JSON.stringify({internet_message_id:required(input.internetMessageId,"internetMessageId"),conversation_id:conversationId,sender_email:senderEmail,sender_domain:emailDomain(senderEmail),received_at:required(input.receivedAt,"receivedAt"),subject:String(input.subject||"").slice(0,500)||null,body_excerpt:String(input.bodyExcerpt||"").slice(0,2000)||null,attachment_manifest:Array.isArray(input.attachments)?input.attachments:[],request_id:requestId,organization_id:match.organization?.id||null,match_status:match.matchStatus,extraction_status:extraction&&requestId&&match.organization?(extraction.confidence>=0.8?"validated":"needs_review"):"pending",extraction_confidence:extraction?.confidence??null,raw_extraction:extraction}),headers:{Prefer:"resolution=ignore-duplicates,return=representation"}},{on_conflict:"internet_message_id"});
-  if(extraction&&requestId&&match.organization&&replyRows[0]) await supabaseRequest("eu_supplier_offers",{method:"POST",body:JSON.stringify({request_id:requestId,organization_id:match.organization.id,reply_id:replyRows[0].id,currency:extraction.currency,unit_price:extraction.unit_price,total_price:extraction.total_price,shipping_cost:extraction.shipping_cost,production_days_min:extraction.production_days_min,production_days_max:extraction.production_days_max,shipping_days_min:extraction.shipping_days_min,shipping_days_max:extraction.shipping_days_max,valid_until:extraction.valid_until,stated_terms:{evidence:extraction.evidence},confidence:extraction.confidence,review_status:extraction.confidence>=0.8?"verified":"needs_review"}),headers:{Prefer:"return=minimal"}});
-  return {replyId:replyRows[0]?.id||null,organization:match.organization,matchStatus:match.matchStatus};
+type InboundReplyInput={internetMessageId?:unknown;conversationId?:unknown;senderEmail?:unknown;receivedAt?:unknown;subject?:unknown;bodyExcerpt?:unknown;attachments?:unknown;requestId?:unknown;extraction?:unknown};
+async function inboundReplyContext(input:InboundReplyInput){
+ const organizations=await listOrganizations(),senderEmail=normalizeEmail(input.senderEmail),match=findOrganizationByEmail(organizations,senderEmail);
+ const conversationId=input.conversationId?graphIdentifier(input.conversationId,"conversationId"):null;
+ const matchedDeliveries=conversationId?await supabaseRequest<Array<{request_id:string}>>("eu_supplier_deliveries",undefined,{select:"request_id",provider_conversation_id:`eq.${conversationId}`,status:"eq.sent",limit:2}):[];
+ return {senderEmail,match,conversationId,requestId:matchedDeliveries.length===1?matchedDeliveries[0].request_id:null};
+}
+export async function reserveReply(input:InboundReplyInput){
+ const context=await inboundReplyContext(input),internetMessageId=internetMessageIdentifier(input.internetMessageId);
+ const rows=await supabaseRequest<Array<{id:string}>>("eu_supplier_replies",{method:"POST",body:JSON.stringify({internet_message_id:internetMessageId,conversation_id:context.conversationId,sender_email:context.senderEmail,sender_domain:emailDomain(context.senderEmail),received_at:required(input.receivedAt,"receivedAt"),subject:String(input.subject||"").slice(0,500)||null,body_excerpt:String(input.bodyExcerpt||"").slice(0,2000)||null,attachment_manifest:Array.isArray(input.attachments)?input.attachments:[],request_id:context.requestId,organization_id:context.match.organization?.id||null,match_status:context.match.matchStatus,extraction_status:"pending"}),headers:{Prefer:"resolution=ignore-duplicates,return=representation"}},{on_conflict:"internet_message_id"});
+ return {reserved:Boolean(rows[0]),replyId:rows[0]?.id||null,requestId:context.requestId,organization:context.match.organization,matchStatus:context.match.matchStatus};
+}
+export async function ingestReply(input:InboundReplyInput) {
+ const context=await inboundReplyContext(input),internetMessageId=internetMessageIdentifier(input.internetMessageId),extraction=input.extraction===undefined?null:validateOfferExtraction(input.extraction);
+ const existing=await supabaseRequest<Array<{id:string}>>("eu_supplier_replies",undefined,{select:"id",internet_message_id:`eq.${internetMessageId}`,limit:1});
+ if(!existing[0])throw new QuoteValidationError("Antwort wurde nicht vor der KI-Auswertung reserviert.",["internetMessageId"],409);
+ const extractionStatus=extraction&&context.requestId&&context.match.organization?(extraction.confidence>=0.8?"validated":"needs_review"):"pending";
+ const replyRows=await supabaseRequest<Array<{id:string}>>("eu_supplier_replies",{method:"PATCH",body:JSON.stringify({conversation_id:context.conversationId,sender_email:context.senderEmail,sender_domain:emailDomain(context.senderEmail),received_at:required(input.receivedAt,"receivedAt"),subject:String(input.subject||"").slice(0,500)||null,body_excerpt:String(input.bodyExcerpt||"").slice(0,2000)||null,attachment_manifest:Array.isArray(input.attachments)?input.attachments:[],request_id:context.requestId,organization_id:context.match.organization?.id||null,match_status:context.match.matchStatus,extraction_status:extractionStatus,extraction_confidence:extraction?.confidence??null,raw_extraction:extraction}),headers:{Prefer:"return=representation"}},{id:`eq.${existing[0].id}`,extraction_status:"eq.pending"});
+ const replyId=replyRows[0]?.id||existing[0].id;
+ if(extraction&&context.requestId&&context.match.organization) await supabaseRequest("eu_supplier_offers",{method:"POST",body:JSON.stringify({request_id:context.requestId,organization_id:context.match.organization.id,reply_id:replyId,currency:extraction.currency,unit_price:extraction.unit_price,total_price:extraction.total_price,shipping_cost:extraction.shipping_cost,production_days_min:extraction.production_days_min,production_days_max:extraction.production_days_max,shipping_days_min:extraction.shipping_days_min,shipping_days_max:extraction.shipping_days_max,valid_until:extraction.valid_until,stated_terms:{evidence:extraction.evidence},confidence:extraction.confidence,review_status:extraction.confidence>=0.8?"verified":"needs_review"}),headers:{Prefer:"resolution=merge-duplicates,return=minimal"}},{on_conflict:"reply_id"});
+ return {replyId,organization:context.match.organization,matchStatus:context.match.matchStatus};
 }
 export async function selectOrganization(input:{requestId?:unknown;organizationId?:unknown;operatorName?:unknown;note?:unknown}) {
   const requestId=required(input.requestId,"requestId"),organizationId=required(input.organizationId,"organizationId"),operatorName=required(input.operatorName,"operatorName");

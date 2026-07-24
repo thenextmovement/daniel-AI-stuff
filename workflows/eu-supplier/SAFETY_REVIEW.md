@@ -8,6 +8,7 @@
 - Medium: Only explicit organization domains and aliases match; free-mail domains require review.
 - Medium: Attachments and bodies are untrusted. AI output is JSON-only and cannot perform actions.
 - Medium: Graph notifications require the configured client-state secret, messages are re-fetched by immutable ID, and request correlation comes only from a stored outbound conversation ID.
+- Medium: The immutable internet-message ID is reserved before OpenAI, so webhook replay cannot repeat extraction cost.
 - Medium: Public B2B reviews are sparse. Verified NEONTRIP performance must become the primary score.
 
 ## Scorecard

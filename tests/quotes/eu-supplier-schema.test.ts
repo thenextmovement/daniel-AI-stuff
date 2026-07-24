@@ -13,6 +13,7 @@ test("schema has durable unique delivery, reply and alert identities",()=>{
  assert.match(migration,/internet_message_id text not null unique/);
  assert.match(migration,/provider_conversation_id text/);
  assert.match(migration,/attempt_count between 0 and 2/);
+ assert.match(migration,/unique\(reply_id\)/);
  assert.match(migration,/alert_idempotency_key text unique/);
  assert.match(migration,/enable row level security/g);
  assert.match(migration,/revoke all .* from anon,authenticated/);
@@ -25,6 +26,7 @@ test("schema has durable unique delivery, reply and alert identities",()=>{
  assert.match(claims,/uncertain_graph_dispatch/);
  assert.match(claims,/provider_message_id is not null/);
  assert.match(store,/recordDeliveryDraft/);
+ assert.match(store,/reserveReply/);
  assert.match(store,/provider_conversation_id:`eq\.\$\{conversationId\}`/);
  assert.match(store,/matchedDeliveries\.length===1\?matchedDeliveries\[0\]\.request_id:null/);
  assert.match(store,/eu_supplier_offers[\s\S]+request_id:`eq\.\$\{requestId\}`[\s\S]+organization_id:`eq\.\$\{organizationId\}`/);
@@ -64,6 +66,8 @@ test("generated n8n workflows are importable, inactive and bounded",()=>{
  const reply=JSON.parse(fs.readFileSync(path.join(generatedDir,"reply-intake-v1.json"),"utf8"));
  assert.ok(reply.nodes.some((item:{name:string})=>item.name==="Validate Graph Notification"));
  assert.ok(reply.nodes.some((item:{name:string})=>item.name==="Fetch Immutable Graph Message"));
+ assert.ok(reply.nodes.some((item:{name:string})=>item.name==="Reserve Message Before AI"));
+ assert.ok(reply.nodes.some((item:{name:string})=>item.name==="Acknowledge Duplicate Reply"));
  assert.match(reply.nodes.find((item:{name:string})=>item.name==="Validate Graph Notification").parameters.jsCode,/EU_SUPPLIER_GRAPH_CLIENT_STATE/);
  assert.match(reply.nodes.find((item:{name:string})=>item.name==="Build Untrusted Extraction Input").parameters.jsCode,/input_file/);
  assert.match(reply.nodes.find((item:{name:string})=>item.name==="Build Untrusted Extraction Input").parameters.jsCode,/input_image/);

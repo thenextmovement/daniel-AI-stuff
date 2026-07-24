@@ -29,11 +29,12 @@ No success label is written before every requested delivery is sent. The idempot
 3. Normalize sender and match the exact configured domain after @.
 4. Unknown, duplicated and free-mail domains remain unmatched or ambiguous.
 5. Fetch Graph attachments, reject inline/unsupported/oversized files, cap each file at 10 MB and the message at 20 MB, and never execute macros or embedded content.
-6. Pass allowlisted PDF, image and text content to the Responses API as untrusted file/image input; attachment bytes are not persisted in the OPS API.
-7. Treat body and attachments as untrusted data and request strict JSON only.
-8. Deterministically validate all fields and evidence.
-9. Signed ingest_reply stores reply and offer.
-10. Low confidence or uncertain matching requires manual review.
+6. Reserve the immutable internet-message ID before any AI call; duplicate Graph deliveries return successfully without a second extraction.
+7. Pass allowlisted PDF, image and text content to the Responses API as untrusted file/image input; attachment bytes are not persisted in the OPS API.
+8. Treat body and attachments as untrusted data and request strict JSON only.
+9. Deterministically validate all fields and evidence.
+10. Signed ingest_reply idempotently updates the reserved reply and upserts one offer per reply.
+11. Low confidence or uncertain matching requires manual review.
 
 ## Alert delivery
 

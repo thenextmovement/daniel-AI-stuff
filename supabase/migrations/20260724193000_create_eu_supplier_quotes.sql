@@ -40,7 +40,8 @@ create table public.eu_supplier_offers (
   production_days_min integer, production_days_max integer, shipping_days_min integer, shipping_days_max integer,
   valid_until date, stated_terms jsonb not null default '{}', confidence numeric(5,4),
   review_status text not null default 'needs_review' check (review_status in ('needs_review','verified','rejected')),
-  verified_by text, verified_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+  verified_by text, verified_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique(reply_id)
 );
 create index eu_supplier_deliveries_request_idx on public.eu_supplier_deliveries(request_id,status);
 create index eu_supplier_deliveries_conversation_idx on public.eu_supplier_deliveries(provider_conversation_id) where provider_conversation_id is not null;
