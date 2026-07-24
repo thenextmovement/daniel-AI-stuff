@@ -15,7 +15,10 @@ test("schema has durable unique delivery, reply and alert identities",()=>{
  assert.match(migration,/revoke all .* from anon,authenticated/);
  assert.match(claims,/for update skip locked/g);
  assert.match(claims,/auth\.role\(\).*service_role/);
+ assert.equal((claims.match(/attempt_count<2/g)||[]).length,2);
  assert.match(claims,/alert_status='sending'/);
+ assert.match(claims,/status='failed' and alert_status='pending'/);
+ assert.doesNotMatch(claims,/alert_status in \('pending','failed'\)/);
 });
 test("workflow contracts have one trigger, bounded nodes and safe alerts",()=>{
  assert.equal(contracts.workflows.length,4);
