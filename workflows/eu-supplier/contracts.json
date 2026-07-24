@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "name": "EU Supplier Request Dispatch v1",
+      "active": false,
+      "trigger": "trello_move",
+      "nodes": ["TrelloMoveTrigger","ValidateEvent","FetchCard","UpsertRequest","QueueDeliveries","ClaimDelivery","BuildMail","SendGraphMail","RecordOutcome","ProjectStatus","ErrorHandler"],
+      "idempotency": "eu-supplier-request:v1:{requestId}:{normalizedRecipient}",
+      "terminalFailure": {"maxAttempts":5,"alertSubject":"EU Supplier Mail fehlgeschlagen"}
+    },
+    {
+      "name": "EU Supplier Reply Intake v1",
+      "active": false,
+      "trigger": "microsoft_graph_subscription",
+      "nodes": ["GraphNotification","ValidateNotification","FetchMessage","CorrelateRequest","MatchExactDomain","FetchAttachments","ScanAndBoundContent","ExtractJson","ValidateSchema","IngestReply","ManualReview","ErrorHandler"],
+      "idempotency": "internet_message_id",
+      "untrustedInputs": ["subject","body","attachments","senderDisplayName"]
+    },
+    {
+      "name": "EU Supplier Failure Alert v1",
+      "active": false,
+      "trigger": "schedule_2_minutes",
+      "nodes": ["Schedule","ClaimPendingAlert","BuildInternalAlert","SendGraphAlert","RecordAlertOutcome","RetryAlert","ErrorHandler"],
+      "idempotency": "eu-supplier-mail-failed:v1:{deliveryId}",
+      "recipientSource": "fixed_configuration"
+    }
+  ]
+}
