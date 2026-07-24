@@ -2860,9 +2860,6 @@ test("completed offers sync reports partial when offers import but Shopify fallb
       salePostCount += 1;
       return Response.json([importedRow]);
     }
-    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
-    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: importedRow.id })]);
-    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
     return Response.json([]);
   }, async () => {
     process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
@@ -3099,19 +3096,8 @@ test("shopify fallback enriches existing completed offer by unique customer emai
   assert.equal(salePostCount, 0);
 });
 
-test("shopify fallback treats existing supplier tags as already assigned", async () => {
+test("shopify fallback skips missing orders that already have a supplier tag", async () => {
   let salePostCount = 0;
-  const importedRow = saleRow({
-    id: "sale-shopify-tagged",
-    sale_key: "shopify:order:987654333",
-    source: "shopify",
-    shopify_order_id: "987654333",
-    shopify_order_name: "#1236",
-    assigned_supplier: "said",
-    assignment_status: "assigned",
-    shopify_tag_value: "Saeid (schon bezahlt)",
-    shopify_tag_sync_status: "synced",
-  });
 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
@@ -3153,19 +3139,10 @@ test("shopify fallback treats existing supplier tags as already assigned", async
     }
 
     assert.equal(url.origin, "https://supabase.test");
-    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
-      if (url.searchParams.get("id") === `eq.${importedRow.id}`) return Response.json([importedRow]);
-      return Response.json([]);
-    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "POST") {
       salePostCount += 1;
-      const payload = JSON.parse(String(init?.body || "{}"));
-      assert.equal(payload.assigned_supplier, "said");
-      assert.equal(payload.assignment_status, "assigned");
-      assert.equal(payload.shopify_tag_value, "Saeid (schon bezahlt)");
-      assert.equal(payload.shopify_tag_sync_status, "synced");
-      assert.equal(typeof payload.shopify_tag_synced_at, "string");
-      return Response.json([importedRow]);
+      return Response.json([]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: importedRow.id })]);
@@ -3179,10 +3156,89 @@ test("shopify fallback treats existing supplier tags as already assigned", async
     const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
     assert.equal(result.status, "synced", JSON.stringify(result));
     assert.equal(result.sources?.shopifyOrders.checked, 1);
-    assert.equal(result.upserted, 1);
+    assert.equal(result.sources?.shopifyOrders.upserted, 0);
+    assert.equal(result.sources?.shopifyOrders.skippedSupplierTagged, 1);
+    assert.equal(result.upserted, 0);
   });
 
-  assert.equal(salePostCount, 1);
+  assert.equal(salePostCount, 0);
+});
+
+test("shopify fallback does not duplicate an order already linked in supplier sales", async () => {
+  let saleMutationCount = 0;
+  const existingRow = saleRow({
+    id: "sale-shopify-existing",
+    sale_key: "shopify:order:987654334",
+    source: "shopify",
+    shopify_order_id: "987654334",
+    shopify_order_name: "#1237",
+    assignment_status: "completed",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") return Response.json({ ok: true, sales: [], count: 0 });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      return Response.json({
+        data: {
+          orders: {
+            nodes: [{
+              id: "gid://shopify/Order/987654334",
+              name: "#1237",
+              email: "existing@example.com",
+              tags: [],
+              createdAt: "2026-06-16T12:40:00Z",
+              processedAt: "2026-06-16T12:41:00Z",
+              displayFinancialStatus: "PAID",
+              displayFulfillmentStatus: "FULFILLED",
+              customAttributes: [],
+              totalPriceSet: { shopMoney: { amount: "180.00", currencyCode: "EUR" } },
+              subtotalPriceSet: { shopMoney: { amount: "151.26", currencyCode: "EUR" } },
+              customer: { firstName: "Existing", lastName: "Sale", email: "existing@example.com", phone: null },
+              billingAddress: null,
+              shippingAddress: null,
+              lineItems: {
+                nodes: [{
+                  id: "gid://shopify/LineItem/3",
+                  title: "LED Neon Schriftzug",
+                  sku: null,
+                  quantity: 1,
+                  variantTitle: null,
+                  customAttributes: [],
+                  image: null,
+                  variant: { image: null },
+                  product: { productType: "LED-Neon-Flex" },
+                }],
+              },
+            }],
+          },
+        },
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("shopify_order_id") === "eq.987654334") return Response.json([existingRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && ["POST", "PATCH"].includes(method)) {
+      saleMutationCount += 1;
+      return Response.json([]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.sources?.shopifyOrders.checked, 1);
+    assert.equal(result.sources?.shopifyOrders.upserted, 0);
+    assert.equal(result.sources?.shopifyOrders.skippedExisting, 1);
+  });
+
+  assert.equal(saleMutationCount, 0);
 });
 
 test("shopify fallback matches existing offer sale by offer number and default Quentin tag", async () => {
