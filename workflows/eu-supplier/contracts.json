@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "name": "EU Supplier Trello Intake v1",
+      "active": false,
+      "trigger": "trello_move",
+      "nodes": ["TrelloMoveTrigger","ValidateEvent","FetchCard","UpsertRequest","QueueDeliveries","ProjectStatus","ErrorHandler"],
+      "idempotency": "eu-supplier-request:v1:{requestId}:{normalizedRecipient}",
+      "terminalFailure": {"maxAttempts":2,"alertSubject":"EU Supplier Mail fehlgeschlagen"}
+    },
+    {
+      "name": "EU Supplier Delivery Worker v1",
+      "active": false,
+      "trigger": "schedule_1_minute",
+      "nodes": ["Schedule","ClaimOneDelivery","BuildMail","DownloadBoundedAttachments","CreateGraphDraft","PersistDraftIdentity","SendGraphDraftOnce","RecordOutcome","LeaseRecovery","ErrorHandler"],
+      "idempotency": "eu-supplier-request:v1:{requestId}:{normalizedRecipient}",
+      "terminalFailure": {"maxAttempts":2,"oneClaimPerExecution":true,"uncertainPostDraftResend":false}
+    },
+    {
+      "name": "EU Supplier Reply Intake v1",
+      "active": false,
+      "trigger": "microsoft_graph_subscription",
+      "nodes": ["GraphNotification","ValidateNotification","FetchMessage","CorrelateRequest","MatchExactDomain","FetchAttachments","ScanAndBoundContent","ExtractJson","ValidateSchema","IngestReply","ManualReview","ErrorHandler"],
+      "idempotency": "internet_message_id",
+      "untrustedInputs": ["subject","body","attachments","senderDisplayName"]
+    },
+    {
+      "name": "EU Supplier Failure Alert v1",
+      "active": false,
+      "trigger": "schedule_2_minutes",
+      "nodes": ["Schedule","ClaimPendingAlert","BuildInternalAlert","SendGraphAlert","RecordAlertOutcome","ErrorHandler"],
+      "idempotency": "eu-supplier-mail-failed:v1:{deliveryId}",
+      "recipientSource": "fixed_configuration",
+      "terminalFailure": {"maxAttempts":1}
+    }
+  ]
+}

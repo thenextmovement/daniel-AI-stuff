@@ -1,0 +1,340 @@
+{
+  "name": "EU Supplier 3D — Trello Intake v1 (INACTIVE)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": true,
+    "executionTimeout": 300
+  },
+  "nodes": [
+    {
+      "id": "trello-trigger",
+      "name": "Trello Board Trigger",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "id": {
+          "__rl": true,
+          "value": "={{ $env.EU_SUPPLIER_TRELLO_BOARD_ID }}",
+          "mode": "id"
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "CONFIGURE_EU_SUPPLIER_TRELLO",
+          "name": "Trello | EU Supplier"
+        }
+      }
+    },
+    {
+      "id": "target-list",
+      "name": "Moved Into Exact Target List?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "target-list",
+              "leftValue": "={{ $json.action && $json.action.data && $json.action.data.listAfter ? String($json.action.data.listAfter.id) : '' }}",
+              "rightValue": "={{ String($env.EU_SUPPLIER_TRELLO_LIST_ID) }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "wait",
+      "name": "Debounce Card Move",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        -100
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "fetch-card",
+      "name": "Fetch Authoritative Trello Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "authentication": "apiKey",
+        "resource": "card",
+        "operation": "get",
+        "id": {
+          "__rl": true,
+          "value": "={{ $('Trello Board Trigger').item.json.action.data.card.id }}",
+          "mode": "id"
+        },
+        "additionalFields": {
+          "fields": "id,name,desc,idList,url,dateLastActivity,attachments"
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "CONFIGURE_EU_SUPPLIER_TRELLO",
+          "name": "Trello | EU Supplier"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "validate-event",
+      "name": "Validate and Normalize Card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const card=$json;\nif(!card?.id||!card?.name||!card?.url||!card?.idList) throw new Error('invalid_trello_card');\nif(String(card.idList)!==String($env.EU_SUPPLIER_TRELLO_LIST_ID)) return [];\nconst attachments=(Array.isArray(card.attachments)?card.attachments:[]).filter(a=>a&&a.id&&a.url).slice(0,20).map(a=>({id:String(a.id),name:String(a.name||'').slice(0,200),url:String(a.url),mimeType:String(a.mimeType||'application/octet-stream'),size:Number(a.bytes||0)} ));\nreturn [{json:{trelloCardId:String(card.id),trelloCardName:String(card.name),trelloCardUrl:String(card.url),sourceListId:String(card.idList),snapshot:{description:String(card.desc||'').slice(0,30000),attachments} } } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "sign-upsert",
+      "name": "Sign Request Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'upsert_request', ...$json } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "upsert-request",
+      "name": "Upsert Durable Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1320,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "sign-queue",
+      "name": "Sign Delivery Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'queue_deliveries', requestId: String(($json.body ?? $json).request.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "queue-deliveries",
+      "name": "Queue Idempotent Deliveries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1760,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    }
+  ],
+  "connections": {
+    "Trello Board Trigger": {
+      "main": [
+        [
+          {
+            "node": "Moved Into Exact Target List?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Moved Into Exact Target List?": {
+      "main": [
+        [
+          {
+            "node": "Debounce Card Move",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Debounce Card Move": {
+      "main": [
+        [
+          {
+            "node": "Fetch Authoritative Trello Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Authoritative Trello Card": {
+      "main": [
+        [
+          {
+            "node": "Validate and Normalize Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Normalize Card": {
+      "main": [
+        [
+          {
+            "node": "Sign Request Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Request Upsert": {
+      "main": [
+        [
+          {
+            "node": "Upsert Durable Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Durable Request": {
+      "main": [
+        [
+          {
+            "node": "Sign Delivery Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Delivery Queue": {
+      "main": [
+        [
+          {
+            "node": "Queue Idempotent Deliveries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

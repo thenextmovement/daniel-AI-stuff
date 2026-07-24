@@ -7,6 +7,7 @@ import type { OpsAppKey } from "../ops/ops-app-switcher";
 const operatorNameKey = "neontrip-ops-operator";
 
 function activeAppFromPath(path: string): OpsAppKey {
+  if (path.startsWith("/ops/eu-supplier-3d-signs")) return "euSupplierQuotes";
   if (path.startsWith("/ops/sales-vergabe")) return "supplierSales";
   if (path.startsWith("/ops/management")) return "management";
   if (path.startsWith("/ops/tasks")) return "tasks";

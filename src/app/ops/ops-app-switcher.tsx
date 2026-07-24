@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BookOpenCheck, BrainCircuit, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -13,6 +13,7 @@ export type OpsAppKey =
   | "design"
   | "offers"
   | "supplierSales"
+  | "euSupplierQuotes"
   | "shipping"
   | "inboundShipping"
   | "management"
@@ -106,6 +107,13 @@ const OPS_APPS: Array<{
     helper: "Supplier & Deadlines",
     href: "/ops/sales-vergabe",
     Icon: Factory,
+  },
+  {
+    key: "euSupplierQuotes",
+    label: "EU Supplier 3D Schilder",
+    helper: "Anfragen & Angebote",
+    href: "/ops/eu-supplier-3d-signs",
+    Icon: Building2,
   },
   {
     key: "shipping",
