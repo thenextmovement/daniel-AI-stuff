@@ -23,7 +23,9 @@ export function deliveryIdempotencyKey(requestId: string, recipientEmail: unknow
   return `eu-supplier-request:v1:${String(requestId).trim()}:${normalizeEmail(recipientEmail)}`;
 }
 export function nextDeliveryState(input: { current: DeliveryStatus; attemptCount: number; outcome: "claim" | "sent" | "retryable_failure" | "terminal_failure"; maxAttempts?: number }) {
-  const maxAttempts = Math.max(1, Math.min(10, input.maxAttempts || 5));
+  // Safety invariant: one initial attempt plus at most one automatic retry.
+  // Callers may lower this limit, but must never raise it above two attempts.
+  const maxAttempts = Math.max(1, Math.min(2, input.maxAttempts || 2));
   if (input.current === "sent" || input.outcome === "sent") return { status: "sent" as const, shouldAlert: false };
   if (input.outcome === "claim") {
     if (!["queued", "retry_wait"].includes(input.current)) throw new QuoteValidationError("Versand kann nicht reserviert werden.", ["status"], 409);

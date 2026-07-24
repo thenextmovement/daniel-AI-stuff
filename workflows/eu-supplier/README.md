@@ -10,7 +10,7 @@ TICKET-045 splits the integration into three workflows, each with one trigger an
 4. Signed queue_deliveries creates one ledger row per configured recipient.
 5. Claim one due row atomically; send exactly one Microsoft Graph message.
 6. Signed delivery_outcome stores the provider message ID.
-7. Retryable errors use bounded backoff; attempt five or terminal errors set failed.
+7. A retryable first failure receives exactly one delayed retry. The second failed attempt or any terminal error sets the delivery to failed.
 8. A separate alert reservation sends EU Supplier Mail fehlgeschlagen and stores its result.
 9. Trello receives only a projection of database state.
 
@@ -34,7 +34,7 @@ No success label is written before every requested delivery is sent. The idempot
 1. Schedule every two minutes and atomically claim one pending alert.
 2. Send an internal email with subject EU Supplier Mail fehlgeschlagen.
 3. Include Trello link, supplier, recipient, attempts, correlation ID and redacted error.
-4. Mark sent only after Graph confirms; retry alerts independently.
+4. Mark sent only after Graph confirms. The alert is attempted exactly once and is never put into an automatic retry loop.
 5. Never retry a terminal supplier delivery without manual reset.
 
 Required configuration: EU_SUPPLIER_WEBHOOK_SECRET, Ops API URL, Trello IDs, Microsoft Graph credentials and a fixed internal alert recipient. Production activation and replacement of the existing workflow require a separate approved rollout.

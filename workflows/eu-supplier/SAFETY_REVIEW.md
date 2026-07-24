@@ -13,7 +13,7 @@
 | Dimension | Score | Notes |
 |---|---:|---|
 | correctness | 4 | Exact domain matching and evidence-bound fields |
-| reliability | 4 | Durable retries and independent alerts; live Graph canary pending |
+| reliability | 4 | Exactly one supplier-mail retry; alert attempted once; live Graph canary pending |
 | idempotency | 5 | Unique request/recipient, message and alert keys |
 | observability | 4 | Correlation, execution, provider and error fields |
 | security | 4 | HMAC, replay window, RLS and schema validation |
@@ -26,7 +26,8 @@
 - Configure secrets without printing them.
 - Use internal-recipient canaries only.
 - Prove duplicate Trello/Graph events do not resend.
-- Prove attempt five creates exactly one alert.
+- Prove the first failure schedules exactly one retry and the second failure creates exactly one alert.
+- Prove a failed alert is recorded terminally and is not automatically retried.
 - Prove another employee at a configured domain matches the organization.
 - Prove Gmail/lookalike domains require review.
 - Roll back by deactivating new workflows and restoring the previous version.

@@ -20,8 +20,10 @@ test("workflow contracts have one trigger, bounded nodes and safe alerts",()=>{
  assert.equal(contracts.workflows.length,3);
  for(const workflow of contracts.workflows){assert.equal(typeof workflow.trigger,"string");assert.ok(workflow.nodes.length<=30);assert.equal(workflow.active,false);}
  const dispatch=contracts.workflows.find((item:{trigger:string})=>item.trigger==="trello_move");
- assert.equal(dispatch.terminalFailure.maxAttempts,5);
+ assert.equal(dispatch.terminalFailure.maxAttempts,2);
  assert.equal(dispatch.terminalFailure.alertSubject,"EU Supplier Mail fehlgeschlagen");
  const alert=contracts.workflows.find((item:{trigger:string})=>item.trigger==="schedule_2_minutes");
  assert.equal(alert.recipientSource,"fixed_configuration");
+ assert.equal(alert.terminalFailure.maxAttempts,1);
+ assert.ok(!alert.nodes.includes("RetryAlert"));
 });

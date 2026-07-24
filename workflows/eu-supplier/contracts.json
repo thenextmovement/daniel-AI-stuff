@@ -7,7 +7,7 @@
       "trigger": "trello_move",
       "nodes": ["TrelloMoveTrigger","ValidateEvent","FetchCard","UpsertRequest","QueueDeliveries","ClaimDelivery","BuildMail","SendGraphMail","RecordOutcome","ProjectStatus","ErrorHandler"],
       "idempotency": "eu-supplier-request:v1:{requestId}:{normalizedRecipient}",
-      "terminalFailure": {"maxAttempts":5,"alertSubject":"EU Supplier Mail fehlgeschlagen"}
+      "terminalFailure": {"maxAttempts":2,"alertSubject":"EU Supplier Mail fehlgeschlagen"}
     },
     {
       "name": "EU Supplier Reply Intake v1",
@@ -21,9 +21,10 @@
       "name": "EU Supplier Failure Alert v1",
       "active": false,
       "trigger": "schedule_2_minutes",
-      "nodes": ["Schedule","ClaimPendingAlert","BuildInternalAlert","SendGraphAlert","RecordAlertOutcome","RetryAlert","ErrorHandler"],
+      "nodes": ["Schedule","ClaimPendingAlert","BuildInternalAlert","SendGraphAlert","RecordAlertOutcome","ErrorHandler"],
       "idempotency": "eu-supplier-mail-failed:v1:{deliveryId}",
-      "recipientSource": "fixed_configuration"
+      "recipientSource": "fixed_configuration",
+      "terminalFailure": {"maxAttempts":1}
     }
   ]
 }

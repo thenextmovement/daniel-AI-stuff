@@ -17,8 +17,9 @@ test("creates stable per-recipient delivery keys", () => {
   assert.equal(deliveryIdempotencyKey("request-1", " SALES@GOLEKS.COM "), "eu-supplier-request:v1:request-1:sales@goleks.com");
 });
 test("alerts only after terminal failure and sent remains sent", () => {
-  assert.deepEqual(nextDeliveryState({ current: "sending", attemptCount: 2, outcome: "retryable_failure" }), { status: "retry_wait", shouldAlert: false });
-  assert.deepEqual(nextDeliveryState({ current: "sending", attemptCount: 5, outcome: "retryable_failure" }), { status: "failed", shouldAlert: true });
+  assert.deepEqual(nextDeliveryState({ current: "sending", attemptCount: 1, outcome: "retryable_failure" }), { status: "retry_wait", shouldAlert: false });
+  assert.deepEqual(nextDeliveryState({ current: "sending", attemptCount: 2, outcome: "retryable_failure" }), { status: "failed", shouldAlert: true });
+  assert.deepEqual(nextDeliveryState({ current: "sending", attemptCount: 2, outcome: "retryable_failure", maxAttempts: 9 }), { status: "failed", shouldAlert: true });
   assert.deepEqual(nextDeliveryState({ current: "sent", attemptCount: 1, outcome: "claim" }), { status: "sent", shouldAlert: false });
 });
 test("validates exact AI extraction schema", () => {
