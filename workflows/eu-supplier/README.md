@@ -13,22 +13,24 @@ TICKET-045 splits the integration into four workflows, each with one trigger and
 ## Delivery worker
 
 1. Schedule every minute and atomically claim at most one due delivery.
-2. Create a Graph draft, retain its provider message ID, then send that exact draft.
-3. Signed `delivery_outcome` stores success or the bounded error summary.
-4. A retryable first failure receives exactly one delayed retry. The second failed attempt or any terminal error sets the delivery to failed.
-5. No n8n node has its own automatic mail retry; the database state machine is the only retry authority.
+2. Download the authoritative Trello attachments through the configured credential, allowlist the host, and enforce 10 MB per file / 20 MB total before Graph.
+3. Create a Graph draft and persist its message and conversation IDs before sending that exact draft once.
+4. Signed `delivery_outcome` stores success or the bounded error summary.
+5. A retryable pre-draft first failure receives exactly one delayed retry. The second failed attempt or any terminal error sets the delivery to failed.
+6. An expired lease before draft creation follows that bounded rule. An expired lease after a draft exists is treated as uncertain and terminally alerted, never blindly resent.
+7. No n8n mail node has its own automatic retry; the database state machine is the only retry authority.
 
 No success label is written before every requested delivery is sent. The idempotency key is request plus normalized recipient.
 
 ## Reply intake and extraction
 
-1. Microsoft Graph mailbox subscription; validate and fetch by immutable message ID.
-2. Correlate by conversation/message headers and request token.
+1. Microsoft Graph mailbox subscription; validate the fixed `clientState` and fetch by immutable message ID.
+2. Correlate only through a Graph conversation ID stored from a successfully sent supplier draft; an inbound payload cannot choose its own request ID.
 3. Normalize sender and match the exact configured domain after @.
 4. Unknown, duplicated and free-mail domains remain unmatched or ambiguous.
-5. Download attachments with size/type limits and upstream malware scanning.
-6. Convert supported documents to bounded text; never execute macros or embedded content.
-7. Treat body and attachments as untrusted data and request JSON only.
+5. Fetch Graph attachments, reject inline/unsupported/oversized files, cap each file at 10 MB and the message at 20 MB, and never execute macros or embedded content.
+6. Pass allowlisted PDF, image and text content to the Responses API as untrusted file/image input; attachment bytes are not persisted in the OPS API.
+7. Treat body and attachments as untrusted data and request strict JSON only.
 8. Deterministically validate all fields and evidence.
 9. Signed ingest_reply stores reply and offer.
 10. Low confidence or uncertain matching requires manual review.

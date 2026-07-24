@@ -11,33 +11,119 @@
   },
   "nodes": [
     {
-      "id": "trello-webhook",
-      "name": "Trello Move Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
+      "id": "trello-trigger",
+      "name": "Trello Board Trigger",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
       "position": [
         0,
         0
       ],
       "parameters": {
-        "httpMethod": "POST",
-        "path": "eu-supplier-trello-move-v1",
-        "responseMode": "responseNode",
-        "options": {}
+        "id": {
+          "__rl": true,
+          "value": "={{ $env.EU_SUPPLIER_TRELLO_BOARD_ID }}",
+          "mode": "id"
+        }
       },
-      "onError": "continueRegularOutput"
+      "credentials": {
+        "trelloApi": {
+          "id": "CONFIGURE_EU_SUPPLIER_TRELLO",
+          "name": "Trello | EU Supplier"
+        }
+      }
     },
     {
-      "id": "validate-event",
-      "name": "Validate and Normalize Event",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "target-list",
+      "name": "Moved Into Exact Target List?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
       "position": [
         220,
         0
       ],
       "parameters": {
-        "jsCode": "const event = $json.body ?? $json;\nconst card = event.action?.data?.card ?? event.card;\nconst listAfter = event.action?.data?.listAfter ?? event.listAfter;\nconst board = event.action?.data?.board ?? event.board;\nif (!card?.id || !card?.name || !card?.url || !listAfter?.id || !board?.id) throw new Error('invalid_trello_event');\nif (String(board.id) !== String($env.EU_SUPPLIER_TRELLO_BOARD_ID) || String(listAfter.id) !== String($env.EU_SUPPLIER_TRELLO_LIST_ID)) throw new Error('out_of_scope_trello_event');\nreturn [{json:{trelloCardId:String(card.id),trelloCardName:String(card.name),trelloCardUrl:String(card.url),sourceListId:String(listAfter.id),snapshot:{description:String(card.desc||''),attachments:Array.isArray(card.attachments)?card.attachments:[]} } } ];",
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "target-list",
+              "leftValue": "={{ $json.action && $json.action.data && $json.action.data.listAfter ? String($json.action.data.listAfter.id) : '' }}",
+              "rightValue": "={{ String($env.EU_SUPPLIER_TRELLO_LIST_ID) }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "wait",
+      "name": "Debounce Card Move",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        -100
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "fetch-card",
+      "name": "Fetch Authoritative Trello Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "authentication": "apiKey",
+        "resource": "card",
+        "operation": "get",
+        "id": {
+          "__rl": true,
+          "value": "={{ $('Trello Board Trigger').item.json.action.data.card.id }}",
+          "mode": "id"
+        },
+        "additionalFields": {
+          "fields": "id,name,desc,idList,url,dateLastActivity,attachments"
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "CONFIGURE_EU_SUPPLIER_TRELLO",
+          "name": "Trello | EU Supplier"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "validate-event",
+      "name": "Validate and Normalize Card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const card=$json;\nif(!card?.id||!card?.name||!card?.url||!card?.idList) throw new Error('invalid_trello_card');\nif(String(card.idList)!==String($env.EU_SUPPLIER_TRELLO_LIST_ID)) return [];\nconst attachments=(Array.isArray(card.attachments)?card.attachments:[]).filter(a=>a&&a.id&&a.url).slice(0,20).map(a=>({id:String(a.id),name:String(a.name||'').slice(0,200),url:String(a.url),mimeType:String(a.mimeType||'application/octet-stream'),size:Number(a.bytes||0)} ));\nreturn [{json:{trelloCardId:String(card.id),trelloCardName:String(card.name),trelloCardUrl:String(card.url),sourceListId:String(card.idList),snapshot:{description:String(card.desc||'').slice(0,30000),attachments} } } ];",
         "mode": "runOnceForEachItem"
       }
     },
@@ -47,8 +133,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        440,
-        0
+        1100,
+        -100
       ],
       "parameters": {
         "jsCode": "const crypto = require('crypto');\nconst body = { action: 'upsert_request', ...$json } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
@@ -61,8 +147,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        660,
-        0
+        1320,
+        -100
       ],
       "parameters": {
         "method": "POST",
@@ -106,8 +192,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
-        0
+        1540,
+        -100
       ],
       "parameters": {
         "jsCode": "const crypto = require('crypto');\nconst body = { action: 'queue_deliveries', requestId: String(($json.body ?? $json).request.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
@@ -120,8 +206,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        1100,
-        0
+        1760,
+        -100
       ],
       "parameters": {
         "method": "POST",
@@ -158,36 +244,55 @@
         }
       },
       "onError": "stopWorkflow"
-    },
-    {
-      "id": "respond",
-      "name": "Acknowledge Trello Event",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        1320,
-        0
-      ],
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { ok: true, queued: (($json.body ?? $json).deliveries || []).length } }}",
-        "options": {}
-      }
     }
   ],
   "connections": {
-    "Trello Move Webhook": {
+    "Trello Board Trigger": {
       "main": [
         [
           {
-            "node": "Validate and Normalize Event",
+            "node": "Moved Into Exact Target List?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Validate and Normalize Event": {
+    "Moved Into Exact Target List?": {
+      "main": [
+        [
+          {
+            "node": "Debounce Card Move",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Debounce Card Move": {
+      "main": [
+        [
+          {
+            "node": "Fetch Authoritative Trello Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Authoritative Trello Card": {
+      "main": [
+        [
+          {
+            "node": "Validate and Normalize Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Normalize Card": {
       "main": [
         [
           {
@@ -225,17 +330,6 @@
         [
           {
             "node": "Queue Idempotent Deliveries",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Queue Idempotent Deliveries": {
-      "main": [
-        [
-          {
-            "node": "Acknowledge Trello Event",
             "type": "main",
             "index": 0
           }

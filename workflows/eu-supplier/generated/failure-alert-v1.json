@@ -148,6 +148,8 @@
       "parameters": {
         "method": "POST",
         "url": "={{ 'https://graph.microsoft.com/v1.0/users/' + $env.EU_SUPPLIER_SENDER_MAILBOX + '/sendMail' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { message: $json.message, saveToSentItems: true } }}",
@@ -162,9 +164,9 @@
         }
       },
       "credentials": {
-        "oAuth2Api": {
+        "microsoftOutlookOAuth2Api": {
           "id": "CONFIGURE_EU_SUPPLIER_GRAPH",
-          "name": "Microsoft Graph | EU Supplier"
+          "name": "Microsoft Outlook | EU Supplier"
         }
       },
       "retryOnFail": false,

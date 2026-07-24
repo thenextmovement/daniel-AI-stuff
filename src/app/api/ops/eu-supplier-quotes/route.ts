@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
-import { claimDelivery, claimFailureAlert, ingestReply, listEuSupplierBoard, queueDeliveries, recordAlertOutcome, recordDeliveryOutcome, selectOrganization, upsertRequest } from "@/lib/ops/eu-supplier-store";
+import { claimDelivery, claimFailureAlert, ingestReply, listEuSupplierBoard, queueDeliveries, recordAlertOutcome, recordDeliveryDraft, recordDeliveryOutcome, selectOrganization, upsertRequest } from "@/lib/ops/eu-supplier-store";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 export const dynamic="force-dynamic";
@@ -31,13 +31,14 @@ export async function POST(request:NextRequest){
   const raw=await request.text();if(raw.length>MAX_BYTES)return NextResponse.json({ok:false,error:"payload_too_large"},{status:413});
   let body:Record<string,unknown>;try{body=JSON.parse(raw||"{}");}catch{return NextResponse.json({ok:false,error:"invalid_json"},{status:400});}
   const action=String(body.action||"");
-  const automationActions=new Set(["upsert_request","queue_deliveries","claim_delivery","delivery_outcome","ingest_reply","claim_failure_alert","alert_outcome"]);
+  const automationActions=new Set(["upsert_request","queue_deliveries","claim_delivery","delivery_draft_created","delivery_outcome","ingest_reply","claim_failure_alert","alert_outcome"]);
   const allowed=automationActions.has(action)?verifyAutomation(request,raw):await opsAccess(request);
   if(!allowed)return NextResponse.json({ok:false,error:"unauthorized"},{status:401});
   try{
     if(action==="upsert_request")return NextResponse.json({ok:true,request:await upsertRequest(body)});
     if(action==="queue_deliveries")return NextResponse.json({ok:true,deliveries:await queueDeliveries(String(body.requestId||""),Array.isArray(body.organizationIds)?body.organizationIds.map(String):undefined)});
     if(action==="claim_delivery")return NextResponse.json({ok:true,delivery:await claimDelivery(body.worker)});
+    if(action==="delivery_draft_created")return NextResponse.json({ok:true,delivery:await recordDeliveryDraft(body)});
     if(action==="delivery_outcome")return NextResponse.json({ok:true,delivery:await recordDeliveryOutcome(body)});
     if(action==="ingest_reply")return NextResponse.json({ok:true,reply:await ingestReply(body)});
     if(action==="claim_failure_alert")return NextResponse.json({ok:true,delivery:await claimFailureAlert(body.worker)});

@@ -132,8 +132,103 @@
         -100
       ],
       "parameters": {
-        "jsCode": "const delivery = ($json.body ?? $json).delivery;\nif (!delivery?.id || !delivery?.recipient_email) throw new Error('invalid_claim');\nconst subject = 'NEONTRIP | Quotation Request | ' + String(delivery.request?.trello_card_name || delivery.request_id);\nconst content = String(delivery.request?.request_snapshot?.emailBody || delivery.request?.request_snapshot?.description || 'Please provide price, production time and shipping time for this 3D sign request.');\nreturn [{json:{delivery,message:{subject,body:{contentType:'Text',content} ,toRecipients:[{emailAddress:{address:delivery.recipient_email} } ]} } } ];",
+        "jsCode": "const delivery = ($json.body ?? $json).delivery;\nif (!delivery?.id || !delivery?.recipient_email) throw new Error('invalid_claim');\nconst subject = 'NEONTRIP | Quotation Request | ' + String(delivery.request?.trello_card_name || delivery.request_id);\nconst content = String(delivery.request?.request_snapshot?.emailBody || delivery.request?.request_snapshot?.description || 'Please provide price, production time and shipping time for this 3D sign request.');\nconst attachments=Array.isArray(delivery.request?.request_snapshot?.attachments)?delivery.request.request_snapshot.attachments:[];\nreturn [{json:{delivery,subject,content,attachments} } ];",
         "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "expand-attachments",
+      "name": "Expand Safe Attachment Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const base=$input.first().json; const attachments=base.attachments.slice(0,20); if(!attachments.length)return [{json:{...base,hasAttachment:false} } ]; return attachments.map((a,index)=>{const url=new URL(String(a.url||'')); if(!['trello.com','www.trello.com','api.trello.com'].includes(url.hostname))throw new Error('untrusted_trello_attachment_host'); if(Number(a.size||0)>10000000)throw new Error('trello_attachment_too_large'); return {json:{...base,hasAttachment:true,attachmentIndex:index,attachmentName:String(a.name||('attachment-'+index)).slice(0,200),attachmentMimeType:String(a.mimeType||'application/octet-stream'),attachmentUrl:url.href.replace('https://trello.com/','https://api.trello.com/').replace('https://www.trello.com/','https://api.trello.com/')} } ;} );"
+      }
+    },
+    {
+      "id": "has-attachment",
+      "name": "Has Trello Attachment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1320,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-attachment",
+              "leftValue": "={{ Boolean($json.hasAttachment) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "download-attachment",
+      "name": "Download Trello Attachment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1540,
+        -200
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.attachmentUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_EU_SUPPLIER_TRELLO_DOWNLOAD",
+          "name": "Trello Attachment Download | EU Supplier"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "assemble-message",
+      "name": "Assemble Bounded Graph Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items=$input.all(); if(!items.length)throw new Error('attachment_queue_empty'); const first=items[0].json; const graphAttachments=[]; let total=0; for(let i=0;i<items.length;i++){const item=items[i]; if(!item.json.hasAttachment)continue; if(!item.binary?.data)throw new Error('attachment_download_missing'); const bytes=await this.helpers.getBinaryDataBuffer(i,'data'); if(bytes.length>10000000)throw new Error('downloaded_attachment_too_large'); total+=bytes.length; if(total>20000000)throw new Error('attachment_total_too_large'); graphAttachments.push({'@odata.type':'#microsoft.graph.fileAttachment',name:item.json.attachmentName,contentType:item.json.attachmentMimeType,contentBytes:bytes.toString('base64')} );}  const message={subject:first.subject,body:{contentType:'Text',content:first.content} ,toRecipients:[{emailAddress:{address:first.delivery.recipient_email} } ],attachments:graphAttachments} ; return [{json:{delivery:first.delivery,message} } ];"
       }
     },
     {
@@ -142,12 +237,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        1100,
+        1980,
         -100
       ],
       "parameters": {
         "method": "POST",
         "url": "={{ 'https://graph.microsoft.com/v1.0/users/' + $env.EU_SUPPLIER_SENDER_MAILBOX + '/messages' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json.message }}",
@@ -162,9 +259,9 @@
         }
       },
       "credentials": {
-        "oAuth2Api": {
+        "microsoftOutlookOAuth2Api": {
           "id": "CONFIGURE_EU_SUPPLIER_GRAPH",
-          "name": "Microsoft Graph | EU Supplier"
+          "name": "Microsoft Outlook | EU Supplier"
         }
       },
       "onError": "continueErrorOutput"
@@ -175,7 +272,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
+        2200,
         120
       ],
       "parameters": {
@@ -189,7 +286,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        1540,
+        2420,
         120
       ],
       "parameters": {
@@ -234,11 +331,84 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
+        2200,
         -100
       ],
       "parameters": {
-        "jsCode": "const response=$json.body ?? $json; const messageId=String(response.id||''); if(!messageId) throw new Error('graph_message_id_missing'); return [{json:{messageId,delivery:$('Build Supplier Mail').item.json.delivery} } ];",
+        "jsCode": "const response=$json.body ?? $json; const messageId=String(response.id||''); const conversationId=String(response.conversationId||''); if(!messageId||!conversationId) throw new Error('graph_message_identity_missing'); return [{json:{messageId,conversationId,delivery:$('Build Supplier Mail').item.json.delivery} } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "sign-draft-id",
+      "name": "Sign Draft Identity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_draft_created', deliveryId: $json.delivery.id, providerMessageId: $json.messageId, providerConversationId: $json.conversationId, workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "record-draft-id",
+      "name": "Persist Draft Before Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2640,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "restore-send",
+      "name": "Restore Graph Send Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "return [{json:$('Build Graph Send').item.json} ];",
         "mode": "runOnceForEachItem"
       }
     },
@@ -248,12 +418,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        1540,
+        3080,
         -100
       ],
       "parameters": {
         "method": "POST",
         "url": "={{ 'https://graph.microsoft.com/v1.0/users/' + $env.EU_SUPPLIER_SENDER_MAILBOX + '/messages/' + encodeURIComponent($json.messageId) + '/send' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
         "options": {
           "timeout": 30000,
           "response": {
@@ -265,11 +437,12 @@
         }
       },
       "credentials": {
-        "oAuth2Api": {
+        "microsoftOutlookOAuth2Api": {
           "id": "CONFIGURE_EU_SUPPLIER_GRAPH",
-          "name": "Microsoft Graph | EU Supplier"
+          "name": "Microsoft Outlook | EU Supplier"
         }
       },
+      "retryOnFail": false,
       "onError": "continueErrorOutput"
     },
     {
@@ -278,11 +451,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1760,
+        3300,
         -200
       ],
       "parameters": {
-        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_outcome', deliveryId: $('Build Graph Send').item.json.delivery.id, outcome: 'sent', providerMessageId: $('Build Graph Send').item.json.messageId, workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_outcome', deliveryId: $('Build Graph Send').item.json.delivery.id, outcome: 'sent', providerMessageId: $('Build Graph Send').item.json.messageId, providerConversationId: $('Build Graph Send').item.json.conversationId, workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
         "mode": "runOnceForEachItem"
       }
     },
@@ -292,7 +465,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        1980,
+        3520,
         -200
       ],
       "parameters": {
@@ -337,21 +510,21 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1760,
+        3300,
         20
       ],
       "parameters": {
-        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_outcome', deliveryId: $('Build Graph Send').item.json.delivery.id, outcome: 'retryable_failure', providerMessageId: $('Build Graph Send').item.json.messageId, errorCode: String($json.error?.code || $json.statusCode || 'graph_send_failed'), errorSummary: String($json.error?.message || $json.message || 'Graph send failed').slice(0,500), workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_outcome', deliveryId: $('Build Graph Send').item.json.delivery.id, outcome: 'terminal_failure', providerMessageId: $('Build Graph Send').item.json.messageId, providerConversationId: $('Build Graph Send').item.json.conversationId, errorCode: String($json.error?.code || $json.statusCode || 'graph_send_uncertain'), errorSummary: String($json.error?.message || $json.message || 'Graph send result is uncertain; automatic resend blocked').slice(0,500), workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
         "mode": "runOnceForEachItem"
       }
     },
     {
       "id": "record-send-failure",
-      "name": "Record Send Failure",
+      "name": "Record Terminal Send Uncertainty",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        1980,
+        3520,
         20
       ],
       "parameters": {
@@ -441,6 +614,57 @@
       "main": [
         [
           {
+            "node": "Expand Safe Attachment Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Safe Attachment Queue": {
+      "main": [
+        [
+          {
+            "node": "Has Trello Attachment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Trello Attachment?": {
+      "main": [
+        [
+          {
+            "node": "Download Trello Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Assemble Bounded Graph Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Trello Attachment": {
+      "main": [
+        [
+          {
+            "node": "Assemble Bounded Graph Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Bounded Graph Message": {
+      "main": [
+        [
+          {
             "node": "Create Graph Draft",
             "type": "main",
             "index": 0
@@ -478,6 +702,39 @@
       ]
     },
     "Build Graph Send": {
+      "main": [
+        [
+          {
+            "node": "Sign Draft Identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Draft Identity": {
+      "main": [
+        [
+          {
+            "node": "Persist Draft Before Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Draft Before Send": {
+      "main": [
+        [
+          {
+            "node": "Restore Graph Send Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Graph Send Context": {
       "main": [
         [
           {
@@ -521,7 +778,7 @@
       "main": [
         [
           {
-            "node": "Record Send Failure",
+            "node": "Record Terminal Send Uncertainty",
             "type": "main",
             "index": 0
           }

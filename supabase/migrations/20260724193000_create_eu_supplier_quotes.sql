@@ -18,7 +18,7 @@ create table public.eu_supplier_deliveries (
   id uuid primary key default gen_random_uuid(), request_id uuid not null references public.eu_supplier_requests(id) on delete cascade,
   organization_id uuid not null references public.eu_supplier_organizations(id), recipient_email text not null,
   idempotency_key text not null unique, status text not null default 'queued' check (status in ('queued','sending','sent','retry_wait','failed')),
-  attempt_count integer not null default 0 check (attempt_count between 0 and 10), provider_message_id text,
+  attempt_count integer not null default 0 check (attempt_count between 0 and 2), provider_message_id text, provider_conversation_id text,
   last_error_code text, last_error_summary text, next_attempt_at timestamptz, sent_at timestamptz, failed_at timestamptz,
   alert_status text not null default 'not_needed' check (alert_status in ('not_needed','pending','sending','sent','failed')),
   alert_idempotency_key text unique, alert_sent_at timestamptz, workflow_execution_id text,
@@ -43,6 +43,7 @@ create table public.eu_supplier_offers (
   verified_by text, verified_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 create index eu_supplier_deliveries_request_idx on public.eu_supplier_deliveries(request_id,status);
+create index eu_supplier_deliveries_conversation_idx on public.eu_supplier_deliveries(provider_conversation_id) where provider_conversation_id is not null;
 create index eu_supplier_replies_lookup_idx on public.eu_supplier_replies(sender_domain,received_at desc);
 create index eu_supplier_offers_request_idx on public.eu_supplier_offers(request_id,organization_id);
 alter table public.eu_supplier_organizations enable row level security;

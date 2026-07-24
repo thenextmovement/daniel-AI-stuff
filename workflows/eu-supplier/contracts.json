@@ -13,9 +13,9 @@
       "name": "EU Supplier Delivery Worker v1",
       "active": false,
       "trigger": "schedule_1_minute",
-      "nodes": ["Schedule","ClaimOneDelivery","BuildMail","CreateGraphDraft","SendGraphDraft","RecordOutcome","ErrorHandler"],
+      "nodes": ["Schedule","ClaimOneDelivery","BuildMail","DownloadBoundedAttachments","CreateGraphDraft","PersistDraftIdentity","SendGraphDraftOnce","RecordOutcome","LeaseRecovery","ErrorHandler"],
       "idempotency": "eu-supplier-request:v1:{requestId}:{normalizedRecipient}",
-      "terminalFailure": {"maxAttempts":2,"oneClaimPerExecution":true}
+      "terminalFailure": {"maxAttempts":2,"oneClaimPerExecution":true,"uncertainPostDraftResend":false}
     },
     {
       "name": "EU Supplier Reply Intake v1",

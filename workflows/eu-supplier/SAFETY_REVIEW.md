@@ -4,8 +4,10 @@
 
 - High: The existing workflow uses Trello/static state as delivery truth. The database ledger must be active before replacement.
 - High: Graph acceptance is not final inbox delivery. Store the provider ID and ingest bounces as failures.
+- High: A crash after a Graph send can make delivery ambiguous. The draft identity is persisted before the one send; lease recovery blocks automatic resend and raises the one terminal alert.
 - Medium: Only explicit organization domains and aliases match; free-mail domains require review.
 - Medium: Attachments and bodies are untrusted. AI output is JSON-only and cannot perform actions.
+- Medium: Graph notifications require the configured client-state secret, messages are re-fetched by immutable ID, and request correlation comes only from a stored outbound conversation ID.
 - Medium: Public B2B reviews are sparse. Verified NEONTRIP performance must become the primary score.
 
 ## Scorecard
