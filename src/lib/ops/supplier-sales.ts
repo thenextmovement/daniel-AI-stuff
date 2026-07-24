@@ -559,7 +559,14 @@ export type SupplierCompletedOffersSyncResult = {
   warnings: string[];
   sources?: {
     completedOffers: { checked: number; upserted: number; failed: number };
-    shopifyOrders: { checked: number; upserted: number; failed: number; skipped: boolean };
+    shopifyOrders: {
+      checked: number;
+      upserted: number;
+      failed: number;
+      skipped: boolean;
+      skippedExisting?: number;
+      skippedSupplierTagged?: number;
+    };
     activeShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
     unlinkedActiveShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
   };
@@ -3596,6 +3603,8 @@ async function syncRecentShopifyOrdersFromAdmin(
       status: "skipped" as const,
       checked: 0,
       upserted: 0,
+      skippedExisting: 0,
+      skippedSupplierTagged: 0,
       failed: 0,
       errors: [] as Array<{ offerId: string | null; error: string }>,
       warnings: ["Shopify Admin API ist nicht konfiguriert; Shopify-Fallback wurde uebersprungen."],
@@ -3658,6 +3667,8 @@ async function syncRecentShopifyOrdersFromAdmin(
       status: "failed" as const,
       checked: 0,
       upserted: 0,
+      skippedExisting: 0,
+      skippedSupplierTagged: 0,
       failed: 1,
       errors: [{ offerId: null, error: `Shopify Orders-Fallback HTTP ${response.status}` }],
       warnings: [] as string[],
@@ -3669,6 +3680,8 @@ async function syncRecentShopifyOrdersFromAdmin(
       status: "failed" as const,
       checked: 0,
       upserted: 0,
+      skippedExisting: 0,
+      skippedSupplierTagged: 0,
       failed: 1,
       errors: [{
         offerId: null,
@@ -3680,10 +3693,22 @@ async function syncRecentShopifyOrdersFromAdmin(
 
   const errors: Array<{ offerId: string | null; error: string }> = [];
   let upserted = 0;
+  let skippedExisting = 0;
+  let skippedSupplierTagged = 0;
   const orders = arrayRecords(jsonRecord(jsonRecord(body?.data).orders).nodes);
   for (const order of orders) {
     try {
-      await upsertSupplierSaleFromPayload(shopifyOrderPayloadFromGraphql(order, config.domain), actor);
+      const parsed = buildSupplierSaleInputFromPayload(shopifyOrderPayloadFromGraphql(order, config.domain));
+      const existing = await fetchExistingSaleRow(parsed.sale);
+      if (!existing && assignedSupplierFromShopifyTags(parsed.sale)) {
+        skippedSupplierTagged += 1;
+        continue;
+      }
+      if (existing?.shopify_order_id) {
+        skippedExisting += 1;
+        continue;
+      }
+      await upsertSupplierSale(parsed.sale, actor);
       upserted += 1;
     } catch (error) {
       errors.push({
@@ -3697,6 +3722,8 @@ async function syncRecentShopifyOrdersFromAdmin(
     status: errors.length ? "failed" as const : "synced" as const,
     checked: orders.length,
     upserted,
+    skippedExisting,
+    skippedSupplierTagged,
     failed: errors.length,
     errors,
     warnings: [] as string[],
@@ -3943,6 +3970,8 @@ export async function syncCompletedOffersFromOffersApp(
     status: "failed" as const,
     checked: 0,
     upserted: 0,
+    skippedExisting: 0,
+    skippedSupplierTagged: 0,
     failed: 1,
     errors: [{ offerId: null, error: error instanceof Error ? error.message : "Shopify Orders-Fallback fehlgeschlagen." }],
     warnings: [] as string[],
@@ -3990,7 +4019,14 @@ export async function syncCompletedOffersFromOffersApp(
     warnings,
     sources: {
       completedOffers: { checked: completedChecked, upserted: completedUpserted, failed: completedFailed },
-      shopifyOrders: { checked: shopify.checked, upserted: shopify.upserted, failed: shopify.failed, skipped: shopifySkipped },
+      shopifyOrders: {
+        checked: shopify.checked,
+        upserted: shopify.upserted,
+        failed: shopify.failed,
+        skipped: shopifySkipped,
+        skippedExisting: shopify.skippedExisting,
+        skippedSupplierTagged: shopify.skippedSupplierTagged,
+      },
       activeShopifyRows: { checked: activeShopify.checked, upserted: activeShopify.upserted, failed: activeShopify.failed, skipped: activeShopifySkipped },
       unlinkedActiveShopifyRows: { checked: unlinkedShopify.checked, upserted: unlinkedShopify.upserted, failed: unlinkedShopify.failed, skipped: unlinkedShopifySkipped },
     },
