@@ -1,18 +1,22 @@
 # EU Supplier 3D Schilder
 
-TICKET-045 splits the integration into three workflows, each with one trigger and fewer than 30 nodes.
+TICKET-045 splits the integration into four workflows, each with one trigger and fewer than 30 nodes. Importable, inactive definitions are generated under `generated/` by `node generate-workflows.mjs`.
 
-## Request dispatch
+## Trello intake
 
 1. Trello move trigger; validate board/list/card.
 2. Fetch the complete card and attachments.
 3. Signed upsert_request creates the durable request.
 4. Signed queue_deliveries creates one ledger row per configured recipient.
-5. Claim one due row atomically; send exactly one Microsoft Graph message.
-6. Signed delivery_outcome stores the provider message ID.
-7. A retryable first failure receives exactly one delayed retry. The second failed attempt or any terminal error sets the delivery to failed.
-8. A separate alert reservation sends EU Supplier Mail fehlgeschlagen and stores its result.
-9. Trello receives only a projection of database state.
+5. Trello receives only a projection of database state.
+
+## Delivery worker
+
+1. Schedule every minute and atomically claim at most one due delivery.
+2. Create a Graph draft, retain its provider message ID, then send that exact draft.
+3. Signed `delivery_outcome` stores success or the bounded error summary.
+4. A retryable first failure receives exactly one delayed retry. The second failed attempt or any terminal error sets the delivery to failed.
+5. No n8n node has its own automatic mail retry; the database state machine is the only retry authority.
 
 No success label is written before every requested delivery is sent. The idempotency key is request plus normalized recipient.
 

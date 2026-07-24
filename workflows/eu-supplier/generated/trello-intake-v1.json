@@ -1,0 +1,246 @@
+{
+  "name": "EU Supplier 3D — Trello Intake v1 (INACTIVE)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": true,
+    "executionTimeout": 300
+  },
+  "nodes": [
+    {
+      "id": "trello-webhook",
+      "name": "Trello Move Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "eu-supplier-trello-move-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "validate-event",
+      "name": "Validate and Normalize Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const event = $json.body ?? $json;\nconst card = event.action?.data?.card ?? event.card;\nconst listAfter = event.action?.data?.listAfter ?? event.listAfter;\nconst board = event.action?.data?.board ?? event.board;\nif (!card?.id || !card?.name || !card?.url || !listAfter?.id || !board?.id) throw new Error('invalid_trello_event');\nif (String(board.id) !== String($env.EU_SUPPLIER_TRELLO_BOARD_ID) || String(listAfter.id) !== String($env.EU_SUPPLIER_TRELLO_LIST_ID)) throw new Error('out_of_scope_trello_event');\nreturn [{json:{trelloCardId:String(card.id),trelloCardName:String(card.name),trelloCardUrl:String(card.url),sourceListId:String(listAfter.id),snapshot:{description:String(card.desc||''),attachments:Array.isArray(card.attachments)?card.attachments:[]} } } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "sign-upsert",
+      "name": "Sign Request Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'upsert_request', ...$json } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "upsert-request",
+      "name": "Upsert Durable Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "sign-queue",
+      "name": "Sign Delivery Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'queue_deliveries', requestId: String(($json.body ?? $json).request.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "queue-deliveries",
+      "name": "Queue Idempotent Deliveries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "respond",
+      "name": "Acknowledge Trello Event",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, queued: (($json.body ?? $json).deliveries || []).length } }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Trello Move Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate and Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Normalize Event": {
+      "main": [
+        [
+          {
+            "node": "Sign Request Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Request Upsert": {
+      "main": [
+        [
+          {
+            "node": "Upsert Durable Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Durable Request": {
+      "main": [
+        [
+          {
+            "node": "Sign Delivery Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Delivery Queue": {
+      "main": [
+        [
+          {
+            "node": "Queue Idempotent Deliveries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Idempotent Deliveries": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Trello Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

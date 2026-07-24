@@ -3,7 +3,7 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 import { deliveryIdempotencyKey, emailDomain, findOrganizationByEmail, nextDeliveryState, normalizeEmail, validateOfferExtraction, type DeliveryStatus } from "./eu-supplier-quotes";
 
 type OrgRow = { id:string; name:string; canonical_domain:string; email_domains:string[]; contact_emails:string[]; website_url:string|null; country_code:string|null; research:Record<string,unknown> };
-type RequestRow = { id:string; correlation_id:string; trello_card_id:string; trello_card_url:string; trello_card_name:string; status:string; selected_organization_id:string|null; selected_by:string|null; selected_at:string|null; selection_note:string|null; created_at:string };
+type RequestRow = { id:string; correlation_id:string; trello_card_id:string; trello_card_url:string; trello_card_name:string; request_snapshot:Record<string,unknown>; status:string; selected_organization_id:string|null; selected_by:string|null; selected_at:string|null; selection_note:string|null; created_at:string };
 type DeliveryRow = { id:string; request_id:string; organization_id:string; recipient_email:string; status:DeliveryStatus; attempt_count:number; sent_at:string|null; failed_at:string|null; alert_status:string; last_error_summary:string|null };
 type ReplyRow = { id:string; request_id:string|null; organization_id:string|null; sender_email:string; sender_domain:string; received_at:string; subject:string|null; match_status:string; extraction_status:string };
 type OfferRow = { id:string; request_id:string; organization_id:string; currency:string|null; unit_price:number|null; total_price:number|null; shipping_cost:number|null; production_days_min:number|null; production_days_max:number|null; shipping_days_min:number|null; shipping_days_max:number|null; valid_until:string|null; confidence:number|null; review_status:string };
@@ -63,8 +63,16 @@ export async function selectOrganization(input:{requestId?:unknown;organizationI
   const rows=await supabaseRequest<RequestRow[]>("eu_supplier_requests",{method:"PATCH",body:JSON.stringify({status:"selected",selected_organization_id:organizationId,selected_by:operatorName,selected_at:new Date().toISOString(),selection_note:String(input.note||"").slice(0,1000)||null,updated_at:new Date().toISOString()}),headers:{Prefer:"return=representation"}},{id:`eq.${requestId}`,status:"in.(collecting,ready,needs_review,selected)"});
   if(!rows[0]) throw new QuoteValidationError("Anfrage konnte nicht ausgewaehlt werden.",["requestId"],409); return rows[0];
 }
-export async function claimDelivery(worker:unknown){return (await supabaseRpc<DeliveryRow[]>("claim_eu_supplier_delivery",{p_worker:required(worker,"worker")}))[0]||null;}
-export async function claimFailureAlert(worker:unknown){return (await supabaseRpc<DeliveryRow[]>("claim_eu_supplier_failure_alert",{p_worker:required(worker,"worker")}))[0]||null;}
+async function enrichDelivery(row:DeliveryRow|null){
+ if(!row)return null;
+ const [requests,organizations]=await Promise.all([
+  supabaseRequest<RequestRow[]>("eu_supplier_requests",undefined,{select:"*",id:`eq.${row.request_id}`,limit:1}),
+  supabaseRequest<OrgRow[]>("eu_supplier_organizations",undefined,{select:"*",id:`eq.${row.organization_id}`,limit:1}),
+ ]);
+ return {...row,request:requests[0]||null,organization:organizations[0]?mapOrg(organizations[0]):null};
+}
+export async function claimDelivery(worker:unknown){return enrichDelivery((await supabaseRpc<DeliveryRow[]>("claim_eu_supplier_delivery",{p_worker:required(worker,"worker")}))[0]||null);}
+export async function claimFailureAlert(worker:unknown){return enrichDelivery((await supabaseRpc<DeliveryRow[]>("claim_eu_supplier_failure_alert",{p_worker:required(worker,"worker")}))[0]||null);}
 export async function recordAlertOutcome(input:{deliveryId?:unknown;success?:unknown;errorSummary?:unknown}){
  const rows=await supabaseRpc<DeliveryRow[]>("record_eu_supplier_alert_result",{
   p_delivery_id:required(input.deliveryId,"deliveryId"),

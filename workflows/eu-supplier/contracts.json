@@ -2,12 +2,20 @@
   "version": 1,
   "workflows": [
     {
-      "name": "EU Supplier Request Dispatch v1",
+      "name": "EU Supplier Trello Intake v1",
       "active": false,
       "trigger": "trello_move",
-      "nodes": ["TrelloMoveTrigger","ValidateEvent","FetchCard","UpsertRequest","QueueDeliveries","ClaimDelivery","BuildMail","SendGraphMail","RecordOutcome","ProjectStatus","ErrorHandler"],
+      "nodes": ["TrelloMoveTrigger","ValidateEvent","FetchCard","UpsertRequest","QueueDeliveries","ProjectStatus","ErrorHandler"],
       "idempotency": "eu-supplier-request:v1:{requestId}:{normalizedRecipient}",
       "terminalFailure": {"maxAttempts":2,"alertSubject":"EU Supplier Mail fehlgeschlagen"}
+    },
+    {
+      "name": "EU Supplier Delivery Worker v1",
+      "active": false,
+      "trigger": "schedule_1_minute",
+      "nodes": ["Schedule","ClaimOneDelivery","BuildMail","CreateGraphDraft","SendGraphDraft","RecordOutcome","ErrorHandler"],
+      "idempotency": "eu-supplier-request:v1:{requestId}:{normalizedRecipient}",
+      "terminalFailure": {"maxAttempts":2,"oneClaimPerExecution":true}
     },
     {
       "name": "EU Supplier Reply Intake v1",

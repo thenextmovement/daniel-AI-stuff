@@ -1,0 +1,532 @@
+{
+  "name": "EU Supplier 3D — Delivery Worker v1 (INACTIVE)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": true,
+    "executionTimeout": 300
+  },
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "One Delivery per Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sign-claim",
+      "name": "Sign Delivery Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'claim_delivery', worker: 'n8n:' + String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "claim",
+      "name": "Claim One Due Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "has-delivery",
+      "name": "Has Claimed Delivery?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "delivery",
+              "leftValue": "={{ Boolean(($json.body ?? $json).delivery?.id) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "build-mail",
+      "name": "Build Supplier Mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const delivery = ($json.body ?? $json).delivery;\nif (!delivery?.id || !delivery?.recipient_email) throw new Error('invalid_claim');\nconst subject = 'NEONTRIP | Quotation Request | ' + String(delivery.request?.trello_card_name || delivery.request_id);\nconst content = String(delivery.request?.request_snapshot?.emailBody || delivery.request?.request_snapshot?.description || 'Please provide price, production time and shipping time for this 3D sign request.');\nreturn [{json:{delivery,message:{subject,body:{contentType:'Text',content} ,toRecipients:[{emailAddress:{address:delivery.recipient_email} } ]} } } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "create-draft",
+      "name": "Create Graph Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/users/' + $env.EU_SUPPLIER_SENDER_MAILBOX + '/messages' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.message }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "CONFIGURE_EU_SUPPLIER_GRAPH",
+          "name": "Microsoft Graph | EU Supplier"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "sign-draft-failure",
+      "name": "Sign Draft Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        120
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_outcome', deliveryId: $('Build Supplier Mail').item.json.delivery.id, outcome: 'retryable_failure', errorCode: String($json.error?.code || $json.statusCode || 'graph_draft_failed'), errorSummary: String($json.error?.message || $json.message || 'Graph draft creation failed').slice(0,500), workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "record-draft-failure",
+      "name": "Record Draft Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1540,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "build-send",
+      "name": "Build Graph Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const response=$json.body ?? $json; const messageId=String(response.id||''); if(!messageId) throw new Error('graph_message_id_missing'); return [{json:{messageId,delivery:$('Build Supplier Mail').item.json.delivery} } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "send-draft",
+      "name": "Send Graph Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1540,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/users/' + $env.EU_SUPPLIER_SENDER_MAILBOX + '/messages/' + encodeURIComponent($json.messageId) + '/send' }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "CONFIGURE_EU_SUPPLIER_GRAPH",
+          "name": "Microsoft Graph | EU Supplier"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "sign-success",
+      "name": "Sign Delivery Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_outcome', deliveryId: $('Build Graph Send').item.json.delivery.id, outcome: 'sent', providerMessageId: $('Build Graph Send').item.json.messageId, workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "record-success",
+      "name": "Record Delivery Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1980,
+        -200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "sign-send-failure",
+      "name": "Sign Send Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        20
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst body = { action: 'delivery_outcome', deliveryId: $('Build Graph Send').item.json.delivery.id, outcome: 'retryable_failure', providerMessageId: $('Build Graph Send').item.json.messageId, errorCode: String($json.error?.code || $json.statusCode || 'graph_send_failed'), errorSummary: String($json.error?.message || $json.message || 'Graph send failed').slice(0,500), workflowExecutionId: String($execution.id) } ;\nconst raw = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = String($env.EU_SUPPLIER_WEBHOOK_SECRET || '');\nif (!secret) throw new Error('EU_SUPPLIER_WEBHOOK_SECRET missing');\nconst signature = 'sha256=' + crypto.createHmac('sha256', secret).update(timestamp + '.' + raw).digest('hex');\nreturn [{ json: { body, raw, timestamp, signature }  } ];",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "record-send-failure",
+      "name": "Record Send Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1980,
+        20
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EU_SUPPLIER_OPS_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-neontrip-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "stopWorkflow"
+    }
+  ],
+  "connections": {
+    "One Delivery per Minute": {
+      "main": [
+        [
+          {
+            "node": "Sign Delivery Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Delivery Claim": {
+      "main": [
+        [
+          {
+            "node": "Claim One Due Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim One Due Delivery": {
+      "main": [
+        [
+          {
+            "node": "Has Claimed Delivery?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Claimed Delivery?": {
+      "main": [
+        [
+          {
+            "node": "Build Supplier Mail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Build Supplier Mail": {
+      "main": [
+        [
+          {
+            "node": "Create Graph Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Graph Draft": {
+      "main": [
+        [
+          {
+            "node": "Build Graph Send",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sign Draft Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Draft Failure": {
+      "main": [
+        [
+          {
+            "node": "Record Draft Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Graph Send": {
+      "main": [
+        [
+          {
+            "node": "Send Graph Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Graph Draft": {
+      "main": [
+        [
+          {
+            "node": "Sign Delivery Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sign Send Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Delivery Success": {
+      "main": [
+        [
+          {
+            "node": "Record Delivery Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Send Failure": {
+      "main": [
+        [
+          {
+            "node": "Record Send Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
