@@ -65,10 +65,15 @@ export function isOpsPortalBypassed(host?: string | null) {
   return isLocalOpsHost(host);
 }
 
-function getOpsPortalToken() {
-  const token = process.env.OPS_PORTAL_TOKEN || process.env.QUOTE_INTERNAL_API_TOKEN;
-  const normalized = String(token || "").trim();
-  return normalized || null;
+function getOpsPortalTokens() {
+  const dedicatedTokens = [
+    process.env.OPS_PORTAL_TOKEN,
+    process.env.CONTROL_TOWER_OPS_PORTAL_TOKEN,
+  ]
+    .map((token) => String(token || "").trim())
+    .filter(Boolean);
+  const tokens = dedicatedTokens.length ? dedicatedTokens : [String(process.env.QUOTE_INTERNAL_API_TOKEN || "").trim()];
+  return [...new Set(tokens.filter(Boolean))];
 }
 
 function splitEnvList(value: string | undefined) {
@@ -248,22 +253,27 @@ function safeEqual(left: string, right: string) {
 export function validateOpsPortalToken(candidate: string) {
   if (isOpsPortalBypassed()) return true;
   if (isCloudflareAccessRequired()) return false;
-  const configuredToken = getOpsPortalToken();
-  if (!configuredToken) return false;
+  const configuredTokens = getOpsPortalTokens();
+  if (!configuredTokens.length) return false;
   const normalized = String(candidate || "").trim();
   if (!normalized) return false;
-  return safeEqual(sessionDigest(normalized), sessionDigest(configuredToken));
+  const candidateDigest = sessionDigest(normalized);
+  return configuredTokens.some((token) => safeEqual(candidateDigest, sessionDigest(token)));
 }
 
-export function applyOpsSession(response: NextResponse) {
+export function applyOpsSession(response: NextResponse, candidate: string) {
   if (isOpsPortalBypassed()) return response;
-  const configuredToken = getOpsPortalToken();
-  if (!configuredToken) {
-    throw new Error("OPS_PORTAL_TOKEN fehlt.");
+  const normalized = String(candidate || "").trim();
+  const candidateDigest = normalized ? sessionDigest(normalized) : "";
+  const configured = getOpsPortalTokens().some((token) =>
+    safeEqual(candidateDigest, sessionDigest(token)),
+  );
+  if (!configured) {
+    throw new Error("Ops portal token is not configured.");
   }
   response.cookies.set({
     name: OPS_SESSION_COOKIE,
-    value: sessionDigest(configuredToken),
+    value: candidateDigest,
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -288,7 +298,7 @@ export function clearOpsSession(response: NextResponse) {
 }
 
 export function isOpsPortalConfigured(host?: string | null) {
-  return isOpsPortalBypassed(host) || Boolean(getCloudflareAccessConfig()) || Boolean(getOpsPortalToken());
+  return isOpsPortalBypassed(host) || Boolean(getCloudflareAccessConfig()) || getOpsPortalTokens().length > 0;
 }
 
 export async function hasOpsSession(host?: string | null, headers?: HeaderReader | null) {
@@ -301,11 +311,11 @@ export async function hasOpsSession(host?: string | null, headers?: HeaderReader
     if (accessConfig.requireAccess) return false;
   }
 
-  const configuredToken = getOpsPortalToken();
-  if (!configuredToken) return false;
+  const configuredTokens = getOpsPortalTokens();
+  if (!configuredTokens.length) return false;
   const store = await cookies();
   const value = store.get(OPS_SESSION_COOKIE)?.value;
-  return Boolean(value && safeEqual(value, sessionDigest(configuredToken)));
+  return Boolean(value && configuredTokens.some((token) => safeEqual(value, sessionDigest(token))));
 }
 
 export async function resolveOpsRequestActor(host?: string | null, headers?: HeaderReader | null) {

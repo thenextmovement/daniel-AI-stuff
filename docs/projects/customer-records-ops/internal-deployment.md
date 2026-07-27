@@ -46,6 +46,7 @@ Empfohlen:
 Fallback fuer Preview/Tunnel:
 
 - `OPS_PORTAL_TOKEN`
+- `CONTROL_TOWER_OPS_PORTAL_TOKEN` als separater, unabhaengig widerrufbarer Control-Tower-Zugang
 
 In Production sollte `OPS_REQUIRE_CLOUDFLARE_ACCESS=true` gesetzt sein. Dann reicht ein altes Token-Cookie allein nicht mehr aus, wenn kein gueltiges Cloudflare-Access-JWT vorhanden ist.
 
@@ -73,7 +74,7 @@ Reihenfolge:
    - Ablaufzeit
    - optionale E-Mail-Allowlist
 3. Wenn `OPS_REQUIRE_CLOUDFLARE_ACCESS=true` gesetzt ist, gibt es keinen Token-Fallback.
-4. Ohne diese Pflicht kann fuer Tunnel/Preview weiterhin `OPS_PORTAL_TOKEN` genutzt werden.
+4. Ohne diese Pflicht koennen fuer Tunnel/Preview `OPS_PORTAL_TOKEN` und der getrennte `CONTROL_TOWER_OPS_PORTAL_TOKEN` genutzt werden.
 
 ## Deploy-Preflight
 

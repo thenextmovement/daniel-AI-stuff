@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { config, middleware } from "../../src/middleware";
 
@@ -13,6 +14,7 @@ async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
     domains: process.env.OPS_ALLOWED_EMAIL_DOMAINS,
     emails: process.env.OPS_ALLOWED_EMAILS,
     issuer: process.env.OPS_CLOUDFLARE_ACCESS_ISSUER,
+    controlTowerPortalToken: process.env.CONTROL_TOWER_OPS_PORTAL_TOKEN,
     portalToken: process.env.OPS_PORTAL_TOKEN,
     quoteToken: process.env.QUOTE_INTERNAL_API_TOKEN,
     requireAccess: process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS,
@@ -24,6 +26,7 @@ async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
     process.env.OPS_ALLOWED_EMAIL_DOMAINS = "neontrip.de";
     process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS = "true";
     delete process.env.OPS_ALLOWED_EMAILS;
+    delete process.env.CONTROL_TOWER_OPS_PORTAL_TOKEN;
     delete process.env.OPS_PORTAL_TOKEN;
     delete process.env.QUOTE_INTERNAL_API_TOKEN;
 
@@ -34,6 +37,7 @@ async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
       OPS_ALLOWED_EMAIL_DOMAINS: original.domains,
       OPS_ALLOWED_EMAILS: original.emails,
       OPS_CLOUDFLARE_ACCESS_ISSUER: original.issuer,
+      CONTROL_TOWER_OPS_PORTAL_TOKEN: original.controlTowerPortalToken,
       OPS_PORTAL_TOKEN: original.portalToken,
       QUOTE_INTERNAL_API_TOKEN: original.quoteToken,
       OPS_REQUIRE_CLOUDFLARE_ACCESS: original.requireAccess,
@@ -83,6 +87,28 @@ test("ops middleware lets session login POST reach the route handler", async () 
       buildRequest("https://ops.neontrip.de/api/ops/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
+      }),
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-middleware-next"), "1");
+  });
+});
+
+test("ops middleware accepts a session issued from the separate Control Tower token", async () => {
+  await withOpsMiddlewareEnv(async () => {
+    delete process.env.OPS_CLOUDFLARE_ACCESS_ISSUER;
+    delete process.env.OPS_CLOUDFLARE_ACCESS_AUD;
+    delete process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS;
+    process.env.OPS_PORTAL_TOKEN = "primary-preview-token";
+    process.env.CONTROL_TOWER_OPS_PORTAL_TOKEN = "control-tower-operator-token";
+    const session = createHash("sha256")
+      .update("neontrip:ops:control-tower-operator-token")
+      .digest("hex");
+
+    const response = await middleware(
+      buildRequest("https://ops.neontrip.de/api/ops/design/jobs", {
+        headers: { cookie: `neontrip_ops_session=${session}` },
       }),
     );
 

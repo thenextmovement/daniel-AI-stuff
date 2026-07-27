@@ -91,10 +91,17 @@ function getCloudflareAccessConfig() {
   };
 }
 
-function getOpsPortalToken() {
-  const token = readEnv("OPS_PORTAL_TOKEN") || readEnv("QUOTE_INTERNAL_API_TOKEN");
-  const normalized = String(token || "").trim();
-  return normalized || null;
+function getOpsPortalTokens() {
+  const dedicatedTokens = [
+    readEnv("OPS_PORTAL_TOKEN"),
+    readEnv("CONTROL_TOWER_OPS_PORTAL_TOKEN"),
+  ]
+    .map((token) => String(token || "").trim())
+    .filter(Boolean);
+  const tokens = dedicatedTokens.length
+    ? dedicatedTokens
+    : [String(readEnv("QUOTE_INTERNAL_API_TOKEN") || "").trim()];
+  return [...new Set(tokens.filter(Boolean))];
 }
 
 function base64UrlDecodeToBytes(input: string) {
@@ -235,18 +242,20 @@ function safeEqual(left: string, right: string) {
 }
 
 async function hasPortalSessionCookie(request: NextRequest) {
-  const configuredToken = getOpsPortalToken();
-  if (!configuredToken) return false;
+  const configuredTokens = getOpsPortalTokens();
+  if (!configuredTokens.length) return false;
 
   const sessionCookie = request.cookies.get(OPS_SESSION_COOKIE)?.value;
   if (!sessionCookie) return false;
 
-  const expected = await sha256Hex(`neontrip:ops:${configuredToken}`);
-  return safeEqual(sessionCookie, expected);
+  const expectedDigests = await Promise.all(
+    configuredTokens.map((token) => sha256Hex(`neontrip:ops:${token}`)),
+  );
+  return expectedDigests.some((expected) => safeEqual(sessionCookie, expected));
 }
 
 function isOpsPortalConfigured(host: string | null | undefined) {
-  return isLocalOpsHost(host) || Boolean(getCloudflareAccessConfig()) || Boolean(getOpsPortalToken());
+  return isLocalOpsHost(host) || Boolean(getCloudflareAccessConfig()) || getOpsPortalTokens().length > 0;
 }
 
 async function hasOpsMiddlewareSession(request: NextRequest, host: string | null | undefined) {

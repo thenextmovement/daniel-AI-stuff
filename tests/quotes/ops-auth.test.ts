@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { isOpsPortalBypassed, validateCloudflareAccess, validateOpsPortalToken } from "../../src/lib/ops/auth";
 
 function base64Url(input: BufferSource | string) {
@@ -46,6 +47,7 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
     domains: process.env.OPS_ALLOWED_EMAIL_DOMAINS,
     emails: process.env.OPS_ALLOWED_EMAILS,
     issuer: process.env.OPS_CLOUDFLARE_ACCESS_ISSUER,
+    controlTowerPortalToken: process.env.CONTROL_TOWER_OPS_PORTAL_TOKEN,
     portalToken: process.env.OPS_PORTAL_TOKEN,
     requireAccess: process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS,
   };
@@ -59,6 +61,7 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
       OPS_ALLOWED_EMAIL_DOMAINS: original.domains,
       OPS_ALLOWED_EMAILS: original.emails,
       OPS_CLOUDFLARE_ACCESS_ISSUER: original.issuer,
+      CONTROL_TOWER_OPS_PORTAL_TOKEN: original.controlTowerPortalToken,
       OPS_PORTAL_TOKEN: original.portalToken,
       OPS_REQUIRE_CLOUDFLARE_ACCESS: original.requireAccess,
     })) {
@@ -192,4 +195,30 @@ test("validateOpsPortalToken rejects token fallback when Cloudflare Access is re
 
     assert.equal(validateOpsPortalToken("preview-token"), false);
   });
+});
+
+test("validateOpsPortalToken accepts primary and separate Control Tower tokens", async () => {
+  await withCloudflareAccessEnv(async () => {
+    delete process.env.OPS_CLOUDFLARE_ACCESS_ISSUER;
+    delete process.env.OPS_CLOUDFLARE_ACCESS_AUD;
+    delete process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS;
+    process.env.OPS_PORTAL_TOKEN = "primary-preview-token";
+    process.env.CONTROL_TOWER_OPS_PORTAL_TOKEN = "control-tower-operator-token";
+
+    assert.equal(validateOpsPortalToken("primary-preview-token"), true);
+    assert.equal(validateOpsPortalToken("control-tower-operator-token"), true);
+    assert.equal(validateOpsPortalToken("different-token"), false);
+  });
+});
+
+test("Coolify sync keeps the Control Tower token separate and reversible", () => {
+  const workflow = readFileSync(".github/workflows/coolify-secret-sync.yml", "utf8");
+
+  assert.match(workflow, /sync_ops_control_tower_portal_token/);
+  assert.match(workflow, /delete_ops_control_tower_portal_token/);
+  assert.match(workflow, /const key = "CONTROL_TOWER_OPS_PORTAL_TOKEN"/);
+  assert.match(workflow, /refusing destructive rotation/);
+  assert.match(workflow, /previous: previous \? envSummary\(previous\) : null/);
+  assert.match(workflow, /valueSha256Prefix/);
+  assert.doesNotMatch(workflow, /const key = "OPS_PORTAL_TOKEN";/);
 });

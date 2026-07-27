@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid_token" }, { status: 401 });
   }
 
-  return applyOpsSession(NextResponse.json({ ok: true }));
+  return applyOpsSession(NextResponse.json({ ok: true }), body.token);
 }
 
 export async function DELETE() {
