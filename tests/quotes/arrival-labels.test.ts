@@ -19,8 +19,10 @@ import {
   decideArrivalCase,
   extractDhlTrackingNumbers,
   findTrelloCardForTracking,
+  isAutomationSafeOrderNote,
   isDimmerSpecialCase,
   lastSixOfTracking,
+  relevantOrderNote,
   resolveShopifyOrder,
   selectDpdProduct,
   type DhlMailEvidence,
@@ -155,6 +157,32 @@ test("Shopify matching prefers an explicit exact order number and rejects ambigu
   });
   assert.equal(ambiguous.order, null);
   assert.match(ambiguous.error || "", /2 Shopify/);
+});
+
+test("Shopify matching uses exact Trello Card ID before customer-name fallback", () => {
+  const trelloCard = card("6282003033 | UPDATE: OUTDOOR | David Thom");
+  trelloCard.id = "6a4f3ae8fa1d99955edebf3f";
+  const wrongSameCustomer: ShopifyOrderEvidence = {
+    ...standardOrder,
+    id: "gid://shopify/Order/4527",
+    name: "#NEONT4527",
+    customerName: "David Thom",
+    customAttributes: [{ key: "Trello Card ID", value: "6a509e3710385084448c0b42" }],
+  };
+  const rightSameCustomer: ShopifyOrderEvidence = {
+    ...standardOrder,
+    id: "gid://shopify/Order/4528",
+    name: "#NEONT4528",
+    customerName: "David Thom",
+    customAttributes: [{ key: "Trello Card ID", value: "6a4f3ae8fa1d99955edebf3f" }],
+  };
+  const result = resolveShopifyOrder({
+    card: trelloCard,
+    orders: [wrongSameCustomer, rightSameCustomer],
+    customerNameHints: ["David Thom"],
+  });
+  assert.equal(result.order?.id, "gid://shopify/Order/4528");
+  assert.equal(result.error, null);
 });
 
 test("100 pieces single color dimmers are a special case without Shopify", () => {
@@ -308,6 +336,19 @@ test("only the exact NEONTRIP offer note and attribute schema passes the Shopify
   });
   assert.equal(unknownAttribute.blocked, true);
   assert.ok(unknownAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
+});
+
+test("bare internal UUID notes are automation-safe but human note text still blocks", () => {
+  const note = "101dcb01-291d-4a22-a624-5fb0f2dbcccd";
+  assert.equal(isAutomationSafeOrderNote(note), true);
+  assert.equal(relevantOrderNote(note), null);
+  assert.equal(assessShopifyAutomationGate({ ...standardOrder, note }).blocked, false);
+
+  const humanNote = `${note}\nBitte andere Adresse verwenden`;
+  const gate = assessShopifyAutomationGate({ ...standardOrder, note: humanNote });
+  assert.equal(gate.blocked, true);
+  assert.ok(gate.reasonCodes.includes("non_standard_shopify_note"));
+  assert.equal(relevantOrderNote(humanNote), humanNote);
 });
 
 test("pickup wording blocks label purchase and print even when a DPD label already exists", () => {

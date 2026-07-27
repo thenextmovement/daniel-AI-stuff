@@ -21,7 +21,7 @@ Alle folgenden Bedingungen müssen gleichzeitig erfüllt sein:
 1. Die vollständige DHL-Nummer stammt aus einer erlaubten DHL-Express-Mail und ist für den Berliner Kalendertag relevant.
 2. Genau eine Trello-Karte enthält die vollständige DHL-Nummer. Ein Treffer nur über die letzten vier oder sechs Ziffern ist verboten.
 3. Genau eine Shopify-Bestellung ist über die explizite Bestellnummer oder einen eindeutigen, geprüften Abgleich zugeordnet.
-4. Shopify enthält entweder keine Notiz oder ausschließlich das freigegebene vierzeilige NEONTRIP-Angebotsformat. Zusatzfelder entsprechen exakt dem freigegebenen Schema.
+4. Shopify enthält entweder keine Notiz, ausschließlich das freigegebene vierzeilige NEONTRIP-Angebotsformat oder eine einzelne interne UUID ohne menschlichen Hinweistext. Zusatzfelder entsprechen exakt dem freigegebenen Schema.
 5. Es gibt keinen Hinweis auf Abholung, Ladenlokal, Selbstabholung, Sonderwunsch oder widersprüchliche Versandart.
 6. Lieferland, vollständige Lieferadresse, Versandklasse und freigegebenes DPD-Produkt sind eindeutig.
 7. Es existiert weder in Shopify noch in der Ops-Datenbank oder bei EasyDPD bereits eine zweite Sendung, die einen erneuten Kauf verbietet.
@@ -38,7 +38,7 @@ Ohne Kauf, Download oder Druck in die manuelle Prüfung gehen:
 - unvollständige oder nur handschriftliche Endziffern ohne eindeutig belegte vollständige DHL-Nummer;
 - keine, mehrere oder widersprüchliche Trello-/Shopify-Zuordnungen;
 - Trello-Listen mit manueller Bedeutung, insbesondere `Problem with Sign`, `Problem mit Schild`, `Manual Review`, `Manuelle Prüfung` oder `Sonderfälle`;
-- Shopify-Hinweise wie `Abholer`, `Ladenlokal`, `holt ab`, `Selbstabholung`, `vor Ort` oder sonstiger Text außerhalb des Standardformats;
+- Shopify-Hinweise wie `Abholer`, `Ladenlokal`, `holt ab`, `Selbstabholung`, `vor Ort` oder sonstiger menschlicher Text außerhalb des Standardformats;
 - bereits erfüllte Bestellung, altes Versandtracking, Ersatz-, Reklamations- oder Nachlieferungsfall, solange kein aktuelles und unbenutztes Label für genau diesen Eingang belegt ist;
 - vollständig erstattete, stornierte oder abgelaufene Shopify-Bestellung (`refunded`, `voided`, `expired`); diese Zustände sind keine bloß offene Zahlung;
 - Schweiz, sonstiges Nicht-EU-Land, fehlendes Land oder bekannte EU-Zoll-/Umsatzsteuer-Sondergebiete;

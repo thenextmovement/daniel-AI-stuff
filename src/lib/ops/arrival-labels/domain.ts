@@ -174,6 +174,7 @@ const OFFER_ID = new RegExp(`^${OFFER_TOKEN}$`);
 const OFFER_NUMBER = /^A\/N [0-9]{1,12}$/;
 const MONEY = "[0-9]+(?:[.,][0-9]{1,2})?";
 const PICKUP_PATTERN = /\b(?:(?:selbst)?abhol[a-z]*|abgeholt|holt\s+ab|holen\s+ab|wird\s+abgeholt|ladenlokal|laden\s+lokal|vor\s+ort|local\s+pickup|pickup|pick\s+up|customer\s+collect)\b/i;
+const INTERNAL_UUID_NOTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STANDARD_ATTRIBUTE_KEYS = new Set([
   "NEONTRIP Offer ID",
   "NEONTRIP Offer Number",
@@ -469,9 +470,14 @@ export function isStandardOfferMetadataNote(note: string | null | undefined) {
   return parseStandardOfferMetadataNote(note).standard;
 }
 
+export function isAutomationSafeOrderNote(note: string | null | undefined) {
+  const normalized = String(note || "").trim();
+  return !normalized || isStandardOfferMetadataNote(normalized) || INTERNAL_UUID_NOTE.test(normalized);
+}
+
 export function relevantOrderNote(note: string | null | undefined) {
   const normalized = String(note || "").trim();
-  if (!normalized || isStandardOfferMetadataNote(normalized)) return null;
+  if (isAutomationSafeOrderNote(normalized)) return null;
   return normalized;
 }
 
@@ -511,13 +517,13 @@ export function assessShopifyAutomationGate(order: ShopifyOrderEvidence): Shopif
     ...order.shippingLines.flatMap((line) => [line.title, line.code || ""]),
   ].map(normalizeHumanText).join("\n");
   if (PICKUP_PATTERN.test(pickupEvidence)) reasonCodes.push("pickup_instruction");
-  if (!isStandardOfferMetadataNote(note)) reasonCodes.push("non_standard_shopify_note");
+  if (!isAutomationSafeOrderNote(note)) reasonCodes.push("non_standard_shopify_note");
   if (!standardAttributes(order.customAttributes)) reasonCodes.push("non_standard_shopify_attribute");
   if (["refunded", "voided", "expired"].includes(order.financialStatus)) reasonCodes.push("payment_terminal_status");
   const uniqueCodes = [...new Set(reasonCodes)];
   const reasonParts = uniqueCodes.map((code) => ({
     pickup_instruction: "Shopify enthaelt einen Abhol- oder Ladenlokal-Hinweis.",
-    non_standard_shopify_note: "Shopify enthaelt eine Notiz ausserhalb des freigegebenen NEONTRIP-Angebotsformats.",
+    non_standard_shopify_note: "Shopify enthaelt eine Notiz ausserhalb der freigegebenen Automationsformate.",
     non_standard_shopify_attribute: "Shopify enthaelt Zusatzfelder ausserhalb des freigegebenen NEONTRIP-Angebotsformats.",
     payment_terminal_status: `Shopify-Zahlungsstatus ${order.financialStatus} weist auf eine beendete oder rueckabgewickelte Bestellung hin.`,
   })[code]);
@@ -528,6 +534,13 @@ export function assessShopifyAutomationGate(order: ShopifyOrderEvidence): Shopif
     noteExcerpt: note ? note.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").slice(0, 500) : null,
     attributeKeys: [...new Set(order.customAttributes.map((attribute) => String(attribute.key || "").trim()).filter(Boolean))].sort(),
   };
+}
+
+function trelloCardIdsFromOrderAttributes(attributes: ShopifyOrderEvidence["customAttributes"]) {
+  return [...new Set(attributes
+    .filter((attribute) => String(attribute.key || "").trim() === "Trello Card ID")
+    .map((attribute) => String(attribute.value || "").trim().toLowerCase())
+    .filter((value) => /^[a-f0-9]{24}$/.test(value)))];
 }
 
 export function classifyShipping(order: ShopifyOrderEvidence, card?: TrelloCardEvidence | null) {
@@ -566,6 +579,13 @@ export function resolveShopifyOrder(input: {
   orders: ShopifyOrderEvidence[];
   customerNameHints?: string[];
 }) {
+  const cardId = String(input.card.id || "").trim().toLowerCase();
+  if (/^[a-f0-9]{24}$/.test(cardId)) {
+    const linked = input.orders.filter((order) => trelloCardIdsFromOrderAttributes(order.customAttributes).includes(cardId));
+    if (linked.length === 1) return { order: linked[0], error: null as string | null };
+    if (linked.length > 1) return { order: null, error: `Trello Card ID ${cardId} ist in Shopify nicht eindeutig.` };
+  }
+
   const explicitOrderName = orderNameFromTrelloCard(input.card.name);
   if (explicitOrderName) {
     const exact = input.orders.filter((order) => order.name.toUpperCase() === explicitOrderName);
