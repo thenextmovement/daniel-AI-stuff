@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, MailWarning, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -17,7 +17,7 @@ export type OpsAppKey =
   | "shipping"
   | "inboundShipping"
   | "management"
-  | "emailAgent";
+  | "emailAgent" | "undeliverableOffers";
 
 type OpsAppSwitcherProps = {
   active: OpsAppKey;
@@ -86,6 +86,13 @@ const OPS_APPS: Array<{
     helper: "Entwürfe & Lernfreigabe",
     href: "/ops/email-agent",
     Icon: MailCheck,
+  },
+  {
+    key: "undeliverableOffers",
+    label: "Unzustellbar",
+    helper: "Adressen & Neuversand",
+    href: "/ops/undeliverable-offers",
+    Icon: MailWarning,
   },
   {
     key: "design",
