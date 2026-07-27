@@ -3164,6 +3164,111 @@ test("shopify fallback skips missing orders that already have a supplier tag", a
   assert.equal(salePostCount, 0);
 });
 
+test("shopify fallback paginates the complete 90-day window", async () => {
+  let recentOrdersPageCalls = 0;
+  let saleMutationCount = 0;
+  const existingRow = saleRow({
+    id: "sale-pagination-existing",
+    sale_key: "shopify:order:987654336",
+    source: "shopify",
+    shopify_order_id: "987654336",
+    shopify_order_name: "#1239",
+  });
+
+  function graphqlOrder(input: { id: string; name: string; tags?: string[] }) {
+    return {
+      id: `gid://shopify/Order/${input.id}`,
+      name: input.name,
+      email: `${input.id}@example.com`,
+      tags: input.tags || [],
+      createdAt: "2026-06-16T12:40:00Z",
+      processedAt: "2026-06-16T12:41:00Z",
+      displayFinancialStatus: "PAID",
+      displayFulfillmentStatus: "UNFULFILLED",
+      customAttributes: [],
+      totalPriceSet: { shopMoney: { amount: "180.00", currencyCode: "EUR" } },
+      subtotalPriceSet: { shopMoney: { amount: "151.26", currencyCode: "EUR" } },
+      customer: { firstName: "Page", lastName: input.name, email: `${input.id}@example.com`, phone: null },
+      billingAddress: null,
+      shippingAddress: null,
+      lineItems: {
+        nodes: [{
+          id: `gid://shopify/LineItem/${input.id}`,
+          title: "LED Neon Schriftzug",
+          sku: null,
+          quantity: 1,
+          variantTitle: null,
+          customAttributes: [],
+          image: null,
+          variant: { image: null },
+          product: { productType: "LED-Neon-Flex" },
+        }],
+      },
+    };
+  }
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.origin === "https://angebote.test") return Response.json({ ok: true, sales: [], count: 0 });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      const request = JSON.parse(String(init?.body || "{}"));
+      if (String(request.query || "").includes("SupplierSalesRecentOrders")) {
+        recentOrdersPageCalls += 1;
+        assert.equal(request.variables.first, 100);
+        assert.match(request.variables.query, /^created_at:>=\d{4}-\d{2}-\d{2}$/);
+        if (recentOrdersPageCalls === 1) {
+          assert.equal(request.variables.after, null);
+          return Response.json({
+            data: {
+              orders: {
+                nodes: [graphqlOrder({ id: "987654335", name: "#1238", tags: ["Saeid (schon bezahlt)"] })],
+                pageInfo: { hasNextPage: true, endCursor: "cursor-page-1" },
+              },
+            },
+          });
+        }
+        assert.equal(request.variables.after, "cursor-page-1");
+        return Response.json({
+          data: {
+            orders: {
+              nodes: [graphqlOrder({ id: "987654336", name: "#1239" })],
+              pageInfo: { hasNextPage: false, endCursor: "cursor-page-2" },
+            },
+          },
+        });
+      }
+      return Response.json({ data: { orders: { nodes: [] } } });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("shopify_order_id") === "eq.987654336") return Response.json([existingRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && ["POST", "PATCH"].includes(method)) {
+      saleMutationCount += 1;
+      return Response.json([]);
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.sources?.shopifyOrders.checked, 2);
+    assert.equal(result.sources?.shopifyOrders.pagesChecked, 2);
+    assert.equal(result.sources?.shopifyOrders.daysBack, 90);
+    assert.equal(result.sources?.shopifyOrders.truncated, false);
+    assert.equal(result.sources?.shopifyOrders.skippedSupplierTagged, 1);
+    assert.equal(result.sources?.shopifyOrders.skippedExisting, 1);
+  });
+
+  assert.equal(recentOrdersPageCalls, 2);
+  assert.equal(saleMutationCount, 0);
+});
+
 test("shopify fallback does not duplicate an order already linked in supplier sales", async () => {
   let saleMutationCount = 0;
   const existingRow = saleRow({
