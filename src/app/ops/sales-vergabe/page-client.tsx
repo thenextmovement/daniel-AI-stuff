@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AlertTriangle,
@@ -1672,6 +1672,7 @@ export function SupplierSalesClient({
   const [message, setMessage] = useState<string | null>(null);
   const [liveCheck, setLiveCheck] = useState<SupplierSalesLiveCheck | null>(null);
   const [boardNow, setBoardNow] = useState(() => Date.now());
+  const loadRequestIdRef = useRef(0);
   const canRunDeadlineTasks = Boolean(board) && !loading && savingSaleId !== "deadline-tasks";
   const canCleanupAssignmentTasks = Boolean(board) && !loading && savingSaleId !== "assignment-task-cleanup";
 
@@ -1776,6 +1777,8 @@ export function SupplierSalesClient({
   }
 
   async function loadBoard(options?: { syncCompletedOffers?: boolean }) {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
     setLoading(true);
     setError(null);
     let nextMessage: string | null = null;
@@ -1787,13 +1790,16 @@ export function SupplierSalesClient({
         nextError = syncResult.warning;
       }
 
-      setBoard(await fetchCurrentBoard());
+      const nextBoard = await fetchCurrentBoard();
+      if (requestId !== loadRequestIdRef.current) return;
+      setBoard(nextBoard);
       setMessage(nextMessage);
       setError(nextError);
     } catch (loadError) {
+      if (requestId !== loadRequestIdRef.current) return;
       setError(loadError instanceof Error ? loadError.message : "Produktion konnte nicht geladen werden.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) setLoading(false);
     }
   }
 
@@ -2131,7 +2137,12 @@ export function SupplierSalesClient({
         <LiveCheckPanel liveCheck={liveCheck} />
 
         <section className="grid gap-4">
-          {visibleItems.length ? (
+          {loading ? (
+            <div className="rounded-[0.5rem] border border-stone-200 bg-white p-8 text-center text-stone-500" role="status" aria-live="polite">
+              <RefreshCcw className="mx-auto h-7 w-7 animate-spin text-stone-700" />
+              <p className="mt-3">Sales werden geladen...</p>
+            </div>
+          ) : visibleItems.length ? (
             visibleItems.map((sale) => (
               <SaleCard
                 key={sale.id}
