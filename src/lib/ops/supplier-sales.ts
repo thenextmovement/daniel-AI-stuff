@@ -559,7 +559,17 @@ export type SupplierCompletedOffersSyncResult = {
   warnings: string[];
   sources?: {
     completedOffers: { checked: number; upserted: number; failed: number };
-    shopifyOrders: { checked: number; upserted: number; failed: number; skipped: boolean };
+    shopifyOrders: {
+      checked: number;
+      upserted: number;
+      failed: number;
+      skipped: boolean;
+      skippedExisting?: number;
+      skippedSupplierTagged?: number;
+      pagesChecked?: number;
+      daysBack?: number;
+      truncated?: boolean;
+    };
     activeShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
     unlinkedActiveShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
   };
@@ -3480,8 +3490,13 @@ function shopifyOrderPayloadFromGraphql(order: JsonRecord, domain: string) {
   };
 }
 
+function shopifyReconcileDays(daysBack?: number | string | null) {
+  const requested = Number(daysBack || process.env.SHOPIFY_SUPPLIER_SALES_RECONCILE_DAYS || 90);
+  return Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 365) : 90;
+}
+
 function shopifyReconcileSince(daysBack?: number | string | null) {
-  const days = Math.min(Math.max(Number(daysBack || process.env.SHOPIFY_SUPPLIER_SALES_RECONCILE_DAYS || 14), 1), 60);
+  const days = shopifyReconcileDays(daysBack);
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - days);
   return since.toISOString().slice(0, 10);
@@ -3588,118 +3603,170 @@ async function fetchCompletedOffersFeed(options?: { limit?: number }): Promise<C
 
 async function syncRecentShopifyOrdersFromAdmin(
   actor?: SupplierSaleActor | null,
-  options?: { limit?: number; daysBack?: number | string | null },
+  options?: { daysBack?: number | string | null; maxPages?: number },
 ) {
+  const daysBack = shopifyReconcileDays(options?.daysBack);
   const config = shopifyConfig();
   if (!config) {
     return {
       status: "skipped" as const,
       checked: 0,
       upserted: 0,
+      skippedExisting: 0,
+      skippedSupplierTagged: 0,
+      pagesChecked: 0,
+      daysBack,
+      truncated: false,
       failed: 0,
       errors: [] as Array<{ offerId: string | null; error: string }>,
       warnings: ["Shopify Admin API ist nicht konfiguriert; Shopify-Fallback wurde uebersprungen."],
     };
   }
 
-  const limit = Math.min(Math.max(Number(options?.limit || 50), 1), 100);
-  const since = shopifyReconcileSince(options?.daysBack);
-  const response = await fetch(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": config.token,
-    },
-    body: JSON.stringify({
-      query: `
-        query SupplierSalesRecentOrders($first: Int!, $query: String!) {
-          orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
-            nodes {
-              id
-              name
-              email
-              phone
-              tags
-              statusPageUrl
-              createdAt
-              processedAt
-              displayFinancialStatus
-              displayFulfillmentStatus
-              customAttributes { key value }
-              totalPriceSet { shopMoney { amount currencyCode } }
-              subtotalPriceSet { shopMoney { amount currencyCode } }
-              customer { firstName lastName email phone }
-              billingAddress { name company phone address1 address2 city zip country countryCodeV2 }
-              shippingAddress { name company phone address1 address2 city zip country countryCodeV2 }
-              lineItems(first: 50) {
+  const pageSize = 100;
+  const maxPages = Math.min(Math.max(Number(options?.maxPages || 50), 1), 50);
+  const since = shopifyReconcileSince(daysBack);
+  const errors: Array<{ offerId: string | null; error: string }> = [];
+  const warnings: string[] = [];
+  let checked = 0;
+  let upserted = 0;
+  let skippedExisting = 0;
+  let skippedSupplierTagged = 0;
+  let pagesChecked = 0;
+  let afterCursor: string | null = null;
+  let hasNextPage = true;
+
+  while (hasNextPage && pagesChecked < maxPages) {
+    let response: Response;
+    try {
+      response = await fetch(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": config.token,
+        },
+        body: JSON.stringify({
+          query: `
+            query SupplierSalesRecentOrders($first: Int!, $after: String, $query: String!) {
+              orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
                 nodes {
                   id
-                  title
-                  sku
-                  quantity
-                  variantTitle
+                  name
+                  email
+                  phone
+                  tags
+                  statusPageUrl
+                  createdAt
+                  processedAt
+                  displayFinancialStatus
+                  displayFulfillmentStatus
                   customAttributes { key value }
-                  image { url }
-                  variant { image { url } }
-                  product { productType }
+                  totalPriceSet { shopMoney { amount currencyCode } }
+                  subtotalPriceSet { shopMoney { amount currencyCode } }
+                  customer { firstName lastName email phone }
+                  billingAddress { name company phone address1 address2 city zip country countryCodeV2 }
+                  shippingAddress { name company phone address1 address2 city zip country countryCodeV2 }
+                  lineItems(first: 50) {
+                    nodes {
+                      id
+                      title
+                      sku
+                      quantity
+                      variantTitle
+                      customAttributes { key value }
+                      image { url }
+                      variant { image { url } }
+                      product { productType }
+                    }
+                  }
                 }
+                pageInfo { hasNextPage endCursor }
               }
             }
-          }
-        }
-      `,
-      variables: { first: limit, query: `created_at:>=${since}` },
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const body = await response.json().catch(() => null) as JsonRecord | null;
-  if (!response.ok) {
-    return {
-      status: "failed" as const,
-      checked: 0,
-      upserted: 0,
-      failed: 1,
-      errors: [{ offerId: null, error: `Shopify Orders-Fallback HTTP ${response.status}` }],
-      warnings: [] as string[],
-    };
-  }
-  const graphErrors = arrayRecords(body?.errors);
-  if (graphErrors.length) {
-    return {
-      status: "failed" as const,
-      checked: 0,
-      upserted: 0,
-      failed: 1,
-      errors: [{
-        offerId: null,
-        error: graphErrors.map((error) => cleanText(error.message || JSON.stringify(error), 200)).filter(Boolean).join("; ") || "Shopify Orders-Fallback fehlgeschlagen.",
-      }],
-      warnings: [] as string[],
-    };
-  }
-
-  const errors: Array<{ offerId: string | null; error: string }> = [];
-  let upserted = 0;
-  const orders = arrayRecords(jsonRecord(jsonRecord(body?.data).orders).nodes);
-  for (const order of orders) {
-    try {
-      await upsertSupplierSaleFromPayload(shopifyOrderPayloadFromGraphql(order, config.domain), actor);
-      upserted += 1;
+          `,
+          variables: { first: pageSize, after: afterCursor, query: `created_at:>=${since}` },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
     } catch (error) {
       errors.push({
-        offerId: recordString(order, ["name", "id"], 160),
-        error: error instanceof Error ? error.message : "Shopify Order konnte nicht synchronisiert werden.",
+        offerId: null,
+        error: error instanceof Error ? error.message : "Shopify Orders-Fallback konnte nicht aufgerufen werden.",
       });
+      break;
     }
+
+    const body = await response.json().catch(() => null) as JsonRecord | null;
+    if (!response.ok) {
+      errors.push({ offerId: null, error: `Shopify Orders-Fallback HTTP ${response.status}` });
+      break;
+    }
+    const graphErrors = arrayRecords(body?.errors);
+    if (graphErrors.length) {
+      errors.push({
+        offerId: null,
+        error: graphErrors.map((error) => cleanText(error.message || JSON.stringify(error), 200)).filter(Boolean).join("; ") || "Shopify Orders-Fallback fehlgeschlagen.",
+      });
+      break;
+    }
+
+    pagesChecked += 1;
+    const connection = jsonRecord(jsonRecord(body?.data).orders);
+    const orders = arrayRecords(connection.nodes);
+    checked += orders.length;
+    for (const order of orders) {
+      try {
+        const parsed = buildSupplierSaleInputFromPayload(shopifyOrderPayloadFromGraphql(order, config.domain));
+        const existing = await fetchExistingSaleRow(parsed.sale);
+        if (!existing && assignedSupplierFromShopifyTags(parsed.sale)) {
+          skippedSupplierTagged += 1;
+          continue;
+        }
+        if (existing?.shopify_order_id) {
+          skippedExisting += 1;
+          continue;
+        }
+        await upsertSupplierSale(parsed.sale, actor);
+        upserted += 1;
+      } catch (error) {
+        errors.push({
+          offerId: recordString(order, ["name", "id"], 160),
+          error: error instanceof Error ? error.message : "Shopify Order konnte nicht synchronisiert werden.",
+        });
+      }
+    }
+
+    const pageInfo = jsonRecord(connection.pageInfo);
+    hasNextPage = pageInfo.hasNextPage === true;
+    afterCursor = recordString(pageInfo, ["endCursor"], 500);
+    if (hasNextPage && !afterCursor) {
+      errors.push({
+        offerId: null,
+        error: "Shopify meldet eine weitere Seite, aber keinen Cursor. Der Abgleich kann sicher wiederholt werden.",
+      });
+      break;
+    }
+  }
+
+  const truncated = hasNextPage && pagesChecked >= maxPages;
+  if (truncated) {
+    const warning = `Shopify-Abgleich nach ${maxPages} Seiten abgebrochen; das ${daysBack}-Tage-Fenster ist noch nicht vollstaendig.`;
+    warnings.push(warning);
+    errors.push({ offerId: null, error: warning });
   }
 
   return {
     status: errors.length ? "failed" as const : "synced" as const,
-    checked: orders.length,
+    checked,
     upserted,
+    skippedExisting,
+    skippedSupplierTagged,
+    pagesChecked,
+    daysBack,
+    truncated,
     failed: errors.length,
     errors,
-    warnings: [] as string[],
+    warnings,
   };
 }
 
@@ -3939,10 +4006,15 @@ export async function syncCompletedOffersFromOffersApp(
     }
   }
 
-  const shopify = await syncRecentShopifyOrdersFromAdmin(actor, { limit }).catch((error) => ({
+  const shopify = await syncRecentShopifyOrdersFromAdmin(actor, { daysBack: 90 }).catch((error) => ({
     status: "failed" as const,
     checked: 0,
     upserted: 0,
+    skippedExisting: 0,
+    skippedSupplierTagged: 0,
+    pagesChecked: 0,
+    daysBack: 90,
+    truncated: false,
     failed: 1,
     errors: [{ offerId: null, error: error instanceof Error ? error.message : "Shopify Orders-Fallback fehlgeschlagen." }],
     warnings: [] as string[],
@@ -3990,7 +4062,17 @@ export async function syncCompletedOffersFromOffersApp(
     warnings,
     sources: {
       completedOffers: { checked: completedChecked, upserted: completedUpserted, failed: completedFailed },
-      shopifyOrders: { checked: shopify.checked, upserted: shopify.upserted, failed: shopify.failed, skipped: shopifySkipped },
+      shopifyOrders: {
+        checked: shopify.checked,
+        upserted: shopify.upserted,
+        failed: shopify.failed,
+        skipped: shopifySkipped,
+        skippedExisting: shopify.skippedExisting,
+        skippedSupplierTagged: shopify.skippedSupplierTagged,
+        pagesChecked: shopify.pagesChecked,
+        daysBack: shopify.daysBack,
+        truncated: shopify.truncated,
+      },
       activeShopifyRows: { checked: activeShopify.checked, upserted: activeShopify.upserted, failed: activeShopify.failed, skipped: activeShopifySkipped },
       unlinkedActiveShopifyRows: { checked: unlinkedShopify.checked, upserted: unlinkedShopify.upserted, failed: unlinkedShopify.failed, skipped: unlinkedShopifySkipped },
     },
