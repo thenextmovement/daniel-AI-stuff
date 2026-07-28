@@ -566,6 +566,7 @@ export type SupplierCompletedOffersSyncResult = {
       skipped: boolean;
       skippedExisting?: number;
       skippedSupplierTagged?: number;
+      skippedInternal?: number;
       pagesChecked?: number;
       daysBack?: number;
       truncated?: boolean;
@@ -2985,6 +2986,21 @@ function assignedSupplierFromShopifyTags(input: SupplierSaleInput): SupplierSale
   return null;
 }
 
+const NON_PRODUCTION_SHOPIFY_TAGS = new Set([
+  "do_not_fulfill",
+  "incident_placeholder",
+  "internal_only",
+  "order_gap_repair",
+].map(supplierTagKey));
+
+function hasNonProductionShopifyTags(tags: string[]) {
+  return tags.some((tag) => NON_PRODUCTION_SHOPIFY_TAGS.has(supplierTagKey(tag)));
+}
+
+function isNonProductionShopifyInput(input: SupplierSaleInput) {
+  return hasNonProductionShopifyTags(shopifyTagsFromInput(input));
+}
+
 function supplierTagsFromRow(row: SupplierSaleRow) {
   const rawTags = [
     row.shopify_tag_value,
@@ -3007,6 +3023,10 @@ function assignedSupplierFromRowTags(row: SupplierSaleRow): SupplierSaleSupplier
   if (hasConfiguredSupplierTag(tags, supplierTagCandidates("said"))) return "said";
   if (hasConfiguredSupplierTag(tags, supplierTagCandidates("special"))) return "special";
   return null;
+}
+
+function isNonProductionShopifyRow(row: SupplierSaleRow) {
+  return hasNonProductionShopifyTags(supplierTagsFromRow(row));
 }
 
 function hasExternalSupplierAssignmentSignal(row: SupplierSaleRow) {
@@ -3614,6 +3634,7 @@ async function syncRecentShopifyOrdersFromAdmin(
       upserted: 0,
       skippedExisting: 0,
       skippedSupplierTagged: 0,
+      skippedInternal: 0,
       pagesChecked: 0,
       daysBack,
       truncated: false,
@@ -3632,6 +3653,7 @@ async function syncRecentShopifyOrdersFromAdmin(
   let upserted = 0;
   let skippedExisting = 0;
   let skippedSupplierTagged = 0;
+  let skippedInternal = 0;
   let pagesChecked = 0;
   let afterCursor: string | null = null;
   let hasNextPage = true;
@@ -3717,6 +3739,10 @@ async function syncRecentShopifyOrdersFromAdmin(
     for (const order of orders) {
       try {
         const parsed = buildSupplierSaleInputFromPayload(shopifyOrderPayloadFromGraphql(order, config.domain));
+        if (isNonProductionShopifyInput(parsed.sale)) {
+          skippedInternal += 1;
+          continue;
+        }
         const existing = await fetchExistingSaleRow(parsed.sale);
         if (!existing && assignedSupplierFromShopifyTags(parsed.sale)) {
           skippedSupplierTagged += 1;
@@ -3761,6 +3787,7 @@ async function syncRecentShopifyOrdersFromAdmin(
     upserted,
     skippedExisting,
     skippedSupplierTagged,
+    skippedInternal,
     pagesChecked,
     daysBack,
     truncated,
@@ -4012,6 +4039,7 @@ export async function syncCompletedOffersFromOffersApp(
     upserted: 0,
     skippedExisting: 0,
     skippedSupplierTagged: 0,
+    skippedInternal: 0,
     pagesChecked: 0,
     daysBack: 90,
     truncated: false,
@@ -4069,6 +4097,7 @@ export async function syncCompletedOffersFromOffersApp(
         skipped: shopifySkipped,
         skippedExisting: shopify.skippedExisting,
         skippedSupplierTagged: shopify.skippedSupplierTagged,
+        skippedInternal: shopify.skippedInternal,
         pagesChecked: shopify.pagesChecked,
         daysBack: shopify.daysBack,
         truncated: shopify.truncated,
@@ -4245,6 +4274,8 @@ export async function listSupplierSalesBoard(options?: {
 
   let statsRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, statsQuery);
   let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
+  statsRows = statsRows.filter((row) => !isNonProductionShopifyRow(row));
+  saleRows = saleRows.filter((row) => !isNonProductionShopifyRow(row));
   if (scope === "active") {
     saleRows = saleRows.filter((row) => {
       if (row.assignment_status === "assigned" || row.assignment_status === "in_production") {
