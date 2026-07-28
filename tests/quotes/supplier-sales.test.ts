@@ -2042,6 +2042,14 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     shopify_tag_sync_status: "not_started",
     raw_shopify: { tags: ["Quentin (schon bezahlt)"] },
   });
+  const internalRow = saleRow({
+    id: "sale-internal",
+    sale_key: "shopify:order:internal",
+    shopify_order_id: "internal",
+    shopify_order_name: "#INTERNAL",
+    assignment_status: "payment_open",
+    raw_shopify: { tags: ["internal_only", "do_not_fulfill"] },
+  });
   const fulfilledRow = saleRow({
     id: "sale-fulfilled",
     sale_key: "shopify:order:fulfilled",
@@ -2099,6 +2107,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
       supplierSalesGetLimits.push(limit || "");
       if (limit === "200") assert.equal(url.searchParams.get("assignment_status"), "not.in.(completed,canceled)");
       return Response.json([
+        internalRow,
         taggedRow,
         fulfilledRow,
         similarTagRow,
@@ -3164,6 +3173,69 @@ test("shopify fallback skips missing orders that already have a supplier tag", a
   });
 
   assert.equal(salePostCount, 0);
+});
+
+test("shopify fallback skips internal incident orders before creating sales", async () => {
+  let supplierSalesRequestCount = 0;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    if (url.origin === "https://angebote.test") return Response.json({ ok: true, sales: [], count: 0 });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      return Response.json({
+        data: {
+          orders: {
+            nodes: [{
+              id: "gid://shopify/Order/987654399",
+              name: "#INTERNAL",
+              email: "internal@example.com",
+              tags: ["internal_only", "do_not_fulfill", "incident_placeholder", "order_gap_repair"],
+              createdAt: "2026-06-16T12:40:00Z",
+              processedAt: "2026-06-16T12:41:00Z",
+              displayFinancialStatus: "PAID",
+              displayFulfillmentStatus: "UNFULFILLED",
+              customAttributes: [],
+              totalPriceSet: { shopMoney: { amount: "1.00", currencyCode: "EUR" } },
+              subtotalPriceSet: { shopMoney: { amount: "0.84", currencyCode: "EUR" } },
+              customer: { firstName: "Internal", lastName: "Incident", email: "internal@example.com", phone: null },
+              billingAddress: null,
+              shippingAddress: null,
+              lineItems: {
+                nodes: [{
+                  id: "gid://shopify/LineItem/99",
+                  title: "Internal placeholder",
+                  sku: null,
+                  quantity: 1,
+                  variantTitle: null,
+                  customAttributes: [],
+                  image: null,
+                  variant: { image: null },
+                  product: { productType: "Internal" },
+                }],
+              },
+            }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      });
+    }
+
+    if (url.pathname.endsWith("/supplier_sales") && String(init?.method || "GET").toUpperCase() !== "GET") {
+      supplierSalesRequestCount += 1;
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "internal-offers-key";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 25 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.sources?.shopifyOrders.checked, 1);
+    assert.equal(result.sources?.shopifyOrders.upserted, 0);
+    assert.equal(result.sources?.shopifyOrders.skippedInternal, 1);
+  });
+
+  assert.equal(supplierSalesRequestCount, 0);
 });
 
 test("shopify fallback paginates the complete 90-day window", async () => {

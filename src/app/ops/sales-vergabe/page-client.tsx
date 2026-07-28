@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AlertTriangle,
@@ -1672,7 +1672,6 @@ export function SupplierSalesClient({
   const [message, setMessage] = useState<string | null>(null);
   const [liveCheck, setLiveCheck] = useState<SupplierSalesLiveCheck | null>(null);
   const [boardNow, setBoardNow] = useState(() => Date.now());
-  const initialSalesSyncStarted = useRef(false);
   const canRunDeadlineTasks = Boolean(board) && !loading && savingSaleId !== "deadline-tasks";
   const canCleanupAssignmentTasks = Boolean(board) && !loading && savingSaleId !== "assignment-task-cleanup";
 
@@ -1691,9 +1690,9 @@ export function SupplierSalesClient({
 
   useEffect(() => {
     if (!hasSession && !localMode) return;
-    const syncCompletedOffers = !initialSalesSyncStarted.current;
-    initialSalesSyncStarted.current = true;
-    void loadBoard({ syncCompletedOffers });
+    // The 90-day Shopify reconciliation can take longer than the browser timeout.
+    // It runs independently in n8n, so never block the existing board on it.
+    void loadBoard();
   }, [hasSession, localMode, scope, supplier, payment, urgency, visibleLimit]);
 
   const boardItems = useMemo(() => board?.items || [], [board]);
