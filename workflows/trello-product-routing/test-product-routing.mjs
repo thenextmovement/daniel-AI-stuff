@@ -11,10 +11,12 @@ import {
 test("maps the first Trello title segment to Product 1", () => {
   const cases = [
     ["LED Neon Flex | Anna", PRODUCT_1_OPTIONS.neon.text],
+    ["LED Neon | Anna", PRODUCT_1_OPTIONS.neon.text],
     ["LED Flex | Anna", PRODUCT_1_OPTIONS.neon.text],
-    ["Full Glow | Anna", PRODUCT_1_OPTIONS.neon.text],
+    ["Full Glow | Anna", PRODUCT_1_OPTIONS.fullGlow.text],
     ["Neon-Halo | Anna", PRODUCT_1_OPTIONS.neon.text],
-    ["Ultrathin Acrylic Lightbox | Anna", PRODUCT_1_OPTIONS.neon.text],
+    ["Ultrathin Acrylic Lightbox | Anna", PRODUCT_1_OPTIONS.ultraThin.text],
+    ["Ultra Thin Acrylic | Anna", PRODUCT_1_OPTIONS.ultraThin.text],
     ["3D Frontlit | Anna", PRODUCT_1_OPTIONS.frontlit.text],
     ["3D Backlit + 3D NONLIT | Anna", PRODUCT_1_OPTIONS.backlit.text],
     ["3D Nonlit | Anna", PRODUCT_1_OPTIONS.nonlit.text],
@@ -31,8 +33,10 @@ test("does not guess Product 1 from a customer name or unknown product", () => {
   assert.equal(product1OptionTextFromTitle("Marquee | Anna"), null);
 });
 
-test("validated Ultrathin uses the shared Neon dropdown and multi-variant sets only Product 1", () => {
-  assert.equal(product1OptionIdFromValidatedProduct("Ultrathin Acrylic Lightbox"), PRODUCT_1_OPTIONS.neon.id);
+test("validated products use independent Full Glow and Ultrathin dropdowns", () => {
+  assert.equal(product1OptionIdFromValidatedProduct("LED Neon Flex"), PRODUCT_1_OPTIONS.neon.id);
+  assert.equal(product1OptionIdFromValidatedProduct("Full Glow"), PRODUCT_1_OPTIONS.fullGlow.id);
+  assert.equal(product1OptionIdFromValidatedProduct("Ultrathin Acrylic Lightbox"), PRODUCT_1_OPTIONS.ultraThin.id);
   assert.equal(product1OptionIdFromValidatedProduct("3D Multi-Variant"), PRODUCT_1_OPTIONS.backlit.id);
   assert.equal(product1OptionIdFromValidatedProduct("Unknown"), null);
 });
@@ -73,11 +77,15 @@ return updates.map(item => item.json.customFieldPayload ? item : ({ json: item }
 });
 
 function quotingFixture() {
+  const allowedProducts = "'LED Neon Flex','3D Frontlit','3D Backlit','3D Nonlit','3D Multi-Variant','Lightbox','Double-Sided Lightbox','Ultrathin Acrylic Lightbox','Unknown'";
   return {
     name: "quoting",
     nodes: [
       { name: "Restore Decision", parameters: {} },
       { name: "Trello: Project Decision", parameters: {} },
+      { name: "Build Multimodal Request", parameters: { jsCode: `const schema={product_type:{enum:[${allowedProducts}]}}; Return only schema-valid JSON.` } },
+      { name: "Build Text-Only Request", parameters: { jsCode: `const schema={product_type:{enum:[${allowedProducts}]}}; Return schema-valid JSON only.` } },
+      { name: "Validate and Gate", parameters: { jsCode: `const allowedProducts=[${allowedProducts}]; const exactRequestedSizeProduct=['3D Frontlit','3D Backlit','3D Nonlit','3D Multi-Variant'].includes(finalProduct); const titleProductMap={'Ultrathin Acrylic Lightbox':'Ultrathin Acrylic Lightbox','Lightbox':'Lightbox'};` } },
       {
         name: "Trello: Set Mockup Description",
         parameters: {},
@@ -101,7 +109,16 @@ test("adds an idempotent Product 1 projection branch to the quoting workflow", (
   assert.equal(setNode.retryOnFail, true);
   assert.deepEqual(setNode.credentials, { trelloApi: { id: "fixture", name: "Trello fixture" } });
   assert.match(setNode.parameters.url, /customField\/6a671cb3ffd9bae3b3cb285b\/item/);
+  assert.match(setNode.parameters.jsonBody, new RegExp(PRODUCT_1_OPTIONS.fullGlow.id));
+  assert.match(setNode.parameters.jsonBody, new RegExp(PRODUCT_1_OPTIONS.ultraThin.id));
   assert.doesNotMatch(JSON.stringify(patched), /Product 2|product_2|6a671cfbcf537003c2e055a9/i);
+
+  const multimodal = patched.nodes.find((node) => node.name === "Build Multimodal Request").parameters.jsCode;
+  const gate = patched.nodes.find((node) => node.name === "Validate and Gate").parameters.jsCode;
+  assert.match(multimodal, /FULL GLOW RULE/);
+  assert.match(multimodal, /'LED Neon Flex','Full Glow','3D Frontlit'/);
+  assert.match(gate, /exactRequestedSizeProduct=\['Full Glow','3D Frontlit'/);
+  assert.match(gate, /'Full Glow':'Full Glow'/);
 
   const twice = patchWorkflowById(WORKFLOW_IDS.quotingAgent, patched);
   assert.equal(twice.nodes.filter((node) => node.name === "Trello: Set Product 1").length, 1);

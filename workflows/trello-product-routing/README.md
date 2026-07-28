@@ -1,10 +1,10 @@
-# TICKET-042: Trello Product Routing
+# TICKET-070: Seven independent Trello product routes
 
 ## Plan
 
 `Product 1` wird bei strukturierten Landingpage-Anfragen aus dem ersten Produktsegment des erzeugten Kartentitels gesetzt. Unstrukturierte Anfragen werden nicht mehr pauschal als Neon markiert; der Quoting Agent setzt `Product 1` nach validierter Produktklassifikation. `Product 2` bleibt ausschließlich manuell. Der bereits produktive Offers-Import verwendet Product 1/2 pro Design.
 
-LED Neon Flex, LED Flex, Full Glow, Neon-Halo und Ultrathin Acrylic verwenden gemeinsam den Dropdownwert `LED Neon Flex / Full Glow`. Die Neon-Preisleiter bleibt durch die bestehende serverseitige Produktprüfung auf echte Neon-Strukturen begrenzt; Ultrathin, 3D und Lightbox werden übersprungen.
+Die Dropdowns `Product 1` und `Product 2` besitzen auf Quentin, Anfrage Management und Abdul exakt dieselben sieben Werte: `LED Neon`, `3d Frontlit`, `3d Backlit`, `3d Nonlit`, `Lightbox`, `Full Glow`, `Ultra Thin Acrylic`. Full Glow und Ultra Thin werden eigenständig geroutet. Die Neon-Preisleiter bleibt ausschließlich echten Neon-Strukturen vorbehalten; Full Glow, Ultra Thin, 3D und Lightbox werden übersprungen.
 
 ## Node Structure
 
@@ -24,13 +24,13 @@ Betroffene produktive Workflows:
 ## Risiken
 
 - Der LP-Workflow hat historisch mehr als 30 Nodes. Diese Änderung fügt dort keine Nodes hinzu; eine spätere Aufteilung ist separat zu planen.
-- Änderungen an Trello-Dropdown-IDs müssen kontrolliert in den Konstanten und im produktiven Workflow nachgezogen werden.
+- Änderungen an Trello-Dropdown-IDs müssen kontrolliert in den Konstanten und im produktiven Workflow nachgezogen werden. Die IDs in diesem Modul gehören ausdrücklich zum Anfrage-Management-Board.
 - Bei unbekanntem Produkttitel bleibt Product 1 bewusst leer, statt geraten zu werden.
 - `3D Multi-Variant` setzt nur Product 1 auf Backlit. Product 2 bleibt für die manuelle Auswahl offen.
 
 ## Test Plan
 
-- Alle erlaubten Titelvarianten einschließlich Ultrathin testen.
+- Alle erlaubten Titelvarianten einschließlich separatem Full Glow und Ultra Thin testen.
 - Kundennamen und unbekannte Produkttypen dürfen keine Auswahl erzeugen.
 - Quoting-Workflow zweimal patchen: keine doppelten Nodes oder Connections.
 - Sicherstellen, dass kein aktiver Workflow Product 2 schreibt.

@@ -7,11 +7,13 @@ export const WORKFLOW_IDS = Object.freeze({
 export const PRODUCT_1_FIELD_ID = "6a671cb3ffd9bae3b3cb285b";
 
 export const PRODUCT_1_OPTIONS = Object.freeze({
-  neon: Object.freeze({ id: "6a671cb3ffd9bae3b3cb285c", text: "LED Neon Flex / Full Glow" }),
+  neon: Object.freeze({ id: "6a6902856fc44afc4d697f03", text: "LED Neon" }),
   frontlit: Object.freeze({ id: "6a671cb3ffd9bae3b3cb285d", text: "3d Frontlit" }),
   backlit: Object.freeze({ id: "6a671cb3ffd9bae3b3cb285e", text: "3d Backlit" }),
   nonlit: Object.freeze({ id: "6a671cb3ffd9bae3b3cb285f", text: "3d Nonlit" }),
   lightbox: Object.freeze({ id: "6a671cb3ffd9bae3b3cb2860", text: "Lightbox" }),
+  fullGlow: Object.freeze({ id: "6a6902859b10c7f7a53970c3", text: "Full Glow" }),
+  ultraThin: Object.freeze({ id: "6a69028505bf0f9b9057cc39", text: "Ultra Thin Acrylic" }),
 });
 
 function normalizedProductSegment(title) {
@@ -26,9 +28,9 @@ function normalizedProductSegment(title) {
 export function product1OptionTextFromTitle(title) {
   const segment = normalizedProductSegment(title);
   if (!segment) return null;
-  if (/^(?:ultra\s*-?\s*thin\s+acryl(?:ic)?(?:\s+lightbox)?|led\s+neon\s+flex|led\s+flex|full\s+glow|neon\s*-?\s*halo)(?:\b|\s|$)/.test(segment)) {
-    return PRODUCT_1_OPTIONS.neon.text;
-  }
+  if (/^ultra\s*-?\s*thin\s+acryl(?:ic)?(?:\s+lightbox)?(?:\b|\s|$)/.test(segment)) return PRODUCT_1_OPTIONS.ultraThin.text;
+  if (/^full\s+glow(?:\b|\s|$)/.test(segment)) return PRODUCT_1_OPTIONS.fullGlow.text;
+  if (/^(?:led\s+neon(?:\s+flex)?|led\s+flex|neon\s*-?\s*halo)(?:\b|\s|$)/.test(segment)) return PRODUCT_1_OPTIONS.neon.text;
   if (/^3\s*-?\s*d\s+front\s*-?\s*lit(?:\b|\s|$)/.test(segment)) return PRODUCT_1_OPTIONS.frontlit.text;
   if (/^3\s*-?\s*d\s+back\s*-?\s*lit(?:\b|\s|$)/.test(segment)) return PRODUCT_1_OPTIONS.backlit.text;
   if (/^(?:3\s*-?\s*d\s+)?non\s*-?\s*lit(?:\b|\s|$)/.test(segment)) return PRODUCT_1_OPTIONS.nonlit.text;
@@ -39,7 +41,8 @@ export function product1OptionTextFromTitle(title) {
 export function product1OptionIdFromValidatedProduct(productType) {
   const mapping = {
     "LED Neon Flex": PRODUCT_1_OPTIONS.neon.id,
-    "Ultrathin Acrylic Lightbox": PRODUCT_1_OPTIONS.neon.id,
+    "Full Glow": PRODUCT_1_OPTIONS.fullGlow.id,
+    "Ultrathin Acrylic Lightbox": PRODUCT_1_OPTIONS.ultraThin.id,
     "3D Frontlit": PRODUCT_1_OPTIONS.frontlit.id,
     "3D Backlit": PRODUCT_1_OPTIONS.backlit.id,
     "3D Nonlit": PRODUCT_1_OPTIONS.nonlit.id,
@@ -52,7 +55,9 @@ export function product1OptionIdFromValidatedProduct(productType) {
 
 const n8nTitleResolver = `function product1OptionFromTitle(cardTitle) {
   const segment = normalizeText(cardTitle).split('|')[0].trim().replace(/[\\u2010-\\u2015]/g, '-').replace(/[_\\s]+/g, ' ').toLowerCase();
-  if (/^(?:ultra\\s*-?\\s*thin\\s+acryl(?:ic)?(?:\\s+lightbox)?|led\\s+neon\\s+flex|led\\s+flex|full\\s+glow|neon\\s*-?\\s*halo)(?:\\b|\\s|$)/.test(segment)) return 'LED Neon Flex / Full Glow';
+  if (/^ultra\\s*-?\\s*thin\\s+acryl(?:ic)?(?:\\s+lightbox)?(?:\\b|\\s|$)/.test(segment)) return 'Ultra Thin Acrylic';
+  if (/^full\\s+glow(?:\\b|\\s|$)/.test(segment)) return 'Full Glow';
+  if (/^(?:led\\s+neon(?:\\s+flex)?|led\\s+flex|neon\\s*-?\\s*halo)(?:\\b|\\s|$)/.test(segment)) return 'LED Neon';
   if (/^3\\s*-?\\s*d\\s+front\\s*-?\\s*lit(?:\\b|\\s|$)/.test(segment)) return '3d Frontlit';
   if (/^3\\s*-?\\s*d\\s+back\\s*-?\\s*lit(?:\\b|\\s|$)/.test(segment)) return '3d Backlit';
   if (/^(?:3\\s*-?\\s*d\\s+)?non\\s*-?\\s*lit(?:\\b|\\s|$)/.test(segment)) return '3d Nonlit';
@@ -98,7 +103,8 @@ export function patchPrepareFieldDataNode(workflow, mode) {
 
 const validatedProductIdExpression = `({
   'LED Neon Flex': '${PRODUCT_1_OPTIONS.neon.id}',
-  'Ultrathin Acrylic Lightbox': '${PRODUCT_1_OPTIONS.neon.id}',
+  'Full Glow': '${PRODUCT_1_OPTIONS.fullGlow.id}',
+  'Ultrathin Acrylic Lightbox': '${PRODUCT_1_OPTIONS.ultraThin.id}',
   '3D Frontlit': '${PRODUCT_1_OPTIONS.frontlit.id}',
   '3D Backlit': '${PRODUCT_1_OPTIONS.backlit.id}',
   '3D Nonlit': '${PRODUCT_1_OPTIONS.nonlit.id}',
@@ -155,6 +161,47 @@ export function patchQuotingAgentWorkflow(workflow) {
       },
     });
   }
+
+  const recognizedNode = workflow.nodes.find((node) => node.name === "Product 1 recognized?");
+  const recognizedCondition = recognizedNode?.parameters?.conditions?.conditions?.[0];
+  if (!recognizedCondition) throw new Error("Product 1 recognized condition missing");
+  recognizedCondition.leftValue = `={{ ${validatedProductIdExpression} }}`;
+
+  const setProductNode = workflow.nodes.find((node) => node.name === "Trello: Set Product 1");
+  if (!setProductNode?.parameters) throw new Error("Trello: Set Product 1 node missing");
+  setProductNode.parameters.url = `=https://api.trello.com/1/cards/{{ $('Restore Decision').item.json.approval.card_id }}/customField/${PRODUCT_1_FIELD_ID}/item`;
+  setProductNode.parameters.jsonBody = `={{ JSON.stringify({ idValue: ${validatedProductIdExpression} }) }}`;
+
+  const enumBefore = "'LED Neon Flex','3D Frontlit','3D Backlit','3D Nonlit','3D Multi-Variant','Lightbox','Double-Sided Lightbox','Ultrathin Acrylic Lightbox','Unknown'";
+  const enumAfter = "'LED Neon Flex','Full Glow','3D Frontlit','3D Backlit','3D Nonlit','3D Multi-Variant','Lightbox','Double-Sided Lightbox','Ultrathin Acrylic Lightbox','Unknown'";
+  for (const nodeName of ["Build Multimodal Request", "Build Text-Only Request", "Validate and Gate"]) {
+    const node = workflow.nodes.find((entry) => entry.name === nodeName);
+    if (!node?.parameters?.jsCode) throw new Error(`${nodeName} code missing`);
+    node.parameters.jsCode = node.parameters.jsCode.replaceAll(enumBefore, enumAfter);
+  }
+
+  for (const nodeName of ["Build Multimodal Request", "Build Text-Only Request"]) {
+    const node = workflow.nodes.find((entry) => entry.name === nodeName);
+    const rule = "FULL GLOW RULE: When the title or original customer message explicitly names Full Glow or fully illuminated acrylic letters, classify product_type as \"Full Glow\". Full Glow is independent from LED Neon Flex, uses line_style \"not applicable\", and follows exact requested-size handling like 3D Frontlit.";
+    if (!node.parameters.jsCode.includes(rule)) {
+      const marker = node.parameters.jsCode.includes("Return only schema-valid JSON.")
+        ? "Return only schema-valid JSON."
+        : "Return schema-valid JSON only.";
+      if (!node.parameters.jsCode.includes(marker)) throw new Error(`${nodeName} prompt marker missing`);
+      node.parameters.jsCode = node.parameters.jsCode.replace(marker, `${rule}\\n\\n${marker}`);
+    }
+  }
+
+  const gateNode = workflow.nodes.find((entry) => entry.name === "Validate and Gate");
+  gateNode.parameters.jsCode = gateNode.parameters.jsCode
+    .replace(
+      "const exactRequestedSizeProduct=['3D Frontlit','3D Backlit','3D Nonlit','3D Multi-Variant'].includes(finalProduct);",
+      "const exactRequestedSizeProduct=['Full Glow','3D Frontlit','3D Backlit','3D Nonlit','3D Multi-Variant'].includes(finalProduct);",
+    )
+    .replace(
+      "'Ultrathin Acrylic Lightbox':'Ultrathin Acrylic Lightbox','Lightbox'",
+      "'Ultrathin Acrylic Lightbox':'Ultrathin Acrylic Lightbox','Full Glow':'Full Glow','Lightbox'",
+    );
 
   const projectOutputs = workflow.connections["Trello: Project Decision"]?.main?.[0];
   if (!Array.isArray(projectOutputs)) throw new Error("Trello: Project Decision connection missing");
