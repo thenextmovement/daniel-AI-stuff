@@ -3145,7 +3145,9 @@ test("shopify fallback skips missing orders that already have a supplier tag", a
       return Response.json([]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
-    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: importedRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") {
+      throw new Error("supplier-tagged Shopify orders must not create sale items");
+    }
     if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
     return Response.json([]);
   }, async () => {
