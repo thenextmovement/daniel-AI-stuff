@@ -270,6 +270,7 @@ export type SupplierSale = {
     orderedAt: string;
     deliveryDate: string | null;
   } | null;
+  orderPlacedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   items: SupplierSaleItem[];
@@ -2089,6 +2090,27 @@ function supplierSaleRushDetails(row: SupplierSaleRow, items: SupplierSaleItem[]
   };
 }
 
+function supplierSaleOrderPlacedAt(row: SupplierSaleRow) {
+  const metadata = jsonRecord(row.metadata);
+  const rawOrder = jsonRecord(row.raw_shopify.order);
+  const snapshotOrder = jsonRecord(row.offer_snapshot.order);
+  const snapshotOffer = jsonRecord(row.offer_snapshot.offer);
+  return (
+    nullableText(row.raw_shopify.created_at ?? row.raw_shopify.createdAt, 80) ||
+    nullableText(row.raw_shopify.processed_at ?? row.raw_shopify.processedAt, 80) ||
+    nullableText(rawOrder.created_at ?? rawOrder.createdAt, 80) ||
+    nullableText(rawOrder.processed_at ?? rawOrder.processedAt, 80) ||
+    nullableText(metadata.accepted_at ?? metadata.acceptedAt, 80) ||
+    nullableText(metadata.signed_at ?? metadata.signedAt, 80) ||
+    nullableText(row.offer_snapshot.acceptedAt ?? row.offer_snapshot.accepted_at, 80) ||
+    nullableText(row.offer_snapshot.signedAt ?? row.offer_snapshot.signed_at, 80) ||
+    nullableText(snapshotOffer.acceptedAt ?? snapshotOffer.accepted_at, 80) ||
+    nullableText(snapshotOffer.signedAt ?? snapshotOffer.signed_at, 80) ||
+    nullableText(snapshotOrder.created_at ?? snapshotOrder.createdAt, 80) ||
+    row.created_at
+  );
+}
+
 function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEvent: SupplierSaleEvent | null = null): SupplierSale {
   const itemImage = items.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || null;
   const metadata = jsonRecord(row.metadata);
@@ -2154,6 +2176,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     primaryImageUrl: row.primary_image_url || itemImage,
     rushOrder: supplierSaleHasRushSignal(row, items),
     rushOrderDetails: supplierSaleRushDetails(row, items),
+    orderPlacedAt: supplierSaleOrderPlacedAt(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     items,
