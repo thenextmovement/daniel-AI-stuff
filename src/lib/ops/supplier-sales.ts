@@ -5197,6 +5197,7 @@ function supplierAccessoryLine(item: SupplierSaleItem): SupplierAccessoryLine | 
     const rawPosition = explicit?.split(":").slice(1).join(":").trim().replace(/\s*❗$/, "")
       || item.title.replace(/.*?(kabelabgang|cable exit|cable position)\s*[:\-]?\s*/i, "").trim();
     const value = supplierProductionValue("Cable Position", rawPosition);
+    if (supplierProductionKey(value || "") === "anyposition") return null;
     return value ? { key: "cable", line: `Cable Position: ${value}` } : null;
   }
   if (/wandmontage|wall mount|mounting kit/.test(text)) {
@@ -5234,6 +5235,7 @@ function productionDescriptionDetail(
   }
   if (normalizedLabel === "cableposition") {
     const englishValue = supplierProductionValue("Cable Position", value)?.replace(/\s*❗$/, "");
+    if (supplierProductionKey(englishValue || "") === "anyposition") return null;
     if (englishValue) priority.set("cable", `Cable Position: ${englishValue} ❗`);
     return null;
   }
