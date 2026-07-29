@@ -642,8 +642,20 @@ function SnapshotSelectionGroup({
                   ) : null}
                 </div>
               </div>
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-[0.5rem] border border-stone-300 bg-white px-2.5 py-1 text-xs font-black text-stone-950">
-                <span className="text-[10px] uppercase tracking-[0.08em] text-stone-500">Menge</span>
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 rounded-[0.5rem] border font-black ${
+                  item.quantity > 1
+                    ? "border-red-600 bg-red-600 px-3.5 py-2 text-base text-white shadow-sm"
+                    : "border-stone-300 bg-white px-2.5 py-1 text-xs text-stone-950"
+                }`}
+              >
+                <span
+                  className={`uppercase tracking-[0.08em] ${
+                    item.quantity > 1 ? "text-[11px] text-red-50" : "text-[10px] text-stone-500"
+                  }`}
+                >
+                  Menge
+                </span>
                 {item.quantity}x
               </span>
             </div>
