@@ -224,8 +224,8 @@
       "onError": "stopWorkflow"
     },
     {
-      "id": "lookup-pandadoc",
-      "name": "Lookup PandaDoc Quotes",
+      "id": "lookup-offer-history",
+      "name": "Lookup Offer History",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -262,7 +262,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "const context = $('Determine Outreach Type').item.json;\n\n// Outlook email history\nconst outlookItems = $('Lookup Outlook History').all().map(i => i.json);\nconst emailHistory = outlookItems\n  .filter(e => e.subject)\n  .map(e => `[${(e.receivedDateTime || '').substring(0,10)}] ${e.subject}`)\n  .slice(0, 6);\n\n// PandaDoc quotes\nconst pandadocItems = $('Lookup PandaDoc Quotes').all().map(i => i.json);\nconst quotes = pandadocItems\n  .filter(q => q.document_id)\n  .map(q => `${q.status} | ${q.total_value}EUR | ${(q.created_at || '').substring(0,10)}`);\n\nreturn [{\n  json: {\n    ...context,\n    email_history: emailHistory.length > 0 ? emailHistory.join('\\n') : 'Keine E-Mail-Historie',\n    quote_history: quotes.length > 0 ? quotes.join('\\n') : 'Keine Angebote',\n    email_count: emailHistory.length,\n    quote_count: quotes.length\n  }\n}];"
+        "jsCode": "const context = $('Determine Outreach Type').item.json;\n\n// Outlook email history\nconst outlookItems = $('Lookup Outlook History').all().map(i => i.json);\nconst emailHistory = outlookItems\n  .filter(e => e.subject)\n  .map(e => `[${(e.receivedDateTime || '').substring(0,10)}] ${e.subject}`)\n  .slice(0, 6);\n\n// Offer history\nconst offerItems = $('Lookup Offer History').all().map(i => i.json);\nconst quotes = offerItems\n  .filter(q => q.document_id)\n  .map(q => `${q.status} | ${q.total_value}EUR | ${(q.created_at || '').substring(0,10)}`);\n\nreturn [{\n  json: {\n    ...context,\n    email_history: emailHistory.length > 0 ? emailHistory.join('\\n') : 'Keine E-Mail-Historie',\n    quote_history: quotes.length > 0 ? quotes.join('\\n') : 'Keine Angebote',\n    email_count: emailHistory.length,\n    quote_count: quotes.length\n  }\n}];"
       }
     },
     {
@@ -566,14 +566,14 @@
       "main": [
         [
           {
-            "node": "Lookup PandaDoc Quotes",
+            "node": "Lookup Offer History",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Lookup PandaDoc Quotes": {
+    "Lookup Offer History": {
       "main": [
         [
           {

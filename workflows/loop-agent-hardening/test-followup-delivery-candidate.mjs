@@ -23,7 +23,7 @@ function isTrigger(entry) {
     entry.type === "n8n-nodes-base.webhook";
 }
 
-assert.equal(workflow.nodes.length, 19);
+assert.equal(workflow.nodes.length, 16);
 assert.equal(workflow.nodes.filter(isTrigger).length, 1);
 assert.equal(
   workflow.nodes.some((entry) => /langchain|agent/i.test(entry.type)),
@@ -86,10 +86,10 @@ const validPrepared = await prepare({
     document_id: "DOC-1",
     customer_name: "Ada Lovelace",
     customer_email: "ADA@CUSTOMER.INVALID",
-    pandadoc_customer_link: "https://example.pandadoc.com/document/v2?token=test",
+    offer_public_url: "https://angebote.neontrip.de/offer/public-token",
   },
 });
-assert.equal(validPrepared[0].json.preflight_route, "pandadoc");
+assert.equal(validPrepared[0].json.preflight_route, "modern");
 assert.equal(validPrepared[0].json.customer_email, "ada@customer.invalid");
 assert.equal(validPrepared[0].json.ai_copy_allowed, false);
 
@@ -102,7 +102,7 @@ const blockedPrepared = await prepare({
     document_id: "DOC-2",
     customer_name: "Internal",
     customer_email: "support@neontrip.de",
-    pandadoc_customer_link: "https://example.pandadoc.com/document/v2?token=test",
+    offer_public_url: "https://angebote.neontrip.de/offer/public-token",
   },
 });
 assert.equal(blockedPrepared[0].json.preflight_route, "blocked");
@@ -170,27 +170,6 @@ const modernAmbiguous = await validateModern(
 assert.equal(modernAmbiguous[0].json.preflight_ok, false);
 assert.equal(modernAmbiguous[0].json.block_reason, "modern_offer_ambiguous");
 
-const validatePanda = new AsyncFunction(
-  "$json",
-  "$",
-  node("ValidatePandaDocStatus").parameters.jsCode,
-);
-const pandaLookup = (name) => {
-  assert.equal(name, "PrepareCandidate");
-  return { item: { json: validPrepared[0].json } };
-};
-const pandaGood = await validatePanda(
-  { id: "DOC-1", status: "document.viewed" },
-  pandaLookup,
-);
-assert.equal(pandaGood[0].json.preflight_ok, true);
-const pandaClosed = await validatePanda(
-  { id: "DOC-1", status: "document.completed" },
-  pandaLookup,
-);
-assert.equal(pandaClosed[0].json.preflight_ok, false);
-assert.equal(pandaClosed[0].json.block_reason, "pandadoc_document_closed");
-
 const analyze = new AsyncFunction(
   "$input",
   "$",
@@ -200,10 +179,7 @@ function analyzeLookup(replyItems) {
   return (name) => {
     if (name === "PrepareCandidate") return { item: { json: validPrepared[0].json } };
     if (name === "LookupCustomerReplies") return { all: () => replyItems };
-    if (name === "ValidateModernOffer") throw new Error("not executed");
-    if (name === "ValidatePandaDocStatus") {
-      return { item: { json: pandaGood[0].json } };
-    }
+    if (name === "ValidateModernOffer") return { item: { json: modernGood[0].json } };
     throw new Error("unexpected node " + name);
   };
 }
@@ -212,7 +188,7 @@ const noReply = await analyze(
   analyzeLookup([{ json: {} }]),
 );
 assert.equal(noReply[0].json.reply_preflight_safe, true);
-assert.equal(noReply[0].json.offer_link, validPrepared[0].json.candidate_offer_link);
+assert.equal(noReply[0].json.offer_link, modernGood[0].json.offer_link);
 
 const hasReply = await analyze(
   { first: () => ({ json: {} }) },
@@ -245,11 +221,11 @@ const email = await build({
   customer_name: "<img src=x onerror=alert(1)>",
   customer_email: "ada@customer.invalid",
   followup_number: 2,
-  offer_link: "https://example.pandadoc.com/document/v2?token=test",
+  offer_link: "https://angebote.neontrip.de/offer/public-token",
 });
 assert.equal(email[0].json.copy_mode, "deterministic");
 assert.equal(email[0].json.ai_copy_allowed, false);
-assert.match(email[0].json.email_body, /example\.pandadoc\.com/);
+assert.match(email[0].json.email_body, /angebote\.neontrip\.de/);
 assert.doesNotMatch(email[0].json.email_body, /<img|onerror=/i);
 assert.doesNotMatch(
   email[0].json.email_body,

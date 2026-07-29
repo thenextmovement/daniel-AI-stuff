@@ -8,8 +8,7 @@ function berlinDate(value: Date) {
 
 const emptyRows = {
   requests: [],
-  quotes: [],
-  crmQuotes: [],
+  offers: [],
   orders: [],
   seaCampaignDaily: [],
   googleAdsDailySpend: [],
@@ -55,18 +54,17 @@ test("buildManagementKpiDashboardFromRows separates revenue, pipeline, costs and
           updated_at: "2026-06-05T10:00:00.000Z",
         },
       ],
-      quotes: [
+      offers: [
         {
           id: "quote-1",
           request_id: "REQ-1",
-          pandadoc_status: "sent",
+          offer_status: "sent",
           total_value: 1500,
           currency: "EUR",
           created_at: "2026-06-05T11:00:00.000Z",
           sent_at: "2026-06-05T11:10:00.000Z",
           viewed_at: "2026-06-05T12:00:00.000Z",
-          signed_at: null,
-          updated_at: "2026-06-05T12:00:00.000Z",
+          accepted_at: null,
         },
       ],
       orders: [

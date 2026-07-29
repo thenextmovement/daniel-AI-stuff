@@ -242,10 +242,10 @@ test("voice offer resolution follows a request-bound Trello alias", async () => 
   assert.equal(result.offer?.offerNumber, "A/N 1");
 });
 
-test("voice offer resolution uses the request-bound PandaDoc quote when no modern offer exists", async () => {
+test("voice offer resolution uses the request-bound archived quote when no modern offer exists", async () => {
   const result = await resolveVoiceOffer({
     requestId: "REQ-LEGACY",
-    request: { title: "PandaDoc Projekt", trelloCardId: "legacy-card" },
+    request: { title: "Archiviertes Projekt", trelloCardId: "legacy-card" },
     offerTracking: null,
     quote: {
       quoteId: "quote-1",
@@ -265,8 +265,8 @@ test("voice offer resolution uses the request-bound PandaDoc quote when no moder
   });
 
   assert.equal(result.status, "ok");
-  assert.equal(result.offer?.source, "pandadoc");
-  assert.equal(result.offer?.label, "PandaDoc-Angebot");
+  assert.equal(result.offer?.source, "archive");
+  assert.equal(result.offer?.label, "Archiviertes Angebot");
   assert.equal(result.offer?.offerId, "quote-1");
   assert.equal(result.offer?.status, "viewed");
 });

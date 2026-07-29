@@ -12,14 +12,14 @@ $$;
 insert into public.followup_queue (
   document_id, document_name, customer_name, customer_email, segment, anrede,
   followup_type, followup_number, scheduled_for, status, request_id,
-  pandadoc_customer_link
+  offer_public_url
 ) values
   ('doc-1', 'Angebot - 2026-1001', 'Ada Lovelace', 'ada@customer.invalid', 'NT-8', 'Frau',
    'followup_1', 1, now() - interval '1 minute', 'pending', 'REQ-1',
-   'https://example.pandadoc.com/document/v2?token=test'),
+   'https://angebote.neontrip.de/offer/test'),
   ('doc-payment', 'Payment', 'Payment Contact', 'pay@customer.invalid', 'NT-2', 'Herr',
    'payment_reminder_1', 1, now() - interval '1 minute', 'pending', 'REQ-PAY',
-   'https://example.pandadoc.com/document/v2?token=test');
+   'https://angebote.neontrip.de/offer/test');
 
 do $$
 declare
@@ -87,11 +87,11 @@ $$;
 
 insert into public.followup_queue (
   document_id, customer_name, customer_email, segment, followup_type,
-  followup_number, scheduled_for, status, request_id, pandadoc_customer_link
+  followup_number, scheduled_for, status, request_id, offer_public_url
 ) values (
   'doc-block', 'Grace Hopper', 'grace@customer.invalid', 'NT-2', 'followup_1',
   1, now() - interval '1 minute', 'pending', 'REQ-BLOCK',
-  'https://example.pandadoc.com/document/v2?token=test'
+  'https://angebote.neontrip.de/offer/test'
 );
 
 do $$
@@ -116,11 +116,11 @@ $$;
 
 insert into public.followup_queue (
   document_id, customer_name, customer_email, segment, followup_type,
-  followup_number, scheduled_for, status, request_id, pandadoc_customer_link
+  followup_number, scheduled_for, status, request_id, offer_public_url
 ) values (
   'doc-unknown', 'Katherine Johnson', 'katherine@customer.invalid', 'NT-2', 'followup_1',
   1, now() - interval '1 minute', 'pending', 'REQ-UNKNOWN',
-  'https://example.pandadoc.com/document/v2?token=test'
+  'https://angebote.neontrip.de/offer/test'
 );
 
 do $$
@@ -146,11 +146,11 @@ $$;
 
 insert into public.followup_queue (
   document_id, customer_name, customer_email, segment, followup_type,
-  followup_number, scheduled_for, status, request_id, pandadoc_customer_link
+  followup_number, scheduled_for, status, request_id, offer_public_url
 ) values (
   'doc-stale', 'Dorothy Vaughan', 'dorothy@customer.invalid', 'NT-2', 'followup_1',
   1, now() - interval '1 minute', 'pending', 'REQ-STALE',
-  'https://example.pandadoc.com/document/v2?token=test'
+  'https://angebote.neontrip.de/offer/test'
 );
 
 do $$

@@ -126,7 +126,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const candidate = $('ValidateRepeatCandidate').item.json;\nconst orderItems = $('Get Order History').all().map(i => i.json);\n\n// Outlook email history\nconst outlookItems = $('Lookup Outlook History').all().map(i => i.json);\nconst emailHistory = outlookItems\n  .filter(e => e.subject)\n  .map(e => ({\n    subject: e.subject,\n    preview: (e.bodyPreview || '').substring(0, 200),\n    from: e.from?.emailAddress?.address || '',\n    date: e.receivedDateTime || e.receivedAt || ''\n  }))\n  .slice(0, 8);\n\n// PandaDoc quotes\nconst pandadocItems = $('Lookup PandaDoc Quotes').all().map(i => i.json);\nconst quotes = pandadocItems\n  .filter(q => q.document_id)\n  .map(q => ({\n    status: q.status,\n    value: q.total_value,\n    created: q.created_at,\n    viewed: q.viewed_at,\n    signed: q.signed_at\n  }));\n\n// Extract product names from line_items\nconst products = orderItems.flatMap(o => {\n  if (!o.line_items) return [];\n  const items = Array.isArray(o.line_items) ? o.line_items : [o.line_items];\n  return items.map(li => li.title || li.name || 'LED Neonschild').filter(Boolean);\n});\nconst uniqueProducts = [...new Set(products)].slice(0, 5);\n\nconst lastOrder = new Date(candidate.last_order_date);\nconst monthsAgo = Math.round((Date.now() - lastOrder.getTime()) / (1000 * 60 * 60 * 24 * 30));\n\nconst isB2B = !!(candidate.company_name && candidate.company_name.trim());\nconst isHighValue = candidate.total_revenue >= 5000;\n\nconst greeting = candidate.first_name \n  ? candidate.first_name \n  : (isB2B ? candidate.company_name : 'Kunde');\n\n// Build email history summary\nconst emailSummary = emailHistory.length > 0\n  ? emailHistory.map(e => `[${e.date?.substring(0,10) || '?'}] Von: ${e.from} | Betreff: ${e.subject}`).join('\\n')\n  : 'Keine E-Mail-Historie gefunden';\n\n// Build quote summary\nconst quoteSummary = quotes.length > 0\n  ? quotes.map(q => `Status: ${q.status}, Wert: ${q.value}EUR, Erstellt: ${q.created?.substring(0,10) || '?'}${q.signed ? ', Unterschrieben: ' + q.signed.substring(0,10) : ''}`).join('\\n')\n  : 'Keine PandaDoc Angebote gefunden';\n\nreturn [{\n  json: {\n    ...candidate,\n    orders_summary: orderItems.map(o => ({\n      number: o.shopify_order_number,\n      value: o.order_value,\n      date: o.shopify_created_at\n    })),\n    products_ordered: uniqueProducts,\n    months_since_last_order: monthsAgo,\n    is_b2b: isB2B,\n    is_high_value: isHighValue,\n    greeting_name: greeting,\n    order_count: candidate.total_orders,\n    total_spent: candidate.total_revenue,\n    email_history: emailSummary,\n    quote_history: quoteSummary,\n    email_count: emailHistory.length,\n    quote_count: quotes.length\n  }\n}];"
+        "jsCode": "const candidate = $('ValidateRepeatCandidate').item.json;\nconst orderItems = $('Get Order History').all().map(i => i.json);\n\n// Outlook email history\nconst outlookItems = $('Lookup Outlook History').all().map(i => i.json);\nconst emailHistory = outlookItems\n  .filter(e => e.subject)\n  .map(e => ({\n    subject: e.subject,\n    preview: (e.bodyPreview || '').substring(0, 200),\n    from: e.from?.emailAddress?.address || '',\n    date: e.receivedDateTime || e.receivedAt || ''\n  }))\n  .slice(0, 8);\n\n// Offer history\nconst offerItems = $('Lookup Offer History').all().map(i => i.json);\nconst quotes = offerItems\n  .filter(q => q.document_id)\n  .map(q => ({\n    status: q.status,\n    value: q.total_value,\n    created: q.created_at,\n    viewed: q.viewed_at,\n    signed: q.signed_at\n  }));\n\n// Extract product names from line_items\nconst products = orderItems.flatMap(o => {\n  if (!o.line_items) return [];\n  const items = Array.isArray(o.line_items) ? o.line_items : [o.line_items];\n  return items.map(li => li.title || li.name || 'LED Neonschild').filter(Boolean);\n});\nconst uniqueProducts = [...new Set(products)].slice(0, 5);\n\nconst lastOrder = new Date(candidate.last_order_date);\nconst monthsAgo = Math.round((Date.now() - lastOrder.getTime()) / (1000 * 60 * 60 * 24 * 30));\n\nconst isB2B = !!(candidate.company_name && candidate.company_name.trim());\nconst isHighValue = candidate.total_revenue >= 5000;\n\nconst greeting = candidate.first_name \n  ? candidate.first_name \n  : (isB2B ? candidate.company_name : 'Kunde');\n\n// Build email history summary\nconst emailSummary = emailHistory.length > 0\n  ? emailHistory.map(e => `[${e.date?.substring(0,10) || '?'}] Von: ${e.from} | Betreff: ${e.subject}`).join('\\n')\n  : 'Keine E-Mail-Historie gefunden';\n\n// Build quote summary\nconst quoteSummary = quotes.length > 0\n  ? quotes.map(q => `Status: ${q.status}, Wert: ${q.value}EUR, Erstellt: ${q.created?.substring(0,10) || '?'}${q.signed ? ', Unterschrieben: ' + q.signed.substring(0,10) : ''}`).join('\\n')\n  : 'Keine Angebote gefunden';\n\nreturn [{\n  json: {\n    ...candidate,\n    orders_summary: orderItems.map(o => ({\n      number: o.shopify_order_number,\n      value: o.order_value,\n      date: o.shopify_created_at\n    })),\n    products_ordered: uniqueProducts,\n    months_since_last_order: monthsAgo,\n    is_b2b: isB2B,\n    is_high_value: isHighValue,\n    greeting_name: greeting,\n    order_count: candidate.total_orders,\n    total_spent: candidate.total_revenue,\n    email_history: emailSummary,\n    quote_history: quoteSummary,\n    email_count: emailHistory.length,\n    quote_count: quotes.length\n  }\n}];"
       },
       "id": "prepare-context",
       "name": "Prepare Email Context",
@@ -263,8 +263,8 @@
           "timeout": 15000
         }
       },
-      "id": "lookup-pandadoc",
-      "name": "Lookup PandaDoc Quotes",
+      "id": "lookup-offer-history",
+      "name": "Lookup Offer History",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -607,14 +607,14 @@
       "main": [
         [
           {
-            "node": "Lookup PandaDoc Quotes",
+            "node": "Lookup Offer History",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Lookup PandaDoc Quotes": {
+    "Lookup Offer History": {
       "main": [
         [
           {

@@ -130,16 +130,13 @@ const nodes = [
     "const queueId = String(claim.followup_queue_id || item.id || '').trim();",
     "const requestId = String(item.request_id || '').trim();",
     "const documentId = String(item.document_id || '').trim();",
-    "const rawLink = String(item.pandadoc_customer_link || item.document_link || '').trim();",
+    "const rawLink = String(item.offer_public_url || '').trim();",
     "const validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(neontrip\\.de|riesenobjekte\\.de|example\\.|neontrip\\.test$)/i.test(email);",
     "const modernLink = /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(rawLink);",
-    "let pandaLink = false;",
-    "try { const url = new URL(rawLink); pandaLink = url.protocol === 'https:' && /(^|\\.)pandadoc\\.com$/i.test(url.hostname); } catch {}",
     "let route = 'blocked';",
-    "let blockReason = 'candidate_identity_or_link_invalid';",
+    "let blockReason = 'candidate_identity_invalid';",
     "if (queueId && requestId && documentId && validEmail) {",
-    "  if (modernLink || (!rawLink && requestId)) { route = 'modern'; blockReason = null; }",
-    "  else if (pandaLink) { route = 'pandadoc'; blockReason = null; }",
+    "  route = 'modern'; blockReason = null;",
     "}",
     "return [{ json: {",
     "  ...item,",
@@ -148,7 +145,7 @@ const nodes = [
     "  customer_email: email,",
     "  request_id: requestId,",
     "  document_id: documentId,",
-    "  candidate_offer_link: rawLink || null,",
+    "  candidate_offer_link: modernLink ? rawLink : null,",
     "  preflight_route: route,",
     "  block_reason: blockReason,",
     "  copy_mode: 'deterministic',",
@@ -156,66 +153,15 @@ const nodes = [
     "  automatic_retry_allowed: false,",
     "} }];",
   ]),
-  {
-    id: "preflight-route",
-    name: "PreflightRoute",
-    type: "n8n-nodes-base.switch",
-    typeVersion: 3.2,
-    position: [880, 300],
-    parameters: {
-      mode: "rules",
-      rules: {
-        values: [
-          {
-            conditions: {
-              options: {
-                caseSensitive: true,
-                leftValue: "",
-                typeValidation: "strict",
-                version: 2,
-              },
-              conditions: [
-                {
-                  id: "route-modern",
-                  leftValue: "={{ $json.preflight_route }}",
-                  rightValue: "modern",
-                  operator: { type: "string", operation: "equals" },
-                },
-              ],
-              combinator: "and",
-            },
-            renameOutput: true,
-            outputKey: "modern",
-          },
-          {
-            conditions: {
-              options: {
-                caseSensitive: true,
-                leftValue: "",
-                typeValidation: "strict",
-                version: 2,
-              },
-              conditions: [
-                {
-                  id: "route-panda",
-                  leftValue: "={{ $json.preflight_route }}",
-                  rightValue: "pandadoc",
-                  operator: { type: "string", operation: "equals" },
-                },
-              ],
-              combinator: "and",
-            },
-            renameOutput: true,
-            outputKey: "pandadoc",
-          },
-        ],
-      },
-      options: {
-        fallbackOutput: "extra",
-        renameFallbackOutput: "blocked",
-      },
-    },
-  },
+  strictIf(
+    "preflight-route",
+    "CandidateIdentityValid",
+    "={{ $json.preflight_route }}",
+    "modern",
+    "string",
+    "equals",
+    [880, 300],
+  ),
   {
     id: "search-modern",
     name: "SearchModernOffer",
@@ -272,53 +218,6 @@ const nodes = [
     [1540, 180],
   ),
   {
-    id: "check-pandadoc",
-    name: "CheckPandaDocStatus",
-    type: "n8n-nodes-base.httpRequest",
-    typeVersion: 4.2,
-    position: [1100, 420],
-    parameters: {
-      url: "=https://api.pandadoc.com/public/v1/documents/{{ $('PrepareCandidate').item.json.document_id }}/details",
-      authentication: "genericCredentialType",
-      genericAuthType: "httpHeaderAuth",
-      options: { timeout: 20000 },
-    },
-    credentials: {
-      httpHeaderAuth: {
-        id: "MpPnODlQq5wOkRvR",
-        name: "Header Auth account | Pandadoc",
-      },
-    },
-    retryOnFail: true,
-    maxTries: 3,
-    waitBetweenTries: 2000,
-    onError: "continueRegularOutput",
-  },
-  codeNode("validate-pandadoc", "ValidatePandaDocStatus", [1320, 420], [
-    "const item = $('PrepareCandidate').item.json;",
-    "const response = $json || {};",
-    "const status = String(response.status || '').toLowerCase();",
-    "const closed = new Set(['document.completed', 'document.declined', 'document.voided', 'completed', 'declined', 'voided']);",
-    "const allowedLink = (() => {",
-    "  try { const url = new URL(item.candidate_offer_link); return url.protocol === 'https:' && /(^|\\.)pandadoc\\.com$/i.test(url.hostname); } catch { return false; }",
-    "})();",
-    "const ok = !response.error && Boolean(response.id) && Boolean(status) && !closed.has(status) && allowedLink;",
-    "let reason = null;",
-    "if (response.error || !response.id || !status) reason = 'pandadoc_status_unavailable';",
-    "else if (closed.has(status)) reason = 'pandadoc_document_closed';",
-    "else if (!allowedLink) reason = 'pandadoc_link_invalid';",
-    "return [{ json: { ...item, preflight_ok: ok, offer_link: ok ? item.candidate_offer_link : null, block_reason: reason } }];",
-  ]),
-  strictIf(
-    "panda-sendable",
-    "PandaDocSendable",
-    "={{ $json.preflight_ok }}",
-    true,
-    "boolean",
-    "equals",
-    [1540, 420],
-  ),
-  {
     id: "lookup-replies",
     name: "LookupCustomerReplies",
     type: "n8n-nodes-base.microsoftOutlook",
@@ -358,7 +257,6 @@ const nodes = [
     "const customerEmail = String(item.customer_email || '').toLowerCase();",
     "let validatedOfferLink = '';",
     "try { validatedOfferLink = String($('ValidateModernOffer').item.json.offer_link || ''); } catch {}",
-    "if (!validatedOfferLink) { try { validatedOfferLink = String($('ValidatePandaDocStatus').item.json.offer_link || ''); } catch {} }",
     "const replies = all.filter(entry => {",
     "  const from = String(entry.from?.emailAddress?.address || entry.sender?.emailAddress?.address || '').toLowerCase();",
     "  return from === customerEmail && Boolean(entry.subject || entry.bodyPreview || entry.body?.content);",
@@ -366,7 +264,7 @@ const nodes = [
     "const safe = !lookupFailed && replies.length === 0;",
     "return [{ json: {",
     "  ...item,",
-    "  offer_link: validatedOfferLink || item.candidate_offer_link,",
+    "  offer_link: validatedOfferLink,",
     "  reply_preflight_safe: safe,",
     "  reply_count: replies.length,",
     "  block_reason: lookupFailed ? 'outlook_reply_lookup_failed' : (replies.length > 0 ? 'customer_reply_detected' : null),",
@@ -392,7 +290,7 @@ const nodes = [
     "const item = $json || {};",
     "function esc(value) { return String(value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;').replaceAll(\"'\", '&#39;'); }",
     "const link = String(item.offer_link || '').trim();",
-    "if (!/^https:\\/\\/(angebote\\.neontrip\\.de\\/offer\\/[^/?#]+|[^/]+\\.pandadoc\\.com\\/)/i.test(link)) throw new Error('deterministic_followup_link_invalid');",
+    "if (!/^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(link)) throw new Error('deterministic_followup_link_invalid');",
     "const rawName = String(item.customer_name || '').replace(/[^\\p{L}\\p{M} .'-]/gu, ' ').replace(/\\b(?:onerror|javascript|script|img)\\b/gi, ' ').replace(/\\s+/g, ' ').trim();",
     "const parts = rawName.split(/\\s+/).filter(Boolean);",
     "const isDu = /^(du|duzen)$/i.test(String(item.anrede || ''));",
@@ -473,12 +371,11 @@ const connections = {
     main: [[{ node: "PrepareCandidate", type: "main", index: 0 }], []],
   },
   PrepareCandidate: {
-    main: [[{ node: "PreflightRoute", type: "main", index: 0 }]],
+    main: [[{ node: "CandidateIdentityValid", type: "main", index: 0 }]],
   },
-  PreflightRoute: {
+  CandidateIdentityValid: {
     main: [
       [{ node: "SearchModernOffer", type: "main", index: 0 }],
-      [{ node: "CheckPandaDocStatus", type: "main", index: 0 }],
       [{ node: "BlockFollowupDelivery", type: "main", index: 0 }],
     ],
   },
@@ -489,18 +386,6 @@ const connections = {
     main: [[{ node: "ModernOfferSendable", type: "main", index: 0 }]],
   },
   ModernOfferSendable: {
-    main: [
-      [{ node: "LookupCustomerReplies", type: "main", index: 0 }],
-      [{ node: "BlockFollowupDelivery", type: "main", index: 0 }],
-    ],
-  },
-  CheckPandaDocStatus: {
-    main: [[{ node: "ValidatePandaDocStatus", type: "main", index: 0 }]],
-  },
-  ValidatePandaDocStatus: {
-    main: [[{ node: "PandaDocSendable", type: "main", index: 0 }]],
-  },
-  PandaDocSendable: {
     main: [
       [{ node: "LookupCustomerReplies", type: "main", index: 0 }],
       [{ node: "BlockFollowupDelivery", type: "main", index: 0 }],

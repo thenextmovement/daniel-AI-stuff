@@ -199,7 +199,7 @@ export type SalesCallListItem = {
   companyName: string | null;
   daysSinceSent: number | null;
   hoursSinceView: number | null;
-  pandadocStatus: string | null;
+  offerStatus: string | null;
   acLiveDecision: string | null;
   acLiveStatus: string | null;
   acLiveStage: string | null;
@@ -342,7 +342,7 @@ type DailyCallListItemRow = {
   company_name?: string | null;
   days_since_sent?: number | null;
   hours_since_view?: number | null;
-  pandadoc_status?: string | null;
+  offer_status?: string | null;
   ac_live_decision?: string | null;
   ac_live_status?: string | null;
   ac_live_stage?: string | null;
@@ -394,20 +394,12 @@ type CandidateRequestRow = {
   created_at?: string | null;
 };
 
-type CandidateQuoteRow = {
+type CandidateOfferRow = {
   request_id?: string | null;
-  sent_at?: string | null;
-  viewed_at?: string | null;
-  signed_at?: string | null;
-  created_at?: string | null;
-};
-
-type CandidateCrmQuoteRow = {
-  request_id?: string | null;
+  offer_status?: string | null;
   sent_at?: string | null;
   viewed_at?: string | null;
   accepted_at?: string | null;
-  rejected_at?: string | null;
   created_at?: string | null;
 };
 
@@ -437,17 +429,6 @@ type SalesMasterRequestRow = {
   final_value?: number | string | null;
   created_at?: string | null;
   updated_at?: string | null;
-};
-
-type SalesMasterQuoteRow = {
-  request_id?: string | null;
-  pandadoc_status?: string | null;
-  total_value?: number | string | null;
-  currency?: string | null;
-  sent_at?: string | null;
-  viewed_at?: string | null;
-  signed_at?: string | null;
-  whatsapp_sent?: string | null;
 };
 
 type SalesLeadPlanRow = {
@@ -821,15 +802,15 @@ function deriveDealValue(record: CustomerSearchResult) {
 }
 
 function quoteSentAt(record: CustomerSearchResult) {
-  return record.quote?.sentAt || record.crmQuote?.sentAt || null;
+  return record.crmQuote?.sentAt || record.quote?.sentAt || null;
 }
 
 function quoteViewedAt(record: CustomerSearchResult) {
-  return record.quote?.viewedAt || record.crmQuote?.viewedAt || null;
+  return record.crmQuote?.viewedAt || record.quote?.viewedAt || null;
 }
 
 function quoteStatus(record: CustomerSearchResult) {
-  return record.quote?.status || record.crmQuote?.status || null;
+  return record.crmQuote?.status || record.quote?.status || null;
 }
 
 function visualSource(value: unknown): SalesCallVisualSource | null {
@@ -1632,21 +1613,15 @@ function cutoffIso(daysBack: number) {
 }
 
 async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTEXT_LIMIT) {
-  const [requestRows, quoteRows, crmQuoteRows, cadenceRows, activeTaskRefs] = await Promise.all([
+  const [requestRows, offerRows, cadenceRows, activeTaskRefs] = await Promise.all([
     supabaseRequest<CandidateRequestRow[]>("master_requests", undefined, {
       select: "request_id,created_at",
       created_at: `gte.${cutoffIso(30)}`,
       order: "created_at.desc",
       limit: 500,
     }),
-    supabaseRequest<CandidateQuoteRow[]>("master_quotes", undefined, {
-      select: "request_id,sent_at,viewed_at,signed_at,created_at",
-      sent_at: `gte.${cutoffIso(30)}`,
-      order: "sent_at.desc",
-      limit: 500,
-    }),
-    supabaseRequest<CandidateCrmQuoteRow[]>("crm_quotes", undefined, {
-      select: "request_id,sent_at,viewed_at,accepted_at,rejected_at,created_at",
+    supabaseRequest<CandidateOfferRow[]>("v_offer_history", undefined, {
+      select: "request_id,offer_status,sent_at,viewed_at,accepted_at,created_at",
       sent_at: `gte.${cutoffIso(30)}`,
       order: "sent_at.desc",
       limit: 500,
@@ -1668,8 +1643,7 @@ async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTE
 
   const sourceKeysByRequestId = new Map<string, CustomerWorkboardSection["key"][]>();
   const inquiryCandidateIds: string[] = [];
-  const quoteCandidateIds: string[] = [];
-  const crmQuoteCandidateIds: string[] = [];
+  const offerCandidateIds: string[] = [];
   const cadenceCandidateIds: string[] = [];
   const taskCandidateIds: string[] = [];
 
@@ -1682,15 +1656,13 @@ async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTE
   for (const row of requestRows) {
     pushUniqueCandidateId(inquiryCandidateIds, row.request_id);
   }
-  for (const row of quoteRows) {
-    if (!row.request_id || row.signed_at) continue;
-    pushUniqueCandidateId(quoteCandidateIds, row.request_id);
-    if (row.viewed_at) addSourceKey(row.request_id, "sales_recovery");
-    if (row.sent_at) addSourceKey(row.request_id, "due_followups");
-  }
-  for (const row of crmQuoteRows) {
-    if (!row.request_id || row.accepted_at || row.rejected_at) continue;
-    pushUniqueCandidateId(crmQuoteCandidateIds, row.request_id);
+  for (const row of offerRows) {
+    if (
+      !row.request_id ||
+      row.accepted_at ||
+      ["accepted", "rejected", "expired"].includes(String(row.offer_status || "").toLowerCase())
+    ) continue;
+    pushUniqueCandidateId(offerCandidateIds, row.request_id);
     if (row.viewed_at) addSourceKey(row.request_id, "sales_recovery");
     if (row.sent_at) addSourceKey(row.request_id, "due_followups");
   }
@@ -1724,7 +1696,7 @@ async function loadCandidateRequestIds(contextLimit = SALES_CALL_CANDIDATE_CONTE
 
   return {
     requestIds: selectBalancedCandidateRequestIds(
-      [taskCandidateIds, quoteCandidateIds, crmQuoteCandidateIds, cadenceCandidateIds, inquiryCandidateIds],
+      [taskCandidateIds, offerCandidateIds, cadenceCandidateIds, inquiryCandidateIds],
       contextLimit,
     ),
     sourceKeysByRequestId,
@@ -1777,7 +1749,7 @@ async function previewSalesCallCandidates(limit = SALES_CALL_PREVIEW_LIMIT): Pro
       companyName: record.company || record.request?.title || null,
       daysSinceSent: daysSince(quoteSentAt(record)),
       hoursSinceView: hoursSince(quoteViewedAt(record)),
-      pandadocStatus: quoteStatus(record),
+      offerStatus: quoteStatus(record),
       acLiveDecision: record.request?.dealStatus || null,
       acLiveStatus: record.request?.status || null,
       acLiveStage: record.request?.acDealStage || null,
@@ -2997,10 +2969,10 @@ function isFreshRun(run: DailyCallRunRow | null, seconds = SALES_CALL_REFRESH_CO
 }
 
 const SALES_CALL_LIST_ITEM_SELECT =
-  "id,run_id,rank,request_id,ac_deal_id,priority_group,priority_score,recommended_action,deal_value_eur,reasons_json,context_preview,phone_raw,phone_normalized,phone_quality,email,contact_name,company_name,days_since_sent,hours_since_view,pandadoc_status,ac_live_decision,ac_live_status,ac_live_stage,blocked_reason,source_keys,visual_candidates_json,visual_snapshot_created_at,created_at";
+  "id,run_id,rank,request_id,ac_deal_id,priority_group,priority_score,recommended_action,deal_value_eur,reasons_json,context_preview,phone_raw,phone_normalized,phone_quality,email,contact_name,company_name,days_since_sent,hours_since_view,offer_status,ac_live_decision,ac_live_status,ac_live_stage,blocked_reason,source_keys,visual_candidates_json,visual_snapshot_created_at,created_at";
 
 const SALES_CALL_LIST_ITEM_SELECT_WITHOUT_VISUAL_SNAPSHOT =
-  "id,run_id,rank,request_id,ac_deal_id,priority_group,priority_score,recommended_action,deal_value_eur,reasons_json,context_preview,phone_raw,phone_normalized,phone_quality,email,contact_name,company_name,days_since_sent,hours_since_view,pandadoc_status,ac_live_decision,ac_live_status,ac_live_stage,blocked_reason,source_keys,created_at";
+  "id,run_id,rank,request_id,ac_deal_id,priority_group,priority_score,recommended_action,deal_value_eur,reasons_json,context_preview,phone_raw,phone_normalized,phone_quality,email,contact_name,company_name,days_since_sent,hours_since_view,offer_status,ac_live_decision,ac_live_status,ac_live_stage,blocked_reason,source_keys,created_at";
 
 async function loadSalesCallListItemRows(runId: string) {
   try {
@@ -3051,7 +3023,7 @@ function buildSalesCallListItemInsertRow(
     company_name: item.companyName,
     days_since_sent: item.daysSinceSent,
     hours_since_view: item.hoursSinceView,
-    pandadoc_status: item.pandadocStatus,
+    offer_status: item.offerStatus,
     ac_live_decision: item.acLiveDecision,
     ac_live_status: item.acLiveStatus,
     ac_live_stage: item.acLiveStage,
@@ -3182,7 +3154,7 @@ async function buildModuleStateFromRun(runRow: DailyCallRunRow): Promise<SalesCa
         companyName: row.company_name || record.company || null,
         daysSinceSent: row.days_since_sent ?? daysSince(quoteSentAt(record)),
         hoursSinceView: row.hours_since_view ?? hoursSince(quoteViewedAt(record)),
-        pandadocStatus: row.pandadoc_status || quoteStatus(record),
+        offerStatus: row.offer_status || quoteStatus(record),
         acLiveDecision: row.ac_live_decision || record.request?.dealStatus || null,
         acLiveStatus: row.ac_live_status || record.request?.status || null,
         acLiveStage: row.ac_live_stage || record.request?.acDealStage || null,

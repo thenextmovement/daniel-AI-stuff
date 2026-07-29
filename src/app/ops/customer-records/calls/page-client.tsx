@@ -456,15 +456,15 @@ function deriveSearchDealValue(record: CustomerSearchResult) {
 }
 
 function getRecordQuoteSentAt(record: CustomerSearchResult) {
-  return record.quote?.sentAt || record.crmQuote?.sentAt || null;
+  return record.crmQuote?.sentAt || record.quote?.sentAt || null;
 }
 
 function getRecordQuoteViewedAt(record: CustomerSearchResult) {
-  return record.quote?.viewedAt || record.crmQuote?.viewedAt || null;
+  return record.crmQuote?.viewedAt || record.quote?.viewedAt || null;
 }
 
 function getRecordQuoteStatus(record: CustomerSearchResult) {
-  return record.quote?.status || record.crmQuote?.status || null;
+  return record.crmQuote?.status || record.quote?.status || null;
 }
 
 function daysSinceDate(value: string | null | undefined) {
@@ -540,7 +540,7 @@ function buildAdHocCallItem(record: CustomerSearchResult): SalesCallListItem {
     companyName: record.company || record.request?.title || null,
     daysSinceSent: daysSinceDate(sentAt),
     hoursSinceView: hoursSinceDate(viewedAt),
-    pandadocStatus: getRecordQuoteStatus(record),
+    offerStatus: getRecordQuoteStatus(record),
     acLiveDecision: record.request?.dealStatus || null,
     acLiveStatus: record.request?.status || null,
     acLiveStage: record.request?.acDealStage || null,

@@ -45,6 +45,14 @@ async function buildGeminiCredentialHotfix() {
   delete cleanup.continueOnFail;
   delete cleanup.onError;
 
+  const upload = nodeByName(workflow, "Upload to Supabase Storage");
+  upload.parameters.url =
+    "=https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/offer-mockups/{{ $('Extract & Validate').first().json.requestId }}/{{ $(\"Loop Over Slots\").item.json.outputFileName || (\"Mockup\" + String($(\"Loop Over Slots\").item.json.mockupSlot).padStart(2, \"0\") + \".jpg\") }}";
+
+  const followupUpdate = nodeByName(workflow, "Update FU Queue");
+  followupUpdate.parameters.jsonBody =
+    "={\n  \"mockup_url\":   \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/product-images/offer-mockups/{{ $('Extract & Validate').first().json.requestId }}/Mockup01.jpg\",\n  \"mockup_url_2\": \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/product-images/offer-mockups/{{ $('Extract & Validate').first().json.requestId }}/Mockup02.jpg\",\n  \"mockup_url_3\": \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/product-images/offer-mockups/{{ $('Extract & Validate').first().json.requestId }}/Mockup03.jpg\",\n  \"updated_at\": \"{{ $now.toISO() }}\"\n}";
+
   return workflow;
 }
 

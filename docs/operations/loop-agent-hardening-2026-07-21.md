@@ -48,7 +48,7 @@ The user explicitly approved planning and full execution in the current goal. Th
 
 - n8n production API and workflow-version access.
 - Supabase/Postgres migrations, RPCs, RLS, and a safe SQL runner.
-- Outlook/Microsoft Graph, Shopify, PandaDoc, ActiveCampaign, Trello, DPD/17TRACK, Google Ads, Gemini/Anthropic/OpenAI credentials already managed in their platforms.
+- Outlook/Microsoft Graph, Shopify, ActiveCampaign, Trello, DPD/17TRACK, Google Ads, Gemini/Anthropic/OpenAI credentials already managed in their platforms.
 - Fresh Ops worktree created by `codex-new-worktree ops loop-agent-hardening`.
 - `codex-predeploy ops` and `codex-safe-push-main` before any Ops deployment.
 - Representative historical events without secret or customer-data leakage.
@@ -147,7 +147,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 
 - Every one of the 152 active workflows is assigned in the generated capability manifest; none is unclassified.
 - 91 workflows are structurally acceptable to keep, while 61 require refactor or explicit review; all 19 workflows over 30 nodes have an explicit target decision.
-- The five true agent workflows have individual decisions: replace win-back and design reminder with draft loops; retire the redundant PandaDoc event receiver after replay evidence; deactivate the unused Telegram GitHub controller and Fabienne assistant until owner allowlists and approval/tool wrappers exist.
+- The five true agent workflows have individual decisions: replace win-back and design reminder with draft loops; retire the redundant legacy document event receiver after replay evidence; deactivate the unused Telegram GitHub controller and Fabienne assistant until owner allowlists and approval/tool wrappers exist.
 - The manifest contains no target architecture that relies on an autonomous agent. AI remains only as a bounded proposal or enrichment step where deterministic logic is insufficient.
 
 ### Agent cutover evidence
@@ -203,7 +203,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 
 - Replaced the 101-node agent-like state machine with a 19-node, one-trigger candidate containing no AI or agent node.
 - Postgres now claims exactly one due non-payment follow-up under a row lock, owns the lease, records every transition, and converts stale in-flight attempts to `delivery_unknown` plus human review.
-- Modern NEONTRIP and PandaDoc offers pass independent, allowlisted status/link preflights. Closed, ambiguous, unavailable, or malformed offer state is blocked for review.
+- Modern NEONTRIP offers pass an allowlisted status/link preflight. Closed, ambiguous, unavailable, or malformed offer state is blocked for review.
 - Outlook inbound-reply lookup is read-only and bounded. Any customer reply or lookup uncertainty blocks delivery; no model decides whether to override a reply.
 - Customer copy is selected from fixed versioned templates, HTML-escaped, and contains only the preflight-approved offer link. There is no model call or model fallback.
 - Outlook send has exactly one attempt. Success is receipted atomically and may enqueue the next follow-up once after 72 hours; any provider error becomes `delivery_unknown` and is never retried automatically.
@@ -246,7 +246,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 20. Gemini Mockup v1.2 completed a long series of real card/image operations but failed on its terminal processing-label cleanup because that node alone had no credential binding.
 21. Supplier Shopify Tag Sync disabled TLS certificate verification and repeated an ambiguous POST up to three times; one incident lasted about 100 seconds after repeated 30-second timeouts. The first hardened run then proved why verification had been disabled: the internal `coolify-proxy` certificate is not trusted by n8n. It failed before data exchange; the candidate now routes through the publicly certified Ops endpoint without a forged `Host` header.
 22. `Customs CI Cleanup (LÖSCHEN)` is not an obsolete workflow: it has current successful executions and performs database deletions plus invoice generation from a Trello event. It must be refactored, not blindly deactivated.
-23. Both recent PandaDoc Event Receiver executions were duplicate no-ops: the same idempotency keys had already been claimed by specialized PandaDoc loops. Keeping the 58-node receiver active therefore adds an autonomous AI branch, a second error trigger, and a direct viewed-email sender without observed unique capability.
+23. Both recent legacy document event receiver executions were duplicate no-ops: the same idempotency keys had already been claimed by specialized offer loops. Keeping the 58-node receiver active therefore adds an autonomous AI branch, a second error trigger, and a direct viewed-email sender without observed unique capability.
 24. The dependency audit initially contained two high and one low advisory. Non-breaking transitive updates plus `tsx` 4.23.1/`esbuild` 0.28.1 remove all three; `npm audit` now reports zero vulnerabilities.
 25. The ActiveCampaign auto-reply retried Outlook customer sends up to five times, maintained overlapping cooldown/static retry concepts, selected prompt style randomly, and sent a separate RIESENOBJEKTE SMTP path automatically.
 26. Its legacy parser accepted malformed non-JSON model text as customer copy after a permissive regex/raw-text fallback. The replacement rejects malformed output and uses deterministic copy in a human-reviewed draft.
@@ -265,10 +265,10 @@ Keep the previous workflow active version and full JSON backup until the replace
 39. The n8n create interface silently omitted the candidate's `callerPolicy` and `availableInMCP: false` settings. The inactive graph comparison caught the drift; a full settings update restored the exact artifact before publication.
 40. All preview-delivery queue RPCs were `SECURITY DEFINER` yet executable by `anon` and `authenticated`; callers could bypass table RLS to enqueue, lease, or finish jobs. Production privileges now allow only `service_role`.
 41. The 124-node preview workflow downloads 548 full Trello cards every minute and normally exits after seven nodes with an empty queue, retaining about 2.7 MB of card data per no-op execution.
-42. Forty-two of its 124 nodes are unreachable from the only trigger, including an entire legacy direct email/WhatsApp delivery branch and a disconnected PandaDoc resolver branch.
+42. Forty-two of its 124 nodes are unreachable from the only trigger, including an entire legacy direct email/WhatsApp delivery branch and a disconnected legacy document resolver branch.
 43. A second active 74-node video workflow scans another 349-card Trello list every three minutes and normally exits after three nodes, duplicating the same polling architecture with volatile static-data leases.
 44. `finish_preview_delivery_job` accepts only a job ID and requested state; it has no claim token or worker ownership check, so a stale execution can finish a later lease. A token-bound v2 state transition is required before the final stage split.
-45. The first secret scan treated two literal PandaDoc `?token=sample` examples inside WhatsApp template definitions as live credentials and redacted the backup unnecessarily. A length-aware credential scan proved them non-secret; the exact rollback artifact was restored and the false-positive rule was corrected for this capture.
+45. The first secret scan treated two literal retired-provider `?token=sample` examples inside WhatsApp template definitions as live credentials and redacted the backup unnecessarily. A length-aware credential scan proved them non-secret; the exact rollback artifact was restored and the false-positive rule was corrected for this capture.
 46. The queue table granted every table privilege, including `DELETE`, `TRUNCATE`, and `TRIGGER`, to `anon`, `authenticated`, and `service_role`. RLS had no policies and blocked the first two today, but the grants were an unsafe latent bypass if RLS were ever disabled; v2 reduces the table to service-role `SELECT/INSERT/UPDATE` only.
 47. Retrying the legacy claim RPC after an ambiguous HTTP response could consume a second queue row for the same n8n execution. The v2 claim serializes on execution ID and returns the original live lease and token.
 48. The first v2 finish replay check accepted an old retry token after the row had already been leased again. The PostgreSQL stale-execution test caught this ordering bug; idempotent replay is now allowed only when no active lease exists.
@@ -296,7 +296,7 @@ Keep the previous workflow active version and full JSON backup until the replace
 - New outreach database tests passed first claim, real parallel duplicate suppression (`draft`/`stop`, one row and one claim event), completion, ambiguous-outcome quarantine, service-role boundaries, rollback rejection, and reapply on PostgreSQL 17.
 - Consolidated candidate suite: 10 target workflows passed; the two production containment hotfixes and both agent-to-draft candidates also passed their dedicated suites.
 - Deterministic follow-up candidate: 19 nodes, 1 trigger, 22 valid connections, 0 invalid connections, 0 strict errors, 0 AI/agent nodes.
-- Follow-up behavior tests cover recipient/link validation, modern-offer closed/ambiguous state, PandaDoc terminal state, reply evidence, lookup failure, HTML/name injection, deterministic copy, one-attempt send routing, and durable completion/unknown branches.
+- Follow-up behavior tests cover recipient/link validation, modern-offer closed/ambiguous state, reply evidence, lookup failure, HTML/name injection, deterministic copy, one-attempt send routing, and durable completion/unknown branches.
 - Follow-up PostgreSQL 17 tests cover real parallel claim (`process`/`stop` with one attempt/event), payment-reminder exclusion, completion replay, next-step idempotency, preflight block, ambiguous send, stale lease, service-role-only RPCs, rollback revoke, and reapply.
 - Follow-up production transaction smoke passed all claim/replay/failure/RLS assertions and rolled back with zero queue, attempt, or event residue. The published production graph is exact and strict-valid at 19 nodes, 1 trigger, 22 valid connections, and 0 errors.
 - Preview split behavior tests pass event filtering, stable event idempotency, current-list/sent-label revalidation, request identity extraction, durable-enqueue assertions, graph reachability, removal of direct customer delivery nodes, and JavaScript compilation. The consolidated target suite now covers 12 workflows; the 80-node first-split worker is tested separately until its stage decomposition is complete.

@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-07-21T18:19:21.507Z",
+  "generatedAt": "2026-07-29T10:20:54.969Z",
   "sourceGeneratedAt": "2026-07-21T19:00:00+02:00",
   "scope": "all_active_n8n_workflows",
   "counts": {
     "total": 152,
     "canonicalKeep": 91,
     "refactorOrReview": 61,
-    "deactivate": 6,
+    "deactivate": 5,
     "critical": 8
   },
   "workflows": [
@@ -23,10 +23,10 @@
           "true_agent_node"
         ]
       },
-      "capability": "pandadoc_event_lifecycle",
-      "classification": "legacy_deactivate_after_replay",
+      "capability": "retired_document_event_lifecycle",
+      "classification": "retired",
       "targetMode": "inactive",
-      "decision": "duplicate_receiver_events_already_claimed_by_specialized_pandadoc_loops",
+      "decision": "retired_provider_receiver_no_longer_part_of_offer_runtime",
       "priority": "critical"
     },
     {
@@ -420,10 +420,10 @@
           "node_limit_exceeded"
         ]
       },
-      "capability": "pandadoc_sent_sync",
-      "classification": "canonical_refactor",
-      "targetMode": "pandadoc_event_job_activecampaign_projection",
-      "decision": "split_oversized_sync_monolith",
+      "capability": "retired_document_sent_sync",
+      "classification": "retired",
+      "targetMode": "inactive",
+      "decision": "retired_provider_event_sync_removed",
       "priority": "high"
     },
     {
@@ -708,7 +708,7 @@
           "polling_or_recovery_workflow"
         ]
       },
-      "capability": "pandadoc_operations",
+      "capability": "general_automation",
       "classification": "canonical_keep",
       "targetMode": "deterministic_loop_or_adapter",
       "decision": "within_current_structural_boundary",
@@ -916,7 +916,7 @@
           "trello_source_candidate"
         ]
       },
-      "capability": "pandadoc_operations",
+      "capability": "general_automation",
       "classification": "source_of_truth_review_required",
       "targetMode": "database_loop_trello_projection",
       "decision": "trello_authority_candidate",
@@ -1186,7 +1186,7 @@
         "triggerCount": 1,
         "flags": []
       },
-      "capability": "pandadoc_operations",
+      "capability": "activecampaign_operations",
       "classification": "canonical_keep",
       "targetMode": "deterministic_loop_or_adapter",
       "decision": "within_current_structural_boundary",
@@ -1690,7 +1690,7 @@
         "triggerCount": 1,
         "flags": []
       },
-      "capability": "pandadoc_operations",
+      "capability": "general_automation",
       "classification": "canonical_keep",
       "targetMode": "deterministic_loop_or_adapter",
       "decision": "within_current_structural_boundary",
@@ -1914,7 +1914,7 @@
         "triggerCount": 1,
         "flags": []
       },
-      "capability": "pandadoc_operations",
+      "capability": "trello_projection",
       "classification": "canonical_keep",
       "targetMode": "deterministic_loop_or_adapter",
       "decision": "within_current_structural_boundary",
@@ -1942,7 +1942,7 @@
         "triggerCount": 1,
         "flags": []
       },
-      "capability": "pandadoc_operations",
+      "capability": "activecampaign_operations",
       "classification": "canonical_keep",
       "targetMode": "deterministic_loop_or_adapter",
       "decision": "within_current_structural_boundary",

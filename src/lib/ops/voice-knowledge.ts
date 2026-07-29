@@ -82,7 +82,7 @@ export type VoiceCustomerContext = {
     deliveryTime: string | null;
   };
   offer: {
-    source: "offers" | "pandadoc";
+    source: "offers" | "archive";
     offerId: string | null;
     offerNumber: string | null;
     label: string;
@@ -640,13 +640,13 @@ export function isVoiceOfferBoundToRecord(
   );
 }
 
-export function mapLegacyQuoteForVoice(record: Pick<VoiceOfferRecord, "requestId" | "request" | "quote">): VoiceCustomerContext["offer"] {
+export function mapArchivedOfferForVoice(record: Pick<VoiceOfferRecord, "requestId" | "request" | "quote">): VoiceCustomerContext["offer"] {
   if (!record.quote) return null;
   return {
-    source: "pandadoc",
+    source: "archive",
     offerId: record.quote.quoteId || null,
     offerNumber: null,
-    label: "PandaDoc-Angebot",
+    label: "Archiviertes Angebot",
     status: record.quote.status || "unknown",
     viewedAt: record.quote.viewedAt,
     acceptedAt: record.quote.signedAt,
@@ -698,7 +698,7 @@ export async function resolveVoiceOffer(
     }
   }
 
-  const legacyOffer = mapLegacyQuoteForVoice(record);
+  const legacyOffer = mapArchivedOfferForVoice(record);
   if (legacyOffer) return { offer: legacyOffer, status: "ok" };
   return { offer: null, status: modernOfferUnavailable ? "unavailable" : "not_linked" };
 }

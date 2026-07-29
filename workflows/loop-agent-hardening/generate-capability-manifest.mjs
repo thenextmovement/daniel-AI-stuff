@@ -1,18 +1,19 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const archiveDirectory = resolve(here, "backups", "2026-07-29-provider-retirement");
 const inventory = JSON.parse(
-  await readFile(resolve(here, "production-inventory.generated.json"), "utf8"),
+  await readFile(resolve(archiveDirectory, "production-inventory.generated.json"), "utf8"),
 );
 
 const explicitDecisions = {
   TLLSwYTcIRgtinVg: {
-    capability: "pandadoc_event_lifecycle",
-    classification: "legacy_deactivate_after_replay",
+    capability: "retired_document_event_lifecycle",
+    classification: "retired",
     targetMode: "inactive",
-    decision: "duplicate_receiver_events_already_claimed_by_specialized_pandadoc_loops",
+    decision: "retired_provider_receiver_no_longer_part_of_offer_runtime",
     priority: "critical",
   },
   geeNR1aVW9tZjPuN: {
@@ -135,10 +136,10 @@ const explicitDecisions = {
     priority: "medium",
   },
   "7UJW9mgP42m0ulbj": {
-    capability: "pandadoc_sent_sync",
-    classification: "canonical_refactor",
-    targetMode: "pandadoc_event_job_activecampaign_projection",
-    decision: "split_oversized_sync_monolith",
+    capability: "retired_document_sent_sync",
+    classification: "retired",
+    targetMode: "inactive",
+    decision: "retired_provider_event_sync_removed",
     priority: "high",
   },
   FQ7lf36yje4B1eE3: {
@@ -176,7 +177,7 @@ function inferCapability(name) {
   const rules = [
     ["email", "email_operations"],
     ["outlook", "email_operations"],
-    ["pandadoc", "pandadoc_operations"],
+    ["document", "document_operations"],
     ["trello", "trello_projection"],
     ["shopify", "shopify_operations"],
     ["supplier", "supplier_operations"],
@@ -271,8 +272,9 @@ const manifest = {
   workflows,
 };
 
+await mkdir(archiveDirectory, { recursive: true });
 await writeFile(
-  resolve(here, "capability-manifest.generated.json"),
+  resolve(archiveDirectory, "capability-manifest.generated.json"),
   `${JSON.stringify(manifest, null, 2)}\n`,
 );
 console.log(JSON.stringify(manifest.counts));

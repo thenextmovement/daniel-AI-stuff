@@ -6281,13 +6281,14 @@ function CommandPalette({
     },
     {
       key: "current-open-draft",
-      label: "Offenen Fall • Angebotsdokument öffnen",
-      detail: "Öffnet das Angebotsdokument des offenen Falls.",
-      aliases: [">open draft", ">pandadoc", ">draft"],
-      available: Boolean(activeRecord?.quote?.editLink),
+      label: "Offenen Fall • Angebot öffnen",
+      detail: "Öffnet das aktuelle Kundenangebot.",
+      aliases: [">open offer", ">angebot"],
+      available: Boolean(activeRecord?.offerTracking?.publicUrl || activeRecord?.quote?.shareLink),
       run: () => {
-        if (!activeRecord?.quote?.editLink) return;
-        window.open(activeRecord.quote.editLink, "_blank", "noopener,noreferrer");
+        const url = activeRecord?.offerTracking?.publicUrl || activeRecord?.quote?.shareLink;
+        if (!url) return;
+        window.open(url, "_blank", "noopener,noreferrer");
         onClose();
       },
     },

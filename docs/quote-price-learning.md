@@ -201,7 +201,7 @@ Model-generated size and price suggestions are reviewed in Customer Ops before a
 - Customer Ops can approve, reject, or mark a row for supplier check.
 - Approval only means "approved for quote workflow"; it must still pass deterministic quote validation before becoming customer-visible.
 - OCR/Supplier-image anchors from `supplier_quote_training_items` have their own human gate in the same screen. Ops can correct size, production, and shipping before approving the anchor.
-- Approving an anchor creates Shadow/Internal Review price suggestions only; it does not update Trello, quotes, PandaDoc, or customer-visible prices.
+- Approving an anchor creates Shadow/Internal Review price suggestions only; it does not update Trello, offers, external documents, or customer-visible prices.
 
 The Customer Ops review surface is `/ops/customer-records/price-review`.
 

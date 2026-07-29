@@ -41,7 +41,7 @@ create table public.followup_queue (
   context_updated_at timestamptz,
   classification text,
   classification_reason text,
-  pandadoc_customer_link text,
+  offer_public_url text,
   mockup_url text,
   mockup_url_2 text,
   mockup_url_3 text,

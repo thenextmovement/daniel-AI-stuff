@@ -84,7 +84,6 @@ type DocumentJourneyRow = {
   customer_email?: string | null;
   current_status?: string | null;
   document_name?: string | null;
-  pandadoc_link?: string | null;
   total_value?: number | string | null;
   sent_at?: string | null;
   first_viewed_at?: string | null;
@@ -159,18 +158,16 @@ type LatestSegmentClassificationRow = {
   created_at?: string | null;
 };
 
-type MasterQuoteRow = {
+type OfferHistoryRow = {
   id: string;
   request_id: string;
-  pandadoc_status?: string | null;
-  share_link?: string | null;
-  edit_link?: string | null;
+  source?: string | null;
+  offer_status?: string | null;
   total_value?: number | string | null;
   currency?: string | null;
   sent_at?: string | null;
   viewed_at?: string | null;
-  signed_at?: string | null;
-  whatsapp_sent?: string | null;
+  accepted_at?: string | null;
   created_at?: string | null;
 };
 
@@ -566,7 +563,7 @@ type CustomerContext = {
   master: MasterCustomerRow;
   request: MasterRequestRow | null;
   latestSegmentClassification: LatestSegmentClassificationRow | null;
-  quote: MasterQuoteRow | null;
+  quote: OfferHistoryRow | null;
   order: MasterOrderRow | null;
   orderHistory: MasterOrderRow[];
   orderDiagnostic: CustomerOrderDiagnostic;
@@ -591,7 +588,7 @@ type CustomerContext = {
   trello: CustomerTrelloContext | null;
   relatedCustomers: MasterCustomerRow[];
   relatedRequestRows: MasterRequestRow[];
-  relatedQuoteRows: MasterQuoteRow[];
+  relatedQuoteRows: OfferHistoryRow[];
   relatedOrderRows: MasterOrderRow[];
   relatedFollowups: FollowupQueueRow[];
   relatedPlans: LeadFollowupPlanRow[];
@@ -657,7 +654,7 @@ export type CustomerTimelineEntry = {
     | "followup_queue"
     | "document_journey"
     | "email_agent_log"
-    | "master_quotes"
+    | "v_offer_history"
     | "master_orders"
     | "workflow_audit_log";
   title: string;
@@ -2306,7 +2303,7 @@ async function safeOptionalSupabaseRows<T>(
 
 function communicationAuditHref(metadata: Record<string, unknown>) {
   return (
-    auditText(metadata, "pandadoc_link") ||
+    auditText(metadata, "offer_public_url") ||
     auditText(metadata, "share_link") ||
     auditText(metadata, "public_url") ||
     auditText(metadata, "card_url") ||
@@ -2638,7 +2635,8 @@ function mapCrmQuoteSummary(
   };
 }
 
-function offerTrackingPublicUrl(row: OfferTrackingRollupRow) {
+function offerTrackingPublicUrl(row: OfferTrackingRollupRow | null) {
+  if (!row) return null;
   const publicToken = trimNullable(row.offer_public_token);
   if (!publicToken) return null;
   const baseUrl = trimNullable(process.env.NEONTRIP_OFFERS_BASE_URL) || trimNullable(process.env.NEXT_PUBLIC_NEONTRIP_OFFERS_BASE_URL);
@@ -2719,7 +2717,7 @@ function mapFollowupMockups(followups: FollowupQueueRow[]): CustomerFollowupMock
 function mapRelatedRequest(
   row: MasterCustomerRow,
   request: MasterRequestRow | null,
-  quote: MasterQuoteRow | null,
+  quote: OfferHistoryRow | null,
   order: MasterOrderRow | null,
   opsState: CustomerOpsStateSummary,
   pendingFollowups: FollowupQueueRow[],
@@ -2740,7 +2738,7 @@ function mapRelatedRequest(
     acDealId: request?.ac_deal_id ?? null,
     acDealStage: trimNullable(request?.ac_deal_stage),
     segment: trimNullable(request?.segment),
-    quoteStatus: trimNullable(quote?.pandadoc_status),
+    quoteStatus: trimNullable(quote?.offer_status),
     quoteTotalValue: numericValue(quote?.total_value),
     quoteCurrency: trimNullable(quote?.currency),
     orderNumber: trimNullable(order?.shopify_order_number),
@@ -3581,7 +3579,7 @@ function mapCommunicationFeed(context: CustomerContext): CustomerCommunicationEn
         : trimNullable(row.current_status),
       status: trimNullable(row.current_status),
       occurredAt: row.completed_at || row.first_viewed_at || row.sent_at || row.updated_at || null,
-      href: trimNullable(row.pandadoc_link),
+      href: null,
       direction: "outbound",
       messageId: null,
       conversationId: null,
@@ -3658,12 +3656,12 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
   if (context.quote?.sent_at) {
     entries.push({
       id: `quote-sent-${context.quote.id}`,
-      source: "master_quotes",
+      source: "v_offer_history",
       title: "Angebot versendet",
-      description: context.quote.edit_link ? "Interner PandaDoc-Entwurf zum aktuellen Angebot verfügbar." : "Angebot wurde versendet.",
-      status: trimNullable(context.quote.pandadoc_status),
+      description: context.quote.source === "archive" ? "Historischer Angebotsversand." : "Angebot wurde versendet.",
+      status: trimNullable(context.quote.offer_status),
       occurredAt: context.quote.sent_at,
-      href: trimNullable(context.quote.edit_link) || trimNullable(context.quote.share_link),
+      href: context.quote.source === "neontrip" ? offerTrackingPublicUrl(context.offerTracking) : null,
       direction: "outbound",
       valueLabel: numericValue(context.quote.total_value) !== null ? `${numericValue(context.quote.total_value)} ${trimNullable(context.quote.currency) || "EUR"}` : null,
       body: null,
@@ -3672,46 +3670,31 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
   if (context.quote?.viewed_at) {
     entries.push({
       id: `quote-viewed-${context.quote.id}`,
-      source: "master_quotes",
+      source: "v_offer_history",
       title: "Angebot angesehen",
       description: "Der Kunde hat das aktuelle Angebot geöffnet.",
-      status: trimNullable(context.quote.pandadoc_status),
+      status: trimNullable(context.quote.offer_status),
       occurredAt: context.quote.viewed_at,
-      href: trimNullable(context.quote.edit_link) || trimNullable(context.quote.share_link),
+      href: context.quote.source === "neontrip" ? offerTrackingPublicUrl(context.offerTracking) : null,
       direction: "system",
       valueLabel: null,
       body: null,
     });
   }
-  if (context.quote?.signed_at) {
+  if (context.quote?.accepted_at) {
     entries.push({
       id: `quote-signed-${context.quote.id}`,
-      source: "master_quotes",
-      title: "Angebot signiert",
-      description: "Das aktuelle Dokument wurde erfolgreich abgeschlossen.",
-      status: trimNullable(context.quote.pandadoc_status),
-      occurredAt: context.quote.signed_at,
-      href: trimNullable(context.quote.edit_link) || trimNullable(context.quote.share_link),
+      source: "v_offer_history",
+      title: "Angebot angenommen",
+      description: "Das Angebot wurde erfolgreich angenommen.",
+      status: trimNullable(context.quote.offer_status),
+      occurredAt: context.quote.accepted_at,
+      href: context.quote.source === "neontrip" ? offerTrackingPublicUrl(context.offerTracking) : null,
       direction: "system",
       valueLabel: numericValue(context.quote.total_value) !== null ? `${numericValue(context.quote.total_value)} ${trimNullable(context.quote.currency) || "EUR"}` : null,
       body: null,
     });
   }
-  if (context.quote?.whatsapp_sent) {
-    entries.push({
-      id: `quote-whatsapp-${context.quote.id}`,
-      source: "master_quotes",
-      title: "WhatsApp gesendet",
-      description: "Zum aktuellen Angebot wurde zusätzlich eine WhatsApp versendet.",
-      status: null,
-      occurredAt: context.quote.whatsapp_sent,
-      href: trimNullable(context.quote.edit_link) || trimNullable(context.quote.share_link),
-      direction: "outbound",
-      valueLabel: null,
-      body: null,
-    });
-  }
-
   for (const row of context.quoteEmails) {
     entries.push({
       id: `quote-email-${row.id}`,
@@ -3835,7 +3818,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
         description: trimNullable(row.customer_email) || null,
         status: trimNullable(row.current_status),
         occurredAt: row.sent_at,
-        href: trimNullable(row.pandadoc_link),
+        href: null,
         direction: "outbound",
         valueLabel: numericValue(row.total_value) !== null ? `${numericValue(row.total_value)} EUR` : null,
         body: trimNullable(row.customer_email) || null,
@@ -3849,7 +3832,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
         description: "Der Kunde hat das Dokument geöffnet.",
         status: trimNullable(row.current_status),
         occurredAt: row.first_viewed_at,
-        href: trimNullable(row.pandadoc_link),
+        href: null,
         direction: "system",
         valueLabel: null,
         body: null,
@@ -3863,7 +3846,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
         description: null,
         status: trimNullable(row.current_status),
         occurredAt: row.reminder_1_sent,
-        href: trimNullable(row.pandadoc_link),
+        href: null,
         direction: "outbound",
         valueLabel: null,
         body: null,
@@ -3877,7 +3860,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
         description: null,
         status: trimNullable(row.current_status),
         occurredAt: row.reminder_2_sent,
-        href: trimNullable(row.pandadoc_link),
+        href: null,
         direction: "outbound",
         valueLabel: null,
         body: null,
@@ -3891,7 +3874,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
         description: null,
         status: trimNullable(row.current_status),
         occurredAt: row.reminder_3_sent,
-        href: trimNullable(row.pandadoc_link),
+        href: null,
         direction: "outbound",
         valueLabel: null,
         body: null,
@@ -3905,7 +3888,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
         description: trimNullable(row.reply_classification) || "Es wurde eine Antwort im Dokumentenprozess erkannt.",
         status: "reply_detected",
         occurredAt: row.reply_detected_at,
-        href: trimNullable(row.pandadoc_link),
+        href: null,
         direction: "inbound",
         valueLabel: null,
         body: trimNullable(row.reply_classification) || null,
@@ -3919,7 +3902,7 @@ function mapTimeline(context: CustomerContext): CustomerTimelineEntry[] {
         description: "Der Dokumentenprozess wurde erfolgreich abgeschlossen.",
         status: trimNullable(row.current_status),
         occurredAt: row.completed_at,
-        href: trimNullable(row.pandadoc_link),
+        href: null,
         direction: "system",
         valueLabel: numericValue(row.total_value) !== null ? `${numericValue(row.total_value)} EUR` : null,
         body: null,
@@ -4200,8 +4183,8 @@ async function fetchDownstreamRows(
   ]);
   const [quoteRows, orderRows, emailOrderRows, crmSalesRows, crmQuotes, callLogs, voiceCalls, followups, plans, documents, communications, quoteEmails, emailQuotes, directOutlookMessages, inboundEmails, audits, caseStates, activeViews, latestSegmentRows] = await Promise.all([
     requestId
-      ? supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
-          select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
+      ? supabaseRequest<OfferHistoryRow[]>("v_offer_history", undefined, {
+          select: "id,request_id,source,offer_status,total_value,currency,sent_at,viewed_at,accepted_at,created_at",
           request_id: `eq.${requestId}`,
           order: "created_at.desc",
           limit: 1,
@@ -4265,7 +4248,7 @@ async function fetchDownstreamRows(
         })
       : Promise.resolve([]),
     supabaseRequest<DocumentJourneyRow[]>("document_journey", undefined, {
-      select: "id,customer_id,customer_email,current_status,document_name,pandadoc_link,total_value,sent_at,first_viewed_at,completed_at,reminder_1_sent,reminder_2_sent,reminder_3_sent,reply_detected_at,reply_classification,updated_at",
+      select: "id,customer_id,customer_email,current_status,document_name,total_value,sent_at,first_viewed_at,completed_at,reminder_1_sent,reminder_2_sent,reminder_3_sent,reply_detected_at,reply_classification,updated_at",
       ...(documentJourneyOr ? { or: documentJourneyOr } : {}),
       order: "updated_at.desc",
     }),
@@ -4389,8 +4372,8 @@ async function fetchDownstreamRows(
           order: "updated_at.desc",
           limit: relatedRequestIds.length,
         }),
-        supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
-          select: "id,request_id,pandadoc_status,share_link,edit_link,total_value,currency,sent_at,viewed_at,signed_at,whatsapp_sent,created_at",
+        supabaseRequest<OfferHistoryRow[]>("v_offer_history", undefined, {
+          select: "id,request_id,source,offer_status,total_value,currency,sent_at,viewed_at,accepted_at,created_at",
           request_id: `in.(${relatedRequestIds.join(",")})`,
           order: "created_at.desc",
           limit: Math.max(relatedRequestIds.length * 2, 10),
@@ -4637,15 +4620,15 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
     quote: context.quote
       ? {
           quoteId: context.quote.id,
-          status: trimNullable(context.quote.pandadoc_status),
+          status: trimNullable(context.quote.offer_status),
           totalValue: numericValue(context.quote.total_value),
           currency: trimNullable(context.quote.currency),
-          shareLink: trimNullable(context.quote.share_link),
-          editLink: trimNullable(context.quote.edit_link),
+          shareLink: context.quote.source === "neontrip" ? offerTrackingPublicUrl(context.offerTracking) : null,
+          editLink: null,
           sentAt: context.quote.sent_at || null,
           viewedAt: context.quote.viewed_at || null,
-          signedAt: context.quote.signed_at || null,
-          whatsappSentAt: context.quote.whatsapp_sent || null,
+          signedAt: context.quote.accepted_at || null,
+          whatsappSentAt: null,
         }
       : null,
     order: context.order

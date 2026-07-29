@@ -42,6 +42,14 @@ const reference = nodeByName(gemini, "Remove Processing Label - Success");
 assert.deepEqual(cleanup.credentials, reference.credentials);
 assert.equal(cleanup.typeVersion, reference.typeVersion);
 assert.notEqual(cleanup.retryOnFail, true);
+assert.match(
+  nodeByName(gemini, "Upload to Supabase Storage").parameters.url,
+  /product-images\/offer-mockups/,
+);
+assert.match(
+  nodeByName(gemini, "Update FU Queue").parameters.jsonBody,
+  /public\/product-images\/offer-mockups/,
+);
 
 const sync = nodeByName(supplierSync, "Ops: Sync Shopify Supplier Tags");
 const syncConfig = nodeByName(supplierSync, "Config");

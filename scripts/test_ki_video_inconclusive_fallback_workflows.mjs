@@ -203,7 +203,7 @@ function validateDelivery(body) {
 const validatedFallback = validateDelivery({
   customer_name: "Anna",
   customer_email: "anna@example.com",
-  pandadoc_customer_link: "https://angebote.neontrip.de/offer/public-token",
+  offer_public_url: "https://angebote.neontrip.de/offer/public-token",
   preview_url: "https://angebote.neontrip.de/offer/public-token",
   thumb_url: "https://angebote.neontrip.de/api/public/image/mockup-ai-1.jpg",
   delivery_without_video: true,
@@ -216,7 +216,7 @@ assert.equal(validatedFallback.video_url, "");
 const invalidNormal = validateDelivery({
   customer_name: "Anna",
   customer_email: "anna@example.com",
-  pandadoc_customer_link: "https://angebote.neontrip.de/offer/public-token",
+  offer_public_url: "https://angebote.neontrip.de/offer/public-token",
   preview_url: "https://angebote.neontrip.de/offer/public-token",
 });
 assert.equal(invalidNormal.ok, false);
@@ -225,7 +225,7 @@ assert.ok(invalidNormal.errors.includes("video_url_missing_or_invalid"));
 const validatedNormal = validateDelivery({
   customer_name: "Ben",
   customer_email: "ben@example.com",
-  pandadoc_customer_link: "https://angebote.neontrip.de/offer/public-token-2",
+  offer_public_url: "https://angebote.neontrip.de/offer/public-token-2",
   preview_url: "https://video.neontrip.de/v/demo/?offer=https%3A%2F%2Fangebote.neontrip.de%2Foffer%2Fpublic-token-2&video=https%3A%2F%2Fvideo.neontrip.de%2Fmedia%2Fvideo%3FcardId%3Dcard-2",
   video_url: "https://video.neontrip.de/media/video?cardId=card-2",
   thumb_url: "https://angebote.neontrip.de/api/public/image/mockup-ai-2.jpg",

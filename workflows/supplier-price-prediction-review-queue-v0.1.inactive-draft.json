@@ -11,7 +11,7 @@
         -160
       ],
       "parameters": {
-        "content": "Inactive draft. Reads approved/usable Neonflex supplier quote training items from Supabase and enqueues anchored size/price suggestions into Customer Ops price review up to 300cm internal review. Supabase is source of truth. This workflow must not write Trello Price/Size fields, quote items, PandaDoc documents, or customer-visible prices. The API keeps >200cm as supplier-check only. Automation token may only call create_from_training_item.",
+        "content": "Inactive draft. Reads approved/usable Neonflex supplier quote training items from Supabase and enqueues anchored size/price suggestions into Customer Ops price review up to 300cm internal review. Supabase is source of truth. This workflow must not write Trello Price/Size fields, offer items, external documents, or customer-visible prices. The API keeps >200cm as supplier-check only. Automation token may only call create_from_training_item.",
         "height": 260,
         "width": 520
       }

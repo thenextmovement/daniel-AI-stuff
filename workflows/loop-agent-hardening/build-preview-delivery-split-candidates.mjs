@@ -285,6 +285,111 @@ for (const connection of Object.values(worker.connections)) {
   }
 }
 
+function renameWorkerNode(node, nextId, nextName) {
+  const previousName = node.name;
+  node.id = nextId;
+  node.name = nextName;
+  if (worker.connections[previousName]) {
+    worker.connections[nextName] = worker.connections[previousName];
+    delete worker.connections[previousName];
+  }
+  for (const connection of Object.values(worker.connections)) {
+    for (const outputs of connection.main || []) {
+      for (const target of outputs || []) {
+        if (target?.node === previousName) target.node = nextName;
+      }
+    }
+  }
+  for (const current of worker.nodes) {
+    if (!current.parameters) continue;
+    current.parameters = JSON.parse(
+      JSON.stringify(current.parameters).replaceAll(previousName, nextName),
+    );
+  }
+}
+
+const prepareOfferContextNode = worker.nodes.find((node) => node.id === "lookup-preview-quote");
+const validateOfferContextNode = worker.nodes.find((node) => node.id === "validate-preview-quote");
+const offerHandoffReadyNode = worker.nodes.find((node) =>
+  node.parameters?.conditions?.conditions?.some((condition) => condition.id === "stable-preview-link"),
+);
+const notifyMissingOfferNode = worker.nodes.find((node) =>
+  node.type === "n8n-nodes-base.microsoftOutlook" &&
+  String(node.name).startsWith("Notify Missing Preview"),
+);
+const routeOfferHandoffNode = worker.nodes.find((node) =>
+  node.parameters?.conditions?.conditions?.some((condition) => condition.id === "missing-master-quote-link"),
+);
+const blockedPreviewCommentNode = worker.nodes.find((node) => node.name === "Trello: Preview Blocked Comment");
+const previewAliasNode = worker.nodes.find((node) => node.name === "Supabase: Upsert Preview Card Alias");
+if (
+  !prepareOfferContextNode ||
+  !validateOfferContextNode ||
+  !offerHandoffReadyNode ||
+  !notifyMissingOfferNode ||
+  !routeOfferHandoffNode ||
+  !blockedPreviewCommentNode ||
+  !previewAliasNode
+) {
+  throw new Error("preview offer handoff nodes missing");
+}
+
+renameWorkerNode(prepareOfferContextNode, "prepare-preview-offer-context", "Prepare Preview Offer Context");
+renameWorkerNode(validateOfferContextNode, "validate-preview-offer", "Validate Preview Offer");
+renameWorkerNode(offerHandoffReadyNode, "preview-offer-handoff-ready", "Preview Offer Handoff Ready?");
+renameWorkerNode(notifyMissingOfferNode, "notify-missing-preview-offer", "Notify Missing Preview Offer Handoff");
+renameWorkerNode(routeOfferHandoffNode, "route-preview-offer-handoff", "Route Preview Offer Handoff");
+
+prepareOfferContextNode.type = "n8n-nodes-base.code";
+prepareOfferContextNode.typeVersion = 2;
+prepareOfferContextNode.parameters = {
+  jsCode: "return [{ json: { ...$('Validate Preview Customer').first().json } }];",
+};
+delete prepareOfferContextNode.credentials;
+delete prepareOfferContextNode.retryOnFail;
+delete prepareOfferContextNode.maxTries;
+delete prepareOfferContextNode.waitBetweenTries;
+prepareOfferContextNode.onError = "stopWorkflow";
+
+validateOfferContextNode.parameters.jsCode = String.raw`const prev = $('Validate Preview Customer').first().json;
+const cardId = prev.cardId || $('Config').first().json.cardId || '';
+const offerPlaceholder = 'https://angebote.neontrip.de/internal-offer-created-after-video';
+return [{ json: {
+  ...prev,
+  offerId: '',
+  offerStatus: 'pending_creation_after_video',
+  offerLink: offerPlaceholder,
+  previewOfferHandoffReady: true,
+  previewOfferError: '',
+  previewOfferSource: 'neontrip_offers_api_after_video',
+  previewOfferEvidence: {
+    source: 'neontrip_offers_api_after_video',
+    card_id: cardId
+  }
+} }];`;
+
+offerHandoffReadyNode.parameters.conditions.conditions[0].id = "preview-offer-handoff-ready";
+offerHandoffReadyNode.parameters.conditions.conditions[0].leftValue =
+  "={{ $json.previewOfferHandoffReady === true && !!$json.offerLink }}";
+
+routeOfferHandoffNode.parameters.conditions.conditions[0].id = "preview-offer-route-ready";
+routeOfferHandoffNode.parameters.conditions.conditions[0].leftValue =
+  "={{ $json.previewOfferHandoffReady === true }}";
+
+notifyMissingOfferNode.parameters.subject =
+  "=⚠️ KI-Video übersprungen: Angebotsübergabe fehlt - {{ $json.cardName || $json.requestId }}";
+notifyMissingOfferNode.parameters.bodyContent =
+  "=<div style=\"font-family:Arial,sans-serif;line-height:1.5;color:#111\"><p><strong>KI-Video-Preview wurde übersprungen.</strong></p><p>Grund: {{ $json.previewOfferError || 'Die Übergabe an die NEONTRIP-Angebots-API ist nicht bereit.' }}</p><ul><li>Request-ID: {{ $json.requestId }}</li><li>Karte: {{ $json.cardName }}</li><li>Trello Card-ID: {{ $json.cardId }}</li><li>Kunde: {{ $json.firstName }} {{ $json.lastName }} &lt;{{ $json.email }}&gt;</li><li>Angebotsstatus: {{ $json.offerStatus || '-' }}</li></ul><p>Es wurde keine Kundenkommunikation gesendet. Die Karte wurde zur Prüfung zurückgeschoben.</p></div>";
+
+blockedPreviewCommentNode.parameters.queryParameters.parameters.find(
+  (parameter) => parameter.name === "text",
+).value =
+  "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.previewOfferError || 'Die Angebotsübergabe ist nicht bereit.' }}\nRequest-ID: {{ $json.requestId || '-' }}\nAngebotsstatus: {{ $json.offerStatus || '-' }}\nKunde: {{ $json.firstName || '-' }} {{ $json.lastName || '' }} <{{ $json.email || '-' }}>\n\nDie Karte wurde zur Prüfung zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}";
+previewAliasNode.parameters.jsonBody = previewAliasNode.parameters.jsonBody.replace(
+  /notes:\s*'[^']*'/,
+  "notes: 'Automatically recorded before KI video offer handoff to recover from Trello card duplication or recreation.'",
+);
+
 const gate = worker.nodes.find((node) => node.name === "Queue Worker Gate");
 if (!gate) throw new Error("worker gate missing");
 gate.parameters.jsCode = String.raw`const staticData = $getWorkflowStaticData('global');
@@ -359,7 +464,6 @@ const validatedErrorOutputNodes = new Set([
   "Submit to Runway",
   "Check Runway Status",
   "Download Video",
-  "Lookup Latest Preview Quote",
   "Supabase: Upsert Preview Card Alias",
 ]);
 for (const node of worker.nodes) {

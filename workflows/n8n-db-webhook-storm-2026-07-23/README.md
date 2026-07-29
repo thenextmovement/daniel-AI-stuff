@@ -60,7 +60,7 @@ settings were compared with the source.
 | Inflatables EU-Anfrage \| PRODUKTION \| 20 Lieferanten | `uRYt9I30bzzVTB2D` | `geHePkhCl1bNO5aI` |
 | NEONTRIP Preview Delivery Intake v1 — Trello Event to DB | `o3Lckpd5ZiH1hQ4H` | `KM0dTjMbGaleGsGZ` |
 | NEONTRIP Quote Ready SIMPLE v1.1 | `X5etVW0msgSzHMMG` | `iVb7i0a79TIoHZXU` |
-| Trello Update Auto-Email → Outlook mit PandaDoc Link | `8PlBdlnG8gwtYTc7` | `q4lUrgfeo21BCd7e` |
+| Legacy offer link delivery (retired) | `8PlBdlnG8gwtYTc7` | `q4lUrgfeo21BCd7e` |
 | Error Notification → info@NeonTrip.de | `M4uG1HAtN9Zggxww` | `7BUhJaslYnAV3KkT` |
 | Gemini Mockup Generator v1.1 legacy duplicate | `Rmv4Ht895SiIgUOC` | `haIxxQLtc7NWN49D` |
 | Gemini Mockup Generator v1.2.1 canonical before bounding | `T4mdDxLquLMJ6FMl` | `GMf4Njo0bqStYwFW` |

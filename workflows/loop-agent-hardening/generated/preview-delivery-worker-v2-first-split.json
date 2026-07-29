@@ -346,7 +346,7 @@
       ],
       "parameters": {
         "method": "PUT",
-        "url": "={{ \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/preview-videos/\" + $('Validate Preview Quote').first().json.requestId + \"/Mockup01_video.mp4\" }}",
+        "url": "={{ \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/preview-videos/\" + $('Validate Preview Offer').first().json.requestId + \"/Mockup01_video.mp4\" }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "nodeCredentialType": "httpHeaderAuth",
@@ -483,47 +483,23 @@
       }
     },
     {
-      "id": "lookup-preview-quote",
-      "name": "Lookup Latest Preview Quote",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
+      "id": "prepare-preview-offer-context",
+      "name": "Prepare Preview Offer Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         4272,
         88
       ],
       "parameters": {
-        "method": "GET",
-        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_quotes?request_id=eq.{{ encodeURIComponent($json.requestId) }}&select=pandadoc_id,pandadoc_status,share_link&order=updated_at.desc&limit=1",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 10000
-        }
+        "jsCode": "return [{ json: { ...$('Validate Preview Customer').first().json } }];"
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "NTtNxoBGGzJCQi9u",
-          "name": "Header Auth account 2 | SUPABASE"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 2000,
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "stopWorkflow"
     },
     {
-      "id": "validate-preview-quote",
-      "name": "Validate Preview Quote",
+      "id": "validate-preview-offer",
+      "name": "Validate Preview Offer",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -531,7 +507,7 @@
         88
       ],
       "parameters": {
-        "jsCode": "const prev = $('Validate Preview Customer').first().json;\nconst cardId = prev.cardId || $('Config').first().json.cardId || '';\nconst offerPlaceholder = 'https://angebote.neontrip.de/internal-offer-created-after-video';\n\nreturn [{ json: {\n  ...prev,\n  pandaDocId: '',\n  pandaDocStatus: 'replaced_by_neontrip_offer_api',\n  shareLink: offerPlaceholder,\n  previewQuoteOk: true,\n  previewQuoteMissing: false,\n  previewQuoteError: '',\n  previewQuoteSource: 'neontrip_offers_api_after_video',\n  previewQuoteEvidence: {\n    source: 'neontrip_offers_api_after_video',\n    card_id: cardId\n  }\n} }];"
+        "jsCode": "const prev = $('Validate Preview Customer').first().json;\nconst cardId = prev.cardId || $('Config').first().json.cardId || '';\nconst offerPlaceholder = 'https://angebote.neontrip.de/internal-offer-created-after-video';\nreturn [{ json: {\n  ...prev,\n  offerId: '',\n  offerStatus: 'pending_creation_after_video',\n  offerLink: offerPlaceholder,\n  previewOfferHandoffReady: true,\n  previewOfferError: '',\n  previewOfferSource: 'neontrip_offers_api_after_video',\n  previewOfferEvidence: {\n    source: 'neontrip_offers_api_after_video',\n    card_id: cardId\n  }\n} }];"
       }
     },
     {
@@ -576,8 +552,8 @@
       }
     },
     {
-      "id": "if-stable-pandadoc-link-preview",
-      "name": "Stable Preview PandaDoc Link?",
+      "id": "preview-offer-handoff-ready",
+      "name": "Preview Offer Handoff Ready?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
@@ -594,8 +570,8 @@
           },
           "conditions": [
             {
-              "id": "stable-preview-link",
-              "leftValue": "={{ $json.previewQuoteOk === true && !!$json.shareLink && !$json.shareLink.includes('/s/') }}",
+              "id": "preview-offer-handoff-ready",
+              "leftValue": "={{ $json.previewOfferHandoffReady === true && !!$json.offerLink }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -609,8 +585,8 @@
       }
     },
     {
-      "id": "notify-missing-pandadoc-link-preview",
-      "name": "Notify Missing Preview PandaDoc Link",
+      "id": "notify-missing-preview-offer",
+      "name": "Notify Missing Preview Offer Handoff",
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
       "position": [
@@ -619,8 +595,8 @@
       ],
       "parameters": {
         "toRecipients": "support@neontrip.de",
-        "subject": "=⚠️ KI-Video übersprungen: Quote/PandaDoc fehlt - {{ $json.cardName || $json.requestId }}",
-        "bodyContent": "=<div style=\"font-family: Arial, Helvetica, sans-serif; line-height:1.5; color:#111;\">\n  <p><strong>KI-Video-Preview wurde übersprungen.</strong></p>\n  <p>Grund: {{ $json.previewQuoteError || 'Permanenter PandaDoc-Link fehlt oder ist temporär.' }}</p>\n  <ul>\n    <li>Request-ID: {{ $json.requestId }}</li>\n    <li>Karte: {{ $json.cardName }}</li>\n    <li>Trello Card-ID: {{ $json.cardId }}</li>\n    <li>Kunde: {{ $json.firstName }} {{ $json.lastName }} &lt;{{ $json.email }}&gt;</li>\n    <li>PandaDoc-ID: {{ $json.pandaDocId || '-' }}</li>\n    <li>PandaDoc-Status: {{ $json.pandaDocStatus || '-' }}</li>\n    <li>shareLink: {{ $json.shareLink || '-' }}</li>\n  </ul>\n  <p>Es wurde keine Kundenmail und keine WhatsApp gesendet. Die Karte wurde als FEHLER markiert und nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.</p>\n</div>",
+        "subject": "=⚠️ KI-Video übersprungen: Angebotsübergabe fehlt - {{ $json.cardName || $json.requestId }}",
+        "bodyContent": "=<div style=\"font-family:Arial,sans-serif;line-height:1.5;color:#111\"><p><strong>KI-Video-Preview wurde übersprungen.</strong></p><p>Grund: {{ $json.previewOfferError || 'Die Übergabe an die NEONTRIP-Angebots-API ist nicht bereit.' }}</p><ul><li>Request-ID: {{ $json.requestId }}</li><li>Karte: {{ $json.cardName }}</li><li>Trello Card-ID: {{ $json.cardId }}</li><li>Kunde: {{ $json.firstName }} {{ $json.lastName }} &lt;{{ $json.email }}&gt;</li><li>Angebotsstatus: {{ $json.offerStatus || '-' }}</li></ul><p>Es wurde keine Kundenkommunikation gesendet. Die Karte wurde zur Prüfung zurückgeschoben.</p></div>",
         "additionalFields": {
           "bodyContentType": "html"
         }
@@ -661,7 +637,7 @@
           "parameters": [
             {
               "name": "text",
-              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.previewQuoteError || 'PandaDoc-Link fehlt oder ist temporär.' }}\nRequest-ID: {{ $json.requestId || '-' }}\nPandaDoc-ID: {{ $json.pandaDocId || '-' }}\nPandaDoc-Status: {{ $json.pandaDocStatus || '-' }}\nKunde: {{ $json.firstName || '-' }} {{ $json.lastName || '' }} <{{ $json.email || '-' }}>\n\nDie Karte wurde nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.previewOfferError || 'Die Angebotsübergabe ist nicht bereit.' }}\nRequest-ID: {{ $json.requestId || '-' }}\nAngebotsstatus: {{ $json.offerStatus || '-' }}\nKunde: {{ $json.firstName || '-' }} {{ $json.lastName || '' }} <{{ $json.email || '-' }}>\n\nDie Karte wurde zur Prüfung zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
             }
           ]
         },
@@ -691,7 +667,7 @@
       "waitBetweenTries": 1000,
       "parameters": {
         "method": "PUT",
-        "url": "=https://api.trello.com/1/cards/{{ $('Validate Preview Quote').first().json.cardId }}",
+        "url": "=https://api.trello.com/1/cards/{{ $('Validate Preview Offer').first().json.cardId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "trelloApi",
         "sendQuery": true,
@@ -703,7 +679,7 @@
             },
             {
               "name": "name",
-              "value": "={{ (() => { const c = $('Validate Preview Quote').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
+              "value": "={{ (() => { const c = $('Validate Preview Offer').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
             }
           ]
         },
@@ -1023,7 +999,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  request_id: $('Extract Preview Request ID').first().json.requestId,\n  alias_trello_card_id: $('Config').first().json.cardId,\n  alias_trello_card_url: $('Config').first().json.cardUrl || null,\n  canonical_trello_card_id: null,\n  alias_type: 'current_trello_card',\n  source: 'ki_video_preview_alias_fallback_v1',\n  notes: 'Automatically recorded before KI video PandaDoc link resolution to recover from Trello card duplication/recreation.'\n} }}",
+        "jsonBody": "={{ {\n  request_id: $('Extract Preview Request ID').first().json.requestId,\n  alias_trello_card_id: $('Config').first().json.cardId,\n  alias_trello_card_url: $('Config').first().json.cardUrl || null,\n  canonical_trello_card_id: null,\n  alias_type: 'current_trello_card',\n  source: 'ki_video_preview_alias_fallback_v1',\n  notes: 'Automatically recorded before KI video offer handoff to recover from Trello card duplication or recreation.'\n} }}",
         "options": {}
       },
       "credentials": {
@@ -1061,8 +1037,8 @@
       }
     },
     {
-      "id": "need-preview-pandadoc-resolver",
-      "name": "Need Preview PandaDoc Resolver?",
+      "id": "route-preview-offer-handoff",
+      "name": "Route Preview Offer Handoff",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
@@ -1079,8 +1055,8 @@
           },
           "conditions": [
             {
-              "id": "missing-master-quote-link",
-              "leftValue": "={{ $json.previewQuoteMissing === true && !!$json.requestId }}",
+              "id": "preview-offer-route-ready",
+              "leftValue": "={{ $json.previewOfferHandoffReady === true }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -1111,7 +1087,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (() => {\n  const input = $json || {};\n  const config = $('Config').first().json || {};\n  const customer = $('Validate Preview Customer').first().json || {};\n  const deliveryWithoutVideo = input.deliveryWithoutVideo === true;\n  const title = String(config.cardName || '');\n  const stopRequested = /(^|[^A-Za-z0-9])STOPP?([^A-Za-z0-9]|$)/i.test(title);\n  const cycleKey = String(config.deliveryCycleKey || config.jobId || ('n8n-execution-' + String($execution.id || 'unknown')));\n  const attempt = Math.max(1, Number(config.jobAttempts || 1));\n  const mode = stopRequested ? 'pause_30m' : (deliveryWithoutVideo ? 'without_video' : 'automatic');\n  return JSON.stringify({\n    cardIdOrUrl: config.cardId,\n    publish: false,\n    source: 'ki_video_generator_v1_manifest_handoff',\n    customerEmail: customer.email || '',\n    customerPhone: customer.phone || '',\n    customerFirstName: customer.firstName || '',\n    customerLastName: customer.lastName || '',\n    customerCompany: customer.company || '',\n    previewVideoUrl: deliveryWithoutVideo ? '' : ('https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/product-images/preview-videos/' + encodeURIComponent($('Validate Preview Quote').first().json.requestId) + '/Mockup01_video.mp4'),\n    previewVideoPosterUrl: deliveryWithoutVideo ? '' : ('https://video.neontrip.de/media/image?cardId=' + encodeURIComponent(config.cardId) + '&attachmentId=' + encodeURIComponent($('Find Mockup').first().json.selectedMockupAttachmentId) + '&fileName=' + encodeURIComponent($('Find Mockup').first().json.selectedMockupFileName)),\n    preflightFingerprint: $('Normalize Offer Preflight').first().json.preflightFingerprint,\n    delivery: {\n      cycleKey,\n      mode,\n      source: 'ki_video_generator_v1_manifest_handoff',\n      workflowExecutionId: String($execution.id || ''),\n      videoExpected: !deliveryWithoutVideo,\n      allowVideoFallback: true,\n      videoAttemptCount: attempt,\n      videoQc: {\n        status: deliveryWithoutVideo ? 'not_required' : 'passed',\n        resultId: String($execution.id || '') + ':' + String(config.cardId || '') + ':' + String(attempt),\n        reason: deliveryWithoutVideo ? String(input.videoOmittedReason || 'video_attempts_exhausted') : undefined\n      }\n    }\n  });\n})() }}",
+        "jsonBody": "={{ (() => {\n  const input = $json || {};\n  const config = $('Config').first().json || {};\n  const customer = $('Validate Preview Customer').first().json || {};\n  const deliveryWithoutVideo = input.deliveryWithoutVideo === true;\n  const title = String(config.cardName || '');\n  const stopRequested = /(^|[^A-Za-z0-9])STOPP?([^A-Za-z0-9]|$)/i.test(title);\n  const cycleKey = String(config.deliveryCycleKey || config.jobId || ('n8n-execution-' + String($execution.id || 'unknown')));\n  const attempt = Math.max(1, Number(config.jobAttempts || 1));\n  const mode = stopRequested ? 'pause_30m' : (deliveryWithoutVideo ? 'without_video' : 'automatic');\n  return JSON.stringify({\n    cardIdOrUrl: config.cardId,\n    publish: false,\n    source: 'ki_video_generator_v1_manifest_handoff',\n    customerEmail: customer.email || '',\n    customerPhone: customer.phone || '',\n    customerFirstName: customer.firstName || '',\n    customerLastName: customer.lastName || '',\n    customerCompany: customer.company || '',\n    previewVideoUrl: deliveryWithoutVideo ? '' : ('https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/product-images/preview-videos/' + encodeURIComponent($('Validate Preview Offer').first().json.requestId) + '/Mockup01_video.mp4'),\n    previewVideoPosterUrl: deliveryWithoutVideo ? '' : ('https://video.neontrip.de/media/image?cardId=' + encodeURIComponent(config.cardId) + '&attachmentId=' + encodeURIComponent($('Find Mockup').first().json.selectedMockupAttachmentId) + '&fileName=' + encodeURIComponent($('Find Mockup').first().json.selectedMockupFileName)),\n    preflightFingerprint: $('Normalize Offer Preflight').first().json.preflightFingerprint,\n    delivery: {\n      cycleKey,\n      mode,\n      source: 'ki_video_generator_v1_manifest_handoff',\n      workflowExecutionId: String($execution.id || ''),\n      videoExpected: !deliveryWithoutVideo,\n      allowVideoFallback: true,\n      videoAttemptCount: attempt,\n      videoQc: {\n        status: deliveryWithoutVideo ? 'not_required' : 'passed',\n        resultId: String($execution.id || '') + ':' + String(config.cardId || '') + ':' + String(attempt),\n        reason: deliveryWithoutVideo ? String(input.videoOmittedReason || 'video_attempts_exhausted') : undefined\n      }\n    }\n  });\n})() }}",
         "options": {
           "timeout": 90000
         }
@@ -1348,7 +1324,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (() => {\n  const failure = $('Prepare Locked Offer Failure').first().json || {};\n  const config = $('Config').first().json || {};\n  const request = $('Validate Preview Request').first().json || {};\n  const quote = $('Validate Preview Quote').first().json || {};\n  const cardId = failure.cardId || config.cardId || null;\n  const executionId = String($execution.id || failure.executionId || '');\n  const requestId = request.requestId || quote.requestId || null;\n  const failureType = failure.failureType || 'neontrip_offer_failed';\n  const failedNode = failureType.startsWith('video_content_qc_') ? 'Analyze Video Content QC' : (failureType.includes('locked') || failureType.includes('rate_limited') ? 'Create NEONTRIP Offer' : 'Preview Delivery OK?');\n  const auditEventKey = ['workflow-audit', 'ki-video', 'offer-failure', executionId || 'no-execution', cardId || 'no-card'].join(':');\n  return JSON.stringify({\n    document_id: requestId || (cardId ? 'trello:' + cardId : 'ki-video:' + executionId),\n    workflow_name: 'ki_video_generator_v1',\n    action: 'create_and_send_offer',\n    status: 'error',\n    error_message: failure.failureMessage || 'Angebot wurde nicht rausgeschickt.',\n    metadata: {\n      audit_contract_version: 2,\n      audit_event_key: auditEventKey,\n      workflow_attempt_key: ['workflow-attempt', 'ki-video', executionId || cardId || requestId || 'unknown'].join(':'),\n      workflow_stage: failedNode,\n      attempt_number: Number(failure.currentAttempt || 1),\n      attempt_limit: Number(failure.automaticVideoAttemptLimit || 2),\n      safe_action_key: failureType.includes('customer_email') ? 'correct_customer_email' : (['offer_service_unavailable', 'source_changed_after_preflight', 'video_content_qc_inconclusive', 'video_content_qc_unavailable'].includes(failureType) ? 'retry_media_pipeline' : (['preview_media_invalid', 'video_content_qc_failed', 'asset_processing_failed', 'size_ladder_validation_failed'].includes(failureType) ? 'collect_design_assets' : 'inspect_n8n_run')),\n      terminal: true,\n      event_type: 'workflow_attempt_failed',\n      contract_complete: Boolean(requestId || cardId),\n      contract_missing_fields: requestId || cardId ? [] : ['case_identity'],\n      request_id: requestId,\n      trello_card_id: cardId,\n      trello_card_url: failure.cardUrl || config.cardUrl || (cardId ? 'https://trello.com/c/' + cardId : null),\n      execution_id: executionId,\n      n8n_execution_id: executionId,\n      workflow_execution_id: executionId,\n      correlation_id: cardId ? 'trello:' + cardId + ':ki-video:' + executionId : 'ki-video:' + executionId,\n      idempotency_key: cardId ? 'offer-send:trello:' + cardId + ':ki-video:v1' : 'offer-send:ki-video:' + executionId,\n      failed_node: failedNode,\n      retry_safety: failure.retryable ? 'automatic_retry_once' : 'blocked',\n      summary: failure.failureMessage || 'Offer-Erstellung oder Versand ist fehlgeschlagen.',\n      failure_type: failureType,\n      automation_issue_key: failureType,\n      retry_planned: failure.retryable === true,\n      current_attempt: failure.currentAttempt || null,\n      next_attempt: failure.nextAttempt || null,\n      automatic_video_attempt_limit: failure.automaticVideoAttemptLimit || 2,\n      video_qc_issues: failure.videoQcIssues || [],\n      video_qc_confidence: failure.videoQcConfidence ?? null,\n      video_generation_fingerprint: failure.videoGenerationFingerprint || null,\n      video_generation_mode: failure.videoGenerationMode || null,\n      workflow_id: '9FoJMH6OUdsi36FB',\n      customer_communication_sent: false,\n      raw_error: failure.rawError || null,\n      source: 'n8n_company_brain_audit'\n    }\n  });\n})() }}",
+        "jsonBody": "={{ (() => {\n  const failure = $('Prepare Locked Offer Failure').first().json || {};\n  const config = $('Config').first().json || {};\n  const request = $('Validate Preview Request').first().json || {};\n  const quote = $('Validate Preview Offer').first().json || {};\n  const cardId = failure.cardId || config.cardId || null;\n  const executionId = String($execution.id || failure.executionId || '');\n  const requestId = request.requestId || quote.requestId || null;\n  const failureType = failure.failureType || 'neontrip_offer_failed';\n  const failedNode = failureType.startsWith('video_content_qc_') ? 'Analyze Video Content QC' : (failureType.includes('locked') || failureType.includes('rate_limited') ? 'Create NEONTRIP Offer' : 'Preview Delivery OK?');\n  const auditEventKey = ['workflow-audit', 'ki-video', 'offer-failure', executionId || 'no-execution', cardId || 'no-card'].join(':');\n  return JSON.stringify({\n    document_id: requestId || (cardId ? 'trello:' + cardId : 'ki-video:' + executionId),\n    workflow_name: 'ki_video_generator_v1',\n    action: 'create_and_send_offer',\n    status: 'error',\n    error_message: failure.failureMessage || 'Angebot wurde nicht rausgeschickt.',\n    metadata: {\n      audit_contract_version: 2,\n      audit_event_key: auditEventKey,\n      workflow_attempt_key: ['workflow-attempt', 'ki-video', executionId || cardId || requestId || 'unknown'].join(':'),\n      workflow_stage: failedNode,\n      attempt_number: Number(failure.currentAttempt || 1),\n      attempt_limit: Number(failure.automaticVideoAttemptLimit || 2),\n      safe_action_key: failureType.includes('customer_email') ? 'correct_customer_email' : (['offer_service_unavailable', 'source_changed_after_preflight', 'video_content_qc_inconclusive', 'video_content_qc_unavailable'].includes(failureType) ? 'retry_media_pipeline' : (['preview_media_invalid', 'video_content_qc_failed', 'asset_processing_failed', 'size_ladder_validation_failed'].includes(failureType) ? 'collect_design_assets' : 'inspect_n8n_run')),\n      terminal: true,\n      event_type: 'workflow_attempt_failed',\n      contract_complete: Boolean(requestId || cardId),\n      contract_missing_fields: requestId || cardId ? [] : ['case_identity'],\n      request_id: requestId,\n      trello_card_id: cardId,\n      trello_card_url: failure.cardUrl || config.cardUrl || (cardId ? 'https://trello.com/c/' + cardId : null),\n      execution_id: executionId,\n      n8n_execution_id: executionId,\n      workflow_execution_id: executionId,\n      correlation_id: cardId ? 'trello:' + cardId + ':ki-video:' + executionId : 'ki-video:' + executionId,\n      idempotency_key: cardId ? 'offer-send:trello:' + cardId + ':ki-video:v1' : 'offer-send:ki-video:' + executionId,\n      failed_node: failedNode,\n      retry_safety: failure.retryable ? 'automatic_retry_once' : 'blocked',\n      summary: failure.failureMessage || 'Offer-Erstellung oder Versand ist fehlgeschlagen.',\n      failure_type: failureType,\n      automation_issue_key: failureType,\n      retry_planned: failure.retryable === true,\n      current_attempt: failure.currentAttempt || null,\n      next_attempt: failure.nextAttempt || null,\n      automatic_video_attempt_limit: failure.automaticVideoAttemptLimit || 2,\n      video_qc_issues: failure.videoQcIssues || [],\n      video_qc_confidence: failure.videoQcConfidence ?? null,\n      video_generation_fingerprint: failure.videoGenerationFingerprint || null,\n      video_generation_mode: failure.videoGenerationMode || null,\n      workflow_id: '9FoJMH6OUdsi36FB',\n      customer_communication_sent: false,\n      raw_error: failure.rawError || null,\n      source: 'n8n_company_brain_audit'\n    }\n  });\n})() }}",
         "options": {
           "timeout": 15000
         }
@@ -1798,7 +1774,7 @@
       ],
       "parameters": {
         "method": "PUT",
-        "url": "={{ \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/preview-videos/\" + $('Validate Preview Quote').first().json.requestId + \"/Mockup01_video.mp4\" }}",
+        "url": "={{ \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/preview-videos/\" + $('Validate Preview Offer').first().json.requestId + \"/Mockup01_video.mp4\" }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "nodeCredentialType": "httpHeaderAuth",
@@ -2429,18 +2405,7 @@
       "main": [
         [
           {
-            "node": "Lookup Latest Preview Quote",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Lookup Latest Preview Quote": {
-      "main": [
-        [
-          {
-            "node": "Validate Preview Quote",
+            "node": "Prepare Preview Offer Context",
             "type": "main",
             "index": 0
           }
@@ -2496,50 +2461,6 @@
         [
           {
             "node": "Extract Preview Request ID",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Preview Quote": {
-      "main": [
-        [
-          {
-            "node": "Need Preview PandaDoc Resolver?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Stable Preview PandaDoc Link?": {
-      "main": [
-        [
-          {
-            "node": "Ensure Manual Neon Size Ladder",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Notify Missing Preview PandaDoc Link",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Trello: Preview Blocked Comment",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Trello: Move Blocked Preview to Quote Ready",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Release Video Lease",
             "type": "main",
             "index": 0
           }
@@ -2670,24 +2591,6 @@
         [
           {
             "node": "Resolve Request for Preview Delivery",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Need Preview PandaDoc Resolver?": {
-      "main": [
-        [
-          {
-            "node": "Stable Preview PandaDoc Link?",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Stable Preview PandaDoc Link?",
             "type": "main",
             "index": 0
           }
@@ -3302,6 +3205,79 @@
             "index": 0,
             "node": "Prepare Locked Offer Failure",
             "type": "main"
+          }
+        ]
+      ]
+    },
+    "Prepare Preview Offer Context": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Offer": {
+      "main": [
+        [
+          {
+            "node": "Route Preview Offer Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview Offer Handoff Ready?": {
+      "main": [
+        [
+          {
+            "node": "Ensure Manual Neon Size Ladder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Missing Preview Offer Handoff",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: Preview Blocked Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: Move Blocked Preview to Quote Ready",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Preview Offer Handoff": {
+      "main": [
+        [
+          {
+            "node": "Preview Offer Handoff Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preview Offer Handoff Ready?",
+            "type": "main",
+            "index": 0
           }
         ]
       ]

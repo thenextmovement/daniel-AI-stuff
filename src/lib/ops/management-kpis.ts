@@ -118,31 +118,16 @@ type MasterRequestRow = {
   updated_at: string | null;
 };
 
-type MasterQuoteRow = {
+type OfferHistoryRow = {
   id: string;
   request_id: string | null;
-  pandadoc_status: string | null;
+  offer_status: string | null;
   total_value: number | string | null;
   currency: string | null;
   created_at: string | null;
   sent_at: string | null;
   viewed_at: string | null;
-  signed_at: string | null;
-  updated_at: string | null;
-};
-
-type CrmQuoteRow = {
-  id: string;
-  request_id: string | null;
-  status: string | null;
-  total_gross: number | string | null;
-  customer_live_total: number | string | null;
-  sent_at: string | null;
-  viewed_at: string | null;
   accepted_at: string | null;
-  rejected_at: string | null;
-  shopify_order_id: number | string | null;
-  created_at: string | null;
 };
 
 type MasterOrderRow = {
@@ -242,8 +227,7 @@ type InboundIncidentRow = {
 
 type KpiRows = {
   requests: MasterRequestRow[];
-  quotes: MasterQuoteRow[];
-  crmQuotes: CrmQuoteRow[];
+  offers: OfferHistoryRow[];
   orders: MasterOrderRow[];
   seaCampaignDaily: SeaCampaignDailyRow[];
   googleAdsDailySpend: GoogleAdsDailySpendRow[];
@@ -479,10 +463,8 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
   const filteredRequests = filterRequestRows(rows.requests, input, range.from, range.to);
   const requestIds = requestIdSet(filteredRequests);
 
-  const relatedQuotes = filterRelatedByRequest(rows.quotes, requestIds, query, (row) => [row.pandadoc_status]);
-  const quotesInRange = relatedQuotes.filter((row) => anyDateInRange([row.created_at, row.sent_at, row.viewed_at, row.signed_at], range.from, range.to));
-  const relatedCrmQuotes = filterRelatedByRequest(rows.crmQuotes, requestIds, query, (row) => [row.status]);
-  const crmQuotesInRange = relatedCrmQuotes.filter((row) => anyDateInRange([row.created_at, row.sent_at, row.viewed_at, row.accepted_at], range.from, range.to));
+  const relatedOffers = filterRelatedByRequest(rows.offers, requestIds, query, (row) => [row.offer_status]);
+  const offersInRange = relatedOffers.filter((row) => anyDateInRange([row.created_at, row.sent_at, row.viewed_at, row.accepted_at], range.from, range.to));
   const relatedOrders = filterRelatedByRequest(rows.orders, requestIds, query, (row) => [row.shopify_order_number, row.status]);
   const ordersInRange = relatedOrders.filter((row) => dateInRange(row.shopify_created_at || row.created_at, range.from, range.to));
   const relatedTasks = filterRelatedByRequest(rows.salesTasks, requestIds, query, (row) => [row.status, row.task_type, row.assignee_label]);
@@ -493,14 +475,14 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
   const shippingIncidentsInRange = relatedShippingIncidents.filter((row) => anyDateInRange([row.created_at, row.updated_at], range.from, range.to));
   const inboundIncidentsInRange = rows.inboundIncidents.filter((row) => anyDateInRange([row.created_at, row.updated_at], range.from, range.to) && matchesNeedle([row.title, row.incident_type, row.severity, row.status], query));
 
-  const quoteCreated = quotesInRange.filter((row) => dateInRange(row.created_at, range.from, range.to)).length + crmQuotesInRange.filter((row) => dateInRange(row.created_at, range.from, range.to)).length;
-  const quoteSent = quotesInRange.filter((row) => dateInRange(row.sent_at, range.from, range.to)).length + crmQuotesInRange.filter((row) => dateInRange(row.sent_at, range.from, range.to)).length;
-  const quoteViewed = quotesInRange.filter((row) => dateInRange(row.viewed_at, range.from, range.to)).length + crmQuotesInRange.filter((row) => dateInRange(row.viewed_at, range.from, range.to)).length;
-  const quoteSigned = quotesInRange.filter((row) => dateInRange(row.signed_at, range.from, range.to)).length + crmQuotesInRange.filter((row) => dateInRange(row.accepted_at, range.from, range.to)).length;
+  const quoteCreated = offersInRange.filter((row) => dateInRange(row.created_at, range.from, range.to)).length;
+  const quoteSent = offersInRange.filter((row) => dateInRange(row.sent_at, range.from, range.to)).length;
+  const quoteViewed = offersInRange.filter((row) => dateInRange(row.viewed_at, range.from, range.to)).length;
+  const quoteSigned = offersInRange.filter((row) => dateInRange(row.accepted_at, range.from, range.to)).length;
   const activeOrders = ordersInRange.filter((row) => !row.cancelled_at && !["refunded"].includes(normalized(row.status)));
   const cancelledOrders = ordersInRange.filter((row) => row.cancelled_at || ["refunded", "partially_refunded"].includes(normalized(row.status)));
   const orderValue = sum(activeOrders, (row: MasterOrderRow) => row.order_value);
-  const quoteValue = sum(quotesInRange, (row: MasterQuoteRow) => row.total_value) + sum(crmQuotesInRange, (row: CrmQuoteRow) => row.customer_live_total || row.total_gross);
+  const quoteValue = sum(offersInRange, (row: OfferHistoryRow) => row.total_value);
   const pipelineValue = sum(filteredRequests, (row: MasterRequestRow) => row.final_value || row.estimated_value);
   const openSalesTasks = tasksInRange.filter((row) => ["open", "waiting", "blocked"].includes(normalized(row.status))).length;
   const overdueSalesTasks = tasksInRange.filter((row) => ["open", "waiting", "blocked"].includes(normalized(row.status)) && row.due_at && new Date(row.due_at).getTime() < now.getTime()).length;
@@ -671,20 +653,15 @@ export function buildManagementKpiDashboardFromRows(rows: KpiRows, input: Manage
 
 async function fetchKpiRows(input: ManagementKpiInput): Promise<KpiRows> {
   const range = resolveManagementRange(input);
-  const [requests, quotes, crmQuotes, orders, seaCampaignDaily, googleAdsDailySpend, anthropicCosts, costEntries, salesTasks, salesCallResults, shippingIncidents, inboundIncidents] = await Promise.all([
+  const [requests, offers, orders, seaCampaignDaily, googleAdsDailySpend, anthropicCosts, costEntries, salesTasks, salesCallResults, shippingIncidents, inboundIncidents] = await Promise.all([
     supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
       select: "id,request_id,status,deal_status,segment,s_kategorie,customer_type,country,estimated_value,final_value,utm_source,utm_medium,utm_campaign,landing_page_url,referrer,created_at,updated_at",
       and: dateAndFilter("created_at", range.from.toISOString(), range.to.toISOString()),
       order: "created_at.desc",
       limit: 5000,
     }),
-    supabaseRequest<MasterQuoteRow[]>("master_quotes", undefined, {
-      select: "id,request_id,pandadoc_status,total_value,currency,created_at,sent_at,viewed_at,signed_at,updated_at",
-      order: "created_at.desc",
-      limit: 5000,
-    }),
-    supabaseRequest<CrmQuoteRow[]>("crm_quotes", undefined, {
-      select: "id,request_id,status,total_gross,customer_live_total,sent_at,viewed_at,accepted_at,rejected_at,shopify_order_id,created_at",
+    supabaseRequest<OfferHistoryRow[]>("v_offer_history", undefined, {
+      select: "id,request_id,offer_status,total_value,currency,created_at,sent_at,viewed_at,accepted_at",
       order: "created_at.desc",
       limit: 5000,
     }),
@@ -741,8 +718,7 @@ async function fetchKpiRows(input: ManagementKpiInput): Promise<KpiRows> {
 
   return {
     requests,
-    quotes,
-    crmQuotes,
+    offers,
     orders,
     seaCampaignDaily,
     googleAdsDailySpend,

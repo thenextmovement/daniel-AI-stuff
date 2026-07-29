@@ -348,7 +348,7 @@ Siehe auch: [Request Segmentation](./request-segmentation.md)
   - Follow-up-/Kontaktstopp-Faelle bevorzugt in `Verlauf`
 - `Deal & Source` ist jetzt ein eigener Arbeitsraum statt nur rechter Sidebar-Kontext:
   - Deal-ID, Stage, Segment und Deal-/Request-Status
-  - Request-Wert, PandaDoc-Status und CRM-Quote in einem Blick
+  - Request-Wert, Angebotsstatus und CRM-Angebot in einem Blick
   - Landingpage, Referrer, UTM-Parameter und interne Arbeitslinks
   - Request-Notiz und kompaktes Anfrageprofil ohne Wechsel in Nebentools
   - verknuepfte Requests desselben Kontakts koennen dort jetzt direkt geoeffnet werden
@@ -360,7 +360,7 @@ Siehe auch: [Request Segmentation](./request-segmentation.md)
   - verknuepfte Requests lassen sich dort jetzt auch direkt `Mir ziehen` oder inline `Weitergeben`, ohne den anderen Fall erst separat zu oeffnen
   - `Kontakt-Dossier kopieren` exportiert den gesamten Kontaktkontext mit allen verknuepften Requests als operativen Gesamtbrief
   - `Kontakt-Handover kopieren` erzeugt zusaetzlich einen kontaktweiten Uebergabe-Export fuer Mehrfach-Request-Faelle
-  - `Commercial Brief kopieren` exportiert Deal-, PandaDoc-, CRM-Quote-, Order- und Funnel-Kontext in einem kompakten kommerziellen Paket
+  - `Commercial Brief kopieren` exportiert Deal-, Angebots-, Order- und Funnel-Kontext in einem kompakten kommerziellen Paket
   - wenn aus der neuesten CRM-Version Bilder vorliegen, kann das erste CRM-Bild direkt aus `Deal & Source` geoeffnet werden
   - kontaktweite Mehrfachlagen tauchen jetzt auch als echte `Naechste Aktion` auf und fuehren direkt ins Kontakt-Dossier statt nur als Startseiten- oder Team-Signal zu existieren
 - Die Startseite hat jetzt zusaetzlich einen `Commercial Desk`:
@@ -780,7 +780,7 @@ Auch diese Aktionen werden im `workflow_audit_log` protokolliert.
 - Auch die sichtbare `Console`-/`Call-Log`-/`Voice-Call`-Sprache ist im Anruf- und Verlaufsbereich enttechnisiert: Audit-/Live-Herkünfte, Anrufhistorien, Sprachanrufe und der sichtbare `Customer Records Console`-Badge sprechen jetzt als `Audit`, `Anrufprotokoll`, `Sprachanruf` und `Kommandozentrale`
 - Auch die verbliebenen sichtbaren `Flow`-Restlabels sind aus den Kernflächen raus: Prioritätstexte, persönliche Laufhinweise, Paneltitel, Briefings und die Ablauf-Steuerung sprechen jetzt als `Ablauf`, `Aktive Abläufe`, `Ablauf aktiv` und `Ablauf veraltet`
 - Auch die sichtbare `Builder`-Sprache ist aus dem Angebotsraum verschwunden: Angebotsflächen, Abschluss-Spur, Quicklinks, Briefings und Bild-/Versionshinweise sprechen jetzt als `Angebotskontext`, `Angebotsstand`, `Angebotsversion` und `Angebotsbild`
-- Auch die sichtbare `Quote`-/`PandaDoc`-Sprache ist im Angebots- und Dokumentenraum enttechnisiert: CTAs, Briefings, Mini-Systeme und der Deal-Bereich sprechen jetzt als `Angebot`, `Angebotslage` und `Angebotsdokument`
+- Auch die sichtbare technische Dokumentensprache ist im Angebotsraum enttechnisiert: CTAs, Briefings, Mini-Systeme und der Deal-Bereich sprechen jetzt als `Angebot`, `Angebotslage` und `Angebotsdokument`
 - Auch die sichtbare `Voicemail`-Sprache ist im Screen enttechnisiert: Schnellaktionen, Buttons, Toggle-Texte und Statusmeldungen sprechen jetzt als `Mailbox`, waehrend die zugrunde liegende Anruflogik unveraendert bleibt
 - Auch die sichtbare `Funnel`-Sprache ist aus dem Deal- und Herkunftsraum verschwunden: Buttons, Diagnoseblöcke, Arbeitslinks und Deal-Prüftexte sprechen jetzt als `Herkunfts-` oder `Streckenkontext` statt mit Marketing-Tooljargon
 - Auch die verbleibende sichtbare `Requests`-Mehrzahl ist im Screen bereinigt: Dossier-Hinweise, Kontakttexte, Such-/Landing-Flächen und Statusmeldungen sprechen jetzt durchgaengig von `Vorgängen` statt von `Requests`

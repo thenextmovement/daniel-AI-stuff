@@ -110,76 +110,40 @@
         300
       ],
       "parameters": {
-        "jsCode": "const claim = $json || {};\nconst item = claim.candidate || {};\nconst email = String(item.customer_email || '').trim().toLowerCase();\nconst queueId = String(claim.followup_queue_id || item.id || '').trim();\nconst requestId = String(item.request_id || '').trim();\nconst documentId = String(item.document_id || '').trim();\nconst rawLink = String(item.pandadoc_customer_link || item.document_link || '').trim();\nconst validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(neontrip\\.de|riesenobjekte\\.de|example\\.|neontrip\\.test$)/i.test(email);\nconst modernLink = /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(rawLink);\nlet pandaLink = false;\ntry { const url = new URL(rawLink); pandaLink = url.protocol === 'https:' && /(^|\\.)pandadoc\\.com$/i.test(url.hostname); } catch {}\nlet route = 'blocked';\nlet blockReason = 'candidate_identity_or_link_invalid';\nif (queueId && requestId && documentId && validEmail) {\n  if (modernLink || (!rawLink && requestId)) { route = 'modern'; blockReason = null; }\n  else if (pandaLink) { route = 'pandadoc'; blockReason = null; }\n}\nreturn [{ json: {\n  ...item,\n  followup_queue_id: queueId,\n  claim_token: claim.claim_token,\n  customer_email: email,\n  request_id: requestId,\n  document_id: documentId,\n  candidate_offer_link: rawLink || null,\n  preflight_route: route,\n  block_reason: blockReason,\n  copy_mode: 'deterministic',\n  ai_copy_allowed: false,\n  automatic_retry_allowed: false,\n} }];"
+        "jsCode": "const claim = $json || {};\nconst item = claim.candidate || {};\nconst email = String(item.customer_email || '').trim().toLowerCase();\nconst queueId = String(claim.followup_queue_id || item.id || '').trim();\nconst requestId = String(item.request_id || '').trim();\nconst documentId = String(item.document_id || '').trim();\nconst rawLink = String(item.offer_public_url || '').trim();\nconst validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(neontrip\\.de|riesenobjekte\\.de|example\\.|neontrip\\.test$)/i.test(email);\nconst modernLink = /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(rawLink);\nlet route = 'blocked';\nlet blockReason = 'candidate_identity_invalid';\nif (queueId && requestId && documentId && validEmail) {\n  route = 'modern'; blockReason = null;\n}\nreturn [{ json: {\n  ...item,\n  followup_queue_id: queueId,\n  claim_token: claim.claim_token,\n  customer_email: email,\n  request_id: requestId,\n  document_id: documentId,\n  candidate_offer_link: modernLink ? rawLink : null,\n  preflight_route: route,\n  block_reason: blockReason,\n  copy_mode: 'deterministic',\n  ai_copy_allowed: false,\n  automatic_retry_allowed: false,\n} }];"
       }
     },
     {
       "id": "preflight-route",
-      "name": "PreflightRoute",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.2,
+      "name": "CandidateIdentityValid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
       "position": [
         880,
         300
       ],
       "parameters": {
-        "mode": "rules",
-        "rules": {
-          "values": [
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
             {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "id": "route-modern",
-                    "leftValue": "={{ $json.preflight_route }}",
-                    "rightValue": "modern",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "modern"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "id": "route-panda",
-                    "leftValue": "={{ $json.preflight_route }}",
-                    "rightValue": "pandadoc",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "pandadoc"
+              "id": "preflight-route-condition",
+              "leftValue": "={{ $json.preflight_route }}",
+              "rightValue": "modern",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         },
-        "options": {
-          "fallbackOutput": "extra",
-          "renameFallbackOutput": "blocked"
-        }
+        "options": {}
       }
     },
     {
@@ -270,80 +234,6 @@
       }
     },
     {
-      "id": "check-pandadoc",
-      "name": "CheckPandaDocStatus",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        420
-      ],
-      "parameters": {
-        "url": "=https://api.pandadoc.com/public/v1/documents/{{ $('PrepareCandidate').item.json.document_id }}/details",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {
-          "timeout": 20000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "MpPnODlQq5wOkRvR",
-          "name": "Header Auth account | Pandadoc"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "validate-pandadoc",
-      "name": "ValidatePandaDocStatus",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1320,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const item = $('PrepareCandidate').item.json;\nconst response = $json || {};\nconst status = String(response.status || '').toLowerCase();\nconst closed = new Set(['document.completed', 'document.declined', 'document.voided', 'completed', 'declined', 'voided']);\nconst allowedLink = (() => {\n  try { const url = new URL(item.candidate_offer_link); return url.protocol === 'https:' && /(^|\\.)pandadoc\\.com$/i.test(url.hostname); } catch { return false; }\n})();\nconst ok = !response.error && Boolean(response.id) && Boolean(status) && !closed.has(status) && allowedLink;\nlet reason = null;\nif (response.error || !response.id || !status) reason = 'pandadoc_status_unavailable';\nelse if (closed.has(status)) reason = 'pandadoc_document_closed';\nelse if (!allowedLink) reason = 'pandadoc_link_invalid';\nreturn [{ json: { ...item, preflight_ok: ok, offer_link: ok ? item.candidate_offer_link : null, block_reason: reason } }];"
-      }
-    },
-    {
-      "id": "panda-sendable",
-      "name": "PandaDocSendable",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1540,
-        420
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "panda-sendable-condition",
-              "leftValue": "={{ $json.preflight_ok }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      }
-    },
-    {
       "id": "lookup-replies",
       "name": "LookupCustomerReplies",
       "type": "n8n-nodes-base.microsoftOutlook",
@@ -387,7 +277,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "const item = $('PrepareCandidate').item.json;\nconst preflight = $input.first()?.json || {};\nlet all = [];\ntry { all = $('LookupCustomerReplies').all().map(entry => entry.json || {}); } catch {}\nconst lookupFailed = all.some(entry => entry.error || entry.$error) || Boolean(preflight.error || preflight.$error);\nconst customerEmail = String(item.customer_email || '').toLowerCase();\nlet validatedOfferLink = '';\ntry { validatedOfferLink = String($('ValidateModernOffer').item.json.offer_link || ''); } catch {}\nif (!validatedOfferLink) { try { validatedOfferLink = String($('ValidatePandaDocStatus').item.json.offer_link || ''); } catch {} }\nconst replies = all.filter(entry => {\n  const from = String(entry.from?.emailAddress?.address || entry.sender?.emailAddress?.address || '').toLowerCase();\n  return from === customerEmail && Boolean(entry.subject || entry.bodyPreview || entry.body?.content);\n});\nconst safe = !lookupFailed && replies.length === 0;\nreturn [{ json: {\n  ...item,\n  offer_link: validatedOfferLink || item.candidate_offer_link,\n  reply_preflight_safe: safe,\n  reply_count: replies.length,\n  block_reason: lookupFailed ? 'outlook_reply_lookup_failed' : (replies.length > 0 ? 'customer_reply_detected' : null),\n} }];"
+        "jsCode": "const item = $('PrepareCandidate').item.json;\nconst preflight = $input.first()?.json || {};\nlet all = [];\ntry { all = $('LookupCustomerReplies').all().map(entry => entry.json || {}); } catch {}\nconst lookupFailed = all.some(entry => entry.error || entry.$error) || Boolean(preflight.error || preflight.$error);\nconst customerEmail = String(item.customer_email || '').toLowerCase();\nlet validatedOfferLink = '';\ntry { validatedOfferLink = String($('ValidateModernOffer').item.json.offer_link || ''); } catch {}\nconst replies = all.filter(entry => {\n  const from = String(entry.from?.emailAddress?.address || entry.sender?.emailAddress?.address || '').toLowerCase();\n  return from === customerEmail && Boolean(entry.subject || entry.bodyPreview || entry.body?.content);\n});\nconst safe = !lookupFailed && replies.length === 0;\nreturn [{ json: {\n  ...item,\n  offer_link: validatedOfferLink,\n  reply_preflight_safe: safe,\n  reply_count: replies.length,\n  block_reason: lookupFailed ? 'outlook_reply_lookup_failed' : (replies.length > 0 ? 'customer_reply_detected' : null),\n} }];"
       }
     },
     {
@@ -479,7 +369,7 @@
         220
       ],
       "parameters": {
-        "jsCode": "const item = $json || {};\nfunction esc(value) { return String(value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;').replaceAll(\"'\", '&#39;'); }\nconst link = String(item.offer_link || '').trim();\nif (!/^https:\\/\\/(angebote\\.neontrip\\.de\\/offer\\/[^/?#]+|[^/]+\\.pandadoc\\.com\\/)/i.test(link)) throw new Error('deterministic_followup_link_invalid');\nconst rawName = String(item.customer_name || '').replace(/[^\\p{L}\\p{M} .'-]/gu, ' ').replace(/\\b(?:onerror|javascript|script|img)\\b/gi, ' ').replace(/\\s+/g, ' ').trim();\nconst parts = rawName.split(/\\s+/).filter(Boolean);\nconst isDu = /^(du|duzen)$/i.test(String(item.anrede || ''));\nconst greeting = isDu ? ('Hallo ' + (parts[0] || '')) : ('Guten Tag ' + rawName);\nconst number = Math.max(1, Math.min(5, Number(item.followup_number) || 1));\nconst subjects = [\n  'Ihr NEONTRIP-Angebot',\n  'Ihr Leuchtschild-Angebot',\n  'Kurze Rückfrage zu Ihrem NEONTRIP-Angebot',\n  'Ihr NEONTRIP-Angebot: nächster Schritt',\n  'Ihr Leuchtschild-Projekt: kurzer Abschluss',\n];\nconst sentences = isDu ? [\n  'ich wollte kurz nachfragen, ob das Angebot für dein individuelles Leuchtschild so passt oder ob wir noch etwas anpassen dürfen.',\n  'konntest du das Angebot in Ruhe ansehen? Wenn noch eine Frage offen ist, helfen wir dir gerne weiter.',\n  'passt die vorgeschlagene Ausführung für dich oder dürfen wir noch etwas abstimmen?',\n  'gibt es noch eine offene Frage zu deinem Leuchtschild-Projekt?',\n  'ich wollte ein letztes Mal kurz nachfragen, ob wir dich bei diesem Projekt noch unterstützen dürfen.',\n] : [\n  'ich wollte kurz nachfragen, ob das Angebot für Ihr individuelles Leuchtschild so passt oder ob wir noch etwas anpassen dürfen.',\n  'konnten Sie das Angebot in Ruhe ansehen? Wenn noch eine Frage offen ist, helfen wir Ihnen gerne weiter.',\n  'passt die vorgeschlagene Ausführung für Sie oder dürfen wir noch etwas abstimmen?',\n  'gibt es noch eine offene Frage zu Ihrem Leuchtschild-Projekt?',\n  'ich wollte ein letztes Mal kurz nachfragen, ob wir Sie bei diesem Projekt noch unterstützen dürfen.',\n];\nconst subject = subjects[number - 1];\nconst plain = greeting + ',\\n\\n' + sentences[number - 1] + '\\n\\nZum Angebot: ' + link + '\\n\\nViele Grüße';\nconst body = '<div style=\"font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111\">' + esc(plain).replace(/\\r?\\n/g, '<br>') + '</div><br><strong>Fabienne Trapp</strong><br>Beratung &amp; Realisierung<br>NEONTRIP®';\nreturn [{ json: { ...item, email_subject: subject, email_body: body, copy_mode: 'deterministic', ai_copy_allowed: false, automatic_retry_allowed: false } }];"
+        "jsCode": "const item = $json || {};\nfunction esc(value) { return String(value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;').replaceAll(\"'\", '&#39;'); }\nconst link = String(item.offer_link || '').trim();\nif (!/^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(link)) throw new Error('deterministic_followup_link_invalid');\nconst rawName = String(item.customer_name || '').replace(/[^\\p{L}\\p{M} .'-]/gu, ' ').replace(/\\b(?:onerror|javascript|script|img)\\b/gi, ' ').replace(/\\s+/g, ' ').trim();\nconst parts = rawName.split(/\\s+/).filter(Boolean);\nconst isDu = /^(du|duzen)$/i.test(String(item.anrede || ''));\nconst greeting = isDu ? ('Hallo ' + (parts[0] || '')) : ('Guten Tag ' + rawName);\nconst number = Math.max(1, Math.min(5, Number(item.followup_number) || 1));\nconst subjects = [\n  'Ihr NEONTRIP-Angebot',\n  'Ihr Leuchtschild-Angebot',\n  'Kurze Rückfrage zu Ihrem NEONTRIP-Angebot',\n  'Ihr NEONTRIP-Angebot: nächster Schritt',\n  'Ihr Leuchtschild-Projekt: kurzer Abschluss',\n];\nconst sentences = isDu ? [\n  'ich wollte kurz nachfragen, ob das Angebot für dein individuelles Leuchtschild so passt oder ob wir noch etwas anpassen dürfen.',\n  'konntest du das Angebot in Ruhe ansehen? Wenn noch eine Frage offen ist, helfen wir dir gerne weiter.',\n  'passt die vorgeschlagene Ausführung für dich oder dürfen wir noch etwas abstimmen?',\n  'gibt es noch eine offene Frage zu deinem Leuchtschild-Projekt?',\n  'ich wollte ein letztes Mal kurz nachfragen, ob wir dich bei diesem Projekt noch unterstützen dürfen.',\n] : [\n  'ich wollte kurz nachfragen, ob das Angebot für Ihr individuelles Leuchtschild so passt oder ob wir noch etwas anpassen dürfen.',\n  'konnten Sie das Angebot in Ruhe ansehen? Wenn noch eine Frage offen ist, helfen wir Ihnen gerne weiter.',\n  'passt die vorgeschlagene Ausführung für Sie oder dürfen wir noch etwas abstimmen?',\n  'gibt es noch eine offene Frage zu Ihrem Leuchtschild-Projekt?',\n  'ich wollte ein letztes Mal kurz nachfragen, ob wir Sie bei diesem Projekt noch unterstützen dürfen.',\n];\nconst subject = subjects[number - 1];\nconst plain = greeting + ',\\n\\n' + sentences[number - 1] + '\\n\\nZum Angebot: ' + link + '\\n\\nViele Grüße';\nconst body = '<div style=\"font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111\">' + esc(plain).replace(/\\r?\\n/g, '<br>') + '</div><br><strong>Fabienne Trapp</strong><br>Beratung &amp; Realisierung<br>NEONTRIP®';\nreturn [{ json: { ...item, email_subject: subject, email_body: body, copy_mode: 'deterministic', ai_copy_allowed: false, automatic_retry_allowed: false } }];"
       }
     },
     {
@@ -642,25 +532,18 @@
       "main": [
         [
           {
-            "node": "PreflightRoute",
+            "node": "CandidateIdentityValid",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "PreflightRoute": {
+    "CandidateIdentityValid": {
       "main": [
         [
           {
             "node": "SearchModernOffer",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "CheckPandaDocStatus",
             "type": "main",
             "index": 0
           }
@@ -697,46 +580,6 @@
       ]
     },
     "ModernOfferSendable": {
-      "main": [
-        [
-          {
-            "node": "LookupCustomerReplies",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "BlockFollowupDelivery",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CheckPandaDocStatus": {
-      "main": [
-        [
-          {
-            "node": "ValidatePandaDocStatus",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "ValidatePandaDocStatus": {
-      "main": [
-        [
-          {
-            "node": "PandaDocSendable",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "PandaDocSendable": {
       "main": [
         [
           {

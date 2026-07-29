@@ -18,6 +18,23 @@ function findNode(workflow, name) {
   return node;
 }
 
+function findOfferHistoryNode(workflow) {
+  const node = workflow.nodes.find((entry) =>
+    String(entry.parameters?.url || "").includes("/v_quotes_by_email"),
+  );
+  if (!node) throw new Error("Missing offer history node");
+  return node;
+}
+
+function neutralizeOfferHistoryCode(source) {
+  const variable = source.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*\$\('Lookup [^']+ Quotes'\)/)?.[1];
+  return source
+    .replace(/\$\('Lookup [^']+ Quotes'\)/g, "$('Lookup Offer History')")
+    .replace(variable ? new RegExp(`\\b${variable}\\b`, "g") : /$^/, "offerItems")
+    .replace(/\/\/ [^\n]* quotes/gi, "// Offer history")
+    .replace(/Keine [^\n'"]* Angebote gefunden/g, "Keine Angebote gefunden");
+}
+
 function cleanWorkflow(workflow, name) {
   workflow.name = name;
   for (const key of [
@@ -342,7 +359,9 @@ async function buildPostDelivery() {
     "={{ $('Determine Outreach Type').item.json.customer_email }}";
   configureRead(outlook);
 
-  const quotes = findNode(workflow, "Lookup PandaDoc Quotes");
+  const quotes = findOfferHistoryNode(workflow);
+  quotes.id = "lookup-offer-history";
+  quotes.name = "Lookup Offer History";
   quotes.position = [1540, 300];
   quotes.parameters.url =
     "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/v_quotes_by_email?email=eq.{{ encodeURIComponent($('Determine Outreach Type').item.json.customer_email) }}&select=document_id,customer_name,status,total_value,created_at,signed_at&order=created_at.desc&limit=3";
@@ -350,10 +369,9 @@ async function buildPostDelivery() {
 
   const prepare = findNode(workflow, "Prepare Delivery Context");
   prepare.position = [1760, 300];
-  prepare.parameters.jsCode = prepare.parameters.jsCode.replace(
-    "$('Determine Outreach Type').first().json",
-    "$('Determine Outreach Type').item.json",
-  );
+  prepare.parameters.jsCode = prepare.parameters.jsCode
+    .replace("$('Determine Outreach Type').first().json", "$('Determine Outreach Type').item.json")
+  prepare.parameters.jsCode = neutralizeOfferHistoryCode(prepare.parameters.jsCode);
 
   const ai = findNode(workflow, "Generate Post-Delivery Email");
   configureAi(
@@ -428,8 +446,8 @@ async function buildPostDelivery() {
         [{ node: "StopPostDeliveryDraftSafely", type: "main", index: 0 }],
       ],
     },
-    "Lookup Outlook History": { main: [[{ node: "Lookup PandaDoc Quotes", type: "main", index: 0 }]] },
-    "Lookup PandaDoc Quotes": { main: [[{ node: "Prepare Delivery Context", type: "main", index: 0 }]] },
+    "Lookup Outlook History": { main: [[{ node: "Lookup Offer History", type: "main", index: 0 }]] },
+    "Lookup Offer History": { main: [[{ node: "Prepare Delivery Context", type: "main", index: 0 }]] },
     "Prepare Delivery Context": { main: [[{ node: "Generate Post-Delivery Email", type: "main", index: 0 }]] },
     "Generate Post-Delivery Email": { main: [[{ node: "ValidatePostDeliveryProposal", type: "main", index: 0 }]] },
     ValidatePostDeliveryProposal: { main: [[{ node: "CreatePostDeliveryDraft", type: "main", index: 0 }]] },
@@ -500,7 +518,9 @@ async function buildRepeatBusiness() {
     "={{ $('ValidateRepeatCandidate').item.json.email }}";
   configureRead(outlook);
 
-  const quotes = findNode(workflow, "Lookup PandaDoc Quotes");
+  const quotes = findOfferHistoryNode(workflow);
+  quotes.id = "lookup-offer-history";
+  quotes.name = "Lookup Offer History";
   quotes.position = [1760, 304];
   quotes.parameters.url =
     "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/v_quotes_by_email?email=eq.{{ encodeURIComponent($('ValidateRepeatCandidate').item.json.email) }}&select=document_id,customer_name,status,total_value,created_at,viewed_at,signed_at&order=created_at.desc&limit=5";
@@ -508,10 +528,9 @@ async function buildRepeatBusiness() {
 
   const prepare = findNode(workflow, "Prepare Email Context");
   prepare.position = [1980, 304];
-  prepare.parameters.jsCode = prepare.parameters.jsCode.replace(
-    "$('Has Candidates?').first().json",
-    "$('ValidateRepeatCandidate').item.json",
-  );
+  prepare.parameters.jsCode = prepare.parameters.jsCode
+    .replace("$('Has Candidates?').first().json", "$('ValidateRepeatCandidate').item.json");
+  prepare.parameters.jsCode = neutralizeOfferHistoryCode(prepare.parameters.jsCode);
 
   const ai = findNode(workflow, "Generate Reactivation Email");
   configureAi(
@@ -586,8 +605,8 @@ async function buildRepeatBusiness() {
       ],
     },
     "Get Order History": { main: [[{ node: "Lookup Outlook History", type: "main", index: 0 }]] },
-    "Lookup Outlook History": { main: [[{ node: "Lookup PandaDoc Quotes", type: "main", index: 0 }]] },
-    "Lookup PandaDoc Quotes": { main: [[{ node: "Prepare Email Context", type: "main", index: 0 }]] },
+    "Lookup Outlook History": { main: [[{ node: "Lookup Offer History", type: "main", index: 0 }]] },
+    "Lookup Offer History": { main: [[{ node: "Prepare Email Context", type: "main", index: 0 }]] },
     "Prepare Email Context": { main: [[{ node: "Generate Reactivation Email", type: "main", index: 0 }]] },
     "Generate Reactivation Email": { main: [[{ node: "ValidateRepeatBusinessProposal", type: "main", index: 0 }]] },
     ValidateRepeatBusinessProposal: { main: [[{ node: "CreateRepeatBusinessDraft", type: "main", index: 0 }]] },
