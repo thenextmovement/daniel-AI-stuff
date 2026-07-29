@@ -1,0 +1,40 @@
+{
+  "workflowId": "S4gjf0YeZjP0pqFR",
+  "backupWorkflowId": "eTnzOWL0ud8L2B7j",
+  "reason": "Bound the in-execution provider polling loop by wall-clock time so it exits into the existing retry/fallback path before the global n8n execution timeout.",
+  "operations": [
+    {
+      "nodeName": "Save Request ID",
+      "fieldPath": "parameters.jsCode",
+      "patches": [
+        {
+          "find": "cardId: config.cardId,\n    attempts: 0\n  }",
+          "replace": "cardId: config.cardId,\n    attempts: 0,\n    pollStartedAt: new Date().toISOString()\n  }"
+        }
+      ]
+    },
+    {
+      "nodeName": "Is Done?",
+      "fieldPath": "parameters.jsCode",
+      "patches": [
+        {
+          "find": "const attempts = Number($runIndex || 0) + 1;\nconst normalizedStatus",
+          "replace": "const attempts = Number($runIndex || 0) + 1;\nconst pollStartedAt = Date.parse(String(prev.pollStartedAt || ''));\nconst pollElapsedMs = Number.isFinite(pollStartedAt) ? Math.max(0, Date.now() - pollStartedAt) : 0;\nconst normalizedStatus"
+        },
+        {
+          "find": "if (attempts >= 40) {",
+          "replace": "if (attempts >= 40 || pollElapsedMs >= 9 * 60 * 1000) {"
+        },
+        {
+          "find": "reason: 'Grok Timeout nach ' + attempts + ' Statuspruefungen',\n    errorCode: 'video_provider_timeout',\n    errorMessage: 'Kein terminaler Video-Status innerhalb von etwa zehn Minuten',",
+          "replace": "reason: 'Grok Timeout nach ' + attempts + ' Statuspruefungen und ' + Math.round(pollElapsedMs / 1000) + ' Sekunden',\n    errorCode: 'video_provider_timeout',\n    errorMessage: 'Kein terminaler Video-Status innerhalb des auf neun Minuten begrenzten Polling-Fensters',"
+        }
+      ]
+    }
+  ],
+  "rollback": {
+    "kind": "restore_inactive_backup",
+    "workflowId": "eTnzOWL0ud8L2B7j",
+    "mustRemainInactiveUntilRollback": true
+  }
+}
