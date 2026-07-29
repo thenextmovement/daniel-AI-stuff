@@ -63,5 +63,7 @@ test("Saeid suggestion requires expensive single-color indoor Neon Flex", () => 
   assert.equal(shouldSuggestSaeid({ ...eligible, items: [{ ...eligible.items[0], selectionDetails: ["Product Type: LED Neon Flex", "Color: RGB", "Use: Indoor"] }] }), false);
   assert.equal(shouldSuggestSaeid({ ...eligible, items: [{ ...eligible.items[0], selectionDetails: ["Product Type: LED Neon Flex", "Use: Indoor"] }] }), false);
   assert.equal(shouldSuggestSaeid({ ...eligible, items: [{ ...eligible.items[0], selectionDetails: ["Product Type: LED Neon Flex", "Color: Warm white", "Use: Outdoor"] }] }), false);
+  assert.equal(shouldSuggestSaeid({ ...eligible, items: [{ ...eligible.items[0], selectionDetails: ["Product Type: LED Neon Flex", "Color: Warm white", "Use: Indoor", "Backboard: Cut to shape with UV print"] }] }), false);
+  assert.equal(shouldSuggestSaeid({ ...eligible, productSummary: "LED Neon Flex mit UV-Druck" }), false);
   assert.equal(shouldSuggestSaeid({ ...eligible, items: [{ ...eligible.items[0], title: "3D Backlit", selectionDetails: ["Product Type: 3D Backlit", "Color: Warm white", "Use: Indoor"] }] }), false);
 });

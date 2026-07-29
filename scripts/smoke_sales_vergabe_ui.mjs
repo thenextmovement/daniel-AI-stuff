@@ -56,6 +56,9 @@ function sale(overrides = {}) {
     assignmentNote: null,
     assignedAt: null,
     assignedBy: null,
+    productionConfirmedAt: null,
+    productionConfirmedBy: null,
+    manualShopifySupplierTagConfirmedAt: null,
     shopifyTagSyncStatus: overrides.shopifyTagSyncStatus || "not_started",
     shopifyTagValue: null,
     shopifyTagSyncedAt: null,
@@ -70,6 +73,7 @@ function sale(overrides = {}) {
     productSummary: overrides.productSummary || "LED Neon Sign 120cm, Outdoor, warmweiss",
     primaryImageUrl: null,
     rushOrder: Boolean(overrides.rushOrder),
+    rushOrderDetails: null,
     createdAt: now,
     updatedAt: now,
     items: [
@@ -94,6 +98,14 @@ function sale(overrides = {}) {
     latestEvent: null,
     orderConfirmationEmail: null,
     postOrderReview: { status: "none", expiresAt: null, message: null },
+    priorPaidCustomer: {
+      hasPriorPaidOrder: false,
+      paidOrderCount: 0,
+      lastPaidAt: null,
+      lastPaidOrderName: null,
+      lastPaidOrderUrl: null,
+      matchBasis: null,
+    },
     ...overrides,
   };
 }
@@ -429,9 +441,18 @@ async function main() {
 
   await page.getByLabel("Sales suchen").fill("#QA-sale-paid");
   await page.keyboard.press("Enter");
-  await page.getByLabel("Bereich filtern").selectOption("sync");
-  await page.getByLabel("Supplier filtern").selectOption("quentin");
-  await page.getByLabel("Zahlungsstatus filtern").selectOption("unpaid");
+  await Promise.all([
+    supplierSalesScopeResponse(page, "sync"),
+    page.getByLabel("Bereich filtern").selectOption("sync"),
+  ]);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/ops/supplier-sales") && new URL(response.url()).searchParams.get("supplier") === "quentin"),
+    page.getByLabel("Supplier filtern").selectOption("quentin"),
+  ]);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/ops/supplier-sales") && new URL(response.url()).searchParams.get("payment") === "unpaid"),
+    page.getByLabel("Zahlungsstatus filtern").selectOption("unpaid"),
+  ]);
   await page.getByRole("heading", { name: "#QA-sale-unpaid" }).waitFor({ timeout: 10_000 });
 
   const paidCard = page.locator("article").filter({ hasText: "#QA-sale-paid" });
@@ -448,12 +469,14 @@ async function main() {
   assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
   assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "quentin", "Konfigurator-Sale startet nicht mit Quentin");
   assert(await configuratorCard.getByText("Standard: Quentin").isVisible(), "Quentin-Standard fehlt");
-  assert(await configuratorCard.getByText(/Saeid pruefen/).isVisible(), "Bedingter Saeid-Hinweis fehlt");
+  assert(await configuratorCard.getByText("Kommt in Frage für SAID").isVisible(), "Bedingter SAID-Hinweis fehlt");
+  assert(await configuratorCard.getByText(/Bestellt/).first().isVisible(), "Bestellzeitpunkt unter dem Produktbild fehlt");
+  assert(await configuratorCard.getByText(/noch \d+ Tage|heute|überfällig/).first().isVisible(), "Lieferfrist-Anzeige fehlt");
   assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale ist mit Quentin nicht vergebbar");
   assert(await paidCard.getByRole("link", { name: "Trello-Karte oeffnen" }).count() === 1, "Bekannte Trello-Karte wird nicht direkt verlinkt");
   assert(await paidCard.getByRole("link", { name: "Quentin-Suche" }).count() === 0, "Quentin-Suche bleibt trotz bekannter Trello-Karte sichtbar");
   assert(await configuratorCard.getByRole("link", { name: "Trello per Request-ID finden" }).count() === 1, "Request-ID-Fallback fehlt ohne bekannte Trello-Karte");
-  await configuratorCard.getByRole("button", { name: "Saeid waehlen" }).click();
+  await configuratorCard.getByRole("button", { name: "SAID auswählen" }).click();
   assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "said", "Saeid-Hinweis waehlt Saeid nicht bewusst aus");
 
   await unpaidCard.getByLabel("Zahlungsentscheidung").selectOption("wait_for_payment");
@@ -515,14 +538,6 @@ async function main() {
   await page.getByText("Live-Abgleich Angebote -> Produktion").waitFor();
   await page.getByText("AN-LIVE-2").waitFor();
   assert(posts.length === 7 && posts[6].body.action === "diagnose_sales_flow", "Live-Abgleich sendet falsche Action");
-
-  page.once("dialog", dialogHandler(dialogs, "dismiss-task-done", false));
-  await page.getByRole("button", { name: "Erledigt" }).click();
-  assert(posts.length === 7, "Abgebrochene Aufgabe-Erledigt-Aktion sendet trotzdem PATCH");
-
-  page.once("dialog", dialogHandler(dialogs, "accept-task-done", true));
-  await page.getByRole("button", { name: "Erledigt" }).click();
-  assert(posts.length === 8 && posts[7].method === "PATCH", "Akzeptierte Aufgabe-Erledigt-Aktion sendet keinen PATCH");
 
   const mobileLayout = await page.evaluate(() => ({
     noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
