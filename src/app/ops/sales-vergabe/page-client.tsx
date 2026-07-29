@@ -617,9 +617,29 @@ function SnapshotSelectionGroup({
         {items.map((item) => (
           <div key={item.id} className="py-2 first:pt-0 last:pb-0">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="break-words text-sm font-semibold text-stone-950">{item.title}</p>
-                {item.variantTitle ? <p className="mt-0.5 text-xs text-stone-500">{item.variantTitle}</p> : null}
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                {itemKind(item) === "product" && item.imageIsItemSpecific && item.imageUrl ? (
+                  <a
+                    href={item.imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-white transition hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-950/25"
+                    aria-label={`Gekauftes Design für ${item.title} öffnen`}
+                  >
+                    <img
+                      src={item.imageUrl}
+                      alt={`Gekauftes Design: ${item.title}`}
+                      className="h-20 w-24 object-contain"
+                    />
+                  </a>
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-semibold text-stone-950">{item.title}</p>
+                  {item.variantTitle ? <p className="mt-0.5 text-xs text-stone-500">{item.variantTitle}</p> : null}
+                  {itemKind(item) === "product" && item.imageIsItemSpecific && item.imageUrl ? (
+                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-700">Gekauftes Design</p>
+                  ) : null}
+                </div>
               </div>
               <span className="inline-flex shrink-0 items-center gap-1 rounded-[0.5rem] border border-stone-300 bg-white px-2.5 py-1 text-xs font-black text-stone-950">
                 <span className="text-[10px] uppercase tracking-[0.08em] text-stone-500">Menge</span>

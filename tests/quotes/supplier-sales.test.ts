@@ -301,6 +301,7 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
         title: "LED Neon Flex Logo",
         description: "Leuchtfarbe: Kaltweiss",
         quantity: 1,
+        imageUrl: "https://angebote.test/api/public/offers/share/images/design-2?w=1800",
       },
     ],
     media: {
@@ -316,6 +317,7 @@ test("offer.completed payload becomes a supplier sale with snapshot links and du
   assert.equal(parsed.sale.customerDueDate, "2026-06-20");
   assert.equal(parsed.sale.dueDateSource, "payload");
   assert.equal(parsed.sale.primaryImageUrl, "https://cdn.test/mockup.jpg");
+  assert.equal(parsed.sale.lineItems[0]?.imageUrl, "https://angebote.test/api/public/offers/share/images/design-2?w=1800");
   assert.equal(parsed.sale.metadata?.accepted_at, "2026-06-16T13:45:00.000Z");
   assert.equal(parsed.sale.metadata?.signed_at, "2026-06-16T13:44:30.000Z");
   assert.deepEqual(parsed.sale.metadata?.post_order_review, {
