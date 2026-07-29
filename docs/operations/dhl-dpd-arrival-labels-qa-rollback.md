@@ -11,13 +11,23 @@
 - Eine bereits exakt in `Sign Arrived` befindliche Karte wird ohne weiteren Move idempotent als abgeschlossen protokolliert.
 - Der n8n-Finalizer muss genau einen Trigger haben. Nur der read-only Healthcheck darf Retries verwenden; Outlook-Archiv- und Trello-Prozessor-POST dürfen nicht automatisch wiederholt werden.
 
+## Sign-SHIPPED-Soforttrigger: zusätzliche Pflichtprüfungen
+
+- Nur das exakte Quentin-Board und die exakte Liste `Sign SHIPPED (NEON TRIP)` akzeptieren.
+- Nur eine zusammenhängende zehnstellige DHL-Express-Nummer am Titelende akzeptieren; Präfix-, Kurz-, Lang- und Nachtext-Treffer ablehnen.
+- `dateLastActivity` muss am oder nach dem produktiven `enabled_after` liegen; bestehende historische Karten bleiben unberührt.
+- Wiederholte Scheduler-Läufe müssen denselben Datenbankfall, Kaufauftrag und Druckauftrag verwenden.
+- Ohne Outlook-Mail bleibt `outlook_delivery_state=unknown`; dadurch darf kein `Sign Arrived`-Job entstehen.
+- Trifft später eine Zustellbestätigung ein, müssen Mail-IDs monoton vereinigt, nach bestätigtem Druck archiviert und erst danach der bestehende Trello-Finalizer freigegeben werden.
+
 Operativer Sofort-Rollback:
 
-1. `arrival_label_trello_arrival_settings.enabled=false` setzen.
-2. n8n-Finalizer deaktivieren oder auf die gesicherte Vorversion zurücksetzen.
-3. Ausstehende `dispatching`-/`manual_review`-Datensätze gegen Outlook und Trello händisch abgleichen; niemals blind requeue-en.
-4. Falls die Anwendung bereits zurückgerollt ist, anschließend die neue Migration mit dem zugehörigen Rollback-Skript entfernen. Auditdaten vorab sichern.
-5. Bereits archivierte Nachrichten und bereits verschobene Karten bleiben externe, bewusst nicht automatisch rückgängig gemachte Seiteneffekte.
+1. `arrival_label_trello_trigger_settings.enabled=false` setzen.
+2. `arrival_label_trello_arrival_settings.enabled=false` setzen.
+3. n8n-Finalizer deaktivieren oder auf die gesicherte Vorversion zurücksetzen.
+4. Ausstehende `dispatching`-/`manual_review`-Datensätze gegen Outlook und Trello händisch abgleichen; niemals blind requeue-en.
+5. Falls die Anwendung bereits zurückgerollt ist, anschließend die neue Migration mit dem zugehörigen Rollback-Skript entfernen. Auditdaten vorab sichern.
+6. Bereits gekaufte oder gedruckte Labels, archivierte Nachrichten und verschobene Karten bleiben externe, bewusst nicht automatisch rückgängig gemachte Seiteneffekte.
 
 ## QA plan
 

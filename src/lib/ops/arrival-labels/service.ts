@@ -6,10 +6,14 @@ import { generateArrivalDeliveryNotePdf } from "./delivery-note";
 import {
   ARRIVAL_LABEL_TIMEZONE,
   arrivalsFromDhlMessages,
+  arrivalsFromTrelloSignShipped,
   decideArrivalCase,
+  mergeDhlArrivals,
   type ArrivalCaseDecision,
   type ArrivalRunMode,
+  type DhlArrival,
   type ProductConfig,
+  type TrelloSignShippedTriggerSettings,
 } from "./domain";
 import {
   createDatabaseExistingLabelClient,
@@ -20,6 +24,7 @@ import {
   insertArrivalBrowserArtifact,
   loadArrivalArtifact,
   loadActiveProductConfig,
+  loadTrelloSignShippedTriggerSettings,
   markArrivalDeliveryNoteQaApproved,
   recordArrivalEvent,
   startArrivalRun,
@@ -40,6 +45,8 @@ export type ArrivalRunResult = {
   reviewNotifications: ArrivalReviewNotification[];
   summary: {
     found: number;
+    outlookTriggered: number;
+    trelloSignShippedTriggered: number;
     labelPlanned: number;
     existingLabel: number;
     manualReview: number;
@@ -56,6 +63,7 @@ export type RunArrivalLabelsOptions = {
   correlationId?: string;
   clients?: ArrivalDataClients;
   productConfig?: ProductConfig | null;
+  trelloTriggerSettings?: TrelloSignShippedTriggerSettings | null;
 };
 
 export function todayInBerlin(now: Temporal.Instant = Temporal.Now.instant()) {
@@ -68,10 +76,16 @@ function validateLocalDate(value: string) {
   return value;
 }
 
-function summarize(cases: ArrivalCaseDecision[], reviewNotifications: ArrivalReviewNotification[]): ArrivalRunResult["summary"] {
+function summarize(
+  cases: ArrivalCaseDecision[],
+  arrivals: DhlArrival[],
+  reviewNotifications: ArrivalReviewNotification[],
+): ArrivalRunResult["summary"] {
   const reviewStatuses = new Set(["manual_review", "missing_data", "ambiguous_match", "conflicting_instructions"]);
   return {
     found: cases.length,
+    outlookTriggered: arrivals.filter((entry) => entry.sourceKinds.includes("outlook_dhl")).length,
+    trelloSignShippedTriggered: arrivals.filter((entry) => entry.sourceKinds.includes("trello_sign_shipped")).length,
     labelPlanned: cases.filter((entry) => entry.status === "label_planned").length,
     existingLabel: cases.filter((entry) => entry.status === "existing_label").length,
     manualReview: cases.filter((entry) => reviewStatuses.has(entry.status)).length,
@@ -148,6 +162,9 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
   const productConfig = options.productConfig === undefined
     ? await loadActiveProductConfig()
     : options.productConfig;
+  const trelloTriggerSettings = options.trelloTriggerSettings === undefined
+    ? (options.clients ? null : await loadTrelloSignShippedTriggerSettings())
+    : options.trelloTriggerSettings;
 
   assertWriteGate(mode, productConfig);
 
@@ -169,7 +186,10 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       runtimeClients.trello.listQuentinCards(),
     ]);
     const orders = await runtimeClients.shopify.listRecentOrders(localDate, cards);
-    const arrivals = arrivalsFromDhlMessages(messages, localDate);
+    const arrivals = mergeDhlArrivals(
+      arrivalsFromDhlMessages(messages, localDate),
+      arrivalsFromTrelloSignShipped(cards, localDate, trelloTriggerSettings),
+    );
     const orderIds = [...new Set(orders.map((order) => order.id))];
     const existingByOrder = await runtimeClients.existingLabels.findForOrders(orderIds);
     const hints = Object.fromEntries(cards.map((card) => [card.id, customerNameHintsFromCard(card)]));
@@ -194,11 +214,29 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
     const reviewNotifications = cases
       .map(buildArrivalReviewNotification)
       .filter((notification): notification is ArrivalReviewNotification => Boolean(notification));
-    const summary = summarize(cases, reviewNotifications);
+    const summary = summarize(cases, arrivals, reviewNotifications);
 
     if (run) {
       for (let index = 0; index < cases.length; index += 1) {
         const stored = await upsertArrivalCase({ runId: run.id, arrival: arrivals[index], decision: cases[index] });
+        const trelloTrigger = arrivals[index].trelloTrigger;
+        for (const cardId of trelloTrigger?.cardIds || []) {
+          await recordArrivalEvent({
+            runId: run.id,
+            caseId: stored.id,
+            eventKey: `${cases[index].idempotencyKey}:source:trello_sign_shipped:${cardId}`,
+            eventType: "trello_sign_shipped_trigger_accepted",
+            payload: {
+              trackingNumber: arrivals[index].trackingNumber,
+              cardId,
+              boardId: trelloTrigger?.boardId,
+              listId: trelloTrigger?.listId,
+              latestActivityAt: trelloTrigger?.latestActivityAt,
+              enabledAfter: trelloTrigger?.enabledAfter,
+              titlePatternVersion: trelloTrigger?.titlePatternVersion,
+            },
+          });
+        }
         if (mode === "execute" && cases[index].status === "label_planned") {
           if (!productConfig) throw new Error("Aktive DPD-Produktkonfiguration fehlt.");
           if (cases[index].deliveryNoteRequired) {
@@ -225,6 +263,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
             destinationClass: cases[index].destinationClass,
             deliveryNoteRequired: cases[index].deliveryNoteRequired,
             deliveryNoteStatus: cases[index].deliveryNoteStatus,
+            arrivalSources: arrivals[index].sourceKinds,
             reasons: cases[index].reasons,
           },
         });

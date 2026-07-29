@@ -6,7 +6,12 @@ import type {
   ShopifyOrderEvidence,
   TrelloCardEvidence,
 } from "./domain";
-import { ARRIVAL_LABEL_TIMEZONE, normalizeHumanText, orderNameFromTrelloCard } from "./domain";
+import {
+  ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID,
+  ARRIVAL_LABEL_TIMEZONE,
+  normalizeHumanText,
+  orderNameFromTrelloCard,
+} from "./domain";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -177,12 +182,12 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
     async listQuentinCards() {
       const apiKey = requiredEnv("TRELLO_API_KEY");
       const token = requiredEnv("TRELLO_TOKEN");
-      const boardId = String(process.env.ARRIVAL_LABEL_TRELLO_BOARD_ID || "62bae9b97705e7419ed64593").trim();
+      const boardId = String(process.env.ARRIVAL_LABEL_TRELLO_BOARD_ID || ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID).trim();
       if (!/^[a-f0-9]{24}$/i.test(boardId)) throw new ArrivalIntegrationError("Quentin Trello Board-ID ist ungueltig.", "trello_board_invalid");
       const cardsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/cards`);
       cardsUrl.searchParams.set("key", apiKey);
       cardsUrl.searchParams.set("token", token);
-      cardsUrl.searchParams.set("fields", "id,name,url,desc,idList,closed");
+      cardsUrl.searchParams.set("fields", "id,name,url,desc,idBoard,idList,closed,dateLastActivity");
       cardsUrl.searchParams.set("filter", "open");
       const listsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/lists`);
       listsUrl.searchParams.set("key", apiKey);
@@ -193,7 +198,16 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
         fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_cards" }),
         fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_lists" }),
       ]);
-      const cards = await cardsResponse.json() as Array<{ id?: string; name?: string; url?: string; desc?: string; idList?: string; closed?: boolean }>;
+      const cards = await cardsResponse.json() as Array<{
+        id?: string;
+        name?: string;
+        url?: string;
+        desc?: string;
+        idBoard?: string;
+        idList?: string;
+        closed?: boolean;
+        dateLastActivity?: string;
+      }>;
       const lists = await listsResponse.json() as Array<{ id?: string; name?: string }>;
       const listNames = new Map(lists.filter((list) => list.id && list.name).map((list) => [list.id as string, list.name as string]));
       return cards
@@ -203,8 +217,10 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
           name: card.name as string,
           url: card.url as string,
           description: card.desc || null,
+          boardId: card.idBoard || null,
           listId: card.idList || null,
           listName: card.idList ? listNames.get(card.idList) || null : null,
+          dateLastActivity: card.dateLastActivity || null,
         }));
     },
   };

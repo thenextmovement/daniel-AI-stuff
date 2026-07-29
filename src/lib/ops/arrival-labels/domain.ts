@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 
 export const ARRIVAL_LABEL_TIMEZONE = "Europe/Berlin" as const;
+export const ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID = "62bae9b97705e7419ed64593" as const;
+export const ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID = "6347e09cb326e6014856bc3b" as const;
+export const ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION = "dhl-10-digit-suffix-v1" as const;
 
 export type ArrivalRunMode = "dry_run" | "execute";
 export type ShippingClass = "standard" | "express" | "express_09" | "express_12" | "express_18" | "urgent" | "special_case" | "unknown";
@@ -30,9 +33,18 @@ export type DhlArrival = {
   trackingNumber: string;
   lastSix: string;
   localDate: string;
-  deliveryState: "due_today" | "delivered_today";
+  deliveryState: "unknown" | "due_today" | "delivered_today";
   expectedArrivalAt: string | null;
   messageIds: string[];
+  sourceKinds: Array<"outlook_dhl" | "trello_sign_shipped">;
+  trelloTrigger: {
+    boardId: string;
+    listId: string;
+    cardIds: string[];
+    latestActivityAt: string;
+    enabledAfter: string;
+    titlePatternVersion: typeof ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION;
+  } | null;
 };
 
 export type TrelloCardEvidence = {
@@ -40,8 +52,19 @@ export type TrelloCardEvidence = {
   name: string;
   url: string;
   description?: string | null;
+  boardId?: string | null;
   listId?: string | null;
   listName?: string | null;
+  dateLastActivity?: string | null;
+};
+
+export type TrelloSignShippedTriggerSettings = {
+  enabled: boolean;
+  enabledAfter: string;
+  boardId: string;
+  sourceListId: string;
+  sourceListName: "Sign SHIPPED (NEON TRIP)";
+  titlePatternVersion: typeof ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION;
 };
 
 export type ShopifyFulfillmentEvidence = {
@@ -362,6 +385,12 @@ export function lastSixOfTracking(trackingNumber: string) {
   return normalized.slice(-6);
 }
 
+export function extractTrailingDhlExpressTracking(cardName: string) {
+  const normalized = String(cardName || "").trim();
+  const match = normalized.match(/(?:^|[\s|:/-])(\d{10})$/);
+  return match?.[1] || null;
+}
+
 export function arrivalsFromDhlMessages(messages: DhlMailEvidence[], localDate: string) {
   const byTracking = new Map<string, DhlArrival>();
   for (const message of messages) {
@@ -393,8 +422,120 @@ export function arrivalsFromDhlMessages(messages: DhlMailEvidence[], localDate: 
         deliveryState,
         expectedArrivalAt: null,
         messageIds: [...new Set([...(previous?.messageIds || []), message.messageId])],
+        sourceKinds: ["outlook_dhl"],
+        trelloTrigger: null,
       });
     }
+  }
+  return [...byTracking.values()].sort((a, b) => a.trackingNumber.localeCompare(b.trackingNumber));
+}
+
+export function arrivalsFromTrelloSignShipped(
+  cards: TrelloCardEvidence[],
+  localDate: string,
+  settings: TrelloSignShippedTriggerSettings | null,
+) {
+  if (!settings?.enabled) return [];
+  if (
+    settings.boardId !== ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID
+    || settings.sourceListId !== ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID
+    || normalizeHumanText(settings.sourceListName) !== "sign shipped neon trip"
+    || settings.titlePatternVersion !== ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION
+  ) {
+    throw new Error("Trello-Sign-SHIPPED-Triggerkonfiguration ist ungueltig.");
+  }
+
+  let enabledAfter: Temporal.Instant;
+  try {
+    enabledAfter = Temporal.Instant.from(settings.enabledAfter);
+  } catch {
+    throw new Error("Trello-Sign-SHIPPED-Aktivierungszeitpunkt ist ungueltig.");
+  }
+
+  const byTracking = new Map<string, DhlArrival>();
+  for (const card of cards) {
+    if (
+      card.boardId !== settings.boardId
+      || card.listId !== settings.sourceListId
+      || normalizeHumanText(card.listName) !== "sign shipped neon trip"
+      || !card.dateLastActivity
+    ) continue;
+
+    let activityAt: Temporal.Instant;
+    try {
+      activityAt = Temporal.Instant.from(card.dateLastActivity);
+    } catch {
+      continue;
+    }
+    if (Temporal.Instant.compare(activityAt, enabledAfter) < 0) continue;
+
+    const trackingNumber = extractTrailingDhlExpressTracking(card.name);
+    if (!trackingNumber) continue;
+    const previous = byTracking.get(trackingNumber);
+    const previousTrigger = previous?.trelloTrigger;
+    byTracking.set(trackingNumber, {
+      trackingNumber,
+      lastSix: lastSixOfTracking(trackingNumber),
+      localDate,
+      deliveryState: "unknown",
+      expectedArrivalAt: null,
+      messageIds: [],
+      sourceKinds: ["trello_sign_shipped"],
+      trelloTrigger: {
+        boardId: settings.boardId,
+        listId: settings.sourceListId,
+        cardIds: [...new Set([...(previousTrigger?.cardIds || []), card.id])].sort(),
+        latestActivityAt: previousTrigger && Temporal.Instant.compare(
+          Temporal.Instant.from(previousTrigger.latestActivityAt),
+          activityAt,
+        ) > 0
+          ? previousTrigger.latestActivityAt
+          : activityAt.toString(),
+        enabledAfter: enabledAfter.toString(),
+        titlePatternVersion: settings.titlePatternVersion,
+      },
+    });
+  }
+  return [...byTracking.values()].sort((a, b) => a.trackingNumber.localeCompare(b.trackingNumber));
+}
+
+export function mergeDhlArrivals(...groups: DhlArrival[][]) {
+  const byTracking = new Map<string, DhlArrival>();
+  const stateRank = { unknown: 0, due_today: 1, delivered_today: 2 } as const;
+  for (const arrival of groups.flat()) {
+    const previous = byTracking.get(arrival.trackingNumber);
+    if (!previous) {
+      byTracking.set(arrival.trackingNumber, arrival);
+      continue;
+    }
+    const latestTrelloActivity = previous.trelloTrigger && arrival.trelloTrigger
+      ? (Temporal.Instant.compare(
+        Temporal.Instant.from(previous.trelloTrigger.latestActivityAt),
+        Temporal.Instant.from(arrival.trelloTrigger.latestActivityAt),
+      ) >= 0
+        ? previous.trelloTrigger.latestActivityAt
+        : arrival.trelloTrigger.latestActivityAt)
+      : previous.trelloTrigger?.latestActivityAt || arrival.trelloTrigger?.latestActivityAt;
+    const trelloTrigger = previous.trelloTrigger || arrival.trelloTrigger
+      ? {
+        ...(previous.trelloTrigger || arrival.trelloTrigger)!,
+        cardIds: [...new Set([
+          ...(previous.trelloTrigger?.cardIds || []),
+          ...(arrival.trelloTrigger?.cardIds || []),
+        ])].sort(),
+        latestActivityAt: latestTrelloActivity as string,
+      }
+      : null;
+    byTracking.set(arrival.trackingNumber, {
+      ...previous,
+      deliveryState: stateRank[arrival.deliveryState] > stateRank[previous.deliveryState]
+        ? arrival.deliveryState
+        : previous.deliveryState,
+      expectedArrivalAt: previous.expectedArrivalAt || arrival.expectedArrivalAt,
+      messageIds: [...new Set([...previous.messageIds, ...arrival.messageIds])].sort(),
+      sourceKinds: [...new Set([...previous.sourceKinds, ...arrival.sourceKinds])].sort() as DhlArrival["sourceKinds"],
+      trelloTrigger,
+    });
   }
   return [...byTracking.values()].sort((a, b) => a.trackingNumber.localeCompare(b.trackingNumber));
 }

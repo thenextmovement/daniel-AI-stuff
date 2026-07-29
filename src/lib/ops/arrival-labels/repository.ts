@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
-import type { ArrivalCaseDecision, DhlArrival, ExistingDpdEvidence, ProductConfig } from "./domain";
+import {
+  ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION,
+  type ArrivalCaseDecision,
+  type DhlArrival,
+  type ExistingDpdEvidence,
+  type ProductConfig,
+  type TrelloSignShippedTriggerSettings,
+} from "./domain";
 import type { ArrivalDataClients } from "./clients";
 import type { ArrivalReviewNotification } from "./review-notifications";
 import { readBoundedResponseBytes } from "./printing";
@@ -18,6 +25,15 @@ type ProductConfigRow = {
   delivery_note_print_media: string | null;
   pdf_layout_config: Record<string, unknown> | null;
   storage_bucket: string | null;
+};
+
+type TrelloTriggerSettingsRow = {
+  enabled: boolean;
+  enabled_after: string;
+  board_id: string;
+  source_list_id: string;
+  source_list_name: string;
+  title_pattern_version: string;
 };
 
 type RunRow = { id: string; correlation_id: string };
@@ -205,6 +221,33 @@ export async function loadActiveProductConfig(): Promise<ProductConfig | null> {
     deliveryNotePrintMedia: row.delivery_note_print_media,
     pdfLayoutConfig: row.pdf_layout_config as ProductConfig["pdfLayoutConfig"],
     storageBucket: row.storage_bucket,
+  };
+}
+
+export async function loadTrelloSignShippedTriggerSettings(): Promise<TrelloSignShippedTriggerSettings | null> {
+  const rows = await supabaseRequest<TrelloTriggerSettingsRow[]>("arrival_label_trello_trigger_settings", undefined, {
+    select: "enabled,enabled_after,board_id,source_list_id,source_list_name,title_pattern_version",
+    singleton: "eq.true",
+    limit: 2,
+  });
+  if (rows.length > 1) throw new Error("Mehr als eine Trello-Sign-SHIPPED-Triggerkonfiguration gefunden.");
+  const row = rows[0];
+  if (!row) return null;
+  if (
+    !/^[a-f0-9]{24}$/i.test(row.board_id)
+    || !/^[a-f0-9]{24}$/i.test(row.source_list_id)
+    || row.source_list_name !== "Sign SHIPPED (NEON TRIP)"
+    || row.title_pattern_version !== ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION
+  ) {
+    throw new Error("Trello-Sign-SHIPPED-Triggerkonfiguration ist ungueltig.");
+  }
+  return {
+    enabled: row.enabled,
+    enabledAfter: row.enabled_after,
+    boardId: row.board_id,
+    sourceListId: row.source_list_id,
+    sourceListName: row.source_list_name,
+    titlePatternVersion: ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION,
   };
 }
 
@@ -581,6 +624,8 @@ export async function upsertArrivalCase(input: {
       status: input.decision.status,
       manual_review_reason: input.decision.manualReviewReason,
       source_snapshot: {
+        arrivalSources: input.arrival.sourceKinds,
+        trelloTrigger: input.arrival.trelloTrigger,
         reasons: input.decision.reasons,
         shopifyAdminUrl: order?.adminUrl || null,
         shopifyFinancialStatus: order?.financialStatus || null,
@@ -604,6 +649,8 @@ export async function upsertArrivalCase(input: {
       decision_status: input.decision.status,
       decision_snapshot: {
         idempotencyKey: input.decision.idempotencyKey,
+        arrivalSources: input.arrival.sourceKinds,
+        trelloTrigger: input.arrival.trelloTrigger,
         shippingClass: input.decision.shippingClass,
         destinationCountryCode: input.decision.destinationCountryCode,
         destinationClass: input.decision.destinationClass,

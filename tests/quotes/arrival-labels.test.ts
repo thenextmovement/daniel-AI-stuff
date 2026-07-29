@@ -10,7 +10,11 @@ import {
   type ArrivalDataClients,
 } from "../../src/lib/ops/arrival-labels/clients";
 import {
+  ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID,
+  ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID,
+  ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION,
   arrivalsFromDhlMessages,
+  arrivalsFromTrelloSignShipped,
   assessDestinationGate,
   assessShopifyAutomationGate,
   assessTrelloAutomationGate,
@@ -18,10 +22,12 @@ import {
   classifyShipping,
   decideArrivalCase,
   extractDhlTrackingNumbers,
+  extractTrailingDhlExpressTracking,
   findTrelloCardForTracking,
   isAutomationSafeOrderNote,
   isDimmerSpecialCase,
   lastSixOfTracking,
+  mergeDhlArrivals,
   relevantOrderNote,
   resolveShopifyOrder,
   selectDpdProduct,
@@ -29,6 +35,7 @@ import {
   type ProductConfig,
   type ShopifyOrderEvidence,
   type TrelloCardEvidence,
+  type TrelloSignShippedTriggerSettings,
 } from "../../src/lib/ops/arrival-labels/domain";
 import { runArrivalLabels } from "../../src/lib/ops/arrival-labels/service";
 
@@ -77,6 +84,15 @@ const config: ProductConfig = {
   deliveryNotePrintMedia: "A4",
 };
 
+const trelloTriggerSettings: TrelloSignShippedTriggerSettings = {
+  enabled: true,
+  enabledAfter: "2026-07-20T08:00:00Z",
+  boardId: ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID,
+  sourceListId: ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID,
+  sourceListName: "Sign SHIPPED (NEON TRIP)",
+  titlePatternVersion: ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION,
+};
+
 function arrival(trackingNumber = "1234567890") {
   return {
     trackingNumber,
@@ -85,11 +101,25 @@ function arrival(trackingNumber = "1234567890") {
     deliveryState: "due_today" as const,
     expectedArrivalAt: null,
     messageIds: ["mail-1"],
+    sourceKinds: ["outlook_dhl" as const],
+    trelloTrigger: null,
   };
 }
 
 function card(name = "1234567890 | #NEONT100 | Ada Beispiel"): TrelloCardEvidence {
   return { id: "card-1", name, url: "https://trello.example.invalid/card-1" };
+}
+
+function signShippedCard(name = "#NEONT100 | Ada Beispiel | 1234567890"): TrelloCardEvidence {
+  return {
+    id: "66a000000000000000000001",
+    name,
+    url: "https://trello.example.invalid/sign-shipped",
+    boardId: ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID,
+    listId: ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID,
+    listName: "Sign SHIPPED (NEON TRIP)",
+    dateLastActivity: "2026-07-20T08:01:00Z",
+  };
 }
 
 test("DHL tracking extraction is contextual, complete and deduplicated", () => {
@@ -145,6 +175,61 @@ test("Trello matching requires the complete incoming DHL number", () => {
   const cards = [card("2619113486 | #NEONT100"), card("3486 | falscher Kurztreffer")];
   assert.equal(findTrelloCardForTracking(cards, "2619113486").card?.name, cards[0].name);
   assert.equal(findTrelloCardForTracking(cards, "9999993486").card, null);
+});
+
+test("Sign SHIPPED accepts only an exact ten-digit DHL number at the title end after activation", () => {
+  assert.equal(extractTrailingDhlExpressTracking("#NEONT100 | 2619113486"), "2619113486");
+  for (const invalid of [
+    "#NEONT100 | 2619113486 | Eilig",
+    "#NEONT100 | 12619113486",
+    "#NEONT100 | 261911348",
+    "#NEONT100x2619113486",
+  ]) {
+    assert.equal(extractTrailingDhlExpressTracking(invalid), null, invalid);
+  }
+
+  const result = arrivalsFromTrelloSignShipped(
+    [signShippedCard("#NEONT100 | Ada Beispiel | 2619113486")],
+    "2026-07-20",
+    trelloTriggerSettings,
+  );
+  assert.equal(result.length, 1);
+  assert.equal(result[0].trackingNumber, "2619113486");
+  assert.equal(result[0].lastSix, "113486");
+  assert.equal(result[0].deliveryState, "unknown");
+  assert.deepEqual(result[0].messageIds, []);
+  assert.deepEqual(result[0].sourceKinds, ["trello_sign_shipped"]);
+});
+
+test("Sign SHIPPED fails closed for disabled, historical, wrong-board and wrong-list cards", () => {
+  const valid = signShippedCard();
+  const variants = [
+    { ...valid, dateLastActivity: "2026-07-20T07:59:59Z" },
+    { ...valid, boardId: "66b000000000000000000001" },
+    { ...valid, listId: "66c000000000000000000001" },
+    { ...valid, listName: "Sign Arrived" },
+  ];
+  assert.deepEqual(arrivalsFromTrelloSignShipped([valid], "2026-07-20", { ...trelloTriggerSettings, enabled: false }), []);
+  for (const variant of variants) {
+    assert.deepEqual(arrivalsFromTrelloSignShipped([variant], "2026-07-20", trelloTriggerSettings), []);
+  }
+});
+
+test("Outlook and Trello signals merge by full DHL number and preserve delivery evidence", () => {
+  const outlook = arrivalsFromDhlMessages([{
+    messageId: "mail-merge",
+    receivedAt: "2026-07-20T08:05:00Z",
+    senderAddress: "DHL Express <tracking@express.dhl.com>",
+    subject: "Ihre DHL Express Sendung kommt HEUTE",
+    bodyText: "Sendungsnummer: 1234567890",
+  }], "2026-07-20");
+  const trello = arrivalsFromTrelloSignShipped([signShippedCard()], "2026-07-20", trelloTriggerSettings);
+  const merged = mergeDhlArrivals(outlook, trello);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].deliveryState, "due_today");
+  assert.deepEqual(merged[0].sourceKinds, ["outlook_dhl", "trello_sign_shipped"]);
+  assert.deepEqual(merged[0].messageIds, ["mail-merge"]);
+  assert.deepEqual(merged[0].trelloTrigger?.cardIds, ["66a000000000000000000001"]);
 });
 
 test("Shopify matching prefers an explicit exact order number and rejects ambiguity", () => {
@@ -494,6 +579,26 @@ test("repeated dry runs produce the same decisions and idempotency keys", async 
   const second = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config });
   assert.deepEqual(first.cases, second.cases);
   assert.equal(first.cases[0].status, "label_planned");
+});
+
+test("Sign SHIPPED alone plans the label immediately while retaining unknown delivery state", async () => {
+  const clients: ArrivalDataClients = {
+    outlook: { async listMessagesForLocalDate() { return []; } },
+    trello: { async listQuentinCards() { return [signShippedCard()]; } },
+    shopify: { async listRecentOrders() { return [standardOrder]; } },
+    existingLabels: { async findForOrders() { return new Map(); } },
+  };
+  const result = await runArrivalLabels({
+    localDate: "2026-07-20",
+    clients,
+    productConfig: config,
+    trelloTriggerSettings,
+  });
+  assert.equal(result.cases[0].status, "label_planned");
+  assert.equal(result.cases[0].lastSix, "567890");
+  assert.match(result.cases[0].expectedArrival, /\(unknown\)$/);
+  assert.equal(result.summary.outlookTriggered, 0);
+  assert.equal(result.summary.trelloSignShippedTriggered, 1);
 });
 
 test("a pickup order produces no label plan and one internal review notification preview", async () => {

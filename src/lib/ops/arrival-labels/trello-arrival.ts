@@ -1,8 +1,10 @@
 import { ArrivalIntegrationError, fetchWithRetry, requiredEnv } from "./clients";
-import { normalizeHumanText } from "./domain";
+import {
+  ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID,
+  ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID,
+  normalizeHumanText,
+} from "./domain";
 
-const DEFAULT_QUENTIN_BOARD_ID = "62bae9b97705e7419ed64593";
-const DEFAULT_SIGN_SHIPPED_LIST_ID = "6347e09cb326e6014856bc3b";
 const DEFAULT_SIGN_ARRIVED_LIST_ID = "646c788ae63245624b6d6a7a";
 
 type TrelloCard = {
@@ -93,8 +95,8 @@ export async function inspectExactTrelloArrivalTarget(input: {
   }
 
   const authentication = { key: requiredEnv("TRELLO_API_KEY"), token: requiredEnv("TRELLO_TOKEN") };
-  const boardId = configuredId("ARRIVAL_LABEL_TRELLO_BOARD_ID", DEFAULT_QUENTIN_BOARD_ID);
-  const sourceListId = configuredId("ARRIVAL_LABEL_TRELLO_SIGN_SHIPPED_LIST_ID", DEFAULT_SIGN_SHIPPED_LIST_ID);
+  const boardId = configuredId("ARRIVAL_LABEL_TRELLO_BOARD_ID", ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID);
+  const sourceListId = configuredId("ARRIVAL_LABEL_TRELLO_SIGN_SHIPPED_LIST_ID", ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID);
   const targetListId = configuredId("ARRIVAL_LABEL_TRELLO_SIGN_ARRIVED_LIST_ID", DEFAULT_SIGN_ARRIVED_LIST_ID);
   if (sourceListId === targetListId) {
     throw new TrelloArrivalProjectionError("Trello-Quell- und Zielliste sind identisch.", "trello_arrival_configuration_invalid");
