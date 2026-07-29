@@ -2079,6 +2079,13 @@ export async function listDesignJobs(input: {
   return summaries;
 }
 
+export async function readDesignJob(jobId: string): Promise<DesignJobSummary> {
+  const job = await getDesignJob(jobId);
+  const summary = mapDesignJobSummary(job);
+  summary.assets = await listDesignAssetsForJob(job.id);
+  return summary;
+}
+
 export async function listDesignAssetsForJob(jobId: string): Promise<DesignAssetSummary[]> {
   const normalizedJobId = trimNullable(jobId);
   if (!normalizedJobId) return [];

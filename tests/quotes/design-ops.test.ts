@@ -35,6 +35,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   const client = readFileSync("src/app/ops/design/page-client.tsx", "utf8");
   const route = readFileSync("src/app/api/ops/design/route.ts", "utf8");
   const jobsRoute = readFileSync("src/app/api/ops/design/jobs/route.ts", "utf8");
+  const jobReadRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/route.ts", "utf8");
   const queueRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/queue/route.ts", "utf8");
   const generateRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/generate/route.ts", "utf8");
   const canaryRoute = readFileSync("src/app/api/ops/design/canaries/route.ts", "utf8");
@@ -153,6 +154,11 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(jobsRoute, /referenceAttachmentIds/);
   assert.match(jobsRoute, /referenceAssetId/);
 
+  assert.match(jobReadRoute, /export async function GET/);
+  assert.doesNotMatch(jobReadRoute, /export async function (POST|PATCH|DELETE)/);
+  assert.match(jobReadRoute, /readDesignJob/);
+  assert.match(jobReadRoute, /hasOpsSession/);
+
   assert.match(queueRoute, /export async function POST/);
   assert.doesNotMatch(queueRoute, /export async function (GET|PATCH|DELETE)/);
   assert.match(queueRoute, /queueDesignJob/);
@@ -230,6 +236,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.doesNotMatch(service, /buildReconstructedTrelloPrompt/);
   assert.doesNotMatch(service, /Fallback-Prompt aus Ops-Kontext/);
   assert.match(service, /createDesignJobDraft/);
+  assert.match(service, /readDesignJob/);
   assert.match(service, /ensureControlTowerMockupCanary/);
   assert.match(service, /control_tower_canary/);
   assert.match(service, /no_customer_data/);

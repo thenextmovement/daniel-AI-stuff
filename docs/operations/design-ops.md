@@ -43,6 +43,7 @@ Ops UI:
 
 - `GET /api/ops/design?query=...`
 - `GET /api/ops/design/jobs?status=queued&limit=20`
+- `GET /api/ops/design/jobs/:jobId`
 - `POST /api/ops/design/jobs`
 - `POST /api/ops/design/jobs/:jobId/queue`
 - `POST /api/ops/design/jobs/:jobId/generate`
