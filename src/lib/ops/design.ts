@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
+import { createCanvas } from "@napi-rs/canvas";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
 import { addTrelloCardAttachment, addTrelloCardComment, deleteTrelloCardAttachment, downloadTrelloAttachment, getTrelloAttachment, getTrelloCard, getTrelloCardVisuals, getTrelloList, renameTrelloCardAttachment, searchTrelloCards } from "@/lib/quotes/trello";
 import type { TrelloAttachment } from "@/lib/quotes/types";
-import { supabaseRequest, supabaseRpc, SupabaseRestError } from "@/lib/quotes/supabase-rest";
+import { supabaseRequest, supabaseRpc, SupabaseRestError, uploadImageToSupabaseStorage } from "@/lib/quotes/supabase-rest";
 import { getOfferById, getOfferByTrelloCardId, patchOfferById, type OpsOfferItem, type OpsOfferPatchInput, type OpsOfferPatchResult } from "@/lib/ops/offers";
 import {
   getCustomerRecordByRequestId,
@@ -197,6 +198,37 @@ export type DesignGenerateResult = {
   asset: DesignAssetSummary | null;
   model: string;
   storagePath: string | null;
+};
+
+export const CONTROL_TOWER_MOCKUP_CANARY_CONFIRMATION = "CONTROL_TOWER_MOCKUP_CANARY_V1";
+const CONTROL_TOWER_MOCKUP_CANARY_SOURCE_KEY = "control-tower-mockup-canary-source-v1";
+const CONTROL_TOWER_MOCKUP_CANARY_SOURCE_NAME = "Control_Tower_Canary_Mockup_AI_1.jpg";
+const CONTROL_TOWER_MOCKUP_CANARY_SOURCE_PATH = "control-tower-canary/source-v1.jpg";
+const CONTROL_TOWER_MOCKUP_CANARY_PROMPT = [
+  "Internal Control Tower acceptance test only.",
+  "Preserve the white background, dark frame and all existing words exactly.",
+  "Add one small green verification check inside the lower-right corner.",
+  "Do not add brands, people, customer data, contact data or other objects.",
+].join(" ");
+
+export type ControlTowerMockupCanaryEvidence = {
+  passed: boolean;
+  sourceQuery: string | null;
+  status: string;
+  requestIdAbsent: boolean;
+  trelloCardIdAbsent: boolean;
+  offerIdAbsent: boolean;
+};
+
+export type ControlTowerMockupCanaryProvision = {
+  job: DesignJobDraft;
+  evidence: ControlTowerMockupCanaryEvidence;
+  sourceAsset: {
+    id: string;
+    assetKey: string;
+    publicUrl: string;
+    name: string;
+  };
 };
 
 export type DesignWorkerJob = DesignJobSummary & {
@@ -418,6 +450,36 @@ const QUOTE_IMAGE_VARIANT_SELECT =
 function trimNullable(value: unknown) {
   const normalized = String(value ?? "").trim();
   return normalized || null;
+}
+
+export function controlTowerMockupCanaryJobKey(idempotencyKey: string) {
+  const normalized = String(idempotencyKey || "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$/.test(normalized)) {
+    throw new QuoteValidationError("Canary-Idempotency-Key ist ungueltig.");
+  }
+  return `control-tower-canary:${normalized}`;
+}
+
+export function controlTowerMockupCanaryEvidence(
+  job: Pick<DesignJobSummary, "sourceQuery" | "status" | "requestId" | "trelloCardId" | "offerId">,
+  expectedSourceQuery: string,
+): ControlTowerMockupCanaryEvidence {
+  const evidence = {
+    sourceQuery: job.sourceQuery,
+    status: job.status,
+    requestIdAbsent: !job.requestId,
+    trelloCardIdAbsent: !job.trelloCardId,
+    offerIdAbsent: !job.offerId,
+  };
+  return {
+    passed:
+      job.sourceQuery === expectedSourceQuery &&
+      job.status === "draft" &&
+      evidence.requestIdAbsent &&
+      evidence.trelloCardIdAbsent &&
+      evidence.offerIdAbsent,
+    ...evidence,
+  };
 }
 
 export function extractTrelloMockupPromptBlocks(description: string | null | undefined): DesignTrelloPromptBlocks {
@@ -926,6 +988,250 @@ export async function loadDesignWorkspaceByRequestId(requestId: string): Promise
   const [record] = await listCustomerRecordsByRequestIds([requestId], { includeTrello: true });
   if (!record) throw new QuoteValidationError("Kein Fall für diese Request-ID gefunden.");
   return loadDesignWorkspace(record.requestId);
+}
+
+function renderControlTowerMockupCanarySource() {
+  const canvas = createCanvas(1024, 1024);
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, 1024, 1024);
+  context.strokeStyle = "#111827";
+  context.lineWidth = 18;
+  context.strokeRect(90, 90, 844, 844);
+  context.fillStyle = "#111827";
+  context.textAlign = "center";
+  context.font = "700 64px sans-serif";
+  context.fillText("CONTROL TOWER", 512, 430);
+  context.font = "500 38px sans-serif";
+  context.fillText("INTERNAL MOCKUP CANARY", 512, 505);
+  context.fillStyle = "#6b7280";
+  context.font = "400 28px sans-serif";
+  context.fillText("NO CUSTOMER DATA", 512, 575);
+  return canvas.toBuffer("image/jpeg");
+}
+
+function assertControlTowerCanaryJob(job: DesignJobRow, expectedSourceQuery: string) {
+  const metadata = job.metadata || {};
+  const evidence = controlTowerMockupCanaryEvidence(mapDesignJobSummary(job), expectedSourceQuery);
+  if (
+    metadata.source !== "control_tower_canary" ||
+    metadata.canary !== true ||
+    metadata.no_customer_data !== true ||
+    !evidence.passed
+  ) {
+    throw new QuoteValidationError("Bestehender Canary-Job verletzt die Isolationsgrenzen.", [], 409);
+  }
+  return evidence;
+}
+
+export async function ensureControlTowerMockupCanary(input: {
+  idempotencyKey: string;
+  confirmation: string;
+  operatorName?: string | null;
+}): Promise<ControlTowerMockupCanaryProvision> {
+  if (String(input.confirmation || "").trim() !== CONTROL_TOWER_MOCKUP_CANARY_CONFIRMATION) {
+    throw new QuoteValidationError("Canary-Bestaetigung fehlt.", [], 400);
+  }
+  const jobKey = controlTowerMockupCanaryJobKey(input.idempotencyKey);
+  const sourceQuery = jobKey;
+  const operatorName = trimNullable(input.operatorName) || "Agent Control Tower";
+
+  let sourceAsset = (
+    await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+      select: DESIGN_ASSET_SELECT,
+      asset_key: `eq.${CONTROL_TOWER_MOCKUP_CANARY_SOURCE_KEY}`,
+      limit: 1,
+    })
+  )[0] || null;
+  if (!sourceAsset) {
+    const bytes = renderControlTowerMockupCanarySource();
+    const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const publicUrl = await uploadImageToSupabaseStorage({
+      bucket: designAssetBucket(),
+      path: CONTROL_TOWER_MOCKUP_CANARY_SOURCE_PATH,
+      contentType: "image/jpeg",
+      body,
+    });
+    const rows = await supabaseRequest<DesignAssetRow[]>(
+      "design_assets",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          asset_key: CONTROL_TOWER_MOCKUP_CANARY_SOURCE_KEY,
+          job_id: null,
+          prompt_version_id: null,
+          request_id: null,
+          trello_card_id: null,
+          source: "manual_upload",
+          status: "stored",
+          storage_bucket: designAssetBucket(),
+          storage_path: CONTROL_TOWER_MOCKUP_CANARY_SOURCE_PATH,
+          public_url: publicUrl,
+          trello_attachment_id: null,
+          name: CONTROL_TOWER_MOCKUP_CANARY_SOURCE_NAME,
+          mime_type: "image/jpeg",
+          width: 1024,
+          height: 1024,
+          metadata: {
+            source: "control_tower_canary",
+            canary: true,
+            no_customer_data: true,
+          },
+        }),
+        headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      },
+      { on_conflict: "asset_key" },
+    );
+    sourceAsset = rows[0] || null;
+  }
+  if (
+    !sourceAsset ||
+    !sourceAsset.public_url ||
+    sourceAsset.job_id ||
+    sourceAsset.prompt_version_id ||
+    sourceAsset.request_id ||
+    sourceAsset.trello_card_id ||
+    sourceAsset.metadata?.source !== "control_tower_canary" ||
+    sourceAsset.metadata?.canary !== true ||
+    sourceAsset.metadata?.no_customer_data !== true
+  ) {
+    throw new QuoteValidationError("Canary-Quellasset verletzt die Isolationsgrenzen.", [], 409);
+  }
+
+  let job = (
+    await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, {
+      select: DESIGN_JOB_SELECT,
+      job_key: `eq.${jobKey}`,
+      limit: 1,
+    })
+  )[0] || null;
+  if (!job) {
+    try {
+      const rows = await supabaseRequest<DesignJobRow[]>("design_jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          job_key: jobKey,
+          request_id: null,
+          trello_card_id: null,
+          trello_card_url: null,
+          offer_id: null,
+          source_query: sourceQuery,
+          action_type: "manual_edit",
+          action_value: null,
+          source_attachment_id: null,
+          source_attachment_name: CONTROL_TOWER_MOCKUP_CANARY_SOURCE_NAME,
+          source_fingerprint: stableHash([
+            sourceAsset.id,
+            sourceAsset.public_url,
+            CONTROL_TOWER_MOCKUP_CANARY_SOURCE_NAME,
+          ].join("|")),
+          status: "draft",
+          operator_name: operatorName,
+          created_by: operatorName,
+          metadata: {
+            source: "control_tower_canary",
+            canary: true,
+            no_customer_data: true,
+            reference_attachments: [],
+            reference_assets: [
+              {
+                assetId: sourceAsset.id,
+                publicUrl: sourceAsset.public_url,
+                name: CONTROL_TOWER_MOCKUP_CANARY_SOURCE_NAME,
+                mimeType: "image/jpeg",
+              },
+            ],
+          },
+        }),
+        headers: { Prefer: "return=representation" },
+      });
+      job = rows[0] || null;
+    } catch (error) {
+      if (!(error instanceof SupabaseRestError) || error.status !== 409) throw error;
+      job = (
+        await supabaseRequest<DesignJobRow[]>("design_jobs", undefined, {
+          select: DESIGN_JOB_SELECT,
+          job_key: `eq.${jobKey}`,
+          limit: 1,
+        })
+      )[0] || null;
+    }
+  }
+  if (!job) throw new QuoteValidationError("Canary-Job konnte nicht erstellt werden.");
+  const evidence = assertControlTowerCanaryJob(job, sourceQuery);
+
+  let promptVersion = job.prompt_version_id
+    ? (
+        await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", undefined, {
+          select: DESIGN_PROMPT_VERSION_SELECT,
+          id: `eq.${job.prompt_version_id}`,
+          limit: 1,
+        })
+      )[0] || null
+    : null;
+  if (!promptVersion) {
+    try {
+      const rows = await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", {
+        method: "POST",
+        body: JSON.stringify({
+          job_id: job.id,
+          version_number: 1,
+          prompt_title: "Control Tower Internal Mockup Canary",
+          prompt_text: CONTROL_TOWER_MOCKUP_CANARY_PROMPT,
+          prompt_hash: stableHash(CONTROL_TOWER_MOCKUP_CANARY_PROMPT),
+          source: "manual",
+          edited_by: operatorName,
+          metadata: {
+            source: "control_tower_canary",
+            canary: true,
+            no_customer_data: true,
+          },
+        }),
+        headers: { Prefer: "return=representation" },
+      });
+      promptVersion = rows[0] || null;
+    } catch (error) {
+      if (!(error instanceof SupabaseRestError) || error.status !== 409) throw error;
+      promptVersion = (
+        await supabaseRequest<DesignPromptVersionRow[]>("design_prompt_versions", undefined, {
+          select: DESIGN_PROMPT_VERSION_SELECT,
+          job_id: `eq.${job.id}`,
+          version_number: "eq.1",
+          limit: 1,
+        })
+      )[0] || null;
+    }
+  }
+  if (!promptVersion) throw new QuoteValidationError("Canary-Prompt konnte nicht erstellt werden.");
+  if (promptVersion.prompt_hash !== stableHash(CONTROL_TOWER_MOCKUP_CANARY_PROMPT)) {
+    throw new QuoteValidationError("Bestehender Canary-Prompt stimmt nicht mit dem Vertrag ueberein.", [], 409);
+  }
+  if (job.prompt_version_id !== promptVersion.id) {
+    const rows = await supabaseRequest<DesignJobRow[]>(
+      "design_jobs",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          prompt_version_id: promptVersion.id,
+          updated_at: new Date().toISOString(),
+        }),
+        headers: { Prefer: "return=representation" },
+      },
+      { id: `eq.${job.id}` },
+    );
+    job = rows[0] || job;
+  }
+
+  return {
+    job: mapDesignJobDraft(job, promptVersion),
+    evidence,
+    sourceAsset: {
+      id: sourceAsset.id,
+      assetKey: sourceAsset.asset_key,
+      publicUrl: sourceAsset.public_url,
+      name: CONTROL_TOWER_MOCKUP_CANARY_SOURCE_NAME,
+    },
+  };
 }
 
 export async function createDesignJobDraft(input: {

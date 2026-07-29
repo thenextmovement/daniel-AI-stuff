@@ -47,6 +47,7 @@ Ops UI:
 - `POST /api/ops/design/jobs/:jobId/queue`
 - `POST /api/ops/design/jobs/:jobId/generate`
 - `POST /api/ops/design/jobs/:jobId/trello`
+- `POST /api/ops/design/canaries`
 - `POST /api/ops/design/batches`
 - `GET /api/ops/design/batches/:batchId`
 - `POST /api/ops/design/batches/:batchId/process`
@@ -71,6 +72,13 @@ Authorization: Bearer $DESIGN_WORKER_API_KEY
 No worker route accepts browser sessions or public client keys.
 
 Direct generation uses OpenAI's Image Edit API from the server only. The implementation sends exactly one eligible source image per structured action, requests one 1024x1024 JPEG, verifies its magic bytes and 12 MB limit, stores it in Supabase Storage, and only then writes the asset row.
+
+`POST /api/ops/design/canaries` provisions one idempotent internal acceptance
+job with its own generated source JPEG. The job has no request, customer,
+Trello card or Offer reference and requires the exact confirmation
+`CONTROL_TOWER_MOCKUP_CANARY_V1`. It exists only so operational clients can
+prove generation and persisted-asset verification without touching customer
+records.
 
 ## Durable Batch Lifecycle
 

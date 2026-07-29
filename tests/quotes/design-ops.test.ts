@@ -1,7 +1,19 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { archiveMockupAttachmentName, extractTrelloMockupPromptBlocks, findUploadedDesignAttachment, isEligibleAiMockupSourceName, isEligibleDesignReferenceSourceName, promptForImageEdit, quoteImageVariantKey, structuredDesignActionAttachmentName } from "@/lib/ops/design";
+import {
+  CONTROL_TOWER_MOCKUP_CANARY_CONFIRMATION,
+  archiveMockupAttachmentName,
+  controlTowerMockupCanaryEvidence,
+  controlTowerMockupCanaryJobKey,
+  extractTrelloMockupPromptBlocks,
+  findUploadedDesignAttachment,
+  isEligibleAiMockupSourceName,
+  isEligibleDesignReferenceSourceName,
+  promptForImageEdit,
+  quoteImageVariantKey,
+  structuredDesignActionAttachmentName,
+} from "@/lib/ops/design";
 import {
   DESIGN_ACTION_CONSTRAINT_END,
   DESIGN_ACTION_CONSTRAINT_START,
@@ -25,6 +37,7 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   const jobsRoute = readFileSync("src/app/api/ops/design/jobs/route.ts", "utf8");
   const queueRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/queue/route.ts", "utf8");
   const generateRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/generate/route.ts", "utf8");
+  const canaryRoute = readFileSync("src/app/api/ops/design/canaries/route.ts", "utf8");
   const removalPlansRoute = readFileSync("src/app/api/ops/design/removal-plans/route.ts", "utf8");
   const removalApplyRoute = readFileSync("src/app/api/ops/design/removal-plans/[planId]/apply/route.ts", "utf8");
   const trelloAttachRoute = readFileSync("src/app/api/ops/design/jobs/[jobId]/trello/route.ts", "utf8");
@@ -149,6 +162,12 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(generateRoute, /idempotencyKey/);
   assert.match(generateRoute, /hasOpsSession/);
 
+  assert.match(canaryRoute, /export async function POST/);
+  assert.doesNotMatch(canaryRoute, /export async function (GET|PATCH|DELETE)/);
+  assert.match(canaryRoute, /hasOpsSession/);
+  assert.match(canaryRoute, /CONTROL_TOWER_MOCKUP_CANARY_CONFIRMATION/);
+  assert.match(canaryRoute, /ensureControlTowerMockupCanary/);
+
   assert.match(removalPlansRoute, /export async function POST/);
   assert.doesNotMatch(removalPlansRoute, /export async function (GET|PATCH|DELETE)/);
   assert.match(removalPlansRoute, /prepareDesignRemovalPlan/);
@@ -211,6 +230,10 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.doesNotMatch(service, /buildReconstructedTrelloPrompt/);
   assert.doesNotMatch(service, /Fallback-Prompt aus Ops-Kontext/);
   assert.match(service, /createDesignJobDraft/);
+  assert.match(service, /ensureControlTowerMockupCanary/);
+  assert.match(service, /control_tower_canary/);
+  assert.match(service, /no_customer_data/);
+  assert.match(service, /Control_Tower_Canary_Mockup_AI_1\.jpg/);
   assert.match(service, /queueDesignJob/);
   assert.match(service, /generateDesignJobNow/);
   assert.match(service, /https:\/\/api\.openai\.com\/v1\/images\/generations/);
@@ -278,6 +301,46 @@ test("ops design module is visible and destructive actions stay guarded", () => 
   assert.match(operationsDoc, /Offer-Link/);
   assert.match(workflowPlan, /max 30 nodes|Node Structure/);
   assert.match(workflowPlan, /No credential value belongs in workflow JSON/);
+});
+
+test("control tower mockup canaries are immutable and customer-free", () => {
+  const sourceQuery = controlTowerMockupCanaryJobKey("release-9ecce72");
+  assert.equal(sourceQuery, "control-tower-canary:release-9ecce72");
+  assert.equal(CONTROL_TOWER_MOCKUP_CANARY_CONFIRMATION, "CONTROL_TOWER_MOCKUP_CANARY_V1");
+  assert.deepEqual(
+    controlTowerMockupCanaryEvidence(
+      {
+        sourceQuery,
+        status: "draft",
+        requestId: null,
+        trelloCardId: null,
+        offerId: null,
+      },
+      sourceQuery,
+    ),
+    {
+      passed: true,
+      sourceQuery,
+      status: "draft",
+      requestIdAbsent: true,
+      trelloCardIdAbsent: true,
+      offerIdAbsent: true,
+    },
+  );
+  assert.equal(
+    controlTowerMockupCanaryEvidence(
+      {
+        sourceQuery,
+        status: "draft",
+        requestId: "customer-request",
+        trelloCardId: null,
+        offerId: null,
+      },
+      sourceQuery,
+    ).passed,
+    false,
+  );
+  assert.throws(() => controlTowerMockupCanaryJobKey("short"), /Canary-Idempotency-Key/);
 });
 
 test("design ops quote image variant cache keys normalize costly color variants", () => {
