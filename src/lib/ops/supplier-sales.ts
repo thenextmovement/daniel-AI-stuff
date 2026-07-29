@@ -1657,7 +1657,33 @@ function supplierProductionValue(label: string, value: string) {
     if (/^(feinzuschnitt|verytightcuttoshape)$/.test(normalized)) return "Very tight cut to shape";
   }
   if (label === "Color") {
-    return clean.replace(/\bwarm white\b/i, "Warm white").replace(/\bcold white\b/i, "Cold white");
+    const colors: Record<string, string> = {
+      warmweiss: "Warm white",
+      warmwhite: "Warm white",
+      kaltweiss: "Cold white",
+      coldwhite: "Cold white",
+      eisblau: "Ice blue",
+      iceblue: "Ice blue",
+      tuerkis: "Turquoise",
+      turquoise: "Turquoise",
+      rot: "Red",
+      red: "Red",
+      gruen: "Green",
+      green: "Green",
+      blau: "Blue",
+      blue: "Blue",
+      gelb: "Yellow",
+      yellow: "Yellow",
+      orange: "Orange",
+      pink: "Pink",
+      lila: "Purple",
+      purple: "Purple",
+      weiss: "White",
+      white: "White",
+      schwarz: "Black",
+      black: "Black",
+    };
+    return colors[normalized] || clean;
   }
   if (label === "Cable Position") {
     if (!clean) return null;
@@ -1676,8 +1702,34 @@ function supplierProductionValue(label: string, value: string) {
       topleft: "Top-Left",
       obenrechts: "Top-Right",
       topright: "Top-Right",
+      kabelabgangegal: "Any position",
+      egal: "Any position",
+      any: "Any position",
+      anyposition: "Any position",
     };
     return `${positions[normalized] || clean} ❗`;
+  }
+  if (label === "Backboard") {
+    return clean
+      .replace(/Formzuschnitt/gi, "Cut to shape")
+      .replace(/Mit UV[- ]?Druck/gi, "With UV print")
+      .replace(/Ohne UV[- ]?Druck/gi, "Without UV print")
+      .replace(/Acryl(?:glas)?/gi, "Acrylic")
+      .replace(/\bklar\b/gi, "clear")
+      .replace(/Transparent\s*\(Standard\)/gi, "Transparent (standard)");
+  }
+  if (label === "Lighting") {
+    return clean
+      .replace(/Backlit\s*\/\s*r(?:ü|u)ckbeleuchtet/gi, "Backlit")
+      .replace(/Frontlit\s*\/\s*frontbeleuchtet/gi, "Frontlit")
+      .replace(/r(?:ü|u)ckbeleuchtet/gi, "Backlit")
+      .replace(/frontbeleuchtet/gi, "Frontlit")
+      .replace(/unbeleuchtet|nicht beleuchtet/gi, "Non-Lit");
+  }
+  if (label === "Material") {
+    return clean
+      .replace(/Edelstahl/gi, "Stainless steel")
+      .replace(/Acryl(?:glas)?/gi, "acrylic");
   }
   if (label === "Power plug" && /deutschland|germany|europa|europe/i.test(clean)) return null;
   if (!clean || /^(none|null|undefined|nichtgewaehlt)$/.test(normalized)) return null;
@@ -1686,6 +1738,12 @@ function supplierProductionValue(label: string, value: string) {
 
 function productionTypeForItem(row: SupplierSaleItemRow) {
   const raw = jsonRecord(row.raw_line_item);
+  const explicitType = supplierProductionKey(nullableText(row.product_type, 160) || "");
+  const explicitTitle = supplierProductionKey(nullableText(row.title, 160) || "");
+  if (
+    ["leuchtschilddesign", "leuchtschilder", "productionitem", "product"].includes(explicitType) &&
+    ["leuchtschilddesign", "leuchtschild", "schild", "product"].includes(explicitTitle)
+  ) return "Production item";
   const text = searchableSignalText([
     row.title,
     row.product_type,
@@ -1699,6 +1757,7 @@ function productionTypeForItem(row: SupplierSaleItemRow) {
   if (is3d && /frontlit|frontbeleuchtet|vorderseitig beleuchtet/.test(text)) return "3D Frontlit";
   if (/non[- ]?lit|unbeleuchtet|nicht beleuchtet|ohne beleuchtung/.test(text)) return "Non-Lit";
   if (/led[- ]?neon|neon[- ]?flex|neonschild|neon schriftzug|\bneon\b/.test(text)) return "LED Neon Flex";
+  if (/led[- ]?leuchtschild|leuchtschild/.test(text)) return "LED Sign";
   if (/light[- ]?box|leuchtkasten|acrylbox/.test(text)) return "Light Box";
   return nullableText(row.product_type, 160) || nullableText(row.title, 160) || "Production item";
 }
@@ -5043,7 +5102,7 @@ function supplierProductionItemKind(item: SupplierSaleItem) {
     .join(" ")
     .toLowerCase();
   if (/(liefer|versand|delivery|termin|priorisierte? produktion|prioritized production|eilproduktion|express production|rush production)/.test(text)) return "delivery";
-  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|klebe|adhesive|haengeset|hanging set|power plug|stromstecker)/.test(text)) return "addon";
+  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|klebe|adhesive|haengeset|hanging set|power plug|stromstecker|deckenabhaeng|deckenabhäng|drahtseil|outdoor|ip67|wasserfest|waterproof|uv[- ]?(druck|print))/.test(text)) return "addon";
   return "product";
 }
 
@@ -5108,7 +5167,7 @@ export function supplierApprovedDesignSelection(items: SupplierSaleItem[]): Supp
 }
 
 type SupplierAccessoryLine = {
-  key: "adhesive" | "hanging" | "cable" | "mounting" | "rgb" | "power_supply";
+  key: "adhesive" | "hanging" | "cable" | "mounting" | "rgb" | "outdoor" | "uv_print" | "power_supply";
   line: string;
   trailing?: boolean;
 };
@@ -5130,7 +5189,7 @@ function supplierAccessoryLine(item: SupplierSaleItem): SupplierAccessoryLine | 
   if (/klebe|adhesive|command strip/.test(text)) {
     return { key: "adhesive", line: `${quantityPrefix}Adhesive Strips ❗` };
   }
-  if (/haenge|hange|hanging set|hanging kit/.test(text)) {
+  if (/haenge|hange|hanging set|hanging kit|deckenabhaeng|drahtseil/.test(text)) {
     return { key: "hanging", line: `${quantityPrefix}Hanging Set ❗` };
   }
   if (/kabelabgang|cable exit|cable position/.test(text)) {
@@ -5143,7 +5202,9 @@ function supplierAccessoryLine(item: SupplierSaleItem): SupplierAccessoryLine | 
   if (/wandmontage|wall mount|mounting kit/.test(text)) {
     return { key: "mounting", line: `${quantityPrefix}Wall Mounting Set ❗` };
   }
-  if (/\brgb\b/.test(text)) return { key: "rgb", line: "Color: RGB" };
+  if (/\brgb\b/.test(text)) return { key: "rgb", line: "Color: RGB ❗" };
+  if (/outdoor|ip67|wasserfest|waterproof/.test(text)) return { key: "outdoor", line: "Use: Outdoor IP67 ❗" };
+  if (/uv[- ]?(druck|print)/.test(text)) return { key: "uv_print", line: "UV Print: YES ❗" };
   if (/netzteil|power supply/.test(text)) {
     if (/weiss|white/.test(text)) return { key: "power_supply", line: "Power Supply: White", trailing: true };
     if (/schwarz|black/.test(text)) return { key: "power_supply", line: "Power Supply: Black", trailing: true };
@@ -5172,14 +5233,30 @@ function productionDescriptionDetail(
     return null;
   }
   if (normalizedLabel === "cableposition") {
-    priority.set("cable", `Cable Position: ${value.replace(/\s*❗$/, "")} ❗`);
+    const englishValue = supplierProductionValue("Cable Position", value)?.replace(/\s*❗$/, "");
+    if (englishValue) priority.set("cable", `Cable Position: ${englishValue} ❗`);
     return null;
   }
   if (normalizedLabel === "powersupply") {
     trailing.set("power_supply", `Power Supply: ${value}`);
     return null;
   }
-  return detail;
+  if (normalizedLabel === "color" && normalizedValue === "rgb") {
+    priority.set("rgb", "Color: RGB ❗");
+    return null;
+  }
+  if (normalizedLabel === "use" && /outdoor|aussen|draussen|ip67|wasserfest|waterproof/.test(normalizedValue)) {
+    const englishValue = /ip67/.test(normalizedValue) ? "Outdoor IP67" : "Outdoor";
+    priority.set("outdoor", `Use: ${englishValue} ❗`);
+    return null;
+  }
+  if (normalizedLabel === "backboard" && /uv(druck|print)/.test(normalizedValue)) {
+    const englishValue = supplierProductionValue("Backboard", value);
+    if (englishValue) priority.set("uv_print", `Backboard: ${englishValue} ❗`);
+    return null;
+  }
+  const englishValue = supplierProductionValue(label, value);
+  return englishValue ? `${label}: ${englishValue}` : null;
 }
 
 export function supplierProductionDescription(items: SupplierSaleItem[], note?: string | null) {
@@ -5210,14 +5287,31 @@ export function supplierProductionDescription(items: SupplierSaleItem[], note?: 
   productBlocks.forEach((block, index) => {
     lines.push(...block.sizes.map((size) => productBlocks.length > 1 ? `Product ${index + 1} ${size}` : size));
   });
-  lines.push(...priority.values());
+  const priorityOrder: SupplierAccessoryLine["key"][] = [
+    "cable",
+    "adhesive",
+    "hanging",
+    "mounting",
+    "rgb",
+    "outdoor",
+    "uv_print",
+  ];
+  lines.push(...priorityOrder.map((key) => priority.get(key)).filter((line): line is string => Boolean(line)));
   productBlocks.forEach((block, index) => {
     if (productBlocks.length > 1 && block.details.length) lines.push(`Product ${index + 1}`);
     lines.push(...block.details);
   });
 
   const cleanNote = nullableText(note, 1000);
-  if (cleanNote) lines.push(`Note: ${cleanNote}`);
+  if (cleanNote) {
+    const likelyGerman = /\b(?:aber|achtung|au(?:ss|ß)en|bitte|darf|drinnen|fuer|für|innen|ist|kabel|mit|muss|nicht|netzteil|oder|ohne|schild|soll|teilen|und|wichtig)\b/i.test(cleanNote);
+    if (likelyGerman) {
+      throw new QuoteValidationError("Additional Information must be written in English.", [
+        "Translate the assignment note into English before saving it to Trello.",
+      ], 422);
+    }
+    lines.push(`Additional Information:\n${cleanNote.replace(/\bPower Supplys\b/gi, "Power Supplies")}`);
+  }
   lines.push(...trailing.values());
   return lines.filter((line, index) => line !== "" || lines[index - 1] !== "").join("\n").trim();
 }

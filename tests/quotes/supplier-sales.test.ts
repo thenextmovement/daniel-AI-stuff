@@ -737,9 +737,9 @@ test("supplier sales board exposes snapshot selection details and Trello lookup 
   assert.equal(sale?.items[0]?.description, "Ausgewaehlte Produktion laut Snapshot.");
   assert.ok(sale?.items[0]?.selectionDetails.includes("Product Type: LED Neon Flex"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Size: 120cm"));
-  assert.ok(sale?.items[0]?.selectionDetails.includes("Color: warmweiss"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Color: Warm white"));
   assert.ok(sale?.items[0]?.selectionDetails.includes("Cut: Cut to shape"));
-  assert.ok(sale?.items[0]?.selectionDetails.includes("Backboard: Acryl klar"));
+  assert.ok(sale?.items[0]?.selectionDetails.includes("Backboard: Acrylic clear"));
 });
 
 test("supplier sales expose multiline Shopify description properties for existing sales", () => {
@@ -771,12 +771,12 @@ test("supplier sales expose multiline Shopify description properties for existin
   );
 
   assert.deepEqual(board.items[0]?.items[0]?.selectionDetails, [
-    "Product Type: LED-Leuchtschild",
+    "Product Type: LED Sign",
     "Size: 140x31cm",
-    "Backboard: Formzuschnitt / Mit UV Druck",
-    "Color: Kaltweiß",
+    "Backboard: Cut to shape / With UV print",
+    "Color: Cold white",
     "Use: Indoor",
-    "Cable Position: Kabelabgang egal ❗",
+    "Cable Position: Any position ❗",
   ]);
 });
 
@@ -1055,11 +1055,88 @@ test("supplier production description prioritizes cable position and keeps outdo
     supplierProductionDescription(board.items[0]?.items || []),
     [
       "Cable Position: Bottom-Center ❗",
+      "Color: RGB ❗",
+      "Use: Outdoor ❗",
       "Product Type: LED Neon Flex",
-      "Color: RGB",
-      "Use: Outdoor",
       "Quantity: 2 Pieces",
     ].join("\n"),
+  );
+});
+
+test("supplier production description does not turn outdoor and hanging options into products and translates values", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-one-sign-with-production-options", source: "neontrip-offers" })],
+    [
+      itemRow({
+        id: "item-main-sign",
+        sale_id: "sale-one-sign-with-production-options",
+        title: "Leuchtschild Design",
+        product_type: "LED Neon Flex",
+        raw_line_item: {
+          properties: [
+            { name: "Größe", value: "120x51cm" },
+            { name: "Rückplatte", value: "Formzuschnitt / Mit UV Druck" },
+            { name: "Leuchtfarbe", value: "Eisblau" },
+            { name: "Einsatzort", value: "Außenbereich IP67" },
+            { name: "Kabelabgang", value: "Kabelabgang egal" },
+          ],
+        },
+      }),
+      itemRow({
+        id: "item-outdoor-option",
+        sale_id: "sale-one-sign-with-production-options",
+        title: "Outdoor/IP67 wasserfeste Ausführung",
+        product_type: "Zusatzoptionen",
+      }),
+      itemRow({
+        id: "item-hanging-option",
+        sale_id: "sale-one-sign-with-production-options",
+        title: "Deckenabhängung Drahtseile",
+        product_type: "Zusatzoptionen",
+      }),
+      itemRow({
+        id: "item-wall-mounting-option",
+        sale_id: "sale-one-sign-with-production-options",
+        title: "Wandmontage Set",
+        product_type: "Zusatzoptionen",
+      }),
+      itemRow({
+        id: "item-power-supply-option",
+        sale_id: "sale-one-sign-with-production-options",
+        title: "Weißes Netzteil Premium-Version",
+        product_type: "Zusatzoptionen",
+      }),
+    ],
+    [],
+  );
+
+  const description = supplierProductionDescription(
+    board.items[0]?.items || [],
+    "Do not split!\nOutdoor use + outdoor power supplies\nSign is for hanging",
+  );
+
+  assert.equal(
+    description,
+    [
+      "Size: 120x51cm ❗",
+      "Cable Position: Any position ❗",
+      "Hanging Set ❗",
+      "Wall Mounting Set ❗",
+      "Use: Outdoor IP67 ❗",
+      "Backboard: Cut to shape / With UV print ❗",
+      "Product Type: LED Neon Flex",
+      "Color: Ice blue",
+      "Additional Information:",
+      "Do not split!",
+      "Outdoor use + outdoor power supplies",
+      "Sign is for hanging",
+      "Power Supply: White",
+    ].join("\n"),
+  );
+  assert.doesNotMatch(description, /Product [123]|Außenbereich|Eisblau|Formzuschnitt|UV Druck|Kabelabgang|Drahtseile|Netzteil/);
+  assert.throws(
+    () => supplierProductionDescription(board.items[0]?.items || [], "Bitte nicht teilen"),
+    /must be written in English/,
   );
 });
 
