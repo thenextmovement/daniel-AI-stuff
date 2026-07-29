@@ -1119,7 +1119,6 @@ test("supplier production description does not turn outdoor and hanging options 
     description,
     [
       "Size: 120x51cm ❗",
-      "Cable Position: Any position ❗",
       "Hanging Set ❗",
       "Wall Mounting Set ❗",
       "Use: Outdoor IP67 ❗",
@@ -1133,7 +1132,7 @@ test("supplier production description does not turn outdoor and hanging options 
       "Power Supply: White",
     ].join("\n"),
   );
-  assert.doesNotMatch(description, /Product [123]|Außenbereich|Eisblau|Formzuschnitt|UV Druck|Kabelabgang|Drahtseile|Netzteil/);
+  assert.doesNotMatch(description, /Product [123]|Any position|Außenbereich|Eisblau|Formzuschnitt|UV Druck|Kabelabgang|Drahtseile|Netzteil/);
   assert.throws(
     () => supplierProductionDescription(board.items[0]?.items || [], "Bitte nicht teilen"),
     /must be written in English/,
