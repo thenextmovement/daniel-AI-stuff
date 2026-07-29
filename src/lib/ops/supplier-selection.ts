@@ -40,7 +40,8 @@ export function shouldSuggestSaeid(sale: SupplierSelectionSale) {
   const hasExcludedProduct = /\b3d\b|backlit|frontlit|non[\s-]*lit|light[\s-]*box|leuchtkasten|profilbuchstaben/.test(searchable);
   const isOutdoor = /\boutdoor\b|\baussen\b|\bwetterfest\b|\bwasserdicht\b|\bip6[457]\b/.test(searchable);
   const isMulticolor = /\brgbw?\b|mehrfarbig|multicolor|multi[\s-]*color|color as logo|farbe wie logo|farbverlauf/.test(searchable);
+  const hasUvPrint = /\buv[\s-]*(?:druck|print(?:ing)?)\b/.test(searchable);
   const hasExplicitSingleColor = /\b(?:color|farbe|leuchtfarbe):\s*(?:warm white|warmweiss|cold white|kaltweiss|weiss|white|red|rot|orange|yellow|gelb|green|gruen|blue|blau|ice blue|eisblau|pink|rosa|purple|lila|violett)\b/.test(searchable);
 
-  return isNeonFlex && isExplicitlyIndoor && hasExplicitSingleColor && !hasExcludedProduct && !isOutdoor && !isMulticolor;
+  return isNeonFlex && isExplicitlyIndoor && hasExplicitSingleColor && !hasExcludedProduct && !isOutdoor && !isMulticolor && !hasUvPrint;
 }

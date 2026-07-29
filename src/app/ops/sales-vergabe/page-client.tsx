@@ -34,6 +34,7 @@ import {
   type SupplierSalePaymentDecision,
 } from "@/lib/ops/supplier-sales";
 import { defaultSupplierSelection, shouldSuggestSaeid, type SupplierSelection } from "@/lib/ops/supplier-selection";
+import { deliveryCountdownLabel, orderAgeLabel } from "@/lib/ops/supplier-sales-display";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -641,8 +642,20 @@ function SnapshotSelectionGroup({
                   ) : null}
                 </div>
               </div>
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-[0.5rem] border border-stone-300 bg-white px-2.5 py-1 text-xs font-black text-stone-950">
-                <span className="text-[10px] uppercase tracking-[0.08em] text-stone-500">Menge</span>
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 rounded-[0.5rem] border font-black ${
+                  item.quantity > 1
+                    ? "border-red-600 bg-red-600 px-3.5 py-2 text-base text-white shadow-sm"
+                    : "border-stone-300 bg-white px-2.5 py-1 text-xs text-stone-950"
+                }`}
+              >
+                <span
+                  className={`uppercase tracking-[0.08em] ${
+                    item.quantity > 1 ? "text-[11px] text-red-50" : "text-[10px] text-stone-500"
+                  }`}
+                >
+                  Menge
+                </span>
                 {item.quantity}x
               </span>
             </div>
@@ -769,10 +782,12 @@ function SaleCard({
   operatorName,
   onAction,
   saving,
+  now,
 }: {
   sale: SupplierSale;
   operatorName: string;
   saving: boolean;
+  now: number;
   onAction: (body: Record<string, unknown>) => Promise<SupplierSalesApiResponse | null>;
 }) {
   const [supplier, setSupplier] = useState<SupplierSelection>(defaultSupplierSelection(sale));
@@ -843,6 +858,9 @@ function SaleCard({
   const paidPriority = paidAssignmentPriority(sale);
   const priorPaidPriority = priorPaidCustomerPriority(sale);
   const saeidSuggestion = !sale.assignedSupplier && shouldSuggestSaeid(sale);
+  const orderedAt = sale.orderPlacedAt || sale.createdAt;
+  const orderAge = orderAgeLabel(orderedAt, now);
+  const deliveryCountdown = deliveryCountdownLabel(deliveryDate, now);
   const assignBlockReason = assignmentBlockReason(sale, supplier, deliveryDate, paymentDecision, specialSupplierName, shopifySupplierTagConfirmed);
   const directTrelloCardUrl = sale.quentinTrelloCardUrl || sale.supplierTrelloCardUrl;
   const trelloSearchFallbackUrl = directTrelloCardUrl ? null : sale.quentinTrelloSearchUrl || sale.quentinTrelloBoardUrl;
@@ -970,14 +988,26 @@ function SaleCard({
   return (
     <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : priorPaidPriority ? "border-amber-300 ring-2 ring-amber-100" : "border-stone-200"}`}>
       <div className="grid gap-4 lg:grid-cols-[7rem_minmax(0,1fr)_minmax(20rem,0.78fr)]">
-        <div className="h-28 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100">
-          {sale.primaryImageUrl ? (
-            <img src={sale.primaryImageUrl} alt={sale.productSummary || "Produktbild"} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-stone-400">
-              <ShoppingCart className="h-7 w-7" />
+        <div className="min-w-0">
+          <div className="h-28 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100">
+            {sale.primaryImageUrl ? (
+              <img src={sale.primaryImageUrl} alt={sale.productSummary || "Produktbild"} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-stone-400">
+                <ShoppingCart className="h-7 w-7" />
+              </div>
+            )}
+          </div>
+          <div className="mt-2 rounded-[0.5rem] border border-stone-200 bg-stone-50 px-2 py-2 text-[11px] leading-4 text-stone-600">
+            <div className="flex items-start gap-1.5">
+              <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stone-400" />
+              <div className="min-w-0">
+                <p>Bestellt</p>
+                <p className="font-semibold text-stone-900">{formatDateTime(orderedAt)}</p>
+                {orderAge ? <p className="font-medium text-violet-800">{orderAge}</p> : null}
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
         <div className="min-w-0">
@@ -1118,6 +1148,24 @@ function SaleCard({
                 </div>
               </div>
             ) : null}
+            {saeidSuggestion ? (
+              <div className="rounded-[0.5rem] border-2 border-violet-500 bg-violet-50 p-4 text-violet-950 shadow-sm">
+                <div className="flex items-center gap-2 text-lg font-black tracking-wide">
+                  <AlertTriangle className="h-5 w-5 fill-violet-200 text-violet-700" />
+                  Kommt in Frage für SAID
+                </div>
+                <p className="mt-2 text-xs font-semibold text-violet-900">
+                  Einfarbiges Indoor-Neon-Flex ohne RGB, Outdoor oder UV-Druck.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSupplier("said")}
+                  className="mt-3 rounded-[0.5rem] border border-violet-400 bg-white px-3 py-1.5 text-xs font-semibold text-violet-950 hover:border-violet-700"
+                >
+                  SAID auswählen
+                </button>
+              </div>
+            ) : null}
             {sale.postOrderReview.status === "change_requested" ? (
               <div className="rounded-[0.5rem] border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">
                 <p className="font-semibold">Kunde hat nach Bestellung eine Aenderung gemeldet.</p>
@@ -1205,7 +1253,14 @@ function SaleCard({
             ) : null}
 
             <label className="grid gap-1.5">
-              <span className="text-xs font-medium text-stone-600">Wann soll geliefert werden?</span>
+              <span className="flex items-center justify-between gap-2 text-xs font-medium text-stone-600">
+                <span>Wann soll geliefert werden?</span>
+                {deliveryCountdown ? (
+                  <span className={`rounded-full border px-2 py-0.5 font-semibold ${deliveryCountdown.includes("überfällig") ? "border-rose-300 bg-rose-50 text-rose-800" : "border-violet-200 bg-violet-50 text-violet-800"}`}>
+                    {deliveryCountdown}
+                  </span>
+                ) : null}
+              </span>
               <input
                 type="date"
                 disabled={assignmentSaved}
@@ -1233,22 +1288,6 @@ function SaleCard({
                 <option value="special">Weitere Supplier</option>
               </select>
             </label>
-
-            {saeidSuggestion ? (
-              <div className="flex items-center justify-between gap-3 rounded-[0.5rem] border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                <span className="inline-flex items-center gap-2 font-semibold">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
-                  Saeid pruefen: einfarbiges Indoor-Neon-Flex ueber 1.000 EUR.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSupplier("said")}
-                  className="shrink-0 rounded-[0.5rem] border border-amber-400 bg-white px-2.5 py-1 font-semibold hover:border-amber-700"
-                >
-                  Saeid waehlen
-                </button>
-              </div>
-            ) : null}
 
             {supplier === "special" ? (
               <div className="grid gap-2 rounded-[0.5rem] border border-amber-300 bg-amber-50 p-3">
@@ -1289,9 +1328,9 @@ function SaleCard({
               disabled={assignmentSaved}
               value={assignmentNote}
               onChange={(event) => setAssignmentNote(event.target.value)}
-              aria-label="Notiz fuer Vergabe"
+              aria-label="Additional Information (English)"
               className="min-h-16 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm"
-              placeholder="Notiz fuer Vergabe"
+              placeholder="Additional Information – English only"
             />
 
             <div className="flex flex-wrap gap-2">
@@ -1718,8 +1757,8 @@ export function SupplierSalesClient({
 
   const boardItems = useMemo(() => board?.items || [], [board]);
   useEffect(() => {
-    if (scope !== "active" || !boardItems.some((sale) => sale.assignmentStatus === "in_production")) return;
-    const timer = window.setInterval(() => setBoardNow(Date.now()), 1000);
+    const needsProductionCountdown = scope === "active" && boardItems.some((sale) => sale.assignmentStatus === "in_production");
+    const timer = window.setInterval(() => setBoardNow(Date.now()), needsProductionCountdown ? 1000 : 60_000);
     return () => window.clearInterval(timer);
   }, [scope, boardItems]);
 
@@ -2169,6 +2208,7 @@ export function SupplierSalesClient({
                 sale={sale}
                 operatorName={operatorName}
                 saving={savingSaleId === sale.id}
+                now={boardNow}
                 onAction={(body) => runSaleAction(sale.id, body)}
               />
             ))
