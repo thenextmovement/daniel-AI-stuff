@@ -67,6 +67,8 @@ function companyBrainActionRequest(overrides: Record<string, unknown> = {}) {
 }
 
 const mediaFailureAuditId = "11111111-1111-4111-8111-111111111111";
+const mediaFailureV3Id = "22222222-2222-4222-8222-222222222222";
+const mediaOriginalJobId = "33333333-3333-4333-8333-333333333333";
 
 function companyBrainMediaRetryRequest(overrides: Record<string, unknown> = {}) {
   return request("/api/ops/company-brain/actions", {
@@ -248,9 +250,26 @@ async function withGuardedRetryFetchMock<T>(
             : options.previewQueueRows || []);
         }
       }
-      if (table === "enqueue_preview_delivery_jobs" && method === "POST") {
+      if (table === "record_preview_delivery_failure_v3" && method === "POST") {
+        return json({
+          ok: true,
+          case: { id: "44444444-4444-4444-8444-444444444444", status: "BLOCKED_OFFER" },
+          failure: {
+            id: mediaFailureV3Id,
+            error_code: "offer_service_unavailable",
+            retry_policy: "AUTO",
+          },
+          projection_key: `preview-projection:failure:${mediaFailureV3Id}:open-comment:v1`,
+        });
+      }
+      if (table === "request_preview_delivery_retry_v1" && method === "POST") {
         previewEnqueued = true;
-        return json({ ok: true, touched: 1, pending_count: 1, terminal_conflict_count: 0, sent_label_blocked: 0 });
+        return json({
+          ok: true,
+          idempotent: false,
+          recovery_job: options.queuedPreviewJob || null,
+          failure: { id: mediaFailureV3Id, error_code: "offer_service_unavailable" },
+        });
       }
       return json([]);
     }
@@ -459,11 +478,27 @@ test("company brain action route still blocks customer-facing actions without re
 });
 
 test("company brain queues one governed transient media recovery without directly sending", async () => {
-  const attemptKey = `preview-delivery:REQ-GUARD-1:trello-card-1:company_brain_recovery_${mediaFailureAuditId}:v2`;
+  const attemptKey = `preview-retry:${mediaOriginalJobId}:${mediaFailureV3Id}:${mediaFailureAuditId}:v1`;
   await withGuardedRetryFetchMock({
     workflowAuditGuardRows: [mediaFailureAudit()],
+    previewQueueRows: [{
+      id: mediaOriginalJobId,
+      trello_card_id: "trello-card-1",
+      request_id: "REQ-GUARD-1",
+      status: "failed",
+      attempts: 1,
+      max_attempts: 2,
+      idempotency_key: "original-failed-job",
+      last_error_code: "offer_service_unavailable",
+      last_error_message: "503 - database is not ready",
+      n8n_execution_id: "execution-503",
+      metadata: {},
+      failed_at: "2026-07-10T07:30:00.000Z",
+      created_at: "2026-07-10T07:20:00.000Z",
+      updated_at: "2026-07-10T07:30:00.000Z",
+    }],
     queuedPreviewJob: {
-      id: "22222222-2222-4222-8222-222222222222",
+      id: "55555555-5555-4555-8555-555555555555",
       trello_card_id: "trello-card-1",
       request_id: "REQ-GUARD-1",
       status: "pending",
@@ -484,8 +519,11 @@ test("company brain queues one governed transient media recovery without directl
     assert.equal(payload.queued, true);
     assert.equal(payload.pipelineRecovery.status, "pending");
     assert.equal(payload.pipelineRecovery.attemptKey, attemptKey);
+    assert.equal(payload.pipelineRecovery.canonicalFailureId, mediaFailureV3Id);
     assert.equal(payload.customerCommunicationSent, false);
-    assert.equal(calls.some((call) => call.includes("/rpc/enqueue_preview_delivery_jobs") && call.startsWith("POST ")), true);
+    assert.equal(calls.some((call) => call.includes("/rpc/record_preview_delivery_failure_v3") && call.startsWith("POST ")), true);
+    assert.equal(calls.some((call) => call.includes("/rpc/request_preview_delivery_retry_v1") && call.startsWith("POST ")), true);
+    assert.equal(calls.some((call) => call.includes("/rpc/enqueue_preview_delivery_jobs")), false);
     assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
     assert.equal(calls.some((call) => call.includes("/rest/v1/workflow_audit_log") && call.startsWith("POST ")), true);
   });
@@ -514,7 +552,7 @@ test("company brain blocks media recovery while another queue job is active", as
     assert.equal(payload.ok, false);
     assert.equal(payload.code, "company_brain_media_retry_blocked");
     assert.match(payload.blockers.join(" "), /bereits aktiv/);
-    assert.equal(calls.some((call) => call.includes("/rpc/enqueue_preview_delivery_jobs")), false);
+    assert.equal(calls.some((call) => call.includes("/rpc/request_preview_delivery_retry_v1")), false);
     assert.equal(calls.some((call) => call.includes("/api/internal/offers/offer-guard-1/send")), false);
   });
 });

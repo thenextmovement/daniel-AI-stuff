@@ -1,0 +1,4087 @@
+{
+  "id": "S4gjf0YeZjP0pqFR",
+  "name": "NEONTRIP Preview Delivery Worker v2.1 — Token-Bound DB Claim Loop",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 1200,
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "createdAt": "2026-07-21T19:11:25.520Z",
+  "updatedAt": "2026-07-29T11:53:05.485Z",
+  "activeVersionId": "ed3b1567-98e7-48b8-8cec-b90cbe6a5498",
+  "versionCreatedAt": "2026-07-29T11:53:05.489Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "parameters": {
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}?fields=id,name&attachments=true&attachment_fields=id,bytes,date,edgeColor,idMember,isMalicious,isUpload,mimeType,name,previews,url,pos,fileName,sourceView",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "id": "t03",
+      "name": "Get Attachments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        688,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $(\"Config\").first().json;\nconst rawItems = $input.all().map(i => i.json);\nconst firstItem = rawItems[0] || {};\nconst attachments = Array.isArray(firstItem.attachments) ? firstItem.attachments : rawItems;\n\nfunction attachmentName(attachment) {\n  return String(attachment.name || attachment.fileName || \"\").trim();\n}\n\nfunction isImage(attachment) {\n  const name = attachmentName(attachment);\n  const mime = String(attachment.mimeType || '').toLowerCase();\n  return /\\.(?:jpe?g|png|webp)$/i.test(name) && (!mime || mime.startsWith('image/'));\n}\n\nfunction timestamp(attachment) {\n  const raw = attachment.date || attachment.dateLastActivity || attachment.createdAt || '';\n  const parsed = raw ? Date.parse(raw) : NaN;\n  if (Number.isFinite(parsed)) return parsed;\n  const id = String(attachment.id || '');\n  if (/^[0-9a-fA-F]{8}/.test(id)) return parseInt(id.slice(0, 8), 16) * 1000;\n  return 0;\n}\n\nfunction aiMockupParts(attachment) {\n  const match = attachmentName(attachment).match(/^mockup([\\d_.]+)_(?:ai|ki)_(\\d+)\\.(?:jpe?g|png|webp)$/i);\n  if (!match) return null;\n  const sourceDigits = String(match[1]).replace(/[^\\d]/g, '');\n  const sourceNumber = sourceDigits ? Number.parseInt(sourceDigits, 10) : Number.POSITIVE_INFINITY;\n  const variant = Number.parseInt(match[2], 10);\n  return {\n    sourceNumber: Number.isFinite(sourceNumber) ? sourceNumber : Number.POSITIVE_INFINITY,\n    variant: Number.isFinite(variant) ? variant : Number.POSITIVE_INFINITY,\n  };\n}\n\nconst aiMockups = attachments\n  .filter(isImage)\n  .map((attachment) => ({ attachment, parts: aiMockupParts(attachment) }))\n  .filter((entry) => entry.parts)\n  .sort((a, b) =>\n    a.parts.sourceNumber - b.parts.sourceNumber ||\n    a.parts.variant - b.parts.variant ||\n    timestamp(b.attachment) - timestamp(a.attachment) ||\n    attachmentName(a.attachment).localeCompare(attachmentName(b.attachment), 'de')\n  );\n\nconst selected = aiMockups[0] || null;\nconst mockup = selected ? selected.attachment : null;\n\nif (!mockup) {\n  return [{ json: {\n    cardId: config.cardId,\n    cardName: config.cardName,\n    mockupOk: false,\n    mockupError: \"Kein KI-Mockup für Video gefunden. Videos dürfen nur aus generierten Mockups wie Mockup4376_ai_1.jpg oder Mockup4376_ki_1.jpg erstellt werden. Ausgangsmockups wie Mockup4376.jpg oder Mockup01.jpg werden nicht als Video-Input genutzt.\",\n    attachmentNames: attachments.map(attachmentName).filter(Boolean).join(\", \")\n  } }];\n}\n\nconst previews = Array.isArray(mockup.previews) ? mockup.previews : [];\nconst bestPreview = previews\n  .filter((preview) => preview && preview.url && preview.width && preview.height)\n  .sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];\n\nconst fn = mockup.fileName || mockup.name;\nconst originalUrl = \"https://api.trello.com/1/cards/\" + config.cardId + \"/attachments/\" + mockup.id + \"/download/\" + encodeURIComponent(fn);\nconst previewUrl = bestPreview && bestPreview.url ? bestPreview.url.replace(\"https://trello.com/1/\", \"https://api.trello.com/1/\") : \"\";\nconst downloadUrl = previewUrl || originalUrl;\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: config.cardName,\n  mockupOk: true,\n  selectedMockupName: attachmentName(mockup),\n  selectedMockupAttachmentId: mockup.id,\n  selectedMockupFileName: fn,\n  selectedMockupMimeType: mockup.mimeType || \"\",\n  selectedMockupKind: \"ai_generated\",\n  selectedMockupSource: bestPreview ? \"trello_preview_\" + bestPreview.width + \"x\" + bestPreview.height : \"original\",\n  downloadUrl\n} }];"
+      },
+      "id": "t04",
+      "name": "Find Mockup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.downloadUrl }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        },
+        "sendHeaders": false,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "t05",
+      "name": "Download Mockup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AlBnHgoncCtlzKGY",
+          "name": "Trello attachment download OAuth header active"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json;\nconst isAutomaticVideoRetry = Number(config.jobAttempts || 1) >= 2;\nconst staticData = $getWorkflowStaticData('global');\nconst now = new Date();\nconst dayKey = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });\nconst hourKey = dayKey + 'T' + now.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false });\nconst MAX_GROK_PER_DAY = 80;\nconst MAX_GROK_PER_HOUR = 20;\n\nif (staticData.grokDayKey !== dayKey) {\n  staticData.grokDayKey = dayKey;\n  staticData.grokDayCount = 0;\n}\n\nif (staticData.grokHourKey !== hourKey) {\n  staticData.grokHourKey = hourKey;\n  staticData.grokHourCount = 0;\n}\n\nif ((staticData.grokDayCount || 0) >= MAX_GROK_PER_DAY) {\n  throw new Error('Grok safety cap reached: max ' + MAX_GROK_PER_DAY + ' video starts per day. Card: ' + config.cardId);\n}\n\nif ((staticData.grokHourCount || 0) >= MAX_GROK_PER_HOUR) {\n  throw new Error('Grok safety cap reached: max ' + MAX_GROK_PER_HOUR + ' video starts per hour. Card: ' + config.cardId);\n}\n\nstaticData.grokDayCount = (staticData.grokDayCount || 0) + 1;\nstaticData.grokHourCount = (staticData.grokHourCount || 0) + 1;\nstaticData.lastGrokStartAt = now.toISOString();\nstaticData.lastGrokCardId = config.cardId;\n\nconst binaryData = $input.first().binary;\nif (!binaryData || !binaryData.data) throw new Error('Keine Binary-Daten');\n\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst base64 = buffer.toString('base64');\nconst mimeType = binaryData.data.mimeType || 'image/jpeg';\nif (!mimeType.startsWith('image/')) {\n  throw new Error('Download fehlgeschlagen: mimeType ist ' + mimeType + ' statt image/*. Trello-Auth Problem?');\n}\n\nconst dataUri = 'data:' + mimeType + ';base64,' + base64;\nconst approxBytes = Buffer.byteLength(dataUri, 'utf8');\nif (approxBytes > 5 * 1024 * 1024) {\n  throw new Error('Grok Data-URI zu groß (' + approxBytes + ' Bytes). Bild vor Video verkleinern oder Upload-Flow verwenden.');\n}\n\nconst standardPrompt = \"Create a short cinematic product animation from the provided image, but treat the image as a locked reference frame for the sign. The sign artwork must stay EXACTLY the same from first frame to last frame: same text, same logo, same symbols, same proportions, same layout, same mounting, same wall position, same material, same color and same light color. CRITICAL COLOR LOCK: preserve the exact hue and color temperature from the source image for the entire video. A green sign must remain green. A red sign must remain red. Cool white must remain cool white. Warm white must remain warm white. Never fade, shift or morph any sign color toward white, yellow, blue or another color. Do not recolor the sign during zoom or dolly movement. Animate only very subtle light intensity, glow/reflection and a slow minimal camera dolly-in; the sign itself must not morph, warp, redraw, simplify, drift, resize, change font, change symbols or gain new elements. Do not add any extra objects, icons, letters, logos, decorative elements, people, stickers, faces, smiley faces, eyes, mouths, mascots, characters or anthropomorphic features. If the source image contains circles, dots, curves or logo shapes, keep them as flat sign design elements only. Keep the background stable and realistic; no new signs, no new wall graphics, no extra branding, no invented text. Use hyper-realistic commercial footage, natural wall texture, stable shadows, shallow depth of field. No audio.\";\nconst hardenedRetryPrompt = \"Create a short locked-off commercial product video from the provided image. This is a safety retry after a prior DESIGN_MORPH rejection. Treat the complete input image as a locked reference plate. Keep the camera fully static: no dolly, no zoom, no pan, no orbit, no crop change and no perspective change. The sign, logo and all letters must remain pixel-stable and identical in every frame: same text, font, symbols, outlines, proportions, spacing, position, mounting, material, hue, white temperature and light color. Do not redraw, interpolate, warp, bend, simplify, recolor, move, resize or replace any part of the sign. Animate only an extremely subtle, uniform light-intensity breathing of at most five percent and a natural reflection on the existing wall. Keep the background unchanged. Add no objects, people, text, branding, graphics or camera effects. If exact preservation is not possible, output a visually static shot rather than modifying the design. No audio.\";\nconst prompt = isAutomaticVideoRetry ? hardenedRetryPrompt : standardPrompt;\n\nreturn [{ json: {\n  cardId: config.cardId,\n  videoGenerationMode: isAutomaticVideoRetry ? 'locked_static_retry' : 'cinematic_standard',\n  videoGenerationAttempt: Number(config.jobAttempts || 1),\n  grokBody: {\n    model: 'grok-imagine-video',\n    prompt,\n    image: { url: dataUri },\n    duration: 4,\n    aspect_ratio: '1:1',\n    resolution: '720p'\n  }\n} }];"
+      },
+      "id": "t06",
+      "name": "Build Runway Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://api.x.ai/v1/videos/generations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.grokBody) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "t07",
+      "name": "Submit to Runway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1808,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "xiy2t4KWmbxDuti8",
+          "name": "XAI API Bearer"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json || {};\nconst config = $('Config').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst providerError = response.error && typeof response.error === 'object' ? response.error : {};\nconst errorStatus = Number(\n  providerError.status ||\n  response.statusCode ||\n  response.status ||\n  0\n);\nconst errorCode = String(providerError.code || response.code || '').toLowerCase();\nconst errorMessage = String(\n  providerError.message ||\n  response.message ||\n  JSON.stringify(response).substring(0, 1000)\n);\nconst serializedError = `${errorCode} ${errorMessage}`;\nconst rateLimited = errorStatus === 429;\nconst transientProviderFailure =\n  [408, 425, 500, 502, 503, 504].includes(errorStatus) ||\n  /econnrefused|econnreset|etimedout|err_network|socket hang up|upstream connect|connection refused|temporar(?:y|ily)|overloaded|service unavailable|try again later/i.test(serializedError);\n\nif (rateLimited || transientProviderFailure) {\n  const now = new Date();\n  const cooldownMinutes = rateLimited ? 15 : 5;\n  const cooldownUntil = new Date(Date.now() + cooldownMinutes * 60 * 1000);\n  staticData.grokRateLimitedUntil = cooldownUntil.toISOString();\n  staticData.lastGrokRateLimitAt = rateLimited ? now.toISOString() : staticData.lastGrokRateLimitAt;\n  staticData.lastGrokProviderUnavailableAt = transientProviderFailure ? now.toISOString() : staticData.lastGrokProviderUnavailableAt;\n  staticData.lastGrokRateLimitCardId = config.cardId;\n  staticData.lastGrokProviderUnavailableCardId = config.cardId;\n\n  return [{\n    json: {\n      rateLimited,\n      transientVideoProviderFailure: transientProviderFailure,\n      transient: true,\n      reason: rateLimited\n        ? 'Grok/xAI Provider Rate Limit 429'\n        : `Grok/xAI Provider temporaer nicht verfuegbar: ${errorMessage}`,\n      action: 'Automatischer Retry: Der Queue-Job wird freigegeben und spaeter erneut versucht. Die Karte bleibt in der Verarbeitungsliste; es wurde noch keine Kundenmail versendet.',\n      cooldownUntil: cooldownUntil.toISOString(),\n      cooldownUntilBerlin: cooldownUntil.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),\n      cardId: config.cardId,\n      cardName: config.cardName,\n      trelloCardUrl: config.cardUrl || (`https://trello.com/c/${config.cardId}`),\n      errorStatus: errorStatus || null,\n      errorCode: errorCode || (rateLimited ? 'rate_limited' : 'provider_unavailable'),\n      errorMessage,\n      workflowName: 'KI-Video Generator v1.0',\n      observedAt: now.toISOString()\n    }\n  }];\n}\n\nif (response.error) {\n  throw new Error(`Grok Submit fehlgeschlagen: ${JSON.stringify(response).substring(0, 500)}`);\n}\n\nconst requestId = response.request_id || response.id || response.taskId;\nif (!requestId) {\n  throw new Error(`Keine Grok Request ID: ${JSON.stringify(response).substring(0, 500)}`);\n}\n\nstaticData.grokRateLimitedUntil = null;\nreturn [{\n  json: {\n    rateLimited: false,\n    transientVideoProviderFailure: false,\n    requestId,\n    cardId: config.cardId,\n    attempts: 0\n  }\n}];\n"
+      },
+      "id": "t08",
+      "name": "Save Request ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 15
+      },
+      "id": "t09",
+      "name": "Wait 15s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        280
+      ],
+      "webhookId": "grok-test-wait"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "=https://api.x.ai/v1/videos/{{ $json.requestId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "t10",
+      "name": "Check Runway Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2480,
+        208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "xiy2t4KWmbxDuti8",
+          "name": "XAI API Bearer"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const status = $input.first().json;\nconst prev = $('Save Request ID').first().json;\nconst attempts = Number($runIndex || 0) + 1;\nconst normalizedStatus = String(status.status || '').toLowerCase();\n\nconst wrappedProviderError = status.error && typeof status.error === 'object' ? status.error : {};\nconst wrappedErrorStatus = Number(\n  wrappedProviderError.status ||\n  status.statusCode ||\n  0\n);\nconst wrappedErrorCode = String(\n  wrappedProviderError.code ||\n  status.code ||\n  ''\n).toLowerCase();\nconst wrappedErrorMessage = String(\n  wrappedProviderError.message ||\n  (typeof status.error === 'string' ? status.error : '') ||\n  status.message ||\n  JSON.stringify(status).substring(0, 1000)\n);\nconst wrappedSerializedError = `${wrappedErrorCode} ${wrappedErrorMessage}`;\nconst wrappedRateLimited =\n  wrappedErrorStatus === 429 ||\n  /too many requests|rate limit/i.test(wrappedSerializedError);\nconst wrappedTransientFailure =\n  wrappedRateLimited ||\n  [408, 425, 500, 502, 503, 504].includes(wrappedErrorStatus) ||\n  /econnrefused|econnreset|etimedout|err_network|socket hang up|upstream connect|connection refused|temporar(?:y|ily)|overloaded|service unavailable|try again later/i.test(wrappedSerializedError);\nconst wrappedContentModerated =\n  /imagine:content-moderated|generated video rejected by content moderation|content[-_ ]moderated/i.test(wrappedSerializedError);\n\nif (status.error && !['failed', 'expired', 'canceled', 'cancelled'].includes(normalizedStatus)) {\n  if (wrappedTransientFailure) {\n    const staticData = $getWorkflowStaticData('global');\n    const now = new Date();\n    const cooldownMinutes = wrappedRateLimited ? 15 : 5;\n    const cooldownUntil = new Date(Date.now() + cooldownMinutes * 60 * 1000);\n    let config = {};\n    try { config = $('Config').first().json || {}; } catch (error) { config = {}; }\n    staticData.grokRateLimitedUntil = cooldownUntil.toISOString();\n    staticData.lastGrokRateLimitAt = wrappedRateLimited ? now.toISOString() : staticData.lastGrokRateLimitAt;\n    staticData.lastGrokProviderUnavailableAt = wrappedRateLimited ? staticData.lastGrokProviderUnavailableAt : now.toISOString();\n    staticData.lastGrokRateLimitCardId = wrappedRateLimited ? prev.cardId : staticData.lastGrokRateLimitCardId;\n    staticData.lastGrokProviderUnavailableCardId = wrappedRateLimited ? staticData.lastGrokProviderUnavailableCardId : prev.cardId;\n\n    return [{ json: {\n      done: false,\n      transientVideoProviderFailure: true,\n      rateLimited: wrappedRateLimited,\n      transient: true,\n      reason: wrappedRateLimited\n        ? 'Grok/xAI Provider Rate Limit 429'\n        : 'Grok/xAI Statusabfrage temporaer fehlgeschlagen: ' + wrappedErrorMessage,\n      action: 'Automatischer Retry: Der Queue-Job wird freigegeben und spaeter mit einem neuen Video-Job erneut versucht. Es wurde noch keine Kundenmail versendet.',\n      cooldownUntil: cooldownUntil.toISOString(),\n      cooldownUntilBerlin: cooldownUntil.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),\n      cardId: prev.cardId,\n      cardName: config.cardName || '',\n      trelloCardUrl: config.cardUrl || ('https://trello.com/c/' + prev.cardId),\n      requestId: prev.requestId,\n      attempts,\n      errorStatus: wrappedErrorStatus || null,\n      errorCode: wrappedRateLimited\n        ? 'rate_limited'\n        : (wrappedErrorCode || (wrappedErrorStatus ? 'http_' + wrappedErrorStatus : 'video_provider_status_error')),\n      errorMessage: wrappedErrorMessage,\n      workflowName: 'KI-Video Generator v1.0',\n      observedAt: now.toISOString()\n    } }];\n  }\n\n  return [{ json: {\n    done: false,\n    transientVideoProviderFailure: true,\n    rateLimited: false,\n    transient: false,\n    reason: wrappedContentModerated\n      ? 'Grok Video von Content Moderation abgelehnt'\n      : 'Grok Statusabfrage permanent fehlgeschlagen',\n    errorCode: wrappedContentModerated\n      ? 'imagine:content-moderated'\n      : (wrappedErrorCode || (wrappedErrorStatus ? 'http_' + wrappedErrorStatus : 'video_provider_status_error')),\n    errorMessage: wrappedErrorMessage,\n    errorStatus: wrappedErrorStatus || null,\n    cardId: prev.cardId,\n    requestId: prev.requestId,\n    attempts\n  } }];\n}\n\nif (['done', 'completed', 'succeeded'].includes(normalizedStatus)) {\n  const videoUrl = (status.video && (status.video.url || status.video.download_url)) ||\n    status.video_url || status.url || status.download_url ||\n    (status.output && (status.output.url || status.output.video_url || status.output.download_url)) ||\n    (status.result && (status.result.url || status.result.video_url || status.result.download_url)) ||\n    (Array.isArray(status.outputs) && status.outputs[0] && (status.outputs[0].url || status.outputs[0].video_url)) || '';\n\n  if (!videoUrl) {\n    return [{ json: {\n      done: false,\n      transientVideoProviderFailure: true,\n      transient: true,\n      reason: 'Grok Task fertig, aber ohne Output-URL',\n      errorCode: 'video_completed_without_url',\n      errorMessage: JSON.stringify(status).substring(0, 1000),\n      cardId: prev.cardId,\n      requestId: prev.requestId,\n      attempts\n    } }];\n  }\n\n  return [{ json: {\n    done: true,\n    videoUrl,\n    cardId: prev.cardId,\n    attempts,\n    rawResponse: JSON.stringify(status).substring(0, 2000)\n  } }];\n}\n\nif (['failed', 'expired', 'canceled', 'cancelled'].includes(normalizedStatus)) {\n  const serializedStatus = JSON.stringify(status).substring(0, 1000);\n  const providerError = status.error && typeof status.error === 'object' ? status.error : {};\n  const errorCode = String(providerError.code || status.code || '').toLowerCase();\n  const errorMessage = String(providerError.message || status.message || serializedStatus);\n  const transientProviderFailure = errorCode === 'service_unavailable' || /temporarily overloaded|try again later|service unavailable/i.test(errorMessage);\n\n  if (transientProviderFailure) {\n    const staticData = $getWorkflowStaticData('global');\n    const now = new Date();\n    const cooldownUntil = new Date(Date.now() + 20 * 60 * 1000);\n    let config = {};\n    try { config = $('Config').first().json || {}; } catch (error) { config = {}; }\n    staticData.grokRateLimitedUntil = cooldownUntil.toISOString();\n    staticData.lastGrokProviderUnavailableAt = now.toISOString();\n    staticData.lastGrokProviderUnavailableCardId = prev.cardId;\n    return [{ json: {\n      done: false,\n      transientVideoProviderFailure: true,\n      rateLimited: true,\n      transient: true,\n      reason: 'Grok/xAI Provider temporaer nicht verfuegbar: ' + errorMessage,\n      action: 'Automatischer Retry: Der Queue-Job wird freigegeben und spaeter mit einem neuen Video-Job erneut versucht. Die Karte wird nicht wegen temporaerer Provider-Ueberlastung nach Quote Ready zurueckgeschoben.',\n      cooldownUntil: cooldownUntil.toISOString(),\n      cooldownUntilBerlin: cooldownUntil.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),\n      cardId: prev.cardId,\n      cardName: config.cardName || '',\n      trelloCardUrl: config.cardUrl || ('https://trello.com/c/' + prev.cardId),\n      requestId: prev.requestId,\n      attempts,\n      errorCode: errorCode || 'service_unavailable',\n      errorMessage,\n      workflowName: 'KI-Video Generator v1.0',\n      observedAt: now.toISOString()\n    } }];\n  }\n\n  return [{ json: {\n    done: false,\n    transientVideoProviderFailure: true,\n    transient: false,\n    reason: 'Grok Video fehlgeschlagen',\n    errorCode: errorCode || 'video_provider_failed',\n    errorMessage,\n    cardId: prev.cardId,\n    requestId: prev.requestId,\n    attempts\n  } }];\n}\n\nif (attempts >= 40) {\n  return [{ json: {\n    done: false,\n    transientVideoProviderFailure: true,\n    transient: true,\n    reason: 'Grok Timeout nach ' + attempts + ' Statuspruefungen',\n    errorCode: 'video_provider_timeout',\n    errorMessage: 'Kein terminaler Video-Status innerhalb von etwa zehn Minuten',\n    cardId: prev.cardId,\n    requestId: prev.requestId,\n    attempts\n  } }];\n}\n\nreturn [{ json: {\n  done: false,\n  requestId: prev.requestId,\n  cardId: prev.cardId,\n  attempts\n} }];"
+      },
+      "id": "t11",
+      "name": "Is Done?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-done",
+              "leftValue": "={{ $json.done }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "t12",
+      "name": "IF Done",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.videoUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "t13",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3152,
+        280
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/attachments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "name",
+              "value": "Mockup01_video.mp4"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t14",
+      "name": "Upload Video to Trello",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3376,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "121f39c2-029f-470b-9382-0984bbf9acc0",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -208,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const SOURCE_LIST_ID = '6a18389f5e45294188451924'; // Neue Angebote schicken + KI-Video\nconst VIDEO_SENT_LABEL_ID = '69ea8cb44dafe69b2a31350c'; // Video gesendet\nconst LEASE_MS = 25 * 60 * 1000; // Must exceed STOP/initial-delivery wait so one card cannot start multiple paid videos.\n\nconst claim = $input.first().json || {};\nconst job = claim.job || (claim.data && claim.data.job) || null;\nif (!job || !job.id || !job.trello_card_id || !(job.claim_token || claim.claim_token)) {\n  console.log('[KI VIDEO QUEUE] No job claimed. Reason: ' + (claim.reason || 'queue_empty') + '. Active leases: ' + String(claim.active_leases ?? 'unknown') + '/' + String(claim.max_active ?? 'unknown'));\n  return [];\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst now = new Date();\nconst leaseUntil = new Date(now.getTime() + LEASE_MS);\nstaticData.kiVideoLeaseUntil = leaseUntil.toISOString();\nstaticData.kiVideoLeaseCardId = job.trello_card_id;\nstaticData.kiVideoLeaseCardName = job.card_name || '';\nstaticData.kiVideoLeaseAcquiredAt = now.toISOString();\n\nconst regenerateOnly = false;\nconst triggerLabel = { id: '', name: 'queue_trigger' };\n\nreturn [{ json: {\n  jobId: job.id,\n  claimToken: job.claim_token || claim.claim_token,\n  jobStatus: job.status,\n  jobAttempts: job.attempts || 0,\n  jobMaxAttempts: job.max_attempts || 2,\n  queueSeq: job.queue_seq || null,\n  queueEnteredAt: job.entered_at || null,\n  queueLeaseUntil: job.lease_until || null,\n  deliveryCycleKey: job.delivery_cycle_key || job.deliveryCycleKey || (job.metadata && job.metadata.delivery_cycle_key) || '',\n  workerActiveLeasesBeforeClaim: claim.active_leases_before_claim ?? null,\n  workerMaxActive: claim.max_active ?? 1,\n  cardId: job.trello_card_id,\n  cardName: job.card_name || '',\n  cardUrl: job.trello_card_url || ('https://trello.com/c/' + job.trello_card_id),\n  sourceListId: job.source_list_id || SOURCE_LIST_ID,\n  videoSentLabelId: VIDEO_SENT_LABEL_ID,\n  triggerLabelId: triggerLabel.id,\n  triggerLabelName: triggerLabel.name,\n  regenerateOnly,\n  deliveryMode: regenerateOnly ? 'regenerate_only' : 'send_preview_email',\n  videoProvider: 'grok',\n  leaseAcquiredAt: now.toISOString(),\n  leaseUntil: leaseUntil.toISOString()\n} }];"
+      },
+      "id": "9fe45ab0-ab68-4397-a4e7-e2d9783f5df5",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        280
+      ]
+    },
+    {
+      "id": "upload-video-s3-preview",
+      "name": "Upload Video to Supabase Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3376,
+        88
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/preview-videos/\" + $('Validate Preview Offer').first().json.requestId + \"/Mockup01_video.mp4\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "resolve-request-for-preview-delivery",
+      "name": "Resolve Request for Preview Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3600,
+        88
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_requests?' + ($json.requestId ? 'or=(request_id.eq.' + encodeURIComponent($json.requestId) + ',trello_card_id.eq.' + encodeURIComponent($json.cardId) + ')' : 'trello_card_id=eq.' + encodeURIComponent($json.cardId)) + '&select=id,request_id,customer_id,ac_deal_id,trello_card_id,trello_card_url,title,final_value&order=created_at.desc&limit=1' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "validate-preview-request",
+      "name": "Validate Preview Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json || {};\nconst rows = $input.all().map(i => i.json).filter(Boolean);\nconst row = Array.isArray(rows[0]) ? rows[0][0] : rows[0];\n\nif (!row || !row.request_id || !row.customer_id) {\n  return [{ json: {\n    cardId: config.cardId,\n    cardName: config.cardName,\n    requestId: $('Extract Preview Request ID').first().json.requestId || '',\n    requestUuid: '',\n    customerId: '',\n    acDealId: '',\n    canonicalTrelloCardId: '',\n    previewRequestOk: false,\n    previewRequestError: 'No request/customer match in master_requests for Trello card ' + (config.cardId || '-')\n  } }];\n}\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: config.cardName,\n  requestId: row.request_id,\n  requestUuid: row.id,\n  customerId: row.customer_id,\n  acDealId: row.ac_deal_id || '',\n  canonicalTrelloCardId: row.trello_card_id || '',\n  canonicalTrelloCardUrl: row.trello_card_url || '',\n  finalValue: row.final_value || null,\n  previewRequestOk: true,\n  previewRequestError: ''\n} }];"
+      }
+    },
+    {
+      "id": "lookup-preview-customer",
+      "name": "Lookup Preview Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4048,
+        88
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/master_customers?id=eq.{{ encodeURIComponent($json.customerId) }}&select=email,first_name,last_name,phone,country",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "validate-preview-customer",
+      "name": "Validate Preview Customer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4048,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(Boolean);\nconst customer = Array.isArray(rows[0]) ? rows[0][0] : rows[0];\nconst prev = $('Validate Preview Request').first().json;\n\nconst emailRaw = String(customer && (customer.email || customer.original_email || customer.billing_email) || '').trim();\nconst email = emailRaw.toLowerCase();\nconst emailValid = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\nconst phoneRaw = String(customer && (customer.phone || customer.original_phone) || '').trim();\nconst phoneDigits = phoneRaw.replace(/\\D/g, '');\nconst phoneValid = phoneDigits.length >= 7 && phoneDigits.length <= 15;\nconst firstName = String(customer && (customer.first_name || customer.firstName || customer.name) || '').trim();\nconst lastName = String(customer && (customer.last_name || customer.lastName) || '').trim();\nconst company = String(customer && (customer.company || customer.company_name) || '').trim();\nconst displayName = [firstName, lastName].filter(Boolean).join(' ').trim() || company;\nconst nameValid = displayName.length >= 2;\nconst contactDataIssues = [\n  ...(nameValid ? [] : ['customer_name_missing_or_invalid']),\n  ...(emailValid ? [] : ['customer_email_missing_or_invalid']),\n  ...(phoneValid ? [] : ['customer_phone_missing_or_invalid']),\n];\n\nconst roleAccount = false;\n\nreturn [{ json: {\n  ...prev,\n  email: emailValid ? email : '',\n  emailRaw,\n  emailValid,\n  emailMissing: !emailValid,\n  skipCustomerEmail: !emailValid,\n  whatsappFallbackOnly: !emailValid && phoneValid,\n  firstName,\n  lastName,\n  company,\n  displayName,\n  nameValid,\n  phone: phoneRaw,\n  phoneRaw,\n  phoneValid,\n  country: customer && customer.country || '',\n  contactDataIssues,\n  roleAccount\n} }];"
+      }
+    },
+    {
+      "id": "prepare-preview-offer-context",
+      "name": "Prepare Preview Offer Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4272,
+        88
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { ...$('Validate Preview Customer').first().json } }];"
+      },
+      "alwaysOutputData": true,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "validate-preview-offer",
+      "name": "Validate Preview Offer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4496,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const prev = $('Validate Preview Customer').first().json;\nconst cardId = prev.cardId || $('Config').first().json.cardId || '';\nconst offerPlaceholder = 'https://angebote.neontrip.de/internal-offer-created-after-video';\nreturn [{ json: {\n  ...prev,\n  offerId: '',\n  offerStatus: 'pending_creation_after_video',\n  offerLink: offerPlaceholder,\n  previewOfferHandoffReady: true,\n  previewOfferError: '',\n  previewOfferSource: 'neontrip_offers_api_after_video',\n  previewOfferEvidence: {\n    source: 'neontrip_offers_api_after_video',\n    card_id: cardId\n  }\n} }];"
+      }
+    },
+    {
+      "id": "get-card-details-preview",
+      "name": "Get Card Details for Preview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        88
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}?fields=id,name,desc&customFieldItems=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "id": "extract-preview-request-id",
+      "name": "Extract Preview Request ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json;\nconst card = $input.first().json || {};\nconst customFieldItems = Array.isArray(card.customFieldItems) ? card.customFieldItems : [];\nconst NERDY_FORMS_FIELD_ID = '67a200bd23b1ffd304e63335';\n\nconst field = customFieldItems.find((item) => item.idCustomField === NERDY_FORMS_FIELD_ID);\nconst value = field && field.value ? field.value : {};\nconst customRequestId = String(value.text || value.number || value.date || '').trim();\n\nconst desc = String(card.desc || '');\nconst descMatch = desc.match(/(?:request[_ -]?id|nerdyforms?[_ -]?id|anfrage[_ -]?id)\\s*[:#-]?\\s*([a-zA-Z0-9_-]+)/i);\nconst descRequestId = descMatch ? String(descMatch[1]).trim() : '';\nconst requestId = customRequestId || descRequestId;\n\nreturn [{ json: {\n  ...config,\n  requestId,\n  requestIdSource: customRequestId ? 'trello_custom_field' : (descRequestId ? 'trello_description' : 'none')\n} }];"
+      }
+    },
+    {
+      "id": "preview-offer-handoff-ready",
+      "name": "Preview Offer Handoff Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4720,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "preview-offer-handoff-ready",
+              "leftValue": "={{ $json.previewOfferHandoffReady === true && !!$json.offerLink }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notify-missing-preview-offer",
+      "name": "Notify Missing Preview Offer Handoff",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        4944,
+        280
+      ],
+      "parameters": {
+        "toRecipients": "support@neontrip.de",
+        "subject": "=⚠️ KI-Video übersprungen: Angebotsübergabe fehlt - {{ $json.cardName || $json.requestId }}",
+        "bodyContent": "=<div style=\"font-family:Arial,sans-serif;line-height:1.5;color:#111\"><p><strong>KI-Video-Preview wurde übersprungen.</strong></p><p>Grund: {{ $json.previewOfferError || 'Die Übergabe an die NEONTRIP-Angebots-API ist nicht bereit.' }}</p><ul><li>Request-ID: {{ $json.requestId }}</li><li>Karte: {{ $json.cardName }}</li><li>Trello Card-ID: {{ $json.cardId }}</li><li>Kunde: {{ $json.firstName }} {{ $json.lastName }} &lt;{{ $json.email }}&gt;</li><li>Angebotsstatus: {{ $json.offerStatus || '-' }}</li></ul><p>Es wurde keine Kundenkommunikation gesendet. Die Karte wurde als FEHLER markiert und zur Prüfung zurückgeschoben, damit die nächste Karte verarbeitet werden kann.</p></div>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "fdad4884-b4e9-462e-afb1-242945a60f46"
+    },
+    {
+      "id": "ade2bd24-4d02-415b-96de-0c23710ecb56",
+      "name": "Trello: Preview Blocked Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4944,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.previewOfferError || 'Die Angebotsübergabe ist nicht bereit.' }}\nRequest-ID: {{ $json.requestId || '-' }}\nAngebotsstatus: {{ $json.offerStatus || '-' }}\nKunde: {{ $json.firstName || '-' }} {{ $json.lastName || '' }} <{{ $json.email || '-' }}>\n\nDie Karte wurde zur Prüfung zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "921fa5b0-c5ee-4a15-bfb1-d92bdfb7e0f9",
+      "name": "Trello: Move Blocked Preview to Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5168,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $('Validate Preview Offer').first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "name",
+              "value": "={{ (() => { const c = $('Validate Preview Offer').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "if-preview-request-found",
+      "name": "Preview Request Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4048,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "preview-request-ok",
+              "leftValue": "={{ $json.previewRequestOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "trello-missing-request-comment-preview",
+      "name": "Trello: Missing Request Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4048,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.previewRequestError || 'Kein passender master_requests Eintrag gefunden.' }}\nRequest-ID: {{ $json.requestId || '-' }}\nTrello Card-ID: {{ $json.cardId || '-' }}\nKarte: {{ $json.cardName || '-' }}\n\nEs wurde keine Kundenmail, keine WhatsApp und kein Video-API-Start ausgelöst. Die Karte wird als FEHLER markiert und nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "trello-move-missing-request-to-quote-ready",
+      "name": "Trello: Move Missing Request to Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4272,
+        280
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Validate Preview Request\").first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "name",
+              "value": "={{ (() => { const c = $('Validate Preview Request').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "if-safe-mockup-found",
+      "name": "Safe Mockup Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "safe-mockup-ok",
+              "leftValue": "={{ $json.mockupOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "trello-missing-safe-mockup-comment",
+      "name": "Trello: Missing Safe Mockup Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1360,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=⚠️ **KI-Video übersprungen**\nGrund: {{ $json.mockupError || \"Kein erlaubtes KI-Mockup gefunden.\" }}\nKarte: {{ $json.cardName || \"-\" }}\nTrello Card-ID: {{ $json.cardId || \"-\" }}\nAttachments: {{ ($json.attachmentNames || \"-\").slice(0, 1200) }}\n\nEs wurde keine Video-API gestartet, keine Kundenmail und keine WhatsApp gesendet. Bitte ein generiertes KI-Mockup anhängen, z. B. `Mockup4222_ai_1.jpg`. Legacy-Fallback ist `Mockup01.jpg`/`Mockup02.jpg`; Quellmockups wie `Mockup4222.jpg` werden nicht als Video-Input genutzt. Die Karte wird als FEHLER markiert und nach Quote Ready zurückgeschoben, damit die nächste Karte verarbeitet werden kann.\n⏰ {{ new Date().toLocaleString(\"de-DE\", { timeZone: \"Europe/Berlin\" }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "trello-move-missing-safe-mockup-to-quote-ready",
+      "name": "Trello: Move Missing Safe Mockup to Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1584,
+        472
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $(\"Find Mockup\").first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "name",
+              "value": "={{ (() => { const c = $('Find Mockup').first().json; const name = String(c.cardName || c.cardId || ''); return name.startsWith('FEHLER -') ? name : 'FEHLER - ' + name; })() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "grok-rate-limited-if",
+      "name": "Grok Rate Limited?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2256,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "grok-rate-limited",
+              "leftValue": "={{ $json.rateLimited === true || $json.transientVideoProviderFailure === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notify-grok-rate-limit",
+      "name": "Notify Grok Rate Limit",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        160
+      ],
+      "parameters": {
+        "toRecipients": "support@neontrip.de",
+        "subject": "=⚠️ KI-Video wartet: Grok/xAI Provider - {{ $json.cardName || $json.cardId }}",
+        "bodyContent": "=<div style=\"font-family: Arial, Helvetica, sans-serif; line-height:1.5; color:#111;\">\n  <p><strong>KI-Video kann gerade keinen neuen Provider-Job starten.</strong></p>\n  <p><strong>Problem:</strong> {{ $json.reason }}</p>\n  <ul>\n    <li>Karte: {{ $json.cardName || '-' }}</li>\n    <li>Trello: <a href=\"{{ $json.trelloCardUrl }}\">{{ $json.trelloCardUrl }}</a></li>\n    <li>Beobachtet: {{ $json.observedAt }}</li>\n    <li>Naechster Versuch nach: {{ $json.cooldownUntilBerlin || '-' }} Europe/Berlin</li>\n  </ul>\n  <p><strong>Was passiert jetzt?</strong><br>{{ $json.action }}</p>\n  <p>Die Queue versucht automatisch erneut. Falls alle Versuche fehlschlagen, wird die Karte mit einem konkreten Fehler nach Quote Ready zurueckgegeben.</p>\n</div>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "9963774c-4989-4a46-8143-5ec137e1440b"
+    },
+    {
+      "id": "preview-alias-upsert-current-card",
+      "name": "Supabase: Upsert Preview Card Alias",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        912,
+        88
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/trello_card_aliases",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  request_id: $('Extract Preview Request ID').first().json.requestId,\n  alias_trello_card_id: $('Config').first().json.cardId,\n  alias_trello_card_url: $('Config').first().json.cardUrl || null,\n  canonical_trello_card_id: null,\n  alias_type: 'current_trello_card',\n  source: 'ki_video_preview_alias_fallback_v1',\n  notes: 'Automatically recorded before KI video offer handoff to recover from Trello card duplication or recreation.'\n} }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "restore-preview-context-after-alias",
+      "name": "Restore Preview Context after Alias",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        88
+      ],
+      "parameters": {
+        "jsCode": "const base = $('Extract Preview Request ID').first().json;\nconst aliasResult = $input.first()?.json || {};\nreturn [{\n  json: {\n    ...base,\n    alias_fallback_attempted: true,\n    alias_fallback_error: aliasResult.error?.message || aliasResult.message || null\n  }\n}];"
+      }
+    },
+    {
+      "id": "release-video-lease",
+      "name": "Release Video Lease",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        456
+      ],
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst config = $('Config').first().json;\nconst input = $input.first().json || {};\nlet failure = {};\nlet preparedFailurePresent = false;\ntry {\n  failure = $('Prepare Locked Offer Failure').first().json || {};\n  preparedFailurePresent = Object.keys(failure).length > 0;\n} catch (error) {\n  failure = {};\n}\nconst source = preparedFailurePresent ? failure : input;\nlet deliveryHandoff = input && typeof input.delivery === 'object' ? input.delivery : null;\nif (!deliveryHandoff) {\n  try {\n    const offerResult = $('Create NEONTRIP Offer').first().json || {};\n    deliveryHandoff = offerResult && typeof offerResult.delivery === 'object' ? offerResult.delivery : null;\n  } catch (error) {\n    deliveryHandoff = null;\n  }\n}\nconst deliveryHandoffAccepted = Boolean(deliveryHandoff && ['ready', 'wait', 'paused', 'skip'].includes(String(deliveryHandoff.action || '')));\nconst currentLeaseCardId = staticData.kiVideoLeaseCardId || '';\nconst shouldRelease = !currentLeaseCardId || currentLeaseCardId === config.cardId;\n\nif (shouldRelease) {\n  staticData.kiVideoLeaseUntil = null;\n  staticData.kiVideoLeaseCardId = null;\n  staticData.kiVideoLeaseCardName = null;\n  staticData.kiVideoLeaseAcquiredAt = null;\n}\n\nlet sent = deliveryHandoffAccepted;\ntry {\n  if (!sent) sent = $('Preview Delivery OK?').first().json.ok === true;\n} catch (error) {\n  sent = false;\n}\n\nlet auditWriteOk = null;\nlet auditWriteError = null;\ntry {\n  const auditResult = $('Audit: Company Brain Offer Failure').first().json || {};\n  auditWriteOk = !auditResult.error;\n  auditWriteError = auditResult.error ? JSON.stringify(auditResult.error).slice(0, 1000) : null;\n} catch (error) {\n  auditWriteOk = null;\n}\n\nconst serialized = JSON.stringify(source).slice(0, 4000);\nconst retryable = source.retryable === true;\nconst rateLimited = source.rateLimited === true || /\\b429\\b|rate limit|too many requests/i.test(serialized);\nconst transientProviderFailure =\n  source.transientVideoProviderFailure === true ||\n  /\\b50[0234]\\b|econnrefused|econnreset|etimedout|upstream connect|connection refused|temporar(?:y|ily)|overloaded|service unavailable|try again later/i.test(serialized);\nconst previewDeliveryRejected = source.ok === false;\nconst currentAttempt = Math.max(1, Number(source.currentAttempt || config.jobAttempts || 1));\nconst jobMaxAttempts = Math.max(1, Number(config.jobMaxAttempts || 2));\nconst directRetryable =\n  (rateLimited || transientProviderFailure || previewDeliveryRejected) &&\n  currentAttempt < jobMaxAttempts;\nconst shouldRetry = preparedFailurePresent ? retryable : directRetryable;\nconst failed = !sent && !shouldRetry;\nconst jobStatus = sent ? 'sent' : (shouldRetry ? 'retry' : 'failed');\nconst errorCode = sent ? null : (\n  source.failureType ||\n  source.failureCode ||\n  source.errorCode ||\n  (rateLimited\n    ? 'rate_limited'\n    : (transientProviderFailure\n      ? 'transient_video_provider_failure'\n      : (previewDeliveryRejected ? 'preview_delivery_rejected' : 'preview_delivery_failed')))\n);\nconst errorMessage = sent ? null : (\n  source.failureMessage ||\n  source.errorMessage ||\n  source.mockupError ||\n  source.reason ||\n  serialized.slice(0, 1000) ||\n  'Preview delivery did not complete successfully'\n);\n\nreturn [{\n  json: {\n    leaseReleased: shouldRelease,\n    releasedCardId: config.cardId,\n    previousLeaseCardId: currentLeaseCardId || null,\n    releasedAt: new Date().toISOString(),\n    jobId: config.jobId || null,\n    claimToken: config.claimToken || null,\n    previewDeliveryJobStatus: jobStatus,\n    previewDeliveryJobErrorCode: errorCode,\n    previewDeliveryJobErrorMessage: errorMessage,\n    previewDeliveryJobFailed: failed,\n    automaticRetryPlanned: shouldRetry,\n    currentAttempt,\n    nextAttempt: shouldRetry ? (source.nextAttempt || currentAttempt + 1) : null,\n    automaticRecoveryKind: source.automaticRecoveryKind || (shouldRetry ? 'infrastructure_retry' : 'manual_review'),\n    automaticRecoveryAttemptLimit: source.automaticRecoveryAttemptLimit || jobMaxAttempts,\n    automaticVideoAttemptLimit: source.automaticVideoAttemptLimit || 2,\n    videoQcIssues: source.videoQcIssues || [],\n    videoQcConfidence: source.videoQcConfidence ?? null,\n    videoGenerationFingerprint: source.videoGenerationFingerprint || null,\n    videoGenerationMode: source.videoGenerationMode || null,\n    offerDeliveryHandoffAccepted: deliveryHandoffAccepted,\n    offerDeliveryAction: deliveryHandoff ? String(deliveryHandoff.action || '') : null,\n    offerDeliveryStatus: deliveryHandoff ? String(deliveryHandoff.status || '') : null,\n    auditWriteOk,\n    auditWriteError,\n    rawError: source.rawError || serialized.slice(0, 1500),\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "route-preview-offer-handoff",
+      "name": "Route Preview Offer Handoff",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4720,
+        88
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "preview-offer-route-ready",
+              "leftValue": "={{ $json.previewOfferHandoffReady === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://angebote.neontrip.de/api/internal/trello-offer",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const input = $json || {};\n  const config = $('Config').first().json || {};\n  const customer = $('Validate Preview Customer').first().json || {};\n  const deliveryWithoutVideo = input.deliveryWithoutVideo === true || Number(config.jobAttempts || 0) >= Number(config.jobMaxAttempts || 2);\n  const title = String(config.cardName || '');\n  const stopRequested = /(^|[^A-Za-z0-9])STOPP?([^A-Za-z0-9]|$)/i.test(title);\n  const cycleKey = String(config.deliveryCycleKey || config.jobId || ('n8n-execution-' + String($execution.id || 'unknown')));\n  const attempt = Math.max(1, Number(config.jobAttempts || 1));\n  const mode = stopRequested ? 'pause_30m' : (deliveryWithoutVideo ? 'without_video' : 'automatic');\n  return JSON.stringify({\n    cardIdOrUrl: config.cardId,\n    publish: false,\n    source: 'ki_video_generator_v1_manifest_handoff',\n    customerEmail: customer.email || '',\n    customerPhone: customer.phone || '',\n    customerFirstName: customer.firstName || '',\n    customerLastName: customer.lastName || '',\n    customerCompany: customer.company || '',\n    previewVideoUrl: deliveryWithoutVideo ? undefined : ('https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/public/product-images/preview-videos/' + encodeURIComponent($('Validate Preview Offer').first().json.requestId) + '/Mockup01_video.mp4'),\n    previewVideoPosterUrl: undefined,\n    preflightFingerprint: $('Normalize Offer Handoff Preflight').first().json.preflightFingerprint,\n    delivery: {\n      cycleKey,\n      mode,\n      source: 'ki_video_generator_v1_manifest_handoff',\n      workflowExecutionId: String($execution.id || ''),\n      videoExpected: !deliveryWithoutVideo,\n      allowVideoFallback: true,\n      videoAttemptCount: attempt,\n      videoQc: {\n        status: deliveryWithoutVideo ? 'not_required' : 'passed',\n        resultId: String($execution.id || '') + ':' + String(config.cardId || '') + ':' + String(attempt),\n        reason: deliveryWithoutVideo ? String(input.videoOmittedReason || 'video_attempts_exhausted') : undefined\n      }\n    }\n  });\n})() }}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "create-neontrip-offer",
+      "name": "Create NEONTRIP Offer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3600,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": false,
+      "maxTries": 1,
+      "waitBetweenTries": 0
+    },
+    {
+      "id": "prepare-locked-offer-failure",
+      "name": "Prepare Locked Offer Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        472
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst serialized = JSON.stringify(input).slice(0, 12000);\nconst haystack = serialized.toLowerCase();\n\nconst isRateLimit =\n  /\\b429\\b/.test(serialized) ||\n  haystack.includes('rate limit') ||\n  haystack.includes('too many requests') ||\n  haystack.includes('trello request failed with 429');\n\nconst isCardChangedAfterPreflight = haystack.includes('card_changed_after_preflight');\nconst isLockedOffer =\n  !isCardChangedAfterPreflight &&\n  (/viewed offers are locked|cannot be re-imported/i.test(serialized) ||\n    (/\\b409\\b/.test(serialized) && !haystack.includes('card_changed_after_preflight')));\n\nconst isTransientInfrastructureFailure =\n  /\\b50[0234]\\b/.test(serialized) ||\n  /econnrefused|econnreset|etimedout|upstream connect|connection refused|socket hang up|temporar(?:y|ily)|overloaded|service unavailable|try again later/i.test(serialized);\n\nconst config = $('Config').first().json;\nconst jobAttempts = Math.max(1, Number(config.jobAttempts || 1));\nconst jobMaxAttempts = Math.max(1, Number(config.jobMaxAttempts || 2));\nconst automaticVideoAttemptLimit = Math.min(2, jobMaxAttempts);\nconst rawName = String(config.cardName || '').trim();\nconst cleanName = rawName.replace(/^fehler\\s*[-:]\\s*/i, '').trim() || rawName || config.cardId;\nconst newName = /^fehler\\b/i.test(rawName) ? rawName : 'FEHLER - ' + cleanName;\n\nlet executionId = '';\ntry {\n  executionId = String($execution.id || '');\n} catch (error) {\n  executionId = '';\n}\n\nconst upstreamFailureType = String(input.failureType || '').trim();\nconst upstreamFailureMessage = String(input.failureMessage || input.reason || '').trim();\n\nlet offerResponse = input;\ntry {\n  const createdOffer = $('Create NEONTRIP Offer').first().json || {};\n  if (createdOffer && typeof createdOffer === 'object' && Object.keys(createdOffer).length) offerResponse = createdOffer;\n} catch (error) {\n  // The offer node may not have run on earlier failure paths.\n}\nconst delivery = offerResponse && typeof offerResponse.delivery === 'object' ? offerResponse.delivery : null;\nconst deliveryAction = String(delivery && delivery.action || '').trim().toLowerCase();\nconst deliveryStatus = String(delivery && delivery.status || '').trim().toUpperCase();\nconst deliveryReason = String(delivery && delivery.reason || '').trim();\nconst deliveryBlockers = Array.isArray(delivery && delivery.readiness && delivery.readiness.blockers)\n  ? delivery.readiness.blockers.map(value => String(value || '').trim()).filter(Boolean)\n  : [];\nconst deliveryBlocked = deliveryAction === 'blocked' || deliveryStatus === 'FAILED';\nconst invalidCustomerDelivery = deliveryBlocked && /customer_email_invalid_or_internal|customer_email_missing_or_invalid|customer_data_invalid/i.test(\n  [deliveryReason, ...deliveryBlockers].join(' ')\n);\n\nlet customer = {};\ntry {\n  customer = $('Validate Preview Customer').first().json || {};\n} catch (error) {\n  customer = {};\n}\nconst customerName = String(customer.displayName || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.company || '').trim();\nconst customerEmail = String(customer.emailRaw || offerResponse.customerEmail || customer.email || '').trim();\nconst customerPhone = String(customer.phoneRaw || offerResponse.customerPhone || customer.phone || '').trim();\nconst emailValid = customer.emailValid === true || /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail.toLowerCase());\nconst phoneDigits = customerPhone.replace(/\\D/g, '');\nconst phoneValid = customer.phoneValid === true || (phoneDigits.length >= 7 && phoneDigits.length <= 15);\nconst nameValid = customer.nameValid === true || customerName.length >= 2;\nconst customerDataMessage = [\n  'Kundendaten pruefen - Angebot wurde NICHT versendet.',\n  'Name: ' + (customerName || '[fehlt]') + ' - ' + (nameValid ? 'vorhanden' : 'ungueltig/zu kurz'),\n  'E-Mail: ' + (customerEmail || '[fehlt]') + ' - ' + (emailValid ? 'gueltig' : 'ungueltig'),\n  'Telefon: ' + (customerPhone || '[fehlt]') + ' - ' + (phoneValid ? 'plausibel' : 'ungueltig/zu kurz'),\n  'Handlung: Kundendaten in der Datenbank bzw. Leadquelle korrigieren und danach einen neuen Versandlauf freigeben.'\n].join('\\n');\n\nlet failureType = upstreamFailureType || 'neontrip_offer_failed';\nlet failureMessage = upstreamFailureMessage || 'Angebot wurde nicht rausgeschickt. Die Offer-Erstellung ist fehlgeschlagen.';\n\nif (!upstreamFailureType && deliveryBlocked) {\n  failureType = invalidCustomerDelivery\n    ? 'preview_delivery_customer_data_invalid'\n    : 'offer_delivery_handoff_blocked';\n  failureMessage = invalidCustomerDelivery\n    ? customerDataMessage\n    : 'Angebotsversand wurde von der Offers-App blockiert: ' + (deliveryReason || deliveryBlockers.join(', ') || 'fachliche Versandpruefung fehlgeschlagen') + '.';\n} else if (!upstreamFailureType && isCardChangedAfterPreflight) {\n  failureType = 'offer_card_changed_after_preflight';\n  failureMessage = 'Die Karte wurde waehrend der Verarbeitung geaendert. Der aktuelle Stand wird ohne neue Videokosten erneut vorgeprueft.';\n} else if (!upstreamFailureType && isLockedOffer) {\n  failureType = 'neontrip_offer_locked';\n  failureMessage = 'Angebot ist bereits angesehen/gesperrt und kann nicht erneut aus Trello importiert werden.';\n} else if (!upstreamFailureType && isRateLimit) {\n  failureType = 'neontrip_offer_trello_rate_limited';\n  failureMessage = 'Angebot wurde noch nicht rausgeschickt. Trello/Offer-API ist rate-limited und wird automatisch erneut versucht.';\n} else if (!upstreamFailureType && isTransientInfrastructureFailure) {\n  failureType = 'neontrip_offer_transient_failure';\n  failureMessage = 'Angebot wurde noch nicht rausgeschickt. Eine voruebergehende API-/Netzwerkstoerung wird automatisch erneut versucht.';\n}\n\nconst previewErrors = Array.isArray(input.errors)\n  ? input.errors.map((entry) => String(entry || '').trim()).filter(Boolean)\n  : [];\nconst previewPreSendBlocked = input.ok === false && input.blocked === true;\nconst permanentCustomerDataFailure = previewErrors.some((entry) =>\n  /customer_email_missing_or_invalid|customer_not_in_live_canary/i.test(entry)\n);\nif (!upstreamFailureType && previewPreSendBlocked) {\n  failureType = permanentCustomerDataFailure\n    ? 'preview_delivery_customer_data_invalid'\n    : 'preview_delivery_pre_send_blocked';\n  failureMessage = permanentCustomerDataFailure\n    ? customerDataMessage\n    : 'Kundenversand wurde vor dem Senden blockiert (' + (previewErrors.join(', ') || 'Payload-Pruefung') + '). Der sichere Vorversand-Schritt wird erneut aufgebaut.';\n}\n\nconst videoQcFailure = failureType === 'video_content_qc_failed' || failureType === 'video_content_qc_unavailable' || failureType === 'video_content_qc_inconclusive';\nconst retryableVideoQc = videoQcFailure && jobAttempts < automaticVideoAttemptLimit;\nconst retryableInfrastructure =\n  (isRateLimit || isTransientInfrastructureFailure) &&\n  jobAttempts < jobMaxAttempts;\nconst retryablePreSend =\n  previewPreSendBlocked &&\n  !permanentCustomerDataFailure &&\n  jobAttempts < jobMaxAttempts;\nconst retryableCardChanged = isCardChangedAfterPreflight && jobAttempts < jobMaxAttempts;\nconst retryable = retryableVideoQc || retryableInfrastructure || retryablePreSend || retryableCardChanged;\nconst automaticRecoveryKind = retryableVideoQc\n  ? 'video_regeneration'\n  : (retryableInfrastructure\n    ? 'infrastructure_retry'\n    : (retryablePreSend\n      ? 'pre_send_rebuild'\n      : (retryableCardChanged ? 'fresh_preflight_retry' : 'manual_review')));\nconst videoQcIssues = Array.isArray(input.videoContentQcIssues) ? input.videoContentQcIssues : [];\nconst videoQcConfidence = Number.isFinite(Number(input.videoContentQcConfidence))\n  ? Number(input.videoContentQcConfidence)\n  : null;\nlet videoGenerationFingerprint = null;\nlet videoGenerationMode = jobAttempts >= 2 ? 'locked_static_retry' : 'cinematic_standard';\ntry {\n  videoGenerationFingerprint = $('Check Reusable Trello Video').first().json.videoGenerationFingerprint || null;\n} catch (error) {\n  videoGenerationFingerprint = null;\n}\ntry {\n  videoGenerationMode = $('Build Runway Request').first().json.videoGenerationMode || videoGenerationMode;\n} catch (error) {\n  // Keep the deterministic attempt-based fallback when generation did not start.\n}\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: rawName,\n  cardUrl: config.cardUrl || ('https://trello.com/c/' + config.cardId),\n  newName,\n  quoteReadyListId: '659ffc4e5f8bffd67fe38265',\n  failureType,\n  failureMessage,\n  executionId,\n  rawError: serialized.slice(0, 1500),\n  retryable,\n  automaticRetryPlanned: retryable,\n  currentAttempt: jobAttempts,\n  nextAttempt: retryable ? jobAttempts + 1 : null,\n  automaticVideoAttemptLimit,\n  automaticRecoveryAttemptLimit: retryableVideoQc ? automaticVideoAttemptLimit : jobMaxAttempts,\n  automaticRecoveryKind,\n  previewDeliveryErrors: previewErrors,\n  videoQcIssues,\n  videoQcConfidence,\n  videoGenerationFingerprint,\n  videoGenerationMode,\n  customerCommunicationSent: false,\n  handledAt: new Date().toISOString()\n} }];\n"
+      }
+    },
+    {
+      "id": "move-locked-offer-quote-ready",
+      "name": "Move Locked Offer -> Quote Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4048,
+        472
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $('Prepare Locked Offer Failure').first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "659ffc4e5f8bffd67fe38265"
+            },
+            {
+              "name": "pos",
+              "value": "top"
+            },
+            {
+              "name": "name",
+              "value": "={{ $('Prepare Locked Offer Failure').first().json.newName }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 10000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "comment-locked-offer-failure",
+      "name": "Comment Offer Not Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4272,
+        472
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Prepare Locked Offer Failure').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=❌ ANGEBOT NICHT VERSENDET\n\n{{ $('Prepare Locked Offer Failure').first().json.failureMessage }}\n\nDie Karte wurde zur manuellen Korrektur nach Quote Ready verschoben und im Titel mit FEHLER markiert.\n\nRequest-ID: {{ $('Validate Preview Request').first().json.requestId || '-' }}\nExecution: {{ $('Prepare Locked Offer Failure').first().json.executionId || '-' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "supabase-claim-preview-delivery-job",
+      "name": "Supabase: Claim Preview Delivery Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        688,
+        280
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_next_preview_delivery_job_v2",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_worker_id: 'preview-delivery-worker-v2:' + String($execution.id || 'scheduled'), p_workflow_execution_id: String($execution.id || ''), p_lease_seconds: 1500, p_max_active: 1 }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "continueOnFail": false,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "supabase-finish-preview-delivery-job",
+      "name": "Supabase: Finish Preview Delivery Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4064,
+        456
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_preview_delivery_job_v2",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job_id: $json.jobId || null, p_claim_token: $json.claimToken || null, p_status: $json.previewDeliveryJobStatus || 'retry', p_error_code: $json.previewDeliveryJobErrorCode || null, p_error_message: $json.previewDeliveryJobErrorMessage || null, p_workflow_execution_id: String($execution.id || ''), p_metadata: { released_at: $json.releasedAt, released_card_id: $json.releasedCardId, lease_released: $json.leaseReleased === true, automatic_retry_planned: $json.automaticRetryPlanned === true, current_attempt: $json.currentAttempt || null, next_attempt: $json.nextAttempt || null, automatic_recovery_kind: $json.automaticRecoveryKind || null, automatic_recovery_attempt_limit: $json.automaticRecoveryAttemptLimit || null, automatic_video_attempt_limit: $json.automaticVideoAttemptLimit || 2, video_qc_issues: $json.videoQcIssues || [], video_qc_confidence: $json.videoQcConfidence ?? null, video_generation_fingerprint: $json.videoGenerationFingerprint || null, video_generation_mode: $json.videoGenerationMode || null, company_brain_audit_write_ok: $json.auditWriteOk, company_brain_audit_write_error: $json.auditWriteError || null, offer_delivery_handoff_accepted: $json.offerDeliveryHandoffAccepted === true, offer_delivery_action: $json.offerDeliveryAction || null, offer_delivery_status: $json.offerDeliveryStatus || null, raw_error: $json.rawError || null } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "queue-worker-gate",
+      "name": "Queue Worker Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        280
+      ],
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst now = new Date();\nconst MAX_GROK_PER_DAY = 80;\nconst MAX_GROK_PER_HOUR = 20;\nconst rateLimitedUntil = staticData.grokRateLimitedUntil ? new Date(staticData.grokRateLimitedUntil) : null;\nif (rateLimitedUntil && rateLimitedUntil > now) return [];\nif (rateLimitedUntil && rateLimitedUntil <= now) staticData.grokRateLimitedUntil = null;\nconst dayKey = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });\nconst hourKey = dayKey + 'T' + now.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false });\nif (staticData.grokDayKey !== dayKey) { staticData.grokDayKey = dayKey; staticData.grokDayCount = 0; }\nif (staticData.grokHourKey !== hourKey) { staticData.grokHourKey = hourKey; staticData.grokHourCount = 0; }\nif ((staticData.grokDayCount || 0) >= MAX_GROK_PER_DAY) return [];\nif ((staticData.grokHourCount || 0) >= MAX_GROK_PER_HOUR) return [];\nreturn $input.all();"
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/workflow_audit_log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const failure = $('Prepare Locked Offer Failure').first().json || {};\n  const config = $('Config').first().json || {};\n  const request = $('Validate Preview Request').first().json || {};\n  const quote = $('Validate Preview Offer').first().json || {};\n  const cardId = failure.cardId || config.cardId || null;\n  const executionId = String($execution.id || failure.executionId || '');\n  const requestId = request.requestId || quote.requestId || null;\n  const failureType = failure.failureType || 'neontrip_offer_failed';\n  const failedNode = failureType.startsWith('video_content_qc_') ? 'Analyze Video Content QC' : (failureType.includes('locked') || failureType.includes('rate_limited') ? 'Create NEONTRIP Offer' : 'Preview Delivery OK?');\n  const auditEventKey = ['workflow-audit', 'ki-video', 'offer-failure', executionId || 'no-execution', cardId || 'no-card'].join(':');\n  return JSON.stringify({\n    document_id: requestId || (cardId ? 'trello:' + cardId : 'ki-video:' + executionId),\n    workflow_name: 'ki_video_generator_v1',\n    action: 'create_and_send_offer',\n    status: 'error',\n    error_message: failure.failureMessage || 'Angebot wurde nicht rausgeschickt.',\n    metadata: {\n      audit_contract_version: 2,\n      audit_event_key: auditEventKey,\n      workflow_attempt_key: ['workflow-attempt', 'ki-video', executionId || cardId || requestId || 'unknown'].join(':'),\n      workflow_stage: failedNode,\n      attempt_number: Number(failure.currentAttempt || 1),\n      attempt_limit: Number(failure.automaticVideoAttemptLimit || 2),\n      safe_action_key: failureType.includes('customer_email') ? 'correct_customer_email' : (['offer_service_unavailable', 'source_changed_after_preflight', 'video_content_qc_inconclusive', 'video_content_qc_unavailable'].includes(failureType) ? 'retry_media_pipeline' : (['preview_media_invalid', 'video_content_qc_failed', 'asset_processing_failed', 'size_ladder_validation_failed'].includes(failureType) ? 'collect_design_assets' : 'inspect_n8n_run')),\n      terminal: true,\n      event_type: 'workflow_attempt_failed',\n      contract_complete: Boolean(requestId || cardId),\n      contract_missing_fields: requestId || cardId ? [] : ['case_identity'],\n      request_id: requestId,\n      trello_card_id: cardId,\n      trello_card_url: failure.cardUrl || config.cardUrl || (cardId ? 'https://trello.com/c/' + cardId : null),\n      execution_id: executionId,\n      n8n_execution_id: executionId,\n      workflow_execution_id: executionId,\n      correlation_id: cardId ? 'trello:' + cardId + ':ki-video:' + executionId : 'ki-video:' + executionId,\n      idempotency_key: cardId ? 'offer-send:trello:' + cardId + ':ki-video:v1' : 'offer-send:ki-video:' + executionId,\n      failed_node: failedNode,\n      retry_safety: failure.retryable ? 'automatic_retry_once' : 'blocked',\n      summary: failure.failureMessage || 'Offer-Erstellung oder Versand ist fehlgeschlagen.',\n      failure_type: failureType,\n      automation_issue_key: failureType,\n      retry_planned: failure.retryable === true,\n      current_attempt: failure.currentAttempt || null,\n      next_attempt: failure.nextAttempt || null,\n      automatic_video_attempt_limit: failure.automaticVideoAttemptLimit || 2,\n      video_qc_issues: failure.videoQcIssues || [],\n      video_qc_confidence: failure.videoQcConfidence ?? null,\n      video_generation_fingerprint: failure.videoGenerationFingerprint || null,\n      video_generation_mode: failure.videoGenerationMode || null,\n      workflow_id: '9FoJMH6OUdsi36FB',\n      customer_communication_sent: false,\n      raw_error: failure.rawError || null,\n      source: 'n8n_company_brain_audit'\n    }\n  });\n})() }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "company-brain-audit-offer-failure-v1",
+      "name": "Audit: Company Brain Offer Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3824,
+        680
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "transient-video-provider-failure-if",
+      "name": "Transient Video Provider Failure?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2928,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "transient-provider-failure",
+              "leftValue": "={{ $json.transientVideoProviderFailure === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "video-qc-get-card-labels",
+      "name": "Get Card Labels for Video QC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3600,
+        560
+      ],
+      "parameters": {
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}?fields=name,url,idLabels&labels=all",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "video-qc-gate-code",
+      "name": "Video Watchdog Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        560
+      ],
+      "parameters": {
+        "jsCode": "const card = $input.first().json || {};\nconst config = $('Config').first().json || {};\nconst labels = Array.isArray(card.labels) ? card.labels.map((label) => String(label.name || '').trim()).filter(Boolean) : [];\n\nconst blockingPatterns = [\n  /video.*(prüf|pruef|fehler|fail|abweichung|stop|problem)/i,\n  /^\\s*fehler\\b/i,\n  /angebot.*nicht.*senden/i\n];\n\nconst blockingLabels = labels.filter((label) => blockingPatterns.some((pattern) => pattern.test(label)));\nconst titleBlocked = /(?:^|\\s)(?:ANGEBOT\\s+NICHT\\s+SENDEN|DO\\s+NOT\\s+SEND)(?:\\s|$)/i.test(String(card.name || config.cardName || ''));\nlet deliveryWithoutVideo = false;\nlet videoOmittedReason = '';\nlet videoQcDecision = '';\nlet videoQcConfidence = null;\ntry {\n  const parsedQc = $('Parse Video Content QC').first().json || {};\n  deliveryWithoutVideo = parsedQc.videoContentQcFallbackWithoutVideo === true;\n  videoOmittedReason = deliveryWithoutVideo ? String(parsedQc.videoContentQcFallbackReason || 'inconclusive_after_two_qc_attempts') : '';\n  videoQcDecision = String(parsedQc.videoContentQcDecision || '');\n  videoQcConfidence = Number.isFinite(Number(parsedQc.videoContentQcConfidence))\n    ? Number(parsedQc.videoContentQcConfidence)\n    : null;\n} catch (error) {\n  deliveryWithoutVideo = false;\n}\ntry {\n  const providerFallback = $('Prepare Provider Offer-only Fallback').first().json || {};\n  if (providerFallback.deliveryWithoutVideo === true) {\n    deliveryWithoutVideo = true;\n    videoOmittedReason = String(providerFallback.videoOmittedReason || 'video_provider_unavailable_after_retries');\n    videoQcDecision = String(providerFallback.videoContentQcDecision || 'provider_unavailable');\n    videoQcConfidence = null;\n  }\n} catch (error) {\n  // Provider fallback is only executed after the bounded provider retry limit.\n}\nconst videoQcOk = blockingLabels.length === 0 && !titleBlocked;\nconst reason = videoQcOk\n  ? 'Video QC gate passed: no video-specific blocking label on card.'\n  : 'Video QC block: Karte hat einen ausdruecklichen Video- oder Versandstopp.';\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: card.name || config.cardName || '',\n  cardUrl: card.url || config.cardUrl || ('https://trello.com/c/' + config.cardId),\n  videoQcOk,\n  videoQcReason: reason,\n  videoQcBlockingLabels: blockingLabels,\n  videoQcTitleBlocked: titleBlocked,\n  deliveryWithoutVideo,\n  videoOmittedReason,\n  videoContentQcDecision: videoQcDecision,\n  videoContentQcConfidence: videoQcConfidence,\n  ignoredLegacyQcLabels: labels.filter((label) => !blockingLabels.includes(label)),\n  checkedAt: new Date().toISOString(),\n  failureType: videoQcOk ? null : 'video_qc_blocked',\n  failureMessage: videoQcOk\n    ? null\n    : 'Angebot wurde nicht rausgeschickt. Der Video-Watchdog hat einen ausdruecklichen Video- oder Versandstopp erkannt: ' + (blockingLabels.join(', ') || 'ANGEBOT NICHT SENDEN im Titel')\n} }];"
+      }
+    },
+    {
+      "id": "video-qc-passed-if",
+      "name": "Video Watchdog Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4048,
+        560
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "video-qc-ok",
+              "leftValue": "={{ $json.videoQcOk === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "offer-preflight-before-video-v1",
+      "name": "Offer Preflight before Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4944,
+        760
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://angebote.neontrip.de/api/internal/trello-offer/preflight",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cardIdOrUrl: $('Config').first().json.cardId }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 10000
+    },
+    {
+      "id": "normalize-offer-preflight-v1",
+      "name": "Normalize Offer Preflight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5168,
+        760
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst config = $('Config').first().json || {};\nconst statusCode = Number(input.statusCode || input.status || input.httpCode || 0);\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst error = body.error && typeof body.error === 'object' ? body.error : {};\nconst fingerprint = String(body.fingerprint || '').trim();\nconst valid = body.valid === true && /^[a-f0-9]{64}$/i.test(fingerprint);\n\nif (valid) {\n  return [{ json: {\n    preflightOutcome: 'valid',\n    preflightOk: true,\n    preflightFingerprint: fingerprint,\n    preflightStatusCode: statusCode || 200,\n    retryable: false,\n    rateLimited: false,\n    failureType: null,\n    failureMessage: null\n  } }];\n}\n\nconst serialized = JSON.stringify(input).slice(0, 4000);\nconst message = String(\n  error.message ||\n  input.error?.message ||\n  input.message ||\n  body.message ||\n  'Offer-Preflight konnte nicht abgeschlossen werden.'\n).trim();\nconst code = String(\n  error.code ||\n  input.error?.code ||\n  body.code ||\n  (statusCode === 429 ? 'TRELLO_RATE_LIMITED' : 'OFFER_PREFLIGHT_FAILED')\n).trim();\nconst transient = error.retryable === true ||\n  statusCode === 0 ||\n  statusCode === 429 ||\n  statusCode >= 500 ||\n  /timeout|timed out|econnreset|network|rate limit|too many requests/i.test(serialized);\nconst attempts = Number(config.jobAttempts || 1);\nconst exhausted = transient && attempts >= 3;\nconst preflightOutcome = transient && !exhausted ? 'retry' : 'fail';\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: config.cardName,\n  cardUrl: config.cardUrl,\n  preflightOutcome,\n  preflightOk: false,\n  preflightFingerprint: '',\n  preflightStatusCode: statusCode || null,\n  retryable: transient && !exhausted,\n  rateLimited: statusCode === 429 || /rate limit|too many requests/i.test(serialized),\n  failureType: exhausted ? 'offer_preflight_retries_exhausted' : (transient ? 'offer_preflight_transient' : 'offer_preflight_invalid'),\n  failureCode: code,\n  failureMessage: exhausted\n    ? 'Offer-Preflight ist nach drei Versuchen weiterhin fehlgeschlagen: ' + message\n    : 'Offer-Preflight fehlgeschlagen: ' + message,\n  rawError: serialized.slice(0, 1500)\n} }];"
+      }
+    },
+    {
+      "id": "offer-preflight-valid-if-v1",
+      "name": "Offer Preflight Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5392,
+        760
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "offer-preflight-valid",
+              "leftValue": "={{ $json.preflightOutcome }}",
+              "rightValue": "valid",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "offer-preflight-retry-if-v1",
+      "name": "Offer Preflight Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5616,
+        856
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "offer-preflight-retry",
+              "leftValue": "={{ $json.preflightOutcome }}",
+              "rightValue": "retry",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "manual-size-ladder-release-guard-v1",
+      "name": "Ensure Manual Neon Size Ladder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4944,
+        1040
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://coolify-proxy/api/internal/quote-ready-size-ladder",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "ops.neontrip.de"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPS_INTERNAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ action: 'ensure_manual_release_size_ladder', operatorName: 'KI-Video Manual Release Guard', quoteReadySizeLadder: { trelloCard: $('Config').first().json.cardUrl || $('Config').first().json.cardId, stepCm: 10, maxLongSideCm: 250, persist: true, projectToTrello: true, commentToTrello: false } }) }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 10000
+    },
+    {
+      "id": "normalize-manual-size-ladder-release-v1",
+      "name": "Normalize Manual Size Ladder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5168,
+        1040
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst config = $('Config').first().json || {};\nconst statusCode = Number(input.statusCode || input.status || input.httpCode || 0);\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst release = body.manualReleaseSizeLadder && typeof body.manualReleaseSizeLadder === 'object'\n  ? body.manualReleaseSizeLadder\n  : null;\nconst decision = String(release?.decision || '').trim();\nif (body.ok === true && release && (decision === 'ready' || decision === 'skipped')) {\n  return [{ json: {\n    preflightOutcome: 'valid',\n    preflightOk: true,\n    manualSizeLadderDecision: decision,\n    manualSizeLadderReason: release.reason || null,\n    manualSizeLadderProjected: release.offerItemsProjected === true,\n    manualSizeLadderOptionCount: Number(release.optionCount || 0),\n    retryable: false,\n    rateLimited: false,\n    failureType: null,\n    failureMessage: null\n  } }];\n}\nconst serialized = JSON.stringify(input).slice(0, 6000);\nconst technicalIssues = Array.isArray(release?.technicalIssues) ? release.technicalIssues : [];\nconst message = decision === 'blocked'\n  ? 'Groessenleiter technisch blockiert: ' + (technicalIssues.join(', ') || release?.reason || 'unbekannter technischer Fehler')\n  : String(body.error || input.error?.message || input.message || 'Groessenleiter-Pruefung konnte nicht abgeschlossen werden.').trim();\nconst transient = decision !== 'blocked' && (\n  statusCode === 0 ||\n  statusCode === 429 ||\n  statusCode >= 500 ||\n  /timeout|timed out|econnreset|network|rate limit|too many requests/i.test(serialized)\n);\nconst attempts = Number(config.jobAttempts || 1);\nconst exhausted = transient && attempts >= 3;\nconst preflightOutcome = transient && !exhausted ? 'retry' : 'fail';\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: config.cardName,\n  cardUrl: config.cardUrl,\n  preflightOutcome,\n  preflightOk: false,\n  manualSizeLadderDecision: decision || 'error',\n  manualSizeLadderReason: release?.reason || null,\n  manualSizeLadderProjected: false,\n  manualSizeLadderOptionCount: 0,\n  retryable: transient && !exhausted,\n  rateLimited: statusCode === 429 || /rate limit|too many requests/i.test(serialized),\n  failureType: decision === 'blocked'\n    ? 'size_ladder_technical_validation_failed'\n    : (exhausted ? 'size_ladder_guard_retries_exhausted' : (transient ? 'size_ladder_guard_transient' : 'size_ladder_guard_failed')),\n  failureCode: release?.reason || body.error || 'SIZE_LADDER_GUARD_FAILED',\n  failureMessage: exhausted\n    ? 'Groessenleiter-Pruefung ist nach drei Versuchen weiterhin fehlgeschlagen: ' + message\n    : message,\n  rawError: serialized.slice(0, 1500)\n} }];"
+      }
+    },
+    {
+      "id": "manual-size-ladder-release-valid-if-v1",
+      "name": "Manual Size Ladder Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5392,
+        1040
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "manual-size-ladder-valid",
+              "leftValue": "={{ $json.preflightOutcome }}",
+              "rightValue": "valid",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "check-reusable-trello-video",
+      "name": "Check Reusable Trello Video",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        56
+      ],
+      "parameters": {
+        "jsCode": "const mockup = $input.first().json || {};\nconst config = $('Config').first().json || {};\nconst card = $('Get Attachments').first().json || {};\nconst attachments = Array.isArray(card.attachments) ? card.attachments : [];\n\nfunction attachmentName(attachment) {\n  return String(attachment.name || attachment.fileName || '').trim();\n}\n\nfunction timestamp(attachment) {\n  const raw = attachment.date || attachment.dateLastActivity || attachment.createdAt || '';\n  const parsed = raw ? Date.parse(raw) : NaN;\n  if (Number.isFinite(parsed)) return parsed;\n  const id = String(attachment.id || '');\n  if (/^[0-9a-fA-F]{8}/.test(id)) return parseInt(id.slice(0, 8), 16) * 1000;\n  return 0;\n}\n\nfunction isGeneratedVideo(attachment) {\n  if (!attachment || attachment.isMalicious === true) return false;\n  const name = attachmentName(attachment);\n  const fileName = String(attachment.fileName || '').trim();\n  const mime = String(attachment.mimeType || '').toLowerCase();\n  const bytes = Number(attachment.bytes || 0);\n  const isVideoFile = mime === 'video/mp4' || /\\.(?:mp4|mov|webm)$/i.test(name) || /\\.(?:mp4|mov|webm)$/i.test(fileName);\n  const isGeneratedName = /^mockup\\d*_video(?:_\\d+)?\\.mp4$/i.test(name) || /^xai-video-[a-z0-9-]+\\.mp4$/i.test(fileName);\n  return isVideoFile && isGeneratedName && bytes >= 100000;\n}\n\nconst selectedMockup = attachments.find((attachment) =>\n  String(attachment.id || '') === String(mockup.selectedMockupAttachmentId || '')\n) || null;\n\nconst videos = attachments\n  .filter(isGeneratedVideo)\n  .sort((a, b) => timestamp(b) - timestamp(a));\n\nconst existingVideo = videos[0] || null;\nconst mockupTimestamp = selectedMockup ? timestamp(selectedMockup) : 0;\nconst videoTimestamp = existingVideo ? timestamp(existingVideo) : 0;\nconst reusableVideo = Boolean(\n  mockup.mockupOk === true &&\n  selectedMockup &&\n  existingVideo &&\n  videoTimestamp >= mockupTimestamp\n);\n\nconst existingVideoFileName = existingVideo\n  ? String(existingVideo.fileName || existingVideo.name || 'Mockup01_video.mp4')\n  : '';\n\nreturn [{ json: {\n  ...mockup,\n  reusableVideo,\n  videoGenerationRequired: !reusableVideo,\n  existingVideoAttachmentId: existingVideo ? existingVideo.id : null,\n  existingVideoName: existingVideo ? attachmentName(existingVideo) : null,\n  existingVideoDate: existingVideo && existingVideo.date ? existingVideo.date : null,\n  existingVideoBytes: existingVideo ? Number(existingVideo.bytes || 0) : null,\n  existingVideoDownloadUrl: existingVideo\n    ? 'https://api.trello.com/1/cards/' + config.cardId + '/attachments/' + existingVideo.id + '/download/' + encodeURIComponent(existingVideoFileName)\n    : null,\n  selectedMockupDate: selectedMockup && selectedMockup.date ? selectedMockup.date : null,\n  videoReuseReason: reusableVideo\n    ? 'Vorhandenes KI-Video ist mindestens so neu wie das ausgewaehlte KI-Mockup und wird kostenfrei wiederverwendet.'\n    : (existingVideo\n      ? 'Vorhandenes Video ist aelter als das ausgewaehlte KI-Mockup; neue Generierung ist erforderlich.'\n      : 'Kein wiederverwendbares KI-Video vorhanden; neue Generierung ist erforderlich.'),\n  videoGenerationFingerprint: config.cardId + ':' + String(mockup.selectedMockupAttachmentId || 'missing')\n} }];"
+      }
+    },
+    {
+      "id": "if-reusable-trello-video",
+      "name": "Reusable Trello Video?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1360,
+        56
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "reusable-video-true",
+              "leftValue": "={{ $json.reusableVideo }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "download-reusable-trello-video",
+      "name": "Download Reusable Trello Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1584,
+        56
+      ],
+      "parameters": {
+        "url": "={{ $json.existingVideoDownloadUrl }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        },
+        "sendHeaders": false,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AlBnHgoncCtlzKGY",
+          "name": "Trello attachment download OAuth header active"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000
+    },
+    {
+      "id": "upload-reusable-video-supabase",
+      "name": "Upload Reused Video to Supabase Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1808,
+        56
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ \"https://klibiejfisijpagzkxls.supabase.co/storage/v1/object/product-images/preview-videos/\" + $('Validate Preview Offer').first().json.requestId + \"/Mockup01_video.mp4\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "analyze-video-content-qc",
+      "name": "Analyze Video Content QC",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        3376,
+        280
+      ],
+      "parameters": {
+        "resource": "video",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "models/gemini-3.5-flash"
+        },
+        "text": "Inspect the entire short AI-generated product video. Use the first sharp, unobstructed view of the sign as the baseline and compare the same sign parts throughout the video. Return ONLY one-line JSON, no markdown, using exactly: {\"approved\":true|false,\"confidence\":0.0,\"issues\":[\"code\"],\"evidence\":[{\"code\":\"code\",\"timestamps\":[0.0,0.0],\"description\":\"specific visible change\"}]}. Allowed issue codes: DESIGN_MORPH,COLOR_SHIFT,INVENTED_TEXT,INVENTED_OBJECT,UNWANTED_BRANDING,SIGN_DISAPPEARS,FLOATING_SIGN,BAD_CROP,OTHER. Every reported issue MUST have specific evidence. For DESIGN_MORPH or COLOR_SHIFT, evidence must identify the same changed sign part at two clear timestamps at least 1.0 second apart. Do not count normal camera motion, perspective change, apparent size change from a dolly or zoom, motion blur, compression, depth of field, reflections, shadows, or subtle glow/intensity changes as defects. Reject only for a clearly visible persistent defect: altered sign text, logo, symbol, proportions, layout, material, mounting or light color; invented content; disappearance; floating; or unusable crop. Do not reject merely because the camera moves or because you are uncertain. If no defect is clearly evidenced, set approved=true with empty issues and evidence. Set approved=false only when at least one issue has matching evidence. Confidence is certainty in the decision, not defect severity.",
+        "inputType": "binary",
+        "binaryPropertyName": "data",
+        "simplify": true,
+        "options": {
+          "maxOutputTokens": 2048
+        }
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "7iyA36JrjK5KYz70",
+          "name": "Google Gemini(PaLM) Api account 2 | Dronlinehandel"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "parse-video-content-qc",
+      "name": "Parse Video Content QC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        280
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst candidates = [\n  input?.content?.parts?.[0]?.text,\n  input?.text,\n  input?.output,\n  input?.response,\n].filter((value) => typeof value === 'string' && value.trim());\n\nlet parsed = null;\nlet parseError = '';\nfor (const candidate of candidates) {\n  const cleaned = candidate.trim()\n    .replace(/^```(?:json)?\\s*/i, '')\n    .replace(/\\s*```$/i, '');\n  try {\n    parsed = JSON.parse(cleaned);\n    break;\n  } catch (error) {\n    parseError = String(error?.message || error);\n  }\n}\n\nconst allowedIssues = new Set([\n  'DESIGN_MORPH',\n  'COLOR_SHIFT',\n  'INVENTED_TEXT',\n  'INVENTED_OBJECT',\n  'UNWANTED_BRANDING',\n  'SIGN_DISAPPEARS',\n  'FLOATING_SIGN',\n  'BAD_CROP',\n  'OTHER',\n]);\nconst confidence = Number(parsed?.confidence);\nconst issues = Array.isArray(parsed?.issues)\n  ? [...new Set(parsed.issues.map((issue) => String(issue || '').trim().toUpperCase()).filter((issue) => allowedIssues.has(issue)))]\n  : [];\nconst evidence = Array.isArray(parsed?.evidence)\n  ? parsed.evidence.map((entry) => {\n      const code = String(entry?.code || '').trim().toUpperCase();\n      const timestamps = Array.isArray(entry?.timestamps)\n        ? [...new Set(entry.timestamps.map(Number).filter((value) => Number.isFinite(value) && value >= 0 && value <= 30))].sort((a, b) => a - b).slice(0, 6)\n        : [];\n      return {\n        code,\n        timestamps,\n        description: String(entry?.description || '').trim().slice(0, 300),\n      };\n    }).filter((entry) => allowedIssues.has(entry.code) && entry.description.length >= 12 && entry.timestamps.length > 0)\n  : [];\nconst issueEvidence = evidence.filter((entry) => issues.includes(entry.code));\nconst structurallyValid =\n  parsed &&\n  typeof parsed.approved === 'boolean' &&\n  Number.isFinite(confidence) &&\n  confidence >= 0 &&\n  confidence <= 1 &&\n  Array.isArray(parsed.issues);\n\nlet jobAttempts = 1;\nlet jobMaxAttempts = 2;\ntry {\n  const config = $('Config').first().json || {};\n  jobAttempts = Math.max(1, Number(config.jobAttempts || 1));\n  jobMaxAttempts = Math.max(1, Number(config.jobMaxAttempts || 2));\n} catch (error) {\n  jobAttempts = 1;\n  jobMaxAttempts = 2;\n}\n\nconst normalApproval =\n  structurallyValid &&\n  parsed.approved === true &&\n  confidence >= 0.7 &&\n  issues.length === 0;\nconst evidenceBackedRejection =\n  structurallyValid &&\n  parsed.approved === false &&\n  issues.length > 0 &&\n  issueEvidence.length > 0;\nconst inconclusive = !normalApproval && !evidenceBackedRejection;\nconst fallbackWithoutVideo = !normalApproval && jobAttempts >= jobMaxAttempts;\nconst fallbackReason = evidenceBackedRejection\n  ? 'content_rejected_after_video_attempt_limit'\n  : 'inconclusive_after_video_attempt_limit';\nconst decision = normalApproval ? 'pass' : (evidenceBackedRejection ? 'reject' : 'inconclusive');\nconst videoContentQcOk = normalApproval;\n\nconst evidenceText = issueEvidence.length > 0\n  ? issueEvidence.map((entry) => entry.code + '@' + entry.timestamps.join('/')).join(', ')\n  : 'kein konkreter Zeitbeleg';\nconst issueText = issues.length > 0 ? issues.join(', ') : 'keine belegte Inhaltsabweichung';\nconst failureType = evidenceBackedRejection\n  ? 'video_content_qc_failed'\n  : (structurallyValid ? 'video_content_qc_inconclusive' : 'video_content_qc_unavailable');\nconst failureMessage = evidenceBackedRejection\n  ? (fallbackWithoutVideo\n    ? 'Auch der letzte freigegebene KI-Video-Versuch hat eine konkrete Inhaltsabweichung (' + issueText + '; ' + evidenceText + '). Das fehlerhafte Video wird verworfen und das Angebot ohne Video versendet.'\n    : 'KI-Video hat die Inhaltspruefung nicht bestanden (' + issueText + '; ' + evidenceText + '). Ein weiterer statischer Video-Versuch wird gestartet.')\n  : (fallbackWithoutVideo\n    ? 'KI-Video konnte auch im letzten freigegebenen Versuch nicht eindeutig freigegeben werden. Das Angebot wird ohne dieses Video versendet.'\n    : 'KI-Video konnte nicht eindeutig geprueft werden. Ein weiterer statischer Video-Versuch wird gestartet.');\n\nreturn [{ json: {\n  videoContentQcOk,\n  videoContentQcDecision: decision,\n  videoContentQcInconclusive: inconclusive,\n  videoContentQcFallbackWithoutVideo: fallbackWithoutVideo,\n  videoContentQcFallbackReason: fallbackWithoutVideo ? fallbackReason : '',\n  videoContentQcApproved: structurallyValid ? parsed.approved : false,\n  videoContentQcConfidence: Number.isFinite(confidence) ? confidence : null,\n  videoContentQcIssues: issues,\n  videoContentQcEvidence: evidence,\n  videoContentQcEvidenceBackedRejection: evidenceBackedRejection,\n  videoContentQcRaw: candidates[0] ? String(candidates[0]).slice(0, 2000) : '',\n  failureType: videoContentQcOk ? null : failureType,\n  failureMessage: videoContentQcOk ? null : failureMessage,\n  videoContentQcParseError: structurallyValid ? '' : parseError.slice(0, 300),\n  checkedAt: new Date().toISOString(),\n} }];"
+      }
+    },
+    {
+      "id": "video-content-qc-passed-if",
+      "name": "Video Content QC Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3824,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "video-content-qc-ok",
+              "leftValue": "={{ $json.videoContentQcOk === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "restore-video-binary-after-qc",
+      "name": "Restore Video Binary after QC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4048,
+        184
+      ],
+      "parameters": {
+        "jsCode": "const reusable = $('Check Reusable Trello Video').first().json.reusableVideo === true;\nconst source = $('Strip Video Audio').first();\nif (!source?.binary?.data) {\n  throw new Error('Silent video binary missing after content QC');\n}\nreturn [{ json: { ...$json, reusableVideo: reusable }, binary: source.binary }];"
+      }
+    },
+    {
+      "id": "reusable-video-after-qc-if",
+      "name": "Reusable Video after QC?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4272,
+        184
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "reusable-after-qc",
+              "leftValue": "={{ $json.reusableVideo }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "rejected-reusable-video-if",
+      "name": "Rejected Reusable Video?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4048,
+        424
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "rejected-reusable",
+              "leftValue": "={{ ($('Upload Video to Trello').isExecuted && !!$('Upload Video to Trello').first().json.id) || ($('Check Reusable Trello Video').isExecuted && $('Check Reusable Trello Video').first().json.reusableVideo === true && !!$('Check Reusable Trello Video').first().json.existingVideoAttachmentId) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "delete-rejected-reusable-video",
+      "name": "Delete Rejected Reusable Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4272,
+        376
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/attachments/{{ $('Upload Video to Trello').isExecuted && $('Upload Video to Trello').first().json.id ? $('Upload Video to Trello').first().json.id : $('Check Reusable Trello Video').first().json.existingVideoAttachmentId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "automatic-video-retry-available-if",
+      "name": "Automatic Video Retry Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4048,
+        680
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "automatic-video-retry-available",
+              "leftValue": "={{ $('Prepare Locked Offer Failure').first().json.retryable === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "comment-automatic-video-retry",
+      "name": "Comment Automatic Video Retry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4272,
+        680
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Prepare Locked Offer Failure').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ (() => {\nconst f = $('Prepare Locked Offer Failure').first().json || {};\nlet mockup = 'nicht ermittelt';\ntry { mockup = $('Find Mockup').first().json.selectedMockupName || mockup; } catch (error) {}\nconst attempt = Math.max(1, Number(f.currentAttempt || 1));\nconst limit = Math.max(1, Number(f.automaticVideoAttemptLimit || 2));\nconst rawConfidence = f.videoQcConfidence;\nconst confidence = rawConfidence === null || rawConfidence === undefined || rawConfidence === '' ? null : Number(rawConfidence);\nconst issues = Array.isArray(f.videoQcIssues) ? f.videoQcIssues : [];\nconst issueLabels = {\n  DESIGN_MORPH: 'Design, Text oder Logo haben sich gegenüber dem Mockup verändert',\n  COLOR_SHIFT: 'Farbe oder Lichtfarbe stimmt nicht zuverlässig mit dem Mockup überein',\n  INVENTED_TEXT: 'Im Video ist zusätzlicher oder veränderter Text entstanden',\n  INVENTED_OBJECT: 'Im Video ist ein zusätzliches Objekt entstanden',\n  UNWANTED_BRANDING: 'Im Video ist unerwünschtes Branding entstanden',\n  SIGN_DISAPPEARS: 'Das Schild verschwindet zeitweise',\n  FLOATING_SIGN: 'Das Schild wirkt gelöst oder schwebend',\n  BAD_CROP: 'Das Schild ist ungünstig oder unvollständig beschnitten',\n  OTHER: 'Die Bildprüfung hat eine andere konkrete Abweichung erkannt',\n};\nlet reason = '';\nif (issues.length > 0) {\n  reason = issues.map((code) => issueLabels[code] || code).join('; ') + '.';\n} else if (Number.isFinite(confidence)) {\n  reason = 'Die automatische Ähnlichkeitsprüfung erreichte ' + Math.round(confidence * 100) + ' %. Benötigt werden mindestens 70 %. Das System konnte deshalb nicht sicher genug bestätigen, dass Video und Mockup übereinstimmen.';\n} else {\n  reason = f.failureMessage || 'Das Video konnte nicht zuverlässig geprüft werden.';\n}\nreturn '🎬 KI-VIDEO VERSUCH ' + attempt + '/' + limit + ' VERWORFEN\\n\\n' +\n  'Geprüftes Eingabe-Mockup: ' + mockup + '\\n' +\n  'Verworfenes Ergebnis: KI-Video aus diesem Versuch\\n' +\n  'Grund: ' + reason + '\\n\\n' +\n  'Folge: Das Video wurde nicht an die Karte angehängt. Automatischer neuer Versuch: ' + (f.nextAttempt || (attempt + 1)) + '/' + limit + '.\\n' +\n  'Kundenversand: Für diesen fehlgeschlagenen Versuch wurde keine Kundenmail ausgelöst.\\n' +\n  'Prüflauf: ' + (f.executionId || '-') + ' | Queue-Job: ' + (($('Config').first().json || {}).jobId || '-');\n})() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "provider-retry-comment-20260716",
+      "name": "Comment Provider Retry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3456,
+        1424
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=KI-VIDEO PROVIDER RETRY\n\nDer Videoanbieter ist voruebergehend nicht erreichbar oder ausgelastet. Der automatische Versand wurde noch nicht ausgefuehrt; es wurde keine Kundenmail versendet.\n\nDie Karte bleibt in der Verarbeitung und wird automatisch erneut versucht.\nGrund: {{ $json.reason || $json.errorMessage || 'Provider temporaer nicht verfuegbar' }}\nNaechster Provider-Versuch nach: {{ $json.cooldownUntilBerlin || '-' }} Europe/Berlin\nExecution: {{ $execution.id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "send-offer-without-video-after-qc-if",
+      "name": "Send Offer Without Video After QC?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4048,
+        328
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "send-offer-without-video-after-qc",
+              "leftValue": "={{ $json.videoContentQcFallbackWithoutVideo === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fallback-reusable-video-exists-if",
+      "name": "Fallback Reusable Video Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4272,
+        328
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "fallback-reusable-video-exists",
+              "leftValue": "={{ ($('Upload Video to Trello').isExecuted && !!$('Upload Video to Trello').first().json.id) || ($('Check Reusable Trello Video').isExecuted && $('Check Reusable Trello Video').first().json.reusableVideo === true && !!$('Check Reusable Trello Video').first().json.existingVideoAttachmentId) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "delete-reusable-video-for-offer-only",
+      "name": "Delete Reusable Video for Offer-only",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4496,
+        280
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/attachments/{{ $('Upload Video to Trello').isExecuted && $('Upload Video to Trello').first().json.id ? $('Upload Video to Trello').first().json.id : $('Check Reusable Trello Video').first().json.existingVideoAttachmentId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {}
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "prepare-offer-delivery-mode",
+      "name": "Prepare Offer Delivery Mode",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4272,
+        560
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst deliveryWithoutVideo = input.deliveryWithoutVideo === true || input.videoContentQcFallbackWithoutVideo === true;\nreturn [{ json: {\n  ...input,\n  deliveryWithoutVideo,\n  videoOmittedReason: deliveryWithoutVideo\n    ? String(input.videoOmittedReason || 'inconclusive_after_two_qc_attempts')\n    : '',\n} }];"
+      }
+    },
+    {
+      "id": "provider-retry-available-if",
+      "name": "Provider Retry Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2256,
+        1184
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "provider-retry-available",
+              "leftValue": "={{ Number($('Config').first().json.jobAttempts || 1) < Number($('Config').first().json.jobMaxAttempts || 2) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "prepare-provider-offer-only-fallback",
+      "name": "Prepare Provider Offer-only Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        1312
+      ],
+      "parameters": {
+        "jsCode": "const source = $input.first().json || {};\nconst config = $('Config').first().json || {};\nreturn [{ json: {\n  ...source,\n  cardId: config.cardId,\n  cardName: config.cardName || source.cardName || '',\n  deliveryWithoutVideo: true,\n  videoOmittedReason: 'video_provider_unavailable_after_retries',\n  videoContentQcDecision: 'provider_unavailable',\n  videoContentQcConfidence: null,\n  automaticRecoveryKind: 'offer_without_video',\n  customerCommunicationSent: false,\n  recoveredAt: new Date().toISOString(),\n} }];"
+      }
+    },
+    {
+      "id": "strip-video-audio",
+      "name": "Strip Video Audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3264,
+        168
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "contentType": "binaryData",
+        "genericAuthType": "httpHeaderAuth",
+        "inputDataFieldName": "data",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "url": "https://angebote.neontrip.de/api/internal/videos/strip-audio"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 15000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "assert-preview-job-finished",
+      "name": "Assert Preview Job Finished",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4288,
+        456
+      ],
+      "parameters": {
+        "jsCode": "const result = $json || {};\nconst released = $('Release Video Lease').item.json;\nif (result.ok !== true) throw new Error('preview_delivery_finish_rejected:' + String(result.error || 'unknown'));\nconst actual = String(result.effective_status || result.job?.status || '');\nconst expected = String(released.previewDeliveryJobStatus || '');\nconst exhaustedRetry = expected === 'retry' && actual === 'failed';\nif (!actual || (actual !== expected && !exhaustedRetry)) {\n  throw new Error('preview_delivery_finish_status_mismatch:' + expected + ':' + actual);\n}\nreturn [{ json: {\n  ok: true,\n  job_id: released.jobId,\n  status: actual,\n  idempotent: result.idempotent === true,\n  claim_token_consumed: !result.job?.claim_token,\n} }];"
+      }
+    },
+    {
+      "id": "8f232da8-a17d-47ae-94ab-a68703169470",
+      "name": "Move Video-Ready Card to Angebot versenden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4496,
+        560
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "idList",
+              "value": "6a60bdc81b130781fe6af05d"
+            },
+            {
+              "name": "pos",
+              "value": "top"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 10000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "offer-preflight-before-handoff-v1",
+      "name": "Offer Preflight before Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4496,
+        560
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://angebote.neontrip.de/api/internal/trello-offer/preflight",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cardIdOrUrl: $('Config').first().json.cardId }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 10000
+    },
+    {
+      "id": "normalize-offer-handoff-preflight-v1",
+      "name": "Normalize Offer Handoff Preflight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4720,
+        560
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst config = $('Config').first().json || {};\nconst statusCode = Number(input.statusCode || input.status || input.httpCode || 0);\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst error = body.error && typeof body.error === 'object' ? body.error : {};\nconst fingerprint = String(body.fingerprint || '').trim();\nconst valid = body.valid === true && /^[a-f0-9]{64}$/i.test(fingerprint);\n\nif (valid) {\n  return [{ json: {\n    preflightOutcome: 'valid',\n    preflightOk: true,\n    preflightFingerprint: fingerprint,\n    preflightStatusCode: statusCode || 200,\n    retryable: false,\n    rateLimited: false,\n    failureType: null,\n    failureMessage: null\n  } }];\n}\n\nconst serialized = JSON.stringify(input).slice(0, 4000);\nconst message = String(\n  error.message ||\n  input.error?.message ||\n  input.message ||\n  body.message ||\n  'Offer-Preflight konnte nicht abgeschlossen werden.'\n).trim();\nconst code = String(\n  error.code ||\n  input.error?.code ||\n  body.code ||\n  (statusCode === 429 ? 'TRELLO_RATE_LIMITED' : 'OFFER_PREFLIGHT_FAILED')\n).trim();\nconst transient = error.retryable === true ||\n  statusCode === 0 ||\n  statusCode === 429 ||\n  statusCode >= 500 ||\n  /timeout|timed out|econnreset|network|rate limit|too many requests/i.test(serialized);\nconst attempts = Number(config.jobAttempts || 1);\nconst exhausted = transient && attempts >= 3;\nconst preflightOutcome = transient && !exhausted ? 'retry' : 'fail';\n\nreturn [{ json: {\n  cardId: config.cardId,\n  cardName: config.cardName,\n  cardUrl: config.cardUrl,\n  preflightOutcome,\n  preflightOk: false,\n  preflightFingerprint: '',\n  preflightStatusCode: statusCode || null,\n  retryable: transient && !exhausted,\n  rateLimited: statusCode === 429 || /rate limit|too many requests/i.test(serialized),\n  failureType: exhausted ? 'offer_preflight_retries_exhausted' : (transient ? 'offer_preflight_transient' : 'offer_preflight_invalid'),\n  failureCode: code,\n  failureMessage: exhausted\n    ? 'Offer-Preflight ist nach drei Versuchen weiterhin fehlgeschlagen: ' + message\n    : 'Offer-Preflight fehlgeschlagen: ' + message,\n  rawError: serialized.slice(0, 1500)\n} }];"
+      }
+    },
+    {
+      "id": "offer-handoff-preflight-valid-if-v1",
+      "name": "Offer Handoff Preflight Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4944,
+        560
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "offer-handoff-preflight-valid",
+              "leftValue": "={{ $json.preflightOutcome }}",
+              "rightValue": "valid",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "video-attempts-exhausted-before-generation",
+      "name": "Video Attempts Exhausted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "video-attempts-exhausted",
+              "leftValue": "={{ Number($('Config').first().json.jobAttempts || 0) > Number($('Config').first().json.jobMaxAttempts || 2) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "video-status-start-add",
+      "name": "Status: Video wird generiert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels?value=69e9ea3868858dac987ac427",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-start-rm-sent",
+      "name": "Status: Entferne Video gesendet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1360,
+        80
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels/69ea8cb44dafe69b2a31350c",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-start-rm-failed",
+      "name": "Status: Entferne Video fehlgeschlagen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1584,
+        80
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels/6a6366bf3aa9cfa99664bd8a",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-success-add",
+      "name": "Status: Video gesendet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3568,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels?value=69ea8cb44dafe69b2a31350c",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-success-rm-processing",
+      "name": "Status: Ende Videogenerierung",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3792,
+        160
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels/69e9ea3868858dac987ac427",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-success-rm-failed",
+      "name": "Status: Entferne alten Videofehler",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4016,
+        160
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels/6a6366bf3aa9cfa99664bd8a",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-failed-add",
+      "name": "Status: Video fehlgeschlagen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2704,
+        1312
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels?value=6a6366bf3aa9cfa99664bd8a",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-failed-rm-processing",
+      "name": "Status: Beende fehlgeschlagene Generierung",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2928,
+        1312
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels/69e9ea3868858dac987ac427",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "video-status-failed-rm-sent",
+      "name": "Status: Entferne Video gesendet nach Fehler",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3152,
+        1312
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/idLabels/69ea8cb44dafe69b2a31350c",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "restore-config-after-status-start",
+      "name": "Restore Config after Video Start Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        80
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json; return [{ json: { ...config } }];"
+      }
+    },
+    {
+      "id": "restore-config-after-status-success",
+      "name": "Restore Config after Video Success Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4240,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json; return [{ json: { ...config } }];"
+      }
+    },
+    {
+      "id": "restore-config-after-status-failure",
+      "name": "Restore Config after Video Failure Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3376,
+        1312
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').first().json; return [{ json: { ...config } }];"
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Config').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ (() => {\nconst config = $('Config').first().json || {};\nlet qc = {};\nlet provider = {};\nlet mockup = 'nicht ermittelt';\ntry { qc = $('Parse Video Content QC').first().json || {}; } catch (error) {}\ntry { provider = $('Prepare Provider Offer-only Fallback').first().json || {}; } catch (error) {}\ntry { mockup = $('Find Mockup').first().json.selectedMockupName || mockup; } catch (error) {}\nconst attempt = Math.max(1, Number(config.jobAttempts || 1));\nconst limit = Math.max(1, Number(config.jobMaxAttempts || 2));\nconst rawConfidence = qc.videoContentQcConfidence;\nconst confidence = rawConfidence === null || rawConfidence === undefined || rawConfidence === '' ? null : Number(rawConfidence);\nconst issues = Array.isArray(qc.videoContentQcIssues) ? qc.videoContentQcIssues : [];\nconst issueLabels = {\n  DESIGN_MORPH: 'Design, Text oder Logo haben sich gegenüber dem Mockup verändert',\n  COLOR_SHIFT: 'Farbe oder Lichtfarbe stimmt nicht zuverlässig mit dem Mockup überein',\n  INVENTED_TEXT: 'Im Video ist zusätzlicher oder veränderter Text entstanden',\n  INVENTED_OBJECT: 'Im Video ist ein zusätzliches Objekt entstanden',\n  UNWANTED_BRANDING: 'Im Video ist unerwünschtes Branding entstanden',\n  SIGN_DISAPPEARS: 'Das Schild verschwindet zeitweise',\n  FLOATING_SIGN: 'Das Schild wirkt gelöst oder schwebend',\n  BAD_CROP: 'Das Schild ist ungünstig oder unvollständig beschnitten',\n  OTHER: 'Die Bildprüfung hat eine andere konkrete Abweichung erkannt',\n};\nlet reason = '';\nif (issues.length > 0) {\n  reason = issues.map((code) => issueLabels[code] || code).join('; ') + '.';\n} else if (Number.isFinite(confidence)) {\n  reason = 'Die automatische Ähnlichkeitsprüfung erreichte ' + Math.round(confidence * 100) + ' %. Benötigt werden mindestens 70 %. Das System konnte deshalb nicht sicher genug bestätigen, dass Video und Mockup übereinstimmen.';\n} else {\n  reason = provider.reason || provider.errorMessage || provider.videoOmittedReason || 'Das Video konnte nach den automatischen Versuchen nicht zuverlässig erstellt oder geprüft werden.';\n}\nreturn '🎬 KI-VIDEO VERSUCH ' + Math.min(attempt, limit) + '/' + limit + ' VERWORFEN — ENDSTATUS OHNE VIDEO\\n\\n' +\n  'Versuche: ' + Math.min(attempt, limit) + '/' + limit + ' abgeschlossen\\n' +\n  'Geprüftes Eingabe-Mockup: ' + mockup + '\\n' +\n  'Verworfenes Ergebnis: KI-Video aus dem letzten Versuch\\n' +\n  'Grund: ' + reason + '\\n\\n' +\n  'Ergebnis: Kein verworfenes Video wurde an der Karte belassen. Das Angebot wird kontrolliert ohne Video weitergeführt.\\n' +\n  'Hinweis: Dieser Statuskommentar löst keine Kundenmail aus.\\n' +\n  'Queue-Job: ' + (config.jobId || '-');\n})() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "comment-final-video-failure",
+      "name": "Comment Final Video Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2928,
+        1488
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "offer-delivery-handoff-accepted-if-v1",
+      "name": "Offer Delivery Handoff Accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4272,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "offer-delivery-handoff-accepted",
+              "leftValue": "={{ !!$json.delivery && ['ready', 'wait', 'paused', 'skip'].includes(String($json.delivery.action || '')) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Get Attachments": {
+      "main": [
+        [
+          {
+            "node": "Find Mockup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Mockup": {
+      "main": [
+        [
+          {
+            "node": "Build Runway Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 15s": {
+      "main": [
+        [
+          {
+            "node": "Check Runway Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Done": {
+      "main": [
+        [
+          {
+            "node": "Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Queue Worker Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Request for Preview Delivery": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Request": {
+      "main": [
+        [
+          {
+            "node": "Preview Request Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Preview Customer": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Customer": {
+      "main": [
+        [
+          {
+            "node": "Prepare Preview Offer Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Runway Request": {
+      "main": [
+        [
+          {
+            "node": "Submit to Runway",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit to Runway": {
+      "main": [
+        [
+          {
+            "node": "Save Request ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Runway Status": {
+      "main": [
+        [
+          {
+            "node": "Is Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Status: Video wird generiert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Card Details for Preview": {
+      "main": [
+        [
+          {
+            "node": "Extract Preview Request ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview Request Found?": {
+      "main": [
+        [
+          {
+            "node": "Lookup Preview Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trello: Missing Request Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Missing Request Comment": {
+      "main": [
+        [
+          {
+            "node": "Trello: Move Missing Request to Quote Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe Mockup Found?": {
+      "main": [
+        [
+          {
+            "node": "Download Mockup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trello: Missing Safe Mockup Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trello: Missing Safe Mockup Comment": {
+      "main": [
+        [
+          {
+            "node": "Trello: Move Missing Safe Mockup to Quote Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Request ID": {
+      "main": [
+        [
+          {
+            "node": "Grok Rate Limited?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok Rate Limited?": {
+      "main": [
+        [
+          {
+            "node": "Provider Retry Available?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Preview Request ID": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Upsert Preview Card Alias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Upsert Preview Card Alias": {
+      "main": [
+        [
+          {
+            "node": "Restore Preview Context after Alias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Preview Context after Alias": {
+      "main": [
+        [
+          {
+            "node": "Resolve Request for Preview Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create NEONTRIP Offer": {
+      "main": [
+        [
+          {
+            "node": "Offer Delivery Handoff Accepted?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Locked Offer Failure": {
+      "main": [
+        [
+          {
+            "node": "Audit: Company Brain Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Locked Offer -> Quote Ready": {
+      "main": [
+        [
+          {
+            "node": "Comment Offer Not Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comment Offer Not Sent": {
+      "main": [
+        [
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Claim Preview Delivery Job": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release Video Lease": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Finish Preview Delivery Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Worker Gate": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Claim Preview Delivery Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Done?": {
+      "main": [
+        [
+          {
+            "node": "Transient Video Provider Failure?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transient Video Provider Failure?": {
+      "main": [
+        [
+          {
+            "node": "Provider Retry Available?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Video to Trello": {
+      "main": [
+        [
+          {
+            "node": "Status: Video gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Card Labels for Video QC": {
+      "main": [
+        [
+          {
+            "node": "Video Watchdog Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video Watchdog Gate": {
+      "main": [
+        [
+          {
+            "node": "Video Watchdog Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video Watchdog Passed?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Offer Delivery Mode",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Preflight before Video": {
+      "main": [
+        [
+          {
+            "node": "Normalize Offer Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Offer Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Offer Preflight": {
+      "main": [
+        [
+          {
+            "node": "Offer Preflight Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Preflight Valid?": {
+      "main": [
+        [
+          {
+            "node": "Video Attempts Exhausted?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Offer Preflight Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Preflight Retry?": {
+      "main": [
+        [
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Manual Neon Size Ladder": {
+      "main": [
+        [
+          {
+            "node": "Normalize Manual Size Ladder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Manual Size Ladder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Manual Size Ladder": {
+      "main": [
+        [
+          {
+            "node": "Manual Size Ladder Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Size Ladder Valid?": {
+      "main": [
+        [
+          {
+            "node": "Offer Preflight before Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Offer Preflight Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Mockup": {
+      "main": [
+        [
+          {
+            "node": "Check Reusable Trello Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Reusable Trello Video": {
+      "main": [
+        [
+          {
+            "node": "Reusable Trello Video?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reusable Trello Video?": {
+      "main": [
+        [
+          {
+            "node": "Download Reusable Trello Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe Mockup Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Reused Video to Supabase Storage": {
+      "main": [
+        [
+          {
+            "node": "Status: Video gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Strip Video Audio",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Download Reusable Trello Video": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Strip Video Audio",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Analyze Video Content QC": {
+      "main": [
+        [
+          {
+            "node": "Parse Video Content QC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Video Content QC": {
+      "main": [
+        [
+          {
+            "node": "Video Content QC Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video Content QC Passed?": {
+      "main": [
+        [
+          {
+            "node": "Restore Video Binary after QC",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Offer Without Video After QC?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Video Binary after QC": {
+      "main": [
+        [
+          {
+            "node": "Reusable Video after QC?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reusable Video after QC?": {
+      "main": [
+        [
+          {
+            "node": "Upload Reused Video to Supabase Storage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Video to Trello",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upload Video to Supabase Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejected Reusable Video?": {
+      "main": [
+        [
+          {
+            "node": "Delete Rejected Reusable Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Rejected Reusable Video": {
+      "main": [
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit: Company Brain Offer Failure": {
+      "main": [
+        [
+          {
+            "node": "Automatic Video Retry Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Automatic Video Retry Available?": {
+      "main": [
+        [
+          {
+            "node": "Comment Automatic Video Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move Locked Offer -> Quote Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comment Automatic Video Retry": {
+      "main": [
+        [
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comment Provider Retry": {
+      "main": [
+        []
+      ]
+    },
+    "Send Offer Without Video After QC?": {
+      "main": [
+        [
+          {
+            "node": "Fallback Reusable Video Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejected Reusable Video?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Reusable Video Exists?": {
+      "main": [
+        [
+          {
+            "node": "Delete Reusable Video for Offer-only",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status: Video fehlgeschlagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Reusable Video for Offer-only": {
+      "main": [
+        [
+          {
+            "node": "Status: Video fehlgeschlagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Offer Delivery Mode": {
+      "main": [
+        [
+          {
+            "node": "Offer Preflight before Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provider Retry Available?": {
+      "main": [
+        [
+          {
+            "node": "Notify Grok Rate Limit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Comment Provider Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Provider Offer-only Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Provider Offer-only Fallback": {
+      "main": [
+        [
+          {
+            "node": "Status: Video fehlgeschlagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip Video Audio": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Analyze Video Content QC",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Prepare Locked Offer Failure",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Supabase: Finish Preview Delivery Job": {
+      "main": [
+        [
+          {
+            "node": "Assert Preview Job Finished",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Video-Ready Card to Angebot versenden": {
+      "main": [
+        [
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Preflight before Handoff": {
+      "main": [
+        [
+          {
+            "node": "Normalize Offer Handoff Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Offer Handoff Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Offer Handoff Preflight": {
+      "main": [
+        [
+          {
+            "node": "Offer Handoff Preflight Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Handoff Preflight Valid?": {
+      "main": [
+        [
+          {
+            "node": "Create NEONTRIP Offer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video Attempts Exhausted?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Provider Offer-only Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Video wird generiert": {
+      "main": [
+        [
+          {
+            "node": "Status: Entferne Video gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Entferne Video gesendet": {
+      "main": [
+        [
+          {
+            "node": "Status: Entferne Video fehlgeschlagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Entferne Video fehlgeschlagen": {
+      "main": [
+        [
+          {
+            "node": "Restore Config after Video Start Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Video gesendet": {
+      "main": [
+        [
+          {
+            "node": "Status: Ende Videogenerierung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Ende Videogenerierung": {
+      "main": [
+        [
+          {
+            "node": "Status: Entferne alten Videofehler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Entferne alten Videofehler": {
+      "main": [
+        [
+          {
+            "node": "Restore Config after Video Success Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Video fehlgeschlagen": {
+      "main": [
+        [
+          {
+            "node": "Comment Final Video Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Beende fehlgeschlagene Generierung": {
+      "main": [
+        [
+          {
+            "node": "Status: Entferne Video gesendet nach Fehler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status: Entferne Video gesendet nach Fehler": {
+      "main": [
+        [
+          {
+            "node": "Restore Config after Video Failure Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Config after Video Start Status": {
+      "main": [
+        [
+          {
+            "node": "Get Card Details for Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Config after Video Success Status": {
+      "main": [
+        [
+          {
+            "node": "Get Card Labels for Video QC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Config after Video Failure Status": {
+      "main": [
+        [
+          {
+            "node": "Get Card Labels for Video QC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comment Final Video Failure": {
+      "main": [
+        [
+          {
+            "node": "Status: Beende fehlgeschlagene Generierung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Preview Offer Context": {
+      "main": [
+        [
+          {
+            "node": "Validate Preview Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preview Offer": {
+      "main": [
+        [
+          {
+            "node": "Route Preview Offer Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview Offer Handoff Ready?": {
+      "main": [
+        [
+          {
+            "node": "Ensure Manual Neon Size Ladder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Missing Preview Offer Handoff",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: Preview Blocked Comment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trello: Move Blocked Preview to Quote Ready",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Release Video Lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Preview Offer Handoff": {
+      "main": [
+        [
+          {
+            "node": "Preview Offer Handoff Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preview Offer Handoff Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Delivery Handoff Accepted?": {
+      "main": [
+        [
+          {
+            "node": "Move Video-Ready Card to Angebot versenden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Locked Offer Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

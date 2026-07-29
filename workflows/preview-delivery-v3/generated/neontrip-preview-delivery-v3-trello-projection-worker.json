@@ -1,0 +1,532 @@
+{
+  "name": "NEONTRIP Preview Delivery v3 — Trello Projection Worker",
+  "nodes": [
+    {
+      "id": "projection-schedule",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "projection-claim",
+      "name": "Claim Projection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_preview_delivery_projection_v3",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_worker_id: 'preview-v3-projection:' + String($execution.id || 'scheduled'), p_workflow_execution_id: String($execution.id || ''), p_lease_seconds: 120 }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "id": "projection-normalize",
+      "name": "Normalize Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const claim = $input.first().json || {};\nconst projection = claim.projection || null;\nif (!projection) return [{ json: { hasWork: false, reason: claim.reason || 'queue_empty' } }];\nconst payload = projection.payload || {};\nreturn [{ json: {\n  hasWork: true,\n  projectionId: projection.id,\n  claimToken: claim.claim_token,\n  operation: projection.operation,\n  cardId: projection.trello_card_id,\n  marker: String(payload.marker || '').trim(),\n  text: String(payload.text || '').trim()\n} }];"
+      }
+    },
+    {
+      "id": "projection-has-work",
+      "name": "Has Work?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "projection-has-work-condition",
+              "leftValue": "={{ $json.hasWork === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "projection-read-comments",
+      "name": "Read Existing Comments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        220
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $('Normalize Claim').first().json.cardId }}/actions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "commentCard"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "projection-plan-comment",
+      "name": "Plan Comment Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const context = $('Normalize Claim').first().json;\nconst values = $input.all().flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]);\nconst readError = values.find((value) => value?.error || Number(value?.statusCode || 0) >= 400);\nif (context.operation !== 'COMMENT_UPSERT') {\n  return [{ json: { ...context, commentsReadOk: false, error: 'unsupported_projection_operation:' + context.operation } }];\n}\nif (!context.marker || !context.text) {\n  return [{ json: { ...context, commentsReadOk: false, error: 'comment_marker_and_text_required' } }];\n}\nif (readError) {\n  return [{ json: { ...context, commentsReadOk: false, error: String(readError.error?.message || readError.message || JSON.stringify(readError)).slice(0, 1000) } }];\n}\nconst existing = values.find((value) => String(value?.data?.text || '').includes(context.marker));\nreturn [{ json: {\n  ...context,\n  commentsReadOk: true,\n  hasExistingComment: Boolean(existing?.id),\n  existingActionId: existing?.id || null\n} }];"
+      }
+    },
+    {
+      "id": "projection-comments-ok",
+      "name": "Comments Read OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1440,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "projection-comments-ok-condition",
+              "leftValue": "={{ $json.commentsReadOk === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "projection-existing-comment",
+      "name": "Existing Comment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1680,
+        140
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "projection-existing-comment-condition",
+              "leftValue": "={{ $json.hasExistingComment === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "projection-update-comment",
+      "name": "Update Trello Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1920,
+        40
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/actions/{{ $('Plan Comment Upsert').first().json.existingActionId }}/text",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "value",
+              "value": "={{ $('Plan Comment Upsert').first().json.text }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "projection-create-comment",
+      "name": "Create Trello Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1920,
+        220
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Plan Comment Upsert').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $('Plan Comment Upsert').first().json.text }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "projection-finish-input",
+      "name": "Prepare Finish",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const context = $('Normalize Claim').first().json;\nlet plan = {};\ntry { plan = $('Plan Comment Upsert').first().json || {}; } catch {}\nconst response = $input.first().json || {};\nconst rawError = plan.error || response.error?.message || response.message || (Number(response.statusCode || 0) >= 400 ? JSON.stringify(response) : '');\nconst succeeded = !rawError && plan.commentsReadOk === true;\nreturn [{ json: {\n  projectionId: context.projectionId,\n  claimToken: context.claimToken,\n  finishStatus: succeeded ? 'SUCCEEDED' : 'RETRY',\n  externalActionId: succeeded ? String(response.id || plan.existingActionId || '') || null : null,\n  error: succeeded ? null : String(rawError || 'trello_projection_failed').slice(0, 2000)\n} }];"
+      }
+    },
+    {
+      "id": "projection-finish",
+      "name": "Finish Projection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2400,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_preview_delivery_projection_v3",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_projection_id: $json.projectionId, p_claim_token: $json.claimToken, p_workflow_execution_id: String($execution.id || ''), p_status: $json.finishStatus, p_external_action_id: $json.externalActionId || null, p_error: $json.error || null }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "id": "projection-assert-finished",
+      "name": "Assert Finished",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const result = $input.first().json || {};\nif (result.ok !== true) throw new Error('Projection finish was rejected: ' + JSON.stringify(result));\nreturn [{ json: { ok: true, projectionId: result.projection?.id || null, status: result.projection?.status || null } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Claim Projection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Projection": {
+      "main": [
+        [
+          {
+            "node": "Normalize Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Claim": {
+      "main": [
+        [
+          {
+            "node": "Has Work?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Work?": {
+      "main": [
+        [
+          {
+            "node": "Read Existing Comments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Read Existing Comments": {
+      "main": [
+        [
+          {
+            "node": "Plan Comment Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Comment Upsert": {
+      "main": [
+        [
+          {
+            "node": "Comments Read OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comments Read OK?": {
+      "main": [
+        [
+          {
+            "node": "Existing Comment?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existing Comment?": {
+      "main": [
+        [
+          {
+            "node": "Update Trello Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Trello Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Trello Comment": {
+      "main": [
+        [
+          {
+            "node": "Prepare Finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Trello Comment": {
+      "main": [
+        [
+          {
+            "node": "Prepare Finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Finish": {
+      "main": [
+        [
+          {
+            "node": "Finish Projection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finish Projection": {
+      "main": [
+        [
+          {
+            "node": "Assert Finished",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "executionTimeout": 90
+  }
+}
