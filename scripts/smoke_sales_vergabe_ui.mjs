@@ -131,6 +131,7 @@ const configuratorSale = sale({
       lineItemKey: "sale-configurator-line",
       title: "Neon Schriftzug Konfigurator",
       sku: "Default_cpc_QA",
+      quantity: 2,
       selectionDetails: ["Product Type: LED Neon Flex", "Color: Warm white", "Use: Indoor"],
     },
   ],
@@ -472,6 +473,10 @@ async function main() {
   assert(await configuratorCard.getByText("Kommt in Frage für SAID").isVisible(), "Bedingter SAID-Hinweis fehlt");
   assert(await configuratorCard.getByText(/Bestellt/).first().isVisible(), "Bestellzeitpunkt unter dem Produktbild fehlt");
   assert(await configuratorCard.getByText(/noch \d+ Tage|heute|überfällig/).first().isVisible(), "Lieferfrist-Anzeige fehlt");
+  const multiQuantityLabel = configuratorCard.getByText("Menge").locator("..").filter({ hasText: "2x" });
+  assert(await multiQuantityLabel.isVisible(), "Hervorgehobenes Mehrmengen-Label fehlt");
+  assert((await multiQuantityLabel.getAttribute("class"))?.includes("bg-red-600"), "Mehrmengen-Label ist nicht rot hervorgehoben");
+  assert((await multiQuantityLabel.getAttribute("class"))?.includes("text-base"), "Mehrmengen-Label ist nicht vergroessert");
   assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale ist mit Quentin nicht vergebbar");
   assert(await paidCard.getByRole("link", { name: "Trello-Karte oeffnen" }).count() === 1, "Bekannte Trello-Karte wird nicht direkt verlinkt");
   assert(await paidCard.getByRole("link", { name: "Quentin-Suche" }).count() === 0, "Quentin-Suche bleibt trotz bekannter Trello-Karte sichtbar");
