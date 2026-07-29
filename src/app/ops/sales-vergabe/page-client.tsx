@@ -1308,9 +1308,9 @@ function SaleCard({
               disabled={assignmentSaved}
               value={assignmentNote}
               onChange={(event) => setAssignmentNote(event.target.value)}
-              aria-label="Notiz fuer Vergabe"
+              aria-label="Additional Information (English)"
               className="min-h-16 w-full min-w-0 rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm"
-              placeholder="Notiz fuer Vergabe"
+              placeholder="Additional Information – English only"
             />
 
             <div className="flex flex-wrap gap-2">
