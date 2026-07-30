@@ -1,0 +1,565 @@
+{
+  "id": "vseFp5GZU975CeOM",
+  "name": "NEONTRIP KI-Modell-Update-Monitor v1.0",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "executionTimeout": 300,
+    "errorWorkflow": "ArT3LN25Mb1PAuBE"
+  },
+  "createdAt": "2026-07-14T19:04:11.485Z",
+  "updatedAt": "2026-07-14T19:47:42.765Z",
+  "activeVersionId": "88f7b602-703b-49b5-a10a-3a3d232f22fb",
+  "versionCreatedAt": "2026-07-14T19:47:42.768Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "schedule_6h",
+      "name": "Alle 6 Stunden",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        320
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 */6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "openai_news",
+      "name": "OpenAI News RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://openai.com/news/rss.xml",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "NEONTRIP-AI-Model-Update-Monitor/1.0 (+https://neontrip.de)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "openaiNews"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "openai_api",
+      "name": "OpenAI API Changelog",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        500,
+        320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://developers.openai.com/api/docs/changelog",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "NEONTRIP-AI-Model-Update-Monitor/1.0 (+https://neontrip.de)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "openaiApi"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "anthropic_release",
+      "name": "Anthropic Release Notes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        760,
+        320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://platform.claude.com/docs/en/release-notes/overview",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "NEONTRIP-AI-Model-Update-Monitor/1.0 (+https://neontrip.de)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "anthropicRelease"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "anthropic_sitemap",
+      "name": "Anthropic News Sitemap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1020,
+        320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.anthropic.com/sitemap.xml",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "NEONTRIP-AI-Model-Update-Monitor/1.0 (+https://neontrip.de)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "anthropicSitemap"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "gemini_api",
+      "name": "Gemini API Changelog",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://ai.google.dev/gemini-api/docs/changelog",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "NEONTRIP-AI-Model-Update-Monitor/1.0 (+https://neontrip.de)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "geminiApi"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "google_ai",
+      "name": "Google AI RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1540,
+        320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://blog.google/technology/ai/rss/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "NEONTRIP-AI-Model-Update-Monitor/1.0 (+https://neontrip.de)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "googleAi"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "analyze_updates",
+      "name": "Updates analysieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\nfunction sourceText(nodeName, fieldName) {\n  const value = $(nodeName).first().json[fieldName];\n  if (typeof value !== 'string' || value.length < 500) {\n    throw new Error('Quelle ungueltig oder zu kurz: ' + nodeName + ' (' + fieldName + ')');\n  }\n  return value;\n}\n\nfunction decode(value) {\n  return String(value || '')\n    .replace(/<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/g, '$1')\n    .replace(/<script\\b[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style\\b[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;|&#160;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&quot;|&#34;/gi, '\"')\n    .replace(/&#39;|&apos;/gi, \"'\")\n    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction esc(value) {\n  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\n}\n\nfunction hash(value) {\n  const s = String(value || '');\n  let a = 2166136261;\n  let b = 2246822519;\n  for (let i = 0; i < s.length; i++) {\n    const c = s.charCodeAt(i);\n    a ^= c;\n    a = Math.imul(a, 16777619);\n    b ^= c + i;\n    b = Math.imul(b, 3266489917);\n  }\n  return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0');\n}\n\nconst ACTION = /(introduc|launch|releas|new\\b|update|upgrad|improv|available|availability|preview|general availability|\\bga\\b|deprecat|retir|sunset|shut down|model family|model update|rollout)/i;\nconst MODEL_PATTERNS = {\n  OpenAI: /(gpt[-\\s]?\\d|chatgpt|sora|dall[-\\s]?e|\\bo\\d(?:\\b|-)|image model|audio model|voice model|realtime model|speech model|transcrib|text[-\\s]?to[-\\s]?speech|video model|vision model)/i,\n  Anthropic: /(claude|opus|sonnet|haiku|fable|mythos|anthropic.{0,20}model|vision|image|audio|voice|video|multimodal)/i,\n  Gemini: /(gemini|veo|imagen|lyria|nano banana|google.{0,20}model|flash|\\bpro model|live api|\\btts\\b|text[-\\s]?to[-\\s]?speech|audio[-\\s]?to[-\\s]?audio|image generation|video generation)/i,\n};\n\nfunction relevant(provider, text) {\n  return MODEL_PATTERNS[provider].test(text) && ACTION.test(text);\n}\n\nfunction tag(block, name) {\n  const match = block.match(new RegExp('<' + name + '\\\\b[^>]*>([\\\\s\\\\S]*?)<\\\\/' + name + '>', 'i'));\n  return match ? decode(match[1]) : '';\n}\n\nfunction category(text) {\n  const t = String(text || '').toLowerCase();\n  const result = [];\n  if (/audio|voice|speech|tts|realtime|transcrib|music|lyria/.test(t)) result.push('Sprache/Audio');\n  if (/image|vision|imagen|dall|nano banana/.test(t)) result.push('Bild');\n  if (/video|sora|veo/.test(t)) result.push('Video');\n  if (!result.length || /gpt|gemini|claude|opus|sonnet|haiku|flash|pro model/.test(t)) result.unshift('Text/Multimodal');\n  return [...new Set(result)].join(', ');\n}\n\nfunction impactRecommendations(item) {\n  const text = (item.title + ' ' + item.summary + ' ' + item.category).toLowerCase();\n  const isAudio = /audio|voice|speech|tts|realtime|transcrib|music/.test(text);\n  const isImage = /image|vision|imagen|dall|nano banana/.test(text);\n  const isVideo = /video|sora|veo/.test(text);\n  const isEmbedding = /embedding|vector|retrieval|file search|multimodal search/.test(text);\n  const isGeneralOpenAiModel = /gpt|chatgpt|\\bo\\d(?:\\b|-)/.test(text);\n  const isRetirement = /deprecat|retir|sunset|shut down|end.of.life/.test(text);\n  const migrationPrefix = isRetirement ? 'Migration zeitnah planen; ' : '';\n  const result = [];\n  const add = (entry) => result.push({ provider: item.provider, trigger: item.title, ...entry });\n\n  if (item.provider === 'Anthropic') {\n    add({\n      key: 'anthropic-ai-email-agent', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Direkt betroffen',\n      target: 'AI Email Agent v2 — Draft Only', location: 'n8n · ET6R8SAOjAquCpaH · Analyze Attachments Safely / Draft Reply JSON',\n      action: migrationPrefix + 'neues Claude-Modell zuerst gegen gespeicherte Mail- und Attachment-Evals im Draft-only-Modus vergleichen.',\n      chance: 'Bessere Anhangserkennung, stabilere JSON-Entwürfe und möglicherweise geringere Laufzeit oder Kosten.',\n      risk: 'Prompt- und JSON-Drift kann falsche Aussagen, Zusagen oder unvollständige Anhanganalyse erzeugen.',\n      guardrail: 'Keine Auto-Sends; JSON-Schema, Promise-Blocker und Human Review unverändert lassen.',\n    });\n    add({\n      key: 'anthropic-followup-processor', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Direkt betroffen',\n      target: 'NEONTRIP Follow-up Queue Processor v3.6', location: 'n8n · CS4jhqo9tdd0cPe4 · Claude / Claude Retry / Classify Reply / Classify EC',\n      action: migrationPrefix + 'Shadow-Auswertung auf historischen Antworten durchführen, bevor Klassifikation oder Retry-Modell geändert wird.',\n      chance: 'Genauere Erkennung von Antwort, Absage und Terminwunsch; weniger unnötige Follow-ups.',\n      risk: 'Fehlklassifikation kann Follow-ups stoppen oder Reschedule/Cancel-Aktionen falsch vorbereiten.',\n      guardrail: 'Bestehende Parser, deterministische Action-Switches und Datenbank-Idempotenz nicht umgehen.',\n    });\n  }\n\n  if (item.provider === 'OpenAI' && !isAudio && ((!isImage && !isVideo) || isGeneralOpenAiModel)) {\n    add({\n      key: 'openai-request-segmenter', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Direkt betroffen',\n      target: 'NEONTRIP Request Segmenter v1.0 (SHADOW)', location: 'n8n · ELpwCfdWOCRZ22gy · OpenAI Structured Segment Classifier',\n      action: migrationPrefix + 'neues GPT-Modell im vorhandenen Shadow-Betrieb gegen die aktuelle Segment-Taxonomie testen.',\n      chance: 'Höhere Klassifikationsqualität bei geringerem Tokenverbrauch und bessere strukturierte Outputs.',\n      risk: 'Taxonomie-Drift oder andere JSON-Details können Routing und nachgelagerte Automationen verschieben.',\n      guardrail: 'Nur validiertes Schema speichern; Trello bleibt Projektion und darf keine Klassifikationsquelle werden.',\n    });\n    add({\n      key: 'openai-unstructured-requests', priority: isRetirement ? 'HOCH' : 'NIEDRIG', match: 'Direkt betroffen',\n      target: 'RH | Unstruktuierte Anfragen Aktiv', location: 'n8n · AcYSau5MGsAxeAqL · Übersetzung / Message a model',\n      action: migrationPrefix + 'Deutsch/Englisch/Chinesisch-Evals sowie Feldvollständigkeit vor einem Modellwechsel vergleichen.',\n      chance: 'Bessere Mehrsprachigkeit und robustere Extraktion aus unstrukturierten Anfragen.',\n      risk: 'Übersetzungsnuancen oder extrahierte Werte können sich ändern und operative Daten verfälschen.',\n      guardrail: 'Preise, Termine und Zusagen weiterhin ausschließlich deterministisch validieren.',\n    });\n  }\n\n  if (item.provider === 'OpenAI' && isAudio) {\n    add({\n      key: 'openai-voice-runtime', priority: isRetirement ? 'HOCH' : 'HOCH', match: 'Direkt betroffen',\n      target: 'NEONTRIP Voice Runtime', location: 'Ops-Software · services/voice-runtime · OpenAI Realtime/SIP; Eval-Suite in src/lib/ops/voice-platform-evals.ts',\n      action: migrationPrefix + 'neues Realtime-/Audio-Modell nur im internal_test-Modus gegen die bestehende 50+-Szenarien-Eval-Suite testen.',\n      chance: 'Natürlichere Gespräche, geringere Latenz, bessere Unterbrechungserkennung und günstigere Calls.',\n      risk: 'Turn-Taking, Tool Calls, Gesprächskosten, Disclosure und Human Handoff können regressieren.',\n      guardrail: 'Kein Produktionswechsel ohne Consent-, Handoff-, Safety- und Kostenvergleich; keine Audio-/Transcript-Persistenz ergänzen.',\n    });\n    add({\n      key: 'openai-voice-poller', priority: 'NIEDRIG', match: 'Indirekt betroffen',\n      target: 'Voice Agent — Call Status Poller v1.0', location: 'n8n · PsymhpsiEs8Qj6vN · Vapi-Status und Supabase-Outcomes',\n      action: 'Status- und Failure-Mapping prüfen, falls der Voice-Provider oder das Realtime-Modell neue Endzustände liefert.',\n      chance: 'Präzisere Outcome-Erkennung und weniger hängenbleibende Reminder.',\n      risk: 'Neue Statuswerte könnten als unbekannt behandelt werden und Recovery verhindern.',\n      guardrail: 'Postgres bleibt Source of Truth; Statusänderungen idempotent halten.',\n    });\n  }\n\n  if (item.provider === 'Gemini' && isVideo) {\n    add({\n      key: 'gemini-video-qc', priority: isRetirement ? 'HOCH' : 'HOCH', match: 'Direkt betroffen',\n      target: 'KI-Video Generator — Video Content QC', location: 'n8n · 9FoJMH6OUdsi36FB · Analyze Video Content QC (Gemini)',\n      action: migrationPrefix + 'neues Gemini-Modell parallel auf akzeptierten und abgelehnten Videos evaluieren; Schwellenwerte nicht automatisch übernehmen.',\n      chance: 'Bessere Erkennung von falschem Inhalt, Artefakten und nicht passenden Neon-Mockups.',\n      risk: 'False Positives blockieren Angebote; False Negatives lassen unpassende Kundenvideos durch.',\n      guardrail: 'Bestehenden Watchdog, Review-Puffer und Failure-Pfad unverändert lassen.',\n    });\n    add({\n      key: 'gemini-veo-vs-runway', priority: 'MITTEL', match: 'Testkandidat, kein Direkt-Upgrade',\n      target: 'KI-Video Generator — Runway-Erzeugung', location: 'n8n · HIFQvcfBKPEK9oSN / 9FoJMH6OUdsi36FB · Build Runway Request / Submit to Runway',\n      action: 'Veo als separaten Provider-Adapter mit identischen Mockups testen; Runway nicht direkt ersetzen.',\n      chance: 'Möglicherweise bessere Bewegungsqualität, Prompttreue oder Preis-Leistung.',\n      risk: 'Andere Dauer, Seitenverhältnisse, Moderation, Latenz, Kosten und Download-Verträge.',\n      guardrail: 'Provider hinter Feature-Flag; bestehende Runway-Rollback-Route und Content-QC beibehalten.',\n    });\n  }\n\n  if (item.provider === 'Gemini' && !isVideo) {\n    add({\n      key: 'gemini-video-qc-compatibility', priority: isRetirement ? 'HOCH' : 'MITTEL', match: 'Kompatibilität prüfen',\n      target: 'KI-Video Generator — Gemini Video Content QC', location: 'n8n · 9FoJMH6OUdsi36FB · Analyze Video Content QC',\n      action: migrationPrefix + 'prüfen, ob der verwendete Gemini-Modellname oder Alias betroffen ist; nur mit Video-QC-Evals umstellen.',\n      chance: 'Besseres multimodales Reasoning kann die Qualitätskontrolle der Angebotsvideos verbessern.',\n      risk: 'Ein allgemeines Gemini-Release muss nicht dieselben Videoeingaben oder dasselbe Ausgabeformat unterstützen.',\n      guardrail: 'Kompatibilität, Video-Input und Parser-Output vor jedem Wechsel deterministisch validieren.',\n    });\n  }\n\n  if (item.provider === 'OpenAI' && isVideo && !isGeneralOpenAiModel) {\n    add({\n      key: 'openai-video-vs-runway', priority: 'MITTEL', match: 'Testkandidat, kein Direkt-Upgrade',\n      target: 'KI-Video Generator — Runway-Erzeugung', location: 'n8n · HIFQvcfBKPEK9oSN / 9FoJMH6OUdsi36FB · Build Runway Request / Submit to Runway',\n      action: 'OpenAI-Videomodell als separaten Provider-Adapter mit denselben Neon-Mockups benchmarken; Runway nicht direkt ersetzen.',\n      chance: 'Möglicherweise bessere Prompttreue, integriertes Audio oder attraktivere Kosten.',\n      risk: 'Andere API-Verträge, Dauer, Auflösung, Moderation und asynchrone Statuswerte können den bestehenden Flow brechen.',\n      guardrail: 'Feature-Flag, isolierte Storage-Pfade, Content-QC und sofortige Rückschaltung auf Runway.',\n    });\n  }\n\n  if ((item.provider === 'Gemini' || item.provider === 'OpenAI') && isImage) {\n    add({\n      key: item.provider.toLowerCase() + '-image-mockups', priority: 'MITTEL', match: 'Testkandidat, kein Direkt-Upgrade',\n      target: 'Mockup-/Design-Erzeugung', location: 'Ops-Software · design-generation-worker sowie sichere Mockup-Eingänge des KI-Video Generators',\n      action: 'Neues Bildmodell in einem separaten Testpfad für Neon-Mockups, Varianten und Headerbilder benchmarken.',\n      chance: 'Bessere Texttreue, realistischere Neon-Darstellung und weniger manuelle Korrekturen.',\n      risk: 'Logo-/Schriftfehler, falsche Farben oder Geometrien können ungeprüft in Angebote gelangen.',\n      guardrail: 'Keine automatische Kundenauslieferung; visuelle Freigabe und Originaldatei-Abgleich verpflichtend.',\n    });\n  }\n\n  if (isEmbedding) {\n    add({\n      key: item.provider.toLowerCase() + '-knowledge-embeddings', priority: 'MITTEL', match: 'Architektur-Kandidat',\n      target: 'NEONTRIP Wissensbasis / Pinecone-RAG', location: 'n8n · Google Drive → Pinecone Sync und AI Email Agent Knowledge Retrieval',\n      action: 'Neues Embedding-Modell nur in einem neuen Index testen; bestehenden Index niemals in-place mischen.',\n      chance: 'Bessere mehrsprachige und multimodale Suche in Dokumenten, Bildern und Supportwissen.',\n      risk: 'Dimensions- oder Vektorraumwechsel macht bestehende Einbettungen inkompatibel und verschlechtert Retrieval still.',\n      guardrail: 'Vollständiger Reindex, Recall-Evals und atomarer Alias-Switch mit Rollback.',\n    });\n  }\n\n  if (!result.length) {\n    add({\n      key: item.provider.toLowerCase() + '-observe-only', priority: isRetirement ? 'HOCH' : 'NIEDRIG', match: 'Kein direkter Einsatz gefunden',\n      target: 'NEONTRIP Modell-Radar', location: 'Kein aktuell identifizierter produktiver Modellknoten',\n      action: migrationPrefix + 'Release beobachten und erst bei klarer Prozesspassung einen isolierten Benchmark anlegen.',\n      chance: 'Frühe Kenntnis ohne unnötigen Migrationsaufwand.',\n      risk: 'Ein Modellwechsel ohne konkreten Use Case erzeugt Kosten und Regressionen ohne messbaren Nutzen.',\n      guardrail: 'Keine produktive Änderung allein aufgrund einer Release-Ankündigung.',\n    });\n  }\n  return result;\n}\n\nfunction makeCandidate(provider, title, date, url, summary, identity) {\n  const cleanTitle = decode(title).slice(0, 220);\n  const cleanSummary = decode(summary).slice(0, 650);\n  const basis = provider + '|' + (identity || url) + '|' + cleanTitle + '|' + cleanSummary;\n  return {\n    key: provider.toLowerCase() + '-' + hash(basis),\n    provider,\n    title: cleanTitle || (provider + ' Modell-Update'),\n    date: decode(date).slice(0, 80),\n    url,\n    summary: cleanSummary,\n    category: category(cleanTitle + ' ' + cleanSummary),\n  };\n}\n\nfunction parseRss(xml, provider, sourceUrl) {\n  const result = [];\n  const items = xml.match(/<item\\b[\\s\\S]*?<\\/item>/gi) || [];\n  for (const item of items.slice(0, 100)) {\n    const title = tag(item, 'title');\n    const link = tag(item, 'link') || sourceUrl;\n    const date = tag(item, 'pubDate') || tag(item, 'dc:date');\n    const summary = tag(item, 'description') || tag(item, 'content:encoded');\n    const combined = title + ' ' + summary;\n    if (relevant(provider, combined)) {\n      result.push(makeCandidate(provider, title, date, link, summary, link + '|' + date));\n    }\n  }\n  return result;\n}\n\nfunction parseDatedHtml(html, provider, sourceUrl) {\n  const headings = [];\n  const re = /<h[23]\\b[^>]*>([\\s\\S]*?)<\\/h[23]>/gi;\n  let match;\n  while ((match = re.exec(html))) {\n    const text = decode(match[1]);\n    if (/^(January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},\\s+20\\d{2}$/i.test(text)) {\n      headings.push({ date: text, start: match.index, end: re.lastIndex });\n    }\n  }\n  const result = [];\n  for (let i = 0; i < Math.min(headings.length, 80); i++) {\n    const h = headings[i];\n    const end = headings[i + 1] ? headings[i + 1].start : Math.min(html.length, h.end + 20000);\n    const body = decode(html.slice(h.end, end)).slice(0, 3500);\n    if (relevant(provider, body)) {\n      const firstSentence = body.split(/(?<=[.!?])\\s+/)[0] || body;\n      result.push(makeCandidate(provider, provider + ' Update – ' + h.date, h.date, sourceUrl, firstSentence, sourceUrl + '|' + h.date + '|' + hash(body)));\n    }\n  }\n  return result;\n}\n\nfunction titleFromUrl(url) {\n  const slug = String(url).replace(/\\/$/, '').split('/').pop() || 'Claude update';\n  return slug.split('-').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');\n}\n\nfunction parseAnthropicSitemap(xml) {\n  const result = [];\n  const urls = xml.match(/<url>[\\s\\S]*?<\\/url>/gi) || [];\n  for (const block of urls) {\n    const loc = tag(block, 'loc');\n    const lastmod = tag(block, 'lastmod');\n    if (!/anthropic\\.com\\/(news\\/|claude\\/)/i.test(loc)) continue;\n    const title = titleFromUrl(loc);\n    if (relevant('Anthropic', title)) {\n      result.push(makeCandidate('Anthropic', title, lastmod, loc, 'Offizielle Anthropic-Seite wurde neu veröffentlicht oder aktualisiert.', loc + '|' + lastmod));\n    }\n  }\n  return result;\n}\n\nconst openaiNews = sourceText('OpenAI News RSS', 'openaiNews');\nconst openaiApi = sourceText('OpenAI API Changelog', 'openaiApi');\nconst anthropicRelease = sourceText('Anthropic Release Notes', 'anthropicRelease');\nconst anthropicSitemap = sourceText('Anthropic News Sitemap', 'anthropicSitemap');\nconst geminiApi = sourceText('Gemini API Changelog', 'geminiApi');\nconst googleAi = sourceText('Google AI RSS', 'googleAi');\n\nlet candidates = [\n  ...parseRss(openaiNews, 'OpenAI', 'https://openai.com/news/rss.xml'),\n  ...parseDatedHtml(openaiApi, 'OpenAI', 'https://developers.openai.com/api/docs/changelog'),\n  ...parseDatedHtml(anthropicRelease, 'Anthropic', 'https://platform.claude.com/docs/en/release-notes/overview'),\n  ...parseAnthropicSitemap(anthropicSitemap),\n  ...parseDatedHtml(geminiApi, 'Gemini', 'https://ai.google.dev/gemini-api/docs/changelog'),\n  ...parseRss(googleAi, 'Gemini', 'https://blog.google/technology/ai/rss/'),\n];\n\nconst unique = new Map();\nfor (const item of candidates) {\n  if (!unique.has(item.key)) unique.set(item.key, item);\n}\ncandidates = [...unique.values()];\n\nfor (const provider of ['OpenAI', 'Anthropic', 'Gemini']) {\n  if (!candidates.some(item => item.provider === provider)) {\n    throw new Error('Parser lieferte keine relevanten Eintraege fuer ' + provider + '. Quelle oder HTML-Struktur pruefen.');\n  }\n}\n\nconst state = $getWorkflowStaticData('global');\nconst sent = state.sent && typeof state.sent === 'object' ? state.sent : {};\nconst initialized = state.initialized === true;\nconst fresh = initialized ? candidates.filter(item => !sent[item.key]) : [];\nconst keysToMark = (initialized ? fresh : candidates).map(item => item.key);\n\nconst providerOrder = { OpenAI: 1, Anthropic: 2, Gemini: 3 };\nfresh.sort((a, b) => (providerOrder[a.provider] || 9) - (providerOrder[b.provider] || 9));\nconst impactMap = new Map();\nfor (const item of fresh) {\n  for (const impact of impactRecommendations(item)) {\n    const existing = impactMap.get(impact.key);\n    if (!existing) impactMap.set(impact.key, { ...impact, triggers: [item.title] });\n    else if (!existing.triggers.includes(item.title)) existing.triggers.push(item.title);\n  }\n}\nconst impacts = [...impactMap.values()]\n  .sort((a, b) => ({ HOCH: 1, MITTEL: 2, NIEDRIG: 3 }[a.priority] - ({ HOCH: 1, MITTEL: 2, NIEDRIG: 3 }[b.priority])))\n  .slice(0, 10);\n\nconst correlationId = 'ai-model-updates-' + $execution.id;\nconst nowBerlin = $now.setZone('Europe/Berlin').toFormat('dd.MM.yyyy HH:mm');\nlet emailHtml = '';\nlet emailSubject = '';\n\nif (fresh.length) {\n  const groups = {};\n  for (const item of fresh) (groups[item.provider] ||= []).push(item);\n  const sections = Object.entries(groups).map(([provider, items]) => {\n    const cards = items.map(item =>\n      '<div style=\"border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin:10px 0\">' +\n      '<div style=\"font-size:12px;color:#6b7280;margin-bottom:5px\">' + esc(item.category) + (item.date ? ' · ' + esc(item.date) : '') + '</div>' +\n      '<div style=\"font-size:16px;font-weight:700;margin-bottom:6px\">' + esc(item.title) + '</div>' +\n      (item.summary ? '<div style=\"font-size:14px;line-height:1.5;color:#374151;margin-bottom:8px\">' + esc(item.summary) + '</div>' : '') +\n      '<a style=\"color:#2563eb\" href=\"' + esc(item.url) + '\">Offizielle Quelle öffnen</a>' +\n      '</div>'\n    ).join('');\n    return '<h2 style=\"font-size:18px;margin:22px 0 8px\">' + esc(provider) + '</h2>' + cards;\n  }).join('');\n  const impactHtml = impacts.length ?\n    '<h2 style=\"font-size:20px;margin:28px 0 8px\">NEONTRIP Impact-Check</h2>' +\n    '<p style=\"font-size:13px;color:#4b5563;margin:0 0 10px\">Vorschläge sind intern und lösen keine automatische Modelländerung aus.</p>' +\n    impacts.map(impact => {\n      const color = impact.priority === 'HOCH' ? '#b91c1c' : impact.priority === 'MITTEL' ? '#b45309' : '#374151';\n      return '<div style=\"border:1px solid #d1d5db;border-left:5px solid ' + color + ';border-radius:8px;padding:14px;margin:10px 0\">' +\n        '<div style=\"font-size:12px;font-weight:700;color:' + color + '\">' + esc(impact.priority) + ' · ' + esc(impact.match) + '</div>' +\n        '<div style=\"font-size:16px;font-weight:700;margin:5px 0\">' + esc(impact.target) + '</div>' +\n        '<div style=\"font-size:12px;color:#6b7280;margin-bottom:8px\">' + esc(impact.location) + '</div>' +\n        '<div style=\"font-size:14px;margin:4px 0\"><strong>Empfehlung:</strong> ' + esc(impact.action) + '</div>' +\n        '<div style=\"font-size:14px;margin:4px 0\"><strong>Chance:</strong> ' + esc(impact.chance) + '</div>' +\n        '<div style=\"font-size:14px;margin:4px 0\"><strong>Risiko:</strong> ' + esc(impact.risk) + '</div>' +\n        '<div style=\"font-size:14px;margin:4px 0\"><strong>Schutzmaßnahme:</strong> ' + esc(impact.guardrail) + '</div>' +\n        '</div>';\n    }).join('') : '';\n  emailSubject = '[KI-Modell-Update] ' + fresh.length + ' neue Meldung' + (fresh.length === 1 ? '' : 'en') + ': ' + Object.keys(groups).join(', ');\n  emailHtml = '<div style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;color:#111827;max-width:720px;line-height:1.45\">' +\n    '<div style=\"background:#111827;color:white;border-radius:9px;padding:16px 18px\">' +\n    '<div style=\"font-size:19px;font-weight:700\">Neue KI-Modell-Updates</div>' +\n    '<div style=\"font-size:13px;color:#d1d5db;margin-top:4px\">Text, Sprache/Audio, Bild und Video · nur offizielle Quellen</div></div>' +\n    sections + impactHtml +\n    '<p style=\"font-size:12px;color:#6b7280;margin-top:24px\">Automatischer NEONTRIP-Monitor · ' + esc(nowBerlin) + ' (Europe/Berlin)<br>Correlation ID: ' + esc(correlationId) + '</p>' +\n    '</div>';\n}\n\nreturn [{ json: {\n  shouldEmail: fresh.length > 0,\n  mode: initialized ? (fresh.length ? 'notify' : 'nochange') : 'seed',\n  candidateCount: candidates.length,\n  newCount: fresh.length,\n  impactCount: impacts.length,\n  keysToMark,\n  emailTo: 'info@neontrip.de',\n  emailSubject,\n  emailHtml,\n  correlationId,\n  checkedAt: new Date().toISOString(),\n} }];\n"
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "if_new_updates",
+      "name": "Neue Updates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2060,
+        320
+      ],
+      "parameters": {
+        "options": {},
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "new-updates-true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.shouldEmail }}",
+              "rightValue": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "send_outlook",
+      "name": "Update E-Mail senden",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "bodyContent": "={{ $json.emailHtml }}",
+        "additionalFields": {
+          "bodyContentType": "HTML"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 60000,
+      "onError": "stopWorkflow",
+      "webhookId": "cc5200e8-0f1e-47af-9ecd-4e943f9b0810"
+    },
+    {
+      "id": "record_sent",
+      "name": "Versand protokollieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2580,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\nconst result = $('Updates analysieren').first().json;\nconst state = $getWorkflowStaticData('global');\nstate.sent = state.sent && typeof state.sent === 'object' ? state.sent : {};\nconst stampedAt = new Date().toISOString();\nfor (const key of (result.keysToMark || [])) state.sent[key] = stampedAt;\nstate.initialized = true;\nstate.lastCheckedAt = result.checkedAt;\nstate.lastMode = result.mode;\nstate.lastCorrelationId = result.correlationId;\n\nconst entries = Object.entries(state.sent);\nif (entries.length > 2000) {\n  entries.sort((a, b) => String(a[1]).localeCompare(String(b[1])));\n  for (const [key] of entries.slice(0, entries.length - 2000)) delete state.sent[key];\n}\n\nreturn [{ json: {\n  ok: true,\n  mode: result.mode,\n  newCount: result.newCount,\n  recordedKeys: (result.keysToMark || []).length,\n  totalStoredKeys: Object.keys(state.sent).length,\n  correlationId: result.correlationId,\n} }];\n"
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "record_baseline",
+      "name": "Stand protokollieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        440
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\nconst result = $('Updates analysieren').first().json;\nconst state = $getWorkflowStaticData('global');\nstate.sent = state.sent && typeof state.sent === 'object' ? state.sent : {};\nconst stampedAt = new Date().toISOString();\nfor (const key of (result.keysToMark || [])) state.sent[key] = stampedAt;\nstate.initialized = true;\nstate.lastCheckedAt = result.checkedAt;\nstate.lastMode = result.mode;\nstate.lastCorrelationId = result.correlationId;\n\nconst entries = Object.entries(state.sent);\nif (entries.length > 2000) {\n  entries.sort((a, b) => String(a[1]).localeCompare(String(b[1])));\n  for (const [key] of entries.slice(0, entries.length - 2000)) delete state.sent[key];\n}\n\nreturn [{ json: {\n  ok: true,\n  mode: result.mode,\n  newCount: result.newCount,\n  recordedKeys: (result.keysToMark || []).length,\n  totalStoredKeys: Object.keys(state.sent).length,\n  correlationId: result.correlationId,\n} }];\n"
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "info_note",
+      "name": "Betriebsinfo",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        20
+      ],
+      "parameters": {
+        "width": 1040,
+        "height": 220,
+        "content": "## KI-Modell-Update-Monitor v1.0\n\nPrüft alle 6 Stunden ausschließlich offizielle Quellen von OpenAI/ChatGPT, Anthropic/Claude und Google/Gemini auf Text-, Sprach-/Audio-, Bild- und Video-Modellupdates.\n\n**Versand:** support@neontrip.de → info@neontrip.de. Die erste erfolgreiche Ausführung setzt nur die Baseline. Danach wird pro Lauf maximal eine Sammelmail versendet. Deduplizierung erfolgt erst nach erfolgreichem Outlook-Versand.\n\n**Fehler:** Globaler Error Workflow `NEONTRIP Error Alerting v1.0`. Rollback: Workflow deaktivieren; keine externen Daten außer E-Mail-Versand."
+      }
+    }
+  ],
+  "connections": {
+    "Alle 6 Stunden": {
+      "main": [
+        [
+          {
+            "node": "OpenAI News RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI News RSS": {
+      "main": [
+        [
+          {
+            "node": "OpenAI API Changelog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI API Changelog": {
+      "main": [
+        [
+          {
+            "node": "Anthropic Release Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Release Notes": {
+      "main": [
+        [
+          {
+            "node": "Anthropic News Sitemap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic News Sitemap": {
+      "main": [
+        [
+          {
+            "node": "Gemini API Changelog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini API Changelog": {
+      "main": [
+        [
+          {
+            "node": "Google AI RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google AI RSS": {
+      "main": [
+        [
+          {
+            "node": "Updates analysieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Updates analysieren": {
+      "main": [
+        [
+          {
+            "node": "Neue Updates?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neue Updates?": {
+      "main": [
+        [
+          {
+            "node": "Update E-Mail senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stand protokollieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update E-Mail senden": {
+      "main": [
+        [
+          {
+            "node": "Versand protokollieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
