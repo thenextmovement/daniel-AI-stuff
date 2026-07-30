@@ -1686,28 +1686,46 @@ function supplierProductionValue(label: string, value: string) {
     return colors[normalized] || clean;
   }
   if (label === "Cable Position") {
-    if (!clean) return null;
+    const cablePosition = clean.replace(/[\s❗!]+$/gu, "").trim();
+    if (!cablePosition) return null;
+    const normalizedPosition = supplierProductionKey(cablePosition);
     const positions: Record<string, string> = {
-      untenmitte: "Bottom-Center",
-      untenmittig: "Bottom-Center",
-      bottomcenter: "Bottom-Center",
-      untenlinks: "Bottom-Left",
-      bottomleft: "Bottom-Left",
-      untenrechts: "Bottom-Right",
-      bottomright: "Bottom-Right",
-      obenmitte: "Top-Center",
-      obenmittig: "Top-Center",
-      topcenter: "Top-Center",
-      obenlinks: "Top-Left",
-      topleft: "Top-Left",
-      obenrechts: "Top-Right",
-      topright: "Top-Right",
+      untenmitte: "Bottom center",
+      untenmittig: "Bottom center",
+      mitteunten: "Bottom center",
+      mittigunten: "Bottom center",
+      bottomcenter: "Bottom center",
+      untenlinks: "Bottom left",
+      linksunten: "Bottom left",
+      bottomleft: "Bottom left",
+      untenrechts: "Bottom right",
+      rechtsunten: "Bottom right",
+      bottomright: "Bottom right",
+      obenmitte: "Top center",
+      obenmittig: "Top center",
+      mitteoben: "Top center",
+      mittigoben: "Top center",
+      topcenter: "Top center",
+      obenlinks: "Top left",
+      linksoben: "Top left",
+      topleft: "Top left",
+      obenrechts: "Top right",
+      rechtsoben: "Top right",
+      topright: "Top right",
+      links: "Left",
+      left: "Left",
+      rechts: "Right",
+      right: "Right",
+      oben: "Top",
+      top: "Top",
+      unten: "Bottom",
+      bottom: "Bottom",
       kabelabgangegal: "Any position",
       egal: "Any position",
       any: "Any position",
       anyposition: "Any position",
     };
-    return `${positions[normalized] || clean} ❗`;
+    return `${positions[normalizedPosition] || cablePosition} ❗`;
   }
   if (label === "Backboard") {
     return clean
