@@ -1054,13 +1054,68 @@ test("supplier production description prioritizes cable position and keeps outdo
   assert.equal(
     supplierProductionDescription(board.items[0]?.items || []),
     [
-      "Cable Position: Bottom-Center ❗",
+      "Cable Position: Bottom center ❗",
       "Color: RGB ❗",
       "Use: Outdoor ❗",
       "Product Type: LED Neon Flex",
       "Quantity: 2 Pieces",
     ].join("\n"),
   );
+});
+
+test("supplier production description translates German cable position order and emits one alert", () => {
+  const board = buildSupplierSaleBoardFromRows(
+    [saleRow({ id: "sale-german-cable-position", source: "neontrip-offers" })],
+    [
+      itemRow({
+        id: "item-german-cable-position",
+        sale_id: "sale-german-cable-position",
+        title: "LED Neonschild - FOOD EXPLORER",
+        product_type: "LED Neon Flex",
+        raw_line_item: {
+          properties: [
+            { name: "Kabelabgang", value: "Links unten ❗" },
+          ],
+        },
+      }),
+    ],
+    [],
+  );
+
+  const description = supplierProductionDescription(board.items[0]?.items || []);
+  assert.match(description, /^Cable Position: Bottom left ❗$/m);
+  assert.doesNotMatch(description, /Links unten|❗\s*❗/);
+});
+
+test("supplier production description translates all common German cable position variants", () => {
+  const expected = [
+    ["rechts unten", "Bottom right"],
+    ["links oben", "Top left"],
+    ["rechts oben", "Top right"],
+    ["mittig unten", "Bottom center"],
+    ["mittig oben", "Top center"],
+  ];
+
+  for (const [position, english] of expected) {
+    const board = buildSupplierSaleBoardFromRows(
+      [saleRow({ id: `sale-${position}`, source: "neontrip-offers" })],
+      [
+        itemRow({
+          id: `item-${position}`,
+          sale_id: `sale-${position}`,
+          title: "LED Neon Flex",
+          product_type: "LED Neon Flex",
+          raw_line_item: { properties: [{ name: "Kabelabgang", value: position }] },
+        }),
+      ],
+      [],
+    );
+
+    assert.match(
+      supplierProductionDescription(board.items[0]?.items || []),
+      new RegExp(`^Cable Position: ${english} ❗$`, "m"),
+    );
+  }
 });
 
 test("supplier production description does not turn outdoor and hanging options into products and translates values", () => {
