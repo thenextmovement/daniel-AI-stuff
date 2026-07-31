@@ -4,8 +4,10 @@
 
 Ein neuer, eigenstaendiger n8n-Workflow liest jeden Tag um 18:00 Uhr
 Europe/Berlin die Shopify-Bestellungen der letzten 14 Tage. Er waehlt die
-neueste nicht stornierte Bestellung, die vor dem taeglichen Easybill-Cutoff
-11:15 Uhr angelegt wurde. Anschliessend liest er in Easybill die Rechnung mit
+neueste nicht stornierte Bestellung, die vor dem Sicherheits-Cutoff 14:55 Uhr
+angelegt wurde. Easybill importiert um 11:00 und 15:00 Uhr; die fuenf Minuten
+Abstand zum zweiten Import verhindern Fehlalarme fuer Bestellungen genau am
+Import-Rand. Anschliessend liest der Workflow in Easybill die Rechnung mit
 derselben normalisierten Nummer und vergleicht deterministisch:
 
 1. Shopify-Ordernummer gegen Easybill-Rechnungsnummer
@@ -41,8 +43,9 @@ Versandmarkierung.
 ### QA-Workflow
 
 Der inaktive Webhook-Harness enthaelt nur die read-only Vergleichskette und
-keinen Outlook-Knoten. Er dient dem einmaligen aktuellen Abgleich und darf
-nicht aktiviert werden.
+keinen Outlook-Knoten. Er dient dem einmaligen aktuellen Abgleich und darf nur
+nach ausdruecklicher Freigabe kurz aktiviert, einmal ausgefuehrt und sofort
+wieder deaktiviert werden.
 
 ## Datenvertrag
 
@@ -55,6 +58,8 @@ nicht aktiviert werden.
 - Betragsvergleich erfolgt in ganzzahligen Cent, nicht als Float.
 - Fuehrendes `#`, Gross-/Kleinschreibung und Leerraum werden bei der Nummer
   normalisiert; andere echte Nummernunterschiede bleiben sichtbar.
+- Die Easybill-API-Suche verwendet die originale Shopify-Nummer inklusive
+  fuehrendem `#`, weil Easybill aktuelle Rechnungen genau so speichert.
 
 ## Tests
 

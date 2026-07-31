@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   ALERT_RECIPIENT,
   ALERT_SUBJECT,
+  EASYBILL_IMPORT_TIMES,
+  ELIGIBILITY_CUTOFF,
   amountToCents,
   buildErrorWorkflow,
   buildMainWorkflow,
@@ -62,8 +64,20 @@ test('main workflow has one trigger, daily 18:00 Berlin schedule, bounded retrie
   }
 });
 
+test('uses the second daily Easybill import with a five-minute boundary buffer', () => {
+  assert.deepEqual(EASYBILL_IMPORT_TIMES, ['11:00', '15:00']);
+  assert.deepEqual(ELIGIBILITY_CUTOFF, { hour: 14, minute: 55 });
+  const workflow = buildMainWorkflow('error-workflow-id');
+  const select = workflow.nodes.find((node) => node.name === 'Select Latest Eligible Order');
+  assert.match(select.parameters.jsCode, /hour: 14, minute: 55/);
+  assert.doesNotMatch(select.parameters.jsCode, /hour: 11, minute: 15/);
+});
+
 test('main workflow sends only the requested internal alert through the verified Outlook credential', () => {
   const workflow = buildMainWorkflow('error-workflow-id');
+  const lookup = workflow.nodes.find((node) => node.name === 'Read Easybill Invoice');
+  assert.match(lookup.parameters.url, /shopifyOrderNumber/);
+  assert.doesNotMatch(lookup.parameters.url, /encodeURIComponent\(\$json\.expectedInvoiceNumber\)/);
   const mail = workflow.nodes.find((node) => node.name === 'Send Internal Alert');
   assert.equal(mail.parameters.toRecipients, ALERT_RECIPIENT);
   assert.equal(mail.credentials.microsoftOutlookOAuth2Api.id, 'CTEmJD5CjYu9hawu');

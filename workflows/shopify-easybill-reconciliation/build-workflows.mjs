@@ -25,6 +25,8 @@ export const CREDENTIALS = {
 
 export const ALERT_RECIPIENT = 'info@NeonTrip.de';
 export const ALERT_SUBJECT = 'Easy Bill & Shopify Abweichung';
+export const EASYBILL_IMPORT_TIMES = ['11:00', '15:00'];
+export const ELIGIBILITY_CUTOFF = { hour: 14, minute: 55 };
 
 export function normalizeDocumentNumber(value) {
   return String(value ?? '')
@@ -74,7 +76,9 @@ export function compareParties(shopifyParty, easybillParty) {
 const selectLatestOrderCode = `const payload = $input.first().json || {};
 const orders = Array.isArray(payload.orders) ? payload.orders : [];
 const now = $now.setZone('Europe/Berlin');
-const cutoff = now.startOf('day').set({ hour: 11, minute: 15, second: 0, millisecond: 0 });
+// Der zweite Easybill-Import startet um 15:00 Uhr. Fuenf Minuten Abstand
+// verhindern Fehlalarme fuer Bestellungen, die direkt am Import-Rand eingehen.
+const cutoff = now.startOf('day').set({ hour: 14, minute: 55, second: 0, millisecond: 0 });
 const eligible = orders
   .filter((order) => !order.cancelled_at)
   .filter((order) => {
@@ -83,7 +87,7 @@ const eligible = orders
   })
   .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 if (!eligible.length) {
-  throw new Error('Keine nicht stornierte Shopify-Bestellung vor dem 11:15-Cutoff gefunden.');
+  throw new Error('Keine nicht stornierte Shopify-Bestellung vor dem 14:55-Cutoff gefunden.');
 }
 const order = eligible[0];
 const normalizeNumber = (value) => String(value ?? '').trim().replace(/^#+/, '').replace(/\\s+/g, '').toUpperCase();
@@ -356,7 +360,10 @@ function coreNodes(triggerNode) {
     }, { shopifyAccessTokenApi: CREDENTIALS.shopify }),
     codeNode('select-order', 'Select Latest Eligible Order', [500, 300], selectLatestOrderCode),
     httpNode('read-easybill-document', 'Read Easybill Invoice', [740, 300], {
-      url: '=https://api.easybill.de/rest/v1/documents?limit=100&page=1&number={{ encodeURIComponent($json.expectedInvoiceNumber) }}',
+      // Easybill speichert die aktuelle Rechnungsnummer inklusive fuehrendem #.
+      // Die API-Suche nutzt deshalb die originale Shopify-Nummer; erst der
+      // anschliessende Vergleich normalisiert beide Seiten.
+      url: '=https://api.easybill.de/rest/v1/documents?limit=100&page=1&number={{ encodeURIComponent($json.shopifyOrderNumber) }}',
       authentication: 'genericCredentialType',
       genericAuthType: 'httpHeaderAuth',
       sendHeaders: true,

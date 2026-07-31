@@ -11,11 +11,15 @@
 
 ### Medium
 
-- Shopify-Bestellungen nach 11:15 Uhr duerfen am selben Tag nicht als fehlende
-  Easybill-Rechnung gemeldet werden. Der Cutoff ist fest auf Europe/Berlin
-  gesetzt.
+- Shopify-Bestellungen ab 14:55 Uhr duerfen am selben Tag nicht als fehlende
+  Easybill-Rechnung gemeldet werden. Easybill importiert um 11:00 und 15:00
+  Uhr; der Cutoff ist mit fuenf Minuten Sicherheitsabstand fest auf
+  Europe/Berlin gesetzt.
 - Kundennamen koennen sich syntaktisch unterscheiden. E-Mail ist der primaere
   Match, ein normalisierter Name nur der deterministische Fallback.
+- Easybill filtert Rechnungsnummern vor dem normalisierten Vergleich exakt.
+  Daher muss die Suche die originale Shopify-Nummer inklusive `#` verwenden;
+  andernfalls entsteht ein falscher Fehlalarm trotz vorhandener Rechnung.
 - Ein unsicherer Outlook-Versand kann technisch nicht exakt-once garantiert
   werden. Der taegliche Business-Alarm wird per Workflow-Static-Data und
   stabilem Fingerprint dedupliziert; ein unklarer Versandfehler bleibt im
