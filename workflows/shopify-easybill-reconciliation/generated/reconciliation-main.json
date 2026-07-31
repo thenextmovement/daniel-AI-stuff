@@ -1,0 +1,559 @@
+{
+  "name": "NEONTRIP Shopify ↔ Easybill Daily Reconciliation v1.0",
+  "nodes": [
+    {
+      "id": "daily-trigger",
+      "name": "Daily 18:00 Europe/Berlin",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        20,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "read-shopify",
+      "name": "Read Shopify Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "url": "=https://galaxybuzzdk.myshopify.com/admin/api/2024-01/orders.json?status=any&limit=250&created_at_min={{ encodeURIComponent($now.setZone('Europe/Berlin').minus({ days: 14 }).startOf('day').toISO()) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "options": {}
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "select-order",
+      "name": "Select Latest Eligible Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const payload = $input.first().json || {};\nconst orders = Array.isArray(payload.orders) ? payload.orders : [];\nconst now = $now.setZone('Europe/Berlin');\nconst cutoff = now.startOf('day').set({ hour: 11, minute: 15, second: 0, millisecond: 0 });\nconst eligible = orders\n  .filter((order) => !order.cancelled_at)\n  .filter((order) => {\n    const created = DateTime.fromISO(String(order.created_at || ''), { setZone: true });\n    return created.isValid && created <= cutoff;\n  })\n  .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));\nif (!eligible.length) {\n  throw new Error('Keine nicht stornierte Shopify-Bestellung vor dem 11:15-Cutoff gefunden.');\n}\nconst order = eligible[0];\nconst normalizeNumber = (value) => String(value ?? '').trim().replace(/^#+/, '').replace(/\\s+/g, '').toUpperCase();\nconst billing = order.billing_address || {};\nconst customer = order.customer || {};\nconst names = [\n  billing.company,\n  [billing.first_name, billing.last_name].filter(Boolean).join(' '),\n  [customer.first_name, customer.last_name].filter(Boolean).join(' '),\n].filter(Boolean);\nconst emails = [order.email, customer.email].filter(Boolean);\nconst amount = Number(order.total_price);\nif (!Number.isFinite(amount)) throw new Error('Shopify-Bruttobetrag ist ungueltig.');\nreturn [{ json: {\n  correlationId: 'easybill-shopify:' + cutoff.toISODate() + ':' + String(order.id),\n  reconciliationDate: cutoff.toISODate(),\n  cutoff: cutoff.toISO(),\n  shopifyOrderId: String(order.id),\n  shopifyOrderNumber: String(order.name || ''),\n  expectedInvoiceNumber: normalizeNumber(order.name),\n  shopifyAmountCents: Math.round(amount * 100),\n  shopifyAmount: amount.toFixed(2),\n  currency: String(order.currency || 'EUR').toUpperCase(),\n  shopifyCreatedAt: order.created_at,\n  shopifyCustomer: { names, emails },\n} }];"
+      }
+    },
+    {
+      "id": "read-easybill-document",
+      "name": "Read Easybill Invoice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        740,
+        300
+      ],
+      "parameters": {
+        "url": "=https://api.easybill.de/rest/v1/documents?limit=100&page=1&number={{ encodeURIComponent($json.expectedInvoiceNumber) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YF5qkE2gWbB3A6U2",
+          "name": "Header Auth account | Easybill"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "prepare-invoice",
+      "name": "Prepare Invoice Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const base = $('Select Latest Eligible Order').first().json;\nconst payload = $input.first().json || {};\nconst documents = Array.isArray(payload.items) ? payload.items : [];\nconst normalizeNumber = (value) => String(value ?? '').trim().replace(/^#+/, '').replace(/\\s+/g, '').toUpperCase();\nconst exact = documents.find((document) => document.type === 'INVOICE' && normalizeNumber(document.number) === base.expectedInvoiceNumber) || null;\nreturn [{ json: { ...base, invoiceFound: Boolean(exact), easybillDocument: exact } }];"
+      }
+    },
+    {
+      "id": "invoice-found",
+      "name": "Invoice Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "invoice-found-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.invoiceFound }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "read-easybill-customer",
+      "name": "Read Easybill Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1460,
+        220
+      ],
+      "parameters": {
+        "url": "=https://api.easybill.de/rest/v1/customers/{{ $json.easybillDocument.customer_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YF5qkE2gWbB3A6U2",
+          "name": "Header Auth account | Easybill"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "build-comparison",
+      "name": "Build Comparison",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const lookup = $('Prepare Invoice Lookup').first().json;\nconst document = lookup.easybillDocument || {};\nconst customer = $input.first().json || {};\nconst normalizeNumber = (value) => String(value ?? '').trim().replace(/^#+/, '').replace(/\\s+/g, '').toUpperCase();\nconst normalizeParty = (value) => String(value ?? '')\n  .normalize('NFKC')\n  .toLowerCase()\n  .replace(/[^\\p{L}\\p{N}]+/gu, ' ')\n  .trim()\n  .replace(/\\s+/g, ' ');\nconst shopifyEmails = (lookup.shopifyCustomer?.emails || []).map((v) => String(v || '').trim().toLowerCase()).filter(Boolean);\nconst easybillEmails = (Array.isArray(customer.emails) ? customer.emails : (customer.emails ? [customer.emails] : []))\n  .map((entry) => typeof entry === 'string' ? entry : (entry?.email || entry?.value || ''))\n  .map((v) => String(v || '').trim().toLowerCase())\n  .filter(Boolean);\nconst sharedEmail = shopifyEmails.find((email) => easybillEmails.includes(email));\nconst shopifyNames = (lookup.shopifyCustomer?.names || []).map(normalizeParty).filter(Boolean);\nconst easybillNames = [\n  customer.company_name,\n  customer.name,\n  [customer.first_name, customer.last_name].filter(Boolean).join(' '),\n].map(normalizeParty).filter(Boolean);\nconst sharedName = shopifyNames.find((name) => easybillNames.includes(name));\nconst customerMatches = Boolean(sharedEmail || sharedName);\nconst easybillAmountCents = Number(document.amount);\nconst numberMatches = normalizeNumber(document.number) === lookup.expectedInvoiceNumber;\nconst amountMatches = Number.isFinite(easybillAmountCents) && easybillAmountCents === lookup.shopifyAmountCents;\nconst reasons = [];\nif (!numberMatches) reasons.push('Rechnungsnummer stimmt nicht');\nif (!amountMatches) reasons.push('Bruttobetrag stimmt nicht');\nif (!customerMatches) reasons.push('Kunde stimmt nicht oder ist nicht eindeutig pruefbar');\nreturn [{ json: {\n  ...lookup,\n  status: reasons.length ? 'mismatch' : 'ok',\n  mismatch: reasons.length > 0,\n  reasons,\n  checks: { invoiceNumber: numberMatches, amount: amountMatches, customer: customerMatches },\n  customerMatchMethod: sharedEmail ? 'email' : (sharedName ? 'name' : null),\n  easybillInvoiceNumber: document.number || null,\n  easybillDocumentId: document.id ? String(document.id) : null,\n  easybillAmountCents: Number.isFinite(easybillAmountCents) ? easybillAmountCents : null,\n  easybillAmount: Number.isFinite(easybillAmountCents) ? (easybillAmountCents / 100).toFixed(2) : null,\n  easybillCustomerId: customer.id ? String(customer.id) : null,\n  easybillCustomer: customer.company_name || customer.name || [customer.first_name, customer.last_name].filter(Boolean).join(' ') || null,\n} }];"
+      }
+    },
+    {
+      "id": "build-missing",
+      "name": "Build Missing Invoice Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  ...item,\n  status: 'mismatch',\n  mismatch: true,\n  reasons: ['Easybill-Rechnung fehlt'],\n  checks: {\n    invoiceNumber: false,\n    amount: false,\n    customer: false,\n  },\n  easybillInvoiceNumber: null,\n  easybillAmountCents: null,\n  easybillCustomer: null,\n} }];"
+      }
+    },
+    {
+      "id": "mismatch",
+      "name": "Mismatch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1940,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "mismatch-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.mismatch }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "prepare-alert",
+      "name": "Prepare Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nconst escapeHtml = (value) => String(value ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/'/g, '&#039;');\nconst euros = (cents) => cents == null ? 'nicht vorhanden' : (Number(cents) / 100).toFixed(2).replace('.', ',') + ' EUR';\nconst reasonList = (item.reasons || []).map((reason) => '<li>' + escapeHtml(reason) + '</li>').join('');\nconst alertFingerprint = [item.reconciliationDate, item.shopifyOrderId, ...(item.reasons || []).slice().sort()].join(':');\nreturn [{ json: {\n  ...item,\n  subject: 'Easy Bill & Shopify Abweichung',\n  alertFingerprint,\n  body_html: '<h2>Easybill &amp; Shopify Abweichung</h2>' +\n    '<p>Der taegliche Abgleich hat eine Abweichung festgestellt.</p>' +\n    '<ul>' + reasonList + '</ul>' +\n    '<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\">' +\n    '<tr><th>Pruefung</th><th>Shopify</th><th>Easybill</th></tr>' +\n    '<tr><td>Nummer</td><td>' + escapeHtml(item.shopifyOrderNumber) + '</td><td>' + escapeHtml(item.easybillInvoiceNumber || 'nicht vorhanden') + '</td></tr>' +\n    '<tr><td>Bruttobetrag</td><td>' + escapeHtml(euros(item.shopifyAmountCents)) + '</td><td>' + escapeHtml(euros(item.easybillAmountCents)) + '</td></tr>' +\n    '<tr><td>Kunde</td><td>' + escapeHtml((item.shopifyCustomer?.names || []).join(' / ') || 'nicht vorhanden') + '</td><td>' + escapeHtml(item.easybillCustomer || 'nicht vorhanden') + '</td></tr>' +\n    '</table>' +\n    '<p>Correlation-ID: <code>' + escapeHtml(item.correlationId) + '</code></p>' +\n    '<p>Es wurden keine Shopify- oder Easybill-Daten veraendert.</p>',\n} }];"
+      }
+    },
+    {
+      "id": "notification-idempotency",
+      "name": "Notification Idempotency",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nconst state = $getWorkflowStaticData('global');\nstate.sentAlerts = state.sentAlerts || {};\nconst sentAt = state.sentAlerts[item.alertFingerprint] || null;\nreturn [{ json: { ...item, shouldSend: !sentAt, alreadySentAt: sentAt } }];"
+      }
+    },
+    {
+      "id": "should-send",
+      "name": "Should Send Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2660,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "should-send-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.shouldSend }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-alert",
+      "name": "Send Internal Alert",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "info@NeonTrip.de",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body_html }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "id": "mark-alert-sent",
+      "name": "Mark Alert Sent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3140,
+        140
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const alert = $('Notification Idempotency').first().json;\nconst state = $getWorkflowStaticData('global');\nstate.sentAlerts = state.sentAlerts || {};\nstate.sentAlerts[alert.alertFingerprint] = $now.toISO();\nconst keys = Object.keys(state.sentAlerts);\nif (keys.length > 90) {\n  keys.sort((a, b) => String(state.sentAlerts[a]).localeCompare(String(state.sentAlerts[b])));\n  for (const key of keys.slice(0, keys.length - 90)) delete state.sentAlerts[key];\n}\nreturn [{ json: { status: 'alert_sent', correlationId: alert.correlationId, alertFingerprint: alert.alertFingerprint } }];"
+      }
+    },
+    {
+      "id": "duplicate-suppressed",
+      "name": "Duplicate Alert Suppressed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { status: 'duplicate_alert_suppressed', correlationId: $json.correlationId, alertFingerprint: $json.alertFingerprint, alreadySentAt: $json.alreadySentAt } }];"
+      }
+    },
+    {
+      "id": "record-ok",
+      "name": "Record OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  status: 'ok',\n  correlationId: item.correlationId,\n  reconciliationDate: item.reconciliationDate,\n  shopifyOrderId: item.shopifyOrderId,\n  shopifyOrderNumber: item.shopifyOrderNumber,\n  easybillDocumentId: item.easybillDocumentId,\n  easybillInvoiceNumber: item.easybillInvoiceNumber,\n  checks: item.checks,\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "Daily 18:00 Europe/Berlin": {
+      "main": [
+        [
+          {
+            "node": "Read Shopify Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Shopify Orders": {
+      "main": [
+        [
+          {
+            "node": "Select Latest Eligible Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Latest Eligible Order": {
+      "main": [
+        [
+          {
+            "node": "Read Easybill Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Easybill Invoice": {
+      "main": [
+        [
+          {
+            "node": "Prepare Invoice Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Invoice Lookup": {
+      "main": [
+        [
+          {
+            "node": "Invoice Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Found?": {
+      "main": [
+        [
+          {
+            "node": "Read Easybill Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Missing Invoice Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Easybill Customer": {
+      "main": [
+        [
+          {
+            "node": "Build Comparison",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Comparison": {
+      "main": [
+        [
+          {
+            "node": "Mismatch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Missing Invoice Result": {
+      "main": [
+        [
+          {
+            "node": "Mismatch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mismatch?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Alert": {
+      "main": [
+        [
+          {
+            "node": "Notification Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Should Send Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Alert?": {
+      "main": [
+        [
+          {
+            "node": "Send Internal Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate Alert Suppressed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Internal Alert": {
+      "main": [
+        [
+          {
+            "node": "Mark Alert Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "errorWorkflow": "__ERROR_WORKFLOW_ID__",
+    "executionTimeout": 300,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}

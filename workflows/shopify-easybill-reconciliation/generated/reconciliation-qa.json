@@ -1,0 +1,299 @@
+{
+  "name": "QA ONLY — NEONTRIP Shopify ↔ Easybill Reconciliation — TICKET-088",
+  "nodes": [
+    {
+      "id": "qa-webhook",
+      "name": "QA Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        20,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ticket-088-shopify-easybill-reconciliation-qa",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson",
+        "options": {}
+      }
+    },
+    {
+      "id": "read-shopify",
+      "name": "Read Shopify Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "url": "=https://galaxybuzzdk.myshopify.com/admin/api/2024-01/orders.json?status=any&limit=250&created_at_min={{ encodeURIComponent($now.setZone('Europe/Berlin').minus({ days: 14 }).startOf('day').toISO()) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "options": {}
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "select-order",
+      "name": "Select Latest Eligible Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const payload = $input.first().json || {};\nconst orders = Array.isArray(payload.orders) ? payload.orders : [];\nconst now = $now.setZone('Europe/Berlin');\nconst cutoff = now.startOf('day').set({ hour: 11, minute: 15, second: 0, millisecond: 0 });\nconst eligible = orders\n  .filter((order) => !order.cancelled_at)\n  .filter((order) => {\n    const created = DateTime.fromISO(String(order.created_at || ''), { setZone: true });\n    return created.isValid && created <= cutoff;\n  })\n  .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));\nif (!eligible.length) {\n  throw new Error('Keine nicht stornierte Shopify-Bestellung vor dem 11:15-Cutoff gefunden.');\n}\nconst order = eligible[0];\nconst normalizeNumber = (value) => String(value ?? '').trim().replace(/^#+/, '').replace(/\\s+/g, '').toUpperCase();\nconst billing = order.billing_address || {};\nconst customer = order.customer || {};\nconst names = [\n  billing.company,\n  [billing.first_name, billing.last_name].filter(Boolean).join(' '),\n  [customer.first_name, customer.last_name].filter(Boolean).join(' '),\n].filter(Boolean);\nconst emails = [order.email, customer.email].filter(Boolean);\nconst amount = Number(order.total_price);\nif (!Number.isFinite(amount)) throw new Error('Shopify-Bruttobetrag ist ungueltig.');\nreturn [{ json: {\n  correlationId: 'easybill-shopify:' + cutoff.toISODate() + ':' + String(order.id),\n  reconciliationDate: cutoff.toISODate(),\n  cutoff: cutoff.toISO(),\n  shopifyOrderId: String(order.id),\n  shopifyOrderNumber: String(order.name || ''),\n  expectedInvoiceNumber: normalizeNumber(order.name),\n  shopifyAmountCents: Math.round(amount * 100),\n  shopifyAmount: amount.toFixed(2),\n  currency: String(order.currency || 'EUR').toUpperCase(),\n  shopifyCreatedAt: order.created_at,\n  shopifyCustomer: { names, emails },\n} }];"
+      }
+    },
+    {
+      "id": "read-easybill-document",
+      "name": "Read Easybill Invoice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        740,
+        300
+      ],
+      "parameters": {
+        "url": "=https://api.easybill.de/rest/v1/documents?limit=100&page=1&number={{ encodeURIComponent($json.expectedInvoiceNumber) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YF5qkE2gWbB3A6U2",
+          "name": "Header Auth account | Easybill"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "prepare-invoice",
+      "name": "Prepare Invoice Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const base = $('Select Latest Eligible Order').first().json;\nconst payload = $input.first().json || {};\nconst documents = Array.isArray(payload.items) ? payload.items : [];\nconst normalizeNumber = (value) => String(value ?? '').trim().replace(/^#+/, '').replace(/\\s+/g, '').toUpperCase();\nconst exact = documents.find((document) => document.type === 'INVOICE' && normalizeNumber(document.number) === base.expectedInvoiceNumber) || null;\nreturn [{ json: { ...base, invoiceFound: Boolean(exact), easybillDocument: exact } }];"
+      }
+    },
+    {
+      "id": "invoice-found",
+      "name": "Invoice Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "invoice-found-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.invoiceFound }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "read-easybill-customer",
+      "name": "Read Easybill Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1460,
+        220
+      ],
+      "parameters": {
+        "url": "=https://api.easybill.de/rest/v1/customers/{{ $json.easybillDocument.customer_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YF5qkE2gWbB3A6U2",
+          "name": "Header Auth account | Easybill"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "build-comparison",
+      "name": "Build Comparison",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const lookup = $('Prepare Invoice Lookup').first().json;\nconst document = lookup.easybillDocument || {};\nconst customer = $input.first().json || {};\nconst normalizeNumber = (value) => String(value ?? '').trim().replace(/^#+/, '').replace(/\\s+/g, '').toUpperCase();\nconst normalizeParty = (value) => String(value ?? '')\n  .normalize('NFKC')\n  .toLowerCase()\n  .replace(/[^\\p{L}\\p{N}]+/gu, ' ')\n  .trim()\n  .replace(/\\s+/g, ' ');\nconst shopifyEmails = (lookup.shopifyCustomer?.emails || []).map((v) => String(v || '').trim().toLowerCase()).filter(Boolean);\nconst easybillEmails = (Array.isArray(customer.emails) ? customer.emails : (customer.emails ? [customer.emails] : []))\n  .map((entry) => typeof entry === 'string' ? entry : (entry?.email || entry?.value || ''))\n  .map((v) => String(v || '').trim().toLowerCase())\n  .filter(Boolean);\nconst sharedEmail = shopifyEmails.find((email) => easybillEmails.includes(email));\nconst shopifyNames = (lookup.shopifyCustomer?.names || []).map(normalizeParty).filter(Boolean);\nconst easybillNames = [\n  customer.company_name,\n  customer.name,\n  [customer.first_name, customer.last_name].filter(Boolean).join(' '),\n].map(normalizeParty).filter(Boolean);\nconst sharedName = shopifyNames.find((name) => easybillNames.includes(name));\nconst customerMatches = Boolean(sharedEmail || sharedName);\nconst easybillAmountCents = Number(document.amount);\nconst numberMatches = normalizeNumber(document.number) === lookup.expectedInvoiceNumber;\nconst amountMatches = Number.isFinite(easybillAmountCents) && easybillAmountCents === lookup.shopifyAmountCents;\nconst reasons = [];\nif (!numberMatches) reasons.push('Rechnungsnummer stimmt nicht');\nif (!amountMatches) reasons.push('Bruttobetrag stimmt nicht');\nif (!customerMatches) reasons.push('Kunde stimmt nicht oder ist nicht eindeutig pruefbar');\nreturn [{ json: {\n  ...lookup,\n  status: reasons.length ? 'mismatch' : 'ok',\n  mismatch: reasons.length > 0,\n  reasons,\n  checks: { invoiceNumber: numberMatches, amount: amountMatches, customer: customerMatches },\n  customerMatchMethod: sharedEmail ? 'email' : (sharedName ? 'name' : null),\n  easybillInvoiceNumber: document.number || null,\n  easybillDocumentId: document.id ? String(document.id) : null,\n  easybillAmountCents: Number.isFinite(easybillAmountCents) ? easybillAmountCents : null,\n  easybillAmount: Number.isFinite(easybillAmountCents) ? (easybillAmountCents / 100).toFixed(2) : null,\n  easybillCustomerId: customer.id ? String(customer.id) : null,\n  easybillCustomer: customer.company_name || customer.name || [customer.first_name, customer.last_name].filter(Boolean).join(' ') || null,\n} }];"
+      }
+    },
+    {
+      "id": "build-missing",
+      "name": "Build Missing Invoice Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  ...item,\n  status: 'mismatch',\n  mismatch: true,\n  reasons: ['Easybill-Rechnung fehlt'],\n  checks: {\n    invoiceNumber: false,\n    amount: false,\n    customer: false,\n  },\n  easybillInvoiceNumber: null,\n  easybillAmountCents: null,\n  easybillCustomer: null,\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "QA Webhook": {
+      "main": [
+        [
+          {
+            "node": "Read Shopify Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Shopify Orders": {
+      "main": [
+        [
+          {
+            "node": "Select Latest Eligible Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Latest Eligible Order": {
+      "main": [
+        [
+          {
+            "node": "Read Easybill Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Easybill Invoice": {
+      "main": [
+        [
+          {
+            "node": "Prepare Invoice Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Invoice Lookup": {
+      "main": [
+        [
+          {
+            "node": "Invoice Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Found?": {
+      "main": [
+        [
+          {
+            "node": "Read Easybill Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Missing Invoice Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Easybill Customer": {
+      "main": [
+        [
+          {
+            "node": "Build Comparison",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "executionTimeout": 300,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  }
+}
