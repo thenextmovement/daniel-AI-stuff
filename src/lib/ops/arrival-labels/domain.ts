@@ -614,12 +614,26 @@ function parseStandardOfferMetadataNote(note: string | null | undefined) {
   const lines = normalized.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (lines.length < 4 || lines.length > 6) return empty;
   const offerNumber = lines[0].match(/^NEONTRIP Angebot:\s*(A\/N [0-9]{1,12})$/i)?.[1]?.toUpperCase();
-  const offerUrlId = lines[1].match(/^Angebotslink:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128}))$/i)?.[2];
-  const pdfUrlId = lines[2].match(/^PDF Snapshot:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128})\/pdf)$/i)?.[2];
-  const pricesMatch = new RegExp(`^Netto:\\s*${MONEY}\\s*/\\s*MwSt:\\s*${MONEY}\\s*/\\s*Brutto:\\s*${MONEY}$`, "i").test(lines[3]);
+  let offerUrlId: string | null = null;
+  let pdfUrlId: string | null = null;
+  let pricesMatch = false;
   let nerdyFormsId: string | null = null;
   let reverseChargeVatId: string | null = null;
-  for (const line of lines.slice(4)) {
+  for (const line of lines.slice(1)) {
+    const offerUrl = line.match(/^Angebotslink:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128}))$/i)?.[2] || null;
+    if (offerUrl && !offerUrlId) {
+      offerUrlId = offerUrl;
+      continue;
+    }
+    const pdfUrl = line.match(/^PDF Snapshot:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128})\/pdf)$/i)?.[2] || null;
+    if (pdfUrl && !pdfUrlId) {
+      pdfUrlId = pdfUrl;
+      continue;
+    }
+    if (!pricesMatch && new RegExp(`^Netto:\\s*${MONEY}\\s*/\\s*MwSt:\\s*${MONEY}\\s*/\\s*Brutto:\\s*${MONEY}$`, "i").test(line)) {
+      pricesMatch = true;
+      continue;
+    }
     const nerdy = line.match(/^Nerdy-Forms_ID:\s*([0-9a-f-]{36})$/i)?.[1] || null;
     if (nerdy && INTERNAL_UUID_NOTE.test(nerdy) && !nerdyFormsId) {
       nerdyFormsId = nerdy.toLowerCase();

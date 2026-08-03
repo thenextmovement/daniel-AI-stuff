@@ -444,7 +444,7 @@ test("validated NEONTRIP form, reverse-charge and accepted-segment metadata rema
 
   const formOrder = {
     ...standardOrder,
-    note: [...baseNote, `Nerdy-Forms_ID: ${formId}`].join("\n"),
+    note: [baseNote[0], `Nerdy-Forms_ID: ${formId}`, ...baseNote.slice(1)].join("\n"),
     customAttributes: [
       ...baseAttributes,
       { key: "Invoice Mail Intended", value: "yes_private_email" },
