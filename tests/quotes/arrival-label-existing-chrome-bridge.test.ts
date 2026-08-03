@@ -254,6 +254,21 @@ test("a persisted browser manual review cannot be projected back to label planne
   assert.match(migration, /left\(j[.]last_error, 500\)/i);
   assert.match(rollback, /drop trigger if exists arrival_label_cases_preserve_browser_manual_review/i);
   assert.match(rollback, /drop function if exists public[.]arrival_labels_preserve_browser_manual_review/i);
+
+  const notificationMigration = await readFile(
+    "supabase/migrations/20260803090717_preserve_arrival_browser_manual_review_notifications.sql",
+    "utf8",
+  );
+  const notificationRollback = await readFile(
+    "supabase/rollbacks/20260803090717_preserve_arrival_browser_manual_review_notifications_rollback.sql",
+    "utf8",
+  );
+  assert.match(notificationMigration, /arrival_labels_enqueue_review_notification/i);
+  assert.match(notificationMigration, /j[.]status = 'manual_review'/i);
+  assert.match(notificationMigration, /selected_dpd_product is not null and not v_browser_manual_review/i);
+  assert.match(notificationMigration, /fail-closed browser review can enqueue a review notification/i);
+  assert.match(notificationRollback, /selected_dpd_product is not null then/i);
+  assert.match(notificationRollback, /only a blocked case without DPD product can enqueue a review notification/i);
 });
 
 test("database existing-label stopper is pre-dispatch, audited and service-role only", async () => {
