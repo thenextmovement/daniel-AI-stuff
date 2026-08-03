@@ -41,6 +41,7 @@ type CaseRow = {
   id: string;
   idempotency_key: string;
   status: string;
+  manual_review_reason: string | null;
   delivery_note_status: string;
   existing_dpd_tracking: string | null;
 };
@@ -666,13 +667,19 @@ export async function upsertArrivalCase(input: {
     }),
   }, { on_conflict: "idempotency_key" });
   if (!rows[0]) throw new Error("Arrival-Label-Fall konnte nicht gespeichert werden.");
+  const persistedDecisionStatus = input.decision.status === "label_planned" && rows[0].status === "manual_review"
+    ? "manual_review"
+    : input.decision.status;
+  const persistedManualReviewReason = persistedDecisionStatus === "manual_review"
+    ? rows[0].manual_review_reason || input.decision.manualReviewReason
+    : input.decision.manualReviewReason;
   await supabaseRequest("arrival_label_run_cases", {
     method: "POST",
     headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
     body: JSON.stringify({
       run_id: input.runId,
       case_id: rows[0].id,
-      decision_status: input.decision.status,
+      decision_status: persistedDecisionStatus,
       decision_snapshot: {
         idempotencyKey: input.decision.idempotencyKey,
         arrivalSources: input.arrival.sourceKinds,
@@ -685,7 +692,7 @@ export async function upsertArrivalCase(input: {
         selectedDpdProduct: input.decision.selectedDpdProduct,
         existingDpdTracking: input.decision.existingDpdTracking,
         shopifyFinancialStatus: order?.financialStatus || null,
-        manualReviewReason: input.decision.manualReviewReason,
+        manualReviewReason: persistedManualReviewReason,
       },
     }),
   }, { on_conflict: "run_id,case_id" });

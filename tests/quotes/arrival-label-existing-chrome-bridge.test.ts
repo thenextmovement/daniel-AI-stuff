@@ -19,6 +19,7 @@ import {
   parseExistingChromeManagerArgs,
 } from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
 import { isExecutedEntryPoint } from "../../scripts/run_easydpd_existing_chrome_host.mjs";
+import { projectPersistedBrowserManualReview } from "../../src/lib/ops/arrival-labels/service";
 import {
   BRIDGE_PROTOCOL_VERSION,
   existingLabelEvidence,
@@ -214,6 +215,45 @@ test("browser artifact route exposes only a safe failure stage and keeps PDF.js 
   assert.match(route, /code: safeErrorCode\(error\)/);
   assert.doesNotMatch(route, /console[.]error\([^)]*error[.]message/);
   assert.match(nextConfig, /serverExternalPackages: \["@napi-rs\/canvas", "pdfjs-dist"\]/);
+});
+
+test("a persisted browser manual review cannot be projected back to label planned", async () => {
+  const decision = {
+    idempotencyKey: "arrival:test",
+    trackingNumber: "5098556175",
+    lastSix: "556175",
+    expectedArrival: "2026-08-03",
+    trelloCard: null,
+    shopifyOrder: null,
+    shippingClass: "standard" as const,
+    destinationCountryCode: "DE",
+    destinationClass: "domestic_de" as const,
+    deliveryNoteRequired: false,
+    deliveryNoteStatus: "not_required" as const,
+    selectedDpdProduct: "DPD_DE_B2C",
+    existingDpdTracking: null,
+    status: "label_planned" as const,
+    manualReviewReason: null,
+    relevantOrderNote: null,
+    reasons: ["trello_sign_shipped_trigger"],
+  };
+  const projected = projectPersistedBrowserManualReview(decision, {
+    status: "manual_review",
+    manual_review_reason: "EasyDPD-Browserauftrag ist manuell zu pruefen; kein automatischer Zweitkauf.",
+  });
+  assert.equal(projected.status, "manual_review");
+  assert.match(projected.manualReviewReason || "", /kein automatischer Zweitkauf/);
+  assert.equal(projected.reasons.includes("browser_purchase_manual_review"), true);
+
+  const migration = await readFile("supabase/migrations/20260803105500_preserve_arrival_browser_manual_review.sql", "utf8");
+  const rollback = await readFile("supabase/rollbacks/20260803105500_preserve_arrival_browser_manual_review_rollback.sql", "utf8");
+  assert.match(migration, /before update of status, manual_review_reason/i);
+  assert.match(migration, /j[.]status = 'manual_review'/i);
+  assert.match(migration, /new[.]status := 'manual_review'/i);
+  assert.match(migration, /nullif\(old[.]manual_review_reason, ''\)/i);
+  assert.match(migration, /left\(j[.]last_error, 500\)/i);
+  assert.match(rollback, /drop trigger if exists arrival_label_cases_preserve_browser_manual_review/i);
+  assert.match(rollback, /drop function if exists public[.]arrival_labels_preserve_browser_manual_review/i);
 });
 
 test("database existing-label stopper is pre-dispatch, audited and service-role only", async () => {

@@ -94,6 +94,19 @@ function summarize(
   };
 }
 
+export function projectPersistedBrowserManualReview(
+  decision: ArrivalCaseDecision,
+  stored: { status: string; manual_review_reason: string | null },
+) {
+  if (decision.status !== "label_planned" || stored.status !== "manual_review") return decision;
+  return {
+    ...decision,
+    status: "manual_review" as const,
+    manualReviewReason: stored.manual_review_reason || "EasyDPD-Browserauftrag ist manuell zu pruefen; kein automatischer Zweitkauf.",
+    reasons: [...new Set([...decision.reasons, "browser_purchase_manual_review"])],
+  };
+}
+
 function assertWriteGate(mode: ArrivalRunMode, productConfig: ProductConfig | null) {
   if (mode !== "execute") return;
   if (String(process.env.ARRIVAL_LABEL_WRITES_ENABLED || "").toLowerCase() !== "true") {
@@ -211,14 +224,12 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
         productConfig,
       });
     });
-    const reviewNotifications = cases
-      .map(buildArrivalReviewNotification)
-      .filter((notification): notification is ArrivalReviewNotification => Boolean(notification));
-    const summary = summarize(cases, arrivals, reviewNotifications);
+    const effectiveCases = [...cases];
 
     if (run) {
       for (let index = 0; index < cases.length; index += 1) {
         const stored = await upsertArrivalCase({ runId: run.id, arrival: arrivals[index], decision: cases[index] });
+        effectiveCases[index] = projectPersistedBrowserManualReview(cases[index], stored);
         const trelloTrigger = arrivals[index].trelloTrigger;
         for (const cardId of trelloTrigger?.cardIds || []) {
           await recordArrivalEvent({
@@ -237,7 +248,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
             },
           });
         }
-        if (mode === "execute" && cases[index].status === "label_planned") {
+        if (mode === "execute" && effectiveCases[index].status === "label_planned") {
           if (!productConfig) throw new Error("Aktive DPD-Produktkonfiguration fehlt.");
           if (cases[index].deliveryNoteRequired) {
             if (stored.delivery_note_status === "printed") await enqueueArrivalBrowserPurchase(stored.id);
@@ -248,26 +259,33 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
             await enqueueArrivalBrowserPurchase(stored.id);
           }
         }
-        const notification = buildArrivalReviewNotification(cases[index]);
+        const notification = buildArrivalReviewNotification(effectiveCases[index]);
         if (notification) await enqueueArrivalReviewNotification({ caseId: stored.id, notification });
         await recordArrivalEvent({
           runId: run.id,
           caseId: stored.id,
-          eventKey: `${cases[index].idempotencyKey}:decision:${cases[index].status}`,
+          eventKey: `${effectiveCases[index].idempotencyKey}:decision:${effectiveCases[index].status}`,
           eventType: "case_decided",
-          severity: cases[index].manualReviewReason ? "warning" : "info",
+          severity: effectiveCases[index].manualReviewReason ? "warning" : "info",
           payload: {
-            status: cases[index].status,
-            shippingClass: cases[index].shippingClass,
-            destinationCountryCode: cases[index].destinationCountryCode,
-            destinationClass: cases[index].destinationClass,
-            deliveryNoteRequired: cases[index].deliveryNoteRequired,
-            deliveryNoteStatus: cases[index].deliveryNoteStatus,
+            status: effectiveCases[index].status,
+            shippingClass: effectiveCases[index].shippingClass,
+            destinationCountryCode: effectiveCases[index].destinationCountryCode,
+            destinationClass: effectiveCases[index].destinationClass,
+            deliveryNoteRequired: effectiveCases[index].deliveryNoteRequired,
+            deliveryNoteStatus: effectiveCases[index].deliveryNoteStatus,
             arrivalSources: arrivals[index].sourceKinds,
-            reasons: cases[index].reasons,
+            reasons: effectiveCases[index].reasons,
           },
         });
       }
+    }
+
+    const reviewNotifications = effectiveCases
+      .map(buildArrivalReviewNotification)
+      .filter((notification): notification is ArrivalReviewNotification => Boolean(notification));
+    const summary = summarize(effectiveCases, arrivals, reviewNotifications);
+    if (run) {
       await finishArrivalRun({
         runId: run.id,
         status: summary.reviewNotifications > 0 ? "completed_with_review" : "completed",
@@ -282,7 +300,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       localDate,
       timezone: ARRIVAL_LABEL_TIMEZONE,
       configVersion: productConfig?.version || null,
-      cases,
+      cases: effectiveCases,
       reviewNotifications,
       summary,
     };

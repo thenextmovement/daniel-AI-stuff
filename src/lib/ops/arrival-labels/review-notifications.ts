@@ -91,9 +91,12 @@ export function buildArrivalReviewNotification(decision: ArrivalCaseDecision): A
     ? decision.deliveryNoteStatus
     : decision.destinationClass === "domestic_de" ? "nicht erforderlich" : "nicht automatisch geplant";
   const subject = `[NEONTRIP] Versandetikett manuell pruefen: ${orderLabel} / DHL ${decision.lastSix}`;
+  const purchaseStatusLine = decision.reasons.includes("browser_purchase_manual_review")
+    ? "EasyDPD kann bereits einen Kaufversuch erhalten haben. Vor einer manuellen Wiederholung zuerst EasyDPD-Historie und DPD-Sendungsnummer pruefen; nicht automatisch erneut buchen oder drucken."
+    : "Es wurde fuer diesen Fall kein neues Versandetikett gekauft und kein Druckauftrag erzeugt.";
   const lines = [
     "Automatische Verarbeitung gesperrt.",
-    "Es wurde fuer diesen Fall kein neues Versandetikett gekauft und kein Druckauftrag erzeugt.",
+    purchaseStatusLine,
     "",
     `Bestellung: ${orderLabel}`,
     `Kunde: ${singleLine(decision.shopifyOrder?.customerName || "nicht eindeutig", 150)}`,
