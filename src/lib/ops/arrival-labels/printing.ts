@@ -110,7 +110,8 @@ export function assertPrintPdf(bytes: Uint8Array, expectedSha256: string) {
 }
 
 export function parseCupsJobId(output: string) {
-  const matches = output.match(/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}-\d+/g) || [];
+  const normalized = output.replace(/[\u2010-\u2015\u2212]/g, "-");
+  const matches = normalized.match(/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}-\d+/g) || [];
   const jobId = matches.at(-1) || null;
   if (!jobId) throw new Error("CUPS lieferte keine auswertbare Job-ID.");
   return jobId;

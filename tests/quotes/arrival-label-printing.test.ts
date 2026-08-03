@@ -73,6 +73,7 @@ test("print API input and document streams are size bounded", async () => {
 
 test("CUPS job IDs are parsed without trusting free-form output", () => {
   assert.equal(parseCupsJobId("request id is Zebra-ZD421-123 (1 file(s))"), "Zebra-ZD421-123");
+  assert.equal(parseCupsJobId("Anfrage-ID ist Brother_QL_1110NWB\u2013177 (1 Datei(en))"), "Brother_QL_1110NWB-177");
   assert.throws(() => parseCupsJobId("accepted but no identifier"), /Job-ID/);
 });
 
