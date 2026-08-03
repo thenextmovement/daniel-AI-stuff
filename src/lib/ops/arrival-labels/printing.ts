@@ -10,6 +10,17 @@ export class PrintInputError extends Error {
   }
 }
 
+export function formatOperationalError(error: unknown) {
+  const message = error instanceof Error ? error.message : error ? String(error) : "unknown";
+  let candidate: unknown = error;
+  for (let depth = 0; depth < 3 && candidate && typeof candidate === "object"; depth += 1) {
+    const code = String((candidate as { code?: unknown }).code || "");
+    if (/^[A-Z][A-Z0-9_]{1,63}$/.test(code)) return `${message} (${code})`.slice(0, 500);
+    candidate = (candidate as { cause?: unknown }).cause;
+  }
+  return message.slice(0, 500);
+}
+
 export function validatePrintWorkerId(value: string) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,95}$/.test(value)) throw new PrintInputError("Ungueltige Print-Worker-ID.");
   return value;

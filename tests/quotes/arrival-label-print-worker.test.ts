@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { formatOperationalError } from "../../src/lib/ops/arrival-labels/printing";
+
+test("network failures retain a bounded technical cause code without dumping nested details", () => {
+  const error = new TypeError("fetch failed", { cause: Object.assign(new Error("private detail"), { code: "ENETUNREACH" }) });
+  assert.equal(formatOperationalError(error), "fetch failed (ENETUNREACH)");
+});
 
 test("local worker durably marks dispatch before CUPS and never auto-reprints uncertainty", async () => {
   const source = await readFile("scripts/run_arrival_label_print_worker.ts", "utf8");
@@ -29,6 +35,7 @@ test("macOS print manager separates A6 and A4, uses Keychain, and requires an ex
   assert.match(launcher, /find-generic-password/);
   assert.doesNotMatch(plist, /ARRIVAL_LABEL_PRINT_API_TOKEN/);
   assert.match(plist, /ARRIVAL_LABEL_PRINT_LIVE_ENABLED/);
+  assert.match(plist, /NODE_OPTIONS[\s\S]+--dns-result-order=ipv4first/);
   assert.match(plist, /<key>WorkingDirectory<\/key>[\s\S]+\{\{WORKING_DIRECTORY\}\}/);
   assert.match(manager, /"\{\{WORKING_DIRECTORY\}\}": xml\(dirname\(dirname\(values\.runnerPath\)\)\)/);
   const makeExistingRunnerWritable = manager.indexOf("if (existsSync(target)) chmodSync(target, 0o700)");

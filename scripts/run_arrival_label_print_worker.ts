@@ -1,7 +1,14 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createCupsPrinter, assertPrintPdf, readBoundedResponseBytes, validateApprovedArrivalPrinterMapping, validatePrintWorkerId } from "../src/lib/ops/arrival-labels/printing";
+import {
+  assertPrintPdf,
+  createCupsPrinter,
+  formatOperationalError,
+  readBoundedResponseBytes,
+  validateApprovedArrivalPrinterMapping,
+  validatePrintWorkerId,
+} from "../src/lib/ops/arrival-labels/printing";
 
 type ClaimedJob = {
   id: string;
@@ -88,7 +95,7 @@ async function updateResult(configuration: ReturnType<typeof config>, job: Claim
       workerId: configuration.workerId,
       result,
       cupsJobId: cupsJobId || null,
-      error: error instanceof Error ? error.message.slice(0, 500) : error ? String(error).slice(0, 500) : null,
+      error: error ? formatOperationalError(error) : null,
     }),
   });
 }
@@ -166,13 +173,13 @@ async function main() {
   const once = process.argv.includes("--once");
   do {
     await processOne(configuration, printer).catch((error) => {
-      process.stderr.write(`print worker error: ${error instanceof Error ? error.message : "unknown"}\n`);
+      process.stderr.write(`print worker error: ${formatOperationalError(error)}\n`);
     });
     if (!once) await new Promise((resolve) => setTimeout(resolve, configuration.pollSeconds * 1000));
   } while (!once);
 }
 
 main().catch((error) => {
-  process.stderr.write(`print worker failed: ${error instanceof Error ? error.message : "unknown"}\n`);
+  process.stderr.write(`print worker failed: ${formatOperationalError(error)}\n`);
   process.exitCode = 1;
 });

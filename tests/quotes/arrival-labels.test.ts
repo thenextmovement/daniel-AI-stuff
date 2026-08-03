@@ -423,6 +423,80 @@ test("only the exact NEONTRIP offer note and attribute schema passes the Shopify
   assert.ok(unknownAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
 });
 
+test("validated NEONTRIP form, reverse-charge and accepted-segment metadata remain automation-safe", () => {
+  const offerId = "cmabc123456789";
+  const publicToken = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
+  const baseNote = [
+    "NEONTRIP Angebot: A/N 14258",
+    `Angebotslink: https://angebote.neontrip.de/offer/${publicToken}`,
+    `PDF Snapshot: https://angebote.neontrip.de/offer/${publicToken}/pdf`,
+    "Netto: 903 / MwSt: 171.57 / Brutto: 1074.57",
+  ];
+  const baseAttributes = [
+    { key: "NEONTRIP Offer ID", value: offerId },
+    { key: "NEONTRIP Offer Number", value: "A/N 14258" },
+    { key: "NEONTRIP Offer URL", value: `https://angebote.neontrip.de/offer/${publicToken}` },
+    { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/offer/${publicToken}/pdf` },
+    { key: "Trello Card ID", value: "0123456789abcdef01234567" },
+    { key: "Idempotency Key", value: `offer:${offerId}:shopify-sale:v1` },
+  ];
+  const formId = "101dcb01-291d-4a22-a624-5fb0f2dbcccd";
+
+  const formOrder = {
+    ...standardOrder,
+    note: [...baseNote, `Nerdy-Forms_ID: ${formId}`].join("\n"),
+    customAttributes: [
+      ...baseAttributes,
+      { key: "Invoice Mail Intended", value: "yes_private_email" },
+      { key: "Nerdy-Forms_ID", value: formId },
+    ],
+  };
+  assert.equal(assessShopifyAutomationGate(formOrder).blocked, false);
+
+  const reverseChargeOrder = {
+    ...standardOrder,
+    note: [...baseNote, "Reverse Charge / steuerfrei mit USt-IdNr.: ATU70010347"].join("\n"),
+    customAttributes: [
+      ...baseAttributes,
+      { key: "Invoice Mail Intended", value: "business_email_no_shopify_receipt" },
+      { key: "Reverse Charge", value: "yes_vies_validated" },
+      { key: "USt-IdNr.", value: "ATU70010347" },
+    ],
+  };
+  assert.equal(assessShopifyAutomationGate(reverseChargeOrder).blocked, false);
+
+  const segmentOrder = {
+    ...formOrder,
+    customAttributes: [
+      ...baseAttributes,
+      { key: "Invoice Mail Intended", value: "segment_nt-2_no_shopify_receipt" },
+      { key: "Nerdy-Forms_ID", value: formId },
+      { key: "Request Segment", value: "NT-2" },
+      { key: "Request S-Kategorie", value: "S3" },
+      { key: "Request Segment Status", value: "accepted" },
+    ],
+  };
+  assert.equal(assessShopifyAutomationGate(segmentOrder).blocked, false);
+
+  const mismatchedForm = {
+    ...formOrder,
+    customAttributes: formOrder.customAttributes.map((attribute) => attribute.key === "Nerdy-Forms_ID"
+      ? { ...attribute, value: "201dcb01-291d-4a22-a624-5fb0f2dbcccd" }
+      : attribute),
+  };
+  assert.ok(assessShopifyAutomationGate(mismatchedForm).reasonCodes.includes("non_standard_shopify_attribute"));
+  const incompleteReverseCharge = {
+    ...reverseChargeOrder,
+    customAttributes: reverseChargeOrder.customAttributes.filter((attribute) => attribute.key !== "Reverse Charge"),
+  };
+  assert.ok(assessShopifyAutomationGate(incompleteReverseCharge).reasonCodes.includes("non_standard_shopify_attribute"));
+  const incompleteSegment = {
+    ...segmentOrder,
+    customAttributes: segmentOrder.customAttributes.filter((attribute) => attribute.key !== "Request Segment Status"),
+  };
+  assert.ok(assessShopifyAutomationGate(incompleteSegment).reasonCodes.includes("non_standard_shopify_attribute"));
+});
+
 test("bare internal UUID notes are automation-safe but human note text still blocks", () => {
   const note = "101dcb01-291d-4a22-a624-5fb0f2dbcccd";
   assert.equal(isAutomationSafeOrderNote(note), true);

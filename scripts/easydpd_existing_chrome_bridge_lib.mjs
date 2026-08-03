@@ -179,20 +179,45 @@ const JOB_BINDING_FIELDS = [
 async function storeActiveJob(config, job) {
   await mkdir(dirname(config.activeJobPath), { recursive: true, mode: 0o700 });
   const temporary = `${config.activeJobPath}.tmp-${process.pid}-${Date.now()}`;
-  await writeFile(temporary, `${JSON.stringify({ version: 1, job }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  await writeFile(temporary, `${JSON.stringify({ version: 1, state: "active", job }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   await rename(temporary, config.activeJobPath);
+}
+
+export async function readActiveJobState(config) {
+  let persisted;
+  try {
+    persisted = JSON.parse(await readFile(config.activeJobPath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw new ExistingChromeBridgeError("Lokale Browser-Auftragsbindung ist nicht lesbar; manuelle Pruefung erforderlich.", 65);
+  }
+  if (persisted?.version !== 1) throw new ExistingChromeBridgeError("Lokale Browser-Auftragsbindung hat eine unbekannte Version.", 65);
+  if (persisted.state === "claiming" && !persisted.job) return { state: "claiming", job: null };
+  return { state: "active", job: validateClaimedJob(persisted.job) };
+}
+
+export async function acquireClaimSlot(config) {
+  await mkdir(dirname(config.activeJobPath), { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(config.activeJobPath, `${JSON.stringify({ version: 1, state: "claiming" }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+    return true;
+  } catch (error) {
+    if (error?.code === "EEXIST") return false;
+    throw error;
+  }
+}
+
+async function clearClaimSlot(config) {
+  const active = await readActiveJobState(config);
+  if (active?.state === "claiming") await unlink(config.activeJobPath);
 }
 
 async function validatedJobFromMessage(config, message) {
   const supplied = validateClaimedJob(message.job);
-  let persisted;
-  try {
-    persisted = JSON.parse(await readFile(config.activeJobPath, "utf8"));
-  } catch {
-    throw new ExistingChromeBridgeError("Lokal gebundener Browser-Auftrag fehlt; erneut sicher claimen.", 65);
-  }
-  const job = validateClaimedJob(persisted?.job);
-  if (persisted?.version !== 1 || JOB_BINDING_FIELDS.some((field) => supplied[field] !== job[field])) {
+  const active = await readActiveJobState(config);
+  if (!active?.job) throw new ExistingChromeBridgeError("Lokal gebundener Browser-Auftrag fehlt; erneut sicher claimen.", 65);
+  const job = active.job;
+  if (JOB_BINDING_FIELDS.some((field) => supplied[field] !== job[field])) {
     throw new ExistingChromeBridgeError("Browser-Auftrag stimmt nicht mit dem lokal gebundenen Claim ueberein.", 65);
   }
   if (job.resultPath !== `/api/internal/arrival-labels/browser-purchases/${job.id}/result`
@@ -228,18 +253,46 @@ export async function handleNativeRequest(config, rawMessage) {
   const message = validateNativeRequest(rawMessage);
   const configuration = workerConfiguration(config);
   if (message.type === "status") {
-    await writeStatus(config, config.liveEnabled ? "live_ready" : "dry_run_ready", { purchaseClicked: false });
-    return { ok: true, mode: config.mode, liveEnabled: config.liveEnabled, extensionId: config.extensionId, purchaseClicked: false };
+    const active = await readActiveJobState(config);
+    const state = active ? "active_job_pending" : config.liveEnabled ? "live_ready" : "dry_run_ready";
+    await writeStatus(config, state, {
+      activeJobId: active?.job?.id || null,
+      activeJobState: active?.state || null,
+      purchaseClicked: false,
+    });
+    return {
+      ok: true,
+      mode: config.mode,
+      liveEnabled: config.liveEnabled,
+      extensionId: config.extensionId,
+      activeJobPending: Boolean(active),
+      purchaseClicked: false,
+    };
   }
   if (message.type === "claim") {
     if (!config.liveEnabled) {
-    await writeStatusBestEffort(config, "dry_run_no_claim", { purchaseClicked: false });
+      await writeStatusBestEffort(config, "dry_run_no_claim", { purchaseClicked: false });
       return { ok: true, job: null, mode: config.mode };
     }
-    const job = await claimJob(configuration);
-    if (job) await storeActiveJob(config, job);
-    await writeStatusBestEffort(config, job ? "job_claimed" : "idle", { jobId: job?.id || null, orderName: job?.orderName || null, purchaseClicked: false });
-    return { ok: true, job };
+    if (!await acquireClaimSlot(config)) {
+      const active = await readActiveJobState(config);
+      await writeStatusBestEffort(config, "active_job_pending", {
+        activeJobId: active?.job?.id || null,
+        activeJobState: active?.state || null,
+        purchaseClicked: false,
+      });
+      return { ok: true, job: null, activeJobPending: true };
+    }
+    try {
+      const job = await claimJob(configuration);
+      if (job) await storeActiveJob(config, job);
+      else await clearClaimSlot(config);
+      await writeStatusBestEffort(config, job ? "job_claimed" : "idle", { jobId: job?.id || null, orderName: job?.orderName || null, purchaseClicked: false });
+      return { ok: true, job };
+    } catch (error) {
+      await clearClaimSlot(config).catch(() => undefined);
+      throw error;
+    }
   }
   const job = await validatedJobFromMessage(config, message);
   if (message.type === "update") {

@@ -198,7 +198,7 @@ const OFFER_NUMBER = /^A\/N [0-9]{1,12}$/;
 const MONEY = "[0-9]+(?:[.,][0-9]{1,2})?";
 const PICKUP_PATTERN = /\b(?:(?:selbst)?abhol[a-z]*|abgeholt|holt\s+ab|holen\s+ab|wird\s+abgeholt|ladenlokal|laden\s+lokal|vor\s+ort|local\s+pickup|pickup|pick\s+up|customer\s+collect)\b/i;
 const INTERNAL_UUID_NOTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const STANDARD_ATTRIBUTE_KEYS = new Set([
+const REQUIRED_STANDARD_ATTRIBUTE_KEYS = new Set([
   "NEONTRIP Offer ID",
   "NEONTRIP Offer Number",
   "NEONTRIP Offer URL",
@@ -207,6 +207,15 @@ const STANDARD_ATTRIBUTE_KEYS = new Set([
   "Idempotency Key",
   "Invoice Mail Intended",
 ]);
+const OPTIONAL_STANDARD_ATTRIBUTE_KEYS = new Set([
+  "Nerdy-Forms_ID",
+  "Reverse Charge",
+  "USt-IdNr.",
+  "Request Segment",
+  "Request S-Kategorie",
+  "Request Segment Status",
+]);
+const VAT_ID = /^[A-Z]{2}[A-Z0-9]{6,14}$/;
 
 // Reviewed 2026-07-20 against the official EU country and Commission territorial-scope tables.
 // https://european-union.europa.eu/principles-countries-history/eu-countries_en
@@ -594,16 +603,41 @@ export function assessTrelloAutomationGate(card: TrelloCardEvidence): TrelloAuto
 
 function parseStandardOfferMetadataNote(note: string | null | undefined) {
   const normalized = String(note || "").trim();
-  if (!normalized) return { standard: true, offerId: null as string | null };
+  const empty = {
+    standard: false,
+    offerNumber: null as string | null,
+    publicToken: null as string | null,
+    nerdyFormsId: null as string | null,
+    reverseChargeVatId: null as string | null,
+  };
+  if (!normalized) return { ...empty, standard: true };
   const lines = normalized.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length !== 4) return { standard: false, offerId: null as string | null };
+  if (lines.length < 4 || lines.length > 6) return empty;
   const offerNumber = lines[0].match(/^NEONTRIP Angebot:\s*(A\/N [0-9]{1,12})$/i)?.[1]?.toUpperCase();
   const offerUrlId = lines[1].match(/^Angebotslink:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128}))$/i)?.[2];
   const pdfUrlId = lines[2].match(/^PDF Snapshot:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128})\/pdf)$/i)?.[2];
   const pricesMatch = new RegExp(`^Netto:\\s*${MONEY}\\s*/\\s*MwSt:\\s*${MONEY}\\s*/\\s*Brutto:\\s*${MONEY}$`, "i").test(lines[3]);
+  let nerdyFormsId: string | null = null;
+  let reverseChargeVatId: string | null = null;
+  for (const line of lines.slice(4)) {
+    const nerdy = line.match(/^Nerdy-Forms_ID:\s*([0-9a-f-]{36})$/i)?.[1] || null;
+    if (nerdy && INTERNAL_UUID_NOTE.test(nerdy) && !nerdyFormsId) {
+      nerdyFormsId = nerdy.toLowerCase();
+      continue;
+    }
+    const vatId = line.match(/^Reverse Charge \/ steuerfrei mit USt-IdNr[.]:\s*([A-Z]{2}[A-Z0-9]{6,14})$/i)?.[1] || null;
+    if (vatId && VAT_ID.test(vatId.toUpperCase()) && !reverseChargeVatId) {
+      reverseChargeVatId = vatId.toUpperCase();
+      continue;
+    }
+    return empty;
+  }
   return {
     standard: Boolean(offerNumber && offerUrlId && pdfUrlId && offerUrlId === pdfUrlId && pricesMatch),
-    offerId: offerUrlId || null,
+    offerNumber: offerNumber || null,
+    publicToken: offerUrlId || null,
+    nerdyFormsId,
+    reverseChargeVatId,
   };
 }
 
@@ -626,31 +660,57 @@ export function noteHash(note: string | null | undefined) {
   return createHash("sha256").update(String(note || ""), "utf8").digest("hex");
 }
 
-function standardAttributes(attributes: ShopifyOrderEvidence["customAttributes"]) {
-  if (attributes.length === 0) return true;
-  if (attributes.length !== STANDARD_ATTRIBUTE_KEYS.size) return false;
+function standardAttributes(
+  attributes: ShopifyOrderEvidence["customAttributes"],
+  noteMetadata: ReturnType<typeof parseStandardOfferMetadataNote>,
+) {
+  if (attributes.length === 0) return !noteMetadata.nerdyFormsId && !noteMetadata.reverseChargeVatId;
   const values = new Map<string, string>();
   for (const attribute of attributes) {
     const key = String(attribute.key || "").trim();
     const value = String(attribute.value || "").trim();
-    if (!STANDARD_ATTRIBUTE_KEYS.has(key) || values.has(key)) return false;
+    if ((!REQUIRED_STANDARD_ATTRIBUTE_KEYS.has(key) && !OPTIONAL_STANDARD_ATTRIBUTE_KEYS.has(key)) || values.has(key)) return false;
     values.set(key, value);
   }
+  if ([...REQUIRED_STANDARD_ATTRIBUTE_KEYS].some((key) => !values.has(key))) return false;
   const offerId = values.get("NEONTRIP Offer ID") || "";
   const offerUrlId = values.get("NEONTRIP Offer URL")?.match(OFFER_URL)?.[1] || "";
   const pdfUrlId = values.get("NEONTRIP PDF Snapshot")?.match(PDF_URL)?.[1] || "";
-  return OFFER_ID.test(offerId)
+  const baseValid = OFFER_ID.test(offerId)
     && OFFER_NUMBER.test(values.get("NEONTRIP Offer Number") || "")
     && Boolean(offerUrlId)
     && pdfUrlId === offerUrlId
     && /^[a-f0-9]{24}$/i.test(values.get("Trello Card ID") || "")
     && values.get("Idempotency Key") === `offer:${offerId}:shopify-sale:v1`
-    && ["yes_private_email", "business_email_no_shopify_receipt"].includes(values.get("Invoice Mail Intended") || "");
+    && (!noteMetadata.offerNumber || noteMetadata.offerNumber === values.get("NEONTRIP Offer Number"))
+    && (!noteMetadata.publicToken || noteMetadata.publicToken === offerUrlId);
+  if (!baseValid) return false;
+
+  const nerdyFormsId = values.get("Nerdy-Forms_ID")?.toLowerCase() || null;
+  if (Boolean(nerdyFormsId) !== Boolean(noteMetadata.nerdyFormsId)
+    || (nerdyFormsId && (!INTERNAL_UUID_NOTE.test(nerdyFormsId) || nerdyFormsId !== noteMetadata.nerdyFormsId))) return false;
+
+  const reverseCharge = values.get("Reverse Charge") || null;
+  const vatId = values.get("USt-IdNr.")?.toUpperCase() || null;
+  if (Boolean(reverseCharge || vatId) !== Boolean(noteMetadata.reverseChargeVatId)
+    || (noteMetadata.reverseChargeVatId && (reverseCharge !== "yes_vies_validated" || vatId !== noteMetadata.reverseChargeVatId))) return false;
+
+  const segmentValues = [values.get("Request Segment"), values.get("Request S-Kategorie"), values.get("Request Segment Status")];
+  const hasSegmentMetadata = segmentValues.some((value) => value !== undefined);
+  const invoiceMailIntended = values.get("Invoice Mail Intended") || "";
+  if (hasSegmentMetadata) {
+    return invoiceMailIntended === "segment_nt-2_no_shopify_receipt"
+      && segmentValues[0] === "NT-2"
+      && segmentValues[1] === "S3"
+      && segmentValues[2] === "accepted";
+  }
+  return ["yes_private_email", "business_email_no_shopify_receipt"].includes(invoiceMailIntended);
 }
 
 export function assessShopifyAutomationGate(order: ShopifyOrderEvidence): ShopifyAutomationGate {
   const reasonCodes: ShopifyAutomationGateReason[] = [];
   const note = String(order.note || "").trim();
+  const noteMetadata = parseStandardOfferMetadataNote(note);
   const pickupEvidence = [
     note,
     ...order.customAttributes.flatMap((attribute) => [attribute.key, attribute.value]),
@@ -658,8 +718,8 @@ export function assessShopifyAutomationGate(order: ShopifyOrderEvidence): Shopif
     ...order.shippingLines.flatMap((line) => [line.title, line.code || ""]),
   ].map(normalizeHumanText).join("\n");
   if (PICKUP_PATTERN.test(pickupEvidence)) reasonCodes.push("pickup_instruction");
-  if (!isAutomationSafeOrderNote(note)) reasonCodes.push("non_standard_shopify_note");
-  if (!standardAttributes(order.customAttributes)) reasonCodes.push("non_standard_shopify_attribute");
+  if (!noteMetadata.standard && !INTERNAL_UUID_NOTE.test(note)) reasonCodes.push("non_standard_shopify_note");
+  if (!standardAttributes(order.customAttributes, noteMetadata)) reasonCodes.push("non_standard_shopify_attribute");
   if (["refunded", "voided", "expired"].includes(order.financialStatus)) reasonCodes.push("payment_terminal_status");
   const uniqueCodes = [...new Set(reasonCodes)];
   const reasonParts = uniqueCodes.map((code) => ({

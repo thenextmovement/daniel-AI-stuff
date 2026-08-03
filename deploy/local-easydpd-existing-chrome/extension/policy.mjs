@@ -1,5 +1,6 @@
 export const NATIVE_HOST = "de.neontrip.easydpd_existing_chrome";
 export const SHOPIFY_ORIGIN = "https://admin.shopify.com";
+export const SHOPIFY_APP_PATH = "/store/galaxybuzzdk/apps/dpd-versand-services";
 export const SHOPIFY_PATH = "/store/galaxybuzzdk/apps/dpd-versand-services/fulfillments/create";
 export const SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
 export const EASYDPD_FRAME_ORIGIN = "https://easydpd.247apps.de";

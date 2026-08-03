@@ -163,17 +163,26 @@ test("pickup incidents are customer notices, not internal delivery problems", ()
 });
 
 test("buildShippingBoardFromRows prioritizes urgent incidents and keeps tasks as projections", () => {
+  const recentAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const recentShipment = {
+    ...baseShipment,
+    shipped_at: recentAt,
+    last_event_at: recentAt,
+    last_carrier_sync_at: recentAt,
+    created_at: recentAt,
+    updated_at: recentAt,
+  };
   const board = buildShippingBoardFromRows(
     [
-      baseShipment as never,
+      recentShipment as never,
       {
-        ...baseShipment,
+        ...recentShipment,
         id: "shipment-2",
         shipment_key: "shopify:fulfillment-2:tracking-2",
         tracking_number: "TRACK-2",
         status: "delivery_failed",
         risk_level: "urgent",
-        updated_at: "2026-06-05T08:00:00.000Z",
+        updated_at: recentAt,
       } as never,
     ],
     [

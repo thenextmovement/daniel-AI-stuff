@@ -1,6 +1,7 @@
 import {
   EASYDPD_FRAME_ORIGIN,
   NATIVE_HOST,
+  SHOPIFY_APP_PATH,
   SHOPIFY_ORIGIN,
   SHOPIFY_PATH,
   matchingDownloadedPdf,
@@ -33,17 +34,26 @@ async function record(state, detail = {}) {
 }
 
 async function findExistingEasyDpdTab() {
-  const tabs = await chrome.tabs.query({ url: `${SHOPIFY_ORIGIN}/store/galaxybuzzdk/apps/dpd-versand-services/*` });
+  const tabs = await chrome.tabs.query({
+    url: [`${SHOPIFY_ORIGIN}${SHOPIFY_APP_PATH}`, `${SHOPIFY_ORIGIN}${SHOPIFY_APP_PATH}/*`],
+  });
   const candidates = tabs.filter((tab) => {
     try {
       const url = new URL(tab.url || "");
-      return url.origin === SHOPIFY_ORIGIN && url.pathname === SHOPIFY_PATH;
+      return url.origin === SHOPIFY_ORIGIN
+        && (url.pathname === SHOPIFY_APP_PATH || url.pathname.startsWith(`${SHOPIFY_APP_PATH}/`));
     } catch {
       return false;
     }
   });
   candidates.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.lastAccessed || 0) - Number(a.lastAccessed || 0));
   return candidates[0] || null;
+}
+
+async function getOrCreateEasyDpdTab(job) {
+  const existing = await findExistingEasyDpdTab();
+  if (existing) return existing;
+  return chrome.tabs.create({ url: validateOrderUrl(job.orderUrl), active: false });
 }
 
 function waitForTabComplete(tabId, expectedUrl, timeoutMs = 45_000) {
@@ -195,16 +205,12 @@ async function runCycle(source) {
       await record("dry_run_ready", { source, extensionId: chrome.runtime.id });
       return;
     }
-    const tab = await findExistingEasyDpdTab();
-    if (!tab) {
-      await record("browser_tab_required", { source });
-      return;
-    }
     const claimed = await nativeMessage({ type: "claim" });
     if (!claimed.job) {
-      await record("idle", { source, tabId: tab.id });
+      await record(claimed.activeJobPending ? "active_job_pending" : "idle", { source });
       return;
     }
+    const tab = await getOrCreateEasyDpdTab(claimed.job);
     await processJob(tab, claimed.job);
   } catch (error) {
     await record("bridge_error", { source, error: String(error?.message || error).slice(0, 500) });

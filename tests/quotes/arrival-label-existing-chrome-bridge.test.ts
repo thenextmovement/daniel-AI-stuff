@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
@@ -7,7 +7,9 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import {
   EXPECTED_EXTENSION_ID,
+  acquireClaimSlot,
   encodeNativeMessage,
+  readActiveJobState,
   readNativeMessage,
   validateBridgeConfig,
 } from "../../scripts/easydpd_existing_chrome_bridge_lib.mjs";
@@ -147,13 +149,15 @@ test("manager requires an independent live acknowledgement", () => {
   assert.doesNotMatch(bridgeDestinations("/Users/test").runtimeRoot, /Desktop|\/NEONTRIP\/runtime/);
 });
 
-test("service worker reuses an open tab, blocks existing labels and dispatches before one click", async () => {
+test("service worker reuses or creates one background tab, blocks existing labels and dispatches before one click", async () => {
   const service = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
   const content = await readFile("deploy/local-easydpd-existing-chrome/extension/content_script.js", "utf8");
   assert.match(service, /findExistingEasyDpdTab/);
-  assert.doesNotMatch(service, /chrome[.]windows[.]create|chrome[.]tabs[.]create/);
+  assert.doesNotMatch(service, /chrome[.]windows[.]create/);
+  assert.match(service, /chrome[.]tabs[.]create\(\{ url: validateOrderUrl\(job[.]orderUrl\), active: false \}\)/);
   assert.match(service, /prepared[.]existingLabel[?][.]found/);
   assert.match(service, /updateJob\(job, "existing_label"/);
+  assert.ok(service.indexOf('nativeMessage({ type: "claim" })') < service.indexOf("getOrCreateEasyDpdTab(claimed.job)"));
   const dispatch = service.indexOf('updateJob(job, "dispatching")');
   const purchase = service.indexOf('action: "purchase_once"');
   assert.ok(dispatch >= 0 && purchase > dispatch);
@@ -163,7 +167,34 @@ test("service worker reuses an open tab, blocks existing labels and dispatches b
   const nativeHost = await readFile("scripts/easydpd_existing_chrome_bridge_lib.mjs", "utf8");
   assert.match(nativeHost, /JOB_BINDING_FIELDS/);
   assert.match(nativeHost, /stimmt nicht mit dem lokal gebundenen Claim ueberein/);
+  assert.match(nativeHost, /active_job_pending/);
+  assert.match(nativeHost, /flag: "wx"/);
   assert.match(nativeHost, /storeActiveJob\(config, job\)/);
+});
+
+test("native host claim slot is atomic and preserves the bound job across worker restarts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "neontrip-native-claim-"));
+  const config = { activeJobPath: join(directory, "active-job.json") };
+  try {
+    assert.equal(await acquireClaimSlot(config), true);
+    assert.equal(await acquireClaimSlot(config), false);
+    assert.deepEqual(await readActiveJobState(config), { state: "claiming", job: null });
+    await writeFile(config.activeJobPath, `${JSON.stringify({ version: 1, state: "active", job: job() })}\n`, { mode: 0o600 });
+    assert.equal((await readActiveJobState(config))?.job?.id, job().id);
+    assert.equal(await acquireClaimSlot(config), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("browser artifact route exposes only a safe failure stage and keeps PDF.js external at runtime", async () => {
+  const route = await readFile("src/app/api/internal/arrival-labels/browser-purchases/[jobId]/artifact/route.ts", "utf8");
+  const nextConfig = await readFile("next.config.ts", "utf8");
+  assert.match(route, /stage = "extract_tracking"/);
+  assert.match(route, /stage = "upload_storage"/);
+  assert.match(route, /code: safeErrorCode\(error\)/);
+  assert.doesNotMatch(route, /console[.]error\([^)]*error[.]message/);
+  assert.match(nextConfig, /serverExternalPackages: \["@napi-rs\/canvas", "pdfjs-dist"\]/);
 });
 
 test("database existing-label stopper is pre-dispatch, audited and service-role only", async () => {
