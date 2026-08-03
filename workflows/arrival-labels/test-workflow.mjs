@@ -17,6 +17,11 @@ for (const workflow of workflows.slice(0, 2)) {
   assert.equal(requests.length, 1);
   assert.equal(requests[0].retryOnFail, true);
   assert.ok(requests[0].parameters.options.timeout <= 60000);
+  assert.equal(requests[0].parameters.contentType, "json");
+  assert.equal(requests[0].parameters.specifyBody, "json");
+  assert.equal(typeof requests[0].parameters.jsonBody, "string");
+  assert.equal(requests[0].parameters.rawContentType, undefined);
+  assert.equal(requests[0].parameters.body, undefined);
   const serialized = JSON.stringify(workflow);
   assert.match(serialized, /mode.*dry_run/);
   assert.match(serialized, /persist.*true/);
@@ -37,6 +42,8 @@ const reviewSerialized = JSON.stringify(reviewWorkflow);
 const reviewTriggers = reviewWorkflow.nodes.filter((node) => node.type.endsWith("Trigger"));
 const reviewRequests = reviewWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.httpRequest");
 const sendNodes = reviewWorkflow.nodes.filter((node) => node.type === "n8n-nodes-base.microsoftOutlook");
+const validateReviewClaim = reviewWorkflow.nodes.find((node) => node.name === "Validate Review Claim");
+const validateReviewDispatching = reviewWorkflow.nodes.find((node) => node.name === "Validate Review Dispatching");
 assert.equal(reviewWorkflow.active, false);
 assert.equal(reviewWorkflow.settings.timezone, "Europe/Berlin");
 assert.equal(reviewWorkflow.settings.errorWorkflow, "ArT3LN25Mb1PAuBE");
@@ -49,6 +56,10 @@ assert.equal(sendNodes[0].retryOnFail, undefined, "mail send must not retry afte
 assert.equal(sendNodes[0].parameters.additionalFields.bodyContentType, "Text");
 assert.match(reviewSerialized, /info@neontrip[.]de/);
 assert.match(reviewSerialized, /Mark Review Dispatching/);
+assert.ok(validateReviewClaim, "the parsed full-response body must be validated before routing");
+assert.ok(validateReviewDispatching, "dispatching must be acknowledged before Outlook sends");
+assert.match(validateReviewClaim.parameters.jsCode, /json[?][.]body/);
+assert.match(validateReviewDispatching.parameters.jsCode, /status !== 'dispatching'/);
 assert.match(reviewSerialized, /dispatchReceiptId/);
 assert.match(reviewSerialized, /review-notifications/);
 assert.match(reviewWorkflow.name, /v0[.]2/);
@@ -62,6 +73,27 @@ for (const request of reviewRequests) {
   assert.equal(request.parameters.genericAuthType, "httpCustomAuth");
   assert.equal(request.credentials.httpCustomAuth.id, "HJHHkJXK8B7QCtCQ");
   assert.equal(request.credentials.httpCustomAuth.name, "NEONTRIP Ops Archive Worker");
+  assert.equal(
+    request.parameters.options.response.response.fullResponse,
+    true,
+    "n8n must expose the API body under the full-response body field",
+  );
+  assert.equal(request.parameters.options.response.response.responseFormat, "json");
+  assert.equal(request.parameters.options.response.response.outputPropertyName, undefined);
+  assert.equal(request.parameters.contentType, "json");
+  assert.equal(request.parameters.specifyBody, "json");
+  assert.equal(typeof request.parameters.jsonBody, "string");
+  assert.equal(request.parameters.rawContentType, undefined);
+  assert.equal(request.parameters.body, undefined);
+  const requestHeaders = Object.fromEntries(
+    request.parameters.headerParameters.parameters.map(({ name, value }) => [name.toLowerCase(), value]),
+  );
+  assert.equal(requestHeaders.accept, "application/json");
+  assert.equal(
+    requestHeaders["accept-encoding"],
+    "identity",
+    "Cloudflare responses must not reach n8n as an unreadable Brotli stream",
+  );
 }
 assert.doesNotMatch(
   reviewSerialized,
@@ -103,6 +135,13 @@ assert.ok(processorRequest.parameters.options.timeout <= 60000);
 assert.equal(trelloProcessorRequest.retryOnFail, undefined, "Trello move processor request must not retry automatically");
 assert.equal(trelloProcessorRequest.parameters.method, "POST");
 assert.ok(trelloProcessorRequest.parameters.options.timeout <= 60000);
+for (const processor of [processorRequest, trelloProcessorRequest]) {
+  assert.equal(processor.parameters.contentType, "json");
+  assert.equal(processor.parameters.specifyBody, "json");
+  assert.equal(typeof processor.parameters.jsonBody, "string");
+  assert.equal(processor.parameters.rawContentType, undefined);
+  assert.equal(processor.parameters.body, undefined);
+}
 assert.match(archiveSerialized, /outlook-archives\/process/);
 assert.match(archiveSerialized, /X-Neontrip-Outlook-Archive-Worker/);
 assert.match(archiveSerialized, /trello-arrivals\/process/);
@@ -116,12 +155,12 @@ for (const request of archiveRequests) {
 assert.match(archiveSerialized, /https:\/\/ops[.]neontrip[.]de/);
 assert.match(archiveSerialized, /full tracking number/);
 assert.doesNotMatch(
-  processorRequest.parameters.body,
+  processorRequest.parameters.jsonBody,
   /ARRIVAL_LABEL_CF_ACCESS_CLIENT|ARRIVAL_LABEL_AGENT_API_TOKEN/,
   "secrets must stay in request headers and never enter the request body",
 );
 assert.doesNotMatch(
-  trelloProcessorRequest.parameters.body,
+  trelloProcessorRequest.parameters.jsonBody,
   /ARRIVAL_LABEL_CF_ACCESS_CLIENT|ARRIVAL_LABEL_AGENT_API_TOKEN/,
   "secrets must stay in request headers and never enter the Trello request body",
 );

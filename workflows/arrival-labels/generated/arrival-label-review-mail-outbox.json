@@ -81,17 +81,26 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "identity"
             }
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId }) }}",
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId }) }}",
         "options": {
           "timeout": 30000,
           "response": {
             "response": {
+              "fullResponse": true,
               "responseFormat": "json"
             }
           }
@@ -105,37 +114,19 @@
       }
     },
     {
-      "id": "has-review",
-      "name": "Notification Available?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
+      "id": "validate-review-claim",
+      "name": "Validate Review Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         760,
         300
       ],
+      "onError": "stopWorkflow",
       "parameters": {
-        "options": {},
-        "conditions": {
-          "options": {
-            "version": 2,
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "notification-exists",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              },
-              "leftValue": "={{ $json.hasNotification }}",
-              "rightValue": ""
-            }
-          ]
-        }
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rawBody = $input.first().json?.body;\nlet body;\ntry {\n  body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;\n} catch {\n  throw new Error('review claim response is not valid JSON');\n}\nif (!body || body.ok !== true || typeof body.hasNotification !== 'boolean') {\n  throw new Error('review claim response is invalid');\n}\nif (!body.hasNotification) {\n  if (body.notification !== null) throw new Error('empty review claim must contain a null notification');\n  return [];\n}\nconst notification = body.notification;\nconst allowedKeys = ['attempts', 'bodyText', 'id', 'maxAttempts', 'subject', 'to'];\nif (!notification || Object.keys(notification).sort().join(',') !== allowedKeys.join(',')) {\n  throw new Error('review notification shape is invalid');\n}\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(notification.id || ''))) {\n  throw new Error('review notification id is invalid');\n}\nif (notification.to !== 'info@neontrip.de') throw new Error('review notification recipient is invalid');\nif (typeof notification.subject !== 'string' || notification.subject.length < 20 || notification.subject.length > 200 || /[\\r\\n]/.test(notification.subject)) {\n  throw new Error('review notification subject is invalid');\n}\nif (typeof notification.bodyText !== 'string' || notification.bodyText.length < 50 || notification.bodyText.length > 4000) {\n  throw new Error('review notification body is invalid');\n}\nif (!Number.isInteger(notification.attempts) || !Number.isInteger(notification.maxAttempts)\n  || notification.attempts < 1 || notification.maxAttempts < 1 || notification.maxAttempts > 5\n  || notification.attempts > notification.maxAttempts) {\n  throw new Error('review notification attempts are invalid');\n}\nreturn [{ json: { notification } }];"
       }
     },
     {
@@ -155,7 +146,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
         "method": "POST",
-        "url": "={{ $node[\"Validate Review Worker Config\"].json.baseUrl + '/api/internal/arrival-labels/review-notifications/' + $node[\"Claim Review Notification\"].json.notification.id + '/result' }}",
+        "url": "={{ $node[\"Validate Review Worker Config\"].json.baseUrl + '/api/internal/arrival-labels/review-notifications/' + $node[\"Validate Review Claim\"].json.notification.id + '/result' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -166,17 +157,26 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "identity"
             }
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId, result: 'dispatching' }) }}",
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId, result: 'dispatching' }) }}",
         "options": {
           "timeout": 30000,
           "response": {
             "response": {
+              "fullResponse": true,
               "responseFormat": "json"
             }
           }
@@ -190,9 +190,9 @@
       }
     },
     {
-      "id": "send-review-mail",
-      "name": "Send Internal Review Mail",
-      "type": "n8n-nodes-base.microsoftOutlook",
+      "id": "validate-review-dispatching",
+      "name": "Validate Review Dispatching",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1280,
@@ -200,11 +200,27 @@
       ],
       "onError": "stopWorkflow",
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rawBody = $input.first().json?.body;\nlet body;\ntry {\n  body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;\n} catch {\n  throw new Error('review dispatching acknowledgement is not valid JSON');\n}\nif (!body || body.ok !== true || body.status !== 'dispatching') {\n  throw new Error('review dispatching acknowledgement is invalid');\n}\nreturn [{ json: { notification: $node[\"Validate Review Claim\"].json.notification } }];"
+      }
+    },
+    {
+      "id": "send-review-mail",
+      "name": "Send Internal Review Mail",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        220
+      ],
+      "onError": "stopWorkflow",
+      "parameters": {
         "resource": "message",
         "operation": "send",
-        "toRecipients": "={{ $node[\"Claim Review Notification\"].json.notification.to }}",
-        "subject": "={{ $node[\"Claim Review Notification\"].json.notification.subject }}",
-        "bodyContent": "={{ $node[\"Claim Review Notification\"].json.notification.bodyText }}",
+        "toRecipients": "={{ $node[\"Validate Review Claim\"].json.notification.to }}",
+        "subject": "={{ $node[\"Validate Review Claim\"].json.notification.subject }}",
+        "bodyContent": "={{ $node[\"Validate Review Claim\"].json.notification.bodyText }}",
         "additionalFields": {
           "bodyContentType": "Text"
         }
@@ -222,14 +238,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
+        1800,
         220
       ],
       "onError": "stopWorkflow",
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const notificationId = String($node[\"Claim Review Notification\"].json.notification.id || '');\nconst dispatchReceiptId = 'n8n:' + String($execution.id || '') + ':' + notificationId;\nif (dispatchReceiptId.length > 500 || /[\\u0000-\\u001f\\u007f]/.test(dispatchReceiptId)) throw new Error('invalid dispatch receipt');\nreturn { json: { dispatchReceiptId } };"
+        "jsCode": "const notificationId = String($node[\"Validate Review Claim\"].json.notification.id || '');\nconst dispatchReceiptId = 'n8n:' + String($execution.id || '') + ':' + notificationId;\nif (dispatchReceiptId.length > 500 || /[\\u0000-\\u001f\\u007f]/.test(dispatchReceiptId)) throw new Error('invalid dispatch receipt');\nreturn { json: { dispatchReceiptId } };"
       }
     },
     {
@@ -238,7 +254,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1800,
+        2060,
         220
       ],
       "retryOnFail": true,
@@ -249,7 +265,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
         "method": "POST",
-        "url": "={{ $node[\"Validate Review Worker Config\"].json.baseUrl + '/api/internal/arrival-labels/review-notifications/' + $node[\"Claim Review Notification\"].json.notification.id + '/result' }}",
+        "url": "={{ $node[\"Validate Review Worker Config\"].json.baseUrl + '/api/internal/arrival-labels/review-notifications/' + $node[\"Validate Review Claim\"].json.notification.id + '/result' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -260,17 +276,26 @@
             {
               "name": "Content-Type",
               "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "identity"
             }
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId, result: 'sent', dispatchReceiptId: $json.dispatchReceiptId }) }}",
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workerId: $node[\"Validate Review Worker Config\"].json.workerId, result: 'sent', dispatchReceiptId: $json.dispatchReceiptId }) }}",
         "options": {
           "timeout": 30000,
           "response": {
             "response": {
+              "fullResponse": true,
               "responseFormat": "json"
             }
           }
@@ -311,14 +336,14 @@
       "main": [
         [
           {
-            "node": "Notification Available?",
+            "node": "Validate Review Claim",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Notification Available?": {
+    "Validate Review Claim": {
       "main": [
         [
           {
@@ -326,11 +351,21 @@
             "type": "main",
             "index": 0
           }
-        ],
-        []
+        ]
       ]
     },
     "Mark Review Dispatching": {
+      "main": [
+        [
+          {
+            "node": "Validate Review Dispatching",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Review Dispatching": {
       "main": [
         [
           {

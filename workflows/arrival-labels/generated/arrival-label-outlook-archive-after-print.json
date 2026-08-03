@@ -132,9 +132,9 @@
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ workerId: $json.workerId }) }}",
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workerId: $json.workerId }) }}",
         "options": {
           "timeout": 60000,
           "response": {
@@ -180,9 +180,9 @@
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ workerId: $node[\"Validate Ops Readiness\"].json.workerId }) }}",
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workerId: $node[\"Validate Ops Readiness\"].json.workerId }) }}",
         "options": {
           "timeout": 60000,
           "response": {

@@ -94,9 +94,9 @@
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ mode: $json.mode, persist: $json.persist, triggerType: $json.triggerType }) }}",
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ mode: $json.mode, persist: $json.persist, triggerType: $json.triggerType }) }}",
         "options": {
           "timeout": 60000,
           "response": {
