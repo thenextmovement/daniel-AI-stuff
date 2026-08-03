@@ -6,6 +6,7 @@ import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import {
+  EXPECTED_BRIDGE_PROTOCOL_VERSION,
   EXPECTED_EXTENSION_ID,
   acquireClaimSlot,
   encodeNativeMessage,
@@ -19,11 +20,14 @@ import {
 } from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
 import { isExecutedEntryPoint } from "../../scripts/run_easydpd_existing_chrome_host.mjs";
 import {
+  BRIDGE_PROTOCOL_VERSION,
   existingLabelEvidence,
   matchingDownloadedPdf,
   validateBridgeJob,
   validateOrderUrl,
 } from "../../deploy/local-easydpd-existing-chrome/extension/policy.mjs";
+
+const BUILD_COMMIT = "a".repeat(40);
 
 function job(overrides: Record<string, unknown> = {}) {
   return {
@@ -46,6 +50,8 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const manifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/extension/manifest.json", "utf8"));
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
+  assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
+  assert.equal(manifest.version, "1.1.0");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -89,18 +95,21 @@ test("download capture requires a PDF from the same Shopify tab after dispatch",
 });
 
 test("native protocol is length-prefixed, bounded and allowlisted", async () => {
-  const encoded = encodeNativeMessage({ type: "status" });
-  assert.deepEqual(await readNativeMessage(Readable.from([encoded])), { type: "status" });
+  const request = { type: "status", bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION, extensionBuildCommit: BUILD_COMMIT };
+  const encoded = encodeNativeMessage(request);
+  assert.deepEqual(await readNativeMessage(Readable.from([encoded])), request);
   const stillOpen = new PassThrough();
   const withoutEof = readNativeMessage(stillOpen);
   stillOpen.write(encoded.subarray(0, 3));
   stillOpen.write(encoded.subarray(3));
-  assert.deepEqual(await withoutEof, { type: "status" });
+  assert.deepEqual(await withoutEof, request);
   const bad = Buffer.from(encoded);
   bad.writeUInt32LE(encoded.length + 10, 0);
   await assert.rejects(() => readNativeMessage(Readable.from([bad])), /Nachrichtenlaenge/);
-  const denied = encodeNativeMessage({ type: "shell" });
+  const denied = encodeNativeMessage({ ...request, type: "shell" });
   await assert.rejects(() => readNativeMessage(Readable.from([denied])), /nicht freigegeben/);
+  const stale = encodeNativeMessage({ ...request, bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION - 1 });
+  await assert.rejects(() => readNativeMessage(Readable.from([stale])), /veraltet/);
 });
 
 test("native host recognizes a symlinked installed entry point", async () => {
@@ -120,6 +129,7 @@ test("bridge config requires HTTPS, fixed extension id and narrow download root"
     mode: "dry_run",
     liveEnabled: false,
     extensionId: EXPECTED_EXTENSION_ID,
+    extensionBuildCommit: BUILD_COMMIT,
     opsBaseUrl: "https://ops.neontrip.de",
     keychainAccount: "daniel",
     workerId: "daniels-mac-easydpd-normal-chrome-01",
@@ -153,6 +163,9 @@ test("service worker reuses or creates one background tab, blocks existing label
   const service = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
   const content = await readFile("deploy/local-easydpd-existing-chrome/extension/content_script.js", "utf8");
   assert.match(service, /findExistingEasyDpdTab/);
+  assert.match(service, /bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION/);
+  assert.match(service, /extensionBuildCommit: EXTENSION_BUILD_COMMIT/);
+  assert.match(service, /__NEONTRIP_EXTENSION_BUILD_COMMIT__/);
   assert.doesNotMatch(service, /chrome[.]windows[.]create/);
   assert.match(service, /chrome[.]tabs[.]create\(\{ url: validateOrderUrl\(job[.]orderUrl\), active: false \}\)/);
   assert.match(service, /easyDpdFrameId\(tabId, timeoutMs = 45_000\)/);
@@ -172,6 +185,10 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(nativeHost, /active_job_pending/);
   assert.match(nativeHost, /flag: "wx"/);
   assert.match(nativeHost, /storeActiveJob\(config, job\)/);
+  assert.match(nativeHost, /Chrome-Erweiterung ist veraltet/);
+  const manager = await readFile("scripts/manage_easydpd_existing_chrome_bridge.mjs", "utf8");
+  assert.match(manager, /extension_reload_required/);
+  assert.match(manager, /extensionClientVerified/);
 });
 
 test("native host claim slot is atomic and preserves the bound job across worker restarts", async () => {

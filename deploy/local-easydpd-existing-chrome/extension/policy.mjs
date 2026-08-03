@@ -1,4 +1,5 @@
 export const NATIVE_HOST = "de.neontrip.easydpd_existing_chrome";
+export const BRIDGE_PROTOCOL_VERSION = 2;
 export const SHOPIFY_ORIGIN = "https://admin.shopify.com";
 export const SHOPIFY_APP_PATH = "/store/galaxybuzzdk/apps/dpd-versand-services";
 export const SHOPIFY_PATH = "/store/galaxybuzzdk/apps/dpd-versand-services/fulfillments/create";

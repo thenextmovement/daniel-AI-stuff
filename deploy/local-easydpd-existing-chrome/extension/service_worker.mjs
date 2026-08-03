@@ -1,4 +1,5 @@
 import {
+  BRIDGE_PROTOCOL_VERSION,
   EASYDPD_FRAME_ORIGIN,
   NATIVE_HOST,
   SHOPIFY_APP_PATH,
@@ -10,6 +11,7 @@ import {
 } from "./policy.mjs";
 
 const ALARM_NAME = "neontrip-easydpd-existing-chrome-cycle";
+const EXTENSION_BUILD_COMMIT = "__NEONTRIP_EXTENSION_BUILD_COMMIT__";
 const STATE_KEY = "neontripEasyDpdBridgeState";
 const AUDIT_KEY = "neontripEasyDpdBridgeAudit";
 const MAX_AUDIT_ENTRIES = 50;
@@ -17,7 +19,11 @@ let cycleRunning = false;
 
 function nativeMessage(payload) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendNativeMessage(NATIVE_HOST, payload, (response) => {
+    chrome.runtime.sendNativeMessage(NATIVE_HOST, {
+      ...payload,
+      bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION,
+      extensionBuildCommit: EXTENSION_BUILD_COMMIT,
+    }, (response) => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
       if (!response?.ok) return reject(new Error(String(response?.error || "Native Bridge antwortete mit einem Fehler.")));
       resolve(response);

@@ -14,6 +14,7 @@ import {
 } from "./easydpd_browser_worker_lib.mjs";
 
 export const EXPECTED_EXTENSION_ID = "bgfphlbhdameagnafljlgpbpjdajmdhk";
+export const EXPECTED_BRIDGE_PROTOCOL_VERSION = 2;
 export const NATIVE_HOST_NAME = "de.neontrip.easydpd_existing_chrome";
 const MAX_NATIVE_MESSAGE_BYTES = 1024 * 1024;
 const ALLOWED_UPDATE_RESULTS = new Set(["validated", "dispatching", "retryable_error", "uncertain", "existing_label"]);
@@ -36,6 +37,8 @@ export function validateBridgeConfig(raw) {
   const mode = cleanString(raw.mode, "Bridge-Modus", 20);
   if (!["dry_run", "live"].includes(mode)) throw new ExistingChromeBridgeError("Bridge-Modus muss dry_run oder live sein.", 78);
   if (String(raw.extensionId || "") !== EXPECTED_EXTENSION_ID) throw new ExistingChromeBridgeError("Chrome-Erweiterungs-ID stimmt nicht.", 78);
+  const extensionBuildCommit = String(raw.extensionBuildCommit || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(extensionBuildCommit)) throw new ExistingChromeBridgeError("Chrome-Erweiterungs-Build ist ungueltig.", 78);
   const apiBaseUrl = new URL(cleanString(raw.opsBaseUrl, "Ops-Basis-URL", 300));
   if (apiBaseUrl.protocol !== "https:" || apiBaseUrl.username || apiBaseUrl.password || apiBaseUrl.search || apiBaseUrl.hash) {
     throw new ExistingChromeBridgeError("Ops-Basis-URL muss eine saubere HTTPS-URL sein.", 78);
@@ -63,6 +66,7 @@ export function validateBridgeConfig(raw) {
     mode,
     liveEnabled: mode === "live" && raw.liveEnabled === true,
     extensionId: EXPECTED_EXTENSION_ID,
+    extensionBuildCommit,
     opsBaseUrl: apiBaseUrl.toString().replace(/\/$/, ""),
     keychainAccount: cleanString(raw.keychainAccount, "Keychain-Account", 200),
     workerId: cleanString(raw.workerId, "Browser-Worker-ID", 96),
@@ -96,11 +100,19 @@ export function workerConfiguration(config) {
   );
 }
 
-export function validateNativeRequest(message) {
+export function validateNativeRequest(message, expectedBuildCommit = null) {
   if (!message || typeof message !== "object" || Array.isArray(message)) throw new ExistingChromeBridgeError("Native-Bridge-Nachricht fehlt.", 65);
   const type = cleanString(message.type, "Native-Bridge-Nachrichtentyp", 40);
   if (!["status", "claim", "update", "upload_artifact"].includes(type)) throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtentyp ist nicht freigegeben.", 65);
-  return { ...message, type };
+  if (message.bridgeProtocolVersion !== EXPECTED_BRIDGE_PROTOCOL_VERSION) {
+    throw new ExistingChromeBridgeError("Chrome-Erweiterung ist veraltet; in chrome://extensions neu laden.", 65);
+  }
+  const extensionBuildCommit = String(message.extensionBuildCommit || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(extensionBuildCommit)) throw new ExistingChromeBridgeError("Chrome-Erweiterungs-Build fehlt oder ist ungueltig.", 65);
+  if (expectedBuildCommit && extensionBuildCommit !== expectedBuildCommit) {
+    throw new ExistingChromeBridgeError("Chrome-Erweiterungs-Build stimmt nicht mit dem installierten Native Host ueberein; Erweiterung neu laden.", 65);
+  }
+  return { ...message, type, extensionBuildCommit };
 }
 
 export async function readNativeMessage(input) {
@@ -250,12 +262,18 @@ async function readAllowedPdf(filePath, config) {
 }
 
 export async function handleNativeRequest(config, rawMessage) {
-  const message = validateNativeRequest(rawMessage);
+  const message = validateNativeRequest(rawMessage, config.extensionBuildCommit);
   const configuration = workerConfiguration(config);
+  const verifiedExtension = {
+    bridgeProtocolVersion: EXPECTED_BRIDGE_PROTOCOL_VERSION,
+    extensionBuildCommit: config.extensionBuildCommit,
+    extensionClientVerified: true,
+  };
   if (message.type === "status") {
     const active = await readActiveJobState(config);
     const state = active ? "active_job_pending" : config.liveEnabled ? "live_ready" : "dry_run_ready";
     await writeStatus(config, state, {
+      ...verifiedExtension,
       activeJobId: active?.job?.id || null,
       activeJobState: active?.state || null,
       purchaseClicked: false,
@@ -265,18 +283,20 @@ export async function handleNativeRequest(config, rawMessage) {
       mode: config.mode,
       liveEnabled: config.liveEnabled,
       extensionId: config.extensionId,
+      ...verifiedExtension,
       activeJobPending: Boolean(active),
       purchaseClicked: false,
     };
   }
   if (message.type === "claim") {
     if (!config.liveEnabled) {
-      await writeStatusBestEffort(config, "dry_run_no_claim", { purchaseClicked: false });
+      await writeStatusBestEffort(config, "dry_run_no_claim", { ...verifiedExtension, purchaseClicked: false });
       return { ok: true, job: null, mode: config.mode };
     }
     if (!await acquireClaimSlot(config)) {
       const active = await readActiveJobState(config);
       await writeStatusBestEffort(config, "active_job_pending", {
+        ...verifiedExtension,
         activeJobId: active?.job?.id || null,
         activeJobState: active?.state || null,
         purchaseClicked: false,
@@ -287,7 +307,7 @@ export async function handleNativeRequest(config, rawMessage) {
       const job = await claimJob(configuration);
       if (job) await storeActiveJob(config, job);
       else await clearClaimSlot(config);
-      await writeStatusBestEffort(config, job ? "job_claimed" : "idle", { jobId: job?.id || null, orderName: job?.orderName || null, purchaseClicked: false });
+      await writeStatusBestEffort(config, job ? "job_claimed" : "idle", { ...verifiedExtension, jobId: job?.id || null, orderName: job?.orderName || null, purchaseClicked: false });
       return { ok: true, job };
     } catch (error) {
       await clearClaimSlot(config).catch(() => undefined);
@@ -303,6 +323,7 @@ export async function handleNativeRequest(config, rawMessage) {
       evidence: message.evidence || null,
     });
     await writeStatusBestEffort(config, `job_${result}`, {
+      ...verifiedExtension,
       jobId: job.id,
       orderName: job.orderName,
       purchaseDispatchStarted: result === "dispatching",
@@ -314,6 +335,7 @@ export async function handleNativeRequest(config, rawMessage) {
   const { bytes, sha256 } = await readAllowedPdf(message.filePath, config);
   const uploaded = await uploadArtifact(configuration, job, bytes);
   await writeStatusBestEffort(config, "artifact_uploaded", {
+    ...verifiedExtension,
     jobId: job.id,
     orderName: job.orderName,
     originalPdfSha256: sha256,
@@ -333,6 +355,9 @@ export async function selfTestBridge(config) {
     mode: config.mode,
     liveEnabled: config.liveEnabled,
     extensionId: config.extensionId,
+    bridgeProtocolVersion: EXPECTED_BRIDGE_PROTOCOL_VERSION,
+    extensionBuildCommit: config.extensionBuildCommit,
+    extensionClientVerified: false,
     nativeHost: NATIVE_HOST_NAME,
     purchaseClicked: false,
     claimAttempted: false,

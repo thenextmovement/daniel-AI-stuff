@@ -31,6 +31,7 @@ npm run arrival-labels:existing-chrome:manage -- install --mode live --acknowled
 ```
 
 Beim Live-Wechsel wird der alte separate Playwright-Worker zuerst deaktiviert. Die beiden Server-Gates bleiben bis zum beaufsichtigten Canary ausgeschaltet.
+Nach jeder Installation meldet `status` zunaechst `extensionReloadRequired: true`. Chrome muss die entpackte Erweiterung einmal neu laden. Erst wenn Erweiterung und Native Host denselben Commit und dieselbe Protokollversion bestaetigen, wird der Status auf `false` gesetzt; ein alter Service Worker darf keine Auftraege reservieren.
 
 ## Rollback
 

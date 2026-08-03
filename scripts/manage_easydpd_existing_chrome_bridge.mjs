@@ -23,6 +23,7 @@ import {
   readKeychainSecret,
 } from "./easydpd_browser_worker_lib.mjs";
 import {
+  EXPECTED_BRIDGE_PROTOCOL_VERSION,
   EXPECTED_EXTENSION_ID,
   NATIVE_HOST_NAME,
   loadBridgeConfig,
@@ -146,12 +147,20 @@ function stageVersion(commit, installId, options, target, runtime) {
   if (extensionIdFromManifestKey(manifest.key) !== EXPECTED_EXTENSION_ID) throw new BrowserWorkerError("Manifest-Key erzeugt nicht die fest gepinnte Erweiterungs-ID.", 70);
   const stagedExtension = join(versionDir, "extension");
   cpSync(extensionSource, stagedExtension, { recursive: true, force: true });
+  const serviceWorkerPath = join(stagedExtension, "service_worker.mjs");
+  const serviceWorkerSource = readFileSync(serviceWorkerPath, "utf8");
+  const buildPlaceholder = "__NEONTRIP_EXTENSION_BUILD_COMMIT__";
+  if (serviceWorkerSource.split(buildPlaceholder).length !== 2) {
+    throw new BrowserWorkerError("Chrome-Erweiterungs-Build-Platzhalter ist nicht eindeutig.", 70);
+  }
+  writeFileSync(serviceWorkerPath, serviceWorkerSource.replace(buildPlaceholder, commit));
   const configPath = join(versionDir, "bridge-config.json");
   const config = {
     version: 1,
     mode: options.mode,
     liveEnabled: options.mode === "live",
     extensionId: EXPECTED_EXTENSION_ID,
+    extensionBuildCommit: commit,
     opsBaseUrl: runtime.opsBaseUrl,
     keychainAccount: runtime.account,
     workerId: runtime.workerId,
@@ -193,6 +202,7 @@ function install(options) {
   const previousManifest = backupPath(target.nativeManifest, backupRoot, "native-host.json");
   const previousExtension = backupPath(target.activeExtension, backupRoot, "extension");
   const previousCurrent = backupPath(target.currentFile, backupRoot, "CURRENT");
+  const previousStatus = backupPath(target.statusPath, backupRoot, "status.json");
   const oldWorkerLoaded = launchctl(["print", `${launchDomain()}/${OLD_WORKER_LABEL}`], true).status === 0;
   mkdirSync(dirname(target.nativeManifest), { recursive: true, mode: 0o700 });
   mkdirSync(target.runtimeRoot, { recursive: true, mode: 0o700 });
@@ -214,10 +224,26 @@ function install(options) {
     previousManifest,
     previousExtension,
     previousCurrent,
+    previousStatus,
     oldWorkerLoaded,
   };
   writeFileSync(join(staged.versionDir, "install-record.json"), `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
   writeFileSync(target.currentFile, `${JSON.stringify({ version: 1, commit, installId })}\n`, { mode: 0o600 });
+  mkdirSync(dirname(target.statusPath), { recursive: true, mode: 0o700 });
+  const temporaryStatus = `${target.statusPath}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(temporaryStatus, `${JSON.stringify({
+    version: 1,
+    mode: options.mode,
+    liveEnabled: options.mode === "live",
+    workerId: runtime.workerId,
+    extensionId: EXPECTED_EXTENSION_ID,
+    state: "extension_reload_required",
+    updatedAt: new Date().toISOString(),
+    bridgeProtocolVersion: EXPECTED_BRIDGE_PROTOCOL_VERSION,
+    extensionBuildCommit: commit,
+    extensionClientVerified: false,
+  }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  renameSync(temporaryStatus, target.statusPath);
   return {
     ok: true,
     action: "installed",
@@ -227,6 +253,7 @@ function install(options) {
     extensionPath: target.activeExtension,
     nativeManifest: target.nativeManifest,
     oldSeparateWorkerDisabled: options.mode === "live" && oldWorkerLoaded,
+    extensionReloadRequired: true,
     serverGatesChanged: false,
   };
 }
@@ -259,12 +286,23 @@ function status() {
     const configPath = join(target.versionsRoot, String(current.installId || ""), "bridge-config.json");
     if (existsSync(configPath)) {
       const raw = JSON.parse(readFileSync(configPath, "utf8"));
-      config = { mode: raw.mode, liveEnabled: raw.liveEnabled, workerId: raw.workerId, extensionId: raw.extensionId };
+      config = {
+        mode: raw.mode,
+        liveEnabled: raw.liveEnabled,
+        workerId: raw.workerId,
+        extensionId: raw.extensionId,
+        extensionBuildCommit: raw.extensionBuildCommit || null,
+      };
     }
   }
   if (existsSync(target.statusPath)) {
     try { heartbeat = JSON.parse(readFileSync(target.statusPath, "utf8")); } catch {}
   }
+  const extensionReloadRequired = !(
+    heartbeat?.extensionClientVerified === true
+    && heartbeat?.bridgeProtocolVersion === EXPECTED_BRIDGE_PROTOCOL_VERSION
+    && heartbeat?.extensionBuildCommit === currentCommit
+  );
   return {
     ok: existsSync(target.nativeManifest) && existsSync(target.activeExtension),
     action: "status",
@@ -274,6 +312,8 @@ function status() {
     nativeManifestInstalled: existsSync(target.nativeManifest),
     config,
     heartbeat,
+    expectedBridgeProtocolVersion: EXPECTED_BRIDGE_PROTOCOL_VERSION,
+    extensionReloadRequired,
     oldSeparateWorkerLoaded: launchctl(["print", `${launchDomain()}/${OLD_WORKER_LABEL}`], true).status === 0,
   };
 }
@@ -304,6 +344,8 @@ function rollback() {
     cpSync(record.previousExtension, target.activeExtension, { recursive: true });
   }
   if (record.previousCurrent && existsSync(record.previousCurrent)) copyFileSync(record.previousCurrent, target.currentFile);
+  if (record.previousStatus && existsSync(record.previousStatus)) copyFileSync(record.previousStatus, target.statusPath);
+  else if (existsSync(target.statusPath)) renameSync(target.statusPath, `${target.statusPath}.rolled-back-${Date.now()}`);
   if (record.oldWorkerLoaded && existsSync(target.oldWorkerPlist)) launchctl(["bootstrap", launchDomain(), target.oldWorkerPlist], true);
   return { ok: true, action: "rolled_back", installRecord: candidate.path, oldSeparateWorkerRestored: Boolean(record.oldWorkerLoaded) };
 }
