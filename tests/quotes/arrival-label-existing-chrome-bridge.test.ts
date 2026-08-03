@@ -155,6 +155,8 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(service, /findExistingEasyDpdTab/);
   assert.doesNotMatch(service, /chrome[.]windows[.]create/);
   assert.match(service, /chrome[.]tabs[.]create\(\{ url: validateOrderUrl\(job[.]orderUrl\), active: false \}\)/);
+  assert.match(service, /easyDpdFrameId\(tabId, timeoutMs = 45_000\)/);
+  assert.match(service, /matches[.]length === 1[\s\S]+matches[.]length > 1[\s\S]+setTimeout\(resolve, 500\)/);
   assert.match(service, /prepared[.]existingLabel[?][.]found/);
   assert.match(service, /updateJob\(job, "existing_label"/);
   assert.ok(service.indexOf('nativeMessage({ type: "claim" })') < service.indexOf("getOrCreateEasyDpdTab(claimed.job)"));

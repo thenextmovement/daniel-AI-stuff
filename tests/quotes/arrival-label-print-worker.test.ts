@@ -12,7 +12,7 @@ test("local worker durably marks dispatch before CUPS and never auto-reprints un
   const source = await readFile("scripts/run_arrival_label_print_worker.ts", "utf8");
   const dispatch = source.indexOf('updateResult(configuration, job, "dispatching")');
   const submit = source.indexOf("printer.submit(pdfPath)");
-  const uncertain = source.indexOf('updateResult(configuration, job, "uncertain"');
+  const uncertain = source.indexOf('dispatchStarted ? "uncertain"');
   assert.ok(dispatch >= 0 && submit > dispatch);
   assert.ok(uncertain > submit);
   assert.match(source, /assertPrintPdf\(bytes, job\.sha256\)/);
@@ -20,7 +20,23 @@ test("local worker durably marks dispatch before CUPS and never auto-reprints un
   assert.match(source, /--self-test/);
   assert.match(source, /ARRIVAL_LABEL_PRINT_LIVE_ENABLED/);
   assert.match(source, /--acknowledge-production-write/);
+  assert.match(source, /reconcileCompletedJobs\(configuration, printer\)/);
+  assert.match(source, /pending_confirmation/);
+  assert.doesNotMatch(source, /pending_confirmation[\s\S]{0,300}updateResult\(configuration, job, "uncertain"/);
   assert.doesNotMatch(source, /shell:\s*true|exec\(/);
+});
+
+test("CUPS completion reconciliation is exact, audited and reversible", async () => {
+  const migration = await readFile("supabase/migrations/20260803101500_reconcile_arrival_label_cups_completion.sql", "utf8");
+  const rollback = await readFile("supabase/rollbacks/20260803101500_reconcile_arrival_label_cups_completion_rollback.sql", "utf8");
+  assert.match(migration, /arrival_labels_confirm_cups_completion/);
+  assert.match(migration, /v_job[.]cups_job_id is distinct from p_cups_job_id/);
+  assert.match(migration, /status not in \('submitted', 'manual_review'\)/);
+  assert.match(migration, /manual review reason is not eligible/);
+  assert.match(migration, /print_cups_completion_confirmed/);
+  assert.match(migration, /on conflict \(event_key\) do nothing/);
+  assert.match(migration, /revoke execute[\s\S]+from public, anon, authenticated/);
+  assert.match(rollback, /drop function if exists public[.]arrival_labels_confirm_cups_completion/);
 });
 
 test("macOS print manager separates A6 and A4, uses Keychain, and requires an explicit live acknowledgement", async () => {

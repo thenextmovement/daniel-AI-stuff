@@ -20,6 +20,13 @@ type ClaimedJob = {
   documentPath: string;
 };
 
+type ConfirmationJob = {
+  id: string;
+  documentKind: "label" | "delivery_note";
+  printerKey: string;
+  cupsJobId: string;
+};
+
 function required(name: string) {
   const value = String(process.env[name] || "").trim();
   if (!value) throw new Error(`${name} ist nicht konfiguriert.`);
@@ -115,6 +122,41 @@ async function claim(configuration: ReturnType<typeof config>) {
   return payload.job;
 }
 
+async function loadConfirmationCandidates(configuration: ReturnType<typeof config>) {
+  const response = await apiRequest(configuration, "/api/internal/arrival-labels/print-jobs/confirmations", {
+    method: "POST",
+    body: JSON.stringify({ workerId: configuration.workerId, printerKey: configuration.printerKey }),
+  });
+  const payload = await response.json() as { jobs?: ConfirmationJob[] };
+  if (!Array.isArray(payload.jobs)) throw new Error("Ops Print API lieferte ungueltige CUPS-Bestaetigungen.");
+  return payload.jobs.map((job) => {
+    if (!job
+      || !/^[0-9a-f-]{36}$/i.test(String(job.id || ""))
+      || job.printerKey !== configuration.printerKey
+      || !["label", "delivery_note"].includes(job.documentKind)
+      || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}-\d+$/.test(String(job.cupsJobId || ""))) {
+      throw new Error("Ops Print API lieferte eine ungueltige CUPS-Bestaetigung.");
+    }
+    return job;
+  });
+}
+
+async function confirmCompletion(configuration: ReturnType<typeof config>, job: ConfirmationJob) {
+  await apiRequest(configuration, `/api/internal/arrival-labels/print-jobs/${job.id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ workerId: configuration.workerId, cupsJobId: job.cupsJobId }),
+  });
+}
+
+async function reconcileCompletedJobs(configuration: ReturnType<typeof config>, printer: ReturnType<typeof createCupsPrinter>) {
+  const candidates = await loadConfirmationCandidates(configuration);
+  for (const job of candidates) {
+    if (!await printer.isCompleted(job.cupsJobId)) continue;
+    await confirmCompletion(configuration, job);
+    process.stdout.write(`printed_reconciled kind=${job.documentKind} job=${job.id} cups=${job.cupsJobId}\n`);
+  }
+}
+
 async function waitForCompletion(printer: ReturnType<typeof createCupsPrinter>, cupsJobId: string, seconds: number) {
   const deadline = Date.now() + seconds * 1000;
   while (Date.now() < deadline) {
@@ -129,6 +171,7 @@ async function processOne(configuration: ReturnType<typeof config>, printer: Ret
   if (!job) return false;
   let dispatchStarted = false;
   let cupsJobId: string | undefined;
+  let submittedRecorded = false;
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "neontrip-label-print-"));
   try {
     const response = await apiRequest(configuration, job.documentPath, { method: "GET", headers: { Accept: "application/pdf" } });
@@ -141,16 +184,18 @@ async function processOne(configuration: ReturnType<typeof config>, printer: Ret
     dispatchStarted = true;
     cupsJobId = await printer.submit(pdfPath);
     await updateResult(configuration, job, "submitted", cupsJobId);
+    submittedRecorded = true;
 
     if (await waitForCompletion(printer, cupsJobId, configuration.confirmationSeconds)) {
       await updateResult(configuration, job, "printed", cupsJobId);
       process.stdout.write(`printed kind=${job.documentKind} job=${job.id} cups=${cupsJobId}\n`);
     } else {
-      await updateResult(configuration, job, "uncertain", cupsJobId, "CUPS completion could not be proven; manual check required and no automatic reprint is allowed.");
-      process.stderr.write(`manual_review job=${job.id} cups=${cupsJobId}\n`);
+      process.stderr.write(`pending_confirmation job=${job.id} cups=${cupsJobId}\n`);
     }
   } catch (error) {
-    await updateResult(configuration, job, dispatchStarted ? "uncertain" : "retryable_error", cupsJobId, error).catch(() => undefined);
+    if (!submittedRecorded) {
+      await updateResult(configuration, job, dispatchStarted ? "uncertain" : "retryable_error", cupsJobId, error).catch(() => undefined);
+    }
     throw error;
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
@@ -172,6 +217,9 @@ async function main() {
   }
   const once = process.argv.includes("--once");
   do {
+    await reconcileCompletedJobs(configuration, printer).catch((error) => {
+      process.stderr.write(`print reconciliation error: ${formatOperationalError(error)}\n`);
+    });
     await processOne(configuration, printer).catch((error) => {
       process.stderr.write(`print worker error: ${formatOperationalError(error)}\n`);
     });

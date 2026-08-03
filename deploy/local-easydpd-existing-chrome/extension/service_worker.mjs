@@ -88,13 +88,18 @@ function waitForTabComplete(tabId, expectedUrl, timeoutMs = 45_000) {
   });
 }
 
-async function easyDpdFrameId(tabId) {
-  const frames = await chrome.webNavigation.getAllFrames({ tabId });
-  const matches = (frames || []).filter((frame) => {
-    try { return new URL(frame.url).origin === EASYDPD_FRAME_ORIGIN; } catch { return false; }
-  });
-  if (matches.length !== 1) throw new Error("EasyDPD-App-Frame ist nicht eindeutig geladen; Shopify-Anmeldung prüfen.");
-  return matches[0].frameId;
+async function easyDpdFrameId(tabId, timeoutMs = 45_000) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const frames = await chrome.webNavigation.getAllFrames({ tabId });
+    const matches = (frames || []).filter((frame) => {
+      try { return new URL(frame.url).origin === EASYDPD_FRAME_ORIGIN; } catch { return false; }
+    });
+    if (matches.length === 1) return matches[0].frameId;
+    if (matches.length > 1) throw new Error("Mehr als ein EasyDPD-App-Frame wurde geladen; Auftrag wird gestoppt.");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } while (Date.now() < deadline);
+  throw new Error("EasyDPD-App-Frame wurde nicht rechtzeitig geladen; Shopify-Anmeldung prüfen.");
 }
 
 async function frameMessage(tabId, frameId, payload) {

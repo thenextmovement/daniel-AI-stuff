@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { NextRequest } from "next/server";
 import { POST as claimPrintJob } from "../../src/app/api/internal/arrival-labels/print-jobs/claim/route";
+import { POST as listPrintConfirmations } from "../../src/app/api/internal/arrival-labels/print-jobs/confirmations/route";
+import { POST as confirmPrintJob } from "../../src/app/api/internal/arrival-labels/print-jobs/[jobId]/confirm/route";
 import { POST as updatePrintJob } from "../../src/app/api/internal/arrival-labels/print-jobs/[jobId]/result/route";
 
 const TOKEN = "print-worker-test-token-32-characters-long";
@@ -213,5 +215,84 @@ test("print claim API hides downstream failure details", async () => {
     assert.equal(response.status, 500);
     assert.equal(payload.error, "claim_failed");
     assert.doesNotMatch(JSON.stringify(payload), /sensitive-database-detail/);
+  });
+});
+
+test("print confirmation API returns only exact already-submitted CUPS jobs", async () => {
+  await withPrintEnvironment(async () => {
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("arrival_label_product_config")) {
+        return Response.json([{
+          version: "test-v1",
+          enabled: true,
+          standard_product_code: "DPD-CLASSIC",
+          express_product_mapping: {},
+          eu_product_mapping: { standard: "DPD-EU-CLASSIC" },
+          printer_key: "shipping-a6",
+          print_media: "4x6",
+          delivery_note_printer_key: "office-a4",
+          delivery_note_print_media: "A4",
+        }]);
+      }
+      if (url.includes("arrival_label_print_jobs")) {
+        return Response.json([{
+          id: "11111111-1111-4111-8111-111111111111",
+          case_id: "22222222-2222-4222-8222-222222222222",
+          artifact_id: "33333333-3333-4333-8333-333333333333",
+          document_kind: "label",
+          idempotency_key: "shopify-order:incoming-dhl:print",
+          printer_key: "shipping-a6",
+          document_sha256: "a".repeat(64),
+          status: "submitted",
+          attempts: 1,
+          max_attempts: 3,
+          lease_owner: WORKER_ID,
+          lease_expires_at: null,
+          cups_job_id: "Brother_QL_1110NWB-178",
+          last_error: null,
+        }]);
+      }
+      throw new Error(`unexpected request ${url}`);
+    };
+    const response = await listPrintConfirmations(request(
+      "/api/internal/arrival-labels/print-jobs/confirmations",
+      { workerId: WORKER_ID, printerKey: "shipping-a6" },
+    ));
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(payload.jobs, [{
+      id: "11111111-1111-4111-8111-111111111111",
+      documentKind: "label",
+      printerKey: "shipping-a6",
+      cupsJobId: "Brother_QL_1110NWB-178",
+    }]);
+  });
+});
+
+test("print completion API reconciles an exact CUPS job without a second document dispatch", async () => {
+  await withPrintEnvironment(async () => {
+    let called = 0;
+    globalThis.fetch = async (input, init) => {
+      called += 1;
+      const url = String(input);
+      assert.match(url, /rpc\/arrival_labels_confirm_cups_completion/);
+      assert.match(String(init?.body), /Brother_QL_1110NWB-178/);
+      return Response.json([{
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "printed",
+        cups_job_id: "Brother_QL_1110NWB-178",
+      }]);
+    };
+    const response = await confirmPrintJob(
+      request(
+        "/api/internal/arrival-labels/print-jobs/11111111-1111-4111-8111-111111111111/confirm",
+        { workerId: WORKER_ID, cupsJobId: "Brother_QL_1110NWB-178" },
+      ),
+      { params: Promise.resolve({ jobId: "11111111-1111-4111-8111-111111111111" }) },
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).status, "printed");
+    assert.equal(called, 1);
   });
 });

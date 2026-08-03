@@ -509,6 +509,32 @@ export async function updateArrivalPrintJob(input: {
   return rows[0];
 }
 
+const CUPS_CONFIRMATION_TIMEOUT_ERROR = "CUPS completion could not be proven; manual check required and no automatic reprint is allowed.";
+
+export async function loadArrivalPrintConfirmationCandidates(input: { workerId: string; printerKey: string }) {
+  const rows = await supabaseRequest<ArrivalPrintJobRow[]>("arrival_label_print_jobs", undefined, {
+    select: "id,case_id,artifact_id,document_kind,idempotency_key,printer_key,document_sha256,status,attempts,max_attempts,lease_owner,lease_expires_at,cups_job_id,last_error",
+    lease_owner: `eq.${input.workerId}`,
+    printer_key: `eq.${input.printerKey}`,
+    status: "in.(submitted,manual_review)",
+    cups_job_id: "not.is.null",
+    order: "updated_at.asc",
+    limit: 20,
+  });
+  return rows.filter((job) => job.status === "submitted"
+    || (job.status === "manual_review" && job.last_error === CUPS_CONFIRMATION_TIMEOUT_ERROR));
+}
+
+export async function confirmArrivalPrintCompletion(input: { jobId: string; workerId: string; cupsJobId: string }) {
+  const rows = await supabaseRpc<ArrivalPrintJobRow[]>("arrival_labels_confirm_cups_completion", {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_cups_job_id: input.cupsJobId,
+  });
+  if (!rows[0]) throw new Error("CUPS-Druckabschluss konnte nicht gespeichert werden.");
+  return rows[0];
+}
+
 type PrintArtifactRow = {
   id: string;
   artifact_kind: "annotated_pdf" | "delivery_note_pdf";
