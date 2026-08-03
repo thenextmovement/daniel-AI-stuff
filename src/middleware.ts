@@ -11,6 +11,7 @@ type AccessJwtHeader = {
 
 type AccessJwtPayload = {
   aud?: string | string[];
+  common_name?: string;
   email?: string;
   exp?: number;
   iat?: number;
@@ -82,6 +83,7 @@ function getCloudflareAccessConfig() {
   return {
     issuer,
     audience,
+    allowedAccessServiceTokenIds: splitEnvList(readEnv("OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS")),
     allowedDomains: splitEnvList(readEnv("OPS_ALLOWED_EMAIL_DOMAINS")),
     allowedEmails: splitEnvList(readEnv("OPS_ALLOWED_EMAILS")),
     requireAccess:
@@ -219,6 +221,11 @@ async function validateCloudflareAccess(request: NextRequest) {
   } catch (error) {
     console.error("cloudflare access middleware validation failed", error);
     return false;
+  }
+
+  const serviceTokenId = String(payload.common_name || "").trim().toLowerCase();
+  if (serviceTokenId) {
+    return config.allowedAccessServiceTokenIds.includes(serviceTokenId);
   }
 
   const email = getAccessEmail(payload);

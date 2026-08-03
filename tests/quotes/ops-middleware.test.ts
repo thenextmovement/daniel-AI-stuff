@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, webcrypto } from "node:crypto";
 import { NextRequest } from "next/server";
 import { config, middleware } from "../../src/middleware";
 
@@ -8,9 +8,46 @@ function buildRequest(url: string, init?: ConstructorParameters<typeof NextReque
   return new NextRequest(url, init);
 }
 
+function base64Url(input: BufferSource | string) {
+  const buffer =
+    typeof input === "string"
+      ? Buffer.from(input)
+      : Buffer.from(input instanceof ArrayBuffer ? input : input.buffer);
+  return buffer.toString("base64url");
+}
+
+async function buildServiceAccessJwt(options: {
+  audience: string;
+  commonName: string;
+  issuer: string;
+  kid: string;
+  privateKey: CryptoKey;
+}) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64Url(JSON.stringify({ alg: "RS256", kid: options.kid, typ: "JWT" }));
+  const payload = base64Url(
+    JSON.stringify({
+      aud: options.audience,
+      common_name: options.commonName,
+      exp: now + 600,
+      iat: now,
+      iss: options.issuer,
+      sub: "",
+    }),
+  );
+  const signingInput = `${header}.${payload}`;
+  const signature = await webcrypto.subtle.sign(
+    { name: "RSASSA-PKCS1-v1_5" },
+    options.privateKey,
+    Buffer.from(signingInput),
+  );
+  return `${signingInput}.${base64Url(signature)}`;
+}
+
 async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
   const original = {
     aud: process.env.OPS_CLOUDFLARE_ACCESS_AUD,
+    accessServiceTokenIds: process.env.OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS,
     domains: process.env.OPS_ALLOWED_EMAIL_DOMAINS,
     emails: process.env.OPS_ALLOWED_EMAILS,
     issuer: process.env.OPS_CLOUDFLARE_ACCESS_ISSUER,
@@ -26,6 +63,7 @@ async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
     process.env.OPS_ALLOWED_EMAIL_DOMAINS = "neontrip.de";
     process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS = "true";
     delete process.env.OPS_ALLOWED_EMAILS;
+    delete process.env.OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS;
     delete process.env.CONTROL_TOWER_OPS_PORTAL_TOKEN;
     delete process.env.OPS_PORTAL_TOKEN;
     delete process.env.QUOTE_INTERNAL_API_TOKEN;
@@ -34,6 +72,7 @@ async function withOpsMiddlewareEnv<T>(callback: () => Promise<T>) {
   } finally {
     for (const [key, value] of Object.entries({
       OPS_CLOUDFLARE_ACCESS_AUD: original.aud,
+      OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS: original.accessServiceTokenIds,
       OPS_ALLOWED_EMAIL_DOMAINS: original.domains,
       OPS_ALLOWED_EMAILS: original.emails,
       OPS_CLOUDFLARE_ACCESS_ISSUER: original.issuer,
@@ -114,6 +153,58 @@ test("ops middleware accepts a session issued from the separate Control Tower to
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-middleware-next"), "1");
+  });
+});
+
+test("ops middleware accepts an explicitly allowed Cloudflare Access service token", async () => {
+  await withOpsMiddlewareEnv(async () => {
+    const originalFetch = globalThis.fetch;
+    const issuer = "https://neontrip-middleware-service.cloudflareaccess.com";
+    const audience = "aud-neontrip-ops-middleware-service";
+    const serviceTokenId = "tower-middleware-client.access";
+    const kid = `kid-middleware-service-${Date.now()}`;
+    const keyPair = await webcrypto.subtle.generateKey(
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"],
+    );
+    const publicJwk = (await webcrypto.subtle.exportKey("jwk", keyPair.publicKey)) as JsonWebKey & { kid?: string };
+    publicJwk.kid = kid;
+    publicJwk.alg = "RS256";
+
+    process.env.OPS_CLOUDFLARE_ACCESS_ISSUER = issuer;
+    process.env.OPS_CLOUDFLARE_ACCESS_AUD = audience;
+    process.env.OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS = serviceTokenId;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+
+    try {
+      const token = await buildServiceAccessJwt({
+        audience,
+        commonName: serviceTokenId,
+        issuer,
+        kid,
+        privateKey: keyPair.privateKey,
+      });
+      const response = await middleware(
+        buildRequest("https://ops.neontrip.de/api/ops/design/jobs", {
+          headers: { "cf-access-jwt-assertion": token },
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("x-middleware-next"), "1");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

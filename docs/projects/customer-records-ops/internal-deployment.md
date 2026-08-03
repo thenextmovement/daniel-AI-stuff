@@ -41,6 +41,7 @@ Empfohlen:
 - `OPS_REQUIRE_CLOUDFLARE_ACCESS=true`
 - `OPS_ALLOWED_EMAILS=person1@neontrip.de,person2@neontrip.de`
 - oder `OPS_ALLOWED_EMAIL_DOMAINS=neontrip.de`
+- `OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS=<Cloudflare-Service-Token-Client-ID>` fuer explizit freigegebene Machine-to-Machine-Clients
 - `OPS_PLACETEL_CONTACT_URL_TEMPLATE=...`
 
 Fallback fuer Preview/Tunnel:

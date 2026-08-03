@@ -40,9 +40,15 @@ export async function authorizeCompanyBrainRequest(request: NextRequest) {
   }
   if (bypassed) return { ok: true as const, actor: "local_ops", actorIdentified: true as const };
   const access = await validateCloudflareAccess(request.headers);
+  let actor = "authenticated_ops_session";
+  if (access.ok) {
+    if ("email" in access && access.email) actor = access.email;
+    else if ("serviceTokenId" in access && access.serviceTokenId) actor = access.serviceTokenId;
+    else actor = "cloudflare-access";
+  }
   return {
     ok: true as const,
-    actor: access.ok ? access.email : "authenticated_ops_session",
+    actor,
     actorIdentified: access.ok,
   };
 }

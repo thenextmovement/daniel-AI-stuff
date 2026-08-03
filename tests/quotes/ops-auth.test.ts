@@ -14,7 +14,8 @@ function base64Url(input: BufferSource | string) {
 
 async function buildAccessJwt(options: {
   audience: string;
-  email: string;
+  commonName?: string;
+  email?: string;
   issuer: string;
   kid: string;
   privateKey: CryptoKey;
@@ -24,11 +25,12 @@ async function buildAccessJwt(options: {
   const payload = base64Url(
     JSON.stringify({
       aud: options.audience,
-      email: options.email,
+      ...(options.commonName ? { common_name: options.commonName } : {}),
+      ...(options.email ? { email: options.email } : {}),
       exp: now + 600,
       iat: now,
       iss: options.issuer,
-      sub: `user-${options.email}`,
+      sub: options.commonName ? "" : `user-${options.email}`,
     }),
   );
   const signingInput = `${header}.${payload}`;
@@ -44,6 +46,7 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
   const originalFetch = globalThis.fetch;
   const original = {
     aud: process.env.OPS_CLOUDFLARE_ACCESS_AUD,
+    accessServiceTokenIds: process.env.OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS,
     domains: process.env.OPS_ALLOWED_EMAIL_DOMAINS,
     emails: process.env.OPS_ALLOWED_EMAILS,
     issuer: process.env.OPS_CLOUDFLARE_ACCESS_ISSUER,
@@ -58,6 +61,7 @@ async function withCloudflareAccessEnv<T>(callback: () => Promise<T>) {
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries({
       OPS_CLOUDFLARE_ACCESS_AUD: original.aud,
+      OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS: original.accessServiceTokenIds,
       OPS_ALLOWED_EMAIL_DOMAINS: original.domains,
       OPS_ALLOWED_EMAILS: original.emails,
       OPS_CLOUDFLARE_ACCESS_ISSUER: original.issuer,
@@ -183,6 +187,68 @@ test("validateCloudflareAccess rejects Access JWTs outside the app allowlist", a
     });
 
     assert.deepEqual(result, { ok: false, reason: "email_not_allowed" });
+  });
+});
+
+test("validateCloudflareAccess accepts only explicitly allowed Access service tokens", async () => {
+  await withCloudflareAccessEnv(async () => {
+    const issuer = "https://neontrip-service.cloudflareaccess.com";
+    const audience = "aud-neontrip-ops-service";
+    const kid = `kid-service-${Date.now()}`;
+    const allowedServiceTokenId = "tower-client-id.access";
+    const keyPair = await webcrypto.subtle.generateKey(
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"],
+    );
+    const publicJwk = (await webcrypto.subtle.exportKey("jwk", keyPair.publicKey)) as JsonWebKey & { kid?: string };
+    publicJwk.kid = kid;
+    publicJwk.alg = "RS256";
+
+    process.env.OPS_CLOUDFLARE_ACCESS_ISSUER = issuer;
+    process.env.OPS_CLOUDFLARE_ACCESS_AUD = audience;
+    process.env.OPS_ALLOWED_EMAIL_DOMAINS = "neontrip.de";
+    process.env.OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS = allowedServiceTokenId;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+
+    const allowedToken = await buildAccessJwt({
+      audience,
+      commonName: allowedServiceTokenId,
+      issuer,
+      kid,
+      privateKey: keyPair.privateKey,
+    });
+    const allowed = await validateCloudflareAccess({
+      get: (name) => (name.toLowerCase() === "cf-access-jwt-assertion" ? allowedToken : null),
+    });
+
+    assert.deepEqual(allowed, {
+      ok: true,
+      serviceTokenId: allowedServiceTokenId,
+      subject: null,
+    });
+
+    const rejectedToken = await buildAccessJwt({
+      audience,
+      commonName: "unlisted-client-id.access",
+      issuer,
+      kid,
+      privateKey: keyPair.privateKey,
+    });
+    const rejected = await validateCloudflareAccess({
+      get: (name) => (name.toLowerCase() === "cf-access-jwt-assertion" ? rejectedToken : null),
+    });
+
+    assert.deepEqual(rejected, { ok: false, reason: "service_token_not_allowed" });
   });
 });
 

@@ -18,6 +18,7 @@ type AccessJwtHeader = {
 
 type AccessJwtPayload = {
   aud?: string | string[];
+  common_name?: string;
   email?: string;
   exp?: number;
   iat?: number;
@@ -100,6 +101,7 @@ function getCloudflareAccessConfig() {
   return {
     issuer,
     audience,
+    allowedAccessServiceTokenIds: splitEnvList(process.env.OPS_ALLOWED_ACCESS_SERVICE_TOKEN_IDS),
     allowedDomains: splitEnvList(process.env.OPS_ALLOWED_EMAIL_DOMAINS),
     allowedEmails: splitEnvList(process.env.OPS_ALLOWED_EMAILS),
     requireAccess:
@@ -231,6 +233,18 @@ export async function validateCloudflareAccess(headers?: HeaderReader | null) {
     return { ok: false as const, reason: "jwks_validation_failed" as const };
   }
 
+  const serviceTokenId = String(payload.common_name || "").trim().toLowerCase();
+  if (serviceTokenId) {
+    if (!config.allowedAccessServiceTokenIds.includes(serviceTokenId)) {
+      return { ok: false as const, reason: "service_token_not_allowed" as const };
+    }
+    return {
+      ok: true as const,
+      serviceTokenId,
+      subject: payload.sub || null,
+    };
+  }
+
   const email = getAccessEmail(payload);
   if (!isAccessEmailAllowed(email, config.allowedEmails, config.allowedDomains)) {
     return { ok: false as const, reason: "email_not_allowed" as const };
@@ -321,6 +335,10 @@ export async function hasOpsSession(host?: string | null, headers?: HeaderReader
 export async function resolveOpsRequestActor(host?: string | null, headers?: HeaderReader | null) {
   if (isOpsPortalBypassed(host)) return "local-ops";
   const access = await validateCloudflareAccess(headers);
-  if (access.ok) return access.email || access.subject || "cloudflare-access";
+  if (access.ok) {
+    if ("email" in access && access.email) return access.email;
+    if ("serviceTokenId" in access && access.serviceTokenId) return access.serviceTokenId;
+    return access.subject || "cloudflare-access";
+  }
   return (await hasOpsSession(host, headers)) ? "ops-session" : null;
 }
