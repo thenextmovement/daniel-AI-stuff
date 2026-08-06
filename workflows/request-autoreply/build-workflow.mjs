@@ -13,9 +13,9 @@ const OUTLOOK_CREDENTIAL = {
   id: "CTEmJD5CjYu9hawu",
   name: "Microsoft Outlook support@neontrip.de",
 };
-const ANTHROPIC_CREDENTIAL = {
-  id: "kZCDxC1N8hTos1iS",
-  name: "Anthropic account | droninehandel@gmail.com",
+const OPENAI_CREDENTIAL = {
+  id: "StsVoyuEzSmCM5jg",
+  name: "OpenAi account",
 };
 
 function httpNode(id, name, position, url, jsonBody, extra = {}) {
@@ -109,7 +109,10 @@ return [{ json: {
 const validateAndRenderCode = String.raw`const item = $('BuildAIPrompt').item.json || {};
 const response = $input.first()?.json || {};
 
-function claudeText(value) {
+function proposalText(value) {
+  if (typeof value?.choices?.[0]?.message?.content === 'string') {
+    return value.choices[0].message.content.trim();
+  }
   if (Array.isArray(value?.content)) {
     const block = value.content.find((entry) => entry?.type === 'text');
     return String(block?.text || '').trim();
@@ -166,7 +169,7 @@ function fingerprint(value) {
 const firstName = /^[\p{L}\p{M} .'-]{1,80}$/u.test(String(item.first_name_safe || ''))
   ? String(item.first_name_safe).split(/\s+/)[0]
   : 'Kunde';
-let body = normalize(exactBody(claudeText(response)));
+let body = normalize(exactBody(proposalText(response)));
 const lower = body.toLowerCase();
 const forbidden = [
   /https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i,
@@ -276,27 +279,24 @@ const workflow = {
       parameters: { jsCode: buildPromptCode },
     },
     {
-      id: "claude-copy-proposal",
-      name: "ClaudeCopyProposal",
+      id: "openai-copy-proposal",
+      name: "OpenAICopyProposal",
       type: "n8n-nodes-base.httpRequest",
       typeVersion: 4.4,
       position: [880, 220],
       parameters: {
         method: "POST",
-        url: "https://api.anthropic.com/v1/messages",
+        url: "https://api.openai.com/v1/chat/completions",
         authentication: "predefinedCredentialType",
-        nodeCredentialType: "anthropicApi",
+        nodeCredentialType: "openAiApi",
         sendHeaders: true,
-        headerParameters: { parameters: [
-          { name: "anthropic-version", value: "2023-06-01" },
-          { name: "content-type", value: "application/json" },
-        ] },
+        headerParameters: { parameters: [{ name: "content-type", value: "application/json" }] },
         sendBody: true,
         specifyBody: "json",
-        jsonBody: "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 450, temperature: 0.2, messages: [{ role: 'user', content: $json.ai_prompt }] }) }}",
+        jsonBody: "={{ JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 450, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: $json.ai_prompt }] }) }}",
         options: { timeout: 30000 },
       },
-      credentials: { anthropicApi: ANTHROPIC_CREDENTIAL },
+      credentials: { openAiApi: OPENAI_CREDENTIAL },
       retryOnFail: false,
       onError: "continueRegularOutput",
     },
@@ -386,8 +386,8 @@ const workflow = {
     "Every Minute": { main: [[{ node: "ClaimRequestAutoReply", type: "main", index: 0 }]] },
     ClaimRequestAutoReply: { main: [[{ node: "CandidateClaimed", type: "main", index: 0 }]] },
     CandidateClaimed: { main: [[{ node: "BuildAIPrompt", type: "main", index: 0 }], []] },
-    BuildAIPrompt: { main: [[{ node: "ClaudeCopyProposal", type: "main", index: 0 }]] },
-    ClaudeCopyProposal: { main: [[{ node: "ValidateAndRender", type: "main", index: 0 }]] },
+    BuildAIPrompt: { main: [[{ node: "OpenAICopyProposal", type: "main", index: 0 }]] },
+    OpenAICopyProposal: { main: [[{ node: "ValidateAndRender", type: "main", index: 0 }]] },
     ValidateAndRender: { main: [
       [{ node: "SendRequestAutoReplyOutlook", type: "main", index: 0 }],
       [{ node: "BlockRequestAutoReply", type: "main", index: 0 }],

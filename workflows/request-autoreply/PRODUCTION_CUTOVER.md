@@ -36,7 +36,7 @@ enqueue, claim, recipient resolution, delivery or completion.
 2. The trigger checks the runtime mode, source allowlist and suppression flag.
 3. A unique job is due six minutes after insertion.
 4. A one-minute n8n schedule atomically claims at most one due job.
-5. Claude proposes exactly one JSON `body`; customer text is explicitly untrusted.
+5. A bounded model call proposes exactly one JSON `body`; customer text is explicitly untrusted.
 6. Deterministic code rejects malformed or risky output and uses a fixed safe fallback.
 7. Recipient, subject and full Fabienne/NEONTRIP signature are deterministic.
 8. Outlook sends exactly once with retries disabled.

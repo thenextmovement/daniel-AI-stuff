@@ -29,10 +29,13 @@ assert.equal(outlook.parameters.toRecipients, "={{ $json.recipient }}");
 assert.doesNotMatch(JSON.stringify(outlook.parameters), /saveAsDraft/);
 assert.match(outlook.parameters.bodyContent, /email_body_html/);
 
-const claude = byName.ClaudeCopyProposal;
-assert.equal(claude.retryOnFail, false);
-assert.equal(claude.onError, "continueRegularOutput");
-assert.equal(claude.credentials.anthropicApi.id, "kZCDxC1N8hTos1iS");
+const modelProposal = byName.OpenAICopyProposal;
+assert.equal(modelProposal.retryOnFail, false);
+assert.equal(modelProposal.onError, "continueRegularOutput");
+assert.equal(modelProposal.credentials.openAiApi.id, "StsVoyuEzSmCM5jg");
+assert.equal(modelProposal.parameters.url, "https://api.openai.com/v1/chat/completions");
+assert.match(modelProposal.parameters.jsonBody, /gpt-4o-mini/);
+assert.doesNotMatch(serialized, /anthropic|claude/i);
 
 const sendOutputs = workflow.connections.SendRequestAutoReplyOutlook.main;
 assert.equal(sendOutputs[0][0].node, "CompleteRequestAutoReply");
@@ -60,7 +63,7 @@ function runRenderer(aiText, overrides = {}) {
       assert.equal(name, "BuildAIPrompt");
       return { item: { json: base } };
     },
-    $input: { first: () => ({ json: { content: [{ type: "text", text: aiText }] } }) },
+    $input: { first: () => ({ json: { choices: [{ message: { content: aiText } }] } }) },
   };
   const result = vm.runInNewContext(`(() => { ${byName.ValidateAndRender.parameters.jsCode} })()`, sandbox);
   return JSON.parse(JSON.stringify(result[0].json));
