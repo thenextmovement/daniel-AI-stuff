@@ -2,9 +2,10 @@
 
 ## Decision
 
-Approved for an internal canary only after commit, safe-push, predeploy and production
-database smoke. Live mode is gated on a confirmed canary receipt and published intake
-diffs. Default database mode is `off`.
+Approved for live operation after commit, safe-push, predeploy, production database
+smoke, a confirmed AI canary receipt and publication of the validated intake diffs.
+The installed default remains fail closed (`off`); production was explicitly changed
+to `live` after all gates passed.
 
 ## Scorecard
 
@@ -30,6 +31,19 @@ diffs. Default database mode is `off`.
   the job remains `processing:1`.
 - The three ActiveCampaign-removal candidates have zero remaining AC/PandaDoc strings,
   zero invalid connections and zero strict validation errors.
+- Production smoke returned `request_autoreply_production_smoke_passed` and cleanly
+  rolled back its temporary rows and settings.
+- Canary execution `4430366` used the OpenAI proposal path (`body_source=ai`), sent one
+  internal Outlook message and completed one database job with `attempt_count=1` and a
+  verified `sent` receipt.
+- The published worker and all three published intake graphs have zero strict errors.
+  The intake graphs also have zero ActiveCampaign, activehosted, PandaDog or PandaDoc
+  references.
+- Production runtime mode is `live` with a six-minute delay. No natural request arrived
+  in the initial ten-minute live window; all delivery and Outlook intake scheduler runs
+  succeeded empty. Final counts were two canary jobs, both `sent`, maximum attempt count
+  one, and zero live-recipient, blocked or delivery-unknown jobs. This confirms no
+  historical backfill; the first natural receipt remains an external observation.
 
 ## Known residuals
 

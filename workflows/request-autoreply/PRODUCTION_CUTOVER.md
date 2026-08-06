@@ -1,6 +1,7 @@
 # NEONTRIP Request Auto-Reply — Production Cutover
 
-Status at creation: candidate validated; production database and n8n cutover pending.
+Status: live since 2026-08-06 18:30:06 CEST. The first natural post-cutover
+request is still pending; two internal canaries completed exactly once.
 
 ## Scope
 
@@ -69,22 +70,42 @@ inactive.
 The two remaining intake graphs above 30 nodes are existing legacy graphs. This
 cutover reduces them without adding behavior; decomposition remains a separate task.
 
-## Required gate and sequence
+## Production evidence
 
-1. Commit only the files in this directory plus the matching migration, rollback and
-   SQL test.
-2. Push with `codex-safe-push-main`.
-3. Run `codex-predeploy ops` and use only its exact commit.
-4. Apply the migration. Confirm mode is `off`.
-5. Run the transaction-safe production catalog/behavior smoke.
-6. Create the n8n worker inactive and validate its stored draft.
-7. Set mode to `canary`, activate the worker and enqueue one internal canary.
-8. Confirm one Outlook message plus one `sent` receipt and zero unknown/duplicate rows.
-9. Keep mode `canary`; publish the three validated intake diffs and retire the two old
-   workflows.
-10. Set mode to `live` atomically.
-11. Observe the first natural request through enqueue, six-minute due time, Outlook send
-    and durable `sent` receipt.
+- Safe-pushed and predeploy-approved commit:
+  `c8b4036c1c2db6e67f79c833d8546523a421ad87`.
+- The production migration applied successfully. A transaction-safe production smoke
+  covered mode-off behavior, no backfill, trigger presence, role permissions, canary
+  claim/completion, delivery-unknown handling and rollback; it returned
+  `request_autoreply_production_smoke_passed` and left mode `off` with zero rows.
+- Active worker: `L6SqGZLnu3ia07x1`, published version
+  `df5beb5b-0e9f-42a4-944a-b47956f63d4c`; strict validation reports 13 nodes,
+  12 valid connections, zero invalid connections and zero errors.
+- AI canary execution `4430366` used `gpt-4o-mini`, produced `body_source=ai`, sent one
+  message to `support@neontrip.de`, completed as `sent`, and verified its durable
+  receipt. Its job has `attempt_count=1`, `recipient_mode=canary`,
+  `provider_receipt_source=outlook_node_success` and no error code.
+- An earlier canary execution `4430221` safely used the deterministic fallback when the
+  former Anthropic credential reported insufficient credit. It also completed exactly
+  once; the production worker was then backed up and switched to the already-working
+  OpenAI credential before live mode.
+- Published ActiveCampaign-free intake versions:
+  `FQ7lf36yje4B1eE3` → `85481908-995b-47c8-8349-ca1ffcc6d43d`,
+  `Xqt27WSNfJYVGROP` → `35f1e6c6-c0b4-4d23-b7c0-3845dbeaec66`, and
+  `fcPiGDWq41htB5mV` → `e1b30e57-98cb-4b64-98f0-a795dd6c181c`.
+- Each published intake graph is active, has zero strict validation errors and contains
+  zero ActiveCampaign, activehosted, PandaDog or PandaDoc references.
+- Legacy Zendesk/ActiveCampaign workflow `AcYSau5MGsAxeAqL` and old draft-only
+  auto-reply `nUrqyTSnGE8j9QT8` are deactivated and named `RETIRED`.
+- Runtime settings are `mode=live`, `delay_minutes=6`,
+  `policy_version=request-autoreply-v1`, updated by `codex-cutover-c8b4036`.
+- Natural post-cutover observation: no real request arrived during the initial
+  ten-minute window from 18:30 through 18:40 CEST. Every one-minute Outlook intake and
+  delivery scheduler execution succeeded with no candidate. The database still held
+  only the two canary jobs (`sent=2`, `max_attempt_count=1`, `blocked=0`,
+  `delivery_unknown=0`, `live_recipient_mode=0`), confirming that historical requests
+  were not enqueued. The first natural customer receipt therefore remains an external
+  follow-up observation, not a failed gate.
 
 ## Rollback
 

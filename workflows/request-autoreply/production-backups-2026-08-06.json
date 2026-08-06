@@ -1,7 +1,7 @@
 {
   "capturedAt": "2026-08-06T15:42:00+02:00",
   "purpose": "Exact inactive n8n graph backups before the Supabase request auto-reply cutover",
-  "verification": "For every pair, nodes and connections were compared with JSON.stringify and matched exactly. All backup workflows are inactive.",
+  "verification": "For every pair, nodes and connections were compared with JSON.stringify and matched exactly. All backup workflows are inactive. A second exact backup was taken before changing the new worker from Anthropic to OpenAI.",
   "workflows": [
     {
       "sourceId": "nUrqyTSnGE8j9QT8",
@@ -32,6 +32,12 @@
       "sourceName": "RH | Unstruktuierte Anfragen Aktiv",
       "backupId": "hjcIajMQFMUvj55z",
       "nodes": 28
+    },
+    {
+      "sourceId": "L6SqGZLnu3ia07x1",
+      "sourceName": "NEONTRIP Request AutoReply v1 — Supabase Delivery Loop (Anthropic version)",
+      "backupId": "D6Eyw0zVBJkdsCYF",
+      "nodes": 13
     }
   ]
 }
