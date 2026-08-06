@@ -1,0 +1,37 @@
+{
+  "capturedAt": "2026-08-06T15:42:00+02:00",
+  "purpose": "Exact inactive n8n graph backups before the Supabase request auto-reply cutover",
+  "verification": "For every pair, nodes and connections were compared with JSON.stringify and matched exactly. All backup workflows are inactive.",
+  "workflows": [
+    {
+      "sourceId": "nUrqyTSnGE8j9QT8",
+      "sourceName": "NEONTRIP AC Deal AutoReply v2 — DB Draft Loop",
+      "backupId": "mDwbfzWA0PKB2ayE",
+      "nodes": 22
+    },
+    {
+      "sourceId": "FQ7lf36yje4B1eE3",
+      "sourceName": "LP Anfrage Webhook v1.0",
+      "backupId": "SqVvtLfYP8EoMXXV",
+      "nodes": 35
+    },
+    {
+      "sourceId": "Xqt27WSNfJYVGROP",
+      "sourceName": "RH | V3 Anfragen + Mail Anfragen Aktiv",
+      "backupId": "Pt2DrFywWgDAC2bt",
+      "nodes": 29
+    },
+    {
+      "sourceId": "fcPiGDWq41htB5mV",
+      "sourceName": "RH | Unstrukturierte Anfragen - OUTLOOK",
+      "backupId": "MXBIQt7wdcWZlJP4",
+      "nodes": 38
+    },
+    {
+      "sourceId": "AcYSau5MGsAxeAqL",
+      "sourceName": "RH | Unstruktuierte Anfragen Aktiv",
+      "backupId": "hjcIajMQFMUvj55z",
+      "nodes": 28
+    }
+  ]
+}
