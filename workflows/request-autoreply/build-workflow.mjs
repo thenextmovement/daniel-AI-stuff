@@ -47,8 +47,9 @@ function httpNode(id, name, position, url, jsonBody, extra = {}) {
   };
 }
 
-const buildPromptCode = String.raw`const claim = $input.first()?.json || {};
+const buildPromptCode = String.raw`const claim = $('CandidateClaimed').item.json || {};
 const candidate = claim.candidate || {};
+const history = $input.first()?.json || {};
 
 function clean(value, max) {
   return String(value || '')
@@ -60,6 +61,15 @@ function clean(value, max) {
 
 const firstNameRaw = clean(candidate.customer_first_name, 80);
 const firstName = /^[\p{L}\p{M} .'-]{1,80}$/u.test(firstNameRaw) ? firstNameRaw.split(/\s+/)[0] : 'Kunde';
+const allowedRelationships = new Set(['new', 'repeat_inquiry', 'existing_customer']);
+const relationshipType = history.lookup_ok === true && allowedRelationships.has(String(history.relationship_type || ''))
+  ? String(history.relationship_type)
+  : 'new';
+const relationshipSentence = relationshipType === 'existing_customer'
+  ? 'Schön, wieder von Ihnen zu hören. Vielen Dank für Ihr erneutes Vertrauen.'
+  : relationshipType === 'repeat_inquiry'
+    ? 'Schön, wieder von Ihnen zu hören. Vielen Dank für Ihre erneute Anfrage.'
+    : '';
 const context = {
   title: clean(candidate.title, 240),
   description: clean(candidate.description, 2400),
@@ -79,10 +89,13 @@ const prompt = [
   '- Lehne den Wunsch nicht ab und verspreche keine konkrete Umsetzung.',
   '- Bitte nicht um Logo, Datei oder Upload. Stelle keine Rückfrage, die die Eingangsbestätigung verzögert.',
   '- Schreibe konsequent in höflicher Sie-Form, aber mit einer natürlichen Begrüßung per Vorname.',
+  '- Erfinde keine frühere Anfrage oder Bestellung. Der geprüfte Beziehungssatz unten ist die einzige erlaubte Aussage zur Kundenhistorie.',
   '',
   'INHALT:',
   '- Begrüßung: "Hallo ' + firstName + ',"',
-  '- Bedanke dich für die Anfrage.',
+  relationshipSentence
+    ? '- Schreibe direkt nach der Begrüßung exakt diesen geprüften Beziehungssatz: "' + relationshipSentence + '"'
+    : '- Bedanke dich für die Anfrage, ohne eine frühere Beziehung anzudeuten.',
   '- Greife höchstens ein oder zwei belastbare Details aus der Anfrage auf, etwa Schildart, Größe oder Innen-/Außenbereich.',
   '- Sage, dass wir die Anfrage prüfen und uns mit einer Visualisierung und einem Angebot melden.',
   '- 3 bis 5 kurze Sätze, keine Emojis, keine Listen, keine Signatur.',
@@ -101,6 +114,9 @@ return [{ json: {
   claim_token: claim.claim_token,
   policy_version: claim.policy_version,
   first_name_safe: firstName,
+  relationship_type: relationshipType,
+  relationship_sentence: relationshipSentence,
+  relationship_lookup_ok: history.lookup_ok === true,
   ai_prompt: prompt,
   automatic_send_allowed: claim.automatic_send_allowed === true,
   automatic_retry_allowed: false,
@@ -171,6 +187,10 @@ const firstName = /^[\p{L}\p{M} .'-]{1,80}$/u.test(String(item.first_name_safe |
   : 'Kunde';
 let body = normalize(exactBody(proposalText(response)));
 const lower = body.toLowerCase();
+const relationshipType = ['new', 'repeat_inquiry', 'existing_customer'].includes(String(item.relationship_type || ''))
+  ? String(item.relationship_type)
+  : 'new';
+const relationshipSentence = String(item.relationship_sentence || '');
 const forbidden = [
   /https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i,
   /(?:€|\beur\b|\beuro\b|rabatt|nachlass|sonderpreis|\b\d+\s*%)/i,
@@ -186,12 +206,18 @@ const forbidden = [
 const sentenceCount = (body.match(/[.!?](?:\s|$)/g) || []).length;
 const namePresent = body.slice(0, 120).toLocaleLowerCase('de-DE').includes(firstName.toLocaleLowerCase('de-DE'));
 const requiredOutcome = /visualisierung/i.test(body) && /angebot/i.test(body);
+const relationshipSentencePresent = !relationshipSentence || body.includes(relationshipSentence);
+const inventedHistory = relationshipType === 'new'
+  ? /(?:wieder von ihnen|erneut(?:e|en|es)? (?:anfrage|vertrauen)|bereits.{0,30}(?:bestellt|gekauft))/i.test(body)
+  : /(?:bereits bei uns bestellt|schon einmal bei uns bestellt|frühere bestellung|erneute bestellung)/i.test(body);
 const aiValid = body.length >= 80
   && body.length <= 1100
   && sentenceCount >= 2
   && sentenceCount <= 6
   && namePresent
   && requiredOutcome
+  && relationshipSentencePresent
+  && !inventedHistory
   && !forbidden.some((rule) => rule.test(body));
 
 let bodySource = 'ai';
@@ -201,7 +227,11 @@ if (!aiValid) {
   const application = safeApplication(item.application);
   const details = [size ? 'in der Größe ' + size : '', application].filter(Boolean).join(' ');
   const projectReference = details ? ' zu Ihrem Schild ' + details : ' zu Ihrem Schildprojekt';
-  body = 'Hallo ' + firstName + ',\n\nvielen Dank für Ihre Anfrage bei NEONTRIP' + projectReference + '. Wir prüfen Ihre Angaben und melden uns mit einer passenden Visualisierung und einem Angebot bei Ihnen. Falls vorher noch etwas ergänzt werden soll, können Sie einfach auf diese E-Mail antworten.';
+  if (relationshipSentence) {
+    body = 'Hallo ' + firstName + ',\n\n' + relationshipSentence + ' Wir prüfen Ihre neue Anfrage' + projectReference + ' und melden uns mit einer passenden Visualisierung und einem Angebot bei Ihnen. Falls vorher noch etwas ergänzt werden soll, können Sie einfach auf diese E-Mail antworten.';
+  } else {
+    body = 'Hallo ' + firstName + ',\n\nvielen Dank für Ihre Anfrage bei NEONTRIP' + projectReference + '. Wir prüfen Ihre Angaben und melden uns mit einer passenden Visualisierung und einem Angebot bei Ihnen. Falls vorher noch etwas ergänzt werden soll, können Sie einfach auf diese E-Mail antworten.';
+  }
 }
 
 if (item.automatic_send_allowed !== true) throw new Error('automatic_send_not_authorized_by_claim');
@@ -270,12 +300,20 @@ const workflow = {
         options: {},
       },
     },
+    httpNode(
+      "lookup-relationship-history",
+      "LookupRelationshipHistory",
+      [660, 220],
+      "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/get_request_autoreply_relationship_context",
+      "={{ JSON.stringify({ p_email: $json.candidate.recipient, p_current_request_id: $json.candidate.request_id }) }}",
+      { retryOnFail: true, maxTries: 3, waitBetweenTries: 1000, onError: "continueRegularOutput" },
+    ),
     {
       id: "build-ai-prompt",
       name: "BuildAIPrompt",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [660, 220],
+      position: [880, 220],
       parameters: { jsCode: buildPromptCode },
     },
     {
@@ -283,7 +321,7 @@ const workflow = {
       name: "OpenAICopyProposal",
       type: "n8n-nodes-base.httpRequest",
       typeVersion: 4.4,
-      position: [880, 220],
+      position: [1100, 220],
       parameters: {
         method: "POST",
         url: "https://api.openai.com/v1/chat/completions",
@@ -305,7 +343,7 @@ const workflow = {
       name: "ValidateAndRender",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [1100, 220],
+      position: [1320, 220],
       parameters: { jsCode: validateAndRenderCode },
       onError: "continueErrorOutput",
     },
@@ -314,7 +352,7 @@ const workflow = {
       name: "SendRequestAutoReplyOutlook",
       type: "n8n-nodes-base.microsoftOutlook",
       typeVersion: 2,
-      position: [1320, 220],
+      position: [1540, 220],
       parameters: {
         resource: "message",
         operation: "send",
@@ -330,7 +368,7 @@ const workflow = {
     httpNode(
       "complete-request-autoreply",
       "CompleteRequestAutoReply",
-      [1540, 140],
+      [1760, 140],
       "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/complete_request_autoreply_delivery",
       "={{ JSON.stringify({ p_job_id: $('ValidateAndRender').item.json.job_id, p_claim_token: $('ValidateAndRender').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_provider_message_id: String($json.id || $json.messageId || $json.message_id || ('outlook-accepted:' + $execution.id)), p_provider_receipt_source: String($json.id || $json.messageId || $json.message_id ? 'outlook_message_id' : 'outlook_node_success'), p_body_source: $('ValidateAndRender').item.json.body_source, p_email_subject: $('ValidateAndRender').item.json.email_subject, p_content_fingerprint: $('ValidateAndRender').item.json.content_fingerprint }) }}",
       { retryOnFail: true, maxTries: 3, waitBetweenTries: 2000, onError: "stopWorkflow" },
@@ -340,7 +378,7 @@ const workflow = {
       name: "AssertCompleteReceipt",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [1760, 140],
+      position: [1980, 140],
       parameters: {
         jsCode: "const result = $input.first()?.json || {};\nif (result.ok !== true || !['sent', 'already_completed'].includes(String(result.status || result.reason || ''))) throw new Error('request_autoreply_completion_receipt_invalid');\nreturn [{ json: { ...result, delivery_receipt_verified: true } }];",
       },
@@ -348,7 +386,7 @@ const workflow = {
     httpNode(
       "mark-request-autoreply-unknown",
       "MarkRequestAutoReplyUnknown",
-      [1540, 320],
+      [1760, 320],
       "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/mark_request_autoreply_delivery_unknown",
       "={{ JSON.stringify({ p_job_id: $('ValidateAndRender').item.json.job_id, p_claim_token: $('ValidateAndRender').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_error_code: 'outlook_send_unknown', p_error_message: String($json.error?.message || $json.message || 'Outlook send outcome is ambiguous').slice(0, 1000) }) }}",
       { retryOnFail: true, maxTries: 3, waitBetweenTries: 2000, onError: "stopWorkflow" },
@@ -358,7 +396,7 @@ const workflow = {
       name: "StopAfterDeliveryUnknown",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [1760, 320],
+      position: [1980, 320],
       parameters: {
         jsCode: "const result = $input.first()?.json || {};\nif (result.ok !== true) throw new Error('request_autoreply_unknown_receipt_invalid');\nthrow new Error('request_autoreply_delivery_unknown_manual_review_required');\nreturn [];",
       },
@@ -366,7 +404,7 @@ const workflow = {
     httpNode(
       "block-request-autoreply",
       "BlockRequestAutoReply",
-      [1320, 420],
+      [1540, 420],
       "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/block_request_autoreply_delivery",
       "={{ JSON.stringify({ p_job_id: $('BuildAIPrompt').item.json.job_id, p_claim_token: $('BuildAIPrompt').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_reason: 'pre_send_validation_failed' }) }}",
       { retryOnFail: true, maxTries: 3, waitBetweenTries: 2000, onError: "stopWorkflow" },
@@ -376,7 +414,7 @@ const workflow = {
       name: "StopAfterBlocked",
       type: "n8n-nodes-base.code",
       typeVersion: 2,
-      position: [1540, 420],
+      position: [1760, 420],
       parameters: {
         jsCode: "const result = $input.first()?.json || {};\nif (result.ok !== true || String(result.status || '') !== 'blocked') throw new Error('request_autoreply_block_receipt_invalid');\nthrow new Error('request_autoreply_pre_send_validation_blocked');\nreturn [];",
       },
@@ -385,7 +423,8 @@ const workflow = {
   connections: {
     "Every Minute": { main: [[{ node: "ClaimRequestAutoReply", type: "main", index: 0 }]] },
     ClaimRequestAutoReply: { main: [[{ node: "CandidateClaimed", type: "main", index: 0 }]] },
-    CandidateClaimed: { main: [[{ node: "BuildAIPrompt", type: "main", index: 0 }], []] },
+    CandidateClaimed: { main: [[{ node: "LookupRelationshipHistory", type: "main", index: 0 }], []] },
+    LookupRelationshipHistory: { main: [[{ node: "BuildAIPrompt", type: "main", index: 0 }]] },
     BuildAIPrompt: { main: [[{ node: "OpenAICopyProposal", type: "main", index: 0 }]] },
     OpenAICopyProposal: { main: [[{ node: "ValidateAndRender", type: "main", index: 0 }]] },
     ValidateAndRender: { main: [

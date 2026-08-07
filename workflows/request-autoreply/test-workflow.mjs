@@ -9,7 +9,7 @@ const workflowPath = path.join(directory, "generated", "request-autoreply-delive
 const workflow = JSON.parse(fs.readFileSync(workflowPath, "utf8"));
 const byName = Object.fromEntries(workflow.nodes.map((node) => [node.name, node]));
 
-assert.equal(workflow.nodes.length, 13);
+assert.equal(workflow.nodes.length, 14);
 assert.equal(workflow.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length, 1);
 assert.ok(workflow.nodes.length <= 30);
 assert.equal(byName["Every Minute"].parameters.rule.interval[0].expression, "0 * * * * *");
@@ -20,6 +20,12 @@ assert.doesNotMatch(serialized, /api[_-]?key\s*[=:]\s*["'][^"']+/i);
 assert.match(serialized, /UNTRUSTED INPUT/);
 assert.match(serialized, /exakt einem Schlüssel/);
 assert.match(serialized, /automatic_retry_allowed/);
+
+const historyLookup = byName.LookupRelationshipHistory;
+assert.match(historyLookup.parameters.url, /get_request_autoreply_relationship_context$/);
+assert.equal(historyLookup.onError, "continueRegularOutput");
+assert.equal(workflow.connections.CandidateClaimed.main[0][0].node, "LookupRelationshipHistory");
+assert.equal(workflow.connections.LookupRelationshipHistory.main[0][0].node, "BuildAIPrompt");
 
 const outlook = byName.SendRequestAutoReplyOutlook;
 assert.equal(outlook.parameters.operation, "send");
@@ -75,6 +81,31 @@ const valid = runRenderer(JSON.stringify({
 assert.equal(valid.body_source, "ai");
 assert.match(valid.email_body_html, /Fabienne Trapp/);
 assert.match(valid.email_body_html, /NEONTRIP/);
+
+const existingCustomerSentence = "Schön, wieder von Ihnen zu hören. Vielen Dank für Ihr erneutes Vertrauen.";
+const existingCustomer = runRenderer(JSON.stringify({
+  body: `Hallo Thomas, ${existingCustomerSentence} Wir prüfen Ihre Anfrage zum Schild für den Außenbereich und melden uns mit einer Visualisierung und einem Angebot bei Ihnen.`,
+}), {
+  relationship_type: "existing_customer",
+  relationship_sentence: existingCustomerSentence,
+});
+assert.equal(existingCustomer.body_source, "ai");
+assert.match(existingCustomer.email_body_text, /erneutes Vertrauen/);
+
+const missingVerifiedRelationship = runRenderer(JSON.stringify({
+  body: "Hallo Thomas, vielen Dank für Ihre Anfrage. Wir prüfen Ihr Schildprojekt und melden uns mit einer Visualisierung und einem Angebot bei Ihnen.",
+}), {
+  relationship_type: "existing_customer",
+  relationship_sentence: existingCustomerSentence,
+});
+assert.equal(missingVerifiedRelationship.body_source, "fallback");
+assert.match(missingVerifiedRelationship.email_body_text, /erneutes Vertrauen/);
+
+const inventedRelationship = runRenderer(JSON.stringify({
+  body: "Hallo Thomas, schön, wieder von Ihnen zu hören. Wir prüfen Ihre Anfrage und melden uns mit einer Visualisierung und einem Angebot bei Ihnen.",
+}));
+assert.equal(inventedRelationship.body_source, "fallback");
+assert.doesNotMatch(inventedRelationship.email_body_text, /wieder von Ihnen/i);
 
 for (const unsafe of [
   { body: "Hallo Thomas, Sie erhalten 20% Rabatt. Wir schicken eine Visualisierung und ein Angebot." },

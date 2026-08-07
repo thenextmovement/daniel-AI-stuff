@@ -55,6 +55,134 @@ insert into public.master_requests (
   '{}'::jsonb
 );
 
+-- The current request does not count as history.
+do $$
+declare
+  relationship jsonb;
+begin
+  select public.get_request_autoreply_relationship_context(
+    '  THOMAS@KUNDENDOMAIN.DE ',
+    'REQ-AUTOREPLY-TEST-1'
+  ) into relationship;
+  if relationship ->> 'relationship_type' <> 'new'
+     or relationship ->> 'match_method' <> 'exact_normalized_email' then
+    raise exception 'Current request was incorrectly treated as history: %', relationship;
+  end if;
+end;
+$$;
+
+insert into public.master_customers (
+  id, email, first_name, last_name, company_name, country
+) values
+  (
+    '10000000-0000-4000-8000-000000000002',
+    'repeat@kundendomain.de',
+    'Rita',
+    'Repeat',
+    'Repeat GmbH',
+    'DE'
+  ),
+  (
+    '10000000-0000-4000-8000-000000000003',
+    'buyer@kundendomain.de',
+    'Berta',
+    'Buyer',
+    'Buyer GmbH',
+    'DE'
+  ),
+  (
+    '10000000-0000-4000-8000-000000000004',
+    'offer@kundendomain.de',
+    'Olaf',
+    'Offer',
+    'Offer GmbH',
+    'DE'
+  );
+
+insert into public.master_requests (
+  id, request_id, customer_id, title, status, form_id, attribution_raw, created_at
+) values (
+  '20000000-0000-4000-8000-000000000010',
+  'REQ-AUTOREPLY-HISTORIC-REPEAT',
+  '10000000-0000-4000-8000-000000000002',
+  'Frühere Anfrage',
+  'new',
+  'landing-page-form',
+  '{"auto_reply_suppressed":true}'::jsonb,
+  now() - interval '30 days'
+);
+
+insert into public.master_orders (
+  id, customer_id, shopify_order_id, status, cancelled_at, shopify_created_at
+) values (
+  '40000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000003',
+  'SHOPIFY-PAID-1',
+  'paid',
+  null,
+  now() - interval '90 days'
+);
+
+insert into public.crm_quotes (
+  id, customer_id, status, sent_at
+) values (
+  '50000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000004',
+  'sent',
+  now() - interval '45 days'
+);
+
+insert into public.supplier_sales (
+  id, source, customer_email, shopify_payment_status,
+  payment_decision_status, assignment_status, created_at
+) values (
+  '60000000-0000-4000-8000-000000000001',
+  'neontrip-offers',
+  'offer-buyer@kundendomain.de',
+  'unknown',
+  'paid_confirmed',
+  'in_production',
+  now() - interval '20 days'
+);
+
+do $$
+declare
+  relationship jsonb;
+begin
+  select public.get_request_autoreply_relationship_context(
+    'repeat@kundendomain.de',
+    'REQ-CURRENT-REPEAT'
+  ) into relationship;
+  if relationship ->> 'relationship_type' <> 'repeat_inquiry' then
+    raise exception 'Prior request was not classified as repeat inquiry: %', relationship;
+  end if;
+
+  select public.get_request_autoreply_relationship_context(
+    'buyer@kundendomain.de',
+    'REQ-CURRENT-BUYER'
+  ) into relationship;
+  if relationship ->> 'relationship_type' <> 'existing_customer' then
+    raise exception 'Paid order was not classified as existing customer: %', relationship;
+  end if;
+
+  select public.get_request_autoreply_relationship_context(
+    'offer@kundendomain.de',
+    'REQ-CURRENT-OFFER'
+  ) into relationship;
+  if relationship ->> 'relationship_type' <> 'repeat_inquiry' then
+    raise exception 'Sent offer was not classified as repeat inquiry: %', relationship;
+  end if;
+
+  select public.get_request_autoreply_relationship_context(
+    'offer-buyer@kundendomain.de',
+    'REQ-CURRENT-OFFER-BUYER'
+  ) into relationship;
+  if relationship ->> 'relationship_type' <> 'existing_customer' then
+    raise exception 'Paid own-offer sale was not classified as existing customer: %', relationship;
+  end if;
+end;
+$$;
+
 do $$
 declare
   jobs integer;
@@ -395,6 +523,20 @@ begin
     'execute'
   ) then
     raise exception 'service_role is missing request auto-reply claim access';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public.get_request_autoreply_relationship_context(text,text)',
+    'execute'
+  ) then
+    raise exception 'anon unexpectedly has relationship lookup access';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.get_request_autoreply_relationship_context(text,text)',
+    'execute'
+  ) then
+    raise exception 'service_role is missing relationship lookup access';
   end if;
 end;
 $$;

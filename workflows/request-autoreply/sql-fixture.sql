@@ -53,6 +53,37 @@ create table public.master_requests (
   created_at timestamptz not null default now()
 );
 
+create table public.master_orders (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid references public.master_customers(id),
+  shopify_order_id text not null unique,
+  status text,
+  cancelled_at timestamptz,
+  shopify_created_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table public.crm_quotes (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references public.master_customers(id),
+  status text not null default 'draft',
+  sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table public.supplier_sales (
+  id uuid primary key default gen_random_uuid(),
+  source text not null default 'shopify',
+  customer_email text,
+  shopify_payment_status text not null default 'unknown',
+  payment_decision_status text not null default 'pending',
+  assignment_status text not null default 'needs_review',
+  created_at timestamptz not null default now()
+);
+
 grant usage on schema public to service_role;
 grant select, insert, update on public.master_customers to service_role;
 grant select, insert, update on public.master_requests to service_role;
+grant select, insert, update on public.master_orders to service_role;
+grant select, insert, update on public.crm_quotes to service_role;
+grant select, insert, update on public.supplier_sales to service_role;
