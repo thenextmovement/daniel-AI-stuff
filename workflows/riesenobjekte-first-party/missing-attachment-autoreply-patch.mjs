@@ -2,6 +2,31 @@ import { pathToFileURL } from "node:url";
 
 export const NORMAL_SUBJECT = "Vielen Dank für Ihre Anfrage bei RIESENOBJEKTE";
 export const MISSING_ATTACHMENT_SUBJECT = "Ihre RIESENOBJEKTE-Anfrage – Design oder Datei fehlt noch";
+export const FABIENNE_PHOTO_URL = "https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653";
+
+export function buildRiesenobjekteSignatureHtml() {
+  return '<div style="margin:28px 0 14px 0">Viele Grüße</div>' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#111">' +
+    '<tr>' +
+    '<td valign="top" style="vertical-align:top;padding:0 14px 0 0">' +
+    '<img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653" width="72" height="72" alt="Fabienne Trapp" style="display:block;width:72px;height:72px;border-radius:50%;object-fit:cover">' +
+    '</td>' +
+    '<td valign="top" style="vertical-align:top;padding:0">' +
+    '<div style="font-weight:700;font-size:14px;margin:0 0 2px 0">Fabienne Trapp</div>' +
+    '<div style="font-size:12px;color:#555;margin:0 0 10px 0">Kundenberatung</div>' +
+    '<div role="img" aria-label="RIESENOBJEKTE" style="font-family:Arial Black,Arial,Helvetica,sans-serif;font-weight:900;font-size:20px;letter-spacing:.5px;margin:0 0 8px 0;color:#111">' +
+    'RIESEN<span style="color:#ccff00">OBJEKTE</span>' +
+    '</div>' +
+    '<div style="font-size:12px;color:#444;margin:0 0 10px 0">Inflatables &amp; aufblasbare Sonderformen</div>' +
+    '<div style="font-size:12px;color:#222">' +
+    'Tel.: <a href="tel:+4921154257240" style="color:#222;text-decoration:none">+49 211 54257240</a><br>' +
+    'E-Mail: <a href="mailto:info@riesenobjekte.de" style="color:#222;text-decoration:none">info@riesenobjekte.de</a><br>' +
+    'Web: <a href="https://www.riesenobjekte.de" style="color:#222;text-decoration:none">www.riesenobjekte.de</a>' +
+    '</div>' +
+    '</td>' +
+    '</tr>' +
+    '</table>';
+}
 
 export function designContextException(value) {
   const text = String(value || "")
@@ -35,16 +60,14 @@ export function buildMissingDesignAutoReplyHtml(firstName, escapeHtml) {
     '<p>Ich habe gesehen, dass bei Ihrer Anfrage noch kein Design oder Dateianhang dabei war. Können Sie uns die Datei bitte noch zuschicken?</p>' +
     '<p>Antworten Sie einfach direkt auf diese E-Mail und hängen Sie Ihr Motiv möglichst als PDF, SVG oder EPS an. Falls Sie nur eine PNG- oder JPG-Datei haben, ist das ebenfalls in Ordnung.</p>' +
     '<p>Sobald die Datei da ist, können wir Ihre Anfrage vollständig prüfen.</p>' +
-    '<p style="margin-top:28px">Viele Grüße<br><strong>Fabienne von RIESENOBJEKTE</strong></p>' +
-    '<p style="font-size:13px;color:#555;margin-top:20px"><strong>RIESENOBJEKTE</strong><br>' +
-    'E-Mail: <a href="mailto:info@riesenobjekte.de" style="color:#111">info@riesenobjekte.de</a><br>' +
-    'Web: <a href="https://www.riesenobjekte.de" style="color:#111">www.riesenobjekte.de</a><br>' +
-    'Telefon: <a href="tel:+4921154257240" style="color:#111">+49 211 54257240</a></p></div>';
+    buildRiesenobjekteSignatureHtml() +
+    '</div>';
 }
 
 export const helperSource = [
   designContextException.toString(),
   chooseAutoReplyKind.toString(),
+  buildRiesenobjekteSignatureHtml.toString(),
   buildMissingDesignAutoReplyHtml.toString(),
 ].join("\n");
 
@@ -62,7 +85,8 @@ export const normalizePatches = [
   },
   {
     find: autoReplyTail,
-    replace: `${autoReplyTail}
+    replace: `  buildRiesenobjekteSignatureHtml() +
+  '</div>';
 
 const missingDesignAutoReplyHtml = buildMissingDesignAutoReplyHtml(firstName, esc);
 const autoReplySubject = autoReplyKind === 'missing_design'

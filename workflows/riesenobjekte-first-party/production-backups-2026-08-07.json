@@ -1,13 +1,22 @@
 {
   "capturedAt": "2026-08-07T11:55:00+02:00",
-  "purpose": "Exact inactive n8n graph backup before the RIESENOBJEKTE missing-attachment auto-reply extension",
+  "purpose": "Exact inactive n8n graph backups before RIESENOBJEKTE auto-reply changes",
   "verification": "Nodes and connections were compared with JSON.stringify and matched exactly. The backup workflow is inactive.",
   "workflows": [
     {
       "sourceId": "1hRkUxPXUZoYRSgL",
       "sourceName": "RIESENOBJEKTE First-Party Form Intake v1 — Deterministic",
       "backupId": "7BDTyn3zmGIj72Ub",
-      "nodes": 25
+      "nodes": 25,
+      "change": "missing-attachment auto-reply extension"
+    },
+    {
+      "sourceId": "1hRkUxPXUZoYRSgL",
+      "sourceName": "RIESENOBJEKTE First-Party Form Intake v1 — Deterministic",
+      "sourceActiveVersionId": "4765b26c-5298-46c3-be3d-bdbffe0ab2f1",
+      "backupId": "ThvfB4DEQijJLkHF",
+      "nodes": 25,
+      "change": "Fabienne photo and RIESENOBJEKTE logo signature"
     }
   ]
 }
