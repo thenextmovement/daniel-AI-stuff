@@ -45,6 +45,23 @@ enqueue, claim, recipient resolution, delivery or completion.
    `delivery_unknown` and requires manual review.
 10. A stale processing lease also becomes `delivery_unknown`; it is never reclaimed.
 
+### Missing-design form reply
+
+For NEONTRIP form sources only (`landing-page-form` and `2418`), the relationship
+lookup also returns a bounded attachment state from the persisted
+`master_requests.file_urls` array:
+
+- a non-empty array keeps the normal acknowledgement,
+- an explicit empty array selects the fixed “Logo oder Design fehlt noch” reply,
+- a null/missing request context fails safe to the normal acknowledgement, and
+- `outlook_email` is always treated as not applicable.
+
+The fixed reply is suppressed when the request text explicitly says that no design
+exists, asks NEONTRIP to design/create it, or supplies the intended wording. These
+signals are deterministic regex classifications; customer text never supplies email
+copy, subject, recipient or signature. The special reply keeps the previously verified
+NEONTRIP relationship sentence and the standard Fabienne signature.
+
 Runtime modes are mutually exclusive:
 
 - `off`: no enqueue and no claim,
@@ -128,3 +145,12 @@ ActiveCampaign event source is no longer authoritative.
 
 The SQL rollback removes the `master_requests` trigger and all service-role executor
 permissions while retaining jobs/events for incident evidence.
+
+For the missing-design extension specifically, the exact pre-change worker backup is
+`NKJLPL7YePjZRvS5` and the exact pre-retirement design-reminder backup is
+`yoNIIip1Deb7neQl`; both are inactive. Restore the worker graph from its backup and
+re-run `20260807103000_add_request_autoreply_relationship_context.sql` to replace the
+attachment-aware lookup with the prior relationship-only function. Reactivate
+`btJd34v7PJFVej6G` only if the former human-review draft reminder is intentionally
+wanted again. Validate and publish the restored worker before returning runtime mode
+to `live`.

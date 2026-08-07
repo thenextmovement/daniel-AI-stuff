@@ -59,6 +59,17 @@ function clean(value, max) {
     .slice(0, max);
 }
 
+function designContextException(value) {
+  const text = clean(value, 3000).toLocaleLowerCase('de-DE');
+  const noDesignStatement = /\b(?:kein|keine|keinen|noch kein|noch keine|ohne)\s+(?:eigenes?\s+)?(?:logo|design|grafik|vorlage|datei)\b/i.test(text);
+  const designServiceRequest = /\b(?:k(?:ö|oe)nnt|k(?:ö|oe)nnen|bitte|sollt|m(?:ö|oe)chtet|brauche|ben(?:ö|oe)tige)[^.!?]{0,80}\b(?:design(?:en)?|gestalt(?:en|et)|entwerf(?:en|t)|erstell(?:en|t)|zeichn(?:en|et)|logo\s+mach(?:en|t))\b/i.test(text);
+  const suppliedTextDesign = /(?:\b(?:schriftzug|spruch|slogan|text|wortlaut)\s*(?::|soll|lautet|mit)\s*[^.!?\n]{2,}|\b(?:drauf|darauf)\s+(?:soll\s+)?(?:stehen|lauten)\b|["'“”„][^"'“”„]{2,}["'“”„]\s*(?:als\s+)?(?:text|schriftzug|spruch|slogan)\b)/i.test(text);
+  if (designServiceRequest) return 'design_service_requested';
+  if (suppliedTextDesign) return 'text_design_supplied';
+  if (noDesignStatement) return 'no_design_declared';
+  return '';
+}
+
 const firstNameRaw = clean(candidate.customer_first_name, 80);
 const firstName = /^[\p{L}\p{M} .'-]{1,80}$/u.test(firstNameRaw) ? firstNameRaw.split(/\s+/)[0] : 'Kunde';
 const allowedRelationships = new Set(['new', 'repeat_inquiry', 'existing_customer']);
@@ -70,6 +81,18 @@ const relationshipSentence = relationshipType === 'existing_customer'
   : relationshipType === 'repeat_inquiry'
     ? 'Schön, wieder von Ihnen zu hören. Vielen Dank für Ihre erneute Anfrage.'
     : '';
+const sourceKind = String(candidate.source_kind || '').toLowerCase();
+const attachmentSourceKind = String(history.attachment_source_kind || '').toLowerCase();
+const attachmentContextOk = history.attachment_context_ok === true
+  && attachmentSourceKind === sourceKind;
+const attachmentState = attachmentContextOk && ['present', 'missing', 'not_applicable'].includes(String(history.attachment_state || ''))
+  ? String(history.attachment_state)
+  : 'unknown';
+const designExceptionReason = designContextException(candidate.description);
+const formSource = ['landing-page-form', '2418'].includes(sourceKind);
+const replyKind = formSource && attachmentState === 'missing' && !designExceptionReason
+  ? 'missing_design'
+  : 'normal';
 const context = {
   title: clean(candidate.title, 240),
   description: clean(candidate.description, 2400),
@@ -117,6 +140,11 @@ return [{ json: {
   relationship_type: relationshipType,
   relationship_sentence: relationshipSentence,
   relationship_lookup_ok: history.lookup_ok === true,
+  attachment_context_ok: attachmentContextOk,
+  attachment_state: attachmentState,
+  attachment_rule_version: clean(history.attachment_rule_version, 80),
+  missing_design_exception_reason: designExceptionReason,
+  reply_kind: replyKind,
   ai_prompt: prompt,
   automatic_send_allowed: claim.automatic_send_allowed === true,
   automatic_retry_allowed: false,
@@ -220,8 +248,16 @@ const aiValid = body.length >= 80
   && !inventedHistory
   && !forbidden.some((rule) => rule.test(body));
 
+const missingDesignReply = item.reply_kind === 'missing_design';
 let bodySource = 'ai';
-if (!aiValid) {
+if (missingDesignReply) {
+  bodySource = 'fallback';
+  const opening = relationshipSentence || 'vielen Dank für Ihre Anfrage bei NEONTRIP.';
+  body = 'Hallo ' + firstName + ',\n\n' + opening
+    + '\n\nBei Ihrer Anfrage war noch kein Logo oder Design angehängt. Können Sie uns die Datei bitte noch zuschicken?'
+    + '\n\nAntworten Sie einfach direkt auf diese E-Mail und hängen Sie Ihr Motiv möglichst als PDF, SVG oder EPS an. Falls Sie nur eine PNG- oder JPG-Datei haben, ist das auch in Ordnung.'
+    + '\n\nSobald die Datei da ist, können wir Ihre Anfrage vollständig prüfen.';
+} else if (!aiValid) {
   bodySource = 'fallback';
   const size = safeSize(item.size);
   const application = safeApplication(item.application);
@@ -242,7 +278,9 @@ const recipientValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)
     || (recipientMode === 'live' && !/@(?:neontrip|riesenobjekte)\.de$/i.test(recipient) && !/@example\.|@neontrip\.test$/i.test(recipient)));
 if (!recipientValid) throw new Error('recipient_failed_second_pre_send_validation');
 
-const subject = 'Vielen Dank für Ihre Anfrage bei NEONTRIP';
+const subject = missingDesignReply
+  ? 'Ihre NEONTRIP Anfrage – Logo oder Design fehlt noch'
+  : 'Vielen Dank für Ihre Anfrage bei NEONTRIP';
 const bodyHtml = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#111111">'
   + escapeHtml(body).replace(/\n/g, '<br>')
   + '</div>';

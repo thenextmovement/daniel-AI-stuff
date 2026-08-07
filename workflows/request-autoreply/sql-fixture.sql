@@ -49,6 +49,7 @@ create table public.master_requests (
   customer_type text,
   country text,
   form_id text,
+  file_urls text[] not null default '{}'::text[],
   attribution_raw jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );

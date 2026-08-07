@@ -11,19 +11,22 @@ to `live` after all gates passed.
 
 | Area | Score | Evidence |
 | --- | ---: | --- |
-| Correctness | 5/5 | Source allowlist, six-minute due time, deterministic recipient/subject/signature, bounded AI body |
+| Correctness | 5/5 | Source allowlist, six-minute due time, persisted form attachment state, deterministic recipient/subject/signature, bounded AI body |
 | Reliability | 5/5 | Durable queue, token-bound claim, terminal stale lease, explicit completion assertion |
 | Idempotency | 5/5 | Unique request/job identity, one attempt maximum, replay-safe completion/unknown receipts |
 | Observability | 5/5 | Retained n8n executions, append-only enqueue/claim/sent/blocked/unknown events |
 | Security/privacy | 5/5 | RLS, service-role-only RPCs, no secrets, no raw body in events, prompt-injection boundary |
-| Customer safety | 5/5 | Strict JSON, deterministic validator/fallback, no prices/dates/discounts/URLs/promises, internal canary |
+| Customer safety | 5/5 | Strict JSON, deterministic missing-design/fallback copy, no prices/dates/discounts/URLs/promises, internal canary |
 | Cost/control | 5/5 | One due job per execution, one bounded model call, no historical backfill |
 
 ## Verification evidence
 
 - Workflow unit/policy tests pass, including malformed JSON and forbidden price,
   upload, prompt-injection, deadline and URL cases.
-- Strict n8n candidate validation: 13 enabled nodes, one trigger, twelve valid
+- Missing-design tests cover an explicit empty file array, a present upload, unknown
+  context, Outlook/non-form input, source mismatch, explicit no-design wording, a
+  design-service request, supplied wording, relationship copy and prompt injection.
+- Strict n8n candidate validation: 14 enabled nodes, one trigger, thirteen valid
   connections, zero invalid connections and zero errors.
 - PostgreSQL 17 clean apply and behavior suite pass.
 - PostgreSQL 17 rollback and reapply pass while remaining fail closed.
@@ -56,3 +59,6 @@ to `live` after all gates passed.
 - Customer communication is autonomous only for this narrow acknowledgement class.
   Any validation uncertainty falls back to fixed safe copy; provider uncertainty never
   retries.
+- The attachment signal is fail-safe: only a persisted empty array on an allowlisted
+  form source selects the special reply. Lookup failures and null context retain the
+  normal reply.

@@ -65,11 +65,47 @@ begin
     'REQ-AUTOREPLY-TEST-1'
   ) into relationship;
   if relationship ->> 'relationship_type' <> 'new'
-     or relationship ->> 'match_method' <> 'exact_normalized_email' then
+     or relationship ->> 'match_method' <> 'exact_normalized_email'
+     or relationship ->> 'attachment_state' <> 'missing'
+     or (relationship ->> 'attachment_context_ok')::boolean is not true
+     or relationship ->> 'attachment_source_kind' <> 'landing-page-form' then
     raise exception 'Current request was incorrectly treated as history: %', relationship;
   end if;
 end;
 $$;
+
+-- Attachment context is taken only from the persisted request row.
+update public.master_requests
+set file_urls = array['https://files.invalid/test-design.svg']::text[]
+where request_id = 'REQ-AUTOREPLY-TEST-1';
+
+do $$
+declare
+  context jsonb;
+begin
+  select public.get_request_autoreply_relationship_context(
+    'thomas@kundendomain.de',
+    'REQ-AUTOREPLY-TEST-1'
+  ) into context;
+  if context ->> 'attachment_state' <> 'present'
+     or (context ->> 'attachment_context_ok')::boolean is not true then
+    raise exception 'Persisted attachment was not classified as present: %', context;
+  end if;
+
+  select public.get_request_autoreply_relationship_context(
+    'thomas@kundendomain.de',
+    'REQ-DOES-NOT-EXIST'
+  ) into context;
+  if context ->> 'attachment_state' <> 'unknown'
+     or (context ->> 'attachment_context_ok')::boolean is not false then
+    raise exception 'Missing request context did not fail safe to unknown: %', context;
+  end if;
+end;
+$$;
+
+update public.master_requests
+set file_urls = '{}'::text[]
+where request_id = 'REQ-AUTOREPLY-TEST-1';
 
 insert into public.master_customers (
   id, email, first_name, last_name, company_name, country

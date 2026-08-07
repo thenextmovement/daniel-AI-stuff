@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-08-07T10:50:00+02:00",
+  "purpose": "Exact inactive n8n graph backups before the NEONTRIP missing-design auto-reply extension",
+  "verification": "For both pairs, nodes and connections were compared with JSON.stringify and matched exactly. Both backup workflows are inactive.",
+  "workflows": [
+    {
+      "sourceId": "L6SqGZLnu3ia07x1",
+      "sourceName": "NEONTRIP Request AutoReply v1 — Supabase Delivery Loop",
+      "backupId": "NKJLPL7YePjZRvS5",
+      "nodes": 14
+    },
+    {
+      "sourceId": "btJd34v7PJFVej6G",
+      "sourceName": "NEONTRIP Design-Erinnerung v2.1 — HUMAN REVIEW DB Draft Loop",
+      "backupId": "yoNIIip1Deb7neQl",
+      "nodes": 12
+    }
+  ]
+}
