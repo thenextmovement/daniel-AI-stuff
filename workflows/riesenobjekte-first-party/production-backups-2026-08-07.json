@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-08-07T11:55:00+02:00",
+  "purpose": "Exact inactive n8n graph backup before the RIESENOBJEKTE missing-attachment auto-reply extension",
+  "verification": "Nodes and connections were compared with JSON.stringify and matched exactly. The backup workflow is inactive.",
+  "workflows": [
+    {
+      "sourceId": "1hRkUxPXUZoYRSgL",
+      "sourceName": "RIESENOBJEKTE First-Party Form Intake v1 — Deterministic",
+      "backupId": "7BDTyn3zmGIj72Ub",
+      "nodes": 25
+    }
+  ]
+}
