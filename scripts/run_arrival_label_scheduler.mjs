@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { resolveConfig, runScheduler, SchedulerError } from "./arrival_label_scheduler_lib.mjs";
+import { resolveConfig, runScheduler, runSchedulerLoop, SchedulerError } from "./arrival_label_scheduler_lib.mjs";
 
 export function isDirectInvocation(moduleUrl, argvPath, resolveRealpath = (value) => realpathSync(value)) {
   if (!argvPath) return false;
@@ -14,7 +14,19 @@ export function isDirectInvocation(moduleUrl, argvPath, resolveRealpath = (value
 
 export async function main(argv = process.argv.slice(2), env = process.env) {
   try {
-    const result = await runScheduler(resolveConfig(argv, env));
+    const config = resolveConfig(argv, env);
+    if (config.continuous) {
+      await runSchedulerLoop(config, {
+        onResult(result) {
+          process.stdout.write(`${JSON.stringify(result)}\n`);
+        },
+        onError(error) {
+          process.stderr.write(`${JSON.stringify({ ok: false, error: error.message, exitCode: error.exitCode })}\n`);
+        },
+      });
+      return 0;
+    }
+    const result = await runScheduler(config);
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   } catch (error) {

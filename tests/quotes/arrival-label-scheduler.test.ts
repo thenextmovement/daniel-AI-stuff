@@ -7,6 +7,7 @@ import {
   acquireLock,
   resolveConfig,
   runScheduler,
+  runSchedulerLoop,
   SchedulerError,
 } from "../../scripts/arrival_label_scheduler_lib.mjs";
 import {
@@ -25,6 +26,8 @@ test("local scheduler defaults to dry-run and the exact approved endpoint", () =
   const config = resolveConfig([], baseEnvironment);
   assert.equal(config.mode, "dry_run");
   assert.equal(config.apiUrl, "https://ops.neontrip.de/api/internal/arrival-labels/run");
+  assert.equal(config.continuous, false);
+  assert.equal(config.intervalSeconds, 300);
 });
 
 test("scheduler recognizes direct execution through a symlinked runtime path", () => {
@@ -97,6 +100,28 @@ test("scheduler never retries an ambiguous API failure and releases its lock", a
   assert.equal(releases, 1);
 });
 
+test("continuous scheduler runs sequentially and waits between completed cycles", async () => {
+  let calls = 0;
+  const waits: number[] = [];
+  const results: unknown[] = [];
+  const config = resolveConfig(["--continuous", "--interval-seconds", "120"], baseEnvironment);
+  const cycles = await runSchedulerLoop(config, {
+    acquireLockImpl: () => () => {},
+    readSecret: () => "a-secret-with-at-least-24-characters",
+    fetchImpl: async () => {
+      calls += 1;
+      return Response.json({ ok: true, result: { summary: {} } });
+    },
+    waitImpl: async (milliseconds: number) => { waits.push(milliseconds); },
+    shouldContinue: (completedCycles: number) => completedCycles < 2,
+    onResult: (result: unknown) => { results.push(result); },
+  });
+  assert.equal(cycles, 2);
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [120_000]);
+  assert.equal(results.length, 2);
+});
+
 test("scheduler lock blocks overlap and can be released", () => {
   const temporary = mkdtempSync(join(tmpdir(), "arrival-scheduler-lock-test-"));
   const lock = join(temporary, "run.lock");
@@ -137,6 +162,13 @@ test("LaunchAgent rendering leaves no placeholder or secret value", () => {
   assert.doesNotMatch(rendered, /\{\{/);
   assert.doesNotMatch(rendered, /API_TOKEN|CLIENT_SECRET|Bearer /);
   assert.match(rendered, /dry_run/);
+});
+
+test("LaunchAgent supervises the persistent scheduler instead of relying on StartInterval", () => {
+  const plist = readFileSync("deploy/local-arrival-label-scheduler/de.neontrip.arrival-label-scheduler.plist.template", "utf8");
+  assert.match(plist, /<string>--continuous<\/string>/);
+  assert.match(plist, /<key>KeepAlive<\/key>\s*<true\/>/);
+  assert.doesNotMatch(plist, /<key>StartInterval<\/key>/);
 });
 
 test("local schedule trigger migration is constrained, audited and safely reversible", () => {

@@ -33,11 +33,15 @@ export function parseArgs(argv) {
   const parsed = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === "--continuous") {
+      parsed.continuous = true;
+      continue;
+    }
     if (arg === "--acknowledge-production-write") {
       parsed.acknowledgeProductionWrite = true;
       continue;
     }
-    if (!["--mode", "--api-url", "--local-date", "--lock-path"].includes(arg)) {
+    if (!["--mode", "--api-url", "--local-date", "--lock-path", "--interval-seconds"].includes(arg)) {
       throw new SchedulerError(`Unbekanntes Argument: ${arg}`, 64);
     }
     const value = argv[index + 1];
@@ -47,6 +51,7 @@ export function parseArgs(argv) {
     if (arg === "--api-url") parsed.apiUrl = value;
     if (arg === "--local-date") parsed.localDate = value;
     if (arg === "--lock-path") parsed.lockPath = value;
+    if (arg === "--interval-seconds") parsed.intervalSeconds = value;
   }
   return parsed;
 }
@@ -86,6 +91,14 @@ export function resolveConfig(argv = [], env = process.env) {
   if (args.localDate && !/^\d{4}-\d{2}-\d{2}$/.test(args.localDate)) {
     throw new SchedulerError("localDate muss YYYY-MM-DD sein.", 64);
   }
+  const intervalSeconds = parsePositiveInteger(
+    args.intervalSeconds || env.ARRIVAL_LABEL_SCHEDULER_INTERVAL_SECONDS,
+    300,
+    "Intervall",
+  );
+  if (intervalSeconds < 60 || intervalSeconds > 86_400) {
+    throw new SchedulerError("Intervall muss zwischen 60 und 86400 Sekunden liegen.", 64);
+  }
 
   const account = env.NEONTRIP_KEYCHAIN_ACCOUNT || env.USER;
   if (!account) throw new SchedulerError("Keychain-Account fehlt.", 64);
@@ -93,6 +106,8 @@ export function resolveConfig(argv = [], env = process.env) {
     mode,
     apiUrl: apiUrl.toString(),
     localDate: args.localDate,
+    continuous: args.continuous === true,
+    intervalSeconds,
     acknowledgeProductionWrite: args.acknowledgeProductionWrite === true,
     timeoutMs: parsePositiveInteger(env.ARRIVAL_LABEL_SCHEDULER_TIMEOUT_MS, 55_000, "Timeout"),
     lockPath: args.lockPath || env.ARRIVAL_LABEL_SCHEDULER_LOCK_PATH || join(homedir(), "Library", "Application Support", "NEONTRIP", "arrival-label-scheduler.lock"),
@@ -261,4 +276,24 @@ export async function runScheduler(config, dependencies = {}) {
   } finally {
     release();
   }
+}
+
+export async function runSchedulerLoop(config, dependencies = {}) {
+  const wait = dependencies.waitImpl || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const shouldContinue = dependencies.shouldContinue || (() => true);
+  const onResult = dependencies.onResult || (() => {});
+  const onError = dependencies.onError || (() => {});
+  let completedCycles = 0;
+  while (shouldContinue(completedCycles)) {
+    try {
+      onResult(await runScheduler(config, dependencies));
+    } catch (error) {
+      if (!(error instanceof SchedulerError)) throw error;
+      onError(error);
+    }
+    completedCycles += 1;
+    if (!shouldContinue(completedCycles)) break;
+    await wait(config.intervalSeconds * 1000);
+  }
+  return completedCycles;
 }

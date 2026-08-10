@@ -11,6 +11,9 @@
     <string>--mode</string>
     <string>{{MODE}}</string>
 {{EXECUTE_ACK_ARGUMENT}}
+    <string>--continuous</string>
+    <string>--interval-seconds</string>
+    <string>{{INTERVAL_SECONDS}}</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -24,10 +27,12 @@
     <string>{{LIVE_ENABLED}}</string>
 {{CF_CLIENT_ID_ENV}}
   </dict>
-  <key>StartInterval</key>
-  <integer>{{INTERVAL_SECONDS}}</integer>
+  <key>KeepAlive</key>
+  <true/>
   <key>RunAtLoad</key>
   <true/>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>

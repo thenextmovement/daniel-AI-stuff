@@ -1,8 +1,8 @@
 # Local NEONTRIP arrival-label scheduler (macOS)
 
-This LaunchAgent calls the authenticated Ops arrival-label endpoint every five minutes from the local Mac. It replaces a paid external polling trigger, but it does not expose the Mac, CUPS or a local HTTP endpoint to the internet. The request is outbound HTTPS only.
+This LaunchAgent supervises a persistent local scheduler that calls the authenticated Ops arrival-label endpoint every five minutes. It replaces a paid external polling trigger, but it does not expose the Mac, CUPS or a local HTTP endpoint to the internet. The request is outbound HTTPS only.
 
-The installed default is `dry_run`. It discovers and audits DHL Express arrivals, applies deterministic Shopify/Trello/country gates, and creates internal review entries. The current server still rejects `execute` because no production-approved DPD Cloud write adapter and credentials are installed. Do not weaken that server-side gate.
+The installed default is `dry_run`. It discovers and audits DHL Express arrivals, applies deterministic Shopify/Trello/country gates, and creates internal review entries. Execute mode remains protected by the explicit local acknowledgement, the local live flag, the scoped scheduler credential, and the independent server-side write gate.
 
 ## Secret setup
 
@@ -36,7 +36,7 @@ npm run arrival-labels:scheduler:manage -- install
 npm run arrival-labels:scheduler:manage -- status
 ```
 
-The schedule defaults to 300 seconds and starts once immediately after loading. A different interval must remain between 60 seconds and one day:
+The schedule defaults to 300 seconds and starts once immediately after loading. `launchd` keeps the scheduler process alive and restarts it after an unexpected exit. A different interval must remain between 60 seconds and one day:
 
 ```bash
 npm run arrival-labels:scheduler:manage -- install --interval-seconds 600

@@ -41,7 +41,7 @@ export type DhlArrival = {
     boardId: string;
     listId: string;
     cardIds: string[];
-    latestActivityAt: string;
+    latestActivityAt: string | null;
     enabledAfter: string;
     titlePatternVersion: typeof ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION;
   } | null;
@@ -467,19 +467,18 @@ export function arrivalsFromTrelloSignShipped(
       card.boardId !== settings.boardId
       || card.listId !== settings.sourceListId
       || normalizeHumanText(card.listName) !== "sign shipped neon trip"
-      || !card.dateLastActivity
     ) continue;
-
-    let activityAt: Temporal.Instant;
-    try {
-      activityAt = Temporal.Instant.from(card.dateLastActivity);
-    } catch {
-      continue;
-    }
-    if (Temporal.Instant.compare(activityAt, enabledAfter) < 0) continue;
 
     const trackingNumber = extractTrailingDhlExpressTracking(card.name);
     if (!trackingNumber) continue;
+    let activityAt: string | null = null;
+    if (card.dateLastActivity) {
+      try {
+        activityAt = Temporal.Instant.from(card.dateLastActivity).toString();
+      } catch {
+        activityAt = null;
+      }
+    }
     const previous = byTracking.get(trackingNumber);
     const previousTrigger = previous?.trelloTrigger;
     byTracking.set(trackingNumber, {
@@ -494,18 +493,19 @@ export function arrivalsFromTrelloSignShipped(
         boardId: settings.boardId,
         listId: settings.sourceListId,
         cardIds: [...new Set([...(previousTrigger?.cardIds || []), card.id])].sort(),
-        latestActivityAt: previousTrigger && Temporal.Instant.compare(
-          Temporal.Instant.from(previousTrigger.latestActivityAt),
-          activityAt,
-        ) > 0
-          ? previousTrigger.latestActivityAt
-          : activityAt.toString(),
+        latestActivityAt: laterInstant(previousTrigger?.latestActivityAt, activityAt),
         enabledAfter: enabledAfter.toString(),
         titlePatternVersion: settings.titlePatternVersion,
       },
     });
   }
   return [...byTracking.values()].sort((a, b) => a.trackingNumber.localeCompare(b.trackingNumber));
+}
+
+function laterInstant(left: string | null | undefined, right: string | null | undefined) {
+  if (!left) return right || null;
+  if (!right) return left;
+  return Temporal.Instant.compare(Temporal.Instant.from(left), Temporal.Instant.from(right)) >= 0 ? left : right;
 }
 
 export function mergeDhlArrivals(...groups: DhlArrival[][]) {
@@ -517,14 +517,10 @@ export function mergeDhlArrivals(...groups: DhlArrival[][]) {
       byTracking.set(arrival.trackingNumber, arrival);
       continue;
     }
-    const latestTrelloActivity = previous.trelloTrigger && arrival.trelloTrigger
-      ? (Temporal.Instant.compare(
-        Temporal.Instant.from(previous.trelloTrigger.latestActivityAt),
-        Temporal.Instant.from(arrival.trelloTrigger.latestActivityAt),
-      ) >= 0
-        ? previous.trelloTrigger.latestActivityAt
-        : arrival.trelloTrigger.latestActivityAt)
-      : previous.trelloTrigger?.latestActivityAt || arrival.trelloTrigger?.latestActivityAt;
+    const latestTrelloActivity = laterInstant(
+      previous.trelloTrigger?.latestActivityAt,
+      arrival.trelloTrigger?.latestActivityAt,
+    );
     const trelloTrigger = previous.trelloTrigger || arrival.trelloTrigger
       ? {
         ...(previous.trelloTrigger || arrival.trelloTrigger)!,
@@ -532,7 +528,7 @@ export function mergeDhlArrivals(...groups: DhlArrival[][]) {
           ...(previous.trelloTrigger?.cardIds || []),
           ...(arrival.trelloTrigger?.cardIds || []),
         ])].sort(),
-        latestActivityAt: latestTrelloActivity as string,
+        latestActivityAt: latestTrelloActivity,
       }
       : null;
     byTracking.set(arrival.trackingNumber, {

@@ -14,6 +14,16 @@ import {
 } from "./domain";
 
 type JsonRecord = Record<string, unknown>;
+type OutlookGraphMessage = {
+  id?: string;
+  subject?: string;
+  body?: { content?: string; contentType?: string };
+  receivedDateTime?: string;
+  from?: { emailAddress?: { address?: string; name?: string } };
+};
+type OutlookGraphPage = { value?: OutlookGraphMessage[]; "@odata.nextLink"?: string };
+
+export const ARRIVAL_LABEL_OUTLOOK_MAX_PAGES = 50;
 
 export type ArrivalDataClients = {
   outlook: { listMessagesForLocalDate(localDate: string): Promise<DhlMailEvidence[]> };
@@ -116,6 +126,83 @@ export async function microsoftGraphToken() {
   return payload.access_token;
 }
 
+function validatedGraphInboxMessagesUrl(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ArrivalIntegrationError("Microsoft Graph lieferte einen ungueltigen Seitenlink.", "graph_outlook_next_link_invalid");
+  }
+  if (
+    url.protocol !== "https:"
+    || url.hostname.toLowerCase() !== "graph.microsoft.com"
+    || !/^\/v1[.]0\/users\/[^/]+\/mailFolders\/inbox\/messages$/i.test(url.pathname)
+  ) {
+    throw new ArrivalIntegrationError("Microsoft Graph lieferte einen nicht freigegebenen Seitenlink.", "graph_outlook_next_link_invalid");
+  }
+  return url.toString();
+}
+
+export async function collectDhlOutlookMessages(
+  initialUrl: string,
+  token: string,
+  options: {
+    allowedDomains: string[];
+    maxPages?: number;
+    fetchPage?: (url: string, init: RequestInit) => Promise<Response>;
+  },
+) {
+  const allowedDomains = options.allowedDomains.map((value) => value.trim().toLowerCase()).filter(Boolean);
+  if (allowedDomains.length === 0) {
+    throw new ArrivalIntegrationError("Keine DHL-Express-Absenderdomain freigegeben.", "graph_outlook_sender_domains_missing");
+  }
+  const maxPages = options.maxPages || ARRIVAL_LABEL_OUTLOOK_MAX_PAGES;
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1 || maxPages > 100) {
+    throw new ArrivalIntegrationError("Outlook-Seitenlimit ist ungueltig.", "graph_outlook_page_limit_invalid");
+  }
+  const fetchPage = options.fetchPage || ((url: string, init: RequestInit) => fetchWithRetry(
+    url,
+    init,
+    { integration: "microsoft_graph_outlook" },
+  ));
+  const messages: DhlMailEvidence[] = [];
+  let nextUrl: string | null = validatedGraphInboxMessagesUrl(initialUrl);
+  let page = 0;
+  while (nextUrl) {
+    if (page >= maxPages) {
+      throw new ArrivalIntegrationError(
+        `Outlook-Zeitfenster ueberschreitet das Sicherheitslimit von ${maxPages * 100} Nachrichten.`,
+        "graph_outlook_page_limit_exceeded",
+      );
+    }
+    const response = await fetchPage(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const payload = await response.json() as OutlookGraphPage;
+    for (const message of payload.value || []) {
+      const senderAddress = String(message.from?.emailAddress?.address || "");
+      const senderName = String(message.from?.emailAddress?.name || "");
+      const rawBody = String(message.body?.content || "");
+      const bodyText = message.body?.contentType?.toLowerCase() === "html"
+        ? rawBody.replace(/<style\b[\s\S]*?<\/style>/gi, " ").replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ")
+        : rawBody;
+      const searchable = `${senderAddress} ${senderName} ${message.subject || ""} ${bodyText}`;
+      if (!/dhl/i.test(searchable)) continue;
+      const senderDomain = senderAddress.split("@").pop()?.toLowerCase() || "";
+      if (!allowedDomains.some((domain) => senderDomain === domain || senderDomain.endsWith(`.${domain}`))) continue;
+      if (!message.id || !message.receivedDateTime) continue;
+      messages.push({
+        messageId: message.id,
+        receivedAt: message.receivedDateTime,
+        senderAddress: `${senderName} <${senderAddress}>`,
+        subject: String(message.subject || ""),
+        bodyText: bodyText.replace(/\s+/g, " ").trim(),
+      });
+    }
+    page += 1;
+    nextUrl = payload["@odata.nextLink"] ? validatedGraphInboxMessagesUrl(payload["@odata.nextLink"]) : null;
+  }
+  return messages;
+}
+
 export function createOutlookClient(): ArrivalDataClients["outlook"] {
   return {
     async listMessagesForLocalDate(localDate) {
@@ -129,50 +216,8 @@ export function createOutlookClient(): ArrivalDataClients["outlook"] {
       initial.searchParams.set("$filter", filter);
       initial.searchParams.set("$orderby", "receivedDateTime desc");
       initial.searchParams.set("$top", "100");
-
-      const messages: DhlMailEvidence[] = [];
-      let nextUrl: string | null = initial.toString();
-      for (let page = 0; nextUrl && page < 5; page += 1) {
-        const response = await fetchWithRetry(
-          nextUrl,
-          { headers: { Authorization: `Bearer ${token}` } },
-          { integration: "microsoft_graph_outlook" },
-        );
-        const payload = await response.json() as {
-          value?: Array<{
-            id?: string;
-            subject?: string;
-            body?: { content?: string; contentType?: string };
-            receivedDateTime?: string;
-            from?: { emailAddress?: { address?: string; name?: string } };
-          }>;
-          "@odata.nextLink"?: string;
-        };
-        for (const message of payload.value || []) {
-          const senderAddress = String(message.from?.emailAddress?.address || "");
-          const senderName = String(message.from?.emailAddress?.name || "");
-          const rawBody = String(message.body?.content || "");
-          const bodyText = message.body?.contentType?.toLowerCase() === "html"
-            ? rawBody.replace(/<style\b[\s\S]*?<\/style>/gi, " ").replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ")
-            : rawBody;
-          const searchable = `${senderAddress} ${senderName} ${message.subject || ""} ${bodyText}`;
-          if (!/dhl/i.test(searchable)) continue;
-          const allowedDomains = String(process.env.DHL_EXPRESS_SENDER_DOMAINS || "dhl.com,dpdhl.com,dhl.de")
-            .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
-          const senderDomain = senderAddress.split("@").pop()?.toLowerCase() || "";
-          if (!allowedDomains.some((domain) => senderDomain === domain || senderDomain.endsWith(`.${domain}`))) continue;
-          if (!message.id || !message.receivedDateTime) continue;
-          messages.push({
-            messageId: message.id,
-            receivedAt: message.receivedDateTime,
-            senderAddress: `${senderName} <${senderAddress}>`,
-            subject: String(message.subject || ""),
-            bodyText: bodyText.replace(/\s+/g, " ").trim(),
-          });
-        }
-        nextUrl = payload["@odata.nextLink"] || null;
-      }
-      return messages;
+      const allowedDomains = String(process.env.DHL_EXPRESS_SENDER_DOMAINS || "dhl.com,dpdhl.com,dhl.de").split(",");
+      return collectDhlOutlookMessages(initial.toString(), token, { allowedDomains });
     },
   };
 }

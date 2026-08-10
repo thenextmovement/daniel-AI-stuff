@@ -6,6 +6,7 @@ import { isArrivalLabelsRequestAuthorized, isArrivalLabelsRunRequestAuthorized, 
 import {
   ArrivalIntegrationError,
   berlinDayBounds,
+  collectDhlOutlookMessages,
   fetchWithRetry,
   type ArrivalDataClients,
 } from "../../src/lib/ops/arrival-labels/clients";
@@ -177,7 +178,7 @@ test("Trello matching requires the complete incoming DHL number", () => {
   assert.equal(findTrelloCardForTracking(cards, "9999993486").card, null);
 });
 
-test("Sign SHIPPED accepts only an exact ten-digit DHL number at the title end after activation", () => {
+test("Sign SHIPPED accepts only an exact ten-digit DHL number at the title end", () => {
   assert.equal(extractTrailingDhlExpressTracking("#NEONT100 | 2619113486"), "2619113486");
   for (const invalid of [
     "#NEONT100 | 2619113486 | Eilig",
@@ -201,10 +202,16 @@ test("Sign SHIPPED accepts only an exact ten-digit DHL number at the title end a
   assert.deepEqual(result[0].sourceKinds, ["trello_sign_shipped"]);
 });
 
-test("Sign SHIPPED fails closed for disabled, historical, wrong-board and wrong-list cards", () => {
+test("Sign SHIPPED uses current list membership even for cards last changed before activation", () => {
+  const historical = { ...signShippedCard(), dateLastActivity: "2026-07-20T07:59:59Z" };
+  const withoutActivity = { ...signShippedCard(), dateLastActivity: null };
+  assert.equal(arrivalsFromTrelloSignShipped([historical], "2026-07-20", trelloTriggerSettings).length, 1);
+  assert.equal(arrivalsFromTrelloSignShipped([withoutActivity], "2026-07-20", trelloTriggerSettings).length, 1);
+});
+
+test("Sign SHIPPED fails closed for disabled, wrong-board and wrong-list cards", () => {
   const valid = signShippedCard();
   const variants = [
-    { ...valid, dateLastActivity: "2026-07-20T07:59:59Z" },
     { ...valid, boardId: "66b000000000000000000001" },
     { ...valid, listId: "66c000000000000000000001" },
     { ...valid, listName: "Sign Arrived" },
@@ -213,6 +220,58 @@ test("Sign SHIPPED fails closed for disabled, historical, wrong-board and wrong-
   for (const variant of variants) {
     assert.deepEqual(arrivalsFromTrelloSignShipped([variant], "2026-07-20", trelloTriggerSettings), []);
   }
+});
+
+test("Outlook pagination reaches a DHL message after the former five-page boundary", async () => {
+  let calls = 0;
+  const messages = await collectDhlOutlookMessages(
+    "https://graph.microsoft.com/v1.0/users/support%40neontrip.de/mailFolders/inbox/messages?$top=100",
+    "test-token",
+    {
+      allowedDomains: ["dhl.com"],
+      maxPages: 10,
+      async fetchPage() {
+        calls += 1;
+        if (calls < 6) {
+          return Response.json({
+            value: [],
+            "@odata.nextLink": `https://graph.microsoft.com/v1.0/users/support%40neontrip.de/mailFolders/inbox/messages?$skiptoken=${calls}`,
+          });
+        }
+        return Response.json({
+          value: [{
+            id: "late-dhl-mail",
+            subject: "DHL Express Zustellung heute",
+            body: { content: "Sendungsnummer 1234567890", contentType: "text" },
+            receivedDateTime: "2026-08-10T08:00:00Z",
+            from: { emailAddress: { address: "tracking@express.dhl.com", name: "DHL Express" } },
+          }],
+        });
+      },
+    },
+  );
+  assert.equal(calls, 6);
+  assert.equal(messages[0]?.messageId, "late-dhl-mail");
+});
+
+test("Outlook pagination fails visibly instead of silently truncating", async () => {
+  await assert.rejects(
+    () => collectDhlOutlookMessages(
+      "https://graph.microsoft.com/v1.0/users/support%40neontrip.de/mailFolders/inbox/messages?$top=100",
+      "test-token",
+      {
+        allowedDomains: ["dhl.com"],
+        maxPages: 2,
+        async fetchPage() {
+          return Response.json({
+            value: [],
+            "@odata.nextLink": "https://graph.microsoft.com/v1.0/users/support%40neontrip.de/mailFolders/inbox/messages?$skiptoken=next",
+          });
+        },
+      },
+    ),
+    (error: unknown) => error instanceof ArrivalIntegrationError && error.code === "graph_outlook_page_limit_exceeded",
+  );
 });
 
 test("Outlook and Trello signals merge by full DHL number and preserve delivery evidence", () => {
