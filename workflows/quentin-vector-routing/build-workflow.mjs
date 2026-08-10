@@ -37,13 +37,15 @@ function classifyTitle(title) {
   const value = String(title || '').toLowerCase().replace(/[‐‑‒–—−_]/g, '-');
   if (/\\b(?:led\\s*-?\\s*neon(?:\\s*-?\\s*flex)?|neon\\s*-?\\s*flex)\\b/i.test(value)) return { kind: 'led-neon-flex', destinationListId: '6421a72719c7af9056e6d16b', known: true };
   const rules = [
-    ['3d-backlit', /\\b3d\\s*-?\\s*back\\s*-?\\s*lit\\b/i], ['3d-frontlit', /\\b3d\\s*-?\\s*front\\s*-?\\s*lit\\b/i],
-    ['3d-nonlit', /\\b3d\\s*-?\\s*non\\s*-?\\s*lit\\b/i], ['lightbox', /\\blight\\s*-?\\s*box\\b/i],
+    ['3d-backlit', /\\b(?:3d\\s*-?\\s*)?back\\s*-?\\s*lit\\b/i], ['3d-frontlit', /\\b(?:3d\\s*-?\\s*)?front\\s*-?\\s*lit\\b/i],
+    ['3d-nonlit', /\\b(?:3d\\s*-?\\s*)?non\\s*-?\\s*lit\\b/i], ['3d-other', /\\b3d\\b/i],
+    ['lightbox', /\\blight\\s*-?\\s*box\\b/i],
     ['ultra-thin-acrylic', /\\bultra\\s*-?\\s*thin\\s+acrylic\\b/i], ['neon-halo', /\\bneon\\s*-?\\s*halo\\b/i],
-    ['full-glow', /\\bfull\\s*-?\\s*glow\\b/i], ['marquee', /\\bmarquee\\b/i],
+    ['full-glow', /\\bfull\\s*-?\\s*glow\\b/i], ['marquee', /\\bmarquee?\\b/i],
   ];
   const found = rules.find(([, regex]) => regex.test(value));
-  return { kind: found ? found[0] : 'unknown-non-neon', destinationListId: '659ffc4e5f8bffd67fe38265', known: Boolean(found) };
+  if (found) return { kind: found[0], destinationListId: '659ffc4e5f8bffd67fe38265', known: true };
+  return { kind: 'led-neon-flex', destinationListId: '6421a72719c7af9056e6d16b', known: true, defaulted: true };
 }
 const route = classifyTitle(card.name);
 const attachments = Array.isArray(card.attachments) ? card.attachments : [];
@@ -121,7 +123,6 @@ for (let index = 0; index < 4; index += 1) {
     if (current === null || Math.abs(current - money(variant.total).value) > 0.009) mismatch = true;
   } else if (variant) warnings.push('Total für Price_' + (index + 1) + ' konnte nicht sicher ausgelesen werden');
 }
-if (!ctx.route.known) warnings.push('Produkttyp im Titel nicht eindeutig; sicherheitshalber direkt zu Quote Ready geroutet');
 if (ctx.route.kind !== 'led-neon-flex' && !variants.length) warnings.push('Neon-Zuschnittswerte wurden bei einem Nicht-Neon-Produkt entfernt');
 const suffix = 'Custom Fields Abweichung❗';
 const newTitle = mismatch && !ctx.cardName.includes(suffix) ? ctx.cardName + ' ' + suffix : ctx.cardName;
