@@ -77,14 +77,14 @@ for (const [key, timestamp] of Object.entries(state.processing)) {
   if (now - Number(timestamp || 0) > 15 * 60 * 1000) delete state.processing[key];
 }
 const output = [];
-const seenCards = new Set();
-for (const action of moves.sort((a,b) => Date.parse(b.date || '') - Date.parse(a.date || ''))) {
+const seen = new Set();
+for (const action of moves.sort((a,b) => Date.parse(a.date || '') - Date.parse(b.date || ''))) {
   const data = action?.data || {};
   const time = Date.parse(action?.date || '');
   if (action?.type !== 'updateCard' || data.board?.id !== QUENTIN_BOARD || data.listAfter?.id !== VECTOR_LIST) continue;
+  if (!Number.isFinite(time) || now - time < delayMs || now - time > horizonMs || !action.id || seen.has(action.id)) continue;
+  seen.add(action.id);
   const cardId = String(data.card?.id || '');
-  if (!Number.isFinite(time) || now - time < delayMs || now - time > horizonMs || !action.id || !cardId || seenCards.has(cardId)) continue;
-  seenCards.add(cardId);
   const expectedListId = destination(data.card?.name || '');
   const matched = copies.some(copy => copy?.type === 'copyCard' && copy?.data?.cardSource?.id === cardId && copy?.data?.list?.id === expectedListId && Date.parse(copy.date || '') >= time);
   if (matched || state.processing[action.id]) continue;
@@ -97,7 +97,7 @@ return output;`;
 const prepareFallback = `
 const event = $('Build Missing Events').item.json;
 const card = $json;
-return {json:{...event,cardName:String(card.name || event.cardName),cardUrl:String(card.url || event.cardUrl)} };`;
+return [{json:{...event,cardName:String(card.name || event.cardName),cardUrl:String(card.url || event.cardUrl)} }];`;
 
 const recordRescue = `
 const event = $('Prepare Fallback Copy').item.json;
@@ -114,7 +114,7 @@ const body = '<div style="font-family:Arial,sans-serif;line-height:1.5">' +
   '<p><strong>Quellkarte:</strong> <a href="' + esc(event.cardUrl) + '">' + esc(event.cardUrl) + '</a><br>' +
   '<strong>Zielkarte:</strong> <a href="' + esc(copied.url) + '">' + esc(copied.url) + '</a><br>' +
   '<strong>Trello-Event:</strong> ' + esc(event.eventId) + '</p></div>';
-return {json:{...event,copiedCardId:copied.id,copiedCardUrl:copied.url,emailTo:'support@neontrip.de',emailSubject:'Quentin Board Vector file uploaded fehlgeschlagen',emailHtml:body,commentText:'❗ Routing-Watchdog: Die regulaere Zielkarte fehlte und wurde automatisch nachgeholt: ' + copied.url + ' — interne Fehler-E-Mail wurde erstellt.'} };`;
+return [{json:{...event,copiedCardId:copied.id,copiedCardUrl:copied.url,emailTo:'support@neontrip.de',emailSubject:'Quentin Board Vector file uploaded fehlgeschlagen',emailHtml:body,commentText:'❗ Routing-Watchdog: Die regulaere Zielkarte fehlte und wurde automatisch nachgeholt: ' + copied.url + ' — interne Fehler-E-Mail wurde erstellt.'} }];`;
 
 const buildFallbackFailure = `
 let event = {};
@@ -130,7 +130,7 @@ const cardUrl = String(event.cardUrl || 'https://trello.com/b/9QNAfkv4/quentin-n
 const body = '<div style="font-family:Arial,sans-serif;line-height:1.5"><h2 style="color:#b42318">Quentin-Routing und Fallback fehlgeschlagen</h2>' +
   '<p><strong>Sofort manuell bearbeiten:</strong> <a href="' + esc(cardUrl) + '">' + esc(cardUrl) + '</a></p>' +
   '<p><strong>Fehler:</strong> ' + esc(message) + '</p></div>';
-return {json:{...event,cardUrl,emailTo:'support@neontrip.de',emailSubject:'Quentin Board Vector file uploaded fehlgeschlagen',emailHtml:body,commentText:'❗ Routing-Watchdog fehlgeschlagen. Bitte diese Karte sofort manuell weiterleiten. Fehler: ' + message} };`;
+return [{json:{...event,cardUrl,emailTo:'support@neontrip.de',emailSubject:'Quentin Board Vector file uploaded fehlgeschlagen',emailHtml:body,commentText:'❗ Routing-Watchdog fehlgeschlagen. Bitte diese Karte sofort manuell weiterleiten. Fehler: ' + message} }];`;
 
 const actionRequest = (id,name,position,boardId,filter) => http(id,name,position,{
   method:'GET',url:'https://api.trello.com/1/boards/' + boardId + '/actions',authentication:'predefinedCredentialType',nodeCredentialType:'trelloApi',

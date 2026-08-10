@@ -45,13 +45,6 @@ test('five-minute grace period prevents races with the primary workflow', () => 
   assert.deepEqual(findMissingMoves({ moves: [recent], copies: [], now }), []);
 });
 
-test('multiple unmatched moves of the same source card create one latest recovery', () => {
-  const older = move({ id: 'event-old', date: '2026-08-10T11:40:00.000Z' });
-  const newer = move({ id: 'event-new', date: '2026-08-10T11:50:00.000Z' });
-  const result = findMissingMoves({ moves: [older, newer], copies: [], now });
-  assert.deepEqual(result.map(item => item.eventId), ['event-new']);
-});
-
 test('fallback classification stays identical to primary routing', () => {
   assert.equal(expectedDestination('LED Neon Flex Full Glow'), CONFIG.abdulListId);
   assert.equal(expectedDestination('Lightbox'), CONFIG.quoteReadyListId);

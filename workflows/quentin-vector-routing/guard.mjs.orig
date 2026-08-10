@@ -19,7 +19,7 @@ export function expectedDestination(title) {
 }
 
 export function findMissingMoves({ moves = [], copies = [], now = Date.now(), delayMs = GUARD.delayMs, horizonMs = GUARD.horizonMs }) {
-  const seenCards = new Set();
+  const seen = new Set();
   return moves
     .filter(action => {
       const time = Date.parse(action?.date || '');
@@ -31,11 +31,11 @@ export function findMissingMoves({ moves = [], copies = [], now = Date.now(), de
         && now - time >= delayMs
         && now - time <= horizonMs;
     })
-    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
     .filter(action => {
+      if (!action.id || seen.has(action.id)) return false;
+      seen.add(action.id);
       const sourceId = action.data.card?.id;
-      if (!action.id || !sourceId || seenCards.has(sourceId)) return false;
-      seenCards.add(sourceId);
       const expectedListId = expectedDestination(action.data.card?.name || '');
       return !copies.some(copy => copy?.type === 'copyCard'
         && copy?.data?.cardSource?.id === sourceId
