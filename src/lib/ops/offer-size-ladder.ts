@@ -230,7 +230,8 @@ export type QuoteReadyOfferStructureProductType =
   | "three_d"
   | "ultra_thin"
   | "lightbox_double_sided"
-  | "acrylic_lightbox";
+  | "acrylic_lightbox"
+  | "lightbox";
 
 export type QuoteReadySizeLadderPreflightInput = Omit<OfferSizeLadderGenerateInput, "trelloCardId" | "trelloCardUrl" | "anchors"> & {
   trelloCard: string;
@@ -1262,6 +1263,9 @@ function detectQuoteReadyProductType(text: string | null | undefined): QuoteRead
   }
   if (/\b3\s*-?\s*d\b|front\s*-?\s*lit|front\s*beleuchtet|back\s*-?\s*lit|r(?:ü|ue|u)ck\s*beleuchtet|hinter\s*(?:be)?leuchtet|non\s*-?\s*lit|nonlit|unbeleuchtet|nicht\s*beleuchtet|full\s*-?\s*glow|fullglow/.test(normalized)) {
     return "three_d";
+  }
+  if (/\blight\s*-?\s*box\b|\blicht\s*-?\s*box\b|\blichtkasten\b|\bleuchtkasten\b/.test(normalized)) {
+    return "lightbox";
   }
   if (/led\s*-?\s*neon|neon\s*flex|neonflex|led\s*flex|(?:led|neon)?\s*schriftzug/.test(normalized)) {
     return "neon";

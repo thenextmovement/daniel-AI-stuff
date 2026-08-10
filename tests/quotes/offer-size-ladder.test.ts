@@ -352,6 +352,7 @@ test("quote ready structure uses one source mockup per Neon design and two for e
     { name: "Ultra Thin Acrylic Lightbox", expectedType: "ultra_thin", expectedDivisor: 2 },
     { name: "Lightbox Double Sided", expectedType: "lightbox_double_sided", expectedDivisor: 2 },
     { name: "Acrylic Lightbox", expectedType: "acrylic_lightbox", expectedDivisor: 2 },
+    { name: "Lightbox New Design Volkan", expectedType: "lightbox", expectedDivisor: 2 },
   ] as const;
 
   for (const entry of cases) {
@@ -364,6 +365,41 @@ test("quote ready structure uses one source mockup per Neon design and two for e
     assert.equal(structure.productType, entry.expectedType, entry.name);
     assert.equal(structure.sourceMockupsPerDesign, entry.expectedDivisor, entry.name);
   }
+});
+
+test("manual release skips the plain Lightbox card instead of applying the Neon size ladder", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "6a7980ad0e57d85671cf6201",
+    idBoard: "board-1",
+    name: "FEHLER - ⚠️ MOCKUP PRÜFEN · Lightbox New Design Volkan | 300cm | Gold Yellow | Outdoor · Design: De Frietenjong",
+    customFields: {
+      Size_1: "240x72cm",
+      Price_1: "1920",
+      Product_1: "Lightbox",
+    },
+    attachments: [
+      { id: "att-1", name: "mockup_0809_0106.jpg" },
+      { id: "att-2", name: "mockup_0809_0107.jpg" },
+      { id: "att-ai-1", name: "Mockup_0809_0106_ai_3.jpg" },
+      { id: "att-ai-2", name: "Mockup_0809_0107_ai_3.jpg" },
+    ],
+  }, {
+    trelloCard: "6a7980ad0e57d85671cf6201",
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.structureProductType, "lightbox");
+  assert.equal(result.sourceMockupsPerDesign, 2);
+  assert.equal(result.sourceMockupCount, 2);
+  assert.equal(result.expectedDesignCount, 1);
+  assert.ok(!result.issues.includes("anchor_count_below_design_count"));
+  assert.ok(!result.warnings.includes("anchor_count_not_evenly_divisible_by_design_count"));
+
+  const release = classifyManualReleaseSizeLadderPreflight(result);
+  assert.equal(release.decision, "skipped");
+  assert.equal(release.reason, "special_product_uses_existing_offer_flow");
+  assert.deepEqual(release.technicalIssues, []);
 });
 
 test("quote ready preflight groups two 3D source mockups into one design", async () => {
