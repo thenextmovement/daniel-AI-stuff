@@ -1,0 +1,89 @@
+{
+  "name": "NEONTRIP Quentin Vector Routing Error Alert v1.0",
+  "nodes": [
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "build-emergency-alert",
+      "name": "Build Emergency Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx = $input.first().json || {};\nconst exec = ctx.execution || {};\nconst err = exec.error || ctx.error || {};\nconst raw = [err.message, err.description, err.stack].filter(Boolean).join(' ');\nconst match = raw.match(/https://trello.com/c/[A-Za-z0-9_-]+(?:/[^s<>\"']*)?/i);\nconst cardUrl = match ? match[0] : 'https://trello.com/b/9QNAfkv4/quentin-neon-signs';\nconst executionUrl = String(exec.url || '');\nconst failedNode = String(exec.lastNodeExecuted || err.node?.name || 'Unbekannt');\nconst errorMessage = String(err.message || err.description || 'Unbekannter Fehler').slice(0, 2000);\nfunction esc(value) { return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }\nconst body = '<div style=\"font-family:Arial,sans-serif;line-height:1.5\">' +\n  '<h2 style=\"color:#b42318\">Quentin Board Vector file uploaded fehlgeschlagen</h2>' +\n  '<p><strong>Trello-Karte/Board:</strong> <a href=\"' + esc(cardUrl) + '\">' + esc(cardUrl) + '</a></p>' +\n  '<p><strong>Workflow:</strong> ' + esc(ctx.workflow?.name || '') + '<br>' +\n  '<strong>Node:</strong> ' + esc(failedNode) + '<br><strong>Fehler:</strong> ' + esc(errorMessage) + '</p>' +\n  (executionUrl ? '<p><a href=\"' + esc(executionUrl) + '\">n8n-Ausfuehrung oeffnen</a></p>' : '') +\n  '<p>Der unabhaengige Watchdog prueft die Trello-Historie und holt eine fehlende Zielkarte automatisch nach.</p></div>';\nreturn [{ json: { emailTo: 'support@neontrip.de', emailSubject: 'Quentin Board Vector file uploaded fehlgeschlagen', emailHtml: body } }];"
+      }
+    },
+    {
+      "id": "send-emergency-email",
+      "name": "Send Emergency Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.emailTo }}",
+        "subject": "={{ $json.emailSubject }}",
+        "bodyContent": "={{ $json.emailHtml }}",
+        "additionalFields": {
+          "bodyContentType": "HTML"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 6,
+      "waitBetweenTries": 60000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Emergency Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Emergency Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Emergency Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  }
+}

@@ -189,6 +189,8 @@ const connections = {
   'Verify Copied Card': { main: [[{ node:'Record Completed Event', type:'main', index:0 }]] },
 };
 
-const workflow = { name:'NEONTRIP Quentin Vector Normalize + Route v1.0', nodes, connections, settings:{ executionOrder:'v1', timezone:'Europe/Berlin', saveDataErrorExecution:'all', saveDataSuccessExecution:'all', saveExecutionProgress:true, executionTimeout:180 } };
+const settings = { executionOrder:'v1', timezone:'Europe/Berlin', saveDataErrorExecution:'all', saveDataSuccessExecution:'all', saveExecutionProgress:true, executionTimeout:180 };
+if (process.env.QUENTIN_ERROR_WORKFLOW_ID) settings.errorWorkflow = process.env.QUENTIN_ERROR_WORKFLOW_ID;
+const workflow = { name:'NEONTRIP Quentin Vector Normalize + Route v1.0', nodes, connections, settings };
 fs.writeFileSync(path.join(outDir, 'quentin-vector-normalize-route-v1.json'), JSON.stringify(workflow, null, 2) + '\n');
 console.log(`Generated ${nodes.length} nodes`);
