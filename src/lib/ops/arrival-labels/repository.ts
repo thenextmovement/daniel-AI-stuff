@@ -8,7 +8,7 @@ import {
   type ProductConfig,
   type TrelloSignShippedTriggerSettings,
 } from "./domain";
-import type { ArrivalDataClients } from "./clients";
+import type { ArrivalDataClients, ExistingArrivalCaseEvidence } from "./clients";
 import type { ArrivalReviewNotification } from "./review-notifications";
 import { readBoundedResponseBytes } from "./printing";
 import type { BrowserArtifactRecord } from "./browser-purchase";
@@ -44,6 +44,16 @@ type CaseRow = {
   manual_review_reason: string | null;
   delivery_note_status: string;
   existing_dpd_tracking: string | null;
+};
+
+type ExistingArrivalCaseRow = {
+  id: string;
+  idempotency_key: string;
+  incoming_dhl_tracking_number: string;
+  status: string;
+  existing_dpd_tracking: string | null;
+  shopify_order_id: string | null;
+  shopify_order_name: string | null;
 };
 
 export type ArrivalOutlookArchiveJobRow = {
@@ -673,13 +683,33 @@ export async function upsertArrivalCase(input: {
   const persistedManualReviewReason = persistedDecisionStatus === "manual_review"
     ? rows[0].manual_review_reason || input.decision.manualReviewReason
     : input.decision.manualReviewReason;
+  await linkArrivalCaseToRun({
+    runId: input.runId,
+    caseId: rows[0].id,
+    arrival: input.arrival,
+    decision: input.decision,
+    persistedDecisionStatus,
+    persistedManualReviewReason,
+  });
+  return rows[0];
+}
+
+export async function linkArrivalCaseToRun(input: {
+  runId: string;
+  caseId: string;
+  arrival: DhlArrival;
+  decision: ArrivalCaseDecision;
+  persistedDecisionStatus?: string;
+  persistedManualReviewReason?: string | null;
+}) {
+  const order = input.decision.shopifyOrder;
   await supabaseRequest("arrival_label_run_cases", {
     method: "POST",
     headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
     body: JSON.stringify({
       run_id: input.runId,
-      case_id: rows[0].id,
-      decision_status: persistedDecisionStatus,
+      case_id: input.caseId,
+      decision_status: input.persistedDecisionStatus || input.decision.status,
       decision_snapshot: {
         idempotencyKey: input.decision.idempotencyKey,
         arrivalSources: input.arrival.sourceKinds,
@@ -692,11 +722,10 @@ export async function upsertArrivalCase(input: {
         selectedDpdProduct: input.decision.selectedDpdProduct,
         existingDpdTracking: input.decision.existingDpdTracking,
         shopifyFinancialStatus: order?.financialStatus || null,
-        manualReviewReason: persistedManualReviewReason,
+        manualReviewReason: input.persistedManualReviewReason ?? input.decision.manualReviewReason,
       },
     }),
   }, { on_conflict: "run_id,case_id" });
-  return rows[0];
 }
 
 async function sha256Text(value: string) {
@@ -761,19 +790,59 @@ export function createDatabaseExistingLabelClient(): ArrivalDataClients["existin
   return {
     async findForOrders(orderIds) {
       const result = new Map<string, ExistingDpdEvidence[]>();
-      await Promise.all(orderIds.map(async (orderId) => {
-        const numericId = numericShopifyOrderId(orderId);
-        const rows = await supabaseRequest<ShippingShipmentRow[]>("shipping_shipments", undefined, {
+      const orderIdByNumeric = new Map(orderIds.map((orderId) => [numericShopifyOrderId(orderId), orderId]));
+      const numericIds = [...orderIdByNumeric.keys()];
+      if (numericIds.some((value) => !/^[0-9]+$/.test(value))) {
+        throw new Error("Ungueltige Shopify-Bestell-ID fuer DPD-Bestandspruefung.");
+      }
+      const chunks = Array.from({ length: Math.ceil(numericIds.length / 50) }, (_, index) => (
+        numericIds.slice(index * 50, (index + 1) * 50)
+      ));
+      const pages = await Promise.all(chunks.map((chunk) => (
+        supabaseRequest<ShippingShipmentRow[]>("shipping_shipments", undefined, {
           select: "shopify_order_id,tracking_number,carrier",
-          shopify_order_id: `eq.${numericId}`,
+          shopify_order_id: `in.(${chunk.join(",")})`,
           order: "updated_at.desc",
-          limit: 20,
+          limit: Math.min(chunk.length * 20, 1000),
+        })
+      )));
+      for (const row of pages.flat()) {
+        if (!row.shopify_order_id || !row.tracking_number) continue;
+        const orderId = orderIdByNumeric.get(row.shopify_order_id);
+        if (!orderId) continue;
+        const labels = result.get(orderId) || [];
+        labels.push({ trackingNumber: row.tracking_number, source: "database" });
+        result.set(orderId, labels);
+      }
+      return result;
+    },
+    async findHandledCasesForIncomingTrackings(trackingNumbers) {
+      const unique = [...new Set(trackingNumbers)];
+      if (unique.some((value) => !/^[0-9]{10,40}$/.test(value))) {
+        throw new Error("Ungueltige eingehende DHL-Sendungsnummer fuer Bestandspruefung.");
+      }
+      if (!unique.length) return new Map();
+      const rows = await supabaseRequest<ExistingArrivalCaseRow[]>("arrival_label_cases", undefined, {
+        select: "id,idempotency_key,incoming_dhl_tracking_number,status,existing_dpd_tracking,shopify_order_id,shopify_order_name,updated_at",
+        incoming_dhl_tracking_number: `in.(${unique.join(",")})`,
+        order: "updated_at.desc",
+        limit: Math.min(unique.length * 10, 1000),
+      });
+      const handledStatuses = new Set(["existing_label", "label_created", "pdf_processed", "completed", "already_fulfilled"]);
+      const result = new Map<string, ExistingArrivalCaseEvidence>();
+      for (const row of rows) {
+        if (result.has(row.incoming_dhl_tracking_number)) continue;
+        if (!row.existing_dpd_tracking && !handledStatuses.has(row.status)) continue;
+        result.set(row.incoming_dhl_tracking_number, {
+          caseId: row.id,
+          idempotencyKey: row.idempotency_key,
+          trackingNumber: row.incoming_dhl_tracking_number,
+          status: row.status,
+          existingDpdTracking: row.existing_dpd_tracking,
+          shopifyOrderId: row.shopify_order_id,
+          shopifyOrderName: row.shopify_order_name,
         });
-        const labels = rows
-          .filter((row) => row.tracking_number)
-          .map((row) => ({ trackingNumber: row.tracking_number as string, source: "database" as const }));
-        if (labels.length) result.set(orderId, labels);
-      }));
+      }
       return result;
     },
   };

@@ -7,6 +7,7 @@ import {
   ArrivalIntegrationError,
   berlinDayBounds,
   collectDhlOutlookMessages,
+  collectShopifyOrderNodes,
   fetchWithRetry,
   type ArrivalDataClients,
 } from "../../src/lib/ops/arrival-labels/clients";
@@ -271,6 +272,42 @@ test("Outlook pagination fails visibly instead of silently truncating", async ()
       },
     ),
     (error: unknown) => error instanceof ArrivalIntegrationError && error.code === "graph_outlook_page_limit_exceeded",
+  );
+});
+
+test("Shopify pagination includes orders after the first 250 results", async () => {
+  const cursors: Array<string | null> = [];
+  const nodes = await collectShopifyOrderNodes("created_at:>=2026-04-12", async (_query, after) => {
+    cursors.push(after);
+    if (after === null) {
+      return {
+        nodes: [{ id: "gid://shopify/Order/first-page" }],
+        pageInfo: { hasNextPage: true, endCursor: "cursor-250" },
+      };
+    }
+    return {
+      nodes: [{ id: "gid://shopify/Order/second-page" }],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    };
+  });
+  assert.deepEqual(cursors, [null, "cursor-250"]);
+  assert.deepEqual(nodes.map((node) => node.id), [
+    "gid://shopify/Order/first-page",
+    "gid://shopify/Order/second-page",
+  ]);
+});
+
+test("Shopify pagination fails visibly instead of silently truncating", async () => {
+  await assert.rejects(
+    () => collectShopifyOrderNodes(
+      "created_at:>=2026-04-12",
+      async (_query, after) => ({
+        nodes: [],
+        pageInfo: { hasNextPage: true, endCursor: after === null ? "cursor-1" : "cursor-2" },
+      }),
+      2,
+    ),
+    (error: unknown) => error instanceof ArrivalIntegrationError && error.code === "shopify_page_limit_exceeded",
   );
 });
 
@@ -712,6 +749,39 @@ test("repeated dry runs produce the same decisions and idempotency keys", async 
   const second = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config });
   assert.deepEqual(first.cases, second.cases);
   assert.equal(first.cases[0].status, "label_planned");
+});
+
+test("a previously handled DHL tracking is never planned again when Shopify history is outside the live search", async () => {
+  const clients: ArrivalDataClients = {
+    outlook: { async listMessagesForLocalDate() { return []; } },
+    trello: { async listQuentinCards() { return [signShippedCard()]; } },
+    shopify: { async listRecentOrders() { return []; } },
+    existingLabels: {
+      async findForOrders() { return new Map(); },
+      async findHandledCasesForIncomingTrackings() {
+        return new Map([["1234567890", {
+          caseId: "case-completed",
+          idempotencyKey: "shopify:gid://shopify/Order/100:dhl:1234567890",
+          trackingNumber: "1234567890",
+          status: "completed",
+          existingDpdTracking: "01476817890573",
+          shopifyOrderId: "gid://shopify/Order/100",
+          shopifyOrderName: "#NEONT100",
+        }]]);
+      },
+    },
+  };
+  const result = await runArrivalLabels({
+    localDate: "2026-07-20",
+    clients,
+    productConfig: config,
+    trelloTriggerSettings,
+  });
+  assert.equal(result.cases[0].status, "existing_label");
+  assert.equal(result.cases[0].existingDpdTracking, "01476817890573");
+  assert.equal(result.cases[0].idempotencyKey, "shopify:gid://shopify/Order/100:dhl:1234567890");
+  assert.equal(result.summary.labelPlanned, 0);
+  assert.equal(result.summary.existingLabel, 1);
 });
 
 test("Sign SHIPPED alone plans the label immediately while retaining unknown delivery state", async () => {

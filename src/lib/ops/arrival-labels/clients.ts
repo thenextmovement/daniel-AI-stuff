@@ -24,12 +24,28 @@ type OutlookGraphMessage = {
 type OutlookGraphPage = { value?: OutlookGraphMessage[]; "@odata.nextLink"?: string };
 
 export const ARRIVAL_LABEL_OUTLOOK_MAX_PAGES = 50;
+export const ARRIVAL_LABEL_SHOPIFY_MAX_PAGES = 20;
+
+export type ExistingArrivalCaseEvidence = {
+  caseId: string;
+  idempotencyKey: string;
+  trackingNumber: string;
+  status: string;
+  existingDpdTracking: string | null;
+  shopifyOrderId: string | null;
+  shopifyOrderName: string | null;
+};
 
 export type ArrivalDataClients = {
   outlook: { listMessagesForLocalDate(localDate: string): Promise<DhlMailEvidence[]> };
   trello: { listQuentinCards(): Promise<TrelloCardEvidence[]> };
   shopify: { listRecentOrders(localDate: string, cards?: TrelloCardEvidence[]): Promise<ShopifyOrderEvidence[]> };
-  existingLabels: { findForOrders(orderIds: string[]): Promise<Map<string, ExistingDpdEvidence[]>> };
+  existingLabels: {
+    findForOrders(orderIds: string[]): Promise<Map<string, ExistingDpdEvidence[]>>;
+    findHandledCasesForIncomingTrackings?(
+      trackingNumbers: string[],
+    ): Promise<Map<string, ExistingArrivalCaseEvidence>>;
+  };
 };
 
 export class ArrivalIntegrationError extends Error {
@@ -281,8 +297,8 @@ function shopifyConfig() {
 }
 
 const ARRIVAL_ORDERS_QUERY = `
-  query ArrivalLabelOrders($first: Int!, $query: String!) {
-    orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
+  query ArrivalLabelOrders($first: Int!, $query: String!, $after: String) {
+    orders(first: $first, query: $query, after: $after, sortKey: CREATED_AT, reverse: true) {
       nodes {
         id
         name
@@ -310,26 +326,68 @@ const ARRIVAL_ORDERS_QUERY = `
           trackingInfo(first: 20) { company number url }
         }
       }
+      pageInfo { hasNextPage endCursor }
     }
   }
 `;
+
+export type ShopifyOrdersPage = {
+  nodes: JsonRecord[];
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+};
+
+export async function collectShopifyOrderNodes(
+  query: string,
+  fetchPage: (query: string, after: string | null) => Promise<ShopifyOrdersPage>,
+  maxPages = ARRIVAL_LABEL_SHOPIFY_MAX_PAGES,
+) {
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1 || maxPages > 40) {
+    throw new ArrivalIntegrationError("Shopify-Seitenlimit ist ungueltig.", "shopify_page_limit_invalid");
+  }
+  const nodes: JsonRecord[] = [];
+  const seenCursors = new Set<string>();
+  let after: string | null = null;
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await fetchPage(query, after);
+    nodes.push(...result.nodes);
+    if (!result.pageInfo.hasNextPage) return nodes;
+    const cursor = result.pageInfo.endCursor;
+    if (!cursor || seenCursors.has(cursor)) {
+      throw new ArrivalIntegrationError("Shopify lieferte einen ungueltigen Seitenzeiger.", "shopify_cursor_invalid");
+    }
+    seenCursors.add(cursor);
+    after = cursor;
+  }
+  throw new ArrivalIntegrationError(
+    `Shopify-Suchfenster ueberschreitet das Sicherheitslimit von ${maxPages * 250} Bestellungen.`,
+    "shopify_page_limit_exceeded",
+  );
+}
 
 export function createShopifyClient(): ArrivalDataClients["shopify"] {
   return {
     async listRecentOrders(localDate, cards = []) {
       const config = shopifyConfig();
-      const execute = async (query: string) => {
+      const executePage = async (query: string, after: string | null): Promise<ShopifyOrdersPage> => {
         const response = await fetchWithRetry(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": config.token },
-          body: JSON.stringify({ query: ARRIVAL_ORDERS_QUERY, variables: { first: 250, query } }),
+          body: JSON.stringify({ query: ARRIVAL_ORDERS_QUERY, variables: { first: 250, query, after } }),
         }, { integration: "shopify_admin_graphql" });
         const payload = await response.json() as JsonRecord;
         const errors = Array.isArray(payload.errors) ? payload.errors : [];
         if (errors.length) throw new ArrivalIntegrationError("Shopify GraphQL lieferte Fehler.", "shopify_graphql_error");
         const data = payload.data as JsonRecord | undefined;
-        const nodes = (data?.orders as JsonRecord | undefined)?.nodes;
-        return Array.isArray(nodes) ? nodes : [];
+        const orders = data?.orders as JsonRecord | undefined;
+        const nodes = orders?.nodes;
+        const pageInfo = orders?.pageInfo as JsonRecord | undefined;
+        return {
+          nodes: Array.isArray(nodes) ? nodes as JsonRecord[] : [],
+          pageInfo: {
+            hasNextPage: pageInfo?.hasNextPage === true,
+            endCursor: typeof pageInfo?.endCursor === "string" ? pageInfo.endCursor : null,
+          },
+        };
       };
 
       const explicitNames = [...new Set(cards.map((card) => orderNameFromTrelloCard(card.name)).filter((value): value is string => Boolean(value)))]
@@ -338,7 +396,7 @@ export function createShopifyClient(): ArrivalDataClients["shopify"] {
       for (let index = 0; index < explicitNames.length; index += 25) {
         queries.push(explicitNames.slice(index, index + 25).map((value) => `name:${value}`).join(" OR "));
       }
-      const rawOrders = (await Promise.all(queries.map(execute))).flat();
+      const rawOrders = (await Promise.all(queries.map((query) => collectShopifyOrderNodes(query, executePage)))).flat();
       const mapped = rawOrders.map((raw) => mapShopifyOrder(raw as JsonRecord, config.domain)).filter((order): order is ShopifyOrderEvidence => Boolean(order));
       return [...new Map(mapped.map((order) => [order.id, order])).values()];
     },

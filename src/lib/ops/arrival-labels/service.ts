@@ -1,6 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { randomUUID } from "node:crypto";
-import type { ArrivalDataClients } from "./clients";
+import type { ArrivalDataClients, ExistingArrivalCaseEvidence } from "./clients";
 import { createRuntimeClients, customerNameHintsFromCard } from "./clients";
 import { generateArrivalDeliveryNotePdf } from "./delivery-note";
 import {
@@ -25,6 +25,7 @@ import {
   loadArrivalArtifact,
   loadActiveProductConfig,
   loadTrelloSignShippedTriggerSettings,
+  linkArrivalCaseToRun,
   markArrivalDeliveryNoteQaApproved,
   recordArrivalEvent,
   startArrivalRun,
@@ -104,6 +105,21 @@ export function projectPersistedBrowserManualReview(
     status: "manual_review" as const,
     manualReviewReason: stored.manual_review_reason || "EasyDPD-Browserauftrag ist manuell zu pruefen; kein automatischer Zweitkauf.",
     reasons: [...new Set([...decision.reasons, "browser_purchase_manual_review"])],
+  };
+}
+
+export function projectHandledArrivalCase(
+  decision: ArrivalCaseDecision,
+  existing: ExistingArrivalCaseEvidence,
+): ArrivalCaseDecision {
+  return {
+    ...decision,
+    idempotencyKey: existing.idempotencyKey,
+    selectedDpdProduct: null,
+    existingDpdTracking: existing.existingDpdTracking,
+    status: "existing_label",
+    manualReviewReason: null,
+    reasons: [...new Set([...decision.reasons, "existing_arrival_case"])],
   };
 }
 
@@ -204,7 +220,12 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       arrivalsFromTrelloSignShipped(cards, localDate, trelloTriggerSettings),
     );
     const orderIds = [...new Set(orders.map((order) => order.id))];
-    const existingByOrder = await runtimeClients.existingLabels.findForOrders(orderIds);
+    const [existingByOrder, handledCasesByTracking] = await Promise.all([
+      runtimeClients.existingLabels.findForOrders(orderIds),
+      runtimeClients.existingLabels.findHandledCasesForIncomingTrackings?.(
+        arrivals.map((arrival) => arrival.trackingNumber),
+      ) || Promise.resolve(new Map<string, ExistingArrivalCaseEvidence>()),
+    ]);
     const hints = Object.fromEntries(cards.map((card) => [card.id, customerNameHintsFromCard(card)]));
     const cases = arrivals.map((arrival) => {
       const preliminary = decideArrivalCase({
@@ -214,6 +235,8 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
         customerNameHintsByCardId: hints,
         productConfig,
       });
+      const handled = handledCasesByTracking.get(arrival.trackingNumber);
+      if (handled) return projectHandledArrivalCase(preliminary, handled);
       if (!preliminary.shopifyOrder) return preliminary;
       return decideArrivalCase({
         arrival,
@@ -228,7 +251,24 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
 
     if (run) {
       for (let index = 0; index < cases.length; index += 1) {
-        const stored = await upsertArrivalCase({ runId: run.id, arrival: arrivals[index], decision: cases[index] });
+        const handled = handledCasesByTracking.get(arrivals[index].trackingNumber);
+        const stored = handled
+          ? {
+            id: handled.caseId,
+            status: handled.status,
+            manual_review_reason: null,
+            delivery_note_status: cases[index].deliveryNoteStatus,
+            existing_dpd_tracking: handled.existingDpdTracking,
+          }
+          : await upsertArrivalCase({ runId: run.id, arrival: arrivals[index], decision: cases[index] });
+        if (handled) {
+          await linkArrivalCaseToRun({
+            runId: run.id,
+            caseId: handled.caseId,
+            arrival: arrivals[index],
+            decision: cases[index],
+          });
+        }
         effectiveCases[index] = projectPersistedBrowserManualReview(cases[index], stored);
         const trelloTrigger = arrivals[index].trelloTrigger;
         for (const cardId of trelloTrigger?.cardIds || []) {
