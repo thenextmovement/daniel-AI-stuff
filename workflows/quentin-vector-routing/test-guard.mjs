@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { findMissingMoves, expectedDestination, GUARD } from './guard.mjs';
 import { CONFIG } from './routing.mjs';
 
@@ -56,4 +57,10 @@ test('fallback classification stays identical to primary routing', () => {
   assert.equal(expectedDestination('LED Neon Flex Full Glow'), CONFIG.abdulListId);
   assert.equal(expectedDestination('Lightbox'), CONFIG.quoteReadyListId);
   assert.equal(expectedDestination('Neutral custom sign'), CONFIG.abdulListId);
+});
+
+test('generated emergency alert code compiles in the n8n JavaScript runtime', () => {
+  const workflow = JSON.parse(readFileSync(new URL('./generated/quentin-vector-routing-error-alert-v1.json', import.meta.url), 'utf8'));
+  const code = workflow.nodes.find(node => node.name === 'Build Emergency Alert').parameters.jsCode;
+  assert.doesNotThrow(() => new Function(code));
 });
