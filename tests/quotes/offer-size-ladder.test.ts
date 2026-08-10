@@ -353,6 +353,10 @@ test("quote ready structure uses one source mockup per Neon design and two for e
     { name: "Lightbox Double Sided", expectedType: "lightbox_double_sided", expectedDivisor: 2 },
     { name: "Acrylic Lightbox", expectedType: "acrylic_lightbox", expectedDivisor: 2 },
     { name: "Lightbox New Design Volkan", expectedType: "lightbox", expectedDivisor: 2 },
+    { name: "Marque Letters selfstanding", expectedType: "marquee", expectedDivisor: 2 },
+    { name: "Marquee Letters wall mounted", expectedType: "marquee", expectedDivisor: 2 },
+    { name: "Marquees Letter Set", expectedType: "marquee", expectedDivisor: 2 },
+    { name: "3D Marqueee Bulb Letters", expectedType: "marquee", expectedDivisor: 2 },
   ] as const;
 
   for (const entry of cases) {
@@ -390,6 +394,41 @@ test("manual release skips the plain Lightbox card instead of applying the Neon 
   });
 
   assert.equal(result.structureProductType, "lightbox");
+  assert.equal(result.sourceMockupsPerDesign, 2);
+  assert.equal(result.sourceMockupCount, 2);
+  assert.equal(result.expectedDesignCount, 1);
+  assert.ok(!result.issues.includes("anchor_count_below_design_count"));
+  assert.ok(!result.warnings.includes("anchor_count_not_evenly_divisible_by_design_count"));
+
+  const release = classifyManualReleaseSizeLadderPreflight(result);
+  assert.equal(release.decision, "skipped");
+  assert.equal(release.reason, "special_product_uses_existing_offer_flow");
+  assert.deepEqual(release.technicalIssues, []);
+});
+
+test("manual release skips Marquee letters instead of applying the Neon size ladder", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardMarqueeLetters",
+    idBoard: "board-1",
+    name: "Marquees Letters selfstanding | 120cm | Warm White",
+    customFields: {
+      Size_1: "120x60cm",
+      Price_1: "980",
+      Product_1: "Marquee Letters",
+    },
+    attachments: [
+      { id: "att-1", name: "mockup_0810_0101.jpg" },
+      { id: "att-2", name: "mockup_0810_0102.jpg" },
+      { id: "att-ai-1", name: "Mockup_0810_0101_ai_1.jpg" },
+      { id: "att-ai-2", name: "Mockup_0810_0102_ai_1.jpg" },
+    ],
+  }, {
+    trelloCard: "cardMarqueeLetters",
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.structureProductType, "marquee");
   assert.equal(result.sourceMockupsPerDesign, 2);
   assert.equal(result.sourceMockupCount, 2);
   assert.equal(result.expectedDesignCount, 1);

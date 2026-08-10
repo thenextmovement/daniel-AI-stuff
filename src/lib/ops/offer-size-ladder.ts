@@ -231,7 +231,8 @@ export type QuoteReadyOfferStructureProductType =
   | "ultra_thin"
   | "lightbox_double_sided"
   | "acrylic_lightbox"
-  | "lightbox";
+  | "lightbox"
+  | "marquee";
 
 export type QuoteReadySizeLadderPreflightInput = Omit<OfferSizeLadderGenerateInput, "trelloCardId" | "trelloCardUrl" | "anchors"> & {
   trelloCard: string;
@@ -1252,6 +1253,7 @@ function detectQuoteReadyProductType(text: string | null | undefined): QuoteRead
     .toLowerCase();
   if (!normalized.trim()) return null;
 
+  if (/\bmarque+s?\b/.test(normalized)) return "marquee";
   if (
     /(?:light\s*box|lightbox|lichtbox|lichtkasten)\s*(?:double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig)|(?:double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig)\s*(?:light\s*box|lightbox|lichtbox|lichtkasten)|nasenschild/.test(normalized)
   ) {
