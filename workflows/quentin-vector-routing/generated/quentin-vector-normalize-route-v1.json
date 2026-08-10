@@ -1,0 +1,607 @@
+{
+  "name": "NEONTRIP Quentin Vector Normalize + Route v1.0",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Quentin Board Trigger",
+      "type": "n8n-nodes-base.trelloTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "id": "62bae9b97705e7419ed64593"
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "id": "gate",
+      "name": "Gate Exact Vector Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst event = $json.action || $json;\nconst eventId = String(event.id || $json.id || '');\nconst type = String(event.type || '');\nconst data = event.data || {};\nconst boardId = String(data.board?.id || data.card?.idBoard || '');\nconst listAfterId = String(data.listAfter?.id || '');\nif (!eventId || type !== 'updateCard' || boardId !== '62bae9b97705e7419ed64593' || listAfterId !== '6421a75cc602d9d540d59f2d') return [];\nconst sd = $getWorkflowStaticData('global');\nconst doneKey = 'done_' + eventId;\nconst processingKey = 'processing_' + eventId;\nif (sd[doneKey]) return [];\nconst now = Date.now();\nif (sd[processingKey] && now - Number(sd[processingKey]) < 15 * 60 * 1000) return [];\nsd[processingKey] = now;\nreturn [{ json: { eventId, cardId: String(data.card?.id || ''), sourceBoardId: boardId, sourceListId: listAfterId } }];"
+      }
+    },
+    {
+      "id": "get-card",
+      "name": "Get Source Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,url,idBoard,idList"
+            },
+            {
+              "name": "attachments",
+              "value": "true"
+            },
+            {
+              "name": "attachment_fields",
+              "value": "id,name,mimeType,date,url"
+            },
+            {
+              "name": "customFieldItems",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "prepare",
+      "name": "Prepare Card Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst card = $json;\nconst event = $('Gate Exact Vector Event').first().json;\nfunction classifyTitle(title) {\n  const value = String(title || '').toLowerCase().replace(/[‐‑‒–—−_]/g, '-');\n  if (/\\b(?:led\\s*-?\\s*neon(?:\\s*-?\\s*flex)?|neon\\s*-?\\s*flex)\\b/i.test(value)) return { kind: 'led-neon-flex', destinationListId: '6421a72719c7af9056e6d16b', known: true };\n  const rules = [\n    ['3d-backlit', /\\b3d\\s*-?\\s*back\\s*-?\\s*lit\\b/i], ['3d-frontlit', /\\b3d\\s*-?\\s*front\\s*-?\\s*lit\\b/i],\n    ['3d-nonlit', /\\b3d\\s*-?\\s*non\\s*-?\\s*lit\\b/i], ['lightbox', /\\blight\\s*-?\\s*box\\b/i],\n    ['ultra-thin-acrylic', /\\bultra\\s*-?\\s*thin\\s+acrylic\\b/i], ['neon-halo', /\\bneon\\s*-?\\s*halo\\b/i],\n    ['full-glow', /\\bfull\\s*-?\\s*glow\\b/i], ['marquee', /\\bmarquee\\b/i],\n  ];\n  const found = rules.find(([, regex]) => regex.test(value));\n  return { kind: found ? found[0] : 'unknown-non-neon', destinationListId: '659ffc4e5f8bffd67fe38265', known: Boolean(found) };\n}\nconst route = classifyTitle(card.name);\nconst attachments = Array.isArray(card.attachments) ? card.attachments : [];\nconst image = attachments.filter(a => /^image\\.png$/i.test(String(a.name || '').trim())).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')))[0] || null;\nconst fieldValues = Object.fromEntries((card.customFieldItems || []).map(item => [item.idCustomField, item.value?.text ?? item.value?.number ?? '']));\nreturn [{ json: { ...event, cardId: card.id, cardName: card.name || '', cardUrl: card.url || '', route, imageUrl: image?.url || '', imageAttachmentId: image?.id || '', fieldValues } }];"
+      }
+    },
+    {
+      "id": "download",
+      "name": "Download image.png",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.imageUrl || 'https://api.trello.com/1/cards/' + $json.cardId + '/attachments/not-found/download/image.png' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "image"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "vision-body",
+      "name": "Build Vision Proposal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx = $('Prepare Card Context').first().json;\nlet dataUrl = '';\ntry {\n  const buffer = await $getBinaryDataBuffer(0, 'image');\n  if (buffer?.length) dataUrl = 'data:image/png;base64,' + buffer.toString('base64');\n} catch (error) {}\nconst prompt = [\n  'Read this supplier technical drawing. Return strict JSON only.',\n  'Identify every product/size variant, maximum four. Preserve visual reading order: design groups top-to-bottom and left-to-right; variants inside each group left-to-right/top-to-bottom.',\n  'For each variant return: reading_order (1-based integer), design_index (1-based integer), size_index (1-based within design), total (number or null), backboard_raw (exact English phrase or empty), confidence (0..1).',\n  'The price to extract is Total, never Production Price and never Shipping cost.',\n  'Do not invent unreadable values. issues must list uncertainties.',\n  'Schema: {\"variants\":[{\"reading_order\":1,\"design_index\":1,\"size_index\":1,\"total\":117,\"backboard_raw\":\"Cut to shape\",\"confidence\":0.99}],\"issues\":[]}'\n].join('\\n');\nconst body = {\n  model: 'gpt-4o', temperature: 0,\n  response_format: { type: 'json_object' },\n  messages: [{ role: 'user', content: dataUrl ? [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } }] : [{ type: 'text', text: prompt + '\\nNo image was available; return empty variants and an issue.' }] }]\n};\nreturn [{ json: { ...ctx, body } }];"
+      }
+    },
+    {
+      "id": "vision",
+      "name": "Read Supplier Drawing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "StsVoyuEzSmCM5jg",
+          "name": "OpenAi account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "plan",
+      "name": "Plan Safe Field Operations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx = $('Prepare Card Context').first().json;\nconst BACKBOARD_IDS = ['67ab34664610ec7a48dd3e25','67ab34753b38d5d627c00406','67f4f919135f6ee95dcfafc1','67f4f96efd792feaa9b0c1df'];\nconst PRICE_IDS = ['67ab4036913a9ecdc0cb3a30','67ab404384a17910e9673e48','67f4f8f054ff1b3f888c0228','67f4f933dd18fd2f77bf8708'];\nfunction translate(raw, kind) {\n  const value = String(raw || '').toLowerCase().trim().replace(/[‐‑‒–—−_]/g, ' ');\n  if (kind === 'led-neon-flex') {\n    if (/cut\\s*to\\s*shape|shape\\s*cut/.test(value)) return { value: 'Formzuschnitt' };\n    if (/cut\\s*to\\s*(?:letter|letters)|fine\\s*cut/.test(value)) return { value: 'Feinzuschnitt' };\n    if (/cut\\s*to\\s*(?:board|rectangle)|rectangular\\s*cut/.test(value)) return { value: 'Rechteckiger Zuschnitt' };\n    return { value: '' };\n  }\n  return { value: /loose\\s*letters?/.test(value) ? 'Einzelne Buchstaben' : '' };\n}\nfunction money(value) {\n  if (value === null || value === undefined || value === '') return { value: null };\n  const number = Number(String(value).replace(/[^0-9,.-]/g, '').replace(',', '.'));\n  return { value: Number.isFinite(number) ? Math.round(number * 100) / 100 : null };\n}\nlet proposal = { variants: [], issues: [] };\nconst warnings = [];\ntry {\n  const raw = $json.choices?.[0]?.message?.content;\n  proposal = JSON.parse(String(raw || '{}'));\n} catch (error) { warnings.push('image.png konnte nicht zuverlässig ausgewertet werden'); }\nlet variants = Array.isArray(proposal.variants) ? proposal.variants : [];\nvariants = variants.filter(v => Number.isInteger(Number(v.reading_order)) && Number(v.reading_order) >= 1).sort((a,b) => Number(a.reading_order)-Number(b.reading_order));\nif (!ctx.imageUrl) warnings.push('image.png fehlt');\nif (!variants.length) warnings.push('keine sicher zuordenbare Variante aus image.png');\nif (variants.length > 4) warnings.push((variants.length - 4) + ' weitere Variante(n) passen nicht in die vier Trello-Felder');\nif (Array.isArray(proposal.issues)) {\n  for (const issue of proposal.issues) {\n    const text = String(issue || '').trim();\n    if (text) warnings.push(text);\n  }\n}\nconst fieldOps = [];\nlet mismatch = false;\nfor (let index = 0; index < 4; index += 1) {\n  const variant = variants[index];\n  const value = variant ? translate(variant.backboard_raw, ctx.route.kind).value : '';\n  if (variant && !value) warnings.push('Backboard_' + (index + 1) + ' konnte nicht sicher ausgelesen werden');\n  fieldOps.push({ fieldId: BACKBOARD_IDS[index], value });\n  if (variant && money(variant.total).value !== null) {\n    const current = money(ctx.fieldValues[PRICE_IDS[index]]).value;\n    if (current === null || Math.abs(current - money(variant.total).value) > 0.009) mismatch = true;\n  } else if (variant) warnings.push('Total für Price_' + (index + 1) + ' konnte nicht sicher ausgelesen werden');\n}\nif (!ctx.route.known) warnings.push('Produkttyp im Titel nicht eindeutig; sicherheitshalber direkt zu Quote Ready geroutet');\nif (ctx.route.kind !== 'led-neon-flex' && !variants.length) warnings.push('Neon-Zuschnittswerte wurden bei einem Nicht-Neon-Produkt entfernt');\nconst suffix = 'Custom Fields Abweichung❗';\nconst newTitle = mismatch && !ctx.cardName.includes(suffix) ? ctx.cardName + ' ' + suffix : ctx.cardName;\nconst uniqueWarnings = [];\nfor (const warning of warnings) {\n  const text = String(warning || '').trim();\n  if (text && !uniqueWarnings.includes(text)) uniqueWarnings.push(text);\n}\nconst output = [];\nfor (const op of fieldOps) output.push({ json: { ...ctx, ...op, mismatch, newTitle, warnings: uniqueWarnings } });\nreturn output;"
+      }
+    },
+    {
+      "id": "update-fields",
+      "name": "Update Backboard Fields",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}/customField/{{ $json.fieldId }}/item",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ value: $json.value ? { text: $json.value } : null }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "finalize",
+      "name": "Finalize Advisory Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst plan = $('Plan Safe Field Operations').first().json;\nconst failedFields = $input.all().filter(item => item.json?.error).length;\nconst warnings = [...(plan.warnings || [])];\nif (failedFields) warnings.push(failedFields + ' Backboard-Feld(er) konnten technisch nicht aktualisiert werden');\nconst unique = [...new Set(warnings)];\nreturn [{ json: { ...plan, warnings: unique, needsComment: unique.length > 0, commentText: '❗ TICKET-103 [' + plan.eventId + '] ' + unique.join('; ') } }];"
+      }
+    },
+    {
+      "id": "title",
+      "name": "Set Price Deviation Title",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2200,
+        300
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.trello.com/1/cards/{{ $json.cardId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.newTitle }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "if-comment",
+      "name": "Warning Comment Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2420,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "warn",
+              "leftValue": "={{ $('Finalize Advisory Results').first().json.needsComment }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "comment",
+      "name": "Add One Warning Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2640,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Finalize Advisory Results').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Finalize Advisory Results').first().json.commentText }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "copy",
+      "name": "Copy Normalized Card Once",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2860,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.trello.com/1/cards",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ idList: $('Finalize Advisory Results').first().json.route.destinationListId, idCardSource: $('Finalize Advisory Results').first().json.cardId, keepFromSource: 'all', pos: 'bottom' }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "verify",
+      "name": "Verify Copied Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3080,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,url,idBoard,idList"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "complete",
+      "name": "Record Completed Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst plan = $('Finalize Advisory Results').first().json;\nconst copied = $json;\nif (!copied?.id || String(copied.idList || '') !== String(plan.route.destinationListId)) throw new Error('Copied card verification failed');\nconst sd = $getWorkflowStaticData('global');\nsd['done_' + plan.eventId] = new Date().toISOString();\ndelete sd['processing_' + plan.eventId];\nreturn [{ json: { status: 'routed', eventId: plan.eventId, sourceCardId: plan.cardId, copiedCardId: copied.id, copiedCardUrl: copied.url, destinationListId: copied.idList, warnings: plan.warnings } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Quentin Board Trigger": {
+      "main": [
+        [
+          {
+            "node": "Gate Exact Vector Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Exact Vector Event": {
+      "main": [
+        [
+          {
+            "node": "Get Source Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Source Card": {
+      "main": [
+        [
+          {
+            "node": "Prepare Card Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Card Context": {
+      "main": [
+        [
+          {
+            "node": "Download image.png",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download image.png": {
+      "main": [
+        [
+          {
+            "node": "Build Vision Proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Vision Proposal": {
+      "main": [
+        [
+          {
+            "node": "Read Supplier Drawing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Supplier Drawing": {
+      "main": [
+        [
+          {
+            "node": "Plan Safe Field Operations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Safe Field Operations": {
+      "main": [
+        [
+          {
+            "node": "Update Backboard Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Backboard Fields": {
+      "main": [
+        [
+          {
+            "node": "Finalize Advisory Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Advisory Results": {
+      "main": [
+        [
+          {
+            "node": "Set Price Deviation Title",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Price Deviation Title": {
+      "main": [
+        [
+          {
+            "node": "Warning Comment Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warning Comment Needed?": {
+      "main": [
+        [
+          {
+            "node": "Add One Warning Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Copy Normalized Card Once",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add One Warning Comment": {
+      "main": [
+        [
+          {
+            "node": "Copy Normalized Card Once",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy Normalized Card Once": {
+      "main": [
+        [
+          {
+            "node": "Verify Copied Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Copied Card": {
+      "main": [
+        [
+          {
+            "node": "Record Completed Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "executionTimeout": 180
+  }
+}
