@@ -16,8 +16,15 @@ const ctx = $input.first().json || {};
 const exec = ctx.execution || {};
 const err = exec.error || ctx.error || {};
 const raw = [err.message, err.description, err.stack].filter(Boolean).join(' ');
-const match = raw.match(/https:\/\/trello\.com\/c\/[A-Za-z0-9_-]+(?:\/[^\s<>"']*)?/i);
-const cardUrl = match ? match[0] : 'https://trello.com/b/9QNAfkv4/quentin-neon-signs';
+const marker = 'https://trello.com/c/';
+const start = raw.indexOf(marker);
+let cardUrl = 'https://trello.com/b/9QNAfkv4/quentin-neon-signs';
+if (start >= 0) {
+  const tail = raw.slice(start);
+  const stops = [' ', String.fromCharCode(10), String.fromCharCode(13), '<', '>', '"', "'", ')', ']'];
+  const ends = stops.map(stop => tail.indexOf(stop)).filter(index => index >= 0);
+  cardUrl = tail.slice(0, ends.length ? Math.min(...ends) : tail.length);
+}
 const executionUrl = String(exec.url || '');
 const failedNode = String(exec.lastNodeExecuted || err.node?.name || 'Unbekannt');
 const errorMessage = String(err.message || err.description || 'Unbekannter Fehler').slice(0, 2000);
