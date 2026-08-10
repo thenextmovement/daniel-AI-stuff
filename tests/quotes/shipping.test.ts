@@ -117,13 +117,16 @@ test("deriveShippingIncidentCandidates flags stale in-transit shipments by busin
 });
 
 test("deriveShippingIncidentCandidates escalates failed delivery and return-to-sender immediately", () => {
+  const now = new Date("2026-06-05T10:01:00.000Z");
   const failed = deriveShippingIncidentCandidates(
     { id: "shipment-1", carrier: "dhl", trackingNumber: "TRACK-1", status: "delivery_failed", shippedAt: null, lastEventAt: null },
     { id: "event-1", eventTime: "2026-06-05T10:00:00.000Z", carrierStatusText: "Zustellung fehlgeschlagen" },
+    now,
   );
   const returning = deriveShippingIncidentCandidates(
     { id: "shipment-1", carrier: "dpd", trackingNumber: "TRACK-1", status: "returning", shippedAt: null, lastEventAt: null },
     null,
+    now,
   );
 
   assert.equal(failed[0].incidentType, "delivery_failed");
