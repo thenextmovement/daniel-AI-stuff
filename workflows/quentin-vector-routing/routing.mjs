@@ -22,21 +22,21 @@ export function classifyTitle(title) {
   const led = /\b(?:led\s*-?\s*neon(?:\s*-?\s*flex)?|neon\s*-?\s*flex)\b/i.test(value);
   if (led) return { kind: 'led-neon-flex', destinationListId: CONFIG.abdulListId, known: true };
   const rules = [
-    ['3d-backlit', /\b3d\s*-?\s*back\s*-?\s*lit\b/i],
-    ['3d-frontlit', /\b3d\s*-?\s*front\s*-?\s*lit\b/i],
-    ['3d-nonlit', /\b3d\s*-?\s*non\s*-?\s*lit\b/i],
+    ['3d-backlit', /\b(?:3d\s*-?\s*)?back\s*-?\s*lit\b/i],
+    ['3d-frontlit', /\b(?:3d\s*-?\s*)?front\s*-?\s*lit\b/i],
+    ['3d-nonlit', /\b(?:3d\s*-?\s*)?non\s*-?\s*lit\b/i],
+    ['3d-other', /\b3d\b/i],
     ['lightbox', /\blight\s*-?\s*box\b/i],
     ['ultra-thin-acrylic', /\bultra\s*-?\s*thin\s+acrylic\b/i],
     ['neon-halo', /\bneon\s*-?\s*halo\b/i],
     ['full-glow', /\bfull\s*-?\s*glow\b/i],
-    ['marquee', /\bmarquee\b/i],
+    ['marquee', /\bmarquee?\b/i],
   ];
   const match = rules.find(([, regex]) => regex.test(value));
-  return {
-    kind: match ? match[0] : 'unknown-non-neon',
-    destinationListId: CONFIG.quoteReadyListId,
-    known: Boolean(match),
-  };
+  if (match) {
+    return { kind: match[0], destinationListId: CONFIG.quoteReadyListId, known: true };
+  }
+  return { kind: 'led-neon-flex', destinationListId: CONFIG.abdulListId, known: true, defaulted: true };
 }
 
 export function normalizeBackboard(raw, productKind) {

@@ -11,15 +11,22 @@ test('LED Neon and Neon Flex always win and route to Abdul', () => {
 });
 
 test('specialist products route directly to Quote Ready', () => {
-  for (const title of ['3D Backlit', '3D Frontlit', '3D NonLit', 'Light Box', 'Lightbox', 'Ultra Thin Acrylic', 'Neon Halo', 'Full Glow', 'Marquee']) {
+  for (const title of [
+    '3D Backlit', 'Backlit Letters', '3D Frontlit', 'Frontlit Letters', '3D NonLit', 'NonLit Letters',
+    '3D Letters', '3D-Marquee', 'Light Box', 'Lightbox', 'Ultra Thin Acrylic', 'Neon Halo',
+    'Full Glow', 'Marquee', 'Marque Letters selfstanding',
+  ]) {
     assert.equal(classifyTitle(title).destinationListId, CONFIG.quoteReadyListId, title);
   }
 });
 
-test('unknown titles fail safe to management instead of Abdul', () => {
-  assert.deepEqual(classifyTitle('Acrylic logo only'), {
-    kind: 'unknown-non-neon', destinationListId: CONFIG.quoteReadyListId, known: false,
-  });
+test('every non-specialist title defaults to LED Neon Flex and Abdul', () => {
+  for (const title of ['Acrylic logo only', 'Christian Dirks 120x29cm', '', 'Custom sign cut to shape']) {
+    const result = classifyTitle(title);
+    assert.equal(result.kind, 'led-neon-flex', title);
+    assert.equal(result.destinationListId, CONFIG.abdulListId, title);
+    assert.equal(result.defaulted, true, title);
+  }
 });
 
 test('backboard translations are exact German customer-facing values', () => {
