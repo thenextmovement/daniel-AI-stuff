@@ -1,0 +1,39 @@
+{
+  "capturedAt": "2026-08-11T10:34:00+02:00",
+  "purpose": "Exact inactive n8n graph backups before RIESENOBJEKTE attachment persistence and Trello projection repair",
+  "verification": "For every workflow, the active nodes, connections and settings were copied to an inactive workflow and compared with JSON.stringify. All comparisons matched exactly.",
+  "workflows": [
+    {
+      "sourceId": "1hRkUxPXUZoYRSgL",
+      "sourceName": "RIESENOBJEKTE First-Party Form Intake v1 — Deterministic",
+      "sourceActiveVersionId": "bfea4aea-b106-41ce-9c24-37d8cb5e5f29",
+      "backupId": "K08wxC2Loua6Oytd",
+      "nodes": 25,
+      "exact": true
+    },
+    {
+      "sourceId": "4VVrvNT6YAM7yWDW",
+      "sourceName": "RIESENOBJEKTE DB → Trello Projection v1",
+      "sourceActiveVersionId": "11cfd09a-b1f3-4ef3-9b72-c1f5886fb198",
+      "backupId": "oLWnUc0LV0vwq0Jd",
+      "nodes": 12,
+      "exact": true
+    },
+    {
+      "sourceId": "1sfVyhUafhfUtPoi",
+      "sourceName": "RIESENOBJEKTE DB → Trello Actions Projection v1",
+      "sourceActiveVersionId": "d7a38eb0-fd97-4da9-abc3-71e43bc81f17",
+      "backupId": "zjDDMGNHBi9LZnfr",
+      "nodes": 26,
+      "exact": true
+    }
+  ],
+  "edgeFunction": {
+    "projectRef": "klibiejfisijpagzkxls",
+    "slug": "ro-first-party-attachment-ingest",
+    "version": 6,
+    "verifyJwt": true,
+    "sha256": "8c94d3fc52ca14c0ea8e697894ae72ac95ef3467ec2f5a9d20ff84c03c969aa7",
+    "sourceBackup": "../../supabase/functions/ro-first-party-attachment-ingest/backups/index.v6.ts"
+  }
+}
