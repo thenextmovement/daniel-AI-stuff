@@ -15,19 +15,23 @@ function sameSecret(left, right) {
   return mismatch === 0;
 }
 
-function hasServiceRoleCredential(headers, serviceRoleKey) {
+function hasServiceRoleCredential(headers, serviceRoleKeys) {
   const apiKey = headers.apikey ?? "";
   const authorization = headers.authorization ?? "";
   const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
   const bearerToken = bearerMatch?.[1]?.trim() ?? "";
-  return sameSecret(apiKey, serviceRoleKey) ||
-    sameSecret(bearerToken, serviceRoleKey);
+  return serviceRoleKeys.some((serviceRoleKey) =>
+    sameSecret(apiKey, serviceRoleKey) ||
+    sameSecret(bearerToken, serviceRoleKey)
+  );
 }
 
 test("deployed source accepts either service-role header shape", () => {
   assert.match(source, /request\.headers\.get\("apikey"\)/);
   assert.match(source, /request\.headers\.get\("authorization"\)/);
   assert.match(source, /authorization\.match\(\/\^Bearer\\s\+\(\.\+\)\$\/i\)/);
+  assert.match(source, /Deno\.env\.get\("SUPABASE_SECRET_KEYS"\)/);
+  assert.match(source, /SERVICE_ROLE_KEYS\.some/);
   assert.match(source, /!hasServiceRoleCredential/);
   assert.doesNotMatch(
     source,
@@ -37,16 +41,19 @@ test("deployed source accepts either service-role header shape", () => {
 
 test("service role is accepted from apikey", () => {
   assert.equal(
-    hasServiceRoleCredential({ apikey: "service-secret" }, "service-secret"),
+    hasServiceRoleCredential(
+      { apikey: "legacy-service-secret" },
+      ["legacy-service-secret", "sb_secret_new"],
+    ),
     true,
   );
 });
 
-test("service role is accepted from bearer authorization", () => {
+test("new opaque secret key is accepted from bearer authorization", () => {
   assert.equal(
     hasServiceRoleCredential(
-      { authorization: "Bearer service-secret" },
-      "service-secret",
+      { authorization: "Bearer sb_secret_new" },
+      ["legacy-service-secret", "sb_secret_new"],
     ),
     true,
   );
@@ -56,9 +63,12 @@ test("non-service credentials remain rejected", () => {
   assert.equal(
     hasServiceRoleCredential(
       { apikey: "anon-key", authorization: "Bearer user-jwt" },
-      "service-secret",
+      ["legacy-service-secret", "sb_secret_new"],
     ),
     false,
   );
-  assert.equal(hasServiceRoleCredential({}, "service-secret"), false);
+  assert.equal(
+    hasServiceRoleCredential({}, ["legacy-service-secret", "sb_secret_new"]),
+    false,
+  );
 });

@@ -2,6 +2,31 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+function configuredServiceRoleKeys() {
+  const keys = [SERVICE_ROLE_KEY];
+  const singleSecretKey = Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
+  if (singleSecretKey) keys.push(singleSecretKey);
+  try {
+    const namedSecretKeys = JSON.parse(
+      Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}",
+    );
+    if (
+      namedSecretKeys &&
+      typeof namedSecretKeys === "object" &&
+      !Array.isArray(namedSecretKeys)
+    ) {
+      for (const value of Object.values(namedSecretKeys)) {
+        if (typeof value === "string" && value) keys.push(value);
+      }
+    }
+  } catch {
+    // A malformed platform secret dictionary must fail closed.
+  }
+  return [...new Set(keys.filter(Boolean))];
+}
+
+const SERVICE_ROLE_KEYS = configuredServiceRoleKeys();
+
 const STORAGE_BUCKET = "ro-lead-attachments";
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
@@ -182,13 +207,15 @@ Deno.serve(async (request) => {
   const authorization = request.headers.get("authorization") ?? "";
   const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
   const bearerToken = bearerMatch?.[1]?.trim() ?? "";
-  const hasServiceRoleCredential =
-    sameSecret(apiKey, SERVICE_ROLE_KEY) ||
-    sameSecret(bearerToken, SERVICE_ROLE_KEY);
+  const hasServiceRoleCredential = SERVICE_ROLE_KEYS.some((serviceRoleKey) =>
+    sameSecret(apiKey, serviceRoleKey) ||
+    sameSecret(bearerToken, serviceRoleKey)
+  );
 
   if (
     !SUPABASE_URL ||
     !SERVICE_ROLE_KEY ||
+    SERVICE_ROLE_KEYS.length === 0 ||
     !hasServiceRoleCredential
   ) {
     return json({ error: "unauthorized" }, 401);

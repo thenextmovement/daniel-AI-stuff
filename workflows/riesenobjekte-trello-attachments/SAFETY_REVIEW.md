@@ -10,8 +10,10 @@ routing or NEONTRIP behavior is changed.
 ## Controls
 
 - The Edge Function still requires Supabase gateway JWT verification and then
-  independently requires the exact service-role secret, supplied as either the
-  `apikey` header or the existing n8n Bearer credential.
+  independently requires an exact platform-provided server secret: either the
+  legacy `SUPABASE_SERVICE_ROLE_KEY` or a value from `SUPABASE_SECRET_KEYS`,
+  supplied as `apikey` or the existing n8n Bearer credential. Publishable and
+  user credentials are not accepted.
 - Storage bucket, object path, UUIDs, board, card, file name, MIME type, byte
   size and SHA-256 are allowlisted or validated before Trello access.
 - One deterministic outbox idempotency key exists per database attachment.
