@@ -1,5 +1,5 @@
 {
-  "name": "NEONTRIP Quentin Vector Normalize + Route v1.0",
+  "name": "NEONTRIP Quentin Vector Exact Copy Route v1.2",
   "nodes": [
     {
       "id": "trigger",
@@ -18,7 +18,8 @@
           "id": "96DRckmFxj423JUR",
           "name": "Trello account"
         }
-      }
+      },
+      "webhookId": "a963a1fd-4044-4ea5-9705-63e6d41e2fdf"
     },
     {
       "id": "gate",
@@ -30,7 +31,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst event = $json.action || $json;\nconst eventId = String(event.id || $json.id || '');\nconst type = String(event.type || '');\nconst data = event.data || {};\nconst boardId = String(data.board?.id || data.card?.idBoard || '');\nconst listAfterId = String(data.listAfter?.id || '');\nif (!eventId || type !== 'updateCard' || boardId !== '62bae9b97705e7419ed64593' || listAfterId !== '6421a75cc602d9d540d59f2d') return [];\nconst sd = $getWorkflowStaticData('global');\nconst doneKey = 'done_' + eventId;\nconst processingKey = 'processing_' + eventId;\nif (sd[doneKey]) return [];\nconst now = Date.now();\nif (sd[processingKey] && now - Number(sd[processingKey]) < 15 * 60 * 1000) return [];\nsd[processingKey] = now;\nreturn [{ json: { eventId, cardId: String(data.card?.id || ''), sourceBoardId: boardId, sourceListId: listAfterId } }];"
+        "jsCode": "const event = $json.action || $json;\nconst eventId = String(event.id || $json.id || '');\nconst type = String(event.type || '');\nconst data = event.data || {};\nconst boardId = String(data.board?.id || data.card?.idBoard || '');\nconst listAfterId = String(data.listAfter?.id || '');\nconst cardId = String(data.card?.id || '');\nif (!eventId || !cardId || type !== 'updateCard' || boardId !== '62bae9b97705e7419ed64593' || listAfterId !== '6421a75cc602d9d540d59f2d') return [];\nconst sd = $getWorkflowStaticData('global');\nconst doneKey = 'done_card_' + cardId;\nconst processingKey = 'processing_card_' + cardId;\nconst now = Date.now();\nif (sd[processingKey] && now - Number(sd[processingKey]) < 10 * 60 * 1000) return [];\nsd[processingKey] = now;\nreturn [{ json: { eventId, cardId, sourceBoardId: boardId, sourceListId: listAfterId } }];"
       }
     },
     {
@@ -52,7 +53,7 @@
           "parameters": [
             {
               "name": "fields",
-              "value": "id,name,url,idBoard,idList"
+              "value": "id,name,desc,url,idBoard,idList,idChecklists,closed,badges"
             },
             {
               "name": "attachments",
@@ -60,11 +61,23 @@
             },
             {
               "name": "attachment_fields",
-              "value": "id,name,mimeType,date,url"
+              "value": "id,name,mimeType,date,url,bytes"
             },
             {
               "name": "customFieldItems",
               "value": "true"
+            },
+            {
+              "name": "actions",
+              "value": "commentCard"
+            },
+            {
+              "name": "actions_limit",
+              "value": "1000"
+            },
+            {
+              "name": "action_fields",
+              "value": "data,date,type"
             }
           ]
         },
@@ -92,7 +105,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst card = $json;\nconst event = $('Gate Exact Vector Event').first().json;\nfunction classifyTitle(title) {\n  const value = String(title || '').toLowerCase().replace(/[‐‑‒–—−_]/g, '-');\n  if (/\\b(?:led\\s*-?\\s*neon(?:\\s*-?\\s*flex)?|neon\\s*-?\\s*flex)\\b/i.test(value)) return { kind: 'led-neon-flex', destinationListId: '6421a72719c7af9056e6d16b', known: true };\n  const rules = [\n    ['3d-backlit', /\\b(?:3d\\s*-?\\s*)?back\\s*-?\\s*lit\\b/i], ['3d-frontlit', /\\b(?:3d\\s*-?\\s*)?front\\s*-?\\s*lit\\b/i],\n    ['3d-nonlit', /\\b(?:3d\\s*-?\\s*)?non\\s*-?\\s*lit\\b/i], ['3d-other', /\\b3d\\b/i],\n    ['lightbox', /\\blight\\s*-?\\s*box\\b/i],\n    ['ultra-thin-acrylic', /\\bultra\\s*-?\\s*thin\\s+acrylic\\b/i], ['neon-halo', /\\bneon\\s*-?\\s*halo\\b/i],\n    ['full-glow', /\\bfull\\s*-?\\s*glow\\b/i], ['marquee', /\\bmarquee?\\b/i],\n  ];\n  const found = rules.find(([, regex]) => regex.test(value));\n  if (found) return { kind: found[0], destinationListId: '659ffc4e5f8bffd67fe38265', known: true };\n  return { kind: 'led-neon-flex', destinationListId: '6421a72719c7af9056e6d16b', known: true, defaulted: true };\n}\nconst route = classifyTitle(card.name);\nconst attachments = Array.isArray(card.attachments) ? card.attachments : [];\nconst image = attachments.filter(a => /^image\\.png$/i.test(String(a.name || '').trim())).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')))[0] || null;\nconst fieldValues = Object.fromEntries((card.customFieldItems || []).map(item => [item.idCustomField, item.value?.text ?? item.value?.number ?? '']));\nreturn [{ json: { ...event, cardId: card.id, cardName: card.name || '', cardUrl: card.url || '', route, imageUrl: image?.url || '', imageAttachmentId: image?.id || '', fieldValues } }];"
+        "jsCode": "\nconst card = $json;\nconst event = $('Gate Exact Vector Event').first().json;\nfunction classifyTitle(title) {\n  const value = String(title || '').toLowerCase().replace(/[\u2010\u2011\u2012\u2013\u2014\u2212_]/g, '-');\n  if (/\\b(?:led\\s*-?\\s*neon(?:\\s*-?\\s*flex)?|neon\\s*-?\\s*flex)\\b/i.test(value)) return { kind: 'led-neon-flex', destinationListId: '6421a72719c7af9056e6d16b', known: true };\n  const rules = [\n    ['3d-backlit', /\\b(?:3d\\s*-?\\s*)?back\\s*-?\\s*lit\\b/i], ['3d-frontlit', /\\b(?:3d\\s*-?\\s*)?front\\s*-?\\s*lit\\b/i],\n    ['3d-nonlit', /\\b(?:3d\\s*-?\\s*)?non\\s*-?\\s*lit\\b/i], ['3d-other', /\\b3d\\b/i],\n    ['lightbox', /\\blight\\s*-?\\s*box\\b/i],\n    ['ultra-thin-acrylic', /\\bultra\\s*-?\\s*thin\\s+acrylic\\b/i], ['neon-halo', /\\bneon\\s*-?\\s*halo\\b/i],\n    ['full-glow', /\\bfull\\s*-?\\s*glow\\b/i], ['marquee', /\\bmarquee?\\b/i],\n  ];\n  const found = rules.find(([, regex]) => regex.test(value));\n  if (found) return { kind: found[0], destinationListId: '659ffc4e5f8bffd67fe38265', known: true };\n  return { kind: 'led-neon-flex', destinationListId: '6421a72719c7af9056e6d16b', known: true, defaulted: true };\n}\nconst route = classifyTitle(card.name);\nconst MARKER_PREFIX = '<!-- NEONTRIP_QUENTIN_COPY:v1 source=';\nfunction parseCopyMarker(text) {\n  const value = String(text || '');\n  const start = value.indexOf(MARKER_PREFIX);\n  if (start < 0) return null;\n  const body = value.slice(start + MARKER_PREFIX.length);\n  const end = body.indexOf(' -->');\n  if (end < 0) return null;\n  const parts = body.slice(0, end).split(' target=');\n  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;\n  return { sourceId: parts[0].trim(), targetId: parts[1].trim() };\n}\nconst sourceActions = Array.isArray(card.actions) ? card.actions : [];\nlet existingCopyTargetId = '';\nfor (const action of sourceActions) {\n  const parsed = parseCopyMarker(action?.data?.text);\n  if (parsed && parsed.sourceId === String(card.id) && parsed.targetId) {\n    existingCopyTargetId = parsed.targetId;\n    break;\n  }\n}\nconst attachments = Array.isArray(card.attachments) ? card.attachments : [];\nconst image = attachments.filter(a => /^image\\.png$/i.test(String(a.name || '').trim())).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')))[0] || null;\nconst fieldValues = Object.fromEntries((card.customFieldItems || []).map(item => [item.idCustomField, item.value?.text ?? item.value?.number ?? '']));\nconst attachmentSignature = attachments.map(a => [String(a.name || ''), Number(a.bytes || 0), String(a.mimeType || '')].join('|')).sort();\nconst customFieldCount = Array.isArray(card.customFieldItems) ? card.customFieldItems.length : 0;\nreturn [{ json: {\n  ...event,\n  cardId: card.id,\n  cardName: card.name || '',\n  cardDescription: card.desc || '',\n  cardUrl: card.url || '',\n  route,\n  existingCopyTargetId,\n  imageUrl: image?.url || '',\n  imageAttachmentId: image?.id || '',\n  fieldValues,\n  sourceSnapshot: {\n    attachmentSignature,\n    checklistCount: Array.isArray(card.idChecklists) ? card.idChecklists.length : 0,\n    customFieldCount,\n    commentCount: Number(card.badges?.comments || 0)\n  }\n} }];"
       }
     },
     {
@@ -125,10 +138,10 @@
           "name": "Trello account"
         }
       },
-      "continueOnFail": true,
       "retryOnFail": true,
       "maxTries": 2,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "vision-body",
@@ -179,10 +192,10 @@
           "name": "OpenAi account"
         }
       },
-      "continueOnFail": true,
       "retryOnFail": true,
       "maxTries": 2,
-      "waitBetweenTries": 5000
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "plan",
@@ -194,7 +207,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst ctx = $('Prepare Card Context').first().json;\nconst BACKBOARD_IDS = ['67ab34664610ec7a48dd3e25','67ab34753b38d5d627c00406','67f4f919135f6ee95dcfafc1','67f4f96efd792feaa9b0c1df'];\nconst PRICE_IDS = ['67ab4036913a9ecdc0cb3a30','67ab404384a17910e9673e48','67f4f8f054ff1b3f888c0228','67f4f933dd18fd2f77bf8708'];\nfunction translate(raw, kind) {\n  const value = String(raw || '').toLowerCase().trim().replace(/[‐‑‒–—−_]/g, ' ');\n  if (kind === 'led-neon-flex') {\n    if (/cut\\s*to\\s*shape|shape\\s*cut/.test(value)) return { value: 'Formzuschnitt' };\n    if (/cut\\s*to\\s*(?:letter|letters)|fine\\s*cut/.test(value)) return { value: 'Feinzuschnitt' };\n    if (/cut\\s*to\\s*(?:board|rectangle)|rectangular\\s*cut/.test(value)) return { value: 'Rechteckiger Zuschnitt' };\n    return { value: '' };\n  }\n  return { value: /loose\\s*letters?/.test(value) ? 'Einzelne Buchstaben' : '' };\n}\nfunction money(value) {\n  if (value === null || value === undefined || value === '') return { value: null };\n  const number = Number(String(value).replace(/[^0-9,.-]/g, '').replace(',', '.'));\n  return { value: Number.isFinite(number) ? Math.round(number * 100) / 100 : null };\n}\nlet proposal = { variants: [], issues: [] };\nconst warnings = [];\ntry {\n  const raw = $json.choices?.[0]?.message?.content;\n  proposal = JSON.parse(String(raw || '{}'));\n} catch (error) { warnings.push('image.png konnte nicht zuverlässig ausgewertet werden'); }\nlet variants = Array.isArray(proposal.variants) ? proposal.variants : [];\nvariants = variants.filter(v => Number.isInteger(Number(v.reading_order)) && Number(v.reading_order) >= 1).sort((a,b) => Number(a.reading_order)-Number(b.reading_order));\nif (!ctx.imageUrl) warnings.push('image.png fehlt');\nif (!variants.length) warnings.push('keine sicher zuordenbare Variante aus image.png');\nif (variants.length > 4) warnings.push((variants.length - 4) + ' weitere Variante(n) passen nicht in die vier Trello-Felder');\nif (Array.isArray(proposal.issues)) {\n  for (const issue of proposal.issues) {\n    const text = String(issue || '').trim();\n    if (text) warnings.push(text);\n  }\n}\nconst fieldOps = [];\nlet mismatch = false;\nfor (let index = 0; index < 4; index += 1) {\n  const variant = variants[index];\n  const value = variant ? translate(variant.backboard_raw, ctx.route.kind).value : '';\n  if (variant && !value) warnings.push('Backboard_' + (index + 1) + ' konnte nicht sicher ausgelesen werden');\n  fieldOps.push({ fieldId: BACKBOARD_IDS[index], value });\n  if (variant && money(variant.total).value !== null) {\n    const current = money(ctx.fieldValues[PRICE_IDS[index]]).value;\n    if (current === null || Math.abs(current - money(variant.total).value) > 0.009) mismatch = true;\n  } else if (variant) warnings.push('Total für Price_' + (index + 1) + ' konnte nicht sicher ausgelesen werden');\n}\nif (ctx.route.kind !== 'led-neon-flex' && !variants.length) warnings.push('Neon-Zuschnittswerte wurden bei einem Nicht-Neon-Produkt entfernt');\nconst suffix = 'Custom Fields Abweichung❗';\nconst newTitle = mismatch && !ctx.cardName.includes(suffix) ? ctx.cardName + ' ' + suffix : ctx.cardName;\nconst uniqueWarnings = [];\nfor (const warning of warnings) {\n  const text = String(warning || '').trim();\n  if (text && !uniqueWarnings.includes(text)) uniqueWarnings.push(text);\n}\nconst output = [];\nfor (const op of fieldOps) output.push({ json: { ...ctx, ...op, mismatch, newTitle, warnings: uniqueWarnings } });\nreturn output;"
+        "jsCode": "\nconst ctx = $('Prepare Card Context').first().json;\nconst BACKBOARD_IDS = ['67ab34664610ec7a48dd3e25','67ab34753b38d5d627c00406','67f4f919135f6ee95dcfafc1','67f4f96efd792feaa9b0c1df'];\nconst PRICE_IDS = ['67ab4036913a9ecdc0cb3a30','67ab404384a17910e9673e48','67f4f8f054ff1b3f888c0228','67f4f933dd18fd2f77bf8708'];\nfunction translate(raw, kind) {\n  const value = String(raw || '').toLowerCase().trim().replace(/[\u2010\u2011\u2012\u2013\u2014\u2212_]/g, ' ');\n  if (kind === 'led-neon-flex') {\n    if (/cut\\s*to\\s*shape|shape\\s*cut/.test(value)) return { value: 'Formzuschnitt' };\n    if (/cut\\s*to\\s*(?:letter|letters)|fine\\s*cut/.test(value)) return { value: 'Feinzuschnitt' };\n    if (/cut\\s*to\\s*(?:board|rectangle)|rectangular\\s*cut/.test(value)) return { value: 'Rechteckiger Zuschnitt' };\n    return { value: '' };\n  }\n  return { value: /loose\\s*letters?/.test(value) ? 'Einzelne Buchstaben' : '' };\n}\nfunction money(value) {\n  if (value === null || value === undefined || value === '') return { value: null };\n  const number = Number(String(value).replace(/[^0-9,.-]/g, '').replace(',', '.'));\n  return { value: Number.isFinite(number) ? Math.round(number * 100) / 100 : null };\n}\nlet proposal = { variants: [], issues: [] };\nconst warnings = [];\ntry {\n  const raw = $json.choices?.[0]?.message?.content;\n  proposal = JSON.parse(String(raw || '{}'));\n} catch (error) { warnings.push('image.png konnte nicht zuverl\u00e4ssig ausgewertet werden'); }\nlet variants = Array.isArray(proposal.variants) ? proposal.variants : [];\nvariants = variants.filter(v => Number.isInteger(Number(v.reading_order)) && Number(v.reading_order) >= 1).sort((a,b) => Number(a.reading_order)-Number(b.reading_order));\nif (!ctx.imageUrl) warnings.push('image.png fehlt');\nif (!variants.length) warnings.push('keine sicher zuordenbare Variante aus image.png');\nif (variants.length > 4) warnings.push((variants.length - 4) + ' weitere Variante(n) passen nicht in die vier Trello-Felder');\nif (Array.isArray(proposal.issues)) {\n  for (const issue of proposal.issues) {\n    const text = String(issue || '').trim();\n    if (text) warnings.push(text);\n  }\n}\nconst fieldOps = [];\nlet mismatch = false;\nfor (let index = 0; index < 4; index += 1) {\n  const variant = variants[index];\n  const value = variant ? translate(variant.backboard_raw, ctx.route.kind).value : '';\n  if (variant && !value) warnings.push('Backboard_' + (index + 1) + ' konnte nicht sicher ausgelesen werden');\n  const existingBackboard = String(ctx.fieldValues[BACKBOARD_IDS[index]] || '');\n  fieldOps.push({ fieldId: BACKBOARD_IDS[index], value: value || existingBackboard });\n  if (variant && money(variant.total).value !== null) {\n    const current = money(ctx.fieldValues[PRICE_IDS[index]]).value;\n    if (current === null || Math.abs(current - money(variant.total).value) > 0.009) mismatch = true;\n  } else if (variant) warnings.push('Total f\u00fcr Price_' + (index + 1) + ' konnte nicht sicher ausgelesen werden');\n}\nif (ctx.route.kind !== 'led-neon-flex' && !variants.length) warnings.push('Neon-Zuschnittswerte wurden bei einem Nicht-Neon-Produkt entfernt');\nconst uniqueWarnings = [];\nfor (const warning of warnings) {\n  const text = String(warning || '').trim();\n  if (text && !uniqueWarnings.includes(text)) uniqueWarnings.push(text);\n}\nconst titleFlags = [];\nif (mismatch || uniqueWarnings.some(w => /(?:total|price|preis)/i.test(w))) titleFlags.push('Preise pr\u00fcfen');\nif (uniqueWarnings.some(w => /(?:backboard|zuschnitt|image\\.png|variante)/i.test(w))) titleFlags.push('Formzuschnitt pr\u00fcfen');\nif (uniqueWarnings.length && titleFlags.length === 0) titleFlags.push('Angaben pr\u00fcfen');\nconst cleanTitle = ctx.cardName.replace(/\\s+\u2757\\s+(?:(?:Preise|Formzuschnitt|Angaben) pr\u00fcfen)(?:\\s*\\/\\s*(?:(?:Preise|Formzuschnitt|Angaben) pr\u00fcfen))*\\s*$/i, '');\nconst newTitle = titleFlags.length ? cleanTitle + ' \u2757 ' + titleFlags.join(' / ') : ctx.cardName;\nconst output = [];\nfor (const op of fieldOps) output.push({ json: { ...ctx, ...op, mismatch, newTitle, warnings: uniqueWarnings } });\nreturn output;"
       }
     },
     {
@@ -224,10 +237,10 @@
           "name": "Trello account"
         }
       },
-      "continueOnFail": true,
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "finalize",
@@ -239,7 +252,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "\nconst plan = $('Plan Safe Field Operations').first().json;\nconst failedFields = $input.all().filter(item => item.json?.error).length;\nconst warnings = [...(plan.warnings || [])];\nif (failedFields) warnings.push(failedFields + ' Backboard-Feld(er) konnten technisch nicht aktualisiert werden');\nconst unique = [...new Set(warnings)];\nreturn [{ json: { ...plan, warnings: unique, needsComment: unique.length > 0, commentText: '❗ TICKET-103 [' + plan.eventId + '] ' + unique.join('; ') } }];"
+        "jsCode": "\nconst plan = $('Plan Safe Field Operations').first().json;\nconst failedFields = $input.all().filter(item => item.json?.error).length;\nconst warnings = [...(plan.warnings || [])];\nif (failedFields) warnings.push(failedFields + ' Backboard-Feld(er) konnten technisch nicht aktualisiert werden');\nconst unique = [...new Set(warnings)];\nreturn [{ json: { ...plan, warnings: unique, needsComment: unique.length > 0, commentText: '\u2757 TICKET-103 [' + plan.eventId + '] ' + unique.join('; ') } }];"
       }
     },
     {
@@ -269,10 +282,10 @@
           "name": "Trello account"
         }
       },
-      "continueOnFail": true,
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "if-comment",
@@ -335,14 +348,14 @@
           "name": "Trello account"
         }
       },
-      "continueOnFail": true,
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "copy",
-      "name": "Copy Normalized Card Once",
+      "name": "Copy Card 1:1 Once",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
@@ -390,7 +403,19 @@
           "parameters": [
             {
               "name": "fields",
-              "value": "id,name,url,idBoard,idList"
+              "value": "id,name,desc,url,idBoard,idList,idChecklists,closed,badges"
+            },
+            {
+              "name": "attachments",
+              "value": "true"
+            },
+            {
+              "name": "attachment_fields",
+              "value": "id,name,mimeType,date,url,bytes"
+            },
+            {
+              "name": "customFieldItems",
+              "value": "true"
             }
           ]
         },
@@ -410,15 +435,312 @@
     },
     {
       "id": "complete",
-      "name": "Record Completed Event",
+      "name": "Verify Copy and Record Card",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3300,
-        300
+        3960,
+        180
       ],
       "parameters": {
-        "jsCode": "\nconst plan = $('Finalize Advisory Results').first().json;\nconst copied = $json;\nif (!copied?.id || String(copied.idList || '') !== String(plan.route.destinationListId)) throw new Error('Copied card verification failed');\nconst sd = $getWorkflowStaticData('global');\nsd['done_' + plan.eventId] = new Date().toISOString();\ndelete sd['processing_' + plan.eventId];\nreturn [{ json: { status: 'routed', eventId: plan.eventId, sourceCardId: plan.cardId, copiedCardId: copied.id, copiedCardUrl: copied.url, destinationListId: copied.idList, warnings: plan.warnings } }];"
+        "jsCode": "const plan = $('Finalize Advisory Results').first().json;\nconst source = $('Prepare Card Context').first().json;\nconst copied = $json;\nconst expectedMarker = '<!-- NEONTRIP_QUENTIN_COPY:v1 source=' + plan.cardId + ' target=' + String(copied?.id || '') + ' -->';\nconst copiedActions = Array.isArray(copied?.actions) ? copied.actions : [];\nif (!copiedActions.some(action => String(action?.data?.text || '').includes(expectedMarker))) throw new Error('Exact target copy marker verification failed');\nif (!copied?.id || String(copied.idList || '') !== String(plan.route.destinationListId)) {\n  throw new Error('Target card was not created in the required list');\n}\nconst verificationWarnings = [];\nconst copiedAttachmentSignature = (Array.isArray(copied.attachments) ? copied.attachments : [])\n  .map(a => [String(a.name || ''), Number(a.bytes || 0), String(a.mimeType || '')].join('|'))\n  .sort();\nif (JSON.stringify(copiedAttachmentSignature) !== JSON.stringify(source.sourceSnapshot.attachmentSignature)) verificationWarnings.push('attachments differ');\nif (String(copied.desc || '') !== String(source.cardDescription || '')) verificationWarnings.push('description differs');\nconst copiedChecklistCount = Array.isArray(copied.idChecklists) ? copied.idChecklists.length : 0;\nif (copiedChecklistCount !== source.sourceSnapshot.checklistCount) verificationWarnings.push('checklists differ');\nconst copiedCustomFieldCount = Array.isArray(copied.customFieldItems) ? copied.customFieldItems.length : 0;\nif (copiedCustomFieldCount !== source.sourceSnapshot.customFieldCount) verificationWarnings.push('custom field count differs');\nif (Number(copied.badges?.comments || 0) < source.sourceSnapshot.commentCount) verificationWarnings.push('comments missing');\nconst sd = $getWorkflowStaticData('global');\nsd['done_card_' + plan.cardId] = {\n  at: new Date().toISOString(),\n  eventId: plan.eventId,\n  copiedCardId: String(copied.id)\n};\nsd['done_' + plan.eventId] = new Date().toISOString();\ndelete sd['processing_card_' + plan.cardId];\ndelete sd['processing_' + plan.eventId];\nreturn [{ json: {\n  status: 'copied',\n  eventId: plan.eventId,\n  sourceCardId: plan.cardId,\n  sourceCardUrl: plan.cardUrl,\n  copiedCardId: String(copied.id),\n  copiedCardUrl: String(copied.url || ''),\n  destinationListId: String(copied.idList || ''),\n  warningTitle: plan.newTitle,\n  advisoryWarnings: plan.warnings || [],\n  verificationWarnings,\n  attachmentCount: copiedAttachmentSignature.length\n} }];"
+      }
+    },
+    {
+      "id": "marker-if",
+      "name": "Exact Copy Marker Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "marker",
+              "leftValue": "={{ Boolean($json.existingCopyTargetId) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "get-marked-target",
+      "name": "Get Exactly Marked Target",
+      "position": [
+        1100,
+        80
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $('Prepare Card Context').first().json.existingCopyTargetId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,url,idBoard,idList,closed"
+            },
+            {
+              "name": "actions",
+              "value": "commentCard"
+            },
+            {
+              "name": "actions_limit",
+              "value": "1000"
+            },
+            {
+              "name": "action_fields",
+              "value": "data,date,type"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "check-marked-target",
+      "name": "Check Target Self Marker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        80
+      ],
+      "parameters": {
+        "jsCode": "const source = $('Prepare Card Context').first().json;\nconst target = $json;\nconst expected = '<!-- NEONTRIP_QUENTIN_COPY:v1 source=' + source.cardId + ' target=' + source.existingCopyTargetId + ' -->';\nif (String(target?.id || '') !== String(source.existingCopyTargetId || '')) throw new Error('Stored copy marker does not resolve to the exact target card');\nconst actions = Array.isArray(target.actions) ? target.actions : [];\nconst hasExactTargetMarker = actions.some(action => String(action?.data?.text || '').includes(expected));\nreturn [{ json: { ...target, hasExactTargetMarker, exactCopyMarkerText: 'Kopie\\n\\n' + expected } }];"
+      }
+    },
+    {
+      "id": "target-marker-if",
+      "name": "Target Self Marker Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1540,
+        80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "self-marker",
+              "leftValue": "={{ $json.hasExactTargetMarker }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "repair-target-marker",
+      "name": "Repair Missing Target Marker",
+      "position": [
+        1760,
+        160
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Prepare Card Context').first().json.existingCopyTargetId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Check Target Self Marker').first().json.exactCopyMarkerText }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "already-copied",
+      "name": "Stop Exact Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        80
+      ],
+      "parameters": {
+        "jsCode": "const source = $('Prepare Card Context').first().json;\nconst sd = $getWorkflowStaticData('global');\ndelete sd['processing_card_' + source.cardId];\ndelete sd['processing_' + source.eventId];\nreturn [{ json: { status: 'already-copied', eventId: source.eventId, sourceCardId: source.cardId, sourceCardUrl: source.cardUrl, copiedCardId: source.existingCopyTargetId, repairedTargetMarker: $('Check Target Self Marker').first().json.hasExactTargetMarker === false } }];"
+      }
+    },
+    {
+      "id": "source-marker",
+      "name": "Register Exact Copy on Source",
+      "position": [
+        3300,
+        180
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Prepare Card Context').first().json.cardId }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: 'Kopie\\n\\n<!-- NEONTRIP_QUENTIN_COPY:v1 source=' + $('Prepare Card Context').first().json.cardId + ' target=' + $('Verify Copied Card').first().json.id + ' -->' }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "target-marker",
+      "name": "Mark Exact Copied Target",
+      "position": [
+        3520,
+        180
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.trello.com/1/cards/{{ $('Verify Copied Card').first().json.id }}/actions/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: 'Kopie\\n\\n<!-- NEONTRIP_QUENTIN_COPY:v1 source=' + $('Prepare Card Context').first().json.cardId + ' target=' + $('Verify Copied Card').first().json.id + ' -->' }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "verify-marked-copy",
+      "name": "Verify Exact Copy Marker",
+      "position": [
+        3740,
+        180
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.trello.com/1/cards/{{ $('Verify Copied Card').first().json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,desc,url,idBoard,idList,idChecklists,closed,badges"
+            },
+            {
+              "name": "attachments",
+              "value": "true"
+            },
+            {
+              "name": "attachment_fields",
+              "value": "id,name,mimeType,date,url,bytes"
+            },
+            {
+              "name": "customFieldItems",
+              "value": "true"
+            },
+            {
+              "name": "actions",
+              "value": "commentCard"
+            },
+            {
+              "name": "actions_limit",
+              "value": "1000"
+            },
+            {
+              "name": "action_fields",
+              "value": "data,date,type"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
       }
     }
   ],
@@ -460,7 +782,7 @@
       "main": [
         [
           {
-            "node": "Download image.png",
+            "node": "Exact Copy Marker Present?",
             "type": "main",
             "index": 0
           }
@@ -555,7 +877,7 @@
         ],
         [
           {
-            "node": "Copy Normalized Card Once",
+            "node": "Copy Card 1:1 Once",
             "type": "main",
             "index": 0
           }
@@ -566,18 +888,7 @@
       "main": [
         [
           {
-            "node": "Copy Normalized Card Once",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Copy Normalized Card Once": {
-      "main": [
-        [
-          {
-            "node": "Verify Copied Card",
+            "node": "Copy Card 1:1 Once",
             "type": "main",
             "index": 0
           }
@@ -588,7 +899,120 @@
       "main": [
         [
           {
-            "node": "Record Completed Event",
+            "node": "Register Exact Copy on Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy Card 1:1 Once": {
+      "main": [
+        [
+          {
+            "node": "Verify Copied Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exact Copy Marker Present?": {
+      "main": [
+        [
+          {
+            "node": "Get Exactly Marked Target",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download image.png",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Exactly Marked Target": {
+      "main": [
+        [
+          {
+            "node": "Check Target Self Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Target Self Marker": {
+      "main": [
+        [
+          {
+            "node": "Target Self Marker Present?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Target Self Marker Present?": {
+      "main": [
+        [
+          {
+            "node": "Stop Exact Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repair Missing Target Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repair Missing Target Marker": {
+      "main": [
+        [
+          {
+            "node": "Stop Exact Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Exact Copy on Source": {
+      "main": [
+        [
+          {
+            "node": "Mark Exact Copied Target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Exact Copied Target": {
+      "main": [
+        [
+          {
+            "node": "Verify Exact Copy Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Exact Copy Marker": {
+      "main": [
+        [
+          {
+            "node": "Verify Copy and Record Card",
             "type": "main",
             "index": 0
           }
@@ -602,6 +1026,7 @@
     "saveDataErrorExecution": "all",
     "saveDataSuccessExecution": "all",
     "saveExecutionProgress": true,
-    "executionTimeout": 180
+    "executionTimeout": 180,
+    "errorWorkflow": "aSkB1DoB1nF9g1OG"
   }
 }
