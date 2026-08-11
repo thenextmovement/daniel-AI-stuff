@@ -108,16 +108,21 @@ const completePatch = operations.find(
 );
 assert.match(completePatch.patches[0].replace, /externalId \|\| \$json\.cardId/);
 
-const connection = (source, target, sourceIndex) => operations.some(
+const connection = (source, target, branch) => operations.some(
   (operation) => operation.type === "addConnection" &&
     operation.source === source &&
     operation.target === target &&
-    operation.sourceIndex === sourceIndex,
+    operation.branch === branch,
 );
-assert.equal(connection("Attachment Action?", "Get Existing Trello Attachments", 0), true);
-assert.equal(connection("Attachment Action?", "Move Action?", 1), true);
-assert.equal(connection("Attachment Already Exists?", "Use Existing Trello Attachment", 0), true);
-assert.equal(connection("Attachment Already Exists?", "Download Stored Attachment", 1), true);
-assert.equal(connection("Normalize Uploaded Trello Attachment", "Complete Trello Action", 0), true);
+assert.equal(connection("Attachment Action?", "Get Existing Trello Attachments", "true"), true);
+assert.equal(connection("Attachment Action?", "Move Action?", "false"), true);
+assert.equal(connection("Attachment Already Exists?", "Use Existing Trello Attachment", "true"), true);
+assert.equal(connection("Attachment Already Exists?", "Download Stored Attachment", "false"), true);
+assert.equal(operations.some(
+  (operation) => operation.type === "addConnection" &&
+    operation.source === "Normalize Uploaded Trello Attachment" &&
+    operation.target === "Complete Trello Action" &&
+    operation.sourceIndex === 0,
+), true);
 
 console.log("RIESENOBJEKTE Trello attachment worker patch checks passed");
