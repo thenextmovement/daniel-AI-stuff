@@ -139,12 +139,16 @@ async function validateAndPrepareFrame(tabId, job) {
   }
 }
 
-function waitForDownloadedPdf(tabId, startedAt, signal, timeoutMs = 90_000) {
+function waitForDownloadedPdf(tabId, startedAt, orderName, signal, timeoutMs = 90_000) {
   return new Promise((resolve, reject) => {
     let trackedId = null;
-    const timeout = setTimeout(() => cleanup(new Error("EasyDPD-PDF-Download wurde nicht bestätigt.")), timeoutMs);
+    let settled = false;
+    let searchRunning = false;
     const cleanup = (error, item) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
+      clearInterval(reconcileInterval);
       chrome.downloads.onCreated.removeListener(onCreated);
       chrome.downloads.onChanged.removeListener(onChanged);
       signal?.removeEventListener("abort", onAbort);
@@ -152,24 +156,46 @@ function waitForDownloadedPdf(tabId, startedAt, signal, timeoutMs = 90_000) {
       else resolve(item);
     };
     const onAbort = () => cleanup(new Error("EasyDPD-PDF-Beobachtung wurde beendet."));
-    const onCreated = (item) => {
-      if (!matchingDownloadedPdf(item, tabId, startedAt)) return;
+    const consider = (item) => {
+      if (!matchingDownloadedPdf(item, tabId, startedAt, orderName)) return;
       if (trackedId !== null) return cleanup(new Error("Mehr als ein passender PDF-Download wurde erkannt."));
       trackedId = item.id;
       if (item.state === "complete") cleanup(null, item);
+      else if (item.state === "interrupted") cleanup(new Error("EasyDPD-PDF-Download wurde unterbrochen."));
     };
+    const reconcile = async () => {
+      if (settled || searchRunning) return;
+      searchRunning = true;
+      try {
+        const items = await chrome.downloads.search({ startedAfter: new Date(startedAt - 2_000).toISOString() });
+        const matches = items.filter((item) => matchingDownloadedPdf(item, tabId, startedAt, orderName));
+        if (matches.length > 1) cleanup(new Error("Mehr als ein passender PDF-Download wurde erkannt."));
+        else if (matches.length === 1 && trackedId === null) consider(matches[0]);
+        else if (matches.length === 1 && trackedId !== matches[0].id) cleanup(new Error("Mehr als ein passender PDF-Download wurde erkannt."));
+        else if (matches.length === 1 && matches[0].state === "complete") cleanup(null, matches[0]);
+      } finally {
+        searchRunning = false;
+      }
+    };
+    const onCreated = (item) => consider(item);
     const onChanged = async (delta) => {
       if (trackedId === null || delta.id !== trackedId || !delta.state) return;
       if (delta.state.current === "interrupted") return cleanup(new Error("EasyDPD-PDF-Download wurde unterbrochen."));
       if (delta.state.current === "complete") {
         const items = await chrome.downloads.search({ id: trackedId });
-        if (items.length !== 1 || !matchingDownloadedPdf(items[0], tabId, startedAt)) return cleanup(new Error("EasyDPD-PDF-Download konnte nicht eindeutig verifiziert werden."));
+        if (items.length !== 1 || !matchingDownloadedPdf(items[0], tabId, startedAt, orderName)) return cleanup(new Error("EasyDPD-PDF-Download konnte nicht eindeutig verifiziert werden."));
         cleanup(null, items[0]);
       }
     };
+    const timeout = setTimeout(async () => {
+      await reconcile().catch(() => undefined);
+      cleanup(new Error("EasyDPD-PDF-Download wurde nicht bestätigt."));
+    }, timeoutMs);
+    const reconcileInterval = setInterval(() => reconcile().catch(() => undefined), 1_000);
     chrome.downloads.onCreated.addListener(onCreated);
     chrome.downloads.onChanged.addListener(onChanged);
     signal?.addEventListener("abort", onAbort, { once: true });
+    reconcile().catch(() => undefined);
   });
 }
 
@@ -209,7 +235,7 @@ async function processJob(tab, job) {
     await record("dispatching", { jobId: job.id, orderName: job.orderName, dispatchNonce });
     const startedAt = Date.now();
     downloadController = new AbortController();
-    const downloadPromise = waitForDownloadedPdf(tab.id, startedAt, downloadController.signal);
+    const downloadPromise = waitForDownloadedPdf(tab.id, startedAt, job.orderName, downloadController.signal);
     const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce });
     if (clickResult.clicked !== true) throw new Error("EasyDPD-Kaufklick wurde nicht eindeutig bestätigt.");
     const download = await downloadPromise;

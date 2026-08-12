@@ -66,14 +66,25 @@ export function existingLabelEvidence(hrefs) {
   };
 }
 
-export function matchingDownloadedPdf(item, tabId, startedAt) {
-  if (!item || item.tabId !== tabId || String(item.filename || "").toLowerCase().endsWith(".pdf") !== true) return false;
+function filenameContainsOrder(filename, orderName) {
+  const basename = String(filename || "").replaceAll("\\", "/").split("/").pop() || "";
+  const orderToken = String(orderName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const filenameToken = basename.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return orderToken.length >= 6 && filenameToken.includes(orderToken);
+}
+
+export function matchingDownloadedPdf(item, tabId, startedAt, orderName = "") {
+  if (!item || String(item.filename || "").toLowerCase().endsWith(".pdf") !== true) return false;
+  const sameTab = item.tabId === tabId;
+  const sameOrder = filenameContainsOrder(item.filename, orderName);
+  if (!sameTab && !sameOrder) return false;
   const start = Date.parse(String(item.startTime || ""));
   if (!Number.isFinite(start) || start < startedAt - 2_000) return false;
   const source = String(item.finalUrl || item.url || "");
   if (source.startsWith("blob:")) return true;
   try {
-    return new URL(source).origin === EASYDPD_FRAME_ORIGIN;
+    const origin = new URL(source).origin;
+    return origin === EASYDPD_FRAME_ORIGIN || (sameOrder && origin === SHOPIFY_ORIGIN);
   } catch {
     return false;
   }

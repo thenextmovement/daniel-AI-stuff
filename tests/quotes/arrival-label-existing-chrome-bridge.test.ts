@@ -52,7 +52,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.2");
+  assert.equal(manifest.version, "1.1.3");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -82,7 +82,7 @@ test("EasyDPD history evidence blocks on label downloads or exact DPD tracking",
   assert.deepEqual(evidence.trackingNumbers, ["01476817855492"]);
 });
 
-test("download capture requires a PDF from the same Shopify tab after dispatch", () => {
+test("download capture requires the same Shopify tab or the exact EasyDPD order label after dispatch", () => {
   const item = {
     tabId: 23,
     filename: "/Users/test/Downloads/label.pdf",
@@ -91,6 +91,16 @@ test("download capture requires a PDF from the same Shopify tab after dispatch",
   };
   assert.equal(matchingDownloadedPdf(item, 23, Date.parse("2026-07-23T09:00:00.000Z")), true);
   assert.equal(matchingDownloadedPdf({ ...item, tabId: 24 }, 23, Date.parse("2026-07-23T09:00:00.000Z")), false);
+  assert.equal(matchingDownloadedPdf({
+    ...item,
+    tabId: -1,
+    filename: "/Users/test/Downloads/Label_#NEONT4535_2026-07-23_1100.pdf",
+  }, 23, Date.parse("2026-07-23T09:00:00.000Z"), "#NEONT4535"), true);
+  assert.equal(matchingDownloadedPdf({
+    ...item,
+    tabId: -1,
+    filename: "/Users/test/Downloads/Label_#NEONT9999_2026-07-23_1100.pdf",
+  }, 23, Date.parse("2026-07-23T09:00:00.000Z"), "#NEONT4535"), false);
   assert.equal(matchingDownloadedPdf({ ...item, filename: "/Users/test/Downloads/label.txt" }, 23, Date.parse("2026-07-23T09:00:00.000Z")), false);
   assert.equal(matchingDownloadedPdf({ ...item, finalUrl: "https://evil.example/label.pdf" }, 23, Date.parse("2026-07-23T09:00:00.000Z")), false);
 });
@@ -173,6 +183,8 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(service, /matches[.]length === 1[\s\S]+matches[.]length > 1[\s\S]+setTimeout\(resolve, 500\)/);
   assert.match(service, /keepServiceWorkerAwake\(intervalMs = 15_000\)/);
   assert.match(service, /chrome[.]storage[.]local[.]get\(\[STATE_KEY\]\)/);
+  assert.match(service, /chrome[.]downloads[.]search\(\{ startedAfter:/);
+  assert.match(service, /waitForDownloadedPdf\(tab[.]id, startedAt, job[.]orderName/);
   assert.match(service, /isMissingFrameReceiver/);
   assert.match(service, /await chrome[.]tabs[.]reload\(tabId\)/);
   assert.match(service, /await waitForTabComplete\(tabId, job[.]orderUrl\)/);
