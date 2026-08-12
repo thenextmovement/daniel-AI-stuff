@@ -32,6 +32,7 @@ import {
 
 const OLD_WORKER_LABEL = "de.neontrip.easydpd-browser-worker";
 const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const EXTENSION_FILES = ["content_script.js", "policy.mjs", "service_worker.mjs", "manifest.json"];
 
 export function parseExistingChromeManagerArgs(argv) {
   const command = argv[0];
@@ -106,6 +107,25 @@ function backupPath(path, backupRoot, suffix) {
   if (statSync(path).isDirectory()) cpSync(path, target, { recursive: true });
   else copyFileSync(path, target);
   return target;
+}
+
+export function syncExtensionFilesInPlace(source, destination) {
+  const sourceFiles = readdirSync(source).sort();
+  if (JSON.stringify(sourceFiles) !== JSON.stringify([...EXTENSION_FILES].sort())) {
+    throw new BrowserWorkerError("Chrome-Erweiterungsdateien entsprechen nicht der festen Freigabeliste.", 70);
+  }
+  mkdirSync(destination, { recursive: true, mode: 0o700 });
+  const destinationFiles = readdirSync(destination);
+  if (destinationFiles.some((filename) => !EXTENSION_FILES.includes(filename))) {
+    throw new BrowserWorkerError("Aktiver Chrome-Erweiterungsordner enthaelt unerwartete Dateien.", 70);
+  }
+  for (const filename of EXTENSION_FILES) {
+    const sourcePath = join(source, filename);
+    if (!statSync(sourcePath).isFile()) throw new BrowserWorkerError(`Chrome-Erweiterungsdatei fehlt: ${filename}`, 70);
+    const temporary = join(destination, `.${filename}.tmp-${process.pid}-${Date.now()}`);
+    copyFileSync(sourcePath, temporary);
+    renameSync(temporary, join(destination, filename));
+  }
 }
 
 function extensionIdFromManifestKey(key) {
@@ -206,8 +226,7 @@ function install(options) {
   const oldWorkerLoaded = launchctl(["print", `${launchDomain()}/${OLD_WORKER_LABEL}`], true).status === 0;
   mkdirSync(dirname(target.nativeManifest), { recursive: true, mode: 0o700 });
   mkdirSync(target.runtimeRoot, { recursive: true, mode: 0o700 });
-  if (existsSync(target.activeExtension)) renameSync(target.activeExtension, `${target.activeExtension}.replaced-${Date.now()}`);
-  cpSync(staged.stagedExtension, target.activeExtension, { recursive: true });
+  syncExtensionFilesInPlace(staged.stagedExtension, target.activeExtension);
   const temporaryManifest = `${target.nativeManifest}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(temporaryManifest, renderNativeManifest(staged.executablePath), { mode: 0o600, flag: "wx" });
   renameSync(temporaryManifest, target.nativeManifest);
@@ -340,8 +359,7 @@ function rollback() {
     renameSync(target.nativeManifest, `${target.nativeManifest}.rolled-back-${Date.now()}`);
   }
   if (record.previousExtension && existsSync(record.previousExtension)) {
-    if (existsSync(target.activeExtension)) renameSync(target.activeExtension, `${target.activeExtension}.rolled-back-${Date.now()}`);
-    cpSync(record.previousExtension, target.activeExtension, { recursive: true });
+    syncExtensionFilesInPlace(record.previousExtension, target.activeExtension);
   }
   if (record.previousCurrent && existsSync(record.previousCurrent)) copyFileSync(record.previousCurrent, target.currentFile);
   if (record.previousStatus && existsSync(record.previousStatus)) copyFileSync(record.previousStatus, target.statusPath);

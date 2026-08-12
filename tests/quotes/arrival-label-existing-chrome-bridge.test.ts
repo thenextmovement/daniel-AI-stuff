@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
@@ -17,6 +17,7 @@ import {
 import {
   bridgeDestinations,
   parseExistingChromeManagerArgs,
+  syncExtensionFilesInPlace,
 } from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
 import { isExecutedEntryPoint } from "../../scripts/run_easydpd_existing_chrome_host.mjs";
 import { projectPersistedBrowserManualReview } from "../../src/lib/ops/arrival-labels/service";
@@ -170,6 +171,27 @@ test("manager requires an independent live acknowledgement", () => {
   assert.doesNotMatch(bridgeDestinations("/Users/test").runtimeRoot, /Desktop|\/NEONTRIP\/runtime/);
 });
 
+test("manager updates the unpacked extension without replacing its stable root directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "neontrip-extension-sync-"));
+  const source = join(directory, "source");
+  const destination = join(directory, "extension");
+  try {
+    await Promise.all([mkdir(source), mkdir(destination)]);
+    for (const filename of ["content_script.js", "policy.mjs", "service_worker.mjs", "manifest.json"]) {
+      await writeFile(join(source, filename), `new:${filename}\n`);
+      await writeFile(join(destination, filename), `old:${filename}\n`);
+    }
+    const before = await stat(destination);
+    syncExtensionFilesInPlace(source, destination);
+    const after = await stat(destination);
+    assert.equal(after.ino, before.ino);
+    assert.deepEqual((await readdir(destination)).sort(), ["content_script.js", "manifest.json", "policy.mjs", "service_worker.mjs"]);
+    assert.equal(await readFile(join(destination, "manifest.json"), "utf8"), "new:manifest.json\n");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("service worker reuses or creates one background tab, blocks existing labels and dispatches before one click", async () => {
   const service = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
   const content = await readFile("deploy/local-easydpd-existing-chrome/extension/content_script.js", "utf8");
@@ -214,6 +236,8 @@ test("service worker reuses or creates one background tab, blocks existing label
   const manager = await readFile("scripts/manage_easydpd_existing_chrome_bridge.mjs", "utf8");
   assert.match(manager, /extension_reload_required/);
   assert.match(manager, /extensionClientVerified/);
+  assert.match(manager, /syncExtensionFilesInPlace\(staged[.]stagedExtension, target[.]activeExtension\)/);
+  assert.doesNotMatch(manager, /renameSync\(target[.]activeExtension/);
 });
 
 test("native host claim slot is atomic and preserves the bound job across worker restarts", async () => {
