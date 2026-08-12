@@ -2652,6 +2652,56 @@ test("supplier sales board uses Shopify paid history by business domain, exact p
   });
 });
 
+test("supplier sales board keeps company-domain history when one Shopify history source fails", async () => {
+  const currentOpenRow = saleRow({
+    id: "sale-cosmicpark-open",
+    sale_key: "shopify:order:cosmicpark-open",
+    customer_email: "cl@cosmicpark.de",
+    customer_name: "Carlotta Linzbach",
+    shopify_order_name: "#NEONT4540",
+    shopify_payment_status: "pending",
+    payment_decision_status: "wait_for_payment",
+    assignment_status: "payment_open",
+    created_at: "2026-07-23T10:00:00.000Z",
+    updated_at: "2026-07-23T10:00:00.000Z",
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.has("customer_email") || url.searchParams.has("or")) return Response.json([]);
+      return Response.json([currentOpenRow]);
+    }
+    if (url.pathname.endsWith("/v_orders_by_email") && method === "GET") {
+      return Response.json({ message: "temporary history source failure" }, { status: 500 });
+    }
+    if (url.pathname.endsWith("/crm_sales") && method === "GET") {
+      return Response.json([
+        {
+          id: "crm-cosmicpark-paid",
+          shopify_order_id: "3635",
+          shopify_order_name: "#NEONT3635",
+          financial_status: "paid",
+          customer_name: "Another Cosmicpark Buyer",
+          customer_email: "finance@cosmicpark.de",
+          shopify_created_at: "2026-01-29T22:33:22.000Z",
+          created_at: "2026-01-29T22:33:22.000Z",
+        },
+      ]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    assert.equal(board.items[0]?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(board.items[0]?.priorPaidCustomer.matchBasis, "company_domain");
+    assert.equal(board.items[0]?.priorPaidCustomer.lastPaidOrderName, "#NEONT3635");
+    assert.equal(board.counts.priorPaidCustomerOpen, 1);
+  });
+});
+
 test("supplier sales board filters express and rush orders", async () => {
   const rushRow = saleRow({
     id: "sale-rush",
