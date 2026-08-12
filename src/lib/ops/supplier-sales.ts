@@ -754,6 +754,14 @@ function inList(values: string[]) {
   return `in.(${values.map(encodeFilterValue).join(",")})`;
 }
 
+function priorPaidFilterValue(value: string) {
+  return value.replace(/[(),{}"]+/g, "");
+}
+
+function priorPaidInList(values: string[]) {
+  return `in.(${values.map(priorPaidFilterValue).join(",")})`;
+}
+
 function recordString(record: JsonRecord, keys: string[], maxLength = 500) {
   for (const key of keys) {
     const text = nullableText(record[key], maxLength);
@@ -2532,7 +2540,7 @@ async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
   const exactEmailRows = await Promise.all(batchesOf(emails, 75).map((batch) =>
     supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
       select,
-      customer_email: inList(batch),
+      customer_email: priorPaidInList(batch),
       or: "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)",
       order: "created_at.desc,updated_at.desc",
       limit: Math.min(Math.max(batch.length * 20, 100), 1500),
@@ -2541,7 +2549,7 @@ async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
   rows.push(...exactEmailRows.flat());
 
   for (const batch of batchesOf(domains, 50)) {
-    const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
+    const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${priorPaidFilterValue(`@${domain}`)}`);
     if (!or) continue;
     const domainRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
       select,
@@ -2592,7 +2600,7 @@ function ilikeAnyFilter(column: string, values: string[], mapper: (value: string
 }
 
 function exactIlikeAnyFilter(column: string, values: string[]) {
-  return ilikeAnyFilter(column, values, (value) => encodeFilterValue(value));
+  return ilikeAnyFilter(column, values, priorPaidFilterValue);
 }
 
 async function safePriorPaidHistoryRequest<T>(source: string, request: () => Promise<T[]>) {
@@ -2617,7 +2625,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(emails, 75)) {
     const rows = await safePriorPaidHistoryRequest("v_orders_by_email:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
       select: orderSelect,
-      email: inList(batch),
+      email: priorPaidInList(batch),
       order: "created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
     }));
@@ -2636,7 +2644,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   }
 
   for (const batch of batchesOf(domains, 50)) {
-    const or = ilikeAnyFilter("email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
+    const or = ilikeAnyFilter("email", batch, (domain) => `*${priorPaidFilterValue(`@${domain}`)}`);
     if (!or) continue;
     const rows = await safePriorPaidHistoryRequest("v_orders_by_email:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
       select: orderSelect,
@@ -2661,7 +2669,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(emails, 75)) {
     const rows = await safePriorPaidHistoryRequest("crm_sales:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
       select: crmSelect,
-      customer_email: inList(batch),
+      customer_email: priorPaidInList(batch),
       order: "shopify_created_at.desc,created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
     }));
@@ -2681,7 +2689,7 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   }
 
   for (const batch of batchesOf(domains, 50)) {
-    const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${encodeFilterValue(`@${domain}`)}`);
+    const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${priorPaidFilterValue(`@${domain}`)}`);
     if (!or) continue;
     const rows = await safePriorPaidHistoryRequest("crm_sales:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
       select: crmSelect,

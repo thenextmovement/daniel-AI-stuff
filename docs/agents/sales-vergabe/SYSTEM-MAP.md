@@ -74,6 +74,7 @@
 - `[verifiziert]` Eine exakt übereinstimmende E-Mail kann auch bei privaten Providern als Beleg dienen.
 - `[verifiziert]` Eine Firmendomain wird nur verwendet, wenn sie nicht in der Liste persönlicher Provider wie Gmail, Web.de oder GMX liegt.
 - `[verifiziert]` Als weiterer Fallback dient ein normalisierter Kundenname.
+- `[verifiziert]` PostgREST-Historienfilter übergeben E-Mail, Firmendomain und Namen roh an den gemeinsamen URL-Builder, damit diese Werte genau einmal transportkodiert werden.
 - `[verifiziert]` Nur frühere bezahlte Bestellungen zählen. Die UI-Antwort enthält Beleg-Order, Shopify-Link und Match-Basis, ohne diesen abgeleiteten Marker zurück in den Sale zu schreiben.
 
 ## Shopify und Trello

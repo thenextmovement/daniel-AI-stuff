@@ -2475,6 +2475,63 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
   });
 });
 
+test("supplier sales board finds prior paid Shopify orders through a real exact-email filter", async () => {
+  const repeatOpenRow = saleRow({
+    id: "sale-repeat-email-open",
+    sale_key: "shopify:NEONT4586",
+    customer_email: "nadine.mohamed@wearesocial.net",
+    customer_name: "Nadine Mohamed",
+    shopify_order_name: "#NEONT4586",
+    shopify_payment_status: "pending",
+    payment_decision_status: "pending",
+    assignment_status: "payment_open",
+    created_at: "2026-08-11T13:51:22.683Z",
+    updated_at: "2026-08-12T09:41:48.442Z",
+  });
+  let exactEmailFilter: string | null = null;
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("or") === "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)") {
+        return Response.json([]);
+      }
+      return Response.json([repeatOpenRow]);
+    }
+    if (url.pathname.endsWith("/v_orders_by_email") && method === "GET") {
+      const filter = url.searchParams.get("email");
+      if (filter) {
+        exactEmailFilter = filter;
+        if (filter === "in.(nadine.mohamed@wearesocial.net)") {
+          return Response.json([
+            {
+              email: "nadine.mohamed@wearesocial.net",
+              order_number: "#NEONT3520",
+              financial_status: "paid",
+              created_at: "2025-07-29T14:02:00.000Z",
+            },
+          ]);
+        }
+      }
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/crm_sales") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active" });
+    const sale = board.items.find((item) => item.id === repeatOpenRow.id);
+    assert.equal(exactEmailFilter, "in.(nadine.mohamed@wearesocial.net)");
+    assert.equal(exactEmailFilter?.includes("%40"), false);
+    assert.equal(sale?.priorPaidCustomer.hasPriorPaidOrder, true);
+    assert.equal(sale?.priorPaidCustomer.matchBasis, "exact_email");
+    assert.equal(sale?.priorPaidCustomer.lastPaidOrderName, "#NEONT3520");
+    assert.equal(board.counts.priorPaidCustomerOpen, 1);
+  });
+});
+
 test("supplier sales board uses internal paid history by business domain and customer name", async () => {
   const businessOpenRow = saleRow({
     id: "sale-internal-business-open",
