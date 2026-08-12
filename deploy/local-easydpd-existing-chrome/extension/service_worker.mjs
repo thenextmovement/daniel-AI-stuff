@@ -31,6 +31,13 @@ function nativeMessage(payload) {
   });
 }
 
+function keepServiceWorkerAwake(intervalMs = 15_000) {
+  const timer = setInterval(() => {
+    chrome.storage.local.get([STATE_KEY]).catch(() => undefined);
+  }, intervalMs);
+  return () => clearInterval(timer);
+}
+
 async function record(state, detail = {}) {
   const entry = { at: new Date().toISOString(), state, ...detail };
   const stored = await chrome.storage.local.get([AUDIT_KEY]);
@@ -114,6 +121,24 @@ async function frameMessage(tabId, frameId, payload) {
   return response.result;
 }
 
+function isMissingFrameReceiver(error) {
+  return /Could not establish connection|Receiving end does not exist/i.test(String(error?.message || error));
+}
+
+async function validateAndPrepareFrame(tabId, job) {
+  let frameId = await easyDpdFrameId(tabId);
+  try {
+    return { frameId, prepared: await frameMessage(tabId, frameId, { action: "validate_and_prepare", job }) };
+  } catch (error) {
+    if (!isMissingFrameReceiver(error)) throw error;
+    await record("content_script_reload", { jobId: job.id, orderName: job.orderName });
+    await chrome.tabs.reload(tabId);
+    await waitForTabComplete(tabId, job.orderUrl);
+    frameId = await easyDpdFrameId(tabId);
+    return { frameId, prepared: await frameMessage(tabId, frameId, { action: "validate_and_prepare", job }) };
+  }
+}
+
 function waitForDownloadedPdf(tabId, startedAt, signal, timeoutMs = 90_000) {
   return new Promise((resolve, reject) => {
     let trackedId = null;
@@ -154,6 +179,7 @@ async function updateJob(job, result, extra = {}) {
 
 async function processJob(tab, job) {
   validateBridgeJob(job);
+  const stopKeepAlive = keepServiceWorkerAwake();
   let dispatchStarted = false;
   let serverCompleted = false;
   let downloadController = null;
@@ -162,8 +188,7 @@ async function processJob(tab, job) {
       await chrome.tabs.update(tab.id, { url: job.orderUrl, active: false });
     }
     await waitForTabComplete(tab.id, job.orderUrl);
-    const frameId = await easyDpdFrameId(tab.id);
-    const prepared = await frameMessage(tab.id, frameId, { action: "validate_and_prepare", job });
+    const { frameId, prepared } = await validateAndPrepareFrame(tab.id, job);
     if (prepared.existingLabel?.found) {
       const trackingNumbers = prepared.existingLabel.trackingNumbers || [];
       await updateJob(job, "existing_label", {
@@ -204,6 +229,8 @@ async function processJob(tab, job) {
     }
     await record(dispatchStarted ? "manual_review_after_dispatch" : "retryable_error", { jobId: job.id, orderName: job.orderName, error: message });
     throw error;
+  } finally {
+    stopKeepAlive();
   }
 }
 

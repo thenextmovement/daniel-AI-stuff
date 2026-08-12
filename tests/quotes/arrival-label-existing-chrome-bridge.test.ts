@@ -52,7 +52,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.0");
+  assert.equal(manifest.version, "1.1.1");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -171,6 +171,12 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(service, /chrome[.]tabs[.]create\(\{ url: validateOrderUrl\(job[.]orderUrl\), active: false \}\)/);
   assert.match(service, /easyDpdFrameId\(tabId, timeoutMs = 45_000\)/);
   assert.match(service, /matches[.]length === 1[\s\S]+matches[.]length > 1[\s\S]+setTimeout\(resolve, 500\)/);
+  assert.match(service, /keepServiceWorkerAwake\(intervalMs = 15_000\)/);
+  assert.match(service, /chrome[.]storage[.]local[.]get\(\[STATE_KEY\]\)/);
+  assert.match(service, /isMissingFrameReceiver/);
+  assert.match(service, /await chrome[.]tabs[.]reload\(tabId\)/);
+  assert.match(service, /await waitForTabComplete\(tabId, job[.]orderUrl\)/);
+  assert.ok(service.indexOf("isMissingFrameReceiver") < service.indexOf('updateJob(job, "validated")'));
   assert.match(service, /prepared[.]existingLabel[?][.]found/);
   assert.match(service, /updateJob\(job, "existing_label"/);
   assert.ok(service.indexOf('nativeMessage({ type: "claim" })') < service.indexOf("getOrCreateEasyDpdTab(claimed.job)"));
