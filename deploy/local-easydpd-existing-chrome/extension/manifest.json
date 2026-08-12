@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NEONTRIP EasyDPD Existing Chrome Bridge",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Verarbeitet freigegebene NEONTRIP-EasyDPD-Aufträge im bereits geöffneten Shopify-Tab.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtWevOCDX36bkrTAfDJB/FRCV2ehHXL7XtV1JIEGkTY2gMltFUMp/YjhJrL9N9JlUKnwxVi/ydC12DYkTEbjIMyBZrlYBVTxNa2Mx5VC1d9lBSp3+Hr+c1P9wPWB9XeZT4TMjVqaTDgGHhB0/p6eT5mKxAqslbPqs0farC+Wm4rkFUNHGfBlJubaq9iicgiu1XzzCG4HEtgFV75t2ogsGX3vm9IbPG0nDeceKlXTL3AD9Kr0kATc2eljYtTKqgW/CLiW8P6+YWalrDBtDco34b77JqSAKcio5zD7EII6VDcYgCB9pS5WK/RAu8e7i/LIJ9a0GBq4MuZVeq5THYNKPkQIDAQAB",
   "permissions": [

@@ -52,7 +52,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.1");
+  assert.equal(manifest.version, "1.1.2");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -190,6 +190,12 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(nativeHost, /JOB_BINDING_FIELDS/);
   assert.match(nativeHost, /stimmt nicht mit dem lokal gebundenen Claim ueberein/);
   assert.match(nativeHost, /active_job_pending/);
+  assert.match(nativeHost, /RESUMABLE_ACTIVE_JOB_PHASES = new Set\(\["claimed", "validated"\]\)/);
+  assert.match(nativeHost, /job_resumed_pre_dispatch/);
+  assert.match(nativeHost, /resumable \? bound[.]job : null/);
+  assert.doesNotMatch(nativeHost, /RESUMABLE_ACTIVE_JOB_PHASES = new Set\([^)]*dispatching/);
+  assert.ok(nativeHost.indexOf('updateActiveJobPhase(config, job.id, "dispatching")')
+    < nativeHost.indexOf("await updateJob(configuration, job, result"));
   assert.match(nativeHost, /flag: "wx"/);
   assert.match(nativeHost, /storeActiveJob\(config, job\)/);
   assert.match(nativeHost, /Chrome-Erweiterung ist veraltet/);
@@ -204,9 +210,10 @@ test("native host claim slot is atomic and preserves the bound job across worker
   try {
     assert.equal(await acquireClaimSlot(config), true);
     assert.equal(await acquireClaimSlot(config), false);
-    assert.deepEqual(await readActiveJobState(config), { state: "claiming", job: null });
-    await writeFile(config.activeJobPath, `${JSON.stringify({ version: 1, state: "active", job: job() })}\n`, { mode: 0o600 });
+    assert.deepEqual(await readActiveJobState(config), { state: "claiming", phase: null, job: null });
+    await writeFile(config.activeJobPath, `${JSON.stringify({ version: 2, state: "active", phase: "claimed", job: job() })}\n`, { mode: 0o600 });
     assert.equal((await readActiveJobState(config))?.job?.id, job().id);
+    assert.equal((await readActiveJobState(config))?.phase, "claimed");
     assert.equal(await acquireClaimSlot(config), false);
   } finally {
     await rm(directory, { recursive: true, force: true });

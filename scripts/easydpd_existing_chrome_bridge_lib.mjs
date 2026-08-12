@@ -18,6 +18,7 @@ export const EXPECTED_BRIDGE_PROTOCOL_VERSION = 2;
 export const NATIVE_HOST_NAME = "de.neontrip.easydpd_existing_chrome";
 const MAX_NATIVE_MESSAGE_BYTES = 1024 * 1024;
 const ALLOWED_UPDATE_RESULTS = new Set(["validated", "dispatching", "retryable_error", "uncertain", "existing_label"]);
+const RESUMABLE_ACTIVE_JOB_PHASES = new Set(["claimed", "validated"]);
 
 export class ExistingChromeBridgeError extends BrowserWorkerError {
   constructor(message, exitCode = 1, options = {}) {
@@ -191,7 +192,7 @@ const JOB_BINDING_FIELDS = [
 async function storeActiveJob(config, job) {
   await mkdir(dirname(config.activeJobPath), { recursive: true, mode: 0o700 });
   const temporary = `${config.activeJobPath}.tmp-${process.pid}-${Date.now()}`;
-  await writeFile(temporary, `${JSON.stringify({ version: 1, state: "active", job }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  await writeFile(temporary, `${JSON.stringify({ version: 2, state: "active", phase: "claimed", job }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   await rename(temporary, config.activeJobPath);
 }
 
@@ -203,20 +204,32 @@ export async function readActiveJobState(config) {
     if (error?.code === "ENOENT") return null;
     throw new ExistingChromeBridgeError("Lokale Browser-Auftragsbindung ist nicht lesbar; manuelle Pruefung erforderlich.", 65);
   }
-  if (persisted?.version !== 1) throw new ExistingChromeBridgeError("Lokale Browser-Auftragsbindung hat eine unbekannte Version.", 65);
-  if (persisted.state === "claiming" && !persisted.job) return { state: "claiming", job: null };
-  return { state: "active", job: validateClaimedJob(persisted.job) };
+  if (persisted?.version !== 2) throw new ExistingChromeBridgeError("Lokale Browser-Auftragsbindung hat eine unbekannte Version.", 65);
+  if (persisted.state === "claiming" && !persisted.job) return { state: "claiming", phase: null, job: null };
+  if (persisted.state !== "active" || !["claimed", "validated", "dispatching"].includes(persisted.phase)) {
+    throw new ExistingChromeBridgeError("Lokale Browser-Auftragsphase ist ungueltig.", 65);
+  }
+  return { state: "active", phase: persisted.phase, job: validateClaimedJob(persisted.job) };
 }
 
 export async function acquireClaimSlot(config) {
   await mkdir(dirname(config.activeJobPath), { recursive: true, mode: 0o700 });
   try {
-    await writeFile(config.activeJobPath, `${JSON.stringify({ version: 1, state: "claiming" }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+    await writeFile(config.activeJobPath, `${JSON.stringify({ version: 2, state: "claiming" }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
     return true;
   } catch (error) {
     if (error?.code === "EEXIST") return false;
     throw error;
   }
+}
+
+async function updateActiveJobPhase(config, jobId, phase) {
+  if (!["validated", "dispatching"].includes(phase)) throw new ExistingChromeBridgeError("Lokale Browser-Auftragsphase ist ungueltig.", 65);
+  const active = await readActiveJobState(config);
+  if (!active?.job || active.job.id !== jobId) throw new ExistingChromeBridgeError("Lokal gebundener Browser-Auftrag fehlt.", 65);
+  const temporary = `${config.activeJobPath}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(temporary, `${JSON.stringify({ version: 2, state: "active", phase, job: active.job }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  await rename(temporary, config.activeJobPath);
 }
 
 async function clearClaimSlot(config) {
@@ -293,14 +306,20 @@ export async function handleNativeRequest(config, rawMessage) {
       await writeStatusBestEffort(config, "dry_run_no_claim", { ...verifiedExtension, purchaseClicked: false });
       return { ok: true, job: null, mode: config.mode };
     }
-    if (!await acquireClaimSlot(config)) {
-      const active = await readActiveJobState(config);
-      await writeStatusBestEffort(config, "active_job_pending", {
+    const bound = await readActiveJobState(config);
+    if (bound) {
+      const resumable = bound.job && RESUMABLE_ACTIVE_JOB_PHASES.has(bound.phase);
+      await writeStatusBestEffort(config, resumable ? "job_resumed_pre_dispatch" : "active_job_pending", {
         ...verifiedExtension,
-        activeJobId: active?.job?.id || null,
-        activeJobState: active?.state || null,
+        activeJobId: bound.job?.id || null,
+        activeJobState: bound.state,
+        activeJobPhase: bound.phase,
         purchaseClicked: false,
       });
+      return { ok: true, job: resumable ? bound.job : null, resumed: resumable, activeJobPending: !resumable };
+    }
+    if (!await acquireClaimSlot(config)) {
+      await writeStatusBestEffort(config, "active_job_pending", { ...verifiedExtension, purchaseClicked: false });
       return { ok: true, job: null, activeJobPending: true };
     }
     try {
@@ -318,10 +337,12 @@ export async function handleNativeRequest(config, rawMessage) {
   if (message.type === "update") {
     const result = cleanString(message.result, "Browser-Ergebnis", 40);
     if (!ALLOWED_UPDATE_RESULTS.has(result)) throw new ExistingChromeBridgeError("Browser-Ergebnis ist nicht freigegeben.", 65);
+    if (result === "dispatching") await updateActiveJobPhase(config, job.id, "dispatching");
     await updateJob(configuration, job, result, message.error || null, {
       existingDpdTracking: message.existingDpdTracking || null,
       evidence: message.evidence || null,
     });
+    if (result === "validated") await updateActiveJobPhase(config, job.id, "validated");
     await writeStatusBestEffort(config, `job_${result}`, {
       ...verifiedExtension,
       jobId: job.id,
