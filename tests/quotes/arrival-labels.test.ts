@@ -12,6 +12,8 @@ import {
   type ArrivalDataClients,
 } from "../../src/lib/ops/arrival-labels/clients";
 import {
+  ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
+  ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME,
   ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID,
   ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID,
   ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION,
@@ -203,6 +205,24 @@ test("Sign SHIPPED accepts only an exact ten-digit DHL number at the title end",
   assert.deepEqual(result[0].sourceKinds, ["trello_sign_shipped"]);
 });
 
+test("Create Invoice with tracking uses the same exact DHL suffix trigger", () => {
+  const createInvoiceCard = {
+    ...signShippedCard("50cm | #NEONT4568 Thomas Rehberg | 8109922111"),
+    listId: ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
+    listName: ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME,
+  };
+  const result = arrivalsFromTrelloSignShipped(
+    [createInvoiceCard],
+    "2026-08-12",
+    trelloTriggerSettings,
+  );
+  assert.equal(result.length, 1);
+  assert.equal(result[0].trackingNumber, "8109922111");
+  assert.equal(result[0].lastSix, "922111");
+  assert.deepEqual(result[0].sourceKinds, ["trello_create_invoice"]);
+  assert.equal(result[0].trelloTrigger?.listId, ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID);
+});
+
 test("Sign SHIPPED uses current list membership even for cards last changed before activation", () => {
   const historical = { ...signShippedCard(), dateLastActivity: "2026-07-20T07:59:59Z" };
   const withoutActivity = { ...signShippedCard(), dateLastActivity: null };
@@ -220,6 +240,21 @@ test("Sign SHIPPED fails closed for disabled, wrong-board and wrong-list cards",
   assert.deepEqual(arrivalsFromTrelloSignShipped([valid], "2026-07-20", { ...trelloTriggerSettings, enabled: false }), []);
   for (const variant of variants) {
     assert.deepEqual(arrivalsFromTrelloSignShipped([variant], "2026-07-20", trelloTriggerSettings), []);
+  }
+});
+
+test("Create Invoice trigger fails closed for a spoofed list name or list id", () => {
+  const valid = {
+    ...signShippedCard("#NEONT4568 | Thomas Rehberg | 8109922111"),
+    listId: ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
+    listName: ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME,
+  };
+  const variants = [
+    { ...valid, listName: "Create Invoice" },
+    { ...valid, listId: "66c000000000000000000001" },
+  ];
+  for (const variant of variants) {
+    assert.deepEqual(arrivalsFromTrelloSignShipped([variant], "2026-08-12", trelloTriggerSettings), []);
   }
 });
 
@@ -802,6 +837,31 @@ test("Sign SHIPPED alone plans the label immediately while retaining unknown del
   assert.match(result.cases[0].expectedArrival, /\(unknown\)$/);
   assert.equal(result.summary.outlookTriggered, 0);
   assert.equal(result.summary.trelloSignShippedTriggered, 1);
+});
+
+test("Create Invoice with tracking alone plans through the same guarded service path", async () => {
+  const createInvoiceCard = {
+    ...signShippedCard("#NEONT100 | Ada Beispiel | 1234567890"),
+    listId: ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
+    listName: ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME,
+  };
+  const clients: ArrivalDataClients = {
+    outlook: { async listMessagesForLocalDate() { return []; } },
+    trello: { async listQuentinCards() { return [createInvoiceCard]; } },
+    shopify: { async listRecentOrders() { return [standardOrder]; } },
+    existingLabels: { async findForOrders() { return new Map(); } },
+  };
+  const result = await runArrivalLabels({
+    localDate: "2026-08-12",
+    clients,
+    productConfig: config,
+    trelloTriggerSettings,
+  });
+  assert.equal(result.cases[0].status, "label_planned");
+  assert.equal(result.cases[0].lastSix, "567890");
+  assert.equal(result.summary.outlookTriggered, 0);
+  assert.equal(result.summary.trelloSignShippedTriggered, 0);
+  assert.equal(result.summary.trelloCreateInvoiceTriggered, 1);
 });
 
 test("a pickup order produces no label plan and one internal review notification preview", async () => {

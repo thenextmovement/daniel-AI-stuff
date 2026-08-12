@@ -4,6 +4,8 @@ import { Temporal } from "@js-temporal/polyfill";
 export const ARRIVAL_LABEL_TIMEZONE = "Europe/Berlin" as const;
 export const ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID = "62bae9b97705e7419ed64593" as const;
 export const ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID = "6347e09cb326e6014856bc3b" as const;
+export const ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID = "69ef8a5b2e64cf224dd5746e" as const;
+export const ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME = "Create Invoice (With Tracking)" as const;
 export const ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION = "dhl-10-digit-suffix-v1" as const;
 
 export type ArrivalRunMode = "dry_run" | "execute";
@@ -36,7 +38,7 @@ export type DhlArrival = {
   deliveryState: "unknown" | "due_today" | "delivered_today";
   expectedArrivalAt: string | null;
   messageIds: string[];
-  sourceKinds: Array<"outlook_dhl" | "trello_sign_shipped">;
+  sourceKinds: Array<"outlook_dhl" | "trello_sign_shipped" | "trello_create_invoice">;
   trelloTrigger: {
     boardId: string;
     listId: string;
@@ -463,10 +465,13 @@ export function arrivalsFromTrelloSignShipped(
 
   const byTracking = new Map<string, DhlArrival>();
   for (const card of cards) {
+    const isSignShipped = card.listId === settings.sourceListId
+      && normalizeHumanText(card.listName) === "sign shipped neon trip";
+    const isCreateInvoice = card.listId === ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID
+      && normalizeHumanText(card.listName) === normalizeHumanText(ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME);
     if (
       card.boardId !== settings.boardId
-      || card.listId !== settings.sourceListId
-      || normalizeHumanText(card.listName) !== "sign shipped neon trip"
+      || (!isSignShipped && !isCreateInvoice)
     ) continue;
 
     const trackingNumber = extractTrailingDhlExpressTracking(card.name);
@@ -488,10 +493,10 @@ export function arrivalsFromTrelloSignShipped(
       deliveryState: "unknown",
       expectedArrivalAt: null,
       messageIds: [],
-      sourceKinds: ["trello_sign_shipped"],
+      sourceKinds: [isCreateInvoice ? "trello_create_invoice" : "trello_sign_shipped"],
       trelloTrigger: {
         boardId: settings.boardId,
-        listId: settings.sourceListId,
+        listId: isCreateInvoice ? ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID : settings.sourceListId,
         cardIds: [...new Set([...(previousTrigger?.cardIds || []), card.id])].sort(),
         latestActivityAt: laterInstant(previousTrigger?.latestActivityAt, activityAt),
         enabledAfter: enabledAfter.toString(),

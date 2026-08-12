@@ -4,6 +4,7 @@ import type { ArrivalDataClients, ExistingArrivalCaseEvidence } from "./clients"
 import { createRuntimeClients, customerNameHintsFromCard } from "./clients";
 import { generateArrivalDeliveryNotePdf } from "./delivery-note";
 import {
+  ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
   ARRIVAL_LABEL_TIMEZONE,
   arrivalsFromDhlMessages,
   arrivalsFromTrelloSignShipped,
@@ -48,6 +49,7 @@ export type ArrivalRunResult = {
     found: number;
     outlookTriggered: number;
     trelloSignShippedTriggered: number;
+    trelloCreateInvoiceTriggered: number;
     labelPlanned: number;
     existingLabel: number;
     manualReview: number;
@@ -87,6 +89,7 @@ function summarize(
     found: cases.length,
     outlookTriggered: arrivals.filter((entry) => entry.sourceKinds.includes("outlook_dhl")).length,
     trelloSignShippedTriggered: arrivals.filter((entry) => entry.sourceKinds.includes("trello_sign_shipped")).length,
+    trelloCreateInvoiceTriggered: arrivals.filter((entry) => entry.sourceKinds.includes("trello_create_invoice")).length,
     labelPlanned: cases.filter((entry) => entry.status === "label_planned").length,
     existingLabel: cases.filter((entry) => entry.status === "existing_label").length,
     manualReview: cases.filter((entry) => reviewStatuses.has(entry.status)).length,
@@ -271,12 +274,15 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
         }
         effectiveCases[index] = projectPersistedBrowserManualReview(cases[index], stored);
         const trelloTrigger = arrivals[index].trelloTrigger;
+        const trelloSource = trelloTrigger?.listId === ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID
+          ? "trello_create_invoice"
+          : "trello_sign_shipped";
         for (const cardId of trelloTrigger?.cardIds || []) {
           await recordArrivalEvent({
             runId: run.id,
             caseId: stored.id,
-            eventKey: `${cases[index].idempotencyKey}:source:trello_sign_shipped:${cardId}`,
-            eventType: "trello_sign_shipped_trigger_accepted",
+            eventKey: `${cases[index].idempotencyKey}:source:${trelloSource}:${cardId}`,
+            eventType: `${trelloSource}_trigger_accepted`,
             payload: {
               trackingNumber: arrivals[index].trackingNumber,
               cardId,

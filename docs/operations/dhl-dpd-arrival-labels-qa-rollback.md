@@ -11,9 +11,9 @@
 - Eine bereits exakt in `Sign Arrived` befindliche Karte wird ohne weiteren Move idempotent als abgeschlossen protokolliert.
 - Der n8n-Finalizer muss genau einen Trigger haben. Nur der read-only Healthcheck darf Retries verwenden; Outlook-Archiv- und Trello-Prozessor-POST dürfen nicht automatisch wiederholt werden.
 
-## Sign-SHIPPED-Soforttrigger: zusätzliche Pflichtprüfungen
+## Trello-Soforttrigger: zusätzliche Pflichtprüfungen
 
-- Nur das exakte Quentin-Board und die exakte Liste `Sign SHIPPED (NEON TRIP)` akzeptieren.
+- Nur das exakte Quentin-Board und die exakten Listen `Sign SHIPPED (NEON TRIP)` oder `Create Invoice (With Tracking)` akzeptieren.
 - Nur eine zusammenhängende zehnstellige DHL-Express-Nummer am Titelende akzeptieren; Präfix-, Kurz-, Lang- und Nachtext-Treffer ablehnen.
 - `dateLastActivity` muss am oder nach dem produktiven `enabled_after` liegen; bestehende historische Karten bleiben unberührt.
 - Wiederholte Scheduler-Läufe müssen denselben Datenbankfall, Kaufauftrag und Druckauftrag verwenden.
