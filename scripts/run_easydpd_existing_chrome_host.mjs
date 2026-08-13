@@ -32,6 +32,7 @@ async function main(argv = process.argv.slice(2)) {
   } catch (error) {
     const payload = {
       ok: false,
+      code: error instanceof ExistingChromeBridgeError ? error.nativeCode : null,
       error: String(error instanceof Error ? error.message : "Unbekannter Native-Bridge-Fehler.").slice(0, 500),
       postDispatch: Boolean(error?.postDispatch),
     };

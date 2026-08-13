@@ -33,6 +33,17 @@ import {
 const OLD_WORKER_LABEL = "de.neontrip.easydpd-browser-worker";
 const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXTENSION_FILES = ["content_script.js", "policy.mjs", "service_worker.mjs", "manifest.json"];
+export const EXTENSION_HEARTBEAT_MAX_AGE_MS = 180_000;
+
+export function isFreshExtensionHeartbeat(heartbeat, currentCommit, now = Date.now()) {
+  const updatedAt = Date.parse(String(heartbeat?.updatedAt || ""));
+  return heartbeat?.extensionClientVerified === true
+    && heartbeat?.bridgeProtocolVersion === EXPECTED_BRIDGE_PROTOCOL_VERSION
+    && heartbeat?.extensionBuildCommit === currentCommit
+    && Number.isFinite(updatedAt)
+    && updatedAt <= now + 30_000
+    && now - updatedAt <= EXTENSION_HEARTBEAT_MAX_AGE_MS;
+}
 
 export function parseExistingChromeManagerArgs(argv) {
   const command = argv[0];
@@ -317,11 +328,8 @@ function status() {
   if (existsSync(target.statusPath)) {
     try { heartbeat = JSON.parse(readFileSync(target.statusPath, "utf8")); } catch {}
   }
-  const extensionReloadRequired = !(
-    heartbeat?.extensionClientVerified === true
-    && heartbeat?.bridgeProtocolVersion === EXPECTED_BRIDGE_PROTOCOL_VERSION
-    && heartbeat?.extensionBuildCommit === currentCommit
-  );
+  const extensionHeartbeatFresh = isFreshExtensionHeartbeat(heartbeat, currentCommit);
+  const extensionReloadRequired = !extensionHeartbeatFresh;
   return {
     ok: existsSync(target.nativeManifest) && existsSync(target.activeExtension),
     action: "status",
@@ -331,6 +339,7 @@ function status() {
     nativeManifestInstalled: existsSync(target.nativeManifest),
     config,
     heartbeat,
+    extensionHeartbeatFresh,
     expectedBridgeProtocolVersion: EXPECTED_BRIDGE_PROTOCOL_VERSION,
     extensionReloadRequired,
     oldSeparateWorkerLoaded: launchctl(["print", `${launchDomain()}/${OLD_WORKER_LABEL}`], true).status === 0,

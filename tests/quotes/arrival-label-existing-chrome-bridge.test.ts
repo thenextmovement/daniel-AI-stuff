@@ -8,14 +8,18 @@ import { pathToFileURL } from "node:url";
 import {
   EXPECTED_BRIDGE_PROTOCOL_VERSION,
   EXPECTED_EXTENSION_ID,
+  EXTENSION_BUILD_MISMATCH_CODE,
+  EXTENSION_PROTOCOL_MISMATCH_CODE,
   acquireClaimSlot,
   encodeNativeMessage,
   readActiveJobState,
   readNativeMessage,
   validateBridgeConfig,
+  validateNativeRequest,
 } from "../../scripts/easydpd_existing_chrome_bridge_lib.mjs";
 import {
   bridgeDestinations,
+  isFreshExtensionHeartbeat,
   parseExistingChromeManagerArgs,
   syncExtensionFilesInPlace,
 } from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
@@ -53,7 +57,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.3");
+  assert.equal(manifest.version, "1.1.4");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -121,7 +125,34 @@ test("native protocol is length-prefixed, bounded and allowlisted", async () => 
   const denied = encodeNativeMessage({ ...request, type: "shell" });
   await assert.rejects(() => readNativeMessage(Readable.from([denied])), /nicht freigegeben/);
   const stale = encodeNativeMessage({ ...request, bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION - 1 });
-  await assert.rejects(() => readNativeMessage(Readable.from([stale])), /veraltet/);
+  await assert.rejects(
+    () => readNativeMessage(Readable.from([stale])),
+    (error: unknown) => error instanceof Error
+      && error.message.includes("veraltet")
+      && (error as Error & { nativeCode?: string }).nativeCode === EXTENSION_PROTOCOL_MISMATCH_CODE,
+  );
+});
+
+test("native mismatch codes are stable and bridge heartbeats expire", () => {
+  assert.equal(EXTENSION_BUILD_MISMATCH_CODE, "extension_build_mismatch");
+  assert.throws(
+    () => validateNativeRequest({
+      type: "status",
+      bridgeProtocolVersion: EXPECTED_BRIDGE_PROTOCOL_VERSION,
+      extensionBuildCommit: BUILD_COMMIT,
+    }, "b".repeat(40)),
+    (error: unknown) => error instanceof Error
+      && (error as Error & { nativeCode?: string }).nativeCode === EXTENSION_BUILD_MISMATCH_CODE,
+  );
+  const heartbeat = {
+    extensionClientVerified: true,
+    bridgeProtocolVersion: EXPECTED_BRIDGE_PROTOCOL_VERSION,
+    extensionBuildCommit: BUILD_COMMIT,
+    updatedAt: "2026-08-13T10:00:00.000Z",
+  };
+  assert.equal(isFreshExtensionHeartbeat(heartbeat, BUILD_COMMIT, Date.parse("2026-08-13T10:02:59.999Z")), true);
+  assert.equal(isFreshExtensionHeartbeat(heartbeat, BUILD_COMMIT, Date.parse("2026-08-13T10:03:00.001Z")), false);
+  assert.equal(isFreshExtensionHeartbeat({ ...heartbeat, extensionBuildCommit: "b".repeat(40) }, BUILD_COMMIT, Date.parse("2026-08-13T10:01:00.000Z")), false);
 });
 
 test("native host recognizes a symlinked installed entry point", async () => {
@@ -198,6 +229,8 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(service, /findExistingEasyDpdTab/);
   assert.match(service, /bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION/);
   assert.match(service, /extensionBuildCommit: EXTENSION_BUILD_COMMIT/);
+  assert.match(service, /RELOAD_REQUIRED_CODES/);
+  assert.match(service, /chrome[.]runtime[.]reload\(\)/);
   assert.match(service, /__NEONTRIP_EXTENSION_BUILD_COMMIT__/);
   assert.doesNotMatch(service, /chrome[.]windows[.]create/);
   assert.match(service, /chrome[.]tabs[.]create\(\{ url: validateOrderUrl\(job[.]orderUrl\), active: false \}\)/);
@@ -233,9 +266,12 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(nativeHost, /flag: "wx"/);
   assert.match(nativeHost, /storeActiveJob\(config, job\)/);
   assert.match(nativeHost, /Chrome-Erweiterung ist veraltet/);
+  const nativeRunner = await readFile("scripts/run_easydpd_existing_chrome_host.mjs", "utf8");
+  assert.match(nativeRunner, /error instanceof ExistingChromeBridgeError \? error[.]nativeCode : null/);
   const manager = await readFile("scripts/manage_easydpd_existing_chrome_bridge.mjs", "utf8");
   assert.match(manager, /extension_reload_required/);
   assert.match(manager, /extensionClientVerified/);
+  assert.match(manager, /extensionHeartbeatFresh/);
   assert.match(manager, /syncExtensionFilesInPlace\(staged[.]stagedExtension, target[.]activeExtension\)/);
   assert.doesNotMatch(manager, /renameSync\(target[.]activeExtension/);
 });

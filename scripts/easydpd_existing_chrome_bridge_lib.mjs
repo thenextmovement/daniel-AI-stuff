@@ -15,6 +15,8 @@ import {
 
 export const EXPECTED_EXTENSION_ID = "bgfphlbhdameagnafljlgpbpjdajmdhk";
 export const EXPECTED_BRIDGE_PROTOCOL_VERSION = 2;
+export const EXTENSION_BUILD_MISMATCH_CODE = "extension_build_mismatch";
+export const EXTENSION_PROTOCOL_MISMATCH_CODE = "extension_protocol_mismatch";
 export const NATIVE_HOST_NAME = "de.neontrip.easydpd_existing_chrome";
 const MAX_NATIVE_MESSAGE_BYTES = 1024 * 1024;
 const ALLOWED_UPDATE_RESULTS = new Set(["validated", "dispatching", "retryable_error", "uncertain", "existing_label"]);
@@ -24,6 +26,7 @@ export class ExistingChromeBridgeError extends BrowserWorkerError {
   constructor(message, exitCode = 1, options = {}) {
     super(message, exitCode, options);
     this.name = "ExistingChromeBridgeError";
+    this.nativeCode = options.nativeCode || null;
   }
 }
 
@@ -106,12 +109,16 @@ export function validateNativeRequest(message, expectedBuildCommit = null) {
   const type = cleanString(message.type, "Native-Bridge-Nachrichtentyp", 40);
   if (!["status", "claim", "update", "upload_artifact"].includes(type)) throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtentyp ist nicht freigegeben.", 65);
   if (message.bridgeProtocolVersion !== EXPECTED_BRIDGE_PROTOCOL_VERSION) {
-    throw new ExistingChromeBridgeError("Chrome-Erweiterung ist veraltet; in chrome://extensions neu laden.", 65);
+    throw new ExistingChromeBridgeError("Chrome-Erweiterung ist veraltet; Erweiterung neu laden.", 65, {
+      nativeCode: EXTENSION_PROTOCOL_MISMATCH_CODE,
+    });
   }
   const extensionBuildCommit = String(message.extensionBuildCommit || "").trim().toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(extensionBuildCommit)) throw new ExistingChromeBridgeError("Chrome-Erweiterungs-Build fehlt oder ist ungueltig.", 65);
   if (expectedBuildCommit && extensionBuildCommit !== expectedBuildCommit) {
-    throw new ExistingChromeBridgeError("Chrome-Erweiterungs-Build stimmt nicht mit dem installierten Native Host ueberein; Erweiterung neu laden.", 65);
+    throw new ExistingChromeBridgeError("Chrome-Erweiterungs-Build stimmt nicht mit dem installierten Native Host ueberein; Erweiterung neu laden.", 65, {
+      nativeCode: EXTENSION_BUILD_MISMATCH_CODE,
+    });
   }
   return { ...message, type, extensionBuildCommit };
 }
