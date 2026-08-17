@@ -57,7 +57,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.4");
+  assert.equal(manifest.version, "1.1.5");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -253,6 +253,11 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.equal(content.match(/createButton\(\)[.]click\(\)/g)?.length, 1);
   assert.match(content, /sessionStorage[.]setItem\(purchaseKey/);
   assert.match(content, /collectExistingLabelEvidence/);
+  assert.match(content, /const PREPARE_READY_TIMEOUT_MS = 20_000/);
+  assert.match(content, /async function validateAndPrepareWhenReady\(job\)/);
+  assert.match(content, /isTransientPreparationError\(error\)/);
+  assert.match(content, /setTimeout\(resolve, PREPARE_READY_INTERVAL_MS\)/);
+  assert.match(content, /validateAndPrepareWhenReady\(message[.]job\)/);
   const nativeHost = await readFile("scripts/easydpd_existing_chrome_bridge_lib.mjs", "utf8");
   assert.match(nativeHost, /JOB_BINDING_FIELDS/);
   assert.match(nativeHost, /stimmt nicht mit dem lokal gebundenen Claim ueberein/);

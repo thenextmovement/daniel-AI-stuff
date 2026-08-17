@@ -3,6 +3,8 @@
 
   const FRAME_ORIGIN = "https://easydpd.247apps.de";
   const PURCHASE_KEY_PREFIX = "neontrip-easydpd-dispatched-job:";
+  const PREPARE_READY_TIMEOUT_MS = 20_000;
+  const PREPARE_READY_INTERVAL_MS = 250;
   const PRODUCT_LABELS = new Set([
     "B2C",
     "B2C Predict",
@@ -120,6 +122,27 @@
     };
   }
 
+  function isTransientPreparationError(error) {
+    return /^EasyDPD-(?:Bestellung|Produkt|Format|Gesamtgewicht|Kaufbutton) ist nicht eindeutig auffindbar[.]$/.test(
+      String(error?.message || error),
+    );
+  }
+
+  async function validateAndPrepareWhenReady(job) {
+    const deadline = Date.now() + PREPARE_READY_TIMEOUT_MS;
+    let lastError = null;
+    do {
+      try {
+        return validateAndPrepare(job);
+      } catch (error) {
+        if (!isTransientPreparationError(error)) throw error;
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, PREPARE_READY_INTERVAL_MS));
+      }
+    } while (Date.now() < deadline);
+    throw lastError || new Error("EasyDPD-Auftrag wurde nicht rechtzeitig kaufbereit.");
+  }
+
   function purchaseOnce(job, dispatchNonce) {
     const prepared = validateAndPrepare(job);
     if (!prepared.ready || prepared.existingLabel.found) throw new Error("Vor dem Kauf wurde ein vorhandenes EasyDPD-Label erkannt.");
@@ -133,9 +156,14 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.target !== "neontrip-easydpd-frame") return undefined;
+    if (message.action === "validate_and_prepare") {
+      validateAndPrepareWhenReady(message.job)
+        .then((result) => sendResponse({ ok: true, result }))
+        .catch((error) => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 500) }));
+      return true;
+    }
     try {
-      if (message.action === "validate_and_prepare") sendResponse({ ok: true, result: validateAndPrepare(message.job) });
-      else if (message.action === "purchase_once") sendResponse({ ok: true, result: purchaseOnce(message.job, message.dispatchNonce) });
+      if (message.action === "purchase_once") sendResponse({ ok: true, result: purchaseOnce(message.job, message.dispatchNonce) });
       else sendResponse({ ok: false, error: "Unbekannte EasyDPD-Bridge-Aktion." });
     } catch (error) {
       sendResponse({ ok: false, error: String(error?.message || error).slice(0, 500) });
