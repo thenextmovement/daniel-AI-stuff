@@ -4,7 +4,7 @@ import test from "node:test";
 
 const route = readFileSync("src/app/api/internal/offer-call-tasks/route.ts", "utf8");
 const migration = readFileSync(
-  "supabase/migrations/20260818102012_repair_google_ads_offer_conversion_source.sql",
+  "supabase/migrations/20260818102145_repair_google_ads_offer_conversion_source.sql",
   "utf8",
 );
 
