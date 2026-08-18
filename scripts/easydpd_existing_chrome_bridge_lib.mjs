@@ -104,6 +104,10 @@ export function workerConfiguration(config) {
   );
 }
 
+/**
+ * @param {Record<string, unknown>} message
+ * @param {string | null} [expectedBuildCommit]
+ */
 export function validateNativeRequest(message, expectedBuildCommit = null) {
   if (!message || typeof message !== "object" || Array.isArray(message)) throw new ExistingChromeBridgeError("Native-Bridge-Nachricht fehlt.", 65);
   const type = cleanString(message.type, "Native-Bridge-Nachrichtentyp", 40);
