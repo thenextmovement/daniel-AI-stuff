@@ -5420,19 +5420,12 @@ async function projectSupplierTrelloCard(
         existingDescription: String(card.desc || ""),
       };
     }
-    const next = prependWithoutDeletingExistingDescription(card.desc, supplierProductionDescription(items, note));
     const nextName = supplierTrelloTitleWithPurchasedSizes(card.name, items);
     const nameChanged = Boolean(nextName && nextName !== String(card.name || ""));
-    if (next.changed || nameChanged) {
-      await updateTrelloCard(cardId, {
-        ...(next.changed ? { desc: next.description } : {}),
-        ...(nameChanged ? { name: nextName } : {}),
-      });
-    }
+    if (nameChanged) await updateTrelloCard(cardId, { name: nextName });
     const verified = await getTrelloCard(cardId);
     if (
       verified.idBoard !== QUENTIN_NEON_BOARD_ID ||
-      String(verified.desc || "") !== next.description ||
       (nameChanged && String(verified.name || "") !== nextName)
     ) {
       throw new QuoteValidationError("Trello-Aktualisierung konnte nicht verifiziert werden.", [

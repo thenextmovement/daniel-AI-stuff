@@ -27,6 +27,7 @@ import {
   readSupplierSaleTrelloDescription,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
+  retrySupplierSaleTrelloProjection,
   runSupplierSalesLiveCheck,
   sendSupplierOrderConfirmationEmail,
   setSupplierSaleQuentinTrelloCard,
@@ -1350,7 +1351,7 @@ test("approved design upload stops before Trello access when the product image i
   assert.equal(trelloRequestCount, 0);
 });
 
-test("Quentin assignment updates purchased size in title and description and uploads the approved design", async () => {
+test("Quentin assignment and retry preserve the description while updating neighboring card details", async () => {
   const cardId = "70f000000000000000000099";
   let currentRow = saleRow({
     id: "sale-complete-quentin-projection",
@@ -1378,6 +1379,7 @@ test("Quentin assignment updates purchased size in title and description and upl
   });
   let cardName = "Update size 90cm | Antonia Lindner | Color as logo";
   let cardDescription = "Existing production note";
+  let descriptionWriteCount = 0;
   const attachments: Array<Record<string, unknown>> = [];
 
   await withMockedAssignmentFetch(async (url, init) => {
@@ -1398,7 +1400,10 @@ test("Quentin assignment updates purchased size in title and description and upl
       }
       if (url.pathname.endsWith(`/${cardId}`) && method === "PUT") {
         cardName = url.searchParams.get("name") || cardName;
-        cardDescription = url.searchParams.get("desc") || cardDescription;
+        if (url.searchParams.has("desc")) {
+          descriptionWriteCount += 1;
+          cardDescription = url.searchParams.get("desc") || cardDescription;
+        }
         return Response.json({});
       }
       return Response.json({
@@ -1433,10 +1438,13 @@ test("Quentin assignment updates purchased size in title and description and upl
       operatorName: "Rahim",
     });
     assert.equal(sale.trelloProjectionStatus, "synced");
+    const retried = await retrySupplierSaleTrelloProjection({ saleId: currentRow.id, operatorName: "Rahim" });
+    assert.equal(retried.trelloProjectionStatus, "synced");
   });
 
   assert.equal(cardName, "140x31cm | Antonia Lindner | Color as logo");
-  assert.ok(cardDescription.startsWith("Size: 140x31cm ❗"));
+  assert.equal(cardDescription, "Existing production note");
+  assert.equal(descriptionWriteCount, 0);
   assert.equal(attachments.length, 1);
   assert.equal(attachments[0]?.name, "Approved Design");
   assert.equal(currentRow.metadata.approved_design_card_id, cardId);

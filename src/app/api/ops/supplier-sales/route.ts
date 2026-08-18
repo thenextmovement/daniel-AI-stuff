@@ -11,7 +11,6 @@ import {
   listSupplierSalesBoard,
   lookupSupplierSaleTrelloDescription,
   markSupplierSaleInProduction,
-  prependSupplierSaleTrelloDescription,
   requestSupplierPaymentReminder,
   retrySupplierSaleShopifyTag,
   retrySupplierSaleTrelloProjection,
@@ -50,7 +49,6 @@ type SupplierSalesPostBody = {
     | "retry_shopify_tag"
     | "retry_trello_projection"
     | "set_trello_card"
-    | "prepend_trello_description"
     | "upload_approved_design"
     | "mark_in_production"
     | "apply_no_payment_reminder_tag"
@@ -68,7 +66,6 @@ type SupplierSalesPostBody = {
   specialSupplierName?: string | null;
   shopifySupplierTagConfirmed?: boolean | null;
   assignmentNote?: string | null;
-  prependText?: string | null;
   trelloCard?: string | null;
   reviewNote?: string | null;
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
@@ -399,15 +396,6 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale });
-    }
-
-    if (action === "prepend_trello_description") {
-      const result = await prependSupplierSaleTrelloDescription({
-        saleId: String(body.saleId || ""),
-        prependText: String(body.prependText || ""),
-        operatorName: body.operatorName || null,
-      }, actor);
-      return NextResponse.json({ ok: true, action, sale: result.sale, trelloDescription: result.trelloDescription });
     }
 
     if (action === "upload_approved_design") {

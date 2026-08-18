@@ -57,7 +57,7 @@
 - `[verifiziert]` Die UI kennzeichnet bezahlte Sales grün, Bestandskunden mit früherer Zahlung separat und bietet Schnellfilter für bezahlt, Bestandskunde, fehlenden Bezahllink, Sync-Fehler, Deadline und Express/Eil.
 - `[verifiziert]` Die Kundenauswahl zeigt pro Position die Menge und, soweit im Snapshot vorhanden, Größe, Breite, Höhe, Farbe, Zuschnitt, Rückseite, Montage und Outdoor-Merkmale.
 - `[verifiziert]` Links können zu Angebot, finalem PDF, generiertem Snapshot/AB-PDF, Shopify, Bezahlen, Supplier-Trello-Karte, Quellkarte und Quentin-Board-Suche führen.
-- `[verifiziert]` Die UI bietet keinen manuellen Abgleich und keinen Editor für die Quentin-Trello-Description mehr. Karten-Zuordnung, Projektions-Retry und der kontrollierte Approved-Design-Upload bleiben davon unberührt.
+- `[verifiziert]` UI und Sales-API bieten keinen manuellen Schreibweg für die Quentin-Trello-Description mehr. Vergabe und Projektions-Retry lassen die bestehende Description unverändert; Karten-Zuordnung, Größenpflege im Kartentitel und der kontrollierte Approved-Design-Upload bleiben davon unberührt.
 - `[aus Git/Code abgeleitet]` Eine genaue direkte Quentin-Karte ist nur vorhanden, wenn deren ID/URL bereits gespeichert wurde; die Board-Suche ist ansonsten nur eine Suchhilfe und kein bewiesenes Unique-ID-Match.
 
 ## Zahlungs- und Freigabelogik
