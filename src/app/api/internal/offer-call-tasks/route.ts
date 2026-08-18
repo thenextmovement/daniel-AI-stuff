@@ -11,6 +11,7 @@ import {
   type CustomerSearchResult,
   type UpdateActor,
 } from "@/lib/ops/customer-records";
+import { recordOfferSentForSalesCalls } from "@/lib/ops/customer-call-module";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -253,7 +254,38 @@ async function createCallTask(body: OfferCallTaskRequest, request: NextRequest) 
     sourceId: `${offerId}:${unopened ? "unopened-24h" : "first-offer-sent"}`,
   }, actor);
 
-  return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks, trelloDescriptionSync });
+  let offerSentSync: Awaited<ReturnType<typeof recordOfferSentForSalesCalls>> | { ok: false; error: string } | null = null;
+  if (action === "create_offer_sent_call_task") {
+    try {
+      offerSentSync = await recordOfferSentForSalesCalls({
+        requestId: record.requestId,
+        trelloCardId: body.offer?.trelloCardId,
+        offerId,
+        offerNumber: body.offer?.offerNumber,
+        documentReference: body.offer?.documentReference,
+        publicUrl: body.offer?.publicUrl,
+        recipientEmail: body.offer?.customerEmail,
+        sentAt: now,
+        source: "neontrip_offers_call_task_api",
+        sourceEventId: offerId,
+        idempotencyKey: `ops-call:offer:${offerId}:offer-sent-record`,
+        actor: trimNullable(body.operatorName) || "NEONTRIP Offers",
+        payload: {
+          action,
+          direction: "outbound",
+          subtype: "quote_sent",
+        },
+      });
+    } catch (syncError) {
+      console.error("offer call task created but offer sent tracking sync failed", syncError);
+      offerSentSync = {
+        ok: false,
+        error: syncError instanceof Error ? syncError.message : "offer_sent_sync_failed",
+      };
+    }
+  }
+
+  return NextResponse.json({ ok: true, action, requestId: record.requestId, task, closedInquiryTasks, trelloDescriptionSync, offerSentSync });
 }
 
 async function createShopifySyncFailureTask(body: OfferCallTaskRequest, request: NextRequest) {
