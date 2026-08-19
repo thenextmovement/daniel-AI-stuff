@@ -1,0 +1,199 @@
+{
+  "name": "NEONTRIP Billing v2 - VAT Review Alert Worker (INACTIVE)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "vat-schedule",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "vat-config",
+      "name": "VAT Review Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');return [{json:{opsBaseUrl:base,worker:'n8n-vat-review-alert-v2'}}];"
+      }
+    },
+    {
+      "id": "vat-claim",
+      "name": "Claim VAT Review Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -340,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {worker:$json.worker,jobTypes:['VERIFY_VAT'],leaseSeconds:180} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "vat-prepare",
+      "name": "Prepare VAT Review Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const claimed=($json.body??$json).claimed;if(!claimed?.job||!claimed?.billingCase)return [];const c=claimed.billingCase;const v=c.vat_validation||{};const clean=x=>String(x??'').replace(/[\\r\\n]+/g,' ').slice(0,500);const ops=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'')+'/ops/rechnungen?caseId='+encodeURIComponent(c.id);const message=['Umsatzsteuer-ID passt nicht zur Firma – Bitte prüfen',`Auftrag: ${clean(c.shopify_order_name)}`,`Ops-Fall: ${ops}`,`USt-ID: ${clean(c.vat_id)}`,`Prüfstatus: checked=${v.checked===true}, valid=${v.valid===true}, comparison=${clean(v.identityComparison||'UNAVAILABLE')}`,`Bei VIES gelistete Firma: ${clean(v.name||'nicht geliefert')}`,`Registeranschrift: ${clean(v.address||'nicht geliefert')}`,'Nächster Schritt: Daten mit VIES vergleichen, bei Bedarf Kundennachweis anfordern und den Fall in Ops ausdrücklich als netto oder brutto freigeben.','Offizielle Prüfung: https://ec.europa.eu/taxation_customs/vies/#/vat-validation','Produktion und Lieferung bleiben möglich; nur die finale steuerfreie Rechnung bleibt gesperrt.'].join(' | ');return [{json:{jobId:claimed.job.id,leaseToken:claimed.job.lease_token,opsBaseUrl:String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,''),message,result:{worker:'n8n-vat-review-alert-v2',alertPrepared:true,shopifyOrderName:c.shopify_order_name}}}];"
+      }
+    },
+    {
+      "id": "vat-complete",
+      "name": "Complete VAT Review Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {leaseToken:$json.leaseToken,success:true,result:$json.result} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "vat-alert",
+      "name": "Send VAT Review Through Error Mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ],
+      "parameters": {
+        "jsCode": "throw new Error($('Prepare VAT Review Alert').first().json.message);"
+      }
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "VAT Review Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VAT Review Config": {
+      "main": [
+        [
+          {
+            "node": "Claim VAT Review Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim VAT Review Job": {
+      "main": [
+        [
+          {
+            "node": "Prepare VAT Review Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare VAT Review Alert": {
+      "main": [
+        [
+          {
+            "node": "Complete VAT Review Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete VAT Review Job": {
+      "main": [
+        [
+          {
+            "node": "Send VAT Review Through Error Mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "availableInMCP": false
+  },
+  "versionId": "neontrip-billing-v2-vat-review-alert-worker-inactive"
+}

@@ -1,0 +1,305 @@
+{
+  "name": "NEONTRIP Billing v2 - Easybill Proforma Void Worker (INACTIVE)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "void-schedule",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "void-config",
+      "name": "Void Worker Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');return [{json:{opsBaseUrl:base,worker:'n8n-easybill-proforma-void-v2'}}];"
+      }
+    },
+    {
+      "id": "void-claim",
+      "name": "Claim Proforma Void Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -340,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {worker:$json.worker,jobTypes:['VOID_PROFORMA'],leaseSeconds:180} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "void-prepare",
+      "name": "Prepare Proforma Void",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const claimed=($json.body??$json).claimed;if(!claimed?.job)return [];const id=String(claimed.job.payload?.easybillDocumentId||'');if(!/^\\d+$/.test(id))throw new Error('easybill_proforma_id_missing');return [{json:{...claimed,job:claimed.job,easybillDocumentId:id,opsBaseUrl:String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'')}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "void-easybill",
+      "name": "Easybill Cancel Proforma",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.easybill.de/rest/v1/documents/' + encodeURIComponent($json.easybillDocumentId) + '/cancel' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_EASYBILL_BEARER",
+          "name": "easybill REST API"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "void-success",
+      "name": "Prepare Void Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "const ctx=$('Prepare Proforma Void').first().json;return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,opsBaseUrl:ctx.opsBaseUrl,success:true,result:{worker:'n8n-easybill-proforma-void-v2',easybillDocumentId:ctx.easybillDocumentId,cancelDocumentId:String(($json.body??$json).id||'')}}}];"
+      }
+    },
+    {
+      "id": "void-failure",
+      "name": "Prepare Void Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const ctx=$('Prepare Proforma Void').first().json;return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,opsBaseUrl:ctx.opsBaseUrl,success:false,result:{worker:'n8n-easybill-proforma-void-v2'},error:String($json.error?.message||$json.message||'easybill_proforma_void_failed').slice(0,1800)}}];"
+      }
+    },
+    {
+      "id": "void-complete",
+      "name": "Complete Proforma Void Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "void-blocked",
+      "name": "Raise Proforma Void Block",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const body=$json.body??$json;if(body.completed?.status==='BLOCKED')throw new Error('Fehler Rechnung Shopify/Easybill: Pro-forma konnte in Easybill nicht storniert werden.');return [{json:{ok:true}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Void Worker Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Void Worker Config": {
+      "main": [
+        [
+          {
+            "node": "Claim Proforma Void Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Proforma Void Job": {
+      "main": [
+        [
+          {
+            "node": "Prepare Proforma Void",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Proforma Void": {
+      "main": [
+        [
+          {
+            "node": "Easybill Cancel Proforma",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Void Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Easybill Cancel Proforma": {
+      "main": [
+        [
+          {
+            "node": "Prepare Void Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Void Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Void Success": {
+      "main": [
+        [
+          {
+            "node": "Complete Proforma Void Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Void Failure": {
+      "main": [
+        [
+          {
+            "node": "Complete Proforma Void Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Proforma Void Job": {
+      "main": [
+        [
+          {
+            "node": "Raise Proforma Void Block",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "availableInMCP": false
+  },
+  "versionId": "neontrip-billing-v2-easybill-proforma-void-worker-inactive"
+}

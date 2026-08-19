@@ -1,0 +1,539 @@
+{
+  "name": "NEONTRIP Billing v2 - Payment Projection Worker (INACTIVE)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "projection-schedule",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "projection-config",
+      "name": "Projection Worker Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,''); if(!/^https:\\/\\//.test(base)) throw new Error('NEONTRIP_OPS_BASE_URL missing'); return [{json:{opsBaseUrl:base,worker:'n8n-payment-projection-v2'}}];"
+      }
+    },
+    {
+      "id": "projection-claim",
+      "name": "Claim Projection Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -500,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {worker:$json.worker,jobTypes:['PROJECT_PAYMENT_SHOPIFY','PROJECT_PAYMENT_EASYBILL'],leaseSeconds:180} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "projection-normalize",
+      "name": "Normalize Projection Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const claimed=($json.body??$json).claimed; if(!claimed?.job) return []; return [{json:{...claimed,job:claimed.job,billingCase:claimed.billingCase}}];"
+      }
+    },
+    {
+      "id": "projection-route",
+      "name": "Easybill Payment",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.job.job_type }}",
+              "rightValue": "PROJECT_PAYMENT_EASYBILL",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "easybill-payment",
+      "name": "Easybill Record Payment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        -120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.easybill.de/rest/v1/document-payments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {document_id:Number($json.job.payload.documentId),amount:Number($json.job.payload.amountCents),payment_at:String($json.job.payload.paidAt).slice(0,10),type:'BANK_TRANSFER',provider:'NEONTRIP Billing v2',reference:$json.billingCase.shopify_order_name} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_EASYBILL_BEARER",
+          "name": "easybill REST API"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "shopify-query",
+      "name": "Shopify Read Payment State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {query:'query BillingPaymentState($id: ID!) { order(id:$id) { id name canMarkAsPaid displayFinancialStatus } }',variables:{id:$json.billingCase.shopify_order_id}} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "shopify-decision",
+      "name": "Decide Shopify Payment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        120
+      ],
+      "parameters": {
+        "jsCode": "const ctx=$('Normalize Projection Job').first().json; const order=($json.body??$json).data?.order; if(!order) throw new Error('shopify_order_missing'); if(order.displayFinancialStatus==='PAID') return [{json:{...ctx,alreadyDone:true}}]; if(order.canMarkAsPaid!==true) throw new Error('shopify_order_cannot_mark_paid'); return [{json:{...ctx,alreadyDone:false}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "shopify-needed",
+      "name": "Shopify Mutation Needed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.alreadyDone }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "shopify-paid",
+      "name": "Shopify Mark Order Paid",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {query:'mutation BillingMarkPaid($input: OrderMarkAsPaidInput!) { orderMarkAsPaid(input:$input) { order { id displayFinancialStatus } userErrors { field message } } }',variables:{input:{id:$json.billingCase.shopify_order_id}}} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "projection-success",
+      "name": "Prepare Projection Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const ctx=$('Normalize Projection Job').first().json; const body=$json.body??$json; const errors=body.data?.orderMarkAsPaid?.userErrors||[]; if(errors.length) throw new Error('shopify_mark_paid:'+errors.map(x=>x.message).join(';')); return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',projection:ctx.job.job_type}}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "projection-failure",
+      "name": "Prepare Projection Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const ctx=$('Normalize Projection Job').first().json; return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:false,result:{worker:'n8n-payment-projection-v2'},error:String($json.error?.message||$json.message||'payment_projection_failed').slice(0,1800)}}];"
+      }
+    },
+    {
+      "id": "projection-complete",
+      "name": "Complete Projection Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        -40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Projection Worker Config').first().json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "projection-blocked",
+      "name": "Raise Projection Block",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const body=$json.body??$json;if(body.completed?.status==='BLOCKED')throw new Error('Fehler Rechnung Shopify/Easybill: Zahlungsprojektion blockiert.');return [{json:{ok:true}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Projection Worker Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Projection Worker Config": {
+      "main": [
+        [
+          {
+            "node": "Claim Projection Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Projection Job": {
+      "main": [
+        [
+          {
+            "node": "Normalize Projection Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Projection Job": {
+      "main": [
+        [
+          {
+            "node": "Easybill Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Easybill Payment": {
+      "main": [
+        [
+          {
+            "node": "Easybill Record Payment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shopify Read Payment State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Easybill Record Payment": {
+      "main": [
+        [
+          {
+            "node": "Prepare Projection Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify Read Payment State": {
+      "main": [
+        [
+          {
+            "node": "Decide Shopify Payment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Shopify Payment": {
+      "main": [
+        [
+          {
+            "node": "Shopify Mutation Needed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify Mutation Needed": {
+      "main": [
+        [
+          {
+            "node": "Shopify Mark Order Paid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify Mark Order Paid": {
+      "main": [
+        [
+          {
+            "node": "Prepare Projection Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Projection Success": {
+      "main": [
+        [
+          {
+            "node": "Complete Projection Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Projection Failure": {
+      "main": [
+        [
+          {
+            "node": "Complete Projection Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Projection Job": {
+      "main": [
+        [
+          {
+            "node": "Raise Projection Block",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "availableInMCP": false
+  },
+  "versionId": "neontrip-billing-v2-payment-projection-worker-inactive"
+}

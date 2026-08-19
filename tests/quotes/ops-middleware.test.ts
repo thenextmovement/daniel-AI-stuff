@@ -233,8 +233,8 @@ test("ops middleware keeps localhost routes testable", async () => {
   });
 });
 
-test("ops middleware matcher is limited to ops routes", async () => {
-  assert.deepEqual(config.matcher, ["/ops/:path*", "/api/ops/:path*"]);
+test("ops middleware matcher covers Ops and the single-token invoice portal only", async () => {
+  assert.deepEqual(config.matcher, ["/ops/:path*", "/api/ops/:path*", "/:token"]);
 
   await withOpsMiddlewareEnv(async () => {
     const response = await middleware(buildRequest("https://angebote.neontrip.de/quote/customer-token"));
@@ -242,4 +242,11 @@ test("ops middleware matcher is limited to ops routes", async () => {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-middleware-next"), "1");
   });
+});
+
+test("invoice host rewrites a permanent root token into the private portal route", async () => {
+  const token = "a".repeat(48);
+  const response = await middleware(buildRequest(`https://rechnung.neontrip.de/${token}`, { headers: { host: "rechnung.neontrip.de" } }));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("x-middleware-rewrite") || "", new RegExp(`/rechnung/${token}$`));
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, ReceiptText, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -12,6 +12,7 @@ export type OpsAppKey =
   | "companyKnowledge"
   | "design"
   | "offers"
+  | "billing"
   | "supplierSales"
   | "euSupplierQuotes"
   | "shipping"
@@ -100,6 +101,13 @@ const OPS_APPS: Array<{
     helper: "Erstellen & senden",
     href: "/ops/offers",
     Icon: FileText,
+  },
+  {
+    key: "billing",
+    label: "Rechnungen",
+    helper: "Pro-forma & Belege",
+    href: "/ops/rechnungen",
+    Icon: ReceiptText,
   },
   {
     key: "supplierSales",

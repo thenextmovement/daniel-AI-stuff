@@ -1,0 +1,11 @@
+drop function if exists public.billing_portal_submit_change(text,text,jsonb,text);
+drop function if exists public.billing_case_ingest(jsonb,jsonb,text,text,text);
+drop table if exists public.billing_incidents;
+drop table if exists public.billing_jobs;
+drop table if exists public.billing_events;
+drop table if exists public.billing_change_requests;
+drop table if exists public.billing_payments;
+drop table if exists public.billing_documents;
+drop table if exists public.billing_case_versions;
+drop table if exists public.billing_cases;
+drop function if exists public.set_billing_updated_at();

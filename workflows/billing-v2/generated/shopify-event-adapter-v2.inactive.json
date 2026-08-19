@@ -1,0 +1,127 @@
+{
+  "name": "NEONTRIP Billing v2 - Shopify Event Adapter (INACTIVE)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Called by Existing Source Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "validate",
+      "name": "Validate Financial Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const x=$input.first()?.json||{}; const allowed=new Set(['ORDER_DELIVERED','ORDER_CANCELLED','REFUND_CREATED']); const ints=['amountCents','netCents','vatCents']; if(!x.shopifyOrderId||!x.eventId||!allowed.has(x.eventType)||ints.some(k=>!Number.isSafeInteger(Number(x[k]||0)))) throw new Error('invalid_shopify_billing_event'); if(x.eventType==='ORDER_DELIVERED'&&x.allLineItemsDelivered!==true) throw new Error('shopify_order_not_fully_delivered'); if(x.eventType==='REFUND_CREATED'&&Number(x.amountCents)!==Number(x.netCents)+Number(x.vatCents)) throw new Error('refund_cents_mismatch'); return [{json:{...x,source:'shopify',eventId:String(x.eventId)}}];"
+      }
+    },
+    {
+      "id": "post",
+      "name": "Record in BillingCase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'') + '/api/internal/billing/shopify/events' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "error",
+      "name": "Raise Billing Intake Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        160
+      ],
+      "parameters": {
+        "jsCode": "throw new Error('Fehler Rechnung Shopify/Easybill: Financial Event konnte nicht in Ops gespeichert werden.');"
+      }
+    }
+  ],
+  "connections": {
+    "Called by Existing Source Workflow": {
+      "main": [
+        [
+          {
+            "node": "Validate Financial Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Financial Event": {
+      "main": [
+        [
+          {
+            "node": "Record in BillingCase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record in BillingCase": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Raise Billing Intake Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "neontrip-billing-v2-shopify-event-adapter-inactive"
+}

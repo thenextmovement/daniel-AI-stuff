@@ -1,0 +1,127 @@
+{
+  "name": "NEONTRIP Billing v2 - Payment Match Adapter (INACTIVE)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Called by Existing Source Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "validate",
+      "name": "Validate Financial Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const x=$input.first()?.json||{}; if(!x.shopifyOrderId||!x.provider||!x.providerTransactionId||!x.sourceEventId||!Number.isSafeInteger(Number(x.amountCents))||Number(x.amountCents)<=0||!/^[A-Z]{3}$/.test(String(x.currency||''))||!Number.isFinite(Date.parse(String(x.bookedAt||'')))) throw new Error('invalid_payment_match'); return [{json:x}];"
+      }
+    },
+    {
+      "id": "post",
+      "name": "Record in BillingCase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'') + '/api/internal/billing/payments' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "error",
+      "name": "Raise Billing Intake Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        160
+      ],
+      "parameters": {
+        "jsCode": "throw new Error('Fehler Rechnung Shopify/Easybill: Financial Event konnte nicht in Ops gespeichert werden.');"
+      }
+    }
+  ],
+  "connections": {
+    "Called by Existing Source Workflow": {
+      "main": [
+        [
+          {
+            "node": "Validate Financial Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Financial Event": {
+      "main": [
+        [
+          {
+            "node": "Record in BillingCase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record in BillingCase": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Raise Billing Intake Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "neontrip-billing-v2-payment-match-adapter-inactive"
+}
