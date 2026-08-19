@@ -35,6 +35,7 @@ Then verify the managed tax tag is added for net orders and removed for taxable 
 - [ ] Connect all signed sources: Offers sale, ordinary Shopify orders, Shopify cancel/refund/delivery events and the existing bank matcher.
 - [ ] Keep Easybill document workers inactive and compare computed BillingCase snapshots with actual Shopify orders.
 - [ ] Reconcile immutable Shopify order ID, order name, currency, line quantities, discounts, shipping, gross, net, tax and customer address in cents.
+- [ ] Reconcile invoice email and project number from Offers through Shopify metadata, BillingCase and the calculated Easybill payload.
 - [ ] Confirm unknown, duplicate and out-of-order events are idempotent or enter manual review.
 - [ ] Confirm every terminal failure creates one urgent incident with subject/context `Fehler Rechnung Shopify/Easybill`, direct Ops link and retry history.
 
@@ -52,6 +53,8 @@ Every canary must be unmistakably marked as a test in offer/order metadata and c
 | Same customer: Austria then Germany | Customer is tax exempt for the AT order and reset to taxable immediately before the DE order |
 | Same customer: Germany then Austria | Customer is taxable for the DE order and set tax exempt immediately before the AT order |
 | Customer invoice-address change before invoice | Approval creates the next PF revision (`PF-NEONT…-1`) |
+| Customer invoice-email change before invoice | Approval creates the next PF revision and sends it exactly once to the new address |
+| Customer project-number change before invoice | Approval creates the next PF revision; new project number is visible and stored as `buyer_reference` |
 | Admin invoice-address change before invoice | Change is immediate, logged with login, next PF revision created |
 | Exact full payment | Final `#NEONT…` invoice created once and payment projected idempotently |
 | Partial/overpayment | No automatic final invoice; manual review |
@@ -64,15 +67,17 @@ Every canary must be unmistakably marked as a test in offer/order metadata and c
 | Duplicate payment/refund/cancel/delivered webhook | No duplicate document or payment |
 | Easybill/Shopify timeout and retry | Bounded retry; urgent incident after fourth failure; no duplicate document |
 
-For every case, compare Shopify, Ops, Easybill and the PDF. Shopify's gross presentation is not used as a substitute for comparing the complete cent-level tax snapshot.
+For every case, compare Shopify, Ops, Easybill and the PDF. Verify that the billing email receives the Pro-forma, invoice, credit note or cancellation exactly once; when the optional field was empty at acceptance, verify the signer-email fallback. Verify that every supplied project number is present both as Easybill `buyer_reference` and visibly as `Projektnummer` in the PDF. Shopify's gross presentation is not used as a substitute for comparing the complete cent-level tax snapshot.
 
 ## 5. Customer communication proof
 
 - [ ] Signature produces Shopify Sale first, then BillingCase/PF, then one order-confirmation message with the permanent `rechnung.neontrip.de` link.
+- [ ] The order confirmation goes to the signer; all billing documents go to the resolved invoice email.
 - [ ] Confirmation clearly accepts the order, states `Zahlbar sofort`, and explains production can begin but may be paused if payment is missing, causing delay.
 - [ ] Portal wording says `Änderungen zur Rechnung`; it does not imply product/order changes.
 - [ ] Portal remains readable after final invoice but rejects further changes.
 - [ ] No duplicate Easybill document email and no customer email is emitted by a retry.
+- [ ] Project number and billing destination remain visible in Ops and the portal; after final invoice the portal stays readable but both are immutable.
 
 ## 6. Cutover and rollback gate
 

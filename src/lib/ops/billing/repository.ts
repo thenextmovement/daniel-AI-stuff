@@ -12,6 +12,7 @@ export type BillingCaseRow = {
   shopify_order_name: string;
   customer: Record<string, unknown>;
   customer_email: string | null;
+  project_number: string | null;
   billing_address: Record<string, unknown>;
   delivery_address: Record<string, unknown>;
   line_items: unknown[];
@@ -68,14 +69,14 @@ export async function ingestBillingCase(input: BillingIntake) {
 export async function listBillingCases(input: { status?: string | null; query?: string | null; limit?: number } = {}) {
   const limit = Math.min(Math.max(Number(input.limit || 80), 1), 200);
   const query: Record<string, string | number> = {
-    select: "id,shopify_order_id,shopify_order_name,customer_email,customer,billing_address,delivery_address,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,status,current_revision,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
+    select: "id,shopify_order_id,shopify_order_name,customer_email,project_number,customer,billing_address,delivery_address,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,status,current_revision,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
     order: "created_at.desc",
     limit,
   };
   if (input.status) query.status = `eq.${input.status}`;
   if (input.query) {
     const safe = input.query.trim().replace(/[(),]/g, "").slice(0, 100);
-    query.or = `(shopify_order_name.ilike.*${safe}*,customer_email.ilike.*${safe}*)`;
+    query.or = `(shopify_order_name.ilike.*${safe}*,customer_email.ilike.*${safe}*,project_number.ilike.*${safe}*)`;
   }
   return supabaseRequest<BillingCaseRow[]>("billing_cases", undefined, query);
 }
@@ -97,7 +98,7 @@ export async function getBillingCase(id: string) {
 export async function getBillingPortal(token: string) {
   const hash = portalTokenHash(token);
   const cases = await supabaseRequest<BillingCaseRow[]>("billing_cases", undefined, {
-    select: "id,shopify_order_name,customer_email,customer,billing_address,delivery_address,line_items,totals,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,status,current_revision,portal_revoked_at,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
+    select: "id,shopify_order_name,customer_email,project_number,customer,billing_address,delivery_address,line_items,totals,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,status,current_revision,portal_revoked_at,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
     portal_token_hash: `eq.${hash}`,
     portal_revoked_at: "is.null",
     limit: 1,

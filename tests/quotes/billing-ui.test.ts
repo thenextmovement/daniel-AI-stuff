@@ -18,6 +18,8 @@ test("Ops exposes a dedicated NEONTRIP billing department", () => {
   assert.match(client, /Zugestellt/);
   assert.match(client, /Rechnung jetzt erstellen/);
   assert.match(client, /Audit-Log protokolliert/);
+  assert.match(client, /Rechnungsversand/);
+  assert.match(client, /project_number/);
 });
 
 test("customer portal is invoice-only and becomes read-only after final invoice", () => {
@@ -29,6 +31,8 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(middleware, /rechnung\.neontrip\.de/);
   assert.doesNotMatch(portal, /Kauf auf Rechnung anfragen/);
   assert.match(portal, /PDF öffnen/);
+  assert.match(portal, /Projektnummer \(optional\)/);
+  assert.match(portal, /projectNumber/);
   const download = read("src/app/api/rechnung/[token]/documents/[documentId]/route.ts");
   assert.match(download, /getBillingPortalDocument/);
   assert.match(download, /Content-Disposition/);

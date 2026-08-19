@@ -14,6 +14,8 @@ test("billing schema has source-of-truth ledgers and unique effect keys", () => 
   }
   assert.match(migration, /shopify_order_id text not null unique/);
   assert.match(migration, /document_number text not null unique/);
+  assert.match(migration, /project_number text/);
+  assert.match(migration, /billing_cases_project_number_check/);
   assert.match(migration, /idempotency_key text not null unique/g);
   assert.match(migration, /enable row level security/g);
   assert.match(migration, /grant execute on function public\.billing_case_ingest/);
@@ -28,6 +30,9 @@ test("billing actions are atomic, audited, and preserve the agreed invoice trigg
   assert.match(actions, /p_action='MARK_DELIVERED'/);
   assert.match(actions, /'trigger','DELIVERED'/);
   assert.match(actions, /tax_review_status='REVIEW_REQUIRED'/);
+  assert.match(actions, /'invoiceEmail',lower\(trim\(v_changes->>'invoiceEmail'\)\)/);
+  assert.match(actions, /'projectNumber',trim\(v_changes->>'projectNumber'\)/);
+  assert.match(actions, /project_number=case when v_changes \? 'projectNumber'/);
   assert.match(actions, /insert into public\.billing_events/);
   assert.match(actionsRollback, /drop function if exists public\.billing_case_apply_action/);
 });

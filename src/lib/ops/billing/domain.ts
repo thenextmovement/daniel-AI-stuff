@@ -13,6 +13,8 @@ export type BillingIntake = {
   sourceAcceptanceId?: string | null;
   shopifyOrderId: string;
   shopifyOrderName: string;
+  invoiceEmail?: string | null;
+  projectNumber?: string | null;
   customer: Record<string, unknown>;
   billingAddress: Record<string, unknown>;
   deliveryAddress: Record<string, unknown>;
@@ -55,6 +57,24 @@ export function countryCode(value: unknown) {
 
 export function normalizedVatId(value: unknown) {
   return text(value).toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
+}
+
+export function normalizeBillingEmail(value: unknown) {
+  const normalized = text(value).toLowerCase();
+  if (!normalized) return null;
+  if (normalized.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error("Rechnungs-E-Mail ist ungültig.");
+  }
+  return normalized;
+}
+
+export function normalizeProjectNumber(value: unknown) {
+  const normalized = text(value);
+  if (!normalized) return null;
+  if (normalized.length > 100 || /[<>\u0000-\u001F\u007F]/u.test(normalized)) {
+    throw new Error("Projektnummer ist ungültig.");
+  }
+  return normalized;
 }
 
 export function classifyBillingTax(input: {
@@ -165,6 +185,13 @@ export function buildBillingCaseInput(input: BillingIntake) {
   if (!shopifyOrderId) throw new Error("Shopify-Order-ID fehlt.");
   const shopifyOrderName = normalizeShopifyOrderName(input.shopifyOrderName);
   const money = validateBillingMoney(input.totals);
+  const invoiceEmail = normalizeBillingEmail(input.invoiceEmail || input.billingAddress.invoiceEmail || input.customer.email);
+  const projectNumber = normalizeProjectNumber(input.projectNumber || input.billingAddress.projectNumber);
+  const billingAddress = {
+    ...input.billingAddress,
+    ...(invoiceEmail ? { invoiceEmail } : {}),
+    ...(projectNumber ? { projectNumber } : {}),
+  };
   const vatId = input.billingAddress.vatId || input.vatValidation?.normalizedVatId;
   const tax = classifyBillingTax({ deliveryCountry: input.deliveryAddress.country, vatId, vatValidation: input.vatValidation });
   if (tax.taxExempt && money.vatCents !== 0) throw new Error("Steuerfreier Auftrag enthält einen Steuerbetrag.");
@@ -174,7 +201,8 @@ export function buildBillingCaseInput(input: BillingIntake) {
   const snapshot = {
     source: text(input.source) || "unknown", sourceOfferId: input.sourceOfferId || null,
     sourceAcceptanceId: input.sourceAcceptanceId || null, shopifyOrderId, shopifyOrderName,
-    customer: input.customer, billingAddress: input.billingAddress, deliveryAddress: input.deliveryAddress,
+    customer: { ...input.customer, ...(invoiceEmail ? { email: invoiceEmail } : {}) },
+    invoiceEmail, projectNumber, billingAddress, deliveryAddress: input.deliveryAddress,
     lineItems: input.lineItems, totals: input.totals, tax, vatValidation: input.vatValidation || null,
     acceptedAt: input.acceptedAt || null,
   };
@@ -184,8 +212,9 @@ export function buildBillingCaseInput(input: BillingIntake) {
     caseRecord: {
       source_system: text(input.source) || "unknown", source_offer_id: input.sourceOfferId || null,
       source_acceptance_id: input.sourceAcceptanceId || null, shopify_order_id: shopifyOrderId,
-      shopify_order_name: shopifyOrderName, customer: input.customer,
-      customer_email: text(input.customer.email) || null, billing_address: input.billingAddress,
+      shopify_order_name: shopifyOrderName,
+      customer: { ...input.customer, ...(invoiceEmail ? { email: invoiceEmail } : {}) },
+      customer_email: invoiceEmail, project_number: projectNumber, billing_address: billingAddress,
       delivery_address: input.deliveryAddress, line_items: input.lineItems, totals: input.totals,
       currency: money.currency, subtotal_net_cents: money.subtotalNetCents, vat_cents: money.vatCents,
       total_gross_cents: money.totalGrossCents, payment_method: "VORKASSE" satisfies BillingPaymentMethod,

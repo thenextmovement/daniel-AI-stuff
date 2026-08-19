@@ -3,10 +3,11 @@ type PortalChangeBody = {
   deliveryAddress?: unknown;
   vatId?: unknown;
   invoiceEmail?: unknown;
+  projectNumber?: unknown;
   requesterEmail?: unknown;
 };
 
-const ROOT_FIELDS = new Set(["billingAddress", "deliveryAddress", "vatId", "invoiceEmail", "requesterEmail"]);
+const ROOT_FIELDS = new Set(["billingAddress", "deliveryAddress", "vatId", "invoiceEmail", "projectNumber", "requesterEmail"]);
 const ADDRESS_FIELDS = new Set(["company", "name", "firstName", "lastName", "street", "zip", "city", "country"]);
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
@@ -43,8 +44,13 @@ export function sanitizePortalChangeBody(value: unknown) {
   }
   if (body.invoiceEmail !== undefined) {
     const invoiceEmail = boundedText(body.invoiceEmail, 254).toLowerCase();
-    if (invoiceEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invoiceEmail)) throw new Error("invalid_portal_change");
+    if (!invoiceEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invoiceEmail)) throw new Error("invalid_portal_change");
     changes.invoiceEmail = invoiceEmail;
+  }
+  if (body.projectNumber !== undefined) {
+    const projectNumber = boundedText(body.projectNumber, 100);
+    if (projectNumber && /[<>\u0000-\u001F\u007F]/u.test(projectNumber)) throw new Error("invalid_portal_change");
+    changes.projectNumber = projectNumber;
   }
   if (!Object.keys(changes).length) throw new Error("no_allowed_changes");
   const requesterEmail = body.requesterEmail === undefined ? null : boundedText(body.requesterEmail, 254).toLowerCase();

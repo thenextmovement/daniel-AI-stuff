@@ -69,14 +69,17 @@ begin
     if not found then raise exception 'BILLING_CHANGE_REQUEST_NOT_FOUND'; end if;
     if v_change.status<>'PENDING' then raise exception 'BILLING_CHANGE_REQUEST_ALREADY_REVIEWED'; end if;
     v_changes := v_change.requested_changes;
-    v_old := jsonb_build_object('billingAddress',v_case.billing_address,'deliveryAddress',v_case.delivery_address,'vatId',v_case.vat_id,'customerEmail',v_case.customer_email,'revision',v_case.current_revision);
+    v_old := jsonb_build_object('billingAddress',v_case.billing_address,'deliveryAddress',v_case.delivery_address,'vatId',v_case.vat_id,'customerEmail',v_case.customer_email,'projectNumber',v_case.project_number,'revision',v_case.current_revision);
     v_tax_sensitive := v_changes ? 'deliveryAddress' or (v_changes ? 'vatId' and upper(regexp_replace(coalesce(v_changes->>'vatId',''),'[^A-Za-z0-9]','','g')) is distinct from coalesce(v_case.vat_id,''));
     v_revision := v_case.current_revision + 1;
     update public.billing_cases set
-      billing_address=case when jsonb_typeof(v_changes->'billingAddress')='object' then billing_address||(v_changes->'billingAddress') else billing_address end,
+      billing_address=(case when jsonb_typeof(v_changes->'billingAddress')='object' then billing_address||(v_changes->'billingAddress') else billing_address end)
+        ||case when v_changes ? 'invoiceEmail' then jsonb_build_object('invoiceEmail',lower(trim(v_changes->>'invoiceEmail'))) else '{}'::jsonb end
+        ||case when v_changes ? 'projectNumber' then jsonb_build_object('projectNumber',trim(v_changes->>'projectNumber')) else '{}'::jsonb end,
       delivery_address=case when jsonb_typeof(v_changes->'deliveryAddress')='object' then delivery_address||(v_changes->'deliveryAddress') else delivery_address end,
       vat_id=case when v_changes ? 'vatId' then nullif(upper(regexp_replace(v_changes->>'vatId','[^A-Za-z0-9]','','g')),'') else vat_id end,
       customer_email=case when v_changes ? 'invoiceEmail' then nullif(lower(trim(v_changes->>'invoiceEmail')),'') else customer_email end,
+      project_number=case when v_changes ? 'projectNumber' then nullif(trim(v_changes->>'projectNumber'),'') else project_number end,
       customer=case when v_changes ? 'invoiceEmail' then customer||jsonb_build_object('email',lower(trim(v_changes->>'invoiceEmail'))) else customer end,
       tax_review_status=case when v_tax_sensitive then 'REVIEW_REQUIRED' else tax_review_status end,
       status=case when v_tax_sensitive then 'MANUAL_REVIEW' else 'PROFORMA_PENDING' end,

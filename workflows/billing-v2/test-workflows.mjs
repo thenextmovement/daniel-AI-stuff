@@ -26,14 +26,26 @@ test("Easybill adapter uses supported document and VAT mappings", () => {
   for (const value of ["PROFORMA_INVOICE", "INVOICE", "CREDIT", "STORNO", "'IG'", "'AL'", "'NULL'"]) assert.match(source, new RegExp(value));
   assert.match(source, /Zahlbar sofort/);
   assert.match(source, /Produktion vor Fertigstellung pausiert/);
+  assert.match(source, /buyer_reference:projectNumber/);
+  assert.match(source, /Projektnummer:/);
+  assert.match(source, /billingCase\.customer_email/);
+  assert.match(source, /emailPayload:\{to:invoiceEmail/);
 });
 
 test("all Easybill mutations have an explicit error completion path", () => {
-  for (const name of ["Easybill Find Customer", "Easybill Create Customer", "Easybill Update Existing Customer", "Easybill Find Document", "Easybill Create Document", "Easybill Finalize Document"]) {
+  for (const name of ["Easybill Find Customer", "Easybill Create Customer", "Easybill Update Existing Customer", "Easybill Find Document", "Easybill Create Document", "Easybill Finalize Document", "Easybill Load Finalized Document", "Easybill Send Document Email"]) {
     assert.equal(byName.get(name).onError, "continueErrorOutput");
     assert.match(JSON.stringify(workflow.connections[name]), /Prepare Failed Completion/);
   }
   assert.match(byName.get("Raise Urgent Billing Error").parameters.jsCode, /Fehler Rechnung Shopify\/Easybill/);
+});
+
+test("billing documents are sent once to the invoice email after finalization", () => {
+  assert.match(JSON.stringify(byName.get("Easybill Send Document Email")), /documents\/.*\/send\/email/);
+  assert.match(JSON.stringify(byName.get("Easybill Send Document Email")), /emailPayload/);
+  assert.match(byName.get("Prepare Document Email").parameters.jsCode, /last_postbox_id/);
+  assert.match(JSON.stringify(workflow.connections["Document Email Already Sent"]), /Prepare Successful Completion/);
+  assert.match(JSON.stringify(workflow.connections["Existing Document Is Draft"]), /Easybill Finalize Document/);
 });
 
 test("Easybill customer tax state is refreshed for every order before document creation", () => {

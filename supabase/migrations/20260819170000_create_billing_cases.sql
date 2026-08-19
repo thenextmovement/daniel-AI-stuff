@@ -10,6 +10,7 @@ create table if not exists public.billing_cases (
   shopify_order_name text not null unique,
   customer jsonb not null default '{}'::jsonb,
   customer_email text,
+  project_number text,
   billing_address jsonb not null default '{}'::jsonb,
   delivery_address jsonb not null default '{}'::jsonb,
   line_items jsonb not null default '[]'::jsonb,
@@ -40,6 +41,7 @@ create table if not exists public.billing_cases (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint billing_cases_order_name_check check (shopify_order_name ~ '^#NEONT[0-9]+$'),
+  constraint billing_cases_project_number_check check (project_number is null or (length(project_number) between 1 and 100 and project_number !~ '[[:cntrl:]<>]')),
   constraint billing_cases_money_check check (subtotal_net_cents >= 0 and vat_cents >= 0 and total_gross_cents >= 0 and subtotal_net_cents + vat_cents = total_gross_cents),
   constraint billing_cases_payment_method_check check (payment_method in ('VORKASSE', 'KAUF_AUF_RECHNUNG')),
   constraint billing_cases_payment_terms_check check ((payment_method = 'VORKASSE' and payment_terms_days is null) or (payment_method = 'KAUF_AUF_RECHNUNG' and payment_terms_days in (7, 14, 30))),
@@ -50,6 +52,7 @@ create table if not exists public.billing_cases (
 
 create index if not exists billing_cases_status_updated_idx on public.billing_cases (status, updated_at desc);
 create index if not exists billing_cases_customer_email_idx on public.billing_cases (lower(customer_email));
+create index if not exists billing_cases_project_number_idx on public.billing_cases (lower(project_number));
 
 create table if not exists public.billing_case_versions (
   id uuid primary key default gen_random_uuid(),
@@ -210,8 +213,8 @@ begin
     return jsonb_build_object('id',v_case.id,'created',false,'conflict',v_conflict,'status',v_case.status);
   end if;
 
-  insert into public.billing_cases (source_system,source_offer_id,source_acceptance_id,source_snapshot_hash,shopify_order_id,shopify_order_name,customer,customer_email,billing_address,delivery_address,line_items,totals,currency,subtotal_net_cents,vat_cents,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,vat_validation,status,portal_token_hash,accepted_at)
-  values (p_case->>'source_system',nullif(p_case->>'source_offer_id',''),nullif(p_case->>'source_acceptance_id',''),p_snapshot_hash,p_case->>'shopify_order_id',p_case->>'shopify_order_name',coalesce(p_case->'customer','{}'::jsonb),nullif(p_case->>'customer_email',''),coalesce(p_case->'billing_address','{}'::jsonb),coalesce(p_case->'delivery_address','{}'::jsonb),coalesce(p_case->'line_items','[]'::jsonb),coalesce(p_case->'totals','{}'::jsonb),p_case->>'currency',(p_case->>'subtotal_net_cents')::bigint,(p_case->>'vat_cents')::bigint,(p_case->>'total_gross_cents')::bigint,p_case->>'payment_method',nullif(p_case->>'payment_terms_days','')::integer,p_case->>'tax_treatment',p_case->>'tax_review_status',(p_case->>'tax_exempt')::boolean,nullif(p_case->>'vat_id',''),p_case->'vat_validation',p_case->>'status',p_portal_token_hash,nullif(p_case->>'accepted_at','')::timestamptz)
+  insert into public.billing_cases (source_system,source_offer_id,source_acceptance_id,source_snapshot_hash,shopify_order_id,shopify_order_name,customer,customer_email,project_number,billing_address,delivery_address,line_items,totals,currency,subtotal_net_cents,vat_cents,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,vat_validation,status,portal_token_hash,accepted_at)
+  values (p_case->>'source_system',nullif(p_case->>'source_offer_id',''),nullif(p_case->>'source_acceptance_id',''),p_snapshot_hash,p_case->>'shopify_order_id',p_case->>'shopify_order_name',coalesce(p_case->'customer','{}'::jsonb),nullif(p_case->>'customer_email',''),nullif(p_case->>'project_number',''),coalesce(p_case->'billing_address','{}'::jsonb),coalesce(p_case->'delivery_address','{}'::jsonb),coalesce(p_case->'line_items','[]'::jsonb),coalesce(p_case->'totals','{}'::jsonb),p_case->>'currency',(p_case->>'subtotal_net_cents')::bigint,(p_case->>'vat_cents')::bigint,(p_case->>'total_gross_cents')::bigint,p_case->>'payment_method',nullif(p_case->>'payment_terms_days','')::integer,p_case->>'tax_treatment',p_case->>'tax_review_status',(p_case->>'tax_exempt')::boolean,nullif(p_case->>'vat_id',''),p_case->'vat_validation',p_case->>'status',p_portal_token_hash,nullif(p_case->>'accepted_at','')::timestamptz)
   returning * into v_case;
   insert into public.billing_case_versions (billing_case_id,revision,snapshot_hash,snapshot,source,actor,reason) values (v_case.id,0,p_snapshot_hash,p_snapshot,v_case.source_system,'system','INITIAL_INTAKE');
   insert into public.billing_events (billing_case_id,idempotency_key,event_type,source,actor,correlation_id,payload) values (v_case.id,p_source_event_id,'BILLING_CASE_CREATED',v_case.source_system,'system',p_source_event_id,p_snapshot);

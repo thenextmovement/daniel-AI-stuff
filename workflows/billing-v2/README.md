@@ -2,7 +2,11 @@
 
 This bundle contains the Easybill document worker, a signed intake adapter for Shopify orders outside the offer flow, passive Shopify-event and payment-match adapters, payment projection, and the internal VAT-review alert with direct Ops/VIES links for the new BillingCase ledger. They are intentionally inactive and have not been imported, credential-bound, executed, or deployed.
 
-The worker claims exactly one leased job from Ops, maps the locked BillingCase snapshot to Easybill, checks customer and document number before creating anything, finalizes the Easybill draft, and completes the Ops job with the Easybill document ID. The external document number is always the prepared BillingCase number: `PF-NEONT5012`, then `PF-NEONT5012-1`; the final invoice is `#NEONT5012`/`NEONT5012` according to Easybill's accepted number format.
+The worker claims exactly one leased job from Ops, maps the locked BillingCase snapshot to Easybill, checks customer and document number before creating anything, finalizes the Easybill draft, sends the finalized document to the locked invoice email, and completes the Ops job with the Easybill document ID. The external document number is always the prepared BillingCase number: `PF-NEONT5012`, then `PF-NEONT5012-1`; the final invoice is `#NEONT5012`/`NEONT5012` according to Easybill's accepted number format.
+
+The optional invoice email entered during offer acceptance is snapshotted as the dedicated recipient for every Pro-forma, invoice, credit note and cancellation document. If it is initially empty, Offers resolves it once to the signer's email before intake. An approved pre-invoice portal change updates both the top-level destination and the immutable next revision; it cannot be cleared to an undeliverable value. Retries reload the finalized Easybill document and use `last_postbox_id` to avoid sending the same document twice.
+
+The optional project number is stored independently, shown in Ops and the customer portal, mapped to Easybill's structured `buyer_reference`, and also printed as `Projektnummer: …` in every supported billing document. A pre-invoice project-number change creates the next Pro-forma revision. The contractual order confirmation still goes to the signer; the invoice email governs billing documents only.
 
 Tax mapping is deterministic: German taxable and EU B2C use `NULL`, verified or provisional foreign-EU B2B uses `IG`, and Switzerland/other third countries use `AL`. A final invoice job cannot be queued while tax review is open.
 
@@ -16,7 +20,7 @@ Before any import or activation:
 2. Verify the existing n8n error workflow `M4uG1HAtN9Zggxww` still sends the urgent internal email; do not replace or disable it.
 3. Apply and rollback/reapply all four BillingCase migrations in an isolated database.
 4. Run the worker in manual mode against one explicitly marked €10 test case only.
-5. Compare Ops, Shopify and Easybill IDs, number, gross/net/tax cents, country, VAT option and PDF before any customer email.
+5. Compare Ops, Shopify and Easybill IDs, number, gross/net/tax cents, country, VAT option, invoice email, project number and PDF before any customer email.
 6. Keep the current Easybill import active until the full DE/AT/CH, payment, delivery, refund, cancel and duplicate-event matrix is green. During overlap, the test order must be excluded from one of the two writers to prevent duplicate invoices.
 
 The exact shadow, canary and cutover gates are documented in `CUTOVER-CHECKLIST.md`.

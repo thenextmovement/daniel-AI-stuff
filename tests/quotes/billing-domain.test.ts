@@ -33,17 +33,37 @@ test("billing intake is cent exact and defaults to prepayment", () => {
   const result = buildBillingCaseInput({
     source: "neontrip-offers", sourceEventId: "offer:1:shopify:1", sourceOfferId: "offer-1",
     sourceAcceptanceId: "accept-1", shopifyOrderId: "gid://shopify/Order/1", shopifyOrderName: "#NEONT5012",
+    invoiceEmail: "Buchhaltung@Example.com", projectNumber: "PROJ-2026-0815",
     customer: { email: "test@example.com" }, billingAddress: { country: "DE" },
     deliveryAddress: { country: "DE" }, lineItems: [],
     totals: { subtotalNet: 8.4, vatAmount: 1.6, totalGross: 10, currency: "EUR" },
   });
   assert.equal(result.caseRecord.payment_method, "VORKASSE");
   assert.equal(result.caseRecord.total_gross_cents, 1000);
+  assert.equal(result.caseRecord.customer_email, "buchhaltung@example.com");
+  assert.equal(result.caseRecord.customer.email, "buchhaltung@example.com");
+  assert.equal(result.caseRecord.project_number, "PROJ-2026-0815");
+  assert.equal(result.caseRecord.billing_address.invoiceEmail, "buchhaltung@example.com");
+  assert.equal(result.caseRecord.billing_address.projectNumber, "PROJ-2026-0815");
+  assert.equal(result.snapshot.invoiceEmail, "buchhaltung@example.com");
+  assert.equal(result.snapshot.projectNumber, "PROJ-2026-0815");
   assert.throws(() => buildBillingCaseInput({
     source: "test", sourceEventId: "bad", shopifyOrderId: "1", shopifyOrderName: "#NEONT1",
     customer: {}, billingAddress: {}, deliveryAddress: { country: "DE" }, lineItems: [],
     totals: { subtotalNet: 8.4, vatAmount: 1.59, totalGross: 10, currency: "EUR" },
   }));
+});
+
+test("billing intake rejects invalid invoice destinations and project numbers", () => {
+  const valid = {
+    source: "test", sourceEventId: "event-1", shopifyOrderId: "1", shopifyOrderName: "#NEONT1",
+    customer: { email: "test@example.com" }, billingAddress: { country: "DE" },
+    deliveryAddress: { country: "DE" }, lineItems: [],
+    totals: { subtotalNet: 8.4, vatAmount: 1.6, totalGross: 10, currency: "EUR" },
+  };
+  assert.equal(buildBillingCaseInput({ ...valid, projectNumber: "P-123 / Messe & Süd (AT)" }).caseRecord.project_number, "P-123 / Messe & Süd (AT)");
+  assert.throws(() => buildBillingCaseInput({ ...valid, invoiceEmail: "keine-email" }));
+  assert.throws(() => buildBillingCaseInput({ ...valid, projectNumber: "PROJ\nINJECTION" }));
 });
 
 test("snapshot hashing is stable and portal tokens are opaque", () => {

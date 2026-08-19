@@ -12,7 +12,8 @@ begin
       'source_system','test','shopify_order_id','gid://shopify/Order/5012','shopify_order_name','#NEONT5012',
       'source_offer_id','offer-1','source_acceptance_id','accept-1',
       'customer',jsonb_build_object('email','kunde@example.com','company','Muster GmbH'),'customer_email','kunde@example.com',
-      'billing_address',jsonb_build_object('company','Muster GmbH','street','Altweg 1','zip','1010','city','Wien','country','AT'),
+      'project_number','PROJ-ALT-5012',
+      'billing_address',jsonb_build_object('company','Muster GmbH','street','Altweg 1','zip','1010','city','Wien','country','AT','invoiceEmail','kunde@example.com','projectNumber','PROJ-ALT-5012'),
       'delivery_address',jsonb_build_object('street','Altweg 1','zip','1010','city','Wien','country','AT'),
       'line_items',jsonb_build_array(jsonb_build_object('title','Test','quantity',1,'unitPriceNet',10)),
       'totals',jsonb_build_object('subtotalNet',10,'vatAmount',0,'totalGross',10,'currency','EUR','originalVatRate',19),
@@ -22,9 +23,14 @@ begin
       'vat_validation',jsonb_build_object('checked',true,'valid',true,'identityComparison','MISMATCH','name','Register GmbH'),
       'status','MANUAL_REVIEW'
     ),
-    jsonb_build_object('test',true),'hash-5012','event-5012','portal-hash-5012'
+    jsonb_build_object('test',true,'invoiceEmail','kunde@example.com','projectNumber','PROJ-ALT-5012'),'hash-5012','event-5012','portal-hash-5012'
   );
   select id into v_id from public.billing_cases where shopify_order_name='#NEONT5012';
+  select * into v_case from public.billing_cases where id=v_id;
+  if v_case.customer_email<>'kunde@example.com' or v_case.project_number<>'PROJ-ALT-5012'
+    or v_case.billing_address->>'invoiceEmail'<>'kunde@example.com' or v_case.billing_address->>'projectNumber'<>'PROJ-ALT-5012' then
+    raise exception 'invoice destination or project number was not ingested';
+  end if;
   select count(*) into v_count from public.billing_jobs where billing_case_id=v_id;
   if v_count<>2 then raise exception 'expected initial proforma and VAT jobs, got %',v_count; end if;
 
@@ -36,12 +42,14 @@ begin
 
   select (public.billing_portal_submit_change(
     'portal-hash-5012','portal-change-5012',
-    jsonb_build_object('billingAddress',jsonb_build_object('street','Neuweg 2'),'invoiceEmail','neu@example.com'),
+    jsonb_build_object('billingAddress',jsonb_build_object('street','Neuweg 2'),'invoiceEmail','neu@example.com','projectNumber','PROJ-NEU-5012'),
     'neu@example.com'
   )->>'id')::uuid into v_change;
   perform public.billing_case_apply_action(v_id,'APPLY_CHANGE_REQUEST',jsonb_build_object('changeRequestId',v_change,'note','approved'),'ops@example.com','ops-apply-change-5012');
   select * into v_case from public.billing_cases where id=v_id;
-  if v_case.billing_address->>'street'<>'Neuweg 2' or v_case.customer_email<>'neu@example.com' or v_case.current_revision<>2 then
+  if v_case.billing_address->>'street'<>'Neuweg 2' or v_case.customer_email<>'neu@example.com'
+    or v_case.project_number<>'PROJ-NEU-5012' or v_case.billing_address->>'invoiceEmail'<>'neu@example.com'
+    or v_case.billing_address->>'projectNumber'<>'PROJ-NEU-5012' or v_case.current_revision<>2 then
     raise exception 'change approval failed';
   end if;
 

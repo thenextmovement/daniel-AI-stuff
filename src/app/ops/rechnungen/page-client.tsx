@@ -8,6 +8,7 @@ import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } f
 
 type BillingCase = {
   id: string; shopify_order_name: string; customer_email: string | null; customer: Record<string, unknown>;
+  project_number?: string | null;
   total_gross_cents: number; currency: string; payment_method: string; payment_terms_days: number | null;
   tax_treatment: string; tax_review_status: string; vat_id?: string | null; status: string; updated_at: string;
   vat_validation?: Record<string, unknown> | null; billing_address?: Record<string, unknown>; delivery_address?: Record<string, unknown>;
@@ -126,7 +127,7 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode }: {
         <div className="divide-y divide-[#eee8e0]">
           {cases.map((entry) => <button key={entry.id} onClick={() => void loadDetail(entry.id)} className="grid w-full gap-3 p-4 text-left transition hover:bg-[#faf6f1] md:grid-cols-[9rem_minmax(0,1fr)_11rem_10rem] md:items-center">
             <span className="font-semibold text-stone-950">{entry.shopify_order_name}</span>
-            <span className="min-w-0"><span className="block truncate text-sm font-medium text-stone-800">{customerName(entry)}</span><span className="block truncate text-xs text-stone-500">{entry.customer_email || "Keine Rechnungs-E-Mail"}</span></span>
+            <span className="min-w-0"><span className="block truncate text-sm font-medium text-stone-800">{customerName(entry)}</span><span className="block truncate text-xs text-stone-500">{entry.customer_email || "Keine Rechnungs-E-Mail"}{entry.project_number ? ` · Projekt ${entry.project_number}` : ""}</span></span>
             <span className="text-sm font-semibold text-stone-900">{money(entry.total_gross_cents, entry.currency)}</span>
             <span className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(entry.status)}`}>{entry.status}</span>
           </button>)}
@@ -135,7 +136,7 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode }: {
       </section>
       {selected ? <section className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_16px_44px_rgba(20,16,12,0.07)]">
         <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#b91c73]">Falldetails</p><h2 className="mt-1 text-2xl font-semibold text-stone-950">{selected.billingCase.shopify_order_name}</h2></div><ShieldCheck className="h-6 w-6 text-emerald-700" /></div>
-        <div className="mt-5 grid gap-4 md:grid-cols-4"><div><p className="text-xs text-stone-500">Zahlungsart</p><p className="mt-1 font-semibold">{selected.billingCase.payment_method}{selected.billingCase.payment_terms_days ? ` · ${selected.billingCase.payment_terms_days} Tage` : ""}</p></div><div><p className="text-xs text-stone-500">Steuerfall</p><p className="mt-1 font-semibold">{selected.billingCase.tax_treatment}</p><p className="text-xs text-stone-500">{selected.billingCase.tax_review_status}</p></div><div><p className="text-xs text-stone-500">Dokumente</p><p className="mt-1 font-semibold">{selected.documents.length}</p></div><div><p className="text-xs text-stone-500">Änderungsanfragen</p><p className="mt-1 font-semibold">{selected.changes.length}</p></div></div>
+        <div className="mt-5 grid gap-4 md:grid-cols-4"><div><p className="text-xs text-stone-500">Zahlungsart</p><p className="mt-1 font-semibold">{selected.billingCase.payment_method}{selected.billingCase.payment_terms_days ? ` · ${selected.billingCase.payment_terms_days} Tage` : ""}</p></div><div><p className="text-xs text-stone-500">Rechnungsversand</p><p className="mt-1 break-all font-semibold">{selected.billingCase.customer_email || "Nicht hinterlegt"}</p><p className="text-xs text-stone-500">{selected.billingCase.project_number ? `Projekt ${selected.billingCase.project_number}` : "Keine Projektnummer"}</p></div><div><p className="text-xs text-stone-500">Steuerfall</p><p className="mt-1 font-semibold">{selected.billingCase.tax_treatment}</p><p className="text-xs text-stone-500">{selected.billingCase.tax_review_status}</p></div><div><p className="text-xs text-stone-500">Dokumente / Änderungen</p><p className="mt-1 font-semibold">{selected.documents.length} / {selected.changes.length}</p></div></div>
         {notice ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p> : null}
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
