@@ -21,6 +21,12 @@ export const CUSTOMER_SEGMENT_OPTIONS = [
 
 export type CustomerSegmentCode = (typeof CUSTOMER_SEGMENT_OPTIONS)[number]["segment"];
 
+export const MANUAL_REQUEST_SEGMENT_SOURCE_PATTERN = /^manual_[a-z0-9_]+$/;
+
+export function isManualRequestSegmentSource(source: string | null | undefined) {
+  return MANUAL_REQUEST_SEGMENT_SOURCE_PATTERN.test(String(source || "").trim().toLowerCase());
+}
+
 export function getCustomerSegmentOption(segment: string | null | undefined) {
   const normalized = String(segment || "").trim().toUpperCase();
   return CUSTOMER_SEGMENT_OPTIONS.find((option) => option.segment === normalized) || null;

@@ -1,0 +1,24 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "workflow_name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+  "captured_at_utc": "2026-08-19T12:22:13.537Z",
+  "source": "live n8n MCP read-only fetch",
+  "activation_state": true,
+  "draft_version_id": "d7966a4f-b145-4ab8-abde-bb76d4cd8cb8",
+  "active_version_id": "d7966a4f-b145-4ab8-abde-bb76d4cd8cb8",
+  "active_version_created_at": "2026-07-20T17:22:04.685Z",
+  "version_counter": 111,
+  "workflow_updated_at": "2026-07-20T17:22:04.683Z",
+  "draft_and_active_graph_equal": true,
+  "draft_node_count": 20,
+  "active_node_count": 20,
+  "draft_sha256": "1dbf972240014f45d030e9bb12b213b737bd89ccefce6232f3f34bd2bd0d23d6",
+  "published_active_sha256": "895c1f3c3a233eb5b88c21b08627bd0e28c8087bd4eddd7ae882cd6b80dbbd2c",
+  "version_history_api": {
+    "workflowId": "ELpwCfdWOCRZ22gy",
+    "versions": [],
+    "count": 0,
+    "message": "Found 0 version(s) for workflow ELpwCfdWOCRZ22gy"
+  },
+  "rollback_note": "Restore only after re-fetching current version/activation and obtaining explicit rollback authorization. Preserve credentials by ID; never copy credential values."
+}

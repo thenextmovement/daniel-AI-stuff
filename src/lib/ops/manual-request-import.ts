@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   createTrelloCard,
   findTrelloCustomFieldByName,
@@ -7,10 +7,15 @@ import {
 import { isValidEmail, normalizeEmail } from "@/lib/quotes/customer";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import {
+  getCustomerSegmentOption,
+  isManualRequestSegmentSource,
+  type CustomerSegmentCode,
+} from "@/lib/ops/customer-segments";
+import { setAuthoritativeManualRequestSegment } from "@/lib/ops/manual-request-segment-rpc";
 import { taskTitle, upsertSalesTask } from "@/lib/ops/sales-task-engine";
 import {
   buildMockupTrelloDescription,
-  inferRequestSegmentForStorage,
   type MockupContextInput,
 } from "@/lib/ops/mockup-context";
 
@@ -33,6 +38,17 @@ type ManualImportRequestRow = {
   customer_id?: string | null;
   trello_card_id?: string | null;
   trello_card_url?: string | null;
+  segment?: string | null;
+  s_kategorie?: string | null;
+  segment_status?: string | null;
+  segment_confidence?: number | null;
+  segment_source?: string | null;
+  attribution_raw?: Record<string, unknown> | null;
+};
+
+type ExistingManualImport = {
+  request: ManualImportRequestRow;
+  coreCompleted: boolean;
 };
 
 type ManualImportAuditRow = {
@@ -130,8 +146,89 @@ function normalizePriority(value: unknown): "standard" | "important" | "vip" {
   return "standard";
 }
 
-export function manualSegmentStatus(segment: unknown): "accepted" | "needs_review" {
-  return trimNullable(segment) ? "accepted" : "needs_review";
+export function manualRequestSegmentationInsertState() {
+  return {
+    segment: null,
+    s_kategorie: null,
+    segment_status: "pending" as const,
+    segment_confidence: null,
+    segment_source: null,
+    segment_classified_at: null,
+    segment_policy_version: null,
+  };
+}
+
+export function resolveExplicitManualRequestSegment(segment: unknown) {
+  const normalized = trimNullable(segment);
+  if (!normalized) return null;
+  const option = getCustomerSegmentOption(normalized);
+  if (!option) {
+    throw new QuoteValidationError("Unbekanntes Segment fuer die manuelle Anfrage.");
+  }
+  return option.segment;
+}
+
+function manualImportPayloadFingerprint(
+  input: ManualRequestImportInput,
+  email: string,
+  phone: string | null,
+  explicitSegment: CustomerSegmentCode | null,
+) {
+  const payload = {
+    customer: {
+      firstName: trimNullable(input.customer?.firstName),
+      lastName: trimNullable(input.customer?.lastName),
+      company: trimNullable(input.customer?.company),
+      email,
+      phone,
+      country: trimNullable(input.customer?.country) || "DE",
+    },
+    request: {
+      title: trimNullable(input.request?.title),
+      description: trimNullable(input.request?.description),
+      product: trimNullable(input.request?.product),
+      size: trimNullable(input.request?.size),
+      color: trimNullable(input.request?.color),
+      application: trimNullable(input.request?.application),
+      deliveryTime: trimNullable(input.request?.deliveryTime),
+      customerType: trimNullable(input.request?.customerType),
+      segment: explicitSegment,
+      priority: normalizePriority(input.request?.priority),
+      dueAt: trimNullable(input.request?.dueAt),
+    },
+    trello: {
+      createCard: Boolean(input.trello?.createCard),
+      listId: trimNullable(input.trello?.listId),
+    },
+  };
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function assertManualImportRetryMatches(
+  request: ManualImportRequestRow,
+  payloadFingerprint: string,
+  explicitSegment: CustomerSegmentCode | null,
+) {
+  const attribution = request.attribution_raw || {};
+  const frozenFingerprint = trimNullable(attribution.manual_import_payload_hash);
+  const frozenSegment = trimNullable(attribution.manual_segment_candidate);
+  const frozenDueAt = trimNullable(attribution.manual_import_due_at);
+  if (
+    !frozenFingerprint
+    || frozenFingerprint !== payloadFingerprint
+    || frozenSegment !== explicitSegment
+    || !frozenDueAt
+  ) {
+    throw new QuoteValidationError(
+      "Idempotency-Key gehoert zu einer anderen manuellen Anfrage.",
+      ["Der vorhandene Import darf mit geaenderten Daten oder einem geaenderten Segment nicht fortgesetzt werden."],
+      409,
+    );
+  }
+  return {
+    dueAt: normalizeDueAt(frozenDueAt),
+    customerCreated: attribution.manual_import_customer_created === true,
+  };
 }
 
 export function resolveManualCustomerRequestId(
@@ -197,7 +294,21 @@ function mockupContextInput(input: ManualRequestImportInput): MockupContextInput
   };
 }
 
-async function findExistingImportByIdempotencyKey(idempotencyKey: string) {
+const MANUAL_IMPORT_REQUEST_SELECT = [
+  "id",
+  "request_id",
+  "customer_id",
+  "trello_card_id",
+  "trello_card_url",
+  "segment",
+  "s_kategorie",
+  "segment_status",
+  "segment_confidence",
+  "segment_source",
+  "attribution_raw",
+].join(",");
+
+async function findExistingImportByIdempotencyKey(idempotencyKey: string): Promise<ExistingManualImport | null> {
   const rows = await supabaseRequest<ManualImportAuditRow[]>("workflow_audit_log", undefined, {
     select: "metadata",
     workflow_name: "eq.customer_records_manual_import",
@@ -206,7 +317,24 @@ async function findExistingImportByIdempotencyKey(idempotencyKey: string) {
     order: "created_at.desc",
     limit: 1,
   });
-  return trimNullable(rows[0]?.metadata?.request_id);
+  const auditedRequestId = trimNullable(rows[0]?.metadata?.request_id);
+  if (auditedRequestId) {
+    const requests = await supabaseRequest<ManualImportRequestRow[]>("master_requests", undefined, {
+      select: MANUAL_IMPORT_REQUEST_SELECT,
+      request_id: `eq.${auditedRequestId}`,
+      limit: 1,
+    });
+    if (requests[0]) return { request: requests[0], coreCompleted: true };
+  }
+
+  const requests = await supabaseRequest<ManualImportRequestRow[]>("master_requests", undefined, {
+    select: MANUAL_IMPORT_REQUEST_SELECT,
+    form_id: "eq.manual_ops_import",
+    "attribution_raw->>idempotency_key": `eq.${idempotencyKey}`,
+    order: "created_at.desc",
+    limit: 1,
+  });
+  return requests[0] ? { request: requests[0], coreCompleted: false } : null;
 }
 
 async function auditManualImport(input: {
@@ -328,9 +456,18 @@ async function insertContactHistory(customerId: string, type: "email" | "phone",
   });
 }
 
-async function insertManualRequest(input: ManualRequestImportInput, customerId: string, requestId: string) {
-  const now = new Date().toISOString();
-  const segment = inferRequestSegmentForStorage(mockupContextInput(input));
+async function insertManualRequest(
+  input: ManualRequestImportInput,
+  customerId: string,
+  requestId: string,
+  idempotencyKey: string,
+  frozen: {
+    payloadFingerprint: string;
+    explicitSegment: CustomerSegmentCode | null;
+    dueAt: string;
+    customerCreated: boolean;
+  },
+) {
   const rows = await supabaseRequest<ManualImportRequestRow[]>("master_requests", {
     method: "POST",
     body: JSON.stringify({
@@ -338,13 +475,7 @@ async function insertManualRequest(input: ManualRequestImportInput, customerId: 
       request_id: requestId,
       title: requestTitle(input),
       description: trimNullable(input.request?.description),
-      segment: segment?.segment || null,
-      s_kategorie: segment?.sKategorie || null,
-      segment_status: segment.segment ? "accepted" : "needs_review",
-      segment_confidence: segment.confidence,
-      segment_source: segment.source,
-      segment_classified_at: now,
-      segment_policy_version: "mockup_context_v1_20260611",
+      ...manualRequestSegmentationInsertState(),
       status: "new",
       deal_status: "open",
       size: trimNullable(input.request?.size),
@@ -357,6 +488,11 @@ async function insertManualRequest(input: ManualRequestImportInput, customerId: 
       referrer: "ops_customer_records",
       attribution_raw: {
         source: MANUAL_IMPORT_SOURCE,
+        idempotency_key: idempotencyKey,
+        manual_import_payload_hash: frozen.payloadFingerprint,
+        manual_segment_candidate: frozen.explicitSegment,
+        manual_import_due_at: frozen.dueAt,
+        manual_import_customer_created: frozen.customerCreated,
         auto_reply_suppressed: true,
         created_by: trimNullable(input.operatorName),
         product: trimNullable(input.request?.product),
@@ -510,113 +646,71 @@ async function patchRequestTrelloProjection(requestId: string, trello: { cardId:
   });
 }
 
-export async function createManualRequestImport(
-  input: ManualRequestImportInput,
-  actor: ManualRequestImportActor = {},
-): Promise<ManualRequestImportResult> {
-  const email = normalizeEmail(trimNullable(input.customer?.email) || "");
-  const phone = normalizePhone(input.customer?.phone);
-  const idempotencyKey = trimNullable(input.idempotencyKey) || randomUUID();
-  const warnings: string[] = [];
-
-  if (!email || !isValidEmail(email)) {
-    throw new QuoteValidationError("Gueltige Kunden-E-Mail erforderlich.", ["Eine manuelle Einspielung braucht aktuell eine echte Kunden-E-Mail."]);
-  }
-  if (isInternalEmail(email)) {
-    throw new QuoteValidationError("Interne NEONTRIP-Adresse darf nicht als Kundenmail gespeichert werden.", ["Bitte echte Kunden-E-Mail eintragen, nicht support@neontrip.de oder eine interne Adresse."]);
-  }
-
-  const existingRequestId = await findExistingImportByIdempotencyKey(idempotencyKey);
-  if (existingRequestId) {
-    const rows = await supabaseRequest<ManualImportRequestRow[]>("master_requests", undefined, {
-      select: "request_id,customer_id,trello_card_id,trello_card_url",
-      request_id: `eq.${existingRequestId}`,
-      limit: 1,
-    });
-    const row = rows[0];
-    if (row?.customer_id) {
-      return {
-        requestId: row.request_id,
-        customerId: row.customer_id,
-        customerCreated: false,
-        requestCreated: false,
-        salesTaskCreated: false,
-        trello: {
-          requested: Boolean(input.trello?.createCard),
-          ok: Boolean(row.trello_card_id),
-          cardId: row.trello_card_id || null,
-          cardUrl: row.trello_card_url || null,
-          customFieldSet: Boolean(row.trello_card_id),
-          usageFieldSet: false,
-          usageFieldError: null,
-          offerCustomerFieldsSet: [],
-          offerCustomerFieldWarnings: [],
-          error: null,
-        },
-        warnings: ["Diese manuelle Einspielung wurde bereits verarbeitet."],
-      };
-    }
-  }
-
-  const phoneDuplicate = await findCustomerByPhone(phone);
-  if (phoneDuplicate?.id && phoneDuplicate.email !== email) {
-    warnings.push(`Telefonnummer existiert bereits bei ${phoneDuplicate.email}. Bitte Fall nach dem Speichern prüfen.`);
-  }
-
-  const requestId = randomUUID();
-  const customer = await upsertCustomer(input, email, phone, requestId);
-  const request = await insertManualRequest(input, customer.row.id, requestId);
-
+async function completeManualImportCore(input: {
+  importInput: ManualRequestImportInput;
+  actor: ManualRequestImportActor;
+  request: ManualImportRequestRow;
+  customerId: string;
+  customerCreated: boolean;
+  email: string;
+  phone: string | null;
+  idempotencyKey: string;
+  dueAt: string;
+}) {
   await Promise.all([
-    insertContactHistory(customer.row.id, "email", email),
-    insertContactHistory(customer.row.id, "phone", phone),
+    insertContactHistory(input.customerId, "email", input.email),
+    insertContactHistory(input.customerId, "phone", input.phone),
   ]);
 
-  const dueAt = normalizeDueAt(input.request?.dueAt);
   const task = await upsertSalesTask({
-    requestId,
+    requestId: input.request.request_id,
     taskType: "call_new_inquiry",
-    status: new Date(dueAt).getTime() > Date.now() ? "waiting" : "open",
+    status: new Date(input.dueAt).getTime() > Date.now() ? "waiting" : "open",
     title: taskTitle("call_new_inquiry"),
-    detail: trimNullable(input.request?.description) || "Manuell eingespielte Anfrage in Customer Records.",
-    dueAt,
-    priorityTier: normalizePriority(input.request?.priority),
-    assigneeLabel: trimNullable(actor.operatorName || input.operatorName),
+    detail: trimNullable(input.importInput.request?.description) || "Manuell eingespielte Anfrage in Customer Records.",
+    dueAt: input.dueAt,
+    priorityTier: normalizePriority(input.importInput.request?.priority),
+    assigneeLabel: trimNullable(input.actor.operatorName || input.importInput.operatorName),
     source: "manual",
     sourceRef: MANUAL_IMPORT_SOURCE,
-    idempotencyKey: `manual-import-call:${requestId}`,
+    idempotencyKey: `manual-import-call:${input.request.request_id}`,
     payload: {
       manual_import: true,
       auto_reply_suppressed: true,
-      idempotency_key: idempotencyKey,
+      idempotency_key: input.idempotencyKey,
     },
   });
 
   await auditManualImport({
-    requestId,
+    requestId: input.request.request_id,
     action: "manual_request_imported",
     metadata: {
-      request_id: request.request_id,
-      customer_id: customer.row.id,
-      customer_created: customer.created,
-      idempotency_key: idempotencyKey,
+      request_id: input.request.request_id,
+      customer_id: input.customerId,
+      customer_created: input.customerCreated,
+      idempotency_key: input.idempotencyKey,
       source: MANUAL_IMPORT_SOURCE,
       auto_reply_suppressed: true,
-      operator_name: trimNullable(actor.operatorName || input.operatorName),
-      host: actor.host || null,
-      user_agent: actor.userAgent || null,
-      trello_requested: Boolean(input.trello?.createCard),
+      operator_name: trimNullable(input.actor.operatorName || input.importInput.operatorName),
+      host: input.actor.host || null,
+      user_agent: input.actor.userAgent || null,
+      trello_requested: Boolean(input.importInput.trello?.createCard),
     },
   });
 
-  let trello: ManualRequestImportResult["trello"];
+  return Boolean(task);
+}
+
+async function completeManualImportTrello(
+  input: ManualRequestImportInput,
+  requestId: string,
+  warnings: string[],
+): Promise<ManualRequestImportResult["trello"]> {
   try {
-    trello = await projectToTrello(input, requestId);
+    const trello = await projectToTrello(input, requestId);
     if (trello.usageFieldError) warnings.push(trello.usageFieldError);
     if (trello.error) warnings.push(trello.error);
-    if (trello.offerCustomerFieldWarnings.length) {
-      warnings.push(...trello.offerCustomerFieldWarnings);
-    }
+    if (trello.offerCustomerFieldWarnings.length) warnings.push(...trello.offerCustomerFieldWarnings);
     if (trello.ok) {
       await patchRequestTrelloProjection(requestId, {
         cardId: trello.cardId,
@@ -642,20 +736,9 @@ export async function createManualRequestImport(
         },
       });
     }
+    return trello;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Trello-Projektion fehlgeschlagen.";
-    trello = {
-      requested: Boolean(input.trello?.createCard),
-      ok: false,
-      cardId: null,
-      cardUrl: null,
-      customFieldSet: false,
-      usageFieldSet: false,
-      usageFieldError: null,
-      offerCustomerFieldsSet: [],
-      offerCustomerFieldWarnings: [],
-      error: message,
-    };
     warnings.push("Trello-Projektion fehlgeschlagen. DB-Datensatz und Call-Aufgabe wurden trotzdem angelegt.");
     await auditManualImport({
       requestId,
@@ -668,14 +751,164 @@ export async function createManualRequestImport(
         custom_field: "nerdy-forms-id",
       },
     });
+    return {
+      requested: Boolean(input.trello?.createCard),
+      ok: false,
+      cardId: null,
+      cardUrl: null,
+      customFieldSet: false,
+      usageFieldSet: false,
+      usageFieldError: null,
+      offerCustomerFieldsSet: [],
+      offerCustomerFieldWarnings: [],
+      error: message,
+    };
   }
+}
+
+export async function createManualRequestImport(
+  input: ManualRequestImportInput,
+  actor: ManualRequestImportActor = {},
+): Promise<ManualRequestImportResult> {
+  const email = normalizeEmail(trimNullable(input.customer?.email) || "");
+  const phone = normalizePhone(input.customer?.phone);
+  const idempotencyKey = trimNullable(input.idempotencyKey) || randomUUID();
+  const warnings: string[] = [];
+
+  if (!email || !isValidEmail(email)) {
+    throw new QuoteValidationError("Gueltige Kunden-E-Mail erforderlich.", ["Eine manuelle Einspielung braucht aktuell eine echte Kunden-E-Mail."]);
+  }
+  if (isInternalEmail(email)) {
+    throw new QuoteValidationError("Interne NEONTRIP-Adresse darf nicht als Kundenmail gespeichert werden.", ["Bitte echte Kunden-E-Mail eintragen, nicht support@neontrip.de oder eine interne Adresse."]);
+  }
+  const explicitSegment = resolveExplicitManualRequestSegment(input.request?.segment);
+  const payloadFingerprint = manualImportPayloadFingerprint(input, email, phone, explicitSegment);
+
+  const existingImport = await findExistingImportByIdempotencyKey(idempotencyKey);
+  const existingCustomerId = existingImport?.request.customer_id;
+  if (existingImport && existingCustomerId) {
+    const existingRequest = existingImport.request;
+    const frozen = assertManualImportRetryMatches(existingRequest, payloadFingerprint, explicitSegment);
+
+    if (existingImport.coreCompleted) {
+      const trelloRequested = Boolean(input.trello?.createCard);
+      const trelloMissing = trelloRequested && !existingRequest.trello_card_id;
+      const trelloError = trelloMissing
+        ? "Trello-Projektion ist trotz abgeschlossenem DB-Core nicht nachweisbar. Bitte manuell prüfen; es wird kein automatischer Retry ausgeführt."
+        : null;
+      return {
+        requestId: existingRequest.request_id,
+        customerId: existingCustomerId,
+        customerCreated: false,
+        requestCreated: false,
+        salesTaskCreated: false,
+        trello: {
+          requested: trelloRequested,
+          ok: Boolean(existingRequest.trello_card_id),
+          cardId: existingRequest.trello_card_id || null,
+          cardUrl: existingRequest.trello_card_url || null,
+          customFieldSet: Boolean(existingRequest.trello_card_id),
+          usageFieldSet: false,
+          usageFieldError: null,
+          offerCustomerFieldsSet: [],
+          offerCustomerFieldWarnings: [],
+          error: trelloError,
+        },
+        warnings: [
+          trelloMissing
+            ? "DB-Core und Import-Audit sind abgeschlossen, aber die angeforderte Trello-Karte fehlt. Bitte die Projektion manuell prüfen; kein automatischer Retry wurde gestartet."
+            : "Diese manuelle Einspielung wurde bereits vollständig verarbeitet.",
+        ],
+      };
+    }
+
+    if (explicitSegment) {
+      if (isManualRequestSegmentSource(existingRequest.segment_source)) {
+        warnings.push("Eine neuere manuelle Segment-Autorität wurde beibehalten.");
+      } else {
+        await setAuthoritativeManualRequestSegment({
+          requestId: existingRequest.id,
+          segment: explicitSegment,
+          source: "manual_ops_import",
+          actor: {
+            ...actor,
+            operatorName: trimNullable(actor.operatorName || input.operatorName),
+          },
+          reason: "manual_request_import_explicit_segment_retry",
+        });
+      }
+    }
+
+    const salesTaskCreated = await completeManualImportCore({
+      importInput: input,
+      actor,
+      request: existingRequest,
+      customerId: existingCustomerId,
+      customerCreated: frozen.customerCreated,
+      email,
+      phone,
+      idempotencyKey,
+      dueAt: frozen.dueAt,
+    });
+    const trello = await completeManualImportTrello(input, existingRequest.request_id, warnings);
+    return {
+      requestId: existingRequest.request_id,
+      customerId: existingCustomerId,
+      customerCreated: false,
+      requestCreated: false,
+      salesTaskCreated,
+      trello,
+      warnings,
+    };
+  }
+
+  const phoneDuplicate = await findCustomerByPhone(phone);
+  if (phoneDuplicate?.id && phoneDuplicate.email !== email) {
+    warnings.push(`Telefonnummer existiert bereits bei ${phoneDuplicate.email}. Bitte Fall nach dem Speichern prüfen.`);
+  }
+
+  const requestId = randomUUID();
+  const dueAt = normalizeDueAt(input.request?.dueAt);
+  const customer = await upsertCustomer(input, email, phone, requestId);
+  const request = await insertManualRequest(input, customer.row.id, requestId, idempotencyKey, {
+    payloadFingerprint,
+    explicitSegment,
+    dueAt,
+    customerCreated: customer.created,
+  });
+
+  if (explicitSegment) {
+    await setAuthoritativeManualRequestSegment({
+      requestId: request.id,
+      segment: explicitSegment,
+      source: "manual_ops_import",
+      actor: {
+        ...actor,
+        operatorName: trimNullable(actor.operatorName || input.operatorName),
+      },
+      reason: "manual_request_import_explicit_segment",
+    });
+  }
+
+  const salesTaskCreated = await completeManualImportCore({
+    importInput: input,
+    actor,
+    request,
+    customerId: customer.row.id,
+    customerCreated: customer.created,
+    email,
+    phone,
+    idempotencyKey,
+    dueAt,
+  });
+  const trello = await completeManualImportTrello(input, requestId, warnings);
 
   return {
     requestId,
     customerId: customer.row.id,
     customerCreated: customer.created,
     requestCreated: true,
-    salesTaskCreated: Boolean(task),
+    salesTaskCreated,
     trello,
     warnings,
   };

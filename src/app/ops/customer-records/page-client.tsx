@@ -29,7 +29,11 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import {
+  CUSTOMER_SEGMENT_OPTIONS,
+  getCustomerSegmentOption,
+  isManualRequestSegmentSource,
+} from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import type {
@@ -3508,7 +3512,7 @@ function InboxCard({
           {record.request?.acDealId ? ` • Verkaufsfall ${record.request.acDealId}` : ""}
           {record.request ? ` • ${getAiSegmentLabel(record.request)}` : ""}
           {record.request?.sKategorie ? ` • ${record.request.sKategorie}` : ""}
-          {record.request?.segmentStatus ? ` • KI ${getSegmentStatusLabel(record.request.segmentStatus)}` : ""}
+          {record.request?.segmentStatus ? ` • ${getSegmentAuthorityStatusLabel(record.request)}` : ""}
         </div>
         <div className="mt-2 text-sm leading-6 text-black/55">
           {record.affectedRows.nextPendingFollowupAt
@@ -4320,13 +4324,13 @@ function formatSegmentConfidence(value: number | null | undefined) {
   return `${Math.round(normalized)}% sicher`;
 }
 
-function getSegmentStatusLabel(status: string | null | undefined) {
+export function getSegmentStatusLabel(status: string | null | undefined) {
   if (!status) return "Noch offen";
   const normalized = status.trim().toLowerCase();
   if (normalized === "accepted") return "bestätigt";
   if (normalized === "needs_review") return "prüfen";
   if (normalized === "rejected") return "verworfen";
-  if (normalized === "failed") return "Fehler";
+  if (normalized === "error" || normalized === "failed") return "Fehler";
   return status;
 }
 
@@ -4346,27 +4350,54 @@ function getAiSegmentDetail(request: CustomerRequestSummary | null | undefined) 
   return parts.length ? parts.join(" • ") : "Kein Segmentstatus";
 }
 
-function shouldConfirmAiSegment(request: CustomerRequestSummary | null | undefined) {
+export function shouldConfirmAiSegment(request: CustomerRequestSummary | null | undefined) {
   if (!request || !getCustomerSegmentOption(request.segment)) return true;
   const status = request.segmentStatus?.trim().toLowerCase();
-  const confidence = request.segmentConfidence ?? null;
-  return status !== "accepted" || confidence === null || confidence < 0.75;
+  if (status !== "accepted") return true;
+  const isManualAuthority = isManualRequestSegmentSource(request.segmentSource);
+  if (isManualAuthority) return false;
+  return request.segmentSource !== "request_segmenter";
 }
 
-function aiSegmentPillClass(status: string | null | undefined) {
-  const normalized = status?.trim().toLowerCase();
-  if (normalized === "accepted") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (normalized === "needs_review") return "border-amber-200 bg-amber-50 text-amber-900";
-  if (normalized === "failed" || normalized === "rejected") return "border-rose-200 bg-rose-50 text-rose-900";
-  return "border-black/10 bg-white text-black/45";
+export function getSegmentAuthorityStatusLabel(request: CustomerRequestSummary | null | undefined) {
+  const statusLabel = getSegmentStatusLabel(request?.segmentStatus);
+  if (isManualRequestSegmentSource(request?.segmentSource)) return `Manuell ${statusLabel}`;
+  if (request?.segmentSource === "request_segmenter") return `KI ${statusLabel}`;
+  return `Segment ${statusLabel}`;
 }
 
-function aiSegmentHeaderPillClass(status: string | null | undefined) {
-  const normalized = status?.trim().toLowerCase();
-  if (normalized === "accepted") return "border-emerald-300/25 bg-emerald-400/12 text-emerald-100";
-  if (normalized === "needs_review") return "border-amber-300/25 bg-amber-300/12 text-amber-100";
-  if (normalized === "failed" || normalized === "rejected") return "border-rose-300/25 bg-rose-400/12 text-rose-100";
-  return "border-white/12 bg-white/8 text-white/68";
+export function getSegmentDecisionTone(
+  request: CustomerRequestSummary | null | undefined,
+): "good" | "amber" | "rose" {
+  const status = request?.segmentStatus?.trim().toLowerCase();
+  if (status === "error" || status === "failed" || status === "rejected") return "rose";
+  if (status === "accepted" && !shouldConfirmAiSegment(request)) return "good";
+  return "amber";
+}
+
+export function nextManualImportIdempotencyKey(
+  current: string | null,
+  event: "submit" | "draft_changed" | "cleared" | "succeeded",
+  createKey?: () => string,
+) {
+  if (event !== "submit") return null;
+  if (current) return current;
+  if (!createKey) throw new Error("Idempotency-Key-Erzeugung fehlt.");
+  return createKey();
+}
+
+function aiSegmentPillClass(request: CustomerRequestSummary | null | undefined) {
+  const tone = getSegmentDecisionTone(request);
+  if (tone === "good") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (tone === "rose") return "border-rose-200 bg-rose-50 text-rose-900";
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function aiSegmentHeaderPillClass(request: CustomerRequestSummary | null | undefined) {
+  const tone = getSegmentDecisionTone(request);
+  if (tone === "good") return "border-emerald-300/25 bg-emerald-400/12 text-emerald-100";
+  if (tone === "rose") return "border-rose-300/25 bg-rose-400/12 text-rose-100";
+  return "border-amber-300/25 bg-amber-300/12 text-amber-100";
 }
 
 function SegmentConfirmControl({
@@ -11828,7 +11859,7 @@ function MiniSystem({
   title: string;
   value: string | number;
   detail: string;
-  tone?: "neutral" | "accent" | "good" | "amber" | "blue";
+  tone?: "neutral" | "accent" | "good" | "amber" | "blue" | "rose";
 }) {
   const tones = {
     neutral: "border-black/10 bg-white",
@@ -11836,6 +11867,7 @@ function MiniSystem({
     good: "border-emerald-200 bg-emerald-50",
     amber: "border-amber-200 bg-amber-50",
     blue: "border-sky-200 bg-sky-50",
+    rose: "border-rose-200 bg-rose-50",
   };
   return (
     <div className={`rounded-xl border px-4 py-4 ${tones[tone]}`}>
@@ -13438,7 +13470,7 @@ function OperationsOverview({
             {getAiSegmentLabel(record.request)} • {record.request?.status || "Stand ausstehend"}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] ${aiSegmentPillClass(record.request?.segmentStatus)}`}>
+            <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] ${aiSegmentPillClass(record.request)}`}>
               Segment: {getAiSegmentLabel(record.request)}
             </span>
             {record.request?.sKategorie ? (
@@ -15427,7 +15459,7 @@ function DealAttributionPanel({
               title="Segment"
               value={getAiSegmentLabel(request)}
               detail={getAiSegmentDetail(request)}
-              tone={request?.segmentStatus === "needs_review" ? "amber" : "good"}
+              tone={getSegmentDecisionTone(request)}
             />
             <MiniSystem
               title="Anfrage"
@@ -20374,7 +20406,7 @@ function RecordCard({
                 </div>
               ) : null}
               <div className="mt-2 flex flex-wrap gap-2">
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${aiSegmentHeaderPillClass(record.request?.segmentStatus)}`}>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${aiSegmentHeaderPillClass(record.request)}`}>
                   Segment: {getAiSegmentLabel(record.request)}
                 </span>
                 <span className="inline-flex items-center rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-[11px] font-medium text-white/62">
@@ -21100,6 +21132,7 @@ export function CustomerRecordsClient({
   const [showManualImport, setShowManualImport] = useState(false);
   const [manualImportSaving, setManualImportSaving] = useState(false);
   const [manualImportDraft, setManualImportDraft] = useState<ManualImportDraft>(() => defaultManualImportDraft());
+  const manualImportIdempotencyKeyRef = useRef<string | null>(null);
   const [showTrelloReplay, setShowTrelloReplay] = useState(false);
   const [trelloReplaySaving, setTrelloReplaySaving] = useState(false);
   const [trelloReplayDraft, setTrelloReplayDraft] = useState<TrelloReplayDraft>(() => defaultTrelloReplayDraft());
@@ -21552,7 +21585,19 @@ export function CustomerRecordsClient({
   }
 
   function updateManualImportDraft<K extends keyof ManualImportDraft>(key: K, value: ManualImportDraft[K]) {
+    manualImportIdempotencyKeyRef.current = nextManualImportIdempotencyKey(
+      manualImportIdempotencyKeyRef.current,
+      "draft_changed",
+    );
     setManualImportDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function clearManualImportDraft() {
+    manualImportIdempotencyKeyRef.current = nextManualImportIdempotencyKey(
+      manualImportIdempotencyKeyRef.current,
+      "cleared",
+    );
+    setManualImportDraft(defaultManualImportDraft());
   }
 
   function updateTrelloReplayDraft<K extends keyof TrelloReplayDraft>(key: K, value: TrelloReplayDraft[K]) {
@@ -21613,7 +21658,12 @@ export function CustomerRecordsClient({
     setError(null);
     setMessage(null);
 
-    const idempotencyKey = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const idempotencyKey = nextManualImportIdempotencyKey(
+      manualImportIdempotencyKeyRef.current,
+      "submit",
+      () => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    manualImportIdempotencyKeyRef.current = idempotencyKey;
     const payload = {
       idempotencyKey,
       operatorName: operatorName || null,
@@ -21669,7 +21719,11 @@ export function CustomerRecordsClient({
           : " Trello-Projektion ist fehlgeschlagen, DB-Fall ist angelegt."
         : "";
       setMessage(`Manuelle Anfrage ${body.result.requestId} wurde angelegt. Call-Aufgabe ist erstellt.${trelloText}${warningText}`);
-      setManualImportDraft(defaultManualImportDraft());
+      manualImportIdempotencyKeyRef.current = nextManualImportIdempotencyKey(
+        manualImportIdempotencyKeyRef.current,
+        "succeeded",
+      );
+      clearManualImportDraft();
       setShowManualImport(false);
       await loadRecordByRequestId(body.result.requestId, "contact");
       void loadInbox();
@@ -22157,105 +22211,117 @@ export function CustomerRecordsClient({
     setError(null);
     setMessage(null);
     setLastAdvanceableActionRequestId(null);
+    let responseReceived = false;
 
-    const response = await fetch("/api/ops/customer-records/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId, action, operatorName, ...(options || {}) }),
-    });
+    try {
+      const response = await fetch("/api/ops/customer-records/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, action, operatorName, ...(options || {}) }),
+      });
+      responseReceived = true;
 
-    const payload = (await response.json().catch(() => null)) as ActionResponse | null;
+      const payload = (await response.json().catch(() => null)) as ActionResponse | null;
 
-    if (response.status === 401) {
-      setHasSession(false);
-      setError("Zugang abgelaufen. Bitte erneut entsperren.");
+      if (response.status === 401) {
+        setHasSession(false);
+        setError("Zugang abgelaufen. Bitte erneut entsperren.");
+        return;
+      }
+
+      if (!response.ok || !payload?.ok || !payload.record) {
+        setError(formatApiError(payload));
+        return;
+      }
+
+      applyRecordUpdate(payload.record);
+
+      const shouldOfferNextRecord =
+        action === "repair_downstream_sync" ||
+        action === "start_sales_recovery" ||
+        action === "resolve_special_case" ||
+        action === "reschedule_pending_followups" ||
+        action === "block_customer_contact" ||
+        action === "schedule_callback" ||
+        action === "apply_case_outcome" ||
+        action === "workboard_handled" ||
+        action === "workboard_snoozed" ||
+        action === "pause_pending_followups";
+
+      if (shouldOfferNextRecord) {
+        setLastAdvanceableActionRequestId(requestId);
+        advanceFocusSessionAfterAction(requestId);
+      }
+
+      if (action === "rollback_last_update") {
+        setMessage("Letzte Änderung wurde erfolgreich zurückgerollt.");
+      } else if (action === "repair_downstream_sync") {
+        setMessage("Abgleich wurde mit den neuesten Kontaktdaten repariert.");
+      } else if (action === "start_sales_recovery") {
+        setMessage("Rückgewinnung gestartet. Rückruf und nächster Schritt wurden gesetzt.");
+      } else if (action === "report_special_case") {
+        setMessage("Problemfall gespeichert und ab jetzt zentral vorhanden.");
+        void loadWorkboard();
+        void loadInbox();
+      } else if (action === "resolve_special_case") {
+        setMessage("Problemfall als erledigt markiert.");
+        void loadWorkboard();
+        void loadInbox();
+      } else if (action === "reschedule_pending_followups") {
+        setMessage(`${payload.count || 0} Erinnerung${payload.count === 1 ? "" : "en"} wurde${payload.count === 1 ? "" : "n"} nach hinten verschoben.`);
+      } else if (action === "block_customer_contact") {
+        setMessage("Kontaktstopp gesetzt. Offene Erinnerungen wurden gestoppt und der Kontakt gesperrt.");
+      } else if (action === "log_customer_call") {
+        setMessage("Anruf wurde im Verlauf protokolliert.");
+      } else if (action === "schedule_callback") {
+        setMessage("Rückruf-Termin gesetzt und offene Erinnerungen passend verschoben.");
+      } else if (action === "apply_case_outcome") {
+        setMessage(
+          payload.outcome === "won"
+            ? "Fall als gewonnen abgeschlossen."
+            : payload.outcome === "lost"
+              ? "Fall als verloren abgeschlossen."
+              : payload.outcome === "callback"
+                ? "Fall auf Rückruf gestellt."
+                : payload.outcome === "vacation"
+                  ? "Fall bis nach Urlaub zurückgestellt."
+                  : "Kontaktstopp gesetzt.",
+        );
+        void loadWorkboard();
+        void loadInbox();
+      } else if (action === "workboard_handled") {
+        setMessage("Spuren-Fall als erledigt markiert.");
+        void loadWorkboard();
+      } else if (action === "workboard_snoozed") {
+        setMessage("Spuren-Fall wurde zurückgestellt.");
+        void loadWorkboard();
+      } else if (action === "set_case_team_state") {
+        const teamMode = options?.teamState?.mode;
+        setMessage(
+          teamMode === "assign"
+            ? "Zuständigkeit für den Fall gesetzt."
+            : teamMode === "handover"
+              ? "Übergabe am Fall gesetzt."
+              : "Zuständigkeitsstatus für den Fall geleert.",
+        );
+      } else if (action === "set_request_segment") {
+        setMessage("Segment wurde bestätigt.");
+      } else {
+        setMessage(`${payload.count || 0} offene Erinnerung${payload.count === 1 ? "" : "en"} pausiert.`);
+      }
+    } catch (actionError) {
+      if (!responseReceived) {
+        setError(
+          action === "set_request_segment"
+            ? "Verbindung beim Speichern abgebrochen. Der Ausgang der Segment-Änderung ist unbekannt. Bitte die Seite neu laden und den aktuellen Segmentstand prüfen, bevor du erneut speicherst."
+            : "Verbindung während der Aktion abgebrochen. Der Ausgang ist unbekannt. Bitte die Seite neu laden und den aktuellen Datenstand prüfen, bevor du die Aktion erneut ausführst.",
+        );
+      } else {
+        setError(actionError instanceof Error ? actionError.message : "Aktion konnte nicht abgeschlossen werden.");
+      }
+    } finally {
       setActionRequestId(null);
-      return;
     }
-
-    if (!response.ok || !payload?.ok || !payload.record) {
-      setError(formatApiError(payload));
-      setActionRequestId(null);
-      return;
-    }
-
-    applyRecordUpdate(payload.record);
-
-    const shouldOfferNextRecord =
-      action === "repair_downstream_sync" ||
-      action === "start_sales_recovery" ||
-      action === "resolve_special_case" ||
-      action === "reschedule_pending_followups" ||
-      action === "block_customer_contact" ||
-      action === "schedule_callback" ||
-      action === "apply_case_outcome" ||
-      action === "workboard_handled" ||
-      action === "workboard_snoozed" ||
-      action === "pause_pending_followups";
-
-    if (shouldOfferNextRecord) {
-      setLastAdvanceableActionRequestId(requestId);
-      advanceFocusSessionAfterAction(requestId);
-    }
-
-    if (action === "rollback_last_update") {
-      setMessage("Letzte Änderung wurde erfolgreich zurückgerollt.");
-    } else if (action === "repair_downstream_sync") {
-      setMessage("Abgleich wurde mit den neuesten Kontaktdaten repariert.");
-    } else if (action === "start_sales_recovery") {
-      setMessage("Rückgewinnung gestartet. Rückruf und nächster Schritt wurden gesetzt.");
-    } else if (action === "report_special_case") {
-      setMessage("Problemfall gespeichert und ab jetzt zentral vorhanden.");
-      void loadWorkboard();
-      void loadInbox();
-    } else if (action === "resolve_special_case") {
-      setMessage("Problemfall als erledigt markiert.");
-      void loadWorkboard();
-      void loadInbox();
-    } else if (action === "reschedule_pending_followups") {
-      setMessage(`${payload.count || 0} Erinnerung${payload.count === 1 ? "" : "en"} wurde${payload.count === 1 ? "" : "n"} nach hinten verschoben.`);
-    } else if (action === "block_customer_contact") {
-      setMessage("Kontaktstopp gesetzt. Offene Erinnerungen wurden gestoppt und der Kontakt gesperrt.");
-    } else if (action === "log_customer_call") {
-      setMessage("Anruf wurde im Verlauf protokolliert.");
-    } else if (action === "schedule_callback") {
-      setMessage("Rückruf-Termin gesetzt und offene Erinnerungen passend verschoben.");
-    } else if (action === "apply_case_outcome") {
-      setMessage(
-        payload.outcome === "won"
-          ? "Fall als gewonnen abgeschlossen."
-          : payload.outcome === "lost"
-            ? "Fall als verloren abgeschlossen."
-            : payload.outcome === "callback"
-              ? "Fall auf Rückruf gestellt."
-              : payload.outcome === "vacation"
-                ? "Fall bis nach Urlaub zurückgestellt."
-                : "Kontaktstopp gesetzt.",
-      );
-      void loadWorkboard();
-      void loadInbox();
-    } else if (action === "workboard_handled") {
-      setMessage("Spuren-Fall als erledigt markiert.");
-      void loadWorkboard();
-    } else if (action === "workboard_snoozed") {
-      setMessage("Spuren-Fall wurde zurückgestellt.");
-      void loadWorkboard();
-    } else if (action === "set_case_team_state") {
-      const teamMode = options?.teamState?.mode;
-      setMessage(
-        teamMode === "assign"
-          ? "Zuständigkeit für den Fall gesetzt."
-          : teamMode === "handover"
-            ? "Übergabe am Fall gesetzt."
-            : "Zuständigkeitsstatus für den Fall geleert.",
-      );
-    } else if (action === "set_request_segment") {
-      setMessage("Segment wurde bestätigt.");
-    } else {
-      setMessage(`${payload.count || 0} offene Erinnerung${payload.count === 1 ? "" : "en"} pausiert.`);
-    }
-
-    setActionRequestId(null);
   }
 
   async function logCall(requestId: string, call: CallLogDraft) {
@@ -23935,7 +24001,7 @@ export function CustomerRecordsClient({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setManualImportDraft(defaultManualImportDraft())}
+                          onClick={clearManualImportDraft}
                           disabled={manualImportSaving}
                           className="rounded-full border border-black/10 bg-white px-4 py-3 text-sm font-medium text-black/65 transition hover:border-[#fa31a2] hover:text-black disabled:opacity-50"
                         >

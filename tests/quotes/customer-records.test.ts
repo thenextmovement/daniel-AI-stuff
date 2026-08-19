@@ -13,9 +13,11 @@ import {
   getCustomerRecordByRequestId,
   listMockupTrelloAttachments,
   parseTrelloCardIdentifier,
+  resolveRequestSegmentForOpsUi,
   resolveCustomerSearchMode,
   searchCustomerRecords,
   selectReferenceTrelloAttachment,
+  setCustomerRequestSegment,
 } from "../../src/lib/ops/customer-records";
 import { QuoteValidationError } from "../../src/lib/quotes/validation";
 
@@ -29,6 +31,167 @@ const current = {
   company: "NEONTRIP",
   displayName: "Samuele Micacchioni",
 };
+
+test("shadow classification never replaces the authoritative master request segment", () => {
+  const resolved = resolveRequestSegmentForOpsUi(
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      request_id: "request-public-1",
+      segment: "NT-2",
+      s_kategorie: "S3",
+      segment_status: "accepted",
+      segment_confidence: 0.61,
+      segment_source: "request_segmenter",
+      segment_classified_at: "2026-08-19T10:00:00.000Z",
+      segment_policy_version: "live-policy",
+    },
+    {
+      request_id: "11111111-1111-4111-8111-111111111111",
+      segment: "NT-3",
+      s_kategorie: "S1",
+      status: "needs_review",
+      confidence: 0.99,
+      policy_version: "shadow-policy",
+      created_at: "2026-08-19T10:05:00.000Z",
+    },
+  );
+
+  assert.deepEqual(resolved, {
+    segment: "NT-2",
+    sKategorie: "S3",
+    status: "accepted",
+    confidence: 0.61,
+    source: "request_segmenter",
+    classifiedAt: "2026-08-19T10:00:00.000Z",
+    policyVersion: "live-policy",
+  });
+});
+
+test("manual segment confirmation uses the atomic service-role RPC without model confidence", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const rpcCalls: Array<Record<string, unknown>> = [];
+  const mutatingPaths: string[] = [];
+  let failedPostRpcRequestRead = false;
+  let segmentState = {
+    segment: null as string | null,
+    segment_status: "needs_review",
+    segment_confidence: 0.7 as number | null,
+    segment_source: "request_segmenter",
+    segment_policy_version: "nt_policy_v1_20260520_shadow",
+  };
+
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const method = String(init.method || "GET").toUpperCase();
+    const body = typeof init.body === "string" ? JSON.parse(init.body) : {};
+
+    if (url.pathname.endsWith("/rest/v1/rpc/neontrip_set_manual_request_segment")) {
+      rpcCalls.push(body);
+      segmentState = {
+        segment: String(body.p_segment),
+        segment_status: "accepted",
+        segment_confidence: null,
+        segment_source: String(body.p_source),
+        segment_policy_version: "manual_override_v1_20260819",
+      };
+      return json({
+        request_id: "11111111-1111-4111-8111-111111111111",
+        public_request_id: "request-public-1",
+        ...segmentState,
+        s_kategorie: "S1",
+        segment_classified_at: "2026-08-19T10:00:00.000Z",
+        authoritative: true,
+        audit_id: "22222222-2222-4222-8222-222222222222",
+      });
+    }
+
+    if (method !== "GET") mutatingPaths.push(`${method} ${url.pathname}`);
+
+    if (url.pathname.endsWith("/rest/v1/master_customers")) {
+      return json([{
+        id: "customer-1",
+        request_id: "request-public-1",
+        email: "kunde@example.com",
+        billing_email: "kunde@example.com",
+        cc_emails: [],
+        first_name: "Ada",
+        last_name: "Lovelace",
+        name: "Ada Lovelace",
+        phone: "+4912345",
+        company: "Example GmbH",
+        company_name: "Example GmbH",
+        updated_at: "2026-08-19T10:00:00.000Z",
+      }]);
+    }
+
+    if (url.pathname.endsWith("/rest/v1/master_requests")) {
+      if (segmentState.segment_source === "manual_ops_portal" && method === "GET") {
+        failedPostRpcRequestRead = true;
+        return json({ message: "simulated post-commit read failure" }, 400);
+      }
+      return json([{
+        id: "11111111-1111-4111-8111-111111111111",
+        request_id: "request-public-1",
+        customer_id: "customer-1",
+        title: "Leuchtschrift",
+        status: "new",
+        s_kategorie: segmentState.segment === "NT-3" ? "S1" : null,
+        segment_classified_at: "2026-08-19T10:00:00.000Z",
+        ...segmentState,
+      }]);
+    }
+
+    if (url.pathname.endsWith("/rest/v1/request_segment_classifications")) {
+      return json([{
+        request_id: "11111111-1111-4111-8111-111111111111",
+        segment: "NT-4",
+        s_kategorie: "S2",
+        status: "needs_review",
+        confidence: 0.99,
+        policy_version: "candidate-only",
+        created_at: "2026-08-19T10:01:00.000Z",
+      }]);
+    }
+
+    return json([]);
+  }) as typeof fetch;
+
+  try {
+    const result = await setCustomerRequestSegment(
+      "request-public-1",
+      "NT-3",
+      { operatorName: "Daniel", mode: "local_bypass" },
+    );
+
+    assert.equal(result.record.request?.segment, "NT-3");
+    assert.equal(result.record.request?.segmentConfidence, null);
+    assert.equal(result.record.request?.segmentSource, "manual_ops_portal");
+    assert.equal(result.record.request?.segmentStatus, "accepted");
+    assert.equal(failedPostRpcRequestRead, true);
+    assert.deepEqual(rpcCalls, [{
+      p_request_id: "11111111-1111-4111-8111-111111111111",
+      p_segment: "NT-3",
+      p_source: "manual_ops_portal",
+      p_actor: { operatorName: "Daniel", mode: "local_bypass" },
+      p_reason: "customer_records_ops_portal_confirmation",
+    }]);
+    assert.deepEqual(mutatingPaths, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
+});
 
 async function captureSupabaseSearch(
   query: string,

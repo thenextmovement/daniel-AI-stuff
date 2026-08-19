@@ -16,6 +16,7 @@ import {
 import type { TrelloAction, TrelloAttachment, TrelloEditableCustomField } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import { getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import { setAuthoritativeManualRequestSegment } from "@/lib/ops/manual-request-segment-rpc";
 import {
   buildMockupTrelloDescription,
   canAutoUpdateTrelloDescription,
@@ -1537,30 +1538,13 @@ function numericValue(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function isManualSegmentSource(value: string | null | undefined) {
-  const source = String(value || "").toLowerCase();
-  return source.includes("manual") || source.includes("human") || source.includes("operator");
-}
-
-function resolveRequestSegmentForOpsUi(
+export function resolveRequestSegmentForOpsUi(
   request: MasterRequestRow | null,
   latest: LatestSegmentClassificationRow | null,
 ) {
+  // Candidate classifications are diagnostic only. The request projection is authoritative.
+  void latest;
   const masterSource = trimNullable(request?.segment_source);
-  const masterIsManual = isManualSegmentSource(masterSource);
-  const latestSegment = trimNullable(latest?.segment);
-
-  if (!masterIsManual && latestSegment) {
-    return {
-      segment: latestSegment,
-      sKategorie: trimNullable(latest?.s_kategorie) || trimNullable(request?.s_kategorie),
-      status: trimNullable(latest?.status) || trimNullable(request?.segment_status),
-      confidence: numericValue(latest?.confidence) ?? numericValue(request?.segment_confidence),
-      source: masterSource || "request_segmenter",
-      classifiedAt: latest?.created_at || request?.segment_classified_at || null,
-      policyVersion: trimNullable(latest?.policy_version) || trimNullable(request?.segment_policy_version),
-    };
-  }
 
   return {
     segment: trimNullable(request?.segment),
@@ -5624,57 +5608,36 @@ export async function setCustomerRequestSegment(
     throw new QuoteValidationError("Zu dieser Anfrage wurde kein master_requests-Datensatz gefunden.");
   }
 
-  const now = new Date().toISOString();
-  const previous = {
-    segment: context.request.segment || null,
-    s_kategorie: context.request.s_kategorie || null,
-    segment_status: context.request.segment_status || null,
-    segment_confidence: context.request.segment_confidence ?? null,
-    segment_source: context.request.segment_source || null,
-    segment_classified_at: context.request.segment_classified_at || null,
-    segment_policy_version: context.request.segment_policy_version || null,
-  };
-  const next = {
+  const override = await setAuthoritativeManualRequestSegment({
+    requestId: context.request.id,
     segment: option.segment,
-    s_kategorie: option.defaultSKategorie,
-    segment_status: "accepted",
-    segment_confidence: 1,
-    segment_source: "manual_ops_portal",
-    segment_classified_at: now,
-    segment_policy_version: "manual_override_v1_20260521",
-  };
-
-  await patchById("master_requests", context.request.id, next);
+    source: "manual_ops_portal",
+    actor: { ...(actor || {}) },
+    reason: "customer_records_ops_portal_confirmation",
+  });
 
   try {
-    await insertWorkflowAuditLog({
-      requestId: normalizedRequestId,
-      action: CUSTOMER_RECORDS_SEGMENT_OVERRIDE_ACTION,
-      summary: `Segment manuell bestätigt: ${option.label}`,
-      changedFields: [
-        "master_requests.segment",
-        "master_requests.s_kategorie",
-        "master_requests.segment_status",
-        "master_requests.segment_source",
-      ],
-      actor,
-      extraMetadata: {
-        previous_segment: previous,
-        next_segment: {
-          ...next,
-          label: option.label,
-        },
-      },
-    });
-  } catch (error) {
-    await patchById("master_requests", context.request.id, previous);
-    throw error;
+    return {
+      record: mapSearchResult(await fetchCustomerContextByRequestId(normalizedRequestId)),
+      count: 1,
+    };
+  } catch {
+    const request: MasterRequestRow = {
+      ...context.request,
+      segment: override.segment,
+      s_kategorie: override.s_kategorie,
+      segment_status: override.segment_status,
+      segment_confidence: override.segment_confidence,
+      segment_source: override.segment_source,
+      segment_classified_at: override.segment_classified_at,
+      segment_policy_version: override.segment_policy_version,
+      updated_at: override.segment_classified_at,
+    };
+    return {
+      record: mapSearchResult({ ...context, request }),
+      count: 1,
+    };
   }
-
-  return {
-    record: mapSearchResult(await fetchCustomerContextByRequestId(normalizedRequestId)),
-    count: 1,
-  };
 }
 
 function firstTextValue(...values: Array<unknown>): string | null {
