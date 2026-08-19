@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+const root = dirname(fileURLToPath(import.meta.url));
+const workflow = JSON.parse(readFileSync(resolve(root, "generated", "undeliverable-offer-research-v1.json"), "utf8"));
+assert.equal(workflow.active, false);
+assert.ok(workflow.nodes.length <= 30);
+assert.equal(workflow.nodes.filter((node) => /Trigger$/.test(node.type)).length, 1);
+assert.ok(workflow.nodes.every((node) => node.continueOnFail !== true));
+assert.match(JSON.stringify(workflow), /web_search_preview/);
+assert.match(JSON.stringify(workflow), /json_schema/);
+assert.doesNotMatch(JSON.stringify(workflow), /customer_supplied|existing_verified_contact/);
+assert.doesNotMatch(JSON.stringify(workflow), /(?:gho_|service_role|eyJ[A-Za-z0-9_-]{20})/);
+console.log("undeliverable offer research workflow valid");
