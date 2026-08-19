@@ -1,0 +1,136 @@
+{
+  "name": "NEONTRIP Billing v2 - Shopify Order Intake Adapter (INACTIVE)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "order-trigger",
+      "name": "Called by Shopify Order Source",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "order-sign",
+      "name": "Validate and Sign BillingCase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const x=$input.first()?.json||{};if(!x.sourceEventId||!x.shopifyOrderId||!/^#NEONT\\d+$/.test(String(x.shopifyOrderName||''))||!Array.isArray(x.lineItems)||!x.lineItems.length||!x.totals||!x.billingAddress||!x.deliveryAddress)throw new Error('invalid_shopify_order_billing_intake');const secret=String($env.BILLING_WEBHOOK_SECRET||'');if(secret.length<32)throw new Error('BILLING_WEBHOOK_SECRET missing');const payload={...x,source:'shopify',sourceEventId:String(x.sourceEventId)};const body=JSON.stringify(payload);const timestamp=String(Math.floor(Date.now()/1000));const {createHmac}=require('crypto');const signature='sha256='+createHmac('sha256',secret).update(timestamp+'.'+body).digest('hex');const base=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');return [{json:{body,timestamp,signature,eventId:String(x.sourceEventId),url:base+'/api/internal/billing/cases'}}];"
+      }
+    },
+    {
+      "id": "order-post",
+      "name": "Create BillingCase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Neontrip-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-Neontrip-Signature",
+              "value": "={{ $json.signature }}"
+            },
+            {
+              "name": "X-Neontrip-Event-Id",
+              "value": "={{ $json.eventId }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "order-error",
+      "name": "Raise Shopify Intake Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        160
+      ],
+      "parameters": {
+        "jsCode": "throw new Error('Fehler Rechnung Shopify/Easybill: Shopify-Bestellung konnte nicht als BillingCase angelegt werden.');"
+      }
+    }
+  ],
+  "connections": {
+    "Called by Shopify Order Source": {
+      "main": [
+        [
+          {
+            "node": "Validate and Sign BillingCase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Sign BillingCase": {
+      "main": [
+        [
+          {
+            "node": "Create BillingCase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create BillingCase": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Raise Shopify Intake Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "neontrip-billing-v2-shopify-order-intake-adapter-inactive"
+}

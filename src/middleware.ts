@@ -282,6 +282,10 @@ function getOpsHost(request: NextRequest) {
   return request.headers.get("x-forwarded-host") || request.headers.get("host");
 }
 
+function isBillingPortalHost(host: string | null | undefined) {
+  return normalizeHost(host).split(":")[0] === "rechnung.neontrip.de";
+}
+
 function isOpsApiPath(pathname: string) {
   return pathname === "/api/ops" || pathname.startsWith("/api/ops/");
 }
@@ -331,6 +335,12 @@ function notConfigured(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = getOpsHost(request);
+  if (isBillingPortalHost(host) && /^\/[A-Za-z0-9_-]{40,100}$/.test(pathname)) {
+    const target = request.nextUrl.clone();
+    target.pathname = `/rechnung${pathname}`;
+    return NextResponse.rewrite(target);
+  }
   if (!isOpsPagePath(pathname) && !isOpsApiPath(pathname)) {
     return NextResponse.next();
   }
@@ -343,7 +353,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const host = getOpsHost(request);
   if (!isOpsPortalConfigured(host)) {
     return notConfigured(request);
   }
@@ -360,5 +369,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/ops/:path*", "/api/ops/:path*"],
+  matcher: ["/ops/:path*", "/api/ops/:path*", "/:token"],
 };
