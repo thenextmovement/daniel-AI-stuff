@@ -15,7 +15,7 @@ import {
 } from "@/lib/quotes/trello";
 import type { TrelloAction, TrelloAttachment, TrelloEditableCustomField } from "@/lib/quotes/types";
 import { QuoteValidationError } from "@/lib/quotes/validation";
-import { getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import { formatCustomerSegmentLabel, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
 import { setAuthoritativeManualRequestSegment } from "@/lib/ops/manual-request-segment-rpc";
 import {
   buildMockupTrelloDescription,
@@ -125,6 +125,9 @@ type MasterRequestRow = {
   segment_source?: string | null;
   segment_classified_at?: string | null;
   segment_policy_version?: string | null;
+  segment_taxonomy_version?: string | null;
+  segment_context_tags?: string[] | null;
+  segment_organization_scale?: string | null;
   s_kategorie?: string | null;
   commercial_playbook?: Record<string, unknown> | null;
   estimated_value?: number | string | null;
@@ -682,6 +685,7 @@ export type CustomerRequestSummary = {
   segmentSource?: string | null;
   segmentClassifiedAt?: string | null;
   segmentPolicyVersion?: string | null;
+  segmentTaxonomyVersion?: string | null;
   sKategorie?: string | null;
   estimatedValue: number | null;
   finalValue: number | null;
@@ -1554,6 +1558,7 @@ export function resolveRequestSegmentForOpsUi(
     source: masterSource,
     classifiedAt: request?.segment_classified_at || null,
     policyVersion: trimNullable(request?.segment_policy_version),
+    taxonomyVersion: trimNullable(request?.segment_taxonomy_version),
   };
 }
 
@@ -4108,14 +4113,14 @@ async function fetchDownstreamRows(
   const requestRows = lookupRequestId
     ? await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
         select:
-          "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+          "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,segment_taxonomy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
         request_id: `eq.${lookupRequestId}`,
         order: "updated_at.desc",
         limit: 1,
       })
     : await supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
         select:
-          "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+          "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,segment_taxonomy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
         customer_id: `eq.${master.id}`,
         order: "updated_at.desc",
         limit: 1,
@@ -4351,7 +4356,7 @@ async function fetchDownstreamRows(
     ? await Promise.all([
         supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
           select:
-            "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
+            "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,status,segment,segment_status,segment_confidence,segment_source,segment_classified_at,segment_policy_version,segment_taxonomy_version,s_kategorie,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,form_id,deal_status,utm_source,utm_medium,utm_campaign,utm_term,utm_content,landing_page_url,referrer",
           request_id: `in.(${relatedRequestIds.join(",")})`,
           order: "updated_at.desc",
           limit: relatedRequestIds.length,
@@ -4572,12 +4577,13 @@ function mapSearchResult(context: CustomerContext): CustomerSearchResult {
           acDealStage: trimNullable(context.request.ac_deal_stage),
           dealStatus: trimNullable(context.request.deal_status),
           segment: resolvedSegment.segment,
-          segmentLabel: getCustomerSegmentOption(resolvedSegment.segment)?.label || null,
+          segmentLabel: formatCustomerSegmentLabel(resolvedSegment.segment, resolvedSegment.taxonomyVersion),
           segmentStatus: resolvedSegment.status,
           segmentConfidence: resolvedSegment.confidence,
           segmentSource: resolvedSegment.source,
           segmentClassifiedAt: resolvedSegment.classifiedAt,
           segmentPolicyVersion: resolvedSegment.policyVersion,
+          segmentTaxonomyVersion: resolvedSegment.taxonomyVersion,
           sKategorie: resolvedSegment.sKategorie,
           estimatedValue: numericValue(context.request.estimated_value),
           finalValue: numericValue(context.request.final_value),
@@ -5631,6 +5637,7 @@ export async function setCustomerRequestSegment(
       segment_source: override.segment_source,
       segment_classified_at: override.segment_classified_at,
       segment_policy_version: override.segment_policy_version,
+      segment_taxonomy_version: override.segment_taxonomy_version,
       updated_at: override.segment_classified_at,
     };
     return {
@@ -5670,6 +5677,7 @@ function mockupDescriptionInputFromContext(context: CustomerContext): MockupCont
     storedSegment: request?.segment || request?.s_kategorie,
     storedSegmentSource: request?.segment_source,
     storedSegmentConfidence: request?.segment_confidence,
+    storedSegmentTaxonomyVersion: request?.segment_taxonomy_version,
   };
 }
 
@@ -6326,6 +6334,39 @@ async function setCustomerCurrentRequest(customerId: string, requestId: string) 
   );
 }
 
+type TrelloDuplicateSourceSegmentation = Pick<MasterRequestRow,
+  "segment" |
+  "segment_status" |
+  "segment_confidence" |
+  "segment_source" |
+  "segment_classified_at" |
+  "segment_policy_version" |
+  "segment_taxonomy_version" |
+  "segment_context_tags" |
+  "segment_organization_scale" |
+  "s_kategorie" |
+  "commercial_playbook"
+>;
+
+export function neutralTrelloDuplicateSegmentationState(
+  source?: TrelloDuplicateSourceSegmentation | null,
+) {
+  void source;
+  return {
+    segment: null,
+    segment_status: "pending" as const,
+    segment_confidence: null,
+    segment_source: "segmentation_queue" as const,
+    segment_classified_at: null,
+    segment_policy_version: null,
+    segment_taxonomy_version: null,
+    segment_context_tags: [] as string[],
+    segment_organization_scale: null,
+    s_kategorie: null,
+    commercial_playbook: {} as Record<string, never>,
+  };
+}
+
 async function insertDuplicatedMasterRequest(input: {
   sourceRequest: MasterRequestRow | null;
   customerId: string;
@@ -6350,13 +6391,7 @@ async function insertDuplicatedMasterRequest(input: {
       description: input.cardDescription,
       status: "new",
       deal_status: "open",
-      segment: trimNullable(source?.segment),
-      segment_status: trimNullable(source?.segment_status) || (trimNullable(source?.segment) ? "accepted" : "needs_review"),
-      segment_confidence: source?.segment_confidence ?? null,
-      segment_source: trimNullable(source?.segment_source),
-      segment_classified_at: source?.segment_classified_at || null,
-      segment_policy_version: trimNullable(source?.segment_policy_version),
-      s_kategorie: trimNullable(source?.s_kategorie),
+      ...neutralTrelloDuplicateSegmentationState(source),
       estimated_value: source?.estimated_value ?? null,
       final_value: null,
       size: trimNullable(source?.size),

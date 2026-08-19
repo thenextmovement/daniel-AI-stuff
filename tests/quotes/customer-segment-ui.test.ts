@@ -8,6 +8,14 @@ import {
   shouldConfirmAiSegment,
 } from "@/app/ops/customer-records/page-client";
 import type { CustomerRequestSummary } from "@/lib/ops/customer-records";
+import {
+  CUSTOMER_SEGMENT_OPTIONS,
+  CUSTOMER_SEGMENT_REGISTRY,
+  CX8_TAXONOMY_VERSION,
+  formatCustomerSegmentLabel,
+  getCustomerSegmentOption,
+  getKnownCustomerSegmentOption,
+} from "@/lib/ops/customer-segments";
 
 function segmentRequest(overrides: Partial<CustomerRequestSummary> = {}) {
   return {
@@ -15,6 +23,7 @@ function segmentRequest(overrides: Partial<CustomerRequestSummary> = {}) {
     segmentStatus: "accepted",
     segmentConfidence: null,
     segmentSource: "manual_ops_portal",
+    segmentTaxonomyVersion: CX8_TAXONOMY_VERSION,
     ...overrides,
   } as CustomerRequestSummary;
 }
@@ -40,8 +49,36 @@ test("accepted canonical AI does not use a UI confidence threshold, while unknow
     segmentConfidence: 0.99,
   });
   assert.equal(shouldConfirmAiSegment(unknownSource), true);
-  assert.equal(getSegmentAuthorityStatusLabel(unknownSource), "Segment bestätigt");
+  assert.equal(getSegmentAuthorityStatusLabel(unknownSource), "Prüfen – unbekannte Quelle");
   assert.equal(getSegmentDecisionTone(unknownSource), "amber");
+
+  const missingSource = segmentRequest({ segmentSource: null });
+  assert.equal(shouldConfirmAiSegment(missingSource), true);
+  assert.equal(getSegmentAuthorityStatusLabel(missingSource), "Prüfen – unbekannte Quelle");
+  assert.equal(getSegmentDecisionTone(missingSource), "amber");
+});
+
+test("only the eight CX8 codes are writable while all legacy codes remain displayable", () => {
+  assert.deepEqual(
+    CUSTOMER_SEGMENT_OPTIONS.map((option) => option.segment),
+    ["NT-1", "NT-3", "NT-4", "NT-5", "NT-6", "NT-8", "NT-9", "NT-10"],
+  );
+  assert.equal(CUSTOMER_SEGMENT_REGISTRY.length, 18);
+  assert.equal(getCustomerSegmentOption("NT-2"), null);
+  assert.equal(getKnownCustomerSegmentOption("NT-2")?.legacyLabel, "Gastronomie");
+  assert.equal(formatCustomerSegmentLabel("NT-3", null), "Event/Messe");
+  assert.equal(formatCustomerSegmentLabel("NT-3", CX8_TAXONOMY_VERSION), "Event-/Medienproduktion");
+});
+
+test("unversioned reused codes and inactive codes are always legacy and need reassignment", () => {
+  for (const request of [
+    segmentRequest({ segmentTaxonomyVersion: null }),
+    segmentRequest({ segment: "NT-15", segmentTaxonomyVersion: CX8_TAXONOMY_VERSION }),
+  ]) {
+    assert.equal(shouldConfirmAiSegment(request), true);
+    assert.equal(getSegmentAuthorityStatusLabel(request), "Legacy – neu zuordnen");
+    assert.equal(getSegmentDecisionTone(request), "amber");
+  }
 });
 
 test("error status is rendered and toned as a blocking failure", () => {

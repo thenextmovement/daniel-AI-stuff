@@ -30,7 +30,14 @@ import { salesCallPresetRequiresCallbackDate } from "@/lib/ops/sales-call-preset
 import type { SalesTask } from "@/lib/ops/sales-task-engine";
 import type { CustomerSearchResult, CustomerWorkboardSection } from "@/lib/ops/customer-records";
 import type { OpsInternalTask } from "@/lib/ops/internal-tasks";
-import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "@/lib/ops/customer-segments";
+import {
+  CUSTOMER_SEGMENT_OPTIONS,
+  formatCustomerSegmentLabel,
+  getCustomerSegmentOption,
+  isConfirmedCustomerSegmentAuthority,
+  isCx8TaxonomyVersion,
+  isLegacyCustomerSegment,
+} from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../../ops-login-card";
 import { OpsPageHeader } from "../../ops-page-header";
 import { OpsPageIntro, opsPageContainerClass, opsPageShellClass } from "../../ops-design";
@@ -188,7 +195,11 @@ function getSegmentStatusLabel(status: string | null | undefined) {
 function getSegmentLabel(item: SalesCallListItem) {
   const request = item.record.request;
   if (!request) return "Nicht segmentiert";
-  return request.segmentLabel || getCustomerSegmentOption(request.segment)?.label || request.segment || request.sKategorie || "Nicht segmentiert";
+  return request.segmentLabel
+    || formatCustomerSegmentLabel(request.segment, request.segmentTaxonomyVersion)
+    || request.segment
+    || request.sKategorie
+    || "Nicht segmentiert";
 }
 
 function getSegmentDetail(item: SalesCallListItem) {
@@ -203,9 +214,14 @@ function getSegmentDetail(item: SalesCallListItem) {
 }
 
 function needsSegmentConfirmation(item: SalesCallListItem) {
-  const segment = item.record.request?.segment;
-  const status = item.record.request?.segmentStatus?.trim().toLowerCase();
-  return !getCustomerSegmentOption(segment) || status === "needs_review" || status === "classified" || status === "pending";
+  const request = item.record.request;
+  if (!request) return true;
+  return !isConfirmedCustomerSegmentAuthority({
+    segment: request.segment,
+    status: request.segmentStatus,
+    source: request.segmentSource,
+    taxonomyVersion: request.segmentTaxonomyVersion,
+  });
 }
 
 function segmentTone(item: SalesCallListItem) {
@@ -1073,7 +1089,9 @@ function SegmentConfirmControl({
   running: boolean;
   onApply: (segment: string) => Promise<void>;
 }) {
-  const currentSegment = getCustomerSegmentOption(item.record.request?.segment)?.segment || "";
+  const currentSegment = isCx8TaxonomyVersion(item.record.request?.segmentTaxonomyVersion)
+    ? getCustomerSegmentOption(item.record.request?.segment)?.segment || ""
+    : "";
   const [selectedSegment, setSelectedSegment] = useState(currentSegment);
   const selectedOption = getCustomerSegmentOption(selectedSegment);
   const needsReview = needsSegmentConfirmation(item);
@@ -1091,7 +1109,14 @@ function SegmentConfirmControl({
           <p className="text-[11px] uppercase tracking-[0.18em] opacity-70">Segment</p>
           <p className="mt-1 text-base font-semibold">{getSegmentLabel(item)}</p>
           <p className="mt-1 text-xs leading-5 opacity-75">
-            {needsReview ? "Bitte Segment für spätere Auswertung bestätigen oder ändern." : getSegmentDetail(item)}
+            {isLegacyCustomerSegment(
+              item.record.request?.segment,
+              item.record.request?.segmentTaxonomyVersion,
+            )
+              ? "Legacy – neu zuordnen. Bitte ein aktives CX8-Segment auswählen."
+              : needsReview
+                ? "Bitte Segment für spätere Auswertung bestätigen oder ändern."
+                : getSegmentDetail(item)}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">

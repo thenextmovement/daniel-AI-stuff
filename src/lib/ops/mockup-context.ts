@@ -1,13 +1,12 @@
-import { CUSTOMER_SEGMENT_OPTIONS, getCustomerSegmentOption } from "./customer-segments";
+import { formatCustomerSegmentLabel, getKnownCustomerSegmentOption } from "./customer-segments";
 
-export type MockupSegmentSource = "manual" | "ai" | "fallback";
+export type MockupContextSource = "manual" | "ai" | "fallback";
 
-export type MockupSegmentResult = {
-  segment: string;
-  source: MockupSegmentSource;
+export type MockupVisualContextResult = {
+  visualContext: string;
+  source: MockupContextSource;
   confidence: number;
   reasonCodes: string[];
-  ntSegment: string | null;
 };
 
 export type MockupContextInput = {
@@ -25,9 +24,10 @@ export type MockupContextInput = {
   storedSegment?: string | null;
   storedSegmentSource?: string | null;
   storedSegmentConfidence?: number | string | null;
+  storedSegmentTaxonomyVersion?: string | null;
 };
 
-export type MockupContext = MockupSegmentResult & {
+export type MockupContext = MockupVisualContextResult & {
   setting: string;
   usage: string;
   lightColor: string;
@@ -35,13 +35,6 @@ export type MockupContext = MockupSegmentResult & {
   backboardPromptBlock: string | null;
   productType: string;
   signContext: string;
-};
-
-export type MockupSegmentStorage = {
-  segment: string | null;
-  sKategorie: string | null;
-  source: MockupSegmentSource;
-  confidence: number;
 };
 
 const autoDescriptionMarker = "[[NEONTRIP_MOCKUP_SETTING_V1]]";
@@ -76,155 +69,130 @@ const personalEmailDomains = new Set([
   "mail.de",
 ]);
 
-type SegmentRule = {
-  segment: string;
-  ntSegment: string | null;
+type VisualContextRule = {
+  visualContext: string;
   keywords: RegExp[];
   setting: string;
 };
 
-const segmentRules: SegmentRule[] = [
+const visualContextRules: VisualContextRule[] = [
   {
-    segment: "Cafe / Coffee Shop",
-    ntSegment: "NT-2",
+    visualContext: "Cafe / Coffee Shop",
     keywords: [/\bcafe\b/i, /\bcoffee\b/i, /kaffee/i, /roesterei/i, /barista/i],
     setting: "Cafe / Coffee Shop - moderner Tresenbereich, warme Beleuchtung, hochwertiges Lifestyle-/Gastro-Setting fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Restaurant",
-    ntSegment: "NT-2",
+    visualContext: "Restaurant",
     keywords: [/restaurant/i, /gastronomie/i, /bistro/i, /food/i, /catering/i],
     setting: "Restaurant / Gastronomie - hochwertiger Innenraum, Wandbereich oder Empfangsbereich, warmes Ambiente, realistisches Setting fuer Neon-Mockup.",
   },
   {
-    segment: "Bar / Club",
-    ntSegment: "NT-2",
+    visualContext: "Bar / Club",
     keywords: [/\bbar\b/i, /\bclub\b/i, /lounge/i, /nightlife/i, /cocktail/i],
     setting: "Bar / Club - dunklere Premium-Wand, stimmungsvolle Beleuchtung, hochwertiges Nachtleben-/Gastro-Setting fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Hotel",
-    ntSegment: "NT-2",
+    visualContext: "Hotel",
     keywords: [/hotel/i, /hostel/i, /rezeption/i, /lobby/i],
     setting: "Hotel - moderner Lobby- oder Empfangsbereich, hochwertige Materialien, ruhiges Premium-Ambiente fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Physiotherapiepraxis",
-    ntSegment: "NT-13",
+    visualContext: "Physiotherapiepraxis",
     keywords: [/physio/i, /physiotherapie/i, /therapiezentrum/i, /rehabilitation/i, /\breha\b/i],
     setting: "Physiotherapiepraxis - moderner Empfangs- oder Therapiebereich, helles cleanes Praxisumfeld, hochwertig und vertrauenswuerdig fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Arztpraxis",
-    ntSegment: "NT-13",
+    visualContext: "Arztpraxis",
     keywords: [/arzt/i, /medical/i, /clinic/i, /klinik/i, /praxis/i],
     setting: "Arztpraxis - moderner Empfangsbereich, klare helle Architektur, serioeses und hochwertiges Praxisumfeld fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Zahnarztpraxis",
-    ntSegment: "NT-13",
+    visualContext: "Zahnarztpraxis",
     keywords: [/zahnarzt/i, /dental/i, /kiefer/i],
     setting: "Zahnarztpraxis - moderner Praxisempfang, cleanes helles Interior, hochwertiges medizinisches Umfeld fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Spa / Wellness",
-    ntSegment: "NT-18",
+    visualContext: "Spa / Wellness",
     keywords: [/\bspa\b/i, /wellness/i, /massage/i, /sauna/i, /beauty spa/i],
     setting: "Spa / Wellness - ruhiger hochwertiger Empfangs- oder Behandlungsbereich, warme Premium-Atmosphaere, cleanes entspannendes Interior fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Universitaet",
-    ntSegment: "NT-10",
+    visualContext: "Universitaet",
     keywords: [/universitaet/i, /\buni\b/i, /hochschule/i, /campus/i],
     setting: "Universitaet / Bildungseinrichtung - moderner Campus- oder Empfangsbereich, klare Architektur, serioeses institutionelles Umfeld.",
   },
   {
-    segment: "Schule",
-    ntSegment: "NT-10",
+    visualContext: "Schule",
     keywords: [/schule/i, /academy/i, /akademie/i, /bildung/i],
     setting: "Schule / Bildungseinrichtung - moderner Eingangs- oder Gemeinschaftsbereich, klare freundliche Architektur, serioeses Bildungsumfeld.",
   },
   {
-    segment: "Maschinenbau",
-    ntSegment: "NT-9",
+    visualContext: "Maschinenbau",
     keywords: [/maschinenbau/i, /industrial/i, /industrie/i, /produktion/i, /engineering/i, /technik/i],
     setting: "Maschinenbauunternehmen - industrielle Halle oder moderner Empfangsbereich, technisches B2B-Umfeld, cleanes Corporate-Setting.",
   },
   {
-    segment: "Werkstatt",
-    ntSegment: "NT-9",
+    visualContext: "Werkstatt",
     keywords: [/werkstatt/i, /garage/i, /handwerk/i],
     setting: "Werkstatt - sauberer moderner Arbeitsbereich, robuste Wandflaeche, hochwertiges handwerkliches Umfeld fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Autohaus",
-    ntSegment: "NT-9",
+    visualContext: "Autohaus",
     keywords: [/autohaus/i, /automotive/i, /fahrzeug/i, /car/i],
     setting: "Autohaus - moderner Showroom mit klarer Wand- oder Empfangsflaeche, hochwertiges Automotive-Umfeld fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Friseur",
-    ntSegment: "NT-12",
+    visualContext: "Friseur",
     keywords: [/friseur/i, /hair/i, /barber/i],
     setting: "Friseur - moderner Salonbereich mit Spiegel-/Wandzone, hochwertiges Beauty-Interior, warmes Licht fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Beauty Salon",
-    ntSegment: "NT-12",
+    visualContext: "Beauty Salon",
     keywords: [/beauty/i, /kosmetik/i, /nail/i, /lashes/i, /brow/i, /tattoo/i],
     setting: "Beauty Salon - hochwertiger Salon- oder Empfangsbereich, warme Akzentbeleuchtung, stilvolles Beauty-Setting fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Fitnessstudio",
-    ntSegment: "NT-15",
+    visualContext: "Fitnessstudio",
     keywords: [/fitness/i, /\bgym\b/i, /crossfit/i, /yoga/i, /training/i],
     setting: "Fitnessstudio - moderner Trainingsbereich, dunkle Wand, sportliches Premium-Ambiente, realistischer Kontext fuer Leuchtschild-Mockup.",
   },
   {
-    segment: "Einzelhandel",
-    ntSegment: "NT-18",
+    visualContext: "Einzelhandel",
     keywords: [/retail/i, /einzelhandel/i, /boutique/i, /shop/i, /store/i, /laden/i],
     setting: "Einzelhandel - hochwertiger Verkaufsraum oder Schaufensterbereich, klare Produktpraesentation, realistisches Retail-Setting fuer Neon-Mockup.",
   },
   {
-    segment: "Messebauer",
-    ntSegment: "NT-3",
+    visualContext: "Messebauer",
     keywords: [/messebau/i, /messestand/i, /\bexpo\b/i, /standbau/i],
     setting: "Messebauer - hochwertige Messewand oder Booth-Rueckwand, cleanes Event-Setting, professionelle Beleuchtung fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Eventagentur",
-    ntSegment: "NT-3",
+    visualContext: "Eventagentur",
     keywords: [/eventagentur/i, /event/i, /veranstaltung/i, /festival/i],
     setting: "Eventagentur - hochwertiger Event-Backdrop oder Empfangsbereich, professionelle Lichtstimmung, realistisches Marken-/Event-Setting.",
   },
   {
-    segment: "Immobilienbuero",
-    ntSegment: "NT-14",
+    visualContext: "Immobilienbuero",
     keywords: [/immobilien/i, /makler/i, /real estate/i],
     setting: "Immobilienbuero - moderner Empfangs- oder Beratungsbereich, cleanes Corporate-Interior, serioeses Premium-Umfeld.",
   },
   {
-    segment: "Kanzlei",
-    ntSegment: "NT-13",
+    visualContext: "Kanzlei",
     keywords: [/kanzlei/i, /anwalt/i, /steuer/i, /notar/i, /law/i],
     setting: "Kanzlei - moderner Empfangs- oder Besprechungsbereich, hochwertige Materialien, serioeses professionelles Umfeld.",
   },
   {
-    segment: "Buero",
-    ntSegment: "NT-9",
+    visualContext: "Buero",
     keywords: [/office/i, /buero/i, /agentur/i, /corporate/i],
     setting: "Buero - moderner Empfangs- oder Meetingbereich, cleanes Corporate-Setting, hochwertige Wandflaeche fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Showroom",
-    ntSegment: "NT-18",
+    visualContext: "Showroom",
     keywords: [/showroom/i, /ausstellung/i],
     setting: "Showroom - moderne Praesentationsflaeche, hochwertige Wand oder Produktumfeld, cleanes Premium-Setting fuer realistisches Neon-Mockup.",
   },
   {
-    segment: "Ladenlokal",
-    ntSegment: "NT-18",
+    visualContext: "Ladenlokal",
     keywords: [/ladenlokal/i, /geschaeft/i, /verkaufsraum/i],
     setting: "Ladenlokal - moderner Verkaufs- oder Empfangsbereich, hochwertige Wandflaeche, realistisches lokales Retail-Setting fuer Neon-Mockup.",
   },
@@ -294,29 +262,29 @@ function isGenericSegment(value: unknown) {
   return genericBlockedValues.has(normalized);
 }
 
-function segmentRuleByName(value: unknown) {
+function visualContextRuleByName(value: unknown) {
   const normalized = normalizeKey(value);
-  return segmentRules.find((rule) => normalizeKey(rule.segment) === normalized) || null;
+  return visualContextRules.find((rule) => normalizeKey(rule.visualContext) === normalized) || null;
 }
 
-function settingForSegment(segment: string) {
-  const rule = segmentRuleByName(segment);
+function settingForVisualContext(visualContext: string) {
+  const rule = visualContextRuleByName(visualContext);
   if (rule) return rule.setting;
-  const nt = getCustomerSegmentOption(segment);
+  const nt = getKnownCustomerSegmentOption(visualContext);
   if (nt?.segment === "NT-2") return "Gastronomie - passender hochwertiger Restaurant-, Cafe-, Bar- oder Hotelbereich je nach Kundenkontext, warmes Ambiente, realistisches Setting fuer Neon-Mockup.";
-  if (nt?.segment === "NT-3") return segmentRules.find((rule) => rule.segment === "Eventagentur")?.setting;
-  if (nt?.segment === "NT-13") return segmentRules.find((rule) => rule.segment === "Arztpraxis")?.setting;
-  if (nt?.segment === "NT-15") return segmentRules.find((rule) => rule.segment === "Fitnessstudio")?.setting;
-  if (nt?.segment === "NT-14") return segmentRules.find((rule) => rule.segment === "Immobilienbuero")?.setting;
-  if (nt?.segment === "NT-18") return segmentRules.find((rule) => rule.segment === "Showroom")?.setting;
-  if (nt?.segment === "NT-9") return segmentRules.find((rule) => rule.segment === "Buero")?.setting;
-  if (nt?.segment === "NT-10") return segmentRules.find((rule) => rule.segment === "Universitaet")?.setting;
-  if (nt?.segment === "NT-12") return segmentRules.find((rule) => rule.segment === "Beauty Salon")?.setting;
+  if (nt?.segment === "NT-3") return visualContextRules.find((entry) => entry.visualContext === "Eventagentur")?.setting;
+  if (nt?.segment === "NT-13") return visualContextRules.find((entry) => entry.visualContext === "Arztpraxis")?.setting;
+  if (nt?.segment === "NT-15") return visualContextRules.find((entry) => entry.visualContext === "Fitnessstudio")?.setting;
+  if (nt?.segment === "NT-14") return visualContextRules.find((entry) => entry.visualContext === "Immobilienbuero")?.setting;
+  if (nt?.segment === "NT-18") return visualContextRules.find((entry) => entry.visualContext === "Showroom")?.setting;
+  if (nt?.segment === "NT-9") return visualContextRules.find((entry) => entry.visualContext === "Buero")?.setting;
+  if (nt?.segment === "NT-10") return visualContextRules.find((entry) => entry.visualContext === "Universitaet")?.setting;
+  if (nt?.segment === "NT-12") return visualContextRules.find((entry) => entry.visualContext === "Beauty Salon")?.setting;
   return null;
 }
 
-function displaySegment(value: string) {
-  const nt = getCustomerSegmentOption(value);
+function displayVisualContext(value: string, taxonomyVersion?: string | null) {
+  const nt = getKnownCustomerSegmentOption(value);
   if (!nt) return value;
   if (nt.segment === "NT-2") return "Gastronomie";
   if (nt.segment === "NT-3") return "Eventagentur";
@@ -327,7 +295,7 @@ function displaySegment(value: string) {
   if (nt.segment === "NT-9") return "Buero";
   if (nt.segment === "NT-10") return "Universitaet";
   if (nt.segment === "NT-12") return "Beauty Salon";
-  return nt.label;
+  return formatCustomerSegmentLabel(nt.segment, taxonomyVersion) || nt.segment;
 }
 
 function findRule(input: MockupContextInput) {
@@ -343,10 +311,10 @@ function findRule(input: MockupContextInput) {
     domainText,
   ].map(normalizeKey).join(" ");
 
-  return segmentRules.find((rule) => rule.keywords.some((keyword) => keyword.test(haystack))) || null;
+  return visualContextRules.find((rule) => rule.keywords.some((keyword) => keyword.test(haystack))) || null;
 }
 
-function segmentSourceFromStored(value: unknown): MockupSegmentSource {
+function contextSourceFromStored(value: unknown): MockupContextSource {
   const source = normalizeKey(value);
   if (source.includes("manual")) return "manual";
   if (source.includes("fallback")) return "fallback";
@@ -359,42 +327,37 @@ function confidenceFromStored(value: unknown, fallback: number) {
   return Math.max(0, Math.min(1, numeric));
 }
 
-export function resolveMockupSegment(input: MockupContextInput): MockupSegmentResult {
+export function resolveMockupVisualContext(input: MockupContextInput): MockupVisualContextResult {
   const manual = textValue(input.manualSegment);
   if (manual && !isGenericSegment(manual)) {
-    const manualRule = segmentRuleByName(manual);
-    const manualNt = getCustomerSegmentOption(manual);
+    const manualRule = visualContextRuleByName(manual);
     return {
-      segment: manualRule?.segment || displaySegment(manual),
+      visualContext: manualRule?.visualContext || displayVisualContext(manual),
       source: "manual",
       confidence: 1,
-      reasonCodes: ["manual_segment"],
-      ntSegment: manualRule?.ntSegment || manualNt?.segment || null,
+      reasonCodes: ["manual_visual_context"],
     };
   }
 
   const stored = textValue(input.storedSegment);
   if (stored && !isGenericSegment(stored)) {
-    const storedRule = segmentRuleByName(stored);
-    const storedNt = getCustomerSegmentOption(stored);
-    const source = segmentSourceFromStored(input.storedSegmentSource);
+    const storedRule = visualContextRuleByName(stored);
+    const source = contextSourceFromStored(input.storedSegmentSource);
     if (source !== "fallback") {
       const contextualRule = source !== "manual" ? findRule(input) : null;
-      if (contextualRule && storedNt?.segment === "NT-2") {
+      if (contextualRule) {
         return {
-          segment: contextualRule.segment,
+          visualContext: contextualRule.visualContext,
           source: "ai",
           confidence: confidenceFromStored(input.storedSegmentConfidence, 0.82),
-          reasonCodes: ["keyword_context_override_stored_segment"],
-          ntSegment: contextualRule.ntSegment,
+          reasonCodes: ["keyword_visual_context_override"],
         };
       }
       return {
-        segment: storedRule?.segment || displaySegment(stored),
+        visualContext: storedRule?.visualContext || displayVisualContext(stored, input.storedSegmentTaxonomyVersion),
         source,
         confidence: confidenceFromStored(input.storedSegmentConfidence, source === "manual" ? 1 : 0.82),
-        reasonCodes: ["stored_request_segment"],
-        ntSegment: storedRule?.ntSegment || storedNt?.segment || null,
+        reasonCodes: ["stored_request_segment_visual_default"],
       };
     }
   }
@@ -402,26 +365,24 @@ export function resolveMockupSegment(input: MockupContextInput): MockupSegmentRe
   const rule = findRule(input);
   if (rule) {
     return {
-      segment: rule.segment,
+      visualContext: rule.visualContext,
       source: "ai",
       confidence: 0.82,
-      reasonCodes: ["keyword_context_match"],
-      ntSegment: rule.ntSegment,
+      reasonCodes: ["keyword_visual_context_match"],
     };
   }
 
   return {
-    segment: "Showroom",
+    visualContext: "Showroom",
     source: "fallback",
     confidence: 0.4,
     reasonCodes: ["neutral_visual_fallback"],
-    ntSegment: null,
   };
 }
 
 export function buildMockupContext(input: MockupContextInput): MockupContext {
-  const segment = resolveMockupSegment(input);
-  const setting = settingForSegment(segment.segment) || "Modernes Ladenlokal / Showroom - hochwertige Wandflaeche, klares Licht, realistisches neutrales Setting fuer Neon-Mockup.";
+  const visualContext = resolveMockupVisualContext(input);
+  const setting = settingForVisualContext(visualContext.visualContext) || "Modernes Ladenlokal / Showroom - hochwertige Wandflaeche, klares Licht, realistisches neutrales Setting fuer Neon-Mockup.";
   const usage = textValue(input.usage) || "Innenbereich";
   const lightColor = textValue(input.color) || "Leuchtfarbe laut Kundenanfrage";
   const backboard = textValue(input.backboard) || "Rueckplatte laut Angebot";
@@ -430,7 +391,7 @@ export function buildMockupContext(input: MockupContextInput): MockupContext {
   const signContext = textValue(input.requestTitle) || textValue(input.customerCompany) || "kundenspezifisches Schild";
 
   return {
-    ...segment,
+    ...visualContext,
     setting,
     usage,
     lightColor,
@@ -450,7 +411,7 @@ export function buildImageMockupPrompt(context: MockupContext) {
   return [
     "Create one photorealistic premium image mockup of the provided LED neon sign.",
     `Sign/logo context: ${context.signContext}.`,
-    `Industry: ${context.segment}.`,
+    `Visual context: ${context.visualContext}.`,
     `Scene setting: ${context.setting}`,
     `Installation/use: ${context.usage}.`,
     `Light color: ${context.lightColor}.`,
@@ -466,7 +427,7 @@ export function buildImageMockupPrompt(context: MockupContext) {
 export function buildVideoMockupPrompt(context: MockupContext) {
   return [
     "Create a short premium product video based on the provided neon sign mockup.",
-    `Industry: ${context.segment}.`,
+    `Visual context: ${context.visualContext}.`,
     `Scene setting: ${context.setting}`,
     context.backboardPromptBlock,
     "Use a clean reveal with a slow subtle camera movement toward the sign.",
@@ -485,9 +446,9 @@ export function buildMockupTrelloDescription(input: MockupContextInput & { reque
     "Mockup-Setting (automatisch):",
     context.setting,
     "",
-    `Segment: ${context.segment}`,
-    `Segmentquelle: ${context.source}`,
-    `Konfidenz: ${context.confidence}`,
+    `Mockup-Kontext: ${context.visualContext}`,
+    `Kontextquelle: ${context.source}`,
+    `Visuelle Sicherheit: ${context.confidence}`,
     `Einsatzort: ${context.usage}`,
     `Leuchtfarbe: ${context.lightColor}`,
     `Rueckplatte: ${context.backboard}`,
@@ -506,25 +467,6 @@ export function buildMockupTrelloDescription(input: MockupContextInput & { reque
     `Kontaktkontext: ${textValue(input.customerCompany) || "-"}`,
   ];
   return lines.join("\n");
-}
-
-export function inferRequestSegmentForStorage(input: MockupContextInput): MockupSegmentStorage {
-  const segment = resolveMockupSegment(input);
-  const option = segment.ntSegment ? CUSTOMER_SEGMENT_OPTIONS.find((entry) => entry.segment === segment.ntSegment) : null;
-  if (!option || segment.source === "fallback") {
-    return {
-      segment: null,
-      sKategorie: null,
-      source: "fallback",
-      confidence: segment.confidence,
-    };
-  }
-  return {
-    segment: option.segment,
-    sKategorie: option.defaultSKategorie,
-    source: segment.source,
-    confidence: segment.confidence,
-  };
 }
 
 export const MOCKUP_TRELLO_DESCRIPTION_MARKER = autoDescriptionMarker;

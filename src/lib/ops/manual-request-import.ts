@@ -8,7 +8,10 @@ import { isValidEmail, normalizeEmail } from "@/lib/quotes/customer";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import {
+  CX8_TAXONOMY_VERSION,
   getCustomerSegmentOption,
+  getKnownCustomerSegmentOption,
+  isCx8TaxonomyVersion,
   isManualRequestSegmentSource,
   type CustomerSegmentCode,
 } from "@/lib/ops/customer-segments";
@@ -43,6 +46,7 @@ type ManualImportRequestRow = {
   segment_status?: string | null;
   segment_confidence?: number | null;
   segment_source?: string | null;
+  segment_taxonomy_version?: string | null;
   attribution_raw?: Record<string, unknown> | null;
 };
 
@@ -155,6 +159,7 @@ export function manualRequestSegmentationInsertState() {
     segment_source: null,
     segment_classified_at: null,
     segment_policy_version: null,
+    segment_taxonomy_version: null,
   };
 }
 
@@ -163,16 +168,26 @@ export function resolveExplicitManualRequestSegment(segment: unknown) {
   if (!normalized) return null;
   const option = getCustomerSegmentOption(normalized);
   if (!option) {
-    throw new QuoteValidationError("Unbekanntes Segment fuer die manuelle Anfrage.");
+    throw new QuoteValidationError(
+      "Unbekanntes Segment fuer die manuelle Anfrage.",
+      ["Neue manuelle Zuweisungen sind ausschliesslich fuer aktive CX8-Segmente erlaubt."],
+      422,
+    );
   }
   return option.segment;
+}
+
+function requestedManualRequestSegment(segment: unknown) {
+  const normalized = trimNullable(segment);
+  if (!normalized) return null;
+  return getKnownCustomerSegmentOption(normalized)?.segment || normalized.toUpperCase();
 }
 
 function manualImportPayloadFingerprint(
   input: ManualRequestImportInput,
   email: string,
   phone: string | null,
-  explicitSegment: CustomerSegmentCode | null,
+  explicitSegment: string | null,
 ) {
   const payload = {
     customer: {
@@ -207,7 +222,7 @@ function manualImportPayloadFingerprint(
 function assertManualImportRetryMatches(
   request: ManualImportRequestRow,
   payloadFingerprint: string,
-  explicitSegment: CustomerSegmentCode | null,
+  explicitSegment: string | null,
 ) {
   const attribution = request.attribution_raw || {};
   const frozenFingerprint = trimNullable(attribution.manual_import_payload_hash);
@@ -305,6 +320,7 @@ const MANUAL_IMPORT_REQUEST_SELECT = [
   "segment_status",
   "segment_confidence",
   "segment_source",
+  "segment_taxonomy_version",
   "attribution_raw",
 ].join(",");
 
@@ -491,6 +507,7 @@ async function insertManualRequest(
         idempotency_key: idempotencyKey,
         manual_import_payload_hash: frozen.payloadFingerprint,
         manual_segment_candidate: frozen.explicitSegment,
+        manual_segment_taxonomy_version: CX8_TAXONOMY_VERSION,
         manual_import_due_at: frozen.dueAt,
         manual_import_customer_created: frozen.customerCreated,
         auto_reply_suppressed: true,
@@ -781,14 +798,14 @@ export async function createManualRequestImport(
   if (isInternalEmail(email)) {
     throw new QuoteValidationError("Interne NEONTRIP-Adresse darf nicht als Kundenmail gespeichert werden.", ["Bitte echte Kunden-E-Mail eintragen, nicht support@neontrip.de oder eine interne Adresse."]);
   }
-  const explicitSegment = resolveExplicitManualRequestSegment(input.request?.segment);
-  const payloadFingerprint = manualImportPayloadFingerprint(input, email, phone, explicitSegment);
+  const requestedSegment = requestedManualRequestSegment(input.request?.segment);
+  const payloadFingerprint = manualImportPayloadFingerprint(input, email, phone, requestedSegment);
 
   const existingImport = await findExistingImportByIdempotencyKey(idempotencyKey);
   const existingCustomerId = existingImport?.request.customer_id;
   if (existingImport && existingCustomerId) {
     const existingRequest = existingImport.request;
-    const frozen = assertManualImportRetryMatches(existingRequest, payloadFingerprint, explicitSegment);
+    const frozen = assertManualImportRetryMatches(existingRequest, payloadFingerprint, requestedSegment);
 
     if (existingImport.coreCompleted) {
       const trelloRequested = Boolean(input.trello?.createCard);
@@ -796,6 +813,18 @@ export async function createManualRequestImport(
       const trelloError = trelloMissing
         ? "Trello-Projektion ist trotz abgeschlossenem DB-Core nicht nachweisbar. Bitte manuell prüfen; es wird kein automatischer Retry ausgeführt."
         : null;
+      const completedWarnings = [
+        trelloMissing
+          ? "DB-Core und Import-Audit sind abgeschlossen, aber die angeforderte Trello-Karte fehlt. Bitte die Projektion manuell prüfen; kein automatischer Retry wurde gestartet."
+          : "Diese manuelle Einspielung wurde bereits vollständig verarbeitet.",
+      ];
+      if (
+        isManualRequestSegmentSource(existingRequest.segment_source)
+        && (!isCx8TaxonomyVersion(existingRequest.segment_taxonomy_version)
+          || !getCustomerSegmentOption(existingRequest.segment))
+      ) {
+        completedWarnings.push("Bestehende manuelle Legacy-Autorität wurde unverändert beibehalten. Legacy – neu zuordnen nur über die separate Portal-Aktion.");
+      }
       return {
         requestId: existingRequest.request_id,
         customerId: existingCustomerId,
@@ -814,28 +843,48 @@ export async function createManualRequestImport(
           offerCustomerFieldWarnings: [],
           error: trelloError,
         },
-        warnings: [
-          trelloMissing
-            ? "DB-Core und Import-Audit sind abgeschlossen, aber die angeforderte Trello-Karte fehlt. Bitte die Projektion manuell prüfen; kein automatischer Retry wurde gestartet."
-            : "Diese manuelle Einspielung wurde bereits vollständig verarbeitet.",
-        ],
+        warnings: completedWarnings,
       };
     }
 
-    if (explicitSegment) {
+    if (requestedSegment) {
       if (isManualRequestSegmentSource(existingRequest.segment_source)) {
-        warnings.push("Eine neuere manuelle Segment-Autorität wurde beibehalten.");
+        warnings.push(
+          isCx8TaxonomyVersion(existingRequest.segment_taxonomy_version)
+          && getCustomerSegmentOption(existingRequest.segment)
+          ? "Eine neuere manuelle Segment-Autorität wurde beibehalten."
+          : "Bestehende manuelle Legacy-Autorität wurde unverändert beibehalten. Legacy – neu zuordnen nur über die separate Portal-Aktion.",
+        );
       } else {
-        await setAuthoritativeManualRequestSegment({
-          requestId: existingRequest.id,
-          segment: explicitSegment,
-          source: "manual_ops_import",
-          actor: {
-            ...actor,
-            operatorName: trimNullable(actor.operatorName || input.operatorName),
-          },
-          reason: "manual_request_import_explicit_segment_retry",
-        });
+        const knownCandidate = getKnownCustomerSegmentOption(requestedSegment);
+        const frozenTaxonomyMarker = trimNullable(
+          existingRequest.attribution_raw?.manual_segment_taxonomy_version,
+        );
+        if (!frozenTaxonomyMarker && knownCandidate) {
+          warnings.push("Legacy-Kandidat nicht übernommen – separat im Portal neu zuordnen.");
+        } else {
+          if (frozenTaxonomyMarker !== CX8_TAXONOMY_VERSION) {
+            throw new QuoteValidationError(
+              "Segment-Retry ohne gueltigen CX8-Importvertrag blockiert.",
+              ["Nur fingerprint-passende Phase-2-Imports mit exaktem Taxonomie-Marker duerfen eine Segment-Zuweisung fortsetzen."],
+              422,
+            );
+          }
+          const explicitSegment = resolveExplicitManualRequestSegment(requestedSegment);
+          if (!explicitSegment) {
+            throw new QuoteValidationError("Aktives Segment fuer den Retry fehlt.", [], 422);
+          }
+          await setAuthoritativeManualRequestSegment({
+            requestId: existingRequest.id,
+            segment: explicitSegment,
+            source: "manual_ops_import",
+            actor: {
+              ...actor,
+              operatorName: trimNullable(actor.operatorName || input.operatorName),
+            },
+            reason: "manual_request_import_explicit_segment_retry",
+          });
+        }
       }
     }
 
@@ -861,6 +910,8 @@ export async function createManualRequestImport(
       warnings,
     };
   }
+
+  const explicitSegment = resolveExplicitManualRequestSegment(requestedSegment);
 
   const phoneDuplicate = await findCustomerByPhone(phone);
   if (phoneDuplicate?.id && phoneDuplicate.email !== email) {

@@ -1,0 +1,36 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "workflow_name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+  "captured_at_utc": "2026-08-19T18:36:36.201Z",
+  "capture_mode": "read_only_live_full_and_active",
+  "n8n_health_status": "ok",
+  "active": true,
+  "is_archived": false,
+  "draft_version_id": "9728db44-1dde-4b92-bcc7-defd60b063d3",
+  "active_version_id": "9728db44-1dde-4b92-bcc7-defd60b063d3",
+  "version_counter": 112,
+  "updated_at": "2026-08-19T15:05:08.788Z",
+  "node_count": 20,
+  "connection_source_count": 17,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "executionTimeout": 900,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "draft_active_graphs_equal": true,
+  "hashes": {
+    "draft_file_sha256": "d57c1b947c13451966d13afd02ecd76bab29ec3c2394aeb2fdcafb13a15f68f3",
+    "active_file_sha256": "51611ee56b179aed2dbd0bfb80ba44b911eeadb496eddba4614be840553aa29b",
+    "graph_sha256": "ba4716a95ba911248400229eedf538f62621c798f717db93eaed2219813c3ba9",
+    "graph_hash_command": "jq -cS '{nodes,connections,settings}' <draft> | shasum -a 256"
+  },
+  "files": {
+    "draft": "ELpwCfdWOCRZ22gy.draft-before.json",
+    "active": "ELpwCfdWOCRZ22gy.published-active-before.json"
+  },
+  "safety_note": "Read-only Phase-2 CX8 prechange snapshot. No workflow update, publish, activation, deactivation, or execution was performed."
+}

@@ -1,6 +1,6 @@
 # Request Segmentation
 
-Stand: 2026-08-19 (Phase-1-Sicherheitsvertrag; den tatsaechlichen Live-Stand immer ueber Migration-Health und aktive n8n-Version verifizieren)
+Stand: 2026-08-19 (Phase-2-CX8 als getrennten Shadow-Vertrag vorbereitet; den tatsaechlichen Live-Stand immer ueber aktive DB-Policy und aktive n8n-Version verifizieren)
 
 Diese Doku beschreibt, wie neue Kundenanfragen bei NEONTRIP segmentiert werden, wo das Ergebnis sichtbar ist und wie ein Segment manuell bestaetigt oder korrigiert wird.
 
@@ -15,6 +15,98 @@ Diese Doku beschreibt, wie neue Kundenanfragen bei NEONTRIP segmentiert werden, 
 - Das Ops-Portal zeigt das Segment als Klartext, z. B. `Immobilien`, nicht nur als Code `NT-14`.
 - Im Portal kann das Segment per Dropdown manuell bestaetigt oder korrigiert werden.
 - Wenn die KI unsicher ist, fordert das Portal zur Pruefung auf.
+
+## Phase 2: versionierter CX8-Shadow-Vertrag
+
+Phase 2 ersetzt historische Segmentbedeutungen nicht. Die bisherigen 18 Definitionen, Klassifikationen, Gold-Labels und Master-Werte bleiben unveraendert. Ein wiederverwendeter `NT-*`-Code hat die neue Bedeutung nur zusammen mit:
+
+```text
+taxonomy_version = nt_taxonomy_v2_20260819_cx8
+classifier_version = segment_classifier_v3_20260819_cx8
+prompt_version = segment_prompt_v4_20260819_cx8
+policy_version = nt_policy_v2_20260819_cx8_shadow
+```
+
+Die Hauptmigration legt v2 bewusst `active=false` an und laesst v1 aktiv. Erst das getrennte, nicht automatisch angewandte Held-Artefakt `supabase/rollouts/held/20260819193419_activate_request_segmentation_phase2_cx8_shadow.sql` darf nach App- und n8n-v3-Rollout atomar v1 deaktivieren und v2 aktivieren. Es prueft davor das exakte Taxonomie-/Evidence-/Gate-Triple und blockiert, solange noch ein unversionierter Legacy-Job in `pending`, `processing` oder als erneut claimbarer `failed`-Retry (`attempts < max_attempts`) steht; terminal ausgeschoepfte Fehler bleiben Audit-Historie. Release Ops muss die claimbaren Faelle vorher bewusst drainen oder aufloesen. Transaktionsgebundene Locks auf Policy und Jobtabelle schliessen die Enqueue-/Claim-Luecke zwischen Drain-Check und Flip. Auch danach bleibt die Policy im Modus `shadow`; alle acht Rules haben `automation_enabled=false`, keinen Preisfaktor und keine Follow-ups.
+
+### Primaere CX8-Segmente
+
+| Prioritaet | Code | Primaere Customer-Experience-Rolle | S | Pflicht-Evidence-Code |
+| ---: | --- | --- | --- | --- |
+| 100 | `NT-10` | Institution / oeffentliche Hand | `S4` | `verified_public_or_institutional_entity` |
+| 90 | `NT-1` | Laden-/Messebau-Produktionspartner | `S2` | `verified_physical_project_supplier` |
+| 80 | `NT-4` | Agentur / Planer / Reseller | `S2` | `verified_client_project_intermediary` |
+| 70 | `NT-3` | Event-/Medienproduktion | `S1` | `verified_event_or_media_operator` |
+| 60 | `NT-5` | Franchise / Multi-Site | `S2` | `verified_multisite_or_franchise` |
+| 50 | `NT-6` | Enterprise | `S2` | `verified_enterprise` |
+| 40 | `NT-8` | Privat | `S3` | `explicit_private_use` |
+| 30 | `NT-9` | Direktes kleines/mittleres Unternehmen | `S3` | `verified_direct_business` |
+
+Die Prioritaet bricht nur einen Gleichstand zwischen mehreren positiv belegten Kandidaten. Sie erzeugt nie einen Fallback. `NT-2`, `NT-7` und `NT-11` bis `NT-18` bleiben als historische Codes sichtbar, sind aber keine neuen CX8-Entscheidungen. Ihre vertikalen Informationen koennen als nicht-autoritative Context-Tags weiterleben: `gastronomy_hospitality`, `film_tv`, `architecture_interior`, `creator_influencer`, `healthcare`, `real_estate`, `fitness_wellness`, `recruiting_employer_branding`, `startup_tech`, `luxury_premium_retail`.
+
+### Evidenz und Fail-Closed-Regeln
+
+- Jeder angenommene non-private Vorschlag braucht den exakten Segment-Evidence-Code auf demselben `p_evidence_json`-Objekt und derselben URL wie eine validierte `evidence_provenance.verified_sources`-Quelle.
+- `NT-10` akzeptiert den positiven Code nur mit `used_for=institution_status`; `NT-1/3/4/5/6/9` nur mit `used_for=segment_role`.
+- `NT-5` und `NT-6` brauchen zusaetzlich separate verifizierte `organization_scale`-Evidence. `NT-6` ist nur bei `organization_scale=enterprise` zulaessig.
+- `NT-8` verlangt die exakte First-Party-Formularwahl `customer_type=privat`; Freemail, Design, Preis oder fehlende Firma beweisen niemals Privatnutzung.
+- `NT-9` verlangt die exakte First-Party-Auswahl `gewerblich|b2b` plus externe Rollen-Evidence; es ist kein Business-Fallback.
+- Unbekannte, widerspruechliche, semantisch falsch verwendete oder nicht quellgebundene Evidenz endet in `needs_review`.
+
+### Queue- und Cutover-Vertrag
+
+Der Claim-RPC hat einen einzigen erweiterten Vertrag:
+
+```text
+neontrip_claim_request_segmentation_jobs(
+  p_limit,
+  p_lock_owner,
+  p_stale_minutes,
+  p_taxonomy_version default NULL,
+  p_classifier_version default NULL,
+  p_prompt_version default NULL
+)
+```
+
+Alle drei Versionsfilter sind entweder `NULL` (v1-Lane) oder exakt gesetzt (v3-Lane). Partielle Filter schlagen deterministisch fehl. Vor Aktivierung bekommt v3 mit dem exakten CX8-Triple keine Jobs. Ein ueber einen Policy-Flip hinweg laufender Job wird im Record-RPC als `segmentation_job_active_contract_mismatch` technisch beendet, ohne Klassifikation, Master- oder Cache-Write.
+
+Normale und Gold-Evaluation-Enqueues teilen denselben versionierten Job-Key. `evaluation_only=true` ist sticky und kann durch einen normalen Enqueue weder waehrend `processing` noch nach Abschluss still in Projektionsautoritaet umgewandelt werden. Evaluation-Jobs duerfen Klassifikation/Job abschliessen, aber niemals `master_requests` oder Research-Cache schreiben.
+
+Ein CX8-Research-Cache-Write persistiert ausschliesslich externe Evidence-Objekte, deren `evidence_code`, `used_for`, URL und Source-Bindung denselben deterministischen Record-Guard bestanden haben. `summary_json` traegt das exakte Taxonomie-/Classifier-/Prompt-Triple, `evidence_contract_valid=true` und den erforderlichen Evidence-Code. Der Payload liest unter v2 nur Cachezeilen mit exakt diesem aktiven Triple und nichtleerem validiertem Evidence-Array; der unversionierte v1-Read bleibt bis zum Flip unveraendert.
+
+### Manuelle Authority und Gold
+
+Waehren des gestuften Rollouts bleibt die Manual-RPC-Signatur unveraendert. Der neue Client setzt in `p_actor` exakt:
+
+```json
+{"segmentTaxonomyVersion":"nt_taxonomy_v2_20260819_cx8"}
+```
+
+Nur dann validiert der RPC gegen die acht CX8-Definitionen und setzt `master_requests.segment_taxonomy_version` atomar. Markerlose alte Clients duerfen nur solange v1 aktiv ist den bisherigen 18-Code-Vertrag nutzen. Nach dem Flip schlagen markerlose Writes fail-closed fehl. Historische manuelle Rows ohne CX8-Taxonomie bleiben Anzeige, aber autorisieren keine v2-Automation, bis ein Mensch sie explizit erneut bestaetigt.
+
+Ein Manual-Override erzeugt nie Gold. Gold entsteht ausschliesslich ueber `neontrip_adjudicate_request_segmentation_gold` fuer den aktuell gelockten Request-/Customer-Input-Hash. Es ist insert-once: identischer Retry ist idempotent, abweichender Retry ist ein Konflikt; UPDATE und DELETE sind gesperrt. Non-`NT-8` braucht mindestens eine gueltige externe Evidence-URL. Fuer gate-faehiges Gold gelten zusaetzlich: `NT-8` immer `privat` und Scale `NULL`, `NT-9` immer `gewerblich|b2b`, `NT-5` Scale non-null, `NT-6` Scale exakt `enterprise`. Kanonische Limits: Actor 3..320, Reason 20..4000, hoechstens zehn Context-Tags und zwoelf Evidence-URLs mit je maximal 2048 Zeichen.
+
+Der service-role-only Review-Vertrag `neontrip_get_request_segmentation_review_context` liefert den gelockten aktuellen Hash, nur den exakten CX8-v3-Vorschlag, das aktuelle immutable Gold und `gold_eligibility`; er mischt keine globale latest-v1-Klassifikation hinein.
+
+### Qualitaets-Gate
+
+Die `request_segmentation_v2_*`-Views verwenden je Request nur die neueste explizite immutable Adjudikation und joinen sie mit der Vorhersage ausschliesslich auf Request, Input-Hash, Taxonomie, Klassifikator und Prompt. Mehrere historische Input-Versionen desselben Requests koennen das Gate daher nicht aufblasen. Precision wird pro vorhergesagter angenommener Klasse, Recall pro tatsaechlicher Gold-Klasse berechnet; Abstentions senken Recall und Coverage, aber werden nicht als falsche Mapping-Zeilen gezaehlt.
+
+Der versionierte Gate-Default lautet:
+
+- mindestens 300 eindeutige adjudizierte Requests insgesamt und 25 je aktivem CX8-Code;
+- Precision je vorhergesagter Klasse mindestens `0.90`, fuer `NT-8`/`NT-10` mindestens `0.95`;
+- Recall je tatsaechlicher Klasse mindestens `0.85`;
+- angenommene Coverage mindestens `0.80`;
+- Mapping-Integritaet angenommener Predictions exakt `1.0`;
+- null angenommene Evidence-Provenance-Verstoesse;
+- selbst nach bestandenem technischen Gate weiterhin explizite, zeitlich begrenzte manuelle Aktivierungsfreigabe.
+
+### Rollback
+
+- Vor jeglicher v2-Runtime darf ein exakter Schema-Restore ueber `supabase/rollbacks/20260819183219_request_segmentation_phase2_full_pre_runtime_rollback.sql` nur erfolgen, wenn versionierte Jobs, Klassifikationen, Gold, Master-Authority und Approvals jeweils `0` Rows haben, v1 allein aktiv und v2 inaktiv ist. Das Artefakt enthaelt die exakt am 2026-08-19 live erfassten Phase-1-Funktionsdefinitionen/ACLs und stellt die beiden alten Unique-Constraints wieder her. Der PII-freie Prestate liegt in `supabase/security-backups/request-segmentation-phase2-prechange-20260819.sql`.
+- Nach der ersten v2-Runtime ist nur der nicht-destruktive operative Rollback `supabase/rollbacks/20260819193419_request_segmentation_phase2_operational_rollback.sql` zulaessig. Exakte Reihenfolge: bereits laufende `processing`-v2-Jobs drainen (das SQL bricht sonst fail-closed ab), dann mit diesem SQL atomar v2 inaktiv/v1 aktiv schalten, danach einen Claim mit dem exakten v3-Taxonomie-/Classifier-/Prompt-Triple ausfuehren und das leere Ergebnis `[]` verifizieren; erst danach den n8n-Reverse auf v1 publishen. Pending/failed CX8-Jobs bleiben auditierbar suspendiert; additive Spalten sowie alle v3-/Gold-Auditdaten bleiben erhalten und werden nie geloescht, um alte Unique-Constraints zu erzwingen.
+- Hauptmigration, Held-Aktivierung und beide Rollback-Artefakte werden in diesem Arbeitsschritt nicht live angewendet.
 
 ## Warum das so gebaut ist
 
@@ -66,7 +158,10 @@ Wichtig: Die Segmentierung findet also am Anfrage-Eingang statt. Sie ist nicht d
 | `segment_confidence` | Sicherheit der KI zwischen `0` und `1`; bei manueller Autoritaet `NULL` |
 | `segment_source` | Quelle, z. B. `request_segmenter` oder `manual_ops_portal` |
 | `segment_classified_at` | Zeitpunkt der Klassifizierung |
-| `segment_policy_version` | Policy-/Prompt-Version |
+| `segment_policy_version` | Version der operativen Segment-Policy |
+| `segment_taxonomy_version` | Semantische Taxonomieversion; unter CX8 zwingender Teil der Authority |
+| `segment_context_tags` | Nicht-autoritative vertikale Kontext-Tags der aktiven Taxonomie |
+| `segment_organization_scale` | Normalisierte Organisationsgroesse; fuer CX8-Regeln nullable und deterministisch validiert |
 
 ## Segment-Status
 
@@ -132,7 +227,7 @@ Fuer nachgelagerte Follow-up-/Pricing-Consumer ist pro Request ausschliesslich `
 - Cache-Reads akzeptieren nur nicht abgelaufene `ok`-Eintraege mit den Markern `effective_status=accepted`, `verified_company_identity=true` und `evidence_website_domain_verified=true`.
 - `related_history` enthaelt hoechstens zehn neueste Requests desselben `master_customers`-Datensatzes; es gibt kein Cross-Customer-Matching allein ueber eine Maildomain.
 
-## Aktive Segmente
+## Historische Phase-1-Segmente (18-Code-Vertrag)
 
 | Code | Label | Standard-`s_kategorie` |
 | --- | --- | --- |
@@ -159,19 +254,25 @@ Die UI-Optionen liegen in:
 
 - `src/lib/ops/customer-segments.ts`
 
-## Wie die KI entscheiden soll
+## Wie CX8 entscheiden soll
 
-Der Agent nutzt Anfrage, E-Mail-Domain, Firma und bei nicht-privaten Domains Web-Recherche.
+Der Agent nutzt Anfrage, die enge First-Party-Auswahl `customer_type`, Firma,
+E-Mail-Domain und verifizierte externe Evidenz. Die Domain steuert nur die
+Recherche; sie ist nie selbst ein Segmentbeweis.
 
-Beispiele:
-
-- `gmail.com`, `web.de`, `gmx.de` ohne Firmenhinweis: eher `Privat`.
-- Restaurant, Bar, Cafe, Hotel, Club: eher `Gastronomie`.
-- Messebau, Eventagentur, Ausstellung, Standbau: eher `Event/Messe`.
-- Immobilienmakler, Anlagekonzepte, Property, Real Estate: eher `Immobilien`.
-- Werbeagentur, Designagentur, Brandingagentur: eher `Werbeagentur`.
-
-Wenn eine Firma oder Firmen-Domain vorhanden ist, soll externe Evidenz genutzt werden. Wenn diese Evidenz fehlt oder nicht eindeutig ist, muss das Ergebnis `needs_review` bleiben.
+- Exakt `customer_type=privat` kann zusammen mit widerspruchsfreier
+  Request-Evidence `NT-8` belegen. `gmail.com`, `web.de`, `gmx.de`, ein
+  fehlender Firmenname oder ein schwaches Design duerfen das nicht ableiten.
+- Exakt `customer_type=gewerblich|b2b` kann `NT-9` nur zusammen mit
+  verifizierter direkter Betriebsrollen-Evidence belegen und nur wenn keine
+  spezifischere CX8-Rolle positiv belegt ist.
+- Branchen wie Gastronomie, Immobilien, Healthcare oder Luxury werden als
+  Context-Tags erfasst. Sie ersetzen kein primaeres CX8-Segment.
+- Laden-/Messebau, Agentur/Planer, Event-/Medienproduktion, Multi-Site,
+  Enterprise und Institution brauchen jeweils ihren exakten positiven
+  Evidence-Code mit der dokumentierten semantischen Verwendung.
+- Fehlt der positive Beleg, sind mehrere Rollen widerspruechlich oder ist eine
+  Quelle nicht exakt gebunden, bleibt das Ergebnis `needs_review`.
 
 ## Customer Records Portal
 
@@ -215,14 +316,48 @@ neontrip_set_manual_request_segment(
 )
 ```
 
-`p_request_id` ist `master_requests.id` (UUID), nicht die sichtbare Request-/Trello-ID. `p_source` muss `manual_*` entsprechen; Portal und Import verwenden `manual_ops_portal` bzw. `manual_ops_import`. Der RPC setzt:
+`p_request_id` ist `master_requests.id` (UUID), nicht die sichtbare Request-/Trello-ID. `p_source` muss `manual_*` entsprechen; Portal und Import verwenden `manual_ops_portal` bzw. `manual_ops_import`.
+
+Der JSON-Return ist waehrend des gestuften Rollouts absichtlich dual-lane. Ein
+markerloser Legacy-Aufruf unter der aktiven v1-Policy behaelt exakt den
+bisherigen Keyset:
+
+```text
+request_id, public_request_id, segment, s_kategorie,
+segment_status, segment_confidence, segment_source,
+segment_classified_at, segment_policy_version,
+authoritative, audit_id
+```
+
+Ein mit
+`p_actor.segmentTaxonomyVersion=nt_taxonomy_v2_20260819_cx8` markierter
+CX8-Aufruf liefert exakt:
+
+```text
+request_id, public_request_id, segment, s_kategorie,
+segment_status, segment_confidence, segment_source,
+segment_classified_at, segment_policy_version,
+segment_taxonomy_version, context_tags, organization_scale,
+authoritative, gold_label_created, audit_id
+```
+
+Im CX8-Return gilt dabei
+`segment_taxonomy_version=nt_taxonomy_v2_20260819_cx8`,
+`context_tags=[]`, `organization_scale=null`, `authoritative=true` und
+`gold_label_created=false`. `request_id` und `audit_id` sind UUID-Strings,
+`public_request_id` ist nicht leer, `segment_status=accepted`,
+`segment_confidence=null`, `segment_policy_version=manual_override_v1_20260819`
+und `segment_classified_at` ist ein parsebarer Zeitstempel. Die vier
+CX8-Zusatzfelder werden nicht in den Legacy-Return hineingemischt.
+
+Der RPC setzt:
 
 ```text
 segment = ausgewaehltes NT-Segment
 s_kategorie = Standardwert des Segments
 segment_status = accepted
 segment_confidence = NULL
-segment_source = manual_ops_portal
+segment_source = p_source
 segment_policy_version = manual_override_v1_20260819
 segment_classified_at = aktueller Zeitpunkt
 commercial_playbook = {}
@@ -298,7 +433,9 @@ node --import tsx --test \
   tests/quotes/manual-request-import.test.ts \
   tests/quotes/manual-request-segment-rpc.test.ts \
   tests/quotes/customer-records.test.ts \
-  tests/quotes/request-segmentation-phase1-schema.test.ts
+  tests/quotes/request-segmentation-phase1-schema.test.ts \
+  tests/quotes/request-segmentation-phase2-schema.test.ts \
+  tests/quotes/request-segmentation-gold.test.ts
 ```
 
 Lokale App starten:
@@ -331,9 +468,12 @@ Mobile: Segment: Immobilien, 1 Dropdown, 1 Button, keine Browserfehler
 - Der n8n-Workflow claimt aktuell einen Job pro Lauf. Das ist bewusst vorsichtig, kann aber bei Rueckstau langsam sein.
 - Web-Recherche kann falsch oder unvollstaendig sein. Darum bleiben unsichere Faelle auf `needs_review`.
 - Die deterministische Shared-Provider-Liste muss bei Provider-Drift nachgezogen werden. Cross-Customer-History ist davon unabhaengig immer gesperrt; Cache-Reuse verlangt zusaetzlich die verifizierten Company-/Evidence-Marker.
-- Das Portal nutzt eine statische Segmentliste aus dem Code. Wenn `segment_definitions` in der Datenbank geaendert wird, muss die UI-Liste nachgezogen werden.
+- Das Portal nutzt eine taxonomieversionsabhaengige Segmentliste aus dem Code.
+  Aenderungen an den versionierten CX8-Definitionen muessen mit UI-Validatoren
+  und dem exakten Manual-RPC-Marker gemeinsam ausgerollt werden; historische
+  18-Code-Werte bleiben davon getrennte Anzeige.
 - Die manuelle Bestaetigung veraendert echte Produktionsdaten in `master_requests`.
-- Phase 1 fuehrt bewusst kein Bulk-Cleanup und kein Backfill aus. Historische pending `NT-8`/`NT-9`-Fallbacks und alte Shared-Provider-Cachezeilen werden nicht geloescht; neue Enqueues/Reads/Writes behandeln sie fail-closed.
+- Weder Phase 1 noch Phase 2 fuehren in diesem Schritt Bulk-Cleanup oder Backfill aus. Historische pending `NT-8`/`NT-9`-Fallbacks und alte Shared-Provider-Cachezeilen werden nicht geloescht; neue Enqueues/Reads/Writes behandeln sie fail-closed.
 
 ## Rollback
 
@@ -352,7 +492,7 @@ Daten-Rollback fuer einzelne Anfrage:
 
 Workflow-Rollback:
 
-- Den vor dem n8n-Write exportierten vollstaendigen Workflow-Backup als Quelle nehmen und nur den geprueften Reverse-Diff auf die zuvor aktive Version anwenden.
+- Erst nach dem atomaren DB-Policy-Rollback und dem nachgewiesenen leeren exact-v3-Claim den vor dem n8n-Write exportierten vollstaendigen Workflow-Backup als Quelle nehmen und nur den geprueften Reverse-Diff auf die zuvor aktive v1-Version publishen.
 - Aktivierungszustand, Credentials-Referenzen, Nodes und Connections vor/nach dem Write vollstaendig diffen; danach mit einem internen, nicht kundenwirksamen Nachweis pruefen.
 
 Rollout-Nachweis:

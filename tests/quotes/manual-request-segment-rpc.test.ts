@@ -4,7 +4,7 @@ import {
   setAuthoritativeManualRequestSegment,
   validateManualRequestSegmentRpcResult,
 } from "@/lib/ops/manual-request-segment-rpc";
-import { isManualRequestSegmentSource } from "@/lib/ops/customer-segments";
+import { CX8_TAXONOMY_VERSION, isManualRequestSegmentSource } from "@/lib/ops/customer-segments";
 
 const expected = {
   requestId: "11111111-1111-4111-8111-111111111111",
@@ -22,7 +22,11 @@ const validResult = {
   segment_source: expected.source,
   segment_classified_at: "2026-08-19T12:00:00.000Z",
   segment_policy_version: "manual_override_v1_20260819",
+  segment_taxonomy_version: CX8_TAXONOMY_VERSION,
+  context_tags: ["film_tv", "startup_tech"],
+  organization_scale: "small",
   authoritative: true,
+  gold_label_created: false,
   audit_id: "22222222-2222-4222-8222-222222222222",
 };
 
@@ -53,6 +57,13 @@ test("manual segment RPC validator rejects HTTP-success-shaped but non-authorita
     { ...validResult, segment_confidence: 1 },
     { ...validResult, segment: "NT-4" },
     { ...validResult, segment_source: "request_segmenter" },
+    { ...validResult, segment_taxonomy_version: null },
+    { ...validResult, segment_taxonomy_version: "nt_taxonomy_v1" },
+    { ...validResult, context_tags: ["startup_tech", "film_tv"] },
+    { ...validResult, context_tags: ["film_tv", "film_tv"] },
+    { ...validResult, context_tags: ["unknown_context"] },
+    { ...validResult, organization_scale: "sme" },
+    { ...validResult, gold_label_created: true },
     { ...validResult, audit_id: null },
   ]) {
     assert.throws(

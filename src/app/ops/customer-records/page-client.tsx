@@ -31,11 +31,16 @@ import {
 } from "lucide-react";
 import {
   CUSTOMER_SEGMENT_OPTIONS,
+  formatCustomerSegmentLabel,
   getCustomerSegmentOption,
+  isConfirmedCustomerSegmentAuthority,
+  isCx8TaxonomyVersion,
+  isLegacyCustomerSegment,
   isManualRequestSegmentSource,
 } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
+import { SegmentGoldAdjudicationControl } from "./segment-gold-control";
 import type {
   CustomerAuditEntry,
   CustomerCommunicationEntry,
@@ -4336,7 +4341,11 @@ export function getSegmentStatusLabel(status: string | null | undefined) {
 
 function getAiSegmentLabel(request: CustomerRequestSummary | null | undefined) {
   if (!request) return "Noch keine Anfrage";
-  return request.segmentLabel || getCustomerSegmentOption(request.segment)?.label || request.segment || request.sKategorie || "Noch nicht segmentiert";
+  return request.segmentLabel
+    || formatCustomerSegmentLabel(request.segment, request.segmentTaxonomyVersion)
+    || request.segment
+    || request.sKategorie
+    || "Noch nicht segmentiert";
 }
 
 function getAiSegmentDetail(request: CustomerRequestSummary | null | undefined) {
@@ -4351,18 +4360,21 @@ function getAiSegmentDetail(request: CustomerRequestSummary | null | undefined) 
 }
 
 export function shouldConfirmAiSegment(request: CustomerRequestSummary | null | undefined) {
-  if (!request || !getCustomerSegmentOption(request.segment)) return true;
-  const status = request.segmentStatus?.trim().toLowerCase();
-  if (status !== "accepted") return true;
-  const isManualAuthority = isManualRequestSegmentSource(request.segmentSource);
-  if (isManualAuthority) return false;
-  return request.segmentSource !== "request_segmenter";
+  if (!request) return true;
+  return !isConfirmedCustomerSegmentAuthority({
+    segment: request.segment,
+    status: request.segmentStatus,
+    source: request.segmentSource,
+    taxonomyVersion: request.segmentTaxonomyVersion,
+  });
 }
 
 export function getSegmentAuthorityStatusLabel(request: CustomerRequestSummary | null | undefined) {
+  if (isLegacyCustomerSegment(request?.segment, request?.segmentTaxonomyVersion)) return "Legacy – neu zuordnen";
   const statusLabel = getSegmentStatusLabel(request?.segmentStatus);
   if (isManualRequestSegmentSource(request?.segmentSource)) return `Manuell ${statusLabel}`;
   if (request?.segmentSource === "request_segmenter") return `KI ${statusLabel}`;
+  if (request?.segmentStatus?.trim().toLowerCase() === "accepted") return "Prüfen – unbekannte Quelle";
   return `Segment ${statusLabel}`;
 }
 
@@ -4409,7 +4421,9 @@ function SegmentConfirmControl({
   running: boolean;
   onApply: (segment: string) => Promise<void>;
 }) {
-  const currentSegment = getCustomerSegmentOption(request?.segment)?.segment || "";
+  const currentSegment = isCx8TaxonomyVersion(request?.segmentTaxonomyVersion)
+    ? getCustomerSegmentOption(request?.segment)?.segment || ""
+    : "";
   const [selectedSegment, setSelectedSegment] = useState(currentSegment);
   const needsReview = shouldConfirmAiSegment(request);
   const selectedOption = getCustomerSegmentOption(selectedSegment);
@@ -4435,7 +4449,11 @@ function SegmentConfirmControl({
             {getAiSegmentLabel(request)}
           </div>
           <div className={`mt-1 text-xs ${needsReview ? "text-amber-900/70" : "text-black/55"}`}>
-            {needsReview ? "Bitte Segment prüfen und bestätigen." : getAiSegmentDetail(request)}
+            {isLegacyCustomerSegment(request?.segment, request?.segmentTaxonomyVersion)
+              ? "Legacy – neu zuordnen. Bitte ein aktives CX-Segment auswählen."
+              : needsReview
+                ? "Bitte Segment prüfen und bestätigen."
+                : getAiSegmentDetail(request)}
           </div>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -20418,6 +20436,12 @@ function RecordCard({
                 running={actionRunning}
                 onApply={(segment) => onApplySegment(record.requestId, segment)}
               />
+              {!simpleView ? (
+                <SegmentGoldAdjudicationControl
+                  requestId={record.requestId}
+                  operatorName={operatorName}
+                />
+              ) : null}
               <p className={`mt-2 max-w-3xl text-white/72 ${simpleView ? "text-sm leading-5" : "text-sm leading-7"}`}>
                 {simpleView
                   ? "Kontaktdaten, E-Mails und Angebot auf einen Blick."

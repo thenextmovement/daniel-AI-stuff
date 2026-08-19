@@ -1,5 +1,9 @@
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
-import { formatCustomerSegmentLabel } from "@/lib/ops/customer-segments";
+import {
+  CX8_TAXONOMY_VERSION,
+  formatCustomerSegmentLabel,
+  isLegacyCustomerSegment,
+} from "@/lib/ops/customer-segments";
 
 type DateLike = string | null | undefined;
 
@@ -104,6 +108,7 @@ type MasterRequestRow = {
   status: string | null;
   deal_status: string | null;
   segment: string | null;
+  segment_taxonomy_version?: string | null;
   s_kategorie: string | null;
   customer_type: string | null;
   country: string | null;
@@ -419,7 +424,12 @@ function countBy<T>(
 
 function segmentNameForManagement(rawSegment: string) {
   if (rawSegment === "Ohne Segment" || rawSegment === "Unbekannt") return rawSegment;
-  const ntLabel = formatCustomerSegmentLabel(rawSegment);
+  const legacyPrefix = "legacy:";
+  if (rawSegment.startsWith(legacyPrefix)) {
+    const legacySegment = rawSegment.slice(legacyPrefix.length);
+    return `${formatCustomerSegmentLabel(legacySegment) || legacySegment} · Legacy`;
+  }
+  const ntLabel = formatCustomerSegmentLabel(rawSegment, CX8_TAXONOMY_VERSION);
   if (ntLabel) return ntLabel;
   if (/^s\d+$/i.test(rawSegment)) return `S-Kategorie ${rawSegment.toUpperCase()}`;
   return rawSegment;
@@ -427,7 +437,12 @@ function segmentNameForManagement(rawSegment: string) {
 
 function segmentKeyForManagement(row: MasterRequestRow) {
   const raw = cleanText(row.segment) || cleanText(row.s_kategorie) || "Ohne Segment";
-  if (/^nt-\d+$/i.test(raw)) return raw.toUpperCase();
+  if (/^nt-\d+$/i.test(raw)) {
+    const normalizedSegment = raw.toUpperCase();
+    return isLegacyCustomerSegment(normalizedSegment, row.segment_taxonomy_version)
+      ? `legacy:${normalizedSegment}`
+      : normalizedSegment;
+  }
   if (/^s\d+$/i.test(raw)) return raw.toUpperCase();
   return raw;
 }
@@ -655,7 +670,7 @@ async function fetchKpiRows(input: ManagementKpiInput): Promise<KpiRows> {
   const range = resolveManagementRange(input);
   const [requests, offers, orders, seaCampaignDaily, googleAdsDailySpend, anthropicCosts, costEntries, salesTasks, salesCallResults, shippingIncidents, inboundIncidents] = await Promise.all([
     supabaseRequest<MasterRequestRow[]>("master_requests", undefined, {
-      select: "id,request_id,status,deal_status,segment,s_kategorie,customer_type,country,estimated_value,final_value,utm_source,utm_medium,utm_campaign,landing_page_url,referrer,created_at,updated_at",
+      select: "id,request_id,status,deal_status,segment,segment_taxonomy_version,s_kategorie,customer_type,country,estimated_value,final_value,utm_source,utm_medium,utm_campaign,landing_page_url,referrer,created_at,updated_at",
       and: dateAndFilter("created_at", range.from.toISOString(), range.to.toISOString()),
       order: "created_at.desc",
       limit: 5000,

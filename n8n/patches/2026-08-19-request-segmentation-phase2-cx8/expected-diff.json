@@ -1,0 +1,67 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "prepared_version_id": "9728db44-1dde-4b92-bcc7-defd60b063d3",
+  "prepared_version_counter": 112,
+  "operation_count": 5,
+  "changed_field_count": 7,
+  "fields": [
+    {
+      "node_id": "claim-jobs",
+      "field_path": "parameters.url",
+      "existed_before": true,
+      "before_sha256": "aeea4406309201b2e62124219329f545dc5e4671b711bf4206282a696f81ce78",
+      "after_sha256": "c2436fd2f04bbdf2e43f9066907d293e2e64fea7f6966c66eb72d09f795fadf4"
+    },
+    {
+      "node_id": "claim-jobs",
+      "field_path": "parameters.jsonBody",
+      "existed_before": true,
+      "before_sha256": "8dea1b3b0c8ed7092bc4252dccedafbb2f9108a8e0c86f94eada75340210d726",
+      "after_sha256": "19ac375b0b62dd2bd9501881923dad90520558b3b72a3cc84884223d803c6b8e"
+    },
+    {
+      "node_id": "build-prompt",
+      "field_path": "parameters.jsCode",
+      "existed_before": true,
+      "before_sha256": "79ea3597c54b8c44e3d2970a70550d87dbb26a3fbb6b58e48067565552430db9",
+      "after_sha256": "4f4a24ff3425151116593410a6765c68dc1a708bf46829279b93ec60bbf19f32"
+    },
+    {
+      "node_id": "openai-classifier",
+      "field_path": "parameters.simplify",
+      "existed_before": false,
+      "before_sha256": "a4d0f0eb87fed960b9f1819efda1cd7935b4f665fdd3872149260986d11e96da",
+      "after_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    {
+      "node_id": "openai-classifier",
+      "field_path": "parameters.options.textFormat.textOptions.schema",
+      "existed_before": true,
+      "before_sha256": "4885097601886f62722b14c4ec7646a66889c9e8018d8fce133755feb4189973",
+      "after_sha256": "517c355f3602137b5b64b9610b7c727ce7c62196ca0b2854c58e90dd07c62e2d"
+    },
+    {
+      "node_id": "validate-output",
+      "field_path": "parameters.jsCode",
+      "existed_before": true,
+      "before_sha256": "230fe518419773105ecf52bbfc2ccc84b64fe44cef95bfe8e142e02dcebb8d20",
+      "after_sha256": "5564c60fff894c7adf29f1f38e22beed9b276b7ee13a140bc9d1d7ee9bfa1c88"
+    },
+    {
+      "node_id": "build-failure-payload",
+      "field_path": "parameters.jsCode",
+      "existed_before": true,
+      "before_sha256": "ad6b1cd8c1b6b616bc171a78022f9ef3a11b5630de205d88ee57cec74f2d2b0c",
+      "after_sha256": "58350c76e6d8b8526349d681e115a0fed2b3b9b0e209cba2414bf704dd8fa271"
+    }
+  ],
+  "preserved": [
+    "record-classification node and existing 18-parameter RPC handoff",
+    "nodes",
+    "connections",
+    "settings",
+    "credentials",
+    "schedule trigger",
+    "activation and publication state"
+  ]
+}

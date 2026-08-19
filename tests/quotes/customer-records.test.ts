@@ -12,6 +12,7 @@ import {
   duplicateCustomerTrelloCard,
   getCustomerRecordByRequestId,
   listMockupTrelloAttachments,
+  neutralTrelloDuplicateSegmentationState,
   parseTrelloCardIdentifier,
   resolveRequestSegmentForOpsUi,
   resolveCustomerSearchMode,
@@ -20,6 +21,7 @@ import {
   setCustomerRequestSegment,
 } from "../../src/lib/ops/customer-records";
 import { QuoteValidationError } from "../../src/lib/quotes/validation";
+import { CX8_TAXONOMY_VERSION } from "../../src/lib/ops/customer-segments";
 
 const current = {
   email: "samuele@example.com",
@@ -44,6 +46,7 @@ test("shadow classification never replaces the authoritative master request segm
       segment_source: "request_segmenter",
       segment_classified_at: "2026-08-19T10:00:00.000Z",
       segment_policy_version: "live-policy",
+      segment_taxonomy_version: CX8_TAXONOMY_VERSION,
     },
     {
       request_id: "11111111-1111-4111-8111-111111111111",
@@ -64,6 +67,7 @@ test("shadow classification never replaces the authoritative master request segm
     source: "request_segmenter",
     classifiedAt: "2026-08-19T10:00:00.000Z",
     policyVersion: "live-policy",
+    taxonomyVersion: CX8_TAXONOMY_VERSION,
   });
 });
 
@@ -80,6 +84,7 @@ test("manual segment confirmation uses the atomic service-role RPC without model
     segment_confidence: 0.7 as number | null,
     segment_source: "request_segmenter",
     segment_policy_version: "nt_policy_v1_20260520_shadow",
+    segment_taxonomy_version: null as string | null,
   };
 
   process.env.SUPABASE_URL = "https://supabase.example.co";
@@ -101,6 +106,7 @@ test("manual segment confirmation uses the atomic service-role RPC without model
         segment_confidence: null,
         segment_source: String(body.p_source),
         segment_policy_version: "manual_override_v1_20260819",
+        segment_taxonomy_version: CX8_TAXONOMY_VERSION,
       };
       return json({
         request_id: "11111111-1111-4111-8111-111111111111",
@@ -108,7 +114,10 @@ test("manual segment confirmation uses the atomic service-role RPC without model
         ...segmentState,
         s_kategorie: "S1",
         segment_classified_at: "2026-08-19T10:00:00.000Z",
+        context_tags: [],
+        organization_scale: null,
         authoritative: true,
+        gold_label_created: false,
         audit_id: "22222222-2222-4222-8222-222222222222",
       });
     }
@@ -180,7 +189,11 @@ test("manual segment confirmation uses the atomic service-role RPC without model
       p_request_id: "11111111-1111-4111-8111-111111111111",
       p_segment: "NT-3",
       p_source: "manual_ops_portal",
-      p_actor: { operatorName: "Daniel", mode: "local_bypass" },
+      p_actor: {
+        operatorName: "Daniel",
+        mode: "local_bypass",
+        segmentTaxonomyVersion: CX8_TAXONOMY_VERSION,
+      },
       p_reason: "customer_records_ops_portal_confirmation",
     }]);
     assert.deepEqual(mutatingPaths, []);
@@ -966,6 +979,52 @@ test("buildSpecialCaseSummary returns resolved when resolution is newer than rep
   assert.equal(summary.resolvedAt, "2026-05-20T12:00:00.000Z");
 });
 
+test("Trello duplicates always start neutral for CX8 manual and legacy source requests", () => {
+  const expected = {
+    segment: null,
+    segment_status: "pending",
+    segment_confidence: null,
+    segment_source: "segmentation_queue",
+    segment_classified_at: null,
+    segment_policy_version: null,
+    segment_taxonomy_version: null,
+    segment_context_tags: [],
+    segment_organization_scale: null,
+    s_kategorie: null,
+    commercial_playbook: {},
+  };
+  for (const source of [
+    {
+      segment: "NT-3",
+      segment_status: "accepted",
+      segment_confidence: null,
+      segment_source: "manual_ops_portal",
+      segment_classified_at: "2026-08-19T12:00:00.000Z",
+      segment_policy_version: "manual_override_v1_20260819",
+      segment_taxonomy_version: CX8_TAXONOMY_VERSION,
+      segment_context_tags: ["film_tv"],
+      segment_organization_scale: "small",
+      s_kategorie: "S1",
+      commercial_playbook: { automation_enabled: true },
+    },
+    {
+      segment: "NT-2",
+      segment_status: "accepted",
+      segment_confidence: 0.91,
+      segment_source: "legacy_import",
+      segment_classified_at: "2026-06-01T12:00:00.000Z",
+      segment_policy_version: "legacy_policy",
+      segment_taxonomy_version: null,
+      segment_context_tags: ["gastronomy_hospitality"],
+      segment_organization_scale: "micro",
+      s_kategorie: "S3",
+      commercial_playbook: { max_followups: 3 },
+    },
+  ]) {
+    assert.deepEqual(neutralTrelloDuplicateSegmentationState(source), expected);
+  }
+});
+
 test("duplicateCustomerTrelloCard reimports a copied Trello card with a new request id", async () => {
   const originalFetch = globalThis.fetch;
   const originalSupabaseUrl = process.env.SUPABASE_URL;
@@ -1020,9 +1079,15 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
     deal_status: "quote_sent",
     segment: "NT-3",
     segment_status: "accepted",
-    segment_confidence: 0.82,
-    segment_source: "request_segmenter",
-    s_kategorie: "Schildkroeten und Preise",
+    segment_confidence: null,
+    segment_source: "manual_ops_portal",
+    segment_classified_at: "2026-08-19T12:00:00.000Z",
+    segment_policy_version: "manual_override_v1_20260819",
+    segment_taxonomy_version: CX8_TAXONOMY_VERSION,
+    segment_context_tags: ["film_tv"],
+    segment_organization_scale: "small",
+    s_kategorie: "S1",
+    commercial_playbook: { automation_enabled: true, max_followups: 2 },
     size: "100 cm",
     color: ["Rot"],
     application: "Ladenfront",
@@ -1196,6 +1261,17 @@ test("duplicateCustomerTrelloCard reimports a copied Trello card with a new requ
     assert.equal(createdRequest?.customer_id, "customer-2");
     assert.equal(createdRequest?.status, "new");
     assert.equal(createdRequest?.deal_status, "open");
+    assert.equal(createdRequest?.segment, null);
+    assert.equal(createdRequest?.segment_status, "pending");
+    assert.equal(createdRequest?.segment_confidence, null);
+    assert.equal(createdRequest?.segment_source, "segmentation_queue");
+    assert.equal(createdRequest?.segment_classified_at, null);
+    assert.equal(createdRequest?.segment_policy_version, null);
+    assert.equal(createdRequest?.segment_taxonomy_version, null);
+    assert.deepEqual(createdRequest?.segment_context_tags, []);
+    assert.equal(createdRequest?.segment_organization_scale, null);
+    assert.equal(createdRequest?.s_kategorie, null);
+    assert.deepEqual(createdRequest?.commercial_playbook, {});
     assert.equal(createdRequest?.trello_card_id, copiedCardId);
     assert.equal(createdRequest?.attribution_raw?.auto_reply_suppressed, true);
     assert.equal(createdRequest?.attribution_raw?.idempotency_key, "duplicate-test-key");

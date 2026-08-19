@@ -263,8 +263,65 @@ test("buildManagementKpiDashboardFromRows displays top segment names instead of 
     new Date("2026-06-07T10:00:00.000Z"),
   );
 
-  assert.equal(dashboard.sales.topSegments[0]?.key, "NT-2");
-  assert.equal(dashboard.sales.topSegments[0]?.label, "Gastronomie");
+  assert.equal(dashboard.sales.topSegments[0]?.key, "legacy:NT-2");
+  assert.equal(dashboard.sales.topSegments[0]?.label, "Gastronomie · Legacy");
   assert.equal(dashboard.sales.topSegments[0]?.count, 2);
   assert.equal(dashboard.sales.topSegments[1]?.label, "S-Kategorie S1");
+});
+
+test("buildManagementKpiDashboardFromRows separates reused CX8 codes from legacy taxonomy rows", () => {
+  const sharedRequest = {
+    status: "new",
+    deal_status: "open",
+    segment: "NT-1",
+    s_kategorie: "S2",
+    customer_type: "business",
+    country: "DE",
+    final_value: null,
+    utm_source: "google",
+    utm_medium: "cpc",
+    utm_campaign: "segment-taxonomy-test",
+    landing_page_url: null,
+    referrer: null,
+    created_at: "2026-06-05T10:00:00.000Z",
+    updated_at: "2026-06-05T10:00:00.000Z",
+  };
+  const dashboard = buildManagementKpiDashboardFromRows(
+    {
+      ...emptyRows,
+      requests: [
+        {
+          ...sharedRequest,
+          id: "request-row-cx8-nt1",
+          request_id: "REQ-CX8-NT1",
+          segment_taxonomy_version: "nt_taxonomy_v2_20260819_cx8",
+          estimated_value: 1000,
+        },
+        {
+          ...sharedRequest,
+          id: "request-row-legacy-nt1",
+          request_id: "REQ-LEGACY-NT1",
+          segment_taxonomy_version: null,
+          estimated_value: 1500,
+        },
+      ],
+    },
+    { range: "7d" },
+    new Date("2026-06-07T10:00:00.000Z"),
+  );
+
+  const cx8 = dashboard.sales.topSegments.find((row) => row.key === "NT-1");
+  const legacy = dashboard.sales.topSegments.find((row) => row.key === "legacy:NT-1");
+  assert.deepEqual(cx8, {
+    key: "NT-1",
+    label: "Laden-/Messebau-Produktionspartner",
+    count: 1,
+    value: 1000,
+  });
+  assert.deepEqual(legacy, {
+    key: "legacy:NT-1",
+    label: "Ladenbauer · Legacy",
+    count: 1,
+    value: 1500,
+  });
 });

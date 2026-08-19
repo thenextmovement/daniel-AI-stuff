@@ -1,0 +1,54 @@
+{
+  "validated_at_utc": "2026-08-19T20:43:49Z",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "prepared_only": true,
+  "live_mutation_performed": false,
+  "manual_execution_performed": false,
+  "publish_or_activation_change_performed": false,
+  "offline": {
+    "command": "node --test cx8-contract.test.mjs",
+    "tests": 29,
+    "passed": 29,
+    "failed": 0,
+    "non_sending_synthetic_fixtures_only": true
+  },
+  "n8n_validate_only": {
+    "forward": {
+      "tool": "n8n_update_partial_workflow",
+      "validate_only": true,
+      "success": true,
+      "valid": true,
+      "message": "Validation successful. Operations are valid but not applied.",
+      "operations_to_apply": 5,
+      "operations_applied": 0
+    },
+    "forward_then_reverse": {
+      "tool": "n8n_update_partial_workflow",
+      "validate_only": true,
+      "success": true,
+      "valid": true,
+      "message": "Validation successful. Operations are valid but not applied.",
+      "operations_to_apply": 10,
+      "operations_applied": 0
+    }
+  },
+  "live_post_validation_prestate": {
+    "draft_version_id": "9728db44-1dde-4b92-bcc7-defd60b063d3",
+    "active_version_id": "9728db44-1dde-4b92-bcc7-defd60b063d3",
+    "version_counter": 112,
+    "updated_at": "2026-08-19T15:05:08.788Z",
+    "active": true,
+    "node_count": 20,
+    "connection_source_count": 17,
+    "graph_sha256": "ba4716a95ba911248400229eedf538f62621c798f717db93eaed2219813c3ba9",
+    "draft_active_graphs_equal": true,
+    "unchanged_after_validate_only": true
+  },
+  "source_sha256": {
+    "cx8-contract-source.mjs": "3ba85942ade5e9b0611e00a5064295882921e2e52668fc7ff02fa1878ee33760",
+    "cx8-contract.test.mjs": "9a9212239a2726854f7319463c47a28e9fc8d38f965e4d7dac27b4ddfef5f60a",
+    "workflow-patch.mjs": "9716c27b891836369a1464bfd2f4b509bc9558694e00ab0b3bf72f9a63064e0e",
+    "expected-diff.json": "357bbe985012f57ac5b3cc4a752f1f9dd1d913ecd5ee7c6302740ec1671350b1"
+  },
+  "pii": "No customer payload or customer-identifying output is stored in this artifact."
+}
