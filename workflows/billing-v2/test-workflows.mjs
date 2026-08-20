@@ -16,6 +16,7 @@ const byName = new Map(workflow.nodes.map((node) => [node.name, node]));
 
 test("billing workflow remains inactive and lease-driven", () => {
   assert.equal(workflow.active, false);
+  assert.equal(byName.get("Every Minute").typeVersion, 1.3);
   assert.match(JSON.stringify(byName.get("Claim Billing Job")), /billing\/jobs\/claim/);
   assert.match(JSON.stringify(byName.get("Complete Billing Job")), /billing\/jobs/);
   assert.match(byName.get("Billing Worker Config").parameters.jsCode, /https:\/\/ops\.neontrip\.de/);

@@ -81,7 +81,7 @@ const workflow = {
   name: "NEONTRIP Billing v2 - Easybill Document Worker (INACTIVE)",
   active: false,
   nodes: [
-    node("schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-1120, 0], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }),
+    node("schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-1120, 0], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }, { typeVersion: 1.3 }),
     node("config", "Billing Worker Config", "n8n-nodes-base.code", [-900, 0], { mode: "runOnceForAllItems", jsCode: "return [{json:{opsBaseUrl:'https://ops.neontrip.de',worker:'n8n-easybill-document-v2'}}];" }),
     node("claim", "Claim Billing Job", "n8n-nodes-base.httpRequest", [-680, 0], { method: "POST", url: "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ { worker: $json.worker, jobTypes: ['CREATE_PROFORMA','CREATE_INVOICE','CREATE_CREDIT','CREATE_CANCELLATION'], leaseSeconds: 180 } }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "continueErrorOutput" }),
     node("normalize", "Prepare Easybill Command", "n8n-nodes-base.code", [-440, -80], { mode: "runOnceForAllItems", jsCode: prepareCode }, { onError: "continueErrorOutput" }),
