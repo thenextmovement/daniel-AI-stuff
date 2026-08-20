@@ -1,0 +1,124 @@
+{
+  "scope": "NEONTRIP only; read-only audit of the active request segmenter and four completed Gold-pilot executions",
+  "workflow": {
+    "id": "ELpwCfdWOCRZ22gy",
+    "name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+    "active": true,
+    "is_archived": false,
+    "draft_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+    "active_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+    "version_counter": 114,
+    "draft_active_graphs_equal": true
+  },
+  "active_classifier_node": {
+    "id": "openai-classifier",
+    "name": "OpenAI Structured Segment Classifier",
+    "type": "@n8n/n8n-nodes-langchain.openAi",
+    "type_version": 2,
+    "model": "gpt-4o-mini",
+    "web_search_offered": true,
+    "search_context_size": "medium",
+    "country": "DE",
+    "temperature": 0.1,
+    "max_tokens": 1400,
+    "include": [
+      "web_search_call.action.sources"
+    ],
+    "store": true,
+    "strict_json_schema": true,
+    "simplify": false,
+    "credential_reference_redacted": true,
+    "retry_on_fail": true,
+    "max_tries": 2,
+    "wait_between_tries_ms": 5000,
+    "on_error": "continueErrorOutput"
+  },
+  "node_schema": {
+    "latest_inspected_openai_node_version": "2.3",
+    "supports_web_search_configuration": true,
+    "supports_tool_choice_parameter": false,
+    "response_option_names_inspected": [
+      "conversationId",
+      "include",
+      "instructions",
+      "maxTokens",
+      "maxToolsIterations",
+      "maxToolCalls",
+      "metadata",
+      "parallelToolCalls",
+      "previousResponseId",
+      "promptConfig",
+      "promptCacheKey",
+      "reasoning",
+      "safetyIdentifier",
+      "serviceTier",
+      "store",
+      "textFormat",
+      "topLogprobs",
+      "temperature",
+      "topP",
+      "truncation",
+      "backgroundMode"
+    ]
+  },
+  "sanitized_execution_evidence": [
+    {
+      "execution_id": "5220485",
+      "external_research_required": true,
+      "verified_cache_entries": 0,
+      "api_tool_choice": "auto",
+      "web_search_calls": 0,
+      "web_sources": 0,
+      "validator_status": "needs_review"
+    },
+    {
+      "execution_id": "5222757",
+      "external_research_required": false,
+      "verified_cache_entries": 0,
+      "api_tool_choice": "auto",
+      "web_search_calls": 0,
+      "web_sources": 0,
+      "validator_status": "needs_review"
+    },
+    {
+      "execution_id": "5222798",
+      "external_research_required": true,
+      "verified_cache_entries": 0,
+      "api_tool_choice": "auto",
+      "web_search_calls": 0,
+      "web_sources": 0,
+      "validator_status": "needs_review"
+    },
+    {
+      "execution_id": "5222825",
+      "external_research_required": true,
+      "verified_cache_entries": 0,
+      "api_tool_choice": "auto",
+      "web_search_calls": 0,
+      "web_sources": 0,
+      "validator_status": "needs_review"
+    }
+  ],
+  "decision": {
+    "prompt_only_reliable": false,
+    "current_openai_node_can_force_search": false,
+    "smallest_supported_patch": "Replace the existing classifier node in place with HTTP Request v4.4 to POST /v1/responses using the same openAiApi credential. Branch only the request-body tools and tool_choice fields from researchPolicy.external_research_required.",
+    "required_branch": {
+      "tools": [
+        {
+          "type": "web_search"
+        }
+      ],
+      "tool_choice": "required"
+    },
+    "not_required_branch": {
+      "tools": [],
+      "tool_choice": "none"
+    }
+  },
+  "privacy": {
+    "contains_customer_pii": false,
+    "contains_prompts_or_execution_payloads": false,
+    "contains_credential_ids_or_values": false
+  }
+}

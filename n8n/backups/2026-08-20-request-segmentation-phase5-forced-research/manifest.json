@@ -1,0 +1,27 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "workflow_name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+  "captured_at_utc": "2026-08-20T10:32:27Z",
+  "active": true,
+  "is_archived": false,
+  "draft_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+  "active_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+  "version_counter": 114,
+  "node_count": 20,
+  "connection_source_count": 17,
+  "draft_active_graphs_equal": true,
+  "files": {
+    "draft": "ELpwCfdWOCRZ22gy.draft-before.json",
+    "active": "ELpwCfdWOCRZ22gy.published-active-before.json"
+  },
+  "hashes": {
+    "draft_file_sha256": "8392d0f1a7cc22d13666a1ac660968c5bf7dd6c28e9e32b7161e90878179714b",
+    "active_file_sha256": "ec3b7cf4fd3fd77782bf81cc5d5fb63f6408329c10bd1d97f8f536b54e548014",
+    "draft_graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485",
+    "active_graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485",
+    "claim_node_sha256": "604b1bdb89884abf1c3659813053ae20adc541338152003090c12009598eeb57",
+    "build_node_sha256": "39dc013f712dc27cdbd8957356c78025329ef1a7bea973297549c57de1b0448f",
+    "classifier_node_sha256": "5648d6c178a65cb4dfca66082786d0b59cbf4871b8a60e873e35a75b212639e0",
+    "validator_node_sha256": "d809c5102b8165b5c49e354c250c66381e7bd56c0fd61f4ea8ad0aea8a731a67"
+  }
+}

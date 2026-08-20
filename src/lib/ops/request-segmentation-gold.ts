@@ -12,9 +12,24 @@ import { SupabaseRestError, supabaseRequest, supabaseRpc } from "@/lib/quotes/su
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CLASSIFIER_VERSION = "segment_classifier_v3_20260819_cx8";
 const PROMPT_VERSION = "segment_prompt_v4_20260819_cx8";
-const QUALITY_GATE_VERSION = "nt_quality_gate_v2_20260819_cx8";
+const PILOT_CLASSIFIER_VERSION = "segment_classifier_v3_20260819_cx8";
+const PILOT_QUALITY_GATE_VERSION = "nt_quality_gate_v2_20260819_cx8";
+const REQUIRED_RESEARCH_CLASSIFIER_VERSION = "segment_classifier_v4_20260820_cx8";
+const REQUIRED_RESEARCH_QUALITY_GATE_VERSION = "nt_quality_gate_v3_20260820_cx8";
+const SUPPORTED_EVALUATION_CONTRACTS = [
+  {
+    classifierVersion: PILOT_CLASSIFIER_VERSION,
+    promptVersion: PROMPT_VERSION,
+    qualityGateVersion: PILOT_QUALITY_GATE_VERSION,
+  },
+  {
+    classifierVersion: REQUIRED_RESEARCH_CLASSIFIER_VERSION,
+    promptVersion: PROMPT_VERSION,
+    qualityGateVersion: REQUIRED_RESEARCH_QUALITY_GATE_VERSION,
+  },
+] as const;
+type SupportedEvaluationContract = (typeof SUPPORTED_EVALUATION_CONTRACTS)[number];
 const LABELING_VERSION = "gold_labeling_v2_20260819_cx8";
 const PILOT_COHORT_CUTOFF = "2026-08-20T08:15:00.000Z";
 const PILOT_COHORT_SIZE = 4;
@@ -140,9 +155,9 @@ export type RequestSegmentationReviewContext = {
   publicRequestId: string;
   currentInputHash: string;
   taxonomyVersion: typeof CX8_TAXONOMY_VERSION;
-  classifierVersion: typeof CLASSIFIER_VERSION;
+  classifierVersion: SupportedEvaluationContract["classifierVersion"];
   promptVersion: typeof PROMPT_VERSION;
-  qualityGateVersion: typeof QUALITY_GATE_VERSION;
+  qualityGateVersion: SupportedEvaluationContract["qualityGateVersion"];
   goldEligibility: {
     normalizedCustomerType: "privat" | "gewerblich" | "b2b" | null;
     nt8FirstPartyEligible: boolean;
@@ -482,7 +497,7 @@ export async function getRequestSegmentationGoldPilotNext(): Promise<RequestSegm
     {
       select: "request_id,created_at",
       taxonomy_version: `eq.${CX8_TAXONOMY_VERSION}`,
-      classifier_version: `eq.${CLASSIFIER_VERSION}`,
+      classifier_version: `eq.${PILOT_CLASSIFIER_VERSION}`,
       prompt_version: `eq.${PROMPT_VERSION}`,
       created_at: `lte.${PILOT_COHORT_CUTOFF}`,
       order: "created_at.asc,request_id.asc",
@@ -704,14 +719,17 @@ export function validateRequestSegmentationReviewContext(
   const currentGold = result.current_gold_adjudication;
   const goldEligibility = result.gold_eligibility;
   const currentInputHash = nonEmptyString(result.current_input_hash);
+  const evaluationContract = SUPPORTED_EVALUATION_CONTRACTS.find((contract) => (
+    result.classifier_version === contract.classifierVersion
+    && result.prompt_version === contract.promptVersion
+    && result.quality_gate_version === contract.qualityGateVersion
+  ));
   if (
     exactUuid(result.request_id) !== expected.masterRequestId
     || result.public_request_id !== expected.publicRequestId
     || !currentInputHash
     || result.taxonomy_version !== CX8_TAXONOMY_VERSION
-    || result.classifier_version !== CLASSIFIER_VERSION
-    || result.prompt_version !== PROMPT_VERSION
-    || result.quality_gate_version !== QUALITY_GATE_VERSION
+    || !evaluationContract
     || !isRecord(goldEligibility)
     || !hasExactKeys(goldEligibility, GOLD_ELIGIBILITY_KEYS)
     || !(
@@ -812,9 +830,9 @@ export function validateRequestSegmentationReviewContext(
     publicRequestId: expected.publicRequestId,
     currentInputHash,
     taxonomyVersion: CX8_TAXONOMY_VERSION,
-    classifierVersion: CLASSIFIER_VERSION,
-    promptVersion: PROMPT_VERSION,
-    qualityGateVersion: QUALITY_GATE_VERSION,
+    classifierVersion: evaluationContract.classifierVersion,
+    promptVersion: evaluationContract.promptVersion,
+    qualityGateVersion: evaluationContract.qualityGateVersion,
     goldEligibility: {
       normalizedCustomerType: goldEligibility.normalized_customer_type,
       nt8FirstPartyEligible: goldEligibility.nt8_first_party_eligible,

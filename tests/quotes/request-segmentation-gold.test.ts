@@ -183,7 +183,7 @@ function pilotSelectionFetch(calls: string[], completedRequestIds: string[] = []
   }) as typeof fetch;
 }
 
-test("review context validator accepts only the exact current CX8 v3 contract", () => {
+test("review context validator accepts only the two exact CX8 shadow evaluation contracts", () => {
   const context = validateRequestSegmentationReviewContext(reviewResult(), { masterRequestId, publicRequestId });
   assert.equal(context.currentInputHash, inputHash);
   assert.equal(context.latestClassification?.proposedSegment, "NT-3");
@@ -193,8 +193,24 @@ test("review context validator accepts only the exact current CX8 v3 contract", 
   assert.equal(context.goldEligibility.nt9FirstPartyEligible, true);
   assert.equal(context.currentGoldAdjudication, null);
 
+  const requiredResearch = validateRequestSegmentationReviewContext(reviewResult({
+    classifier_version: "segment_classifier_v4_20260820_cx8",
+    quality_gate_version: "nt_quality_gate_v3_20260820_cx8",
+  }), { masterRequestId, publicRequestId });
+  assert.equal(requiredResearch.classifierVersion, "segment_classifier_v4_20260820_cx8");
+  assert.equal(requiredResearch.promptVersion, "segment_prompt_v4_20260819_cx8");
+  assert.equal(requiredResearch.qualityGateVersion, "nt_quality_gate_v3_20260820_cx8");
+
   for (const invalid of [
     reviewResult({ taxonomy_version: "nt_taxonomy_v1" }),
+    reviewResult({
+      classifier_version: "segment_classifier_v4_20260820_cx8",
+      quality_gate_version: "nt_quality_gate_v2_20260819_cx8",
+    }),
+    reviewResult({
+      classifier_version: "segment_classifier_v3_20260819_cx8",
+      quality_gate_version: "nt_quality_gate_v3_20260820_cx8",
+    }),
     reviewResult({ latest_classification: { ...latestClassification(), unexpected: true } }),
     reviewResult({ latest_classification: latestClassification({ context_tags: ["unknown_context"] }) }),
     reviewResult({ latest_classification: latestClassification({ confidence: "0.91" }) }),

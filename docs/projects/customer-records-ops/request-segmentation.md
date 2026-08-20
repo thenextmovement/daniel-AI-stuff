@@ -203,8 +203,81 @@ Kundenaktionen bleiben gesperrt. Vor einer Skalierung auf den Qualitaets-Gate-
 Umfang von 300/25 je Segment braucht es einen eigenen versionierten
 Sampling-/Assignment-Vertrag; der Vier-Fall-Pilot ist kein Ersatz dafuer.
 
+## Phase 5: versionierter Forced-Research-Kandidat
+
+Die PII-freie Batch-Auswertung nach Abschluss des Vier-Fall-Piloten ergab vier
+aktuelle immutable Gold-Faelle: zweimal `NT-3`, einmal `NT-4` und einmal
+`NT-8`. Der exakte classifier-v3/prompt-v4-Vertrag hatte alle vier
+ausgewertet, aber viermal `needs_review`, ohne akzeptierte Vorhersage und ohne
+fehlenden Ergebnis-Row. Bei den drei nicht privaten Faellen fehlte insbesondere
+verifizierte externe Rollen-Evidence; der vorhandene Web-Search-Toolpfad wurde
+nicht ausgefuehrt. Diese vier Faelle sind weiterhin nur ein Diagnose-Set und
+kein Qualitaets- oder Aktivierungsnachweis.
+
+Der additive Phase-5-Kandidat ist exakt:
+
+- Taxonomie: `nt_taxonomy_v2_20260819_cx8` (unveraendert)
+- Classifier: `segment_classifier_v4_20260820_cx8`
+- Prompt: `segment_prompt_v4_20260819_cx8` (byte-identisch)
+- Quality Gate: `nt_quality_gate_v3_20260820_cx8`
+- Policy: `nt_policy_v3_20260820_cx8_shadow`
+- Validator-Provenance: `n8n_cx8_validator_v1` (unveraendert)
+- Worker-Identitaet: `n8n-request-segmenter-v4`
+
+Classifier v4 bezeichnet hier die deterministisch erzwungene
+Research-Ausfuehrung vor der unveraenderten Klassifikationsentscheidung. Es
+wird weder ein Gold-Label in den Prompt gegeben noch eine Evidence-, Confidence-
+oder First-Party-Regel gelockert. Insbesondere darf der historische private
+Pilotfall auf seinem unveraenderten Input weiter abstainieren: Der damals
+synthetisch gespeicherte B2B-Wert ist keine private First-Party-Evidence. Eine
+Akzeptanz von `NT-8` durch die KI waere bei diesem Input ein Vertragsfehler,
+nicht das Ziel des Experiments.
+
+Die Base-Migration legt Gate, Policy und acht komplett inerte Rules
+(`automation_enabled=false`, kein Preisfaktor, keine Calls oder Follow-ups)
+zunaechst `active=false` an. Sie enqueued nichts. Bestehende v2-Views und
+v3-Klassifikationen bleiben unveraendert. Die additiven
+`request_segmentation_v3_*`-Views joinen das gleiche immutable Gold nur auf
+den exakten neuen Taxonomie-/Classifier-/Prompt-/Input-Hash-Vertrag. Die
+bestehenden Unique-Indizes auf diesen fuenf Feldern erzeugen fuer v4 neue Job-
+und Classification-Zeilen; ein Ergebnis des alten v3-Vertrags kann dadurch
+nicht ueberschrieben werden.
+
+`neontrip_enqueue_request_segmentation_evaluation` unterstuetzt den neuen
+Vertrag bereits, sobald das neue Gate konfiguriert ist. Die Funktion sperrt und
+prueft den aktuellen Input-Hash und setzt unveraendert
+`evaluation_only=true` sowie `master_projection_authorized=false`. Sie
+schreibt weder Master noch Cache. Ein Retry desselben Versions-Tupels verwendet
+allerdings absichtlich denselben Job und der Record-Pfad upsertet denselben
+candidate Classification-Row. Deshalb erlaubt das Held-Artefakt nur eine
+pristine Candidate-Lane und staged die vier Jobs genau einmal; ein weiterer
+Versuch braucht eine neue Classifier- oder Prompt-Version.
+
+Das Held-Artefakt wird erst nach verifiziertem Publish und Readback des exakten
+n8n-v4-Graphs ausgefuehrt. Unter Tabellen-Locks prueft es global genau eine
+aktive Policy und genau ein aktives Gate, keine claimbaren/laufenden v3-Jobs,
+keine v4-Runtime-Zeile, exakt vier aktuelle Pilot-Gold-Zeilen sowie acht inerte
+Candidate-Rules. Es staged dann atomar vier evaluation-only Jobs und flippt
+Quality Gate und Policy gemeinsam auf den neuen Shadow-Vertrag. Follow-up,
+Pricing, WhatsApp, E-Mail, Mahnung, Master-Projektion und Research-Cache bleiben
+fuer diese vier Auswertungen blockiert. Eine spaetere Produktionsaktivierung
+bleibt an 300/25-Gold, alle technischen Gates und eine getrennte manuelle
+Freigabe gebunden.
+
 ## Rollback
 
+- Vor erster v4-Runtime entfernt
+  `supabase/rollbacks/20260820103040_prepare_request_segmentation_phase5_forced_research_rollback.sql`
+  ausschliesslich den inaktiven Candidate-Vertrag und stellt die aktuellen
+  pre-Phase-5-Funktionskoerper wieder her. Es bricht ab, sobald ein v4-Job, eine
+  v4-Klassifikation, ein v4-Cache-Row oder eine Candidate-Freigabe existiert.
+  Der aktuelle Gold-Vertrag ohne customer_type-Veto bleibt dabei erhalten.
+- Nach erster v4-Runtime ist nur der nicht-destruktive
+  `supabase/rollbacks/20260820104500_request_segmentation_phase5_operational_rollback.sql`
+  zulaessig: laufende v4-Jobs zuerst drainen, dann Candidate inaktiv und v2
+  wieder aktiv schalten. Jobs, Klassifikationen, Views und immutable Gold
+  bleiben Audit-Historie. Anschliessend muss der noch gepinnte v4-Claim leer
+  sein, bevor der separat gepruefte n8n-Reverse publiziert wird.
 - Die Gold-only-Kundentyp-Reparatur wird mit `supabase/rollbacks/20260820093126_allow_human_gold_customer_type_disagreement_rollback.sql` zurueckgenommen. Sie stellt ausschliesslich den vorherigen First-Party-Veto-Body und dieselben Function-ACLs wieder her; bestehendes immutable Gold wird weder geloescht noch geaendert.
 - Vor jeglicher v2-Runtime darf ein exakter Schema-Restore ueber `supabase/rollbacks/20260819183219_request_segmentation_phase2_full_pre_runtime_rollback.sql` nur erfolgen, wenn versionierte Jobs, Klassifikationen, Gold, Master-Authority und Approvals jeweils `0` Rows haben, v1 allein aktiv und v2 inaktiv ist. Das Artefakt enthaelt die exakt am 2026-08-19 live erfassten Phase-1-Funktionsdefinitionen/ACLs und stellt die beiden alten Unique-Constraints wieder her. Der PII-freie Prestate liegt in `supabase/security-backups/request-segmentation-phase2-prechange-20260819.sql`.
 - Nach der ersten v2-Runtime ist nur der nicht-destruktive operative Rollback `supabase/rollbacks/20260819193419_request_segmentation_phase2_operational_rollback.sql` zulaessig. Exakte Reihenfolge: bereits laufende `processing`-v2-Jobs drainen (das SQL bricht sonst fail-closed ab), dann mit diesem SQL atomar v2 inaktiv/v1 aktiv schalten, danach einen Claim mit dem exakten v3-Taxonomie-/Classifier-/Prompt-Triple ausfuehren und das leere Ergebnis `[]` verifizieren; erst danach den n8n-Reverse auf v1 publishen. Pending/failed CX8-Jobs bleiben auditierbar suspendiert; additive Spalten sowie alle v3-/Gold-Auditdaten bleiben erhalten und werden nie geloescht, um alte Unique-Constraints zu erzwingen.

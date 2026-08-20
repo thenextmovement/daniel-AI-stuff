@@ -1,0 +1,99 @@
+{
+  "artifact": "neontrip_n8n_phase5_forced_research_v1",
+  "prepared_only": true,
+  "live_write_performed": false,
+  "publish_performed": false,
+  "activation_change_performed": false,
+  "manual_execution_performed": false,
+  "retry_performed": false,
+  "customer_action_performed": false,
+  "http_request_node_validation": {
+    "node_type": "nodes-base.httpRequest",
+    "requested_type_version": 4.4,
+    "valid": true,
+    "errors": 0,
+    "warnings": 0
+  },
+  "offline_workflow_validation": {
+    "baseline": {
+      "valid": true,
+      "total_nodes": 20,
+      "enabled_nodes": 11,
+      "trigger_nodes": 1,
+      "valid_connections": 16,
+      "invalid_connections": 0,
+      "expressions_validated": 5,
+      "errors": 0,
+      "warnings": 11
+    },
+    "candidate": {
+      "valid": true,
+      "total_nodes": 20,
+      "enabled_nodes": 11,
+      "trigger_nodes": 1,
+      "valid_connections": 16,
+      "invalid_connections": 0,
+      "expressions_validated": 6,
+      "errors": 0,
+      "warnings": 12
+    },
+    "pre_existing_warnings_preserved": 11,
+    "new_warning": {
+      "node": "OpenAI Structured Segment Classifier",
+      "message": "Expression warning: jsonBody: Possible missing $ prefix for variable (e.g., use $json instead of json)",
+      "assessment": "Static heuristic false positive; the expression uses $json, evaluates in the offline harness, and the HTTP Request node validates with zero warnings."
+    }
+  },
+  "offline_tests": {
+    "focused_phase5": {
+      "command": "node --test n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs",
+      "passed": 6,
+      "failed": 0
+    },
+    "phase3_plus_phase5": {
+      "command": "node --test n8n/patches/2026-08-20-request-segmentation-phase3-validator/validator-fix.test.mjs n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs",
+      "passed": 11,
+      "failed": 0
+    },
+    "proofs": [
+      "required=true yields only web_search plus tool_choice required",
+      "required=false yields tools empty plus tool_choice none",
+      "raw Responses root containing an actual web_search_call is accepted by the existing validator",
+      "claimed external evidence without a web_search_call remains needs_review",
+      "taxonomy, prompt construction, strict schema, model, temperature, max output tokens, include, and store are preserved",
+      "forward patch changes only six approved fields across four existing nodes",
+      "reverse patch restores the complete pinned draft byte-for-object"
+    ]
+  },
+  "n8n_validate_only": {
+    "forward": {
+      "success": true,
+      "valid": true,
+      "operations_to_apply": 4,
+      "applied": false
+    },
+    "reverse": {
+      "success": true,
+      "valid": true,
+      "operations_to_apply": 4,
+      "applied": false
+    },
+    "forward_plus_reverse": {
+      "success": true,
+      "valid": true,
+      "operations_to_apply": 8,
+      "applied": false
+    }
+  },
+  "post_validate_only_live_readback": {
+    "draft_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+    "active_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+    "version_counter": 114,
+    "updated_at": "2026-08-20T07:46:21.374Z",
+    "full_readback_exactly_unchanged": true,
+    "active_readback_exactly_unchanged": true,
+    "nodes_exactly_unchanged": true,
+    "connections_exactly_unchanged": true
+  },
+  "remaining_runtime_proof": "No OpenAI request was sent. After cross-contract review and explicit rollout approval, use only a new evaluation-only, projection-blocked NEONTRIP job to prove that required=true produces an actual web_search_call."
+}
