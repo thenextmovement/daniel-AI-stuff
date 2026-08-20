@@ -1,0 +1,90 @@
+{
+  "artifact_version": "neontrip_n8n_phase6_provenance_recovery_validation_v1",
+  "validated_at_utc": "2026-08-20T15:09:30Z",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "contract": {
+    "taxonomy_version": "nt_taxonomy_v2_20260819_cx8",
+    "classifier_version": "segment_classifier_v5_20260820_cx8",
+    "prompt_version": "segment_prompt_v5_20260820_cx8",
+    "research_contract": "segment_research_v1_20260820_cx8",
+    "validator_version": "n8n_cx8_validator_v2"
+  },
+  "offline_recovery_suite": {
+    "command": "node --test n8n/patches/2026-08-20-request-segmentation-phase6-provenance-recovery/provenance-recovery.test.mjs",
+    "tests": 26,
+    "passed": 26,
+    "failed": 0,
+    "covers": [
+      "three observed completed exact-query missing-sources shapes",
+      "positive output_text url_citation fallback",
+      "results-only never becomes evidence",
+      "malicious and cross-domain annotation rejection",
+      "twenty-four valid unique sources cap deterministically at twenty",
+      "source type, URL and domain guards still inspect and reject item twenty-one",
+      "response id, call id, query and call-count guards",
+      "semantic needs_review terminal record with null segment and empty provenance",
+      "accepted requires attributable bound source",
+      "exact forward and reverse roundtrip"
+    ]
+  },
+  "neighbor_regressions": {
+    "phase3_validator": {
+      "tests": 5,
+      "passed": 5,
+      "failed": 0
+    },
+    "phase5_and_original_phase6_functional_tests": {
+      "passed": 29,
+      "failed": 0,
+      "excluded_artifact_path_assertions": 2,
+      "note": "The two historical standalone-artifact assertions embed their originating absolute worktree paths; their functional tests passed and the historical files were not changed."
+    }
+  },
+  "offline_candidate_validation": {
+    "valid": true,
+    "total_nodes": 23,
+    "enabled_nodes": 14,
+    "trigger_nodes": 1,
+    "valid_connections": 23,
+    "invalid_connections": 0,
+    "expressions_validated": 8,
+    "errors": 0,
+    "warnings": 11,
+    "warning_scope": "Existing disabled Trello branch and existing Payload Ready Gate error-output warning."
+  },
+  "n8n_validate_only": {
+    "forward": {
+      "valid": true,
+      "operations": 9,
+      "applied": false
+    },
+    "forward_plus_reverse": {
+      "valid": true,
+      "operations": 18,
+      "applied": false
+    }
+  },
+  "post_validate_only_live_readback": {
+    "draft_exact_unchanged": true,
+    "published_active_exact_unchanged": true,
+    "draft_active_graphs_equal": true,
+    "before_after_graph_equal": true,
+    "draft_version_id": "1e0d0ac1-4035-4ad2-8dbb-a191a4bd5e88",
+    "active_version_id": "1e0d0ac1-4035-4ad2-8dbb-a191a4bd5e88",
+    "version_counter": 120,
+    "active": true,
+    "is_archived": false,
+    "node_count": 20,
+    "connection_source_count": 17
+  },
+  "safety": {
+    "live_write_performed": false,
+    "publish_performed": false,
+    "activation_changed": false,
+    "workflow_execution_triggered": false,
+    "job_retry_performed": false,
+    "database_mutation_performed": false,
+    "openai_request_performed": false,
+    "customer_action_performed": false
+  }
+}
