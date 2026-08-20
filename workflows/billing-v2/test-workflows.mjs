@@ -18,6 +18,8 @@ test("billing workflow remains inactive and lease-driven", () => {
   assert.equal(workflow.active, false);
   assert.match(JSON.stringify(byName.get("Claim Billing Job")), /billing\/jobs\/claim/);
   assert.match(JSON.stringify(byName.get("Complete Billing Job")), /billing\/jobs/);
+  assert.match(byName.get("Billing Worker Config").parameters.jsCode, /https:\/\/ops\.neontrip\.de/);
+  assert.equal(byName.get("Complete Billing Job").onError, "stopWorkflow");
   assert.equal(workflow.settings.errorWorkflow, "M4uG1HAtN9Zggxww");
 });
 
