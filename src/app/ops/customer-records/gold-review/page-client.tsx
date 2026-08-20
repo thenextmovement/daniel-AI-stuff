@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { OpsLoginCard } from "../../ops-login-card";
 import { SegmentGoldAdjudicationControl } from "../segment-gold-control";
@@ -13,11 +13,15 @@ function sessionError(payload: { error?: string } | null) {
 
 export function SegmentGoldReviewPageClient({
   requestId,
+  pilotMode,
+  pilotVersion,
   initialHasSession,
   opsEnabled,
   localMode,
 }: {
   requestId: string;
+  pilotMode: boolean;
+  pilotVersion: string;
   initialHasSession: boolean;
   opsEnabled: boolean;
   localMode: boolean;
@@ -28,6 +32,9 @@ export function SegmentGoldReviewPageClient({
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [requestIdError, setRequestIdError] = useState<string | null>(null);
+  const [pilotLoading, setPilotLoading] = useState(false);
+  const [pilotError, setPilotError] = useState<string | null>(null);
+  const [pilotComplete, setPilotComplete] = useState(false);
 
   useEffect(() => {
     try {
@@ -76,6 +83,45 @@ export function SegmentGoldReviewPageClient({
     setRequestIdError(null);
     window.location.assign(`/ops/customer-records/gold-review?requestId=${encodeURIComponent(normalized)}`);
   }
+
+  const openPilotQueue = useCallback(() => {
+    window.location.assign("/ops/customer-records/gold-review?pilot=1");
+  }, []);
+
+  const loadNextPilotCase = useCallback(async () => {
+    setPilotLoading(true);
+    setPilotError(null);
+    try {
+      const response = await fetch("/api/ops/customer-records/segment-gold?mode=pilot-next", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean;
+        error?: string;
+        pilot?: { requestId: string | null; position: number; total: number; complete: boolean };
+      } | null;
+      if (!response.ok || !payload?.ok || !payload.pilot) {
+        setPilotError(payload?.error || "Der naechste blinde Pilotfall konnte nicht geladen werden.");
+        return;
+      }
+      if (payload.pilot.complete) {
+        setPilotComplete(true);
+        return;
+      }
+      if (!payload.pilot.requestId) {
+        setPilotError("Der Pilotvertrag lieferte keine eindeutige Anfrage-ID.");
+        return;
+      }
+      window.location.assign(`/ops/customer-records/gold-review?pilot=1&requestId=${encodeURIComponent(payload.pilot.requestId)}`);
+    } catch (pilotLoadError) {
+      setPilotError(pilotLoadError instanceof Error
+        ? pilotLoadError.message
+        : "Der naechste blinde Pilotfall konnte nicht geladen werden.");
+    } finally {
+      setPilotLoading(false);
+    }
+  }, []);
 
   if (opsEnabled && !localMode && !hasSession) {
     return (
@@ -132,41 +178,71 @@ export function SegmentGoldReviewPageClient({
             Der NEONTRIP-Ops-Zugang ist nicht konfiguriert. Es werden keine Review-Daten geladen.
           </div>
         ) : !requestId ? (
-          <form
-            className="mt-5 rounded-xl border border-white/12 bg-white/[0.05] p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              openExactRequest();
-            }}
-          >
-            <label className="block text-xs font-semibold text-white/72">
-              Exakte Anfrage-ID
-              <input
-                value={requestIdDraft}
-                onChange={(event) => setRequestIdDraft(event.target.value)}
-                maxLength={300}
-                autoComplete="off"
-                className="mt-1.5 h-10 w-full rounded-lg border border-white/15 bg-[#17171c] px-3 text-sm text-white outline-none focus:border-sky-300"
-                placeholder="Vom Pilot-Runbook unabhängig übergebene Request-ID"
-              />
-            </label>
-            {requestIdError ? <div className="mt-2 text-xs text-rose-200">{requestIdError}</div> : null}
-            <button
-              type="submit"
-              className="mt-3 rounded-lg border border-sky-200 bg-sky-100 px-4 py-2.5 text-sm font-semibold text-sky-950 transition hover:bg-white"
-            >
-              Isoliertes Review laden
-            </button>
-            <p className="mt-3 text-xs leading-5 text-white/45">
-              Dies ist keine Suche: Der Server akzeptiert nur eine exakte, eindeutige Request-ID und lädt höchstens einen Request und einen verknüpften Kontakt.
-            </p>
-          </form>
+          <div className="mt-5 space-y-4">
+            <section className="rounded-xl border border-sky-300/25 bg-sky-300/8 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-200">Phase 4 · Vier-Fall-Prozesspilot</div>
+              <h2 className="mt-2 text-lg font-semibold">Nächsten blinden Pilotfall laden</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-white/62">
+                Der Server wählt aus einer vor dem Pilot eingefrorenen CX8-v3-Kohorte. Auswahl und Browserantwort enthalten weder Modellsegment noch Status, Confidence, Evidence oder Legacy-Segment. Nach jedem Gold-Write geht es direkt zurück zur Warteschlange; Modellvergleiche bleiben bis zum Ende aller vier Fälle verborgen.
+              </p>
+              {pilotComplete ? (
+                <div className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-3 text-sm text-emerald-100">
+                  Der Vier-Fall-Prozesspilot ist vollständig. Bitte jetzt keine weiteren Fälle labeln; die getrennte Auswertung folgt erst nach dem Batch.
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={pilotLoading}
+                  onClick={() => void loadNextPilotCase()}
+                  className="mt-3 rounded-lg border border-sky-200 bg-sky-100 px-4 py-2.5 text-sm font-semibold text-sky-950 transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
+                >
+                  {pilotLoading ? "Pilotfall wird gewählt..." : "Nächsten blinden Pilotfall laden"}
+                </button>
+              )}
+              {pilotError ? <div className="mt-3 text-sm text-rose-200">{pilotError}</div> : null}
+            </section>
+
+            {!pilotMode ? (
+              <form
+                className="rounded-xl border border-white/12 bg-white/[0.05] p-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  openExactRequest();
+                }}
+              >
+                <label className="block text-xs font-semibold text-white/72">
+                  Exakte Anfrage-ID · separater Supportpfad
+                  <input
+                    value={requestIdDraft}
+                    onChange={(event) => setRequestIdDraft(event.target.value)}
+                    maxLength={300}
+                    autoComplete="off"
+                    className="mt-1.5 h-10 w-full rounded-lg border border-white/15 bg-[#17171c] px-3 text-sm text-white outline-none focus:border-sky-300"
+                    placeholder="Eindeutige Request-ID"
+                  />
+                </label>
+                {requestIdError ? <div className="mt-2 text-xs text-rose-200">{requestIdError}</div> : null}
+                <button
+                  type="submit"
+                  className="mt-3 rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+                >
+                  Isoliertes Einzelreview laden
+                </button>
+                <p className="mt-3 text-xs leading-5 text-white/45">
+                  Dies ist keine Suche: Der Server akzeptiert nur eine exakte, eindeutige Request-ID und lädt höchstens einen Request und einen verknüpften Kontakt.
+                </p>
+              </form>
+            ) : null}
+          </div>
         ) : (
           <SegmentGoldAdjudicationControl
             requestId={requestId}
             operatorName={operatorName}
             startExpanded
             lockedOpen
+            pilotMode={pilotMode}
+            pilotVersion={pilotVersion}
+            onPilotAdvance={pilotMode ? openPilotQueue : undefined}
           />
         )}
       </div>

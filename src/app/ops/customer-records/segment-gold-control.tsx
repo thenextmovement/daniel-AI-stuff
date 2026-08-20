@@ -150,11 +150,17 @@ export function SegmentGoldAdjudicationControl({
   operatorName,
   startExpanded = false,
   lockedOpen = false,
+  pilotMode = false,
+  pilotVersion,
+  onPilotAdvance,
 }: {
   requestId: string;
   operatorName: string;
   startExpanded?: boolean;
   lockedOpen?: boolean;
+  pilotMode?: boolean;
+  pilotVersion: string;
+  onPilotAdvance?: () => void;
 }) {
   const [expanded, setExpanded] = useState(startExpanded);
   const [loading, setLoading] = useState(false);
@@ -186,12 +192,21 @@ export function SegmentGoldAdjudicationControl({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/ops/customer-records/segment-gold?requestId=${encodeURIComponent(requestId)}`, {
+      const mode = pilotMode ? "&mode=pilot-review" : "";
+      const response = await fetch(`/api/ops/customer-records/segment-gold?requestId=${encodeURIComponent(requestId)}${mode}`, {
         method: "GET",
         cache: "no-store",
       });
       const payload = await response.json().catch(() => null) as ReviewResponse | null;
       if (!response.ok || !payload?.ok || !payload.context) {
+        if (
+          pilotMode
+          && response.status === 409
+          && (payload?.error === "pilot_candidate_not_current" || payload?.error === "pilot_candidate_already_adjudicated")
+        ) {
+          onPilotAdvance?.();
+          return;
+        }
         setError(responseError(payload, "Gold-Review konnte nicht geladen werden."));
         return;
       }
@@ -207,7 +222,7 @@ export function SegmentGoldAdjudicationControl({
     } finally {
       setLoading(false);
     }
-  }, [requestId]);
+  }, [onPilotAdvance, pilotMode, requestId]);
 
   useEffect(() => {
     if (startExpanded) void loadReview();
@@ -245,16 +260,25 @@ export function SegmentGoldAdjudicationControl({
           operatorName,
           reason,
           evidenceUrls: evidenceUrlLines(evidenceUrls),
+          ...(pilotMode ? { pilotVersion } : {}),
         }),
       });
       const payload = await response.json().catch(() => null) as AdjudicationResponse | null;
       if (!response.ok || !payload?.ok || !payload.result || payload.result.masterSegmentMutated !== false) {
+        if (pilotMode && response.status === 409 && payload?.error === "pilot_candidate_not_current") {
+          onPilotAdvance?.();
+          return;
+        }
         setError(responseError(payload, "Gold-Adjudication wurde nicht gespeichert."));
         return;
       }
       setMessage(payload.result.created
         ? "Gold wurde unveränderlich gespeichert; das Kunden-Segment blieb unverändert."
         : "Identischer Gold-Write war bereits vorhanden; das Kunden-Segment blieb unverändert.");
+      if (pilotMode) {
+        onPilotAdvance?.();
+        return;
+      }
       await loadReview();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Gold-Adjudication wurde nicht gespeichert.");

@@ -16,6 +16,9 @@ const CLASSIFIER_VERSION = "segment_classifier_v3_20260819_cx8";
 const PROMPT_VERSION = "segment_prompt_v4_20260819_cx8";
 const QUALITY_GATE_VERSION = "nt_quality_gate_v2_20260819_cx8";
 const LABELING_VERSION = "gold_labeling_v2_20260819_cx8";
+const PILOT_COHORT_CUTOFF = "2026-08-20T08:15:00.000Z";
+const PILOT_COHORT_SIZE = 4;
+export const REQUEST_SEGMENTATION_GOLD_PILOT_VERSION = "gold_pilot_v1_20260820_cx8_four_case";
 const REVIEW_CONTEXT_KEYS = [
   "classifier_version",
   "current_gold_adjudication",
@@ -240,6 +243,13 @@ export type RequestSegmentationGoldResult = {
   masterSegmentMutated: false;
 };
 
+export type RequestSegmentationGoldPilotNext = {
+  requestId: string | null;
+  position: number;
+  total: typeof PILOT_COHORT_SIZE;
+  complete: boolean;
+};
+
 export function redactRequestSegmentationModelUntilGold(
   context: RequestSegmentationReviewContext,
 ): RequestSegmentationReviewContext {
@@ -279,6 +289,8 @@ export function toRequestSegmentationBlindReviewPayload(
 }
 
 type MasterRequestIdentity = { id?: unknown; request_id?: unknown };
+type PilotJobCandidateRow = { request_id?: unknown; created_at?: unknown };
+type PilotGoldRow = { request_id?: unknown };
 type BlindMasterRequestRow = {
   id?: unknown;
   request_id?: unknown;
@@ -455,6 +467,134 @@ function reviewContractError(result: unknown): never {
     502,
     result,
   );
+}
+
+function pilotContractError(message: string, details?: unknown): never {
+  throw new SupabaseRestError(message, 503, details);
+}
+
+export async function getRequestSegmentationGoldPilotNext(): Promise<RequestSegmentationGoldPilotNext> {
+  // Classification upserts refresh created_at. Job re-enqueues preserve created_at,
+  // so the cutoff fixes this one-time cohort across Gold re-evaluations.
+  const jobRows = await supabaseRequest<PilotJobCandidateRow[]>(
+    "request_segmentation_jobs",
+    undefined,
+    {
+      select: "request_id,created_at",
+      taxonomy_version: `eq.${CX8_TAXONOMY_VERSION}`,
+      classifier_version: `eq.${CLASSIFIER_VERSION}`,
+      prompt_version: `eq.${PROMPT_VERSION}`,
+      created_at: `lte.${PILOT_COHORT_CUTOFF}`,
+      order: "created_at.asc,request_id.asc",
+      limit: 100,
+    },
+  );
+  if (!Array.isArray(jobRows)) {
+    pilotContractError("Die blinde Pilot-Kohorte entspricht nicht dem erwarteten Vertrag.");
+  }
+  const orderedCandidates = jobRows.map((row) => {
+    if (!isRecord(row) || !hasExactKeys(row, ["created_at", "request_id"])) {
+      pilotContractError("Die blinde Pilot-Kohorte entspricht nicht dem erwarteten Vertrag.");
+    }
+    const requestId = exactUuid(row.request_id);
+    if (
+      !requestId
+      || !validTimestamp(row.created_at)
+      || Date.parse(String(row.created_at)) > Date.parse(PILOT_COHORT_CUTOFF)
+    ) {
+      pilotContractError("Die blinde Pilot-Kohorte entspricht nicht dem erwarteten Vertrag.");
+    }
+    return { requestId, createdAt: String(row.created_at) };
+  }).sort((left, right) => (
+    Date.parse(left.createdAt) - Date.parse(right.createdAt) || left.requestId.localeCompare(right.requestId)
+  ));
+  const cohortIds = [...new Set(orderedCandidates.map((candidate) => candidate.requestId))]
+    .slice(0, PILOT_COHORT_SIZE);
+  if (cohortIds.length !== PILOT_COHORT_SIZE) {
+    pilotContractError("Der blinde Vier-Fall-Pilot ist noch nicht vollstaendig verfuegbar.", {
+      code: "gold_pilot_cohort_not_ready",
+      available: cohortIds.length,
+    });
+  }
+
+  const cohortFilter = `in.(${cohortIds.join(",")})`;
+  const [goldRows, identityRows] = await Promise.all([
+    supabaseRequest<PilotGoldRow[]>("request_segmentation_gold_adjudications", undefined, {
+      select: "request_id",
+      taxonomy_version: `eq.${CX8_TAXONOMY_VERSION}`,
+      labeling_version: `eq.${LABELING_VERSION}`,
+      request_id: cohortFilter,
+      limit: PILOT_COHORT_SIZE,
+    }),
+    supabaseRequest<MasterRequestIdentity[]>("master_requests", undefined, {
+      select: "id,request_id",
+      id: cohortFilter,
+      limit: PILOT_COHORT_SIZE,
+    }),
+  ]);
+  if (!Array.isArray(goldRows) || !Array.isArray(identityRows)) {
+    pilotContractError("Der blinde Pilot konnte nicht eindeutig aufgeloest werden.");
+  }
+
+  const completedIds = new Set(goldRows.map((row) => {
+    if (!isRecord(row) || !hasExactKeys(row, ["request_id"])) {
+      pilotContractError("Der Gold-Fortschritt des blinden Piloten ist ungueltig.");
+    }
+    const requestId = exactUuid(row.request_id);
+    if (!requestId || !cohortIds.includes(requestId)) {
+      pilotContractError("Der Gold-Fortschritt des blinden Piloten ist ungueltig.");
+    }
+    return requestId;
+  }));
+  if (completedIds.size !== goldRows.length) {
+    pilotContractError("Der Gold-Fortschritt des blinden Piloten ist nicht eindeutig.");
+  }
+
+  const publicRequestIds = new Map<string, string>();
+  for (const row of identityRows) {
+    if (!isRecord(row) || !hasExactKeys(row, ["id", "request_id"])) {
+      pilotContractError("Die Request-Aufloesung des blinden Piloten ist ungueltig.");
+    }
+    const masterRequestId = exactUuid(row.id);
+    const publicRequestId = nonEmptyString(row.request_id);
+    if (
+      !masterRequestId
+      || !cohortIds.includes(masterRequestId)
+      || !publicRequestId
+      || publicRequestId.length > 300
+    ) {
+      pilotContractError("Die Request-Aufloesung des blinden Piloten ist ungueltig.");
+    }
+    publicRequestIds.set(masterRequestId, publicRequestId);
+  }
+  if (
+    publicRequestIds.size !== PILOT_COHORT_SIZE
+    || new Set(publicRequestIds.values()).size !== PILOT_COHORT_SIZE
+  ) {
+    pilotContractError("Die Request-Aufloesung des blinden Piloten ist nicht eindeutig.");
+  }
+
+  const nextIndex = cohortIds.findIndex((requestId) => !completedIds.has(requestId));
+  if (nextIndex === -1) {
+    return { requestId: null, position: PILOT_COHORT_SIZE, total: PILOT_COHORT_SIZE, complete: true };
+  }
+  return {
+    requestId: publicRequestIds.get(cohortIds[nextIndex])!,
+    position: nextIndex + 1,
+    total: PILOT_COHORT_SIZE,
+    complete: false,
+  };
+}
+
+export async function assertCurrentRequestSegmentationGoldPilotCandidate(publicRequestId: string) {
+  const normalized = publicRequestId.trim();
+  if (!normalized || normalized.length > 300) {
+    throw new QuoteValidationError("pilot_candidate_not_current", [], 409);
+  }
+  const pilot = await getRequestSegmentationGoldPilotNext();
+  if (pilot.complete || pilot.requestId !== normalized) {
+    throw new QuoteValidationError("pilot_candidate_not_current", [], 409);
+  }
 }
 
 async function resolveMasterRequestIdentity(publicRequestId: string) {

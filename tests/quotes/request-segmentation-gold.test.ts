@@ -7,7 +7,9 @@ import {
   adjudicateRequestSegmentationGold,
   combineRequestSegmentationGoldActor,
   getRequestSegmentationBlindReviewContext,
+  getRequestSegmentationGoldPilotNext,
   getRequestSegmentationReviewContext,
+  REQUEST_SEGMENTATION_GOLD_PILOT_VERSION,
   redactRequestSegmentationModelUntilGold,
   toRequestSegmentationBlindReviewPayload,
   validateRequestSegmentationGoldResult,
@@ -23,6 +25,18 @@ const masterRequestId = "11111111-1111-4111-8111-111111111111";
 const masterCustomerId = "55555555-5555-4555-8555-555555555555";
 const publicRequestId = "request-public-gold-1";
 const inputHash = "current-input-hash-v2";
+const pilotMasterRequestIds = [
+  masterRequestId,
+  "66666666-6666-4666-8666-666666666666",
+  "77777777-7777-4777-8777-777777777777",
+  "88888888-8888-4888-8888-888888888888",
+];
+const pilotPublicRequestIds = [
+  publicRequestId,
+  "request-public-gold-2",
+  "request-public-gold-3",
+  "request-public-gold-4",
+];
 
 function blindRequestRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -146,6 +160,29 @@ async function withSupabaseFetch<T>(fetchImpl: typeof fetch, run: () => Promise<
   }
 }
 
+function pilotSelectionFetch(calls: string[], completedRequestIds: string[] = []) {
+  return (async (input: RequestInfo | URL) => {
+    const url = decodeURIComponent(String(input));
+    calls.push(url);
+    if (url.includes("/request_segmentation_jobs?")) {
+      return Response.json(pilotMasterRequestIds.map((requestId, index) => ({
+        request_id: requestId,
+        created_at: `2026-08-20T07:3${index}:00.000Z`,
+      })));
+    }
+    if (url.includes("/request_segmentation_gold_adjudications?")) {
+      return Response.json(completedRequestIds.map((requestId) => ({ request_id: requestId })));
+    }
+    if (url.includes("/master_requests?")) {
+      return Response.json(pilotMasterRequestIds.map((id, index) => ({
+        id,
+        request_id: pilotPublicRequestIds[index],
+      })));
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch;
+}
+
 test("review context validator accepts only the exact current CX8 v3 contract", () => {
   const context = validateRequestSegmentationReviewContext(reviewResult(), { masterRequestId, publicRequestId });
   assert.equal(context.currentInputHash, inputHash);
@@ -220,6 +257,123 @@ test("Gold review is server-blind before immutable adjudication and reveals comp
     { masterRequestId, publicRequestId },
   );
   assert.equal(redactRequestSegmentationModelUntilGold(withGoldButStaleModel).latestClassification, null);
+});
+
+test("Phase-4 pilot selects immutable CX8-v3 job identities without reading model outcomes", async () => {
+  const calls: string[] = [];
+  await withSupabaseFetch(pilotSelectionFetch(calls, [pilotMasterRequestIds[0]]), async () => {
+    assert.deepEqual(await getRequestSegmentationGoldPilotNext(), {
+      requestId: pilotPublicRequestIds[1],
+      position: 2,
+      total: 4,
+      complete: false,
+    });
+  });
+
+  const jobCall = calls.find((url) => url.includes("/request_segmentation_jobs?")) || "";
+  assert.match(jobCall, /select=request_id%2Ccreated_at|select=request_id,created_at/);
+  assert.match(jobCall, /taxonomy_version=eq\.nt_taxonomy_v2_20260819_cx8/);
+  assert.match(jobCall, /classifier_version=eq\.segment_classifier_v3_20260819_cx8/);
+  assert.match(jobCall, /prompt_version=eq\.segment_prompt_v4_20260819_cx8/);
+  assert.match(jobCall, /created_at=lte\.2026-08-20T08%3A15%3A00\.000Z|created_at=lte\.2026-08-20T08:15:00\.000Z/);
+  const query = jobCall.split("?")[1] || "";
+  assert.doesNotMatch(query, /(?:^|[=&])(status|segment|confidence|evidence|risk_flags|s_kategorie|source|input_hash)=/);
+  assert.equal(calls.some((url) => url.includes("/request_segment_classifications?")), false);
+
+  const goldCall = calls.find((url) => url.includes("/request_segmentation_gold_adjudications?")) || "";
+  assert.match(goldCall, /select=request_id/);
+  assert.match(goldCall, /labeling_version=eq\.gold_labeling_v2_20260819_cx8/);
+  assert.doesNotMatch(goldCall.split("?")[1] || "", /labeled_segment|adjudication_reason|evidence_urls/);
+
+  const masterCall = calls.find((url) => url.includes("/master_requests?")) || "";
+  assert.match(masterCall, /select=id%2Crequest_id|select=id,request_id/);
+  assert.doesNotMatch(masterCall.split("?")[1] || "", /segment|status|confidence|source|taxonomy|s_kategorie|history/);
+});
+
+test("Phase-4 pilot endpoint returns only one opaque request and neutral progress", async () => {
+  const calls: string[] = [];
+  await withSupabaseFetch(pilotSelectionFetch(calls), async () => {
+    const response = await getSegmentGold(new NextRequest(
+      "http://localhost/api/ops/customer-records/segment-gold?mode=pilot-next",
+      { headers: { host: "localhost" } },
+    ));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+    const payload = await response.json() as Record<string, unknown>;
+    assert.deepEqual(payload, {
+      ok: true,
+      pilot: {
+        requestId: pilotPublicRequestIds[0],
+        position: 1,
+        total: 4,
+        complete: false,
+      },
+    });
+    assert.doesNotMatch(
+      JSON.stringify(payload),
+      /predicted|confidence|taxonomy|legacy|inputHash|reasonCodes|riskFlags|evidence|sKategorie/,
+    );
+  });
+
+  const completeCalls: string[] = [];
+  await withSupabaseFetch(pilotSelectionFetch(completeCalls, pilotMasterRequestIds), async () => {
+    assert.deepEqual(await getRequestSegmentationGoldPilotNext(), {
+      requestId: null,
+      position: 4,
+      total: 4,
+      complete: true,
+    });
+  });
+});
+
+test("pilot review refuses a concurrently completed case without revealing Gold or model data", async () => {
+  const calls: string[] = [];
+  await withSupabaseFetch(pilotSelectionFetch(calls, [pilotMasterRequestIds[0]]), async () => {
+    const response = await getSegmentGold(new NextRequest(
+      `http://localhost/api/ops/customer-records/segment-gold?requestId=${publicRequestId}&mode=pilot-review`,
+      { headers: { host: "localhost" } },
+    ));
+    assert.equal(response.status, 409);
+    const payload = await response.text();
+    assert.match(payload, /pilot_candidate_not_current/);
+    assert.doesNotMatch(payload, /NT-4|NT-3|startup_tech|example\.org|0\.91/);
+  });
+  assert.equal(calls.some((url) => url.includes("neontrip_get_request_segmentation_review_context")), false);
+});
+
+test("pilot GET and POST reject every request outside the current frozen cohort position", async () => {
+  const calls: string[] = [];
+  await withSupabaseFetch(pilotSelectionFetch(calls), async () => {
+    const outsideGet = await getSegmentGold(new NextRequest(
+      "http://localhost/api/ops/customer-records/segment-gold?requestId=outside-pilot&mode=pilot-review",
+      { headers: { host: "localhost" } },
+    ));
+    assert.equal(outsideGet.status, 409);
+    assert.match(await outsideGet.text(), /pilot_candidate_not_current/);
+
+    const outsidePost = await postSegmentGold(new NextRequest(
+      "http://localhost/api/ops/customer-records/segment-gold",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", host: "localhost" },
+        body: JSON.stringify({
+          requestId: "outside-pilot",
+          inputHash,
+          segment: "NT-3",
+          contextTags: [],
+          organizationScale: null,
+          operatorName: "Daniel",
+          reason: "Dieser Write darf die Pilot-Allowlist niemals verlassen.",
+          evidenceUrls: ["https://example.org/about"],
+          pilotVersion: REQUEST_SEGMENTATION_GOLD_PILOT_VERSION,
+        }),
+      },
+    ));
+    assert.equal(outsidePost.status, 409);
+    assert.match(await outsidePost.text(), /pilot_candidate_not_current/);
+  });
+  assert.equal(calls.some((url) => url.includes("neontrip_adjudicate_request_segmentation_gold")), false);
+  assert.equal(calls.some((url) => url.includes("neontrip_get_request_segmentation_review_context")), false);
 });
 
 test("Gold GET route sends only curated blind facts and no segment metadata before Gold exists", async () => {
@@ -417,8 +571,13 @@ test("Gold control is reachable only through the isolated authenticated blind-re
   assert.doesNotMatch(customerCaseUi, /\/ops\/customer-records\/gold-review/);
   assert.doesNotMatch(customerCaseUi, /SegmentGoldAdjudicationControl/);
   assert.match(goldReviewPage, /hasOpsSession/);
+  assert.match(goldReviewPage, /pilotParam/);
+  assert.match(goldReviewPage, /REQUEST_SEGMENTATION_GOLD_PILOT_VERSION/);
   assert.match(goldReviewPageClient, /Exakte Anfrage-ID/);
   assert.match(goldReviewPageClient, /window\.location\.assign\(`\/ops\/customer-records\/gold-review\?requestId=/);
+  assert.match(goldReviewPageClient, /segment-gold\?mode=pilot-next/);
+  assert.match(goldReviewPageClient, /Vier-Fall-Prozesspilot/);
+  assert.match(goldReviewPageClient, /pilot=1&requestId=/);
   assert.match(goldReviewPageClient, /<SegmentGoldAdjudicationControl[\s\S]{0,220}startExpanded[\s\S]{0,80}lockedOpen/);
   assert.doesNotMatch(goldReviewPageClient, /fetch\([`'"]\/api\/ops\/customer-records\?/);
   assert.doesNotMatch(goldUi, /customer-segments/);
@@ -430,6 +589,9 @@ test("Gold control is reachable only through the isolated authenticated blind-re
   assert.match(goldUi, /const \[expanded, setExpanded\] = useState\(startExpanded\)/);
   assert.match(goldUi, /context\?\.latestClassification\?\.inputHashCurrent === true/);
   assert.match(goldUi, /referrerPolicy="no-referrer"/);
+  assert.match(goldUi, /pilotMode \? "&mode=pilot-review" : ""/);
+  assert.match(goldUi, /pilotMode \? \{ pilotVersion \} : \{\}/);
+  assert.match(goldUi, /if \(pilotMode\) \{[\s\S]{0,120}onPilotAdvance\?\.\(\);[\s\S]{0,40}return;[\s\S]{0,80}await loadReview\(\)/);
   assert.match(goldUi, /\{expanded \? \(/);
 });
 
@@ -446,6 +608,27 @@ test("Phase-3 pilot documentation records the cancelled old attempt and one succ
   assert.match(documentation, /Klassifikation `needs_review` mit `segment=null`/);
   assert.match(documentation, /Follow-up und Pricing bleiben `false`/);
   assert.doesNotMatch(documentation, /endete am 20\.08\.2026 reproduzierbar/);
+});
+
+test("Phase-4 runbook keeps the four-case pilot blind, serial and non-activating", () => {
+  const documentation = readFileSync("docs/projects/customer-records-ops/request-segmentation.md", "utf8");
+  const migration = readFileSync("supabase/migrations/20260819183219_harden_request_segmentation_phase2_cx8.sql", "utf8");
+  const evaluationEnqueue = migration.match(
+    /create function public\.neontrip_enqueue_request_segmentation_evaluation[\s\S]*?comment on function public\.neontrip_enqueue_request_segmentation_evaluation/,
+  )?.[0] || "";
+  assert.match(documentation, /Phase 4: blinder Vier-Fall-Prozesspilot/);
+  assert.match(documentation, /2026-08-20T08:15:00\.000Z/);
+  assert.match(documentation, /Jobtabelle ausschliesslich\s+`request_id` und `created_at`/);
+  assert.match(documentation, /gold_pilot_v1_20260820_cx8_four_case/);
+  assert.match(documentation, /Genau ein benannter Reviewer arbeitet die Kohorte seriell ab/);
+  assert.match(documentation, /wird nicht geraten/);
+  assert.match(documentation, /laedt den abgeschlossenen Fall\s+nicht erneut/);
+  assert.match(documentation, /Erst nach `complete=true`/);
+  assert.match(documentation, /keinen weiteren historischen Backfill/);
+  assert.match(documentation, /Follow-up, Pricing, WhatsApp, E-Mail, Mahnung/);
+  assert.match(documentation, /Vier-Fall-Pilot ist kein Ersatz/);
+  assert.match(evaluationEnqueue, /updated_at = now\(\)/);
+  assert.doesNotMatch(evaluationEnqueue, /created_at\s*=/);
 });
 
 test("Gold UI permits fully manual adjudication for null or stale latest classification", () => {

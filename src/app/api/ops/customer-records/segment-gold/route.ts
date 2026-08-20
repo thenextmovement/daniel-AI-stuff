@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, resolveOpsRequestActor } from "@/lib/ops/auth";
 import {
   adjudicateRequestSegmentationGold,
+  assertCurrentRequestSegmentationGoldPilotCandidate,
   combineRequestSegmentationGoldActor,
+  getRequestSegmentationGoldPilotNext,
   getRequestSegmentationBlindReviewContext,
+  REQUEST_SEGMENTATION_GOLD_PILOT_VERSION,
   toRequestSegmentationBlindReviewPayload,
 } from "@/lib/ops/request-segmentation-gold";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
@@ -49,7 +52,24 @@ export async function GET(request: NextRequest) {
   const authorization = await authorize(request);
   if (!authorization.ok) return authorization.response;
   try {
-    const context = await getRequestSegmentationBlindReviewContext(request.nextUrl.searchParams.get("requestId") || "");
+    const mode = request.nextUrl.searchParams.get("mode");
+    if (mode === "pilot-next") {
+      return privateNoStore(NextResponse.json({
+        ok: true,
+        pilot: await getRequestSegmentationGoldPilotNext(),
+      }));
+    }
+    if (mode !== null && mode !== "pilot-review") {
+      throw new QuoteValidationError("Unbekannter Gold-Review-Modus.", [], 422);
+    }
+    const requestId = request.nextUrl.searchParams.get("requestId") || "";
+    if (mode === "pilot-review") {
+      await assertCurrentRequestSegmentationGoldPilotCandidate(requestId);
+    }
+    const context = await getRequestSegmentationBlindReviewContext(requestId);
+    if (mode === "pilot-review" && context.currentGoldAdjudication) {
+      throw new QuoteValidationError("pilot_candidate_already_adjudicated", [], 409);
+    }
     return privateNoStore(NextResponse.json({
       ok: true,
       context: toRequestSegmentationBlindReviewPayload(context),
@@ -72,6 +92,7 @@ export async function POST(request: NextRequest) {
       operatorName?: unknown;
       reason?: unknown;
       evidenceUrls?: unknown;
+      pilotVersion?: unknown;
     };
     if (body.contextTags != null && (!Array.isArray(body.contextTags) || body.contextTags.some((entry) => typeof entry !== "string"))) {
       throw new QuoteValidationError("Kontext-Tags haben ein ungueltiges Format.");
@@ -90,8 +111,15 @@ export async function POST(request: NextRequest) {
         422,
       );
     }
+    if (body.pilotVersion !== undefined && body.pilotVersion !== REQUEST_SEGMENTATION_GOLD_PILOT_VERSION) {
+      throw new QuoteValidationError("Unbekannter Gold-Pilotvertrag.", [], 422);
+    }
+    const publicRequestId = typeof body.requestId === "string" ? body.requestId : "";
+    if (body.pilotVersion === REQUEST_SEGMENTATION_GOLD_PILOT_VERSION) {
+      await assertCurrentRequestSegmentationGoldPilotCandidate(publicRequestId);
+    }
     const result = await adjudicateRequestSegmentationGold({
-      publicRequestId: typeof body.requestId === "string" ? body.requestId : "",
+      publicRequestId,
       inputHash: typeof body.inputHash === "string" ? body.inputHash : "",
       segment: typeof body.segment === "string" ? body.segment : "",
       contextTags: (body.contextTags || []) as string[],

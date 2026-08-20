@@ -1,6 +1,6 @@
 # Request Segmentation
 
-Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; noch kein Gold; den tatsaechlichen Live-Stand immer ueber aktive DB-Policy und aktive n8n-Version verifizieren)
+Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; Phase 4 stellt einen strikt blinden Vier-Fall-Prozesspilot bereit; den tatsaechlichen Gold-, Policy- und n8n-Live-Stand immer neu verifizieren)
 
 Diese Doku beschreibt, wie neue Kundenanfragen bei NEONTRIP segmentiert werden, wo das Ergebnis sichtbar ist und wie ein Segment manuell bestaetigt oder korrigiert wird.
 
@@ -120,6 +120,77 @@ Der kanonische Portalvertrag fuer Gold ist die isolierte Ops-Seite `/ops/custome
 6. Erst nachdem unveraenderliches Gold fuer denselben Input existiert und die v3-Klassifikation `inputHashCurrent=true` hat, darf der Vergleich erscheinen: Modellsegment, Status, Confidence, Reason-Codes, Risk-Flags, Evidence-Provenance, Mapping-Integritaet, Context/Scale und ausschliesslich sichere klickbare HTTP(S)-Evidence-Links. Ein stale Modellergebnis bleibt auch nach Gold ausgeblendet.
 
 `attribution_raw.manual_segment_taxonomy_version = "nt_taxonomy_v2_20260819_cx8"` ist ausschliesslich der beim manuellen Import eingefrorene Retry-Vertragsmarker. Er beweist weder ein CX8-Segment noch Gold oder Modellqualitaet und ist kein Marker fuer den historischen Pilot. Ein Pilotfall darf nicht allein anhand dieses Feldes als korrekt gelabelt oder gate-faehig behandelt werden.
+
+## Phase 4: blinder Vier-Fall-Prozesspilot
+
+Phase 4 prueft ausschliesslich, ob ein einzelner menschlicher Reviewer vier
+unabhaengige Gold-Adjudikationen ohne Modellfeedback sauber durchfuehren kann.
+Vier Faelle sind keine Qualitaetsstichprobe, decken nicht alle acht Segmente ab
+und duerfen weder Precision-/Recall-Aussagen noch eine Automation-Aktivierung
+begründen.
+
+Der Einstieg ist:
+
+```text
+/ops/customer-records/gold-review?pilot=1
+```
+
+Der Server friert die Kohorte auf die ersten vier eindeutigen Requests ein, die
+vor `2026-08-20T08:15:00.000Z` einen Job unter dem exakten CX8-v3-Vertrag
+erzeugt haben. Die Auswahl liest aus der Jobtabelle ausschliesslich
+`request_id` und `created_at`; sie
+filtert oder sortiert nie nach Status, Segment, Confidence, Evidence,
+Risk-Flags oder einem historischen Segment. Dass der Pilot aus bereits
+angelegten v3-Jobs besteht, macht ihn zu einem Prozessnachweis, nicht zu einem
+repraesentativen Trainings- oder Gate-Datensatz. Der kanonische Gold-Enqueue
+aktualisiert bei einer Re-Evaluation nur `updated_at`, nicht das unveraenderte
+Job-`created_at`; die Zeitgrenze bleibt deshalb auch nach Fall eins stabil.
+
+`GET /api/ops/customer-records/segment-gold?mode=pilot-next` liefert dem
+Browser exakt einen opaken naechsten `requestId` sowie neutrale Position,
+Gesamtzahl und Abschlussstatus. Es gibt keine Kandidatenliste. Die vier IDs
+bleiben serverseitig in fester Zeit-/UUID-Reihenfolge; bereits vorhandenes
+exaktes CX8-Gold wird nur als erledigt behandelt. Reicht die eingefrorene
+Kohorte nicht exakt fuer vier Faelle oder ist eine ID-Aufloesung mehrdeutig,
+bricht der Server fail-closed ab.
+
+`mode=pilot-review` und jeder Pilot-POST tragen zusaetzlich den exakten
+Pilotvertrag `gold_pilot_v1_20260820_cx8_four_case`. Der Server akzeptiert dabei
+nur den aktuell naechsten Request der eingefrorenen Kohorte. Manipulierte,
+bereits erledigte oder ausserhalb der vier IDs liegende Links brechen vor
+Review-RPC beziehungsweise Gold-RPC mit `409` ab. Der separate exakte
+Einzelfallpfad bleibt fuer bewusstes Support-Review erhalten, ist aber kein
+Bestandteil dieses Piloten.
+
+Verbindlicher Ablauf:
+
+1. Genau ein benannter Reviewer arbeitet die Kohorte seriell ab. Kein zweiter
+   Reviewer und keine parallele Browser-Session.
+2. Vor und waehrend des Piloten werden die allgemeine Kundenakte, alte
+   Labeling-Views und der exakte Einzelreview-Supportpfad fuer diese vier
+   Faelle nicht geoeffnet.
+3. Jeder Fall wird nur anhand des kuratierten Blindpakets und selbst gepruefter
+   externer Evidence beurteilt. Segment, Context-Tags, Scale, Evidence-URLs und
+   Begruendung starten bei jedem Fall leer.
+4. Ist ein Fall fachlich nicht sicher adjudizierbar, wird nicht geraten und
+   nicht ergebnisorientiert durch einen leichteren Fall ersetzt. Der Pilot wird
+   an dieser Stelle pausiert und der Grund ausserhalb des unveraenderlichen
+   Gold-Writes geklaert.
+5. Nach erfolgreichem Gold-POST verwirft der Pilot die Fallansicht sofort und
+   kehrt zur opaken Next-Auswahl zurueck. Er laedt den abgeschlossenen Fall
+   nicht erneut; Modellsegment, Confidence, Reason-Codes und Evidence bleiben
+   deshalb auch zwischen Fall eins bis vier verborgen.
+6. Erst nach `complete=true` darf eine getrennte Batch-Auswertung die vier
+   Gold-Labels mit den exakten current-hash-v3-Ergebnissen vergleichen. Der
+   Reviewer sieht bis dahin keinen fallbezogenen Modellvergleich.
+
+Phase 4 fuehrt keinen weiteren historischen Backfill aus. Jeder echte
+Gold-Write bleibt insert-once, mutiert niemals `master_requests` und darf nur
+den bereits kanonischen evaluation-only Enqueue ausloesen. Die aktive Policy
+bleibt `shadow`; Follow-up, Pricing, WhatsApp, E-Mail, Mahnung und alle anderen
+Kundenaktionen bleiben gesperrt. Vor einer Skalierung auf den Qualitaets-Gate-
+Umfang von 300/25 je Segment braucht es einen eigenen versionierten
+Sampling-/Assignment-Vertrag; der Vier-Fall-Pilot ist kein Ersatz dafuer.
 
 ## Rollback
 
