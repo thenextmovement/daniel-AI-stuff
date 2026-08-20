@@ -1,21 +1,61 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { NextRequest } from "next/server";
+import { GET as getSegmentGold, POST as postSegmentGold } from "@/app/api/ops/customer-records/segment-gold/route";
 import {
   adjudicateRequestSegmentationGold,
+  combineRequestSegmentationGoldActor,
+  getRequestSegmentationBlindReviewContext,
   getRequestSegmentationReviewContext,
+  redactRequestSegmentationModelUntilGold,
+  toRequestSegmentationBlindReviewPayload,
   validateRequestSegmentationGoldResult,
   validateRequestSegmentationReviewContext,
 } from "@/lib/ops/request-segmentation-gold";
-import { CX8_TAXONOMY_VERSION } from "@/lib/ops/customer-segments";
+import { CUSTOMER_SEGMENT_OPTIONS, CX8_TAXONOMY_VERSION } from "@/lib/ops/customer-segments";
 import {
   isGoldUiSubmissionReady,
-  isCurrentGoldProposal,
-  resolveGoldProposalPrefill,
+  safeModelEvidenceLinks,
 } from "../../src/app/ops/customer-records/segment-gold-control";
 
 const masterRequestId = "11111111-1111-4111-8111-111111111111";
+const masterCustomerId = "55555555-5555-4555-8555-555555555555";
 const publicRequestId = "request-public-gold-1";
 const inputHash = "current-input-hash-v2";
+
+function blindRequestRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: masterRequestId,
+    request_id: publicRequestId,
+    customer_id: masterCustomerId,
+    title: "Leuchtschrift für einen Messestand",
+    description: "Einsatz auf wechselnden B2B-Veranstaltungen; robuste Montage erforderlich.",
+    size: "180 x 60 cm",
+    color: ["Pink", "Warmweiß"],
+    application: "Messestand",
+    delivery_time: "Oktober 2026",
+    customer_type: "gewerblich",
+    country: "Deutschland",
+    segment: "NT-10-LEAK-MUST-BE-IGNORED",
+    segment_status: "accepted-leak-must-be-ignored",
+    ...overrides,
+  };
+}
+
+function blindCustomerRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: masterCustomerId,
+    email: "anna@messebau.example",
+    first_name: "Anna",
+    last_name: "Beispiel",
+    company: "Beispiel Messebau GmbH",
+    company_name: null,
+    name: "Anna Beispiel",
+    segment_history: "NT-1-LEAK-MUST-BE-IGNORED",
+    ...overrides,
+  };
+}
 
 function latestClassification(overrides: Record<string, unknown> = {}) {
   return {
@@ -140,36 +180,272 @@ test("review context validator accepts only the exact current CX8 v3 contract", 
   }
 });
 
-test("Gold UI pre-fills only an input-current latest proposal", () => {
-  const current = validateRequestSegmentationReviewContext(
+test("Gold review is server-blind before immutable adjudication and reveals comparison only afterwards", () => {
+  const withoutGold = validateRequestSegmentationReviewContext(
     reviewResult(),
     { masterRequestId, publicRequestId },
-  ).latestClassification;
-  assert.equal(isCurrentGoldProposal(current), true);
-  assert.deepEqual(resolveGoldProposalPrefill(current), {
-    segment: "NT-3",
-    contextTags: ["film_tv", "startup_tech"],
-    organizationScale: "small",
-    evidenceUrls: "https://example.org/about",
-  });
+  );
+  assert.equal(withoutGold.latestClassification?.proposedSegment, "NT-3");
+  assert.equal(redactRequestSegmentationModelUntilGold(withoutGold).latestClassification, null);
 
-  const stale = validateRequestSegmentationReviewContext(
+  const currentGold = {
+    gold_adjudication_id: "33333333-3333-4333-8333-333333333333",
+    input_hash: inputHash,
+    labeled_segment: "NT-4",
+    labeled_s_kategorie: "S2",
+    context_tags: ["startup_tech"],
+    organization_scale: "small",
+    labeling_version: "gold_labeling_v2_20260819_cx8",
+    created_at: "2026-08-20T08:00:00.000Z",
+  };
+  const withGold = validateRequestSegmentationReviewContext(
+    reviewResult({ current_gold_adjudication: currentGold }),
+    { masterRequestId, publicRequestId },
+  );
+  const comparison = redactRequestSegmentationModelUntilGold(withGold);
+  assert.equal(comparison.currentGoldAdjudication?.labeledSegment, "NT-4");
+  assert.equal(comparison.latestClassification?.proposedSegment, "NT-3");
+  assert.deepEqual(comparison.latestClassification?.reasonCodes, ["official_company_site"]);
+  assert.equal(comparison.latestClassification?.evidenceProvenanceValid, true);
+  assert.equal(comparison.latestClassification?.mappingIntegrity, true);
+
+  const withGoldButStaleModel = validateRequestSegmentationReviewContext(
     reviewResult({
+      current_gold_adjudication: currentGold,
       latest_classification: latestClassification({
         input_hash: "stale-input-hash",
         input_hash_current: false,
       }),
     }),
     { masterRequestId, publicRequestId },
-  ).latestClassification;
-  assert.equal(isCurrentGoldProposal(stale), false);
-  assert.deepEqual(resolveGoldProposalPrefill(stale), {
-    segment: "",
-    contextTags: [],
-    organizationScale: "",
-    evidenceUrls: "",
+  );
+  assert.equal(redactRequestSegmentationModelUntilGold(withGoldButStaleModel).latestClassification, null);
+});
+
+test("Gold GET route sends only curated blind facts and no segment metadata before Gold exists", async () => {
+  const calls: string[] = [];
+  await withSupabaseFetch((async (input) => {
+    const url = String(input);
+    calls.push(decodeURIComponent(url));
+    if (url.includes("/master_requests?") && decodeURIComponent(url).includes("customer_id")) {
+      return Response.json([blindRequestRow()]);
+    }
+    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
+    if (url.includes("/master_customers?")) return Response.json([blindCustomerRow()]);
+    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) {
+      return Response.json(reviewResult({
+        latest_classification: latestClassification({
+          evidence_json: [{
+            type: "web_search",
+            url: "https://user:pre-gold-secret@localhost./private",
+            used_for: "segment_role",
+            evidence_code: "verified_event_or_media_operator",
+            secret: "raw-pre-gold-evidence-must-not-leak",
+          }],
+        }),
+      }));
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch, async () => {
+    const response = await getSegmentGold(new NextRequest(
+      `http://localhost/api/ops/customer-records/segment-gold?requestId=${publicRequestId}`,
+      { headers: { host: "localhost" } },
+    ));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+    const payload = await response.json() as {
+      context?: {
+        latestClassification?: unknown;
+        blindReviewFacts?: { company?: string; emailDomain?: string; colors?: string[] };
+      };
+    };
+    assert.equal(payload.context?.latestClassification, null);
+    assert.equal(payload.context?.blindReviewFacts?.company, "Beispiel Messebau GmbH");
+    assert.equal(payload.context?.blindReviewFacts?.emailDomain, "messebau.example");
+    assert.deepEqual(payload.context?.blindReviewFacts?.colors, ["Pink", "Warmweiß"]);
+    assert.doesNotMatch(
+      JSON.stringify(payload),
+      /official_company_site|pre-gold-secret|raw-pre-gold-evidence|NT-10-LEAK|accepted-leak|NT-1-LEAK|taxonomyVersion|classifierVersion|promptVersion|qualityGateVersion|masterRequestId|publicRequestId/,
+    );
   });
-  assert.equal(isCurrentGoldProposal(null), false);
+  assert.equal(calls.filter((url) => url.includes("neontrip_get_request_segmentation_review_context")).length, 2);
+  const requestFactsCall = calls.find((url) => url.includes("/master_requests?") && url.includes("customer_id"));
+  assert.match(requestFactsCall || "", /select=id,request_id,customer_id,title,description,size,color,application,delivery_time,customer_type,country/);
+  assert.doesNotMatch(requestFactsCall || "", /segment|status|confidence|source|taxonomy|s_kategorie|history/);
+});
+
+test("blind fact contract failures are PII-free and non-cacheable", async () => {
+  const secret = "pii-contract-sentinel@private.example";
+  await withSupabaseFetch((async (input) => {
+    const url = String(input);
+    if (url.includes("/master_requests?") && decodeURIComponent(url).includes("customer_id")) {
+      return Response.json([blindRequestRow()]);
+    }
+    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
+    if (url.includes("/master_customers?")) return Response.json([blindCustomerRow({ email: { raw: secret } })]);
+    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) return Response.json(reviewResult());
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch, async () => {
+    const response = await getSegmentGold(new NextRequest(
+      `http://localhost/api/ops/customer-records/segment-gold?requestId=${publicRequestId}`,
+      { headers: { host: "localhost" } },
+    ));
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+    const payloadText = await response.text();
+    assert.equal(payloadText.includes(secret), false);
+    assert.match(payloadText, /kuratierten Fakten/);
+  });
+});
+
+test("post-Gold model evidence exposes only safe deduplicated HTTP(S) links", () => {
+  assert.deepEqual(safeModelEvidenceLinks([
+    {
+      type: "web_search",
+      url: "https://example.org/about",
+      used_for: "segment_role",
+      evidence_code: "verified_event_or_media_operator",
+    },
+    {
+      type: "web_search",
+      url: "https://example.org/about",
+      used_for: "segment_role",
+      evidence_code: "verified_event_or_media_operator",
+    },
+    { type: "web_search", url: "javascript:alert(1)", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "https://user:secret@example.org/private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://localhost/private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://localhost./private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://127.0.0.1/private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://10.1.2.3/private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://172.16.0.1/private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://192.168.1.1/private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://169.254.169.254/private", used_for: "segment_role", evidence_code: "unsafe" },
+    { type: "web_search", url: "http://[::1]/private", used_for: "segment_role", evidence_code: "unsafe" },
+  ]), [{
+    url: "https://example.org/about",
+    host: "example.org",
+    type: "web_search",
+    usedFor: "segment_role",
+    evidenceCode: "verified_event_or_media_operator",
+  }]);
+});
+
+test("post-Gold GET exposes only the sanitized evidence-link schema", async () => {
+  const currentGold = {
+    gold_adjudication_id: "33333333-3333-4333-8333-333333333333",
+    input_hash: inputHash,
+    labeled_segment: "NT-4",
+    labeled_s_kategorie: "S2",
+    context_tags: ["startup_tech"],
+    organization_scale: "small",
+    labeling_version: "gold_labeling_v2_20260819_cx8",
+    created_at: "2026-08-20T08:00:00.000Z",
+  };
+  const postGoldContext = reviewResult({
+    current_gold_adjudication: currentGold,
+    latest_classification: latestClassification({
+      evidence_json: [
+        {
+          type: "web_search",
+          url: "https://example.org/about",
+          used_for: "segment_role",
+          evidence_code: "verified_event_or_media_operator",
+          secret: "raw-post-gold-evidence-must-not-leak",
+        },
+        {
+          type: "web_search",
+          url: "https://user:post-gold-secret@example.org/private",
+          used_for: "segment_role",
+          evidence_code: "verified_event_or_media_operator",
+        },
+        {
+          type: "web_search",
+          url: "http://127.0.0.1/private",
+          used_for: "segment_role",
+          evidence_code: "verified_event_or_media_operator",
+        },
+      ],
+    }),
+  });
+  await withSupabaseFetch((async (input) => {
+    const url = String(input);
+    if (url.includes("/master_requests?") && decodeURIComponent(url).includes("customer_id")) {
+      return Response.json([blindRequestRow()]);
+    }
+    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
+    if (url.includes("/master_customers?")) return Response.json([blindCustomerRow()]);
+    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) return Response.json(postGoldContext);
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch, async () => {
+    const response = await getSegmentGold(new NextRequest(
+      `http://localhost/api/ops/customer-records/segment-gold?requestId=${publicRequestId}`,
+      { headers: { host: "localhost" } },
+    ));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+    const payload = await response.json() as {
+      context?: {
+        latestClassification?: {
+          evidenceJson?: unknown;
+          evidenceLinks?: unknown;
+        } | null;
+      };
+    };
+    assert.equal(payload.context?.latestClassification?.evidenceJson, undefined);
+    assert.deepEqual(payload.context?.latestClassification?.evidenceLinks, [{
+      url: "https://example.org/about",
+      host: "example.org",
+      type: "web_search",
+      usedFor: "segment_role",
+      evidenceCode: "verified_event_or_media_operator",
+    }]);
+    assert.doesNotMatch(
+      JSON.stringify(payload),
+      /raw-post-gold-evidence|post-gold-secret|127\.0\.0\.1|evidenceJson/,
+    );
+  });
+});
+
+test("Gold control is reachable only through the isolated authenticated blind-review page", () => {
+  const customerCaseUi = readFileSync("src/app/ops/customer-records/page-client.tsx", "utf8");
+  const goldReviewPage = readFileSync("src/app/ops/customer-records/gold-review/page.tsx", "utf8");
+  const goldReviewPageClient = readFileSync("src/app/ops/customer-records/gold-review/page-client.tsx", "utf8");
+  const goldUi = readFileSync("src/app/ops/customer-records/segment-gold-control.tsx", "utf8");
+  const opsLayout = readFileSync("src/app/ops/layout.tsx", "utf8");
+  const opsGlobalOverlays = readFileSync("src/app/ops/ops-global-overlays.tsx", "utf8");
+  assert.doesNotMatch(customerCaseUi, /\/ops\/customer-records\/gold-review/);
+  assert.doesNotMatch(customerCaseUi, /SegmentGoldAdjudicationControl/);
+  assert.match(goldReviewPage, /hasOpsSession/);
+  assert.match(goldReviewPageClient, /Exakte Anfrage-ID/);
+  assert.match(goldReviewPageClient, /window\.location\.assign\(`\/ops\/customer-records\/gold-review\?requestId=/);
+  assert.match(goldReviewPageClient, /<SegmentGoldAdjudicationControl[\s\S]{0,220}startExpanded[\s\S]{0,80}lockedOpen/);
+  assert.doesNotMatch(goldReviewPageClient, /fetch\([`'"]\/api\/ops\/customer-records\?/);
+  assert.doesNotMatch(goldUi, /customer-segments/);
+  assert.match(goldUi, /context\.goldLabelOptions\.map/);
+  assert.match(opsLayout, /<OpsGlobalOverlays \/>/);
+  assert.doesNotMatch(opsLayout, /OpsTaskNotifier|OpsCopilotChat/);
+  assert.match(opsGlobalOverlays, /\/ops\/customer-records\/gold-review/);
+  assert.match(opsGlobalOverlays, /if \([\s\S]{0,180}BLIND_GOLD_REVIEW_PATH[\s\S]{0,180}return null/);
+  assert.match(goldUi, /const \[expanded, setExpanded\] = useState\(startExpanded\)/);
+  assert.match(goldUi, /context\?\.latestClassification\?\.inputHashCurrent === true/);
+  assert.match(goldUi, /referrerPolicy="no-referrer"/);
+  assert.match(goldUi, /\{expanded \? \(/);
+});
+
+test("Phase-3 pilot documentation records the cancelled old attempt and one successful eval-only abstention", () => {
+  const documentation = readFileSync("docs/projects/customer-records-ops/request-segmentation.md", "utf8");
+  assert.match(documentation, /genau einmal natuerlich geclaimt/);
+  assert.match(documentation, /kanonischen Cancel-RPC/);
+  assert.match(documentation, /`status=cancelled`, `attempts=1`, `classifications=0`/);
+  assert.match(documentation, /CX8-Research-Cache `0`/);
+  assert.match(documentation, /verbleibende pending Historienjobs `0`/);
+  assert.match(documentation, /80101742-c095-4a69-827f-aeaab6bc71ca/);
+  assert.match(documentation, /Execution `5210710` in `3\.491s`/);
+  assert.match(documentation, /Job `needs_review`, `attempts=1`, `error=null`, unlocked/);
+  assert.match(documentation, /Klassifikation `needs_review` mit `segment=null`/);
+  assert.match(documentation, /Follow-up und Pricing bleiben `false`/);
+  assert.doesNotMatch(documentation, /endete am 20\.08\.2026 reproduzierbar/);
 });
 
 test("Gold UI permits fully manual adjudication for null or stale latest classification", () => {
@@ -255,6 +531,80 @@ test("review loader resolves the master UUID and calls only the service-role rev
   assert.deepEqual(calls[1]?.body, { p_request_id: masterRequestId });
 });
 
+test("blind review loader brackets curated facts with the exact current hash and emits a fixed browser shape", async () => {
+  const calls: string[] = [];
+  await withSupabaseFetch((async (input) => {
+    const url = String(input);
+    calls.push(decodeURIComponent(url));
+    if (url.includes("/master_requests?") && decodeURIComponent(url).includes("customer_id")) {
+      return Response.json([blindRequestRow()]);
+    }
+    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
+    if (url.includes("/master_customers?")) return Response.json([blindCustomerRow()]);
+    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) return Response.json(reviewResult());
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch, async () => {
+    const context = await getRequestSegmentationBlindReviewContext(publicRequestId);
+    const payload = toRequestSegmentationBlindReviewPayload(context);
+    assert.deepEqual(Object.keys(payload).sort(), [
+      "blindReviewFacts",
+      "currentGoldAdjudication",
+      "currentInputHash",
+      "goldEligibility",
+      "goldLabelOptions",
+      "latestClassification",
+    ]);
+    assert.deepEqual(Object.keys(payload.blindReviewFacts).sort(), [
+      "application",
+      "colors",
+      "company",
+      "contactName",
+      "country",
+      "customerType",
+      "deliveryTime",
+      "description",
+      "email",
+      "emailDomain",
+      "requestId",
+      "requestedSize",
+      "title",
+    ]);
+    assert.deepEqual(payload.goldLabelOptions, CUSTOMER_SEGMENT_OPTIONS.map(({ segment, label }) => ({
+      code: segment,
+      label,
+    })));
+    assert.equal(payload.latestClassification, null);
+  });
+  assert.equal(calls.length, 5);
+  assert.equal(calls.filter((url) => url.includes("neontrip_get_request_segmentation_review_context")).length, 2);
+
+  let reviewCalls = 0;
+  await withSupabaseFetch((async (input) => {
+    const url = String(input);
+    if (url.includes("/master_requests?") && decodeURIComponent(url).includes("customer_id")) {
+      return Response.json([blindRequestRow()]);
+    }
+    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
+    if (url.includes("/master_customers?")) return Response.json([blindCustomerRow()]);
+    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) {
+      reviewCalls += 1;
+      return Response.json(reviewCalls === 1 ? reviewResult() : reviewResult({
+        current_input_hash: "changed-during-read",
+        latest_classification: latestClassification({
+          input_hash: "changed-during-read",
+          input_hash_current: true,
+        }),
+      }));
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch, async () => {
+    await assert.rejects(
+      getRequestSegmentationBlindReviewContext(publicRequestId),
+      /waehrend des blinden Reviews geaendert/,
+    );
+  });
+});
+
 test("gold adjudication posts the exact current hash, actor, evidence and active CX8 segment", async () => {
   const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
   await withSupabaseFetch((async (input, init = {}) => {
@@ -293,6 +643,70 @@ test("gold adjudication posts the exact current hash, actor, evidence and active
     p_adjudication_reason: "Offizielle Unternehmensseite und Impressum wurden manuell geprüft.",
     p_evidence_urls: ["https://example.org/about", "https://example.org/impressum"],
   });
+});
+
+test("Gold API binds the authenticated Ops actor to the typed operator name", async () => {
+  const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+  await withSupabaseFetch((async (input, init = {}) => {
+    const url = String(input);
+    const body = typeof init.body === "string" ? JSON.parse(init.body) : null;
+    calls.push({ url, body });
+    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
+    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) return Response.json(reviewResult());
+    if (url.includes("/rpc/neontrip_adjudicate_request_segmentation_gold")) return Response.json(adjudicationResult());
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch, async () => {
+    const response = await postSegmentGold(new NextRequest("http://localhost/api/ops/customer-records/segment-gold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost" },
+      body: JSON.stringify({
+        requestId: publicRequestId,
+        inputHash,
+        segment: "NT-3",
+        contextTags: ["film_tv", "startup_tech"],
+        organizationScale: "small",
+        operatorName: "  Daniel  ",
+        reason: "Offizielle Unternehmensseite und Impressum wurden manuell geprüft.",
+        evidenceUrls: ["https://example.org/about", "https://example.org/impressum"],
+      }),
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+  });
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2]?.body?.p_adjudicated_by, "local-ops:Daniel");
+
+  const longAuthenticatedActor = `auth-${"a".repeat(149)}`;
+  const longOperator = `operator-${"b".repeat(147)}`;
+  const combinedActor = combineRequestSegmentationGoldActor(longAuthenticatedActor, longOperator);
+  assert.equal(combinedActor, `${longAuthenticatedActor}:${longOperator}`);
+  assert.ok(combinedActor.startsWith(longAuthenticatedActor));
+  assert.ok(combinedActor.endsWith(longOperator));
+  assert.throws(
+    () => combineRequestSegmentationGoldActor("a".repeat(160), "b".repeat(160)),
+    /zusammen maximal 320/,
+  );
+
+  let supabaseCalls = 0;
+  await withSupabaseFetch((async () => {
+    supabaseCalls += 1;
+    return Response.json({});
+  }) as typeof fetch, async () => {
+    const response = await postSegmentGold(new NextRequest("http://localhost/api/ops/customer-records/segment-gold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost" },
+      body: JSON.stringify({
+        requestId: publicRequestId,
+        inputHash,
+        segment: "NT-3",
+        operatorName: "AI",
+        reason: "Diese Begründung wäre ansonsten lang genug für Gold.",
+        evidenceUrls: ["https://example.org/about"],
+      }),
+    }));
+    assert.equal(response.status, 422);
+  });
+  assert.equal(supabaseCalls, 0);
 });
 
 test("stale review hashes and invalid Gold input fail before the adjudication RPC", async () => {
@@ -468,6 +882,18 @@ test("Gold input bounds return 422 before any RPC", async () => {
       ...base,
       evidenceUrls: [`https://example.org/${"a".repeat(2049)}`],
     }, /maximal 2048/);
+    await expect422({
+      ...base,
+      evidenceUrls: ["https://user:secret@example.org/private"],
+    }, /externe HTTP- oder HTTPS-Links ohne Zugangsdaten/);
+    await expect422({
+      ...base,
+      evidenceUrls: ["http://127.0.0.1/private"],
+    }, /externe HTTP- oder HTTPS-Links ohne Zugangsdaten/);
+    await expect422({
+      ...base,
+      evidenceUrls: ["http://foo.local./private"],
+    }, /externe HTTP- oder HTTPS-Links ohne Zugangsdaten/);
   });
   assert.equal(reads, 0);
 });

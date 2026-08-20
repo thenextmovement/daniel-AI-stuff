@@ -1,5 +1,4 @@
-import { OpsCopilotChat } from "./ops-copilot-chat";
-import { OpsTaskNotifier } from "./ops-task-notifier";
+import { OpsGlobalOverlays } from "./ops-global-overlays";
 
 export default function OpsLayout({
   children,
@@ -9,8 +8,7 @@ export default function OpsLayout({
   return (
     <>
       {children}
-      <OpsCopilotChat />
-      <OpsTaskNotifier />
+      <OpsGlobalOverlays />
     </>
   );
 }

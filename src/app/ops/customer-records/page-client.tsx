@@ -40,7 +40,6 @@ import {
 } from "@/lib/ops/customer-segments";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
-import { SegmentGoldAdjudicationControl } from "./segment-gold-control";
 import type {
   CustomerAuditEntry,
   CustomerCommunicationEntry,
@@ -20436,12 +20435,6 @@ function RecordCard({
                 running={actionRunning}
                 onApply={(segment) => onApplySegment(record.requestId, segment)}
               />
-              {!simpleView ? (
-                <SegmentGoldAdjudicationControl
-                  requestId={record.requestId}
-                  operatorName={operatorName}
-                />
-              ) : null}
               <p className={`mt-2 max-w-3xl text-white/72 ${simpleView ? "text-sm leading-5" : "text-sm leading-7"}`}>
                 {simpleView
                   ? "Kontaktdaten, E-Mails und Angebot auf einen Blick."

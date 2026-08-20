@@ -1,6 +1,6 @@
 # Request Segmentation
 
-Stand: 2026-08-19 (Phase-2-CX8 als getrennten Shadow-Vertrag vorbereitet; den tatsaechlichen Live-Stand immer ueber aktive DB-Policy und aktive n8n-Version verifizieren)
+Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; noch kein Gold; den tatsaechlichen Live-Stand immer ueber aktive DB-Policy und aktive n8n-Version verifizieren)
 
 Diese Doku beschreibt, wie neue Kundenanfragen bei NEONTRIP segmentiert werden, wo das Ergebnis sichtbar ist und wie ein Segment manuell bestaetigt oder korrigiert wird.
 
@@ -27,7 +27,9 @@ prompt_version = segment_prompt_v4_20260819_cx8
 policy_version = nt_policy_v2_20260819_cx8_shadow
 ```
 
-Die Hauptmigration legt v2 bewusst `active=false` an und laesst v1 aktiv. Erst das getrennte, nicht automatisch angewandte Held-Artefakt `supabase/rollouts/held/20260819193419_activate_request_segmentation_phase2_cx8_shadow.sql` darf nach App- und n8n-v3-Rollout atomar v1 deaktivieren und v2 aktivieren. Es prueft davor das exakte Taxonomie-/Evidence-/Gate-Triple und blockiert, solange noch ein unversionierter Legacy-Job in `pending`, `processing` oder als erneut claimbarer `failed`-Retry (`attempts < max_attempts`) steht; terminal ausgeschoepfte Fehler bleiben Audit-Historie. Release Ops muss die claimbaren Faelle vorher bewusst drainen oder aufloesen. Transaktionsgebundene Locks auf Policy und Jobtabelle schliessen die Enqueue-/Claim-Luecke zwischen Drain-Check und Flip. Auch danach bleibt die Policy im Modus `shadow`; alle acht Rules haben `automation_enabled=false`, keinen Preisfaktor und keine Follow-ups.
+Live-Stand vom 20.08.2026: `nt_policy_v2_20260819_cx8_shadow` ist mit dem exakten CX8-Taxonomie-/Classifier-/Prompt-Vertrag aktiv. Der kanonische n8n-v3-Workflow pollt diese Lane. Die Policy bleibt `shadow`; alle acht Regeln haben weiterhin `automation_enabled=false`, ohne Preisfaktor, Follow-up oder sonstige Kundenaktion. Weder Follow-up, WhatsApp, Angebotspreis, Mahnung noch ein anderes operatives Verhalten darf aus CX8 abgeleitet werden. Dieser Absatz ist eine datierte Betriebsnotiz, kein Ersatz fuer die Live-Pruefung vor einem weiteren Rollout.
+
+Die Hauptmigration legte v2 bewusst `active=false` an und liess v1 aktiv. Erst das getrennte Held-Artefakt `supabase/rollouts/held/20260819193419_activate_request_segmentation_phase2_cx8_shadow.sql` durfte nach App- und n8n-v3-Rollout atomar v1 deaktivieren und v2 aktivieren; dieser kontrollierte Flip wurde in Phase 2 ausgefuehrt. Das Artefakt prueft davor das exakte Taxonomie-/Evidence-/Gate-Triple und blockiert, solange noch ein unversionierter Legacy-Job in `pending`, `processing` oder als erneut claimbarer `failed`-Retry (`attempts < max_attempts`) steht; terminal ausgeschoepfte Fehler bleiben Audit-Historie. Release Ops muss die claimbaren Faelle vorher bewusst drainen oder aufloesen. Transaktionsgebundene Locks auf Policy und Jobtabelle schliessen die Enqueue-/Claim-Luecke zwischen Drain-Check und Flip. Auch danach bleibt die Policy im Modus `shadow`; alle acht Rules haben `automation_enabled=false`, keinen Preisfaktor und keine Follow-ups.
 
 ### Primaere CX8-Segmente
 
@@ -102,11 +104,28 @@ Der versionierte Gate-Default lautet:
 - null angenommene Evidence-Provenance-Verstoesse;
 - selbst nach bestandenem technischen Gate weiterhin explizite, zeitlich begrenzte manuelle Aktivierungsfreigabe.
 
-### Rollback
+## Phase 3: blinder Ein-Fall-Gold-Pilot
+
+Phase 3 begann absichtlich mit genau einem historischen NEONTRIP-Request. Der erste eval-only Job wurde vom normalen Scheduler genau einmal natuerlich geclaimt. Dieser eine Versuch endete am 20.08.2026 im alten n8n-Validator vor einer Klassifikation. Danach wurde derselbe Job ueber den kanonischen Cancel-RPC beendet. Sein belegter Endstand lautet exakt: `status=cancelled`, `attempts=1`, `classifications=0`, Master-Input-Hash unveraendert, CX8-Research-Cache `0`, Kundenaktionen `0` und verbleibende pending Historienjobs `0`. Der Fehler wurde nicht durch einen zweiten Versuch auf demselben Job reproduziert.
+
+Der Validator wurde anschliessend als exakter Ein-Feld-n8n-Patch repariert. Draft und aktive Version stimmen auf `80101742-c095-4a69-827f-aeaab6bc71ca` bei Counter `114` ueberein. Danach lief genau ein neuer eval-only Job mit dem dokumentierten ID-Praefix `be96c936…` natuerlich in Execution `5210710` in `3.491s` mit `status=success` durch. Sein Endstand lautet: Job `needs_review`, `attempts=1`, `error=null`, unlocked; Klassifikation `needs_review` mit `segment=null`. Der Master-Input-Hash entspricht weiter der Baseline, CX8-Research-Cache bleibt `0`, Follow-up und Pricing bleiben `false`, und es gab keine Kundenaktion. Dieses Ergebnis belegt den reparierten Validator und die sichere Abstention-Lane, aber noch keinen akzeptierten Segmentvorschlag und kein Gold.
+
+Der kanonische Portalvertrag fuer Gold ist die isolierte Ops-Seite `/ops/customer-records/gold-review`. Der Reviewer erhaelt die exakte Request-ID oder den vollstaendigen Deep-Link unabhaengig ueber das Pilot-Runbook. Ohne Query bietet die Seite ausschliesslich einen exakten Request-ID-Einstieg, keine Kunden- oder Freitextsuche. Die normalen Kundenfall-Ansichten verlinken bewusst nicht kontextuell dorthin und betten das Gold-Steuerelement oder dessen Daten nicht ein, weil der Operator dort unmittelbar zuvor ein operatives oder historisches Segment sehen koennte. Vor dem ersten unveraenderlichen Gold-Write gilt folgende Checkliste:
+
+1. Der Operator prueft ausschliesslich das serverseitig kuratierte Whitelist-Paket aus aktuellen Anfrage-, Kontakt-, Firmen- und First-Party-Feldern sowie eigene externe Evidence ohne Modellhilfe. Die isolierte Seite ruft die allgemeine Kundenakten-API nicht auf; das Ops-Layout mountet dort weder Task-Notifier noch Copilot.
+2. Die GET-Route entfernt `latestClassification` serverseitig, solange fuer den exakten aktuellen Input noch kein Gold existiert. Sie liefert ausserdem keine operativen oder historischen Segment-/S-/Status-/Confidence-/Source-/Taxonomie-Felder. Die fuer die Auswahl zwingend benoetigten aktiven Codes und Labels werden serverseitig aus der kanonischen Registry auf `{code,label}` reduziert; der Blind-Client importiert die breite Registry nicht. GET und POST antworten wegen der autorisierten PII mit `Cache-Control: private, no-store`. Browser-UI oder DevTools duerfen daher weder den v3-Vorschlag noch benachbarte Legacy- oder Operations-Segmentdaten verraten.
+3. Segment, Context-Tags, Organisationsgroesse und Evidence-URLs starten leer; es gibt keine Modell-Vorbefuellung.
+4. Die bekannten NT-8-/NT-9-First-Party-Regeln, Organisationsgroessenregeln, URL-Limits, Reason-Laenge und Stale-Hash-Sperre bleiben unveraendert wirksam. Evidence-URLs muessen externe HTTP(S)-Ziele ohne URL-Zugangsdaten sein; localhost, private/link-local IPv4-Ziele und IP-literal IPv6-Ziele werden nicht gespeichert oder klickbar gemacht.
+5. Der gespeicherte Actor bindet die serverseitig aufgeloeste Ops-Identitaet aus `resolveOpsRequestActor` an den im Portal eingegebenen Operatornamen. Ist die kombinierte Identitaet laenger als 320 Zeichen, wird der Write abgelehnt; keine der beiden Identitaeten wird abgeschnitten. Der rohe Clientname allein ist keine Audit-Identitaet.
+6. Erst nachdem unveraenderliches Gold fuer denselben Input existiert und die v3-Klassifikation `inputHashCurrent=true` hat, darf der Vergleich erscheinen: Modellsegment, Status, Confidence, Reason-Codes, Risk-Flags, Evidence-Provenance, Mapping-Integritaet, Context/Scale und ausschliesslich sichere klickbare HTTP(S)-Evidence-Links. Ein stale Modellergebnis bleibt auch nach Gold ausgeblendet.
+
+`attribution_raw.manual_segment_taxonomy_version = "nt_taxonomy_v2_20260819_cx8"` ist ausschliesslich der beim manuellen Import eingefrorene Retry-Vertragsmarker. Er beweist weder ein CX8-Segment noch Gold oder Modellqualitaet und ist kein Marker fuer den historischen Pilot. Ein Pilotfall darf nicht allein anhand dieses Feldes als korrekt gelabelt oder gate-faehig behandelt werden.
+
+## Rollback
 
 - Vor jeglicher v2-Runtime darf ein exakter Schema-Restore ueber `supabase/rollbacks/20260819183219_request_segmentation_phase2_full_pre_runtime_rollback.sql` nur erfolgen, wenn versionierte Jobs, Klassifikationen, Gold, Master-Authority und Approvals jeweils `0` Rows haben, v1 allein aktiv und v2 inaktiv ist. Das Artefakt enthaelt die exakt am 2026-08-19 live erfassten Phase-1-Funktionsdefinitionen/ACLs und stellt die beiden alten Unique-Constraints wieder her. Der PII-freie Prestate liegt in `supabase/security-backups/request-segmentation-phase2-prechange-20260819.sql`.
 - Nach der ersten v2-Runtime ist nur der nicht-destruktive operative Rollback `supabase/rollbacks/20260819193419_request_segmentation_phase2_operational_rollback.sql` zulaessig. Exakte Reihenfolge: bereits laufende `processing`-v2-Jobs drainen (das SQL bricht sonst fail-closed ab), dann mit diesem SQL atomar v2 inaktiv/v1 aktiv schalten, danach einen Claim mit dem exakten v3-Taxonomie-/Classifier-/Prompt-Triple ausfuehren und das leere Ergebnis `[]` verifizieren; erst danach den n8n-Reverse auf v1 publishen. Pending/failed CX8-Jobs bleiben auditierbar suspendiert; additive Spalten sowie alle v3-/Gold-Auditdaten bleiben erhalten und werden nie geloescht, um alte Unique-Constraints zu erzwingen.
-- Hauptmigration, Held-Aktivierung und beide Rollback-Artefakte werden in diesem Arbeitsschritt nicht live angewendet.
+- Hauptmigration und Held-Aktivierung wurden im Phase-2-Rollout angewendet. Keines der beiden Rollback-Artefakte wurde angewendet; seit der ersten v2-Runtime ist ausschliesslich der nicht-destruktive operative Rollback zulaessig.
 
 ## Warum das so gebaut ist
 

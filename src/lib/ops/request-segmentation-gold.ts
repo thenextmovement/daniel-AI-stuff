@@ -1,8 +1,13 @@
 import {
+  CUSTOMER_SEGMENT_OPTIONS,
   CX8_TAXONOMY_VERSION,
   getCustomerSegmentOption,
   type CustomerSegmentCode,
 } from "@/lib/ops/customer-segments";
+import {
+  safeExternalSegmentationEvidenceUrl,
+  safeSegmentationModelEvidenceLinks,
+} from "@/lib/ops/request-segmentation-evidence-url";
 import { SupabaseRestError, supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -175,6 +180,39 @@ export type RequestSegmentationReviewContext = {
   } | null;
 };
 
+export type RequestSegmentationBlindFacts = {
+  requestId: string;
+  contactName: string | null;
+  company: string | null;
+  email: string | null;
+  emailDomain: string | null;
+  customerType: "privat" | "gewerblich" | "b2b" | null;
+  title: string | null;
+  description: string | null;
+  application: string | null;
+  requestedSize: string | null;
+  colors: string[];
+  deliveryTime: string | null;
+  country: string | null;
+};
+
+export type RequestSegmentationBlindReviewContext = RequestSegmentationReviewContext & {
+  blindReviewFacts: RequestSegmentationBlindFacts;
+};
+
+type RequestSegmentationModelComparison = NonNullable<RequestSegmentationReviewContext["latestClassification"]>;
+
+export type RequestSegmentationBlindReviewPayload = {
+  currentInputHash: RequestSegmentationReviewContext["currentInputHash"];
+  goldEligibility: RequestSegmentationReviewContext["goldEligibility"];
+  latestClassification: (Omit<RequestSegmentationModelComparison, "evidenceJson"> & {
+    evidenceLinks: ReturnType<typeof safeSegmentationModelEvidenceLinks>;
+  }) | null;
+  currentGoldAdjudication: RequestSegmentationReviewContext["currentGoldAdjudication"];
+  blindReviewFacts: RequestSegmentationBlindFacts;
+  goldLabelOptions: Array<{ code: CustomerSegmentCode; label: string }>;
+};
+
 export type RequestSegmentationGoldInput = {
   publicRequestId: string;
   inputHash: string;
@@ -202,7 +240,67 @@ export type RequestSegmentationGoldResult = {
   masterSegmentMutated: false;
 };
 
+export function redactRequestSegmentationModelUntilGold(
+  context: RequestSegmentationReviewContext,
+): RequestSegmentationReviewContext {
+  return {
+    ...context,
+    latestClassification: context.currentGoldAdjudication
+      && context.latestClassification?.inputHashCurrent === true
+      ? context.latestClassification
+      : null,
+  };
+}
+
+export function toRequestSegmentationBlindReviewPayload(
+  context: RequestSegmentationBlindReviewContext,
+): RequestSegmentationBlindReviewPayload {
+  const redacted = redactRequestSegmentationModelUntilGold(context);
+  const latestClassification = redacted.latestClassification
+    ? (() => {
+      const { evidenceJson, ...comparison } = redacted.latestClassification;
+      return {
+        ...comparison,
+        evidenceLinks: safeSegmentationModelEvidenceLinks(evidenceJson),
+      };
+    })()
+    : null;
+  return {
+    currentInputHash: redacted.currentInputHash,
+    goldEligibility: redacted.goldEligibility,
+    latestClassification,
+    currentGoldAdjudication: redacted.currentGoldAdjudication,
+    blindReviewFacts: context.blindReviewFacts,
+    goldLabelOptions: CUSTOMER_SEGMENT_OPTIONS.map(({ segment, label }) => ({
+      code: segment,
+      label,
+    })),
+  };
+}
+
 type MasterRequestIdentity = { id?: unknown; request_id?: unknown };
+type BlindMasterRequestRow = {
+  id?: unknown;
+  request_id?: unknown;
+  customer_id?: unknown;
+  title?: unknown;
+  description?: unknown;
+  size?: unknown;
+  color?: unknown;
+  application?: unknown;
+  delivery_time?: unknown;
+  customer_type?: unknown;
+  country?: unknown;
+};
+type BlindMasterCustomerRow = {
+  id?: unknown;
+  email?: unknown;
+  first_name?: unknown;
+  last_name?: unknown;
+  company?: unknown;
+  company_name?: unknown;
+  name?: unknown;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -220,6 +318,37 @@ function exactUuid(value: unknown) {
 
 function nonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function optionalTrimmedString(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") blindReviewContractError();
+  return value.trim() || null;
+}
+
+function normalizedBlindCustomerType(value: unknown) {
+  const normalized = optionalTrimmedString(value)?.toLowerCase() || null;
+  if (normalized === null || normalized === "privat" || normalized === "gewerblich" || normalized === "b2b") {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizedBlindColors(value: unknown) {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    blindReviewContractError();
+  }
+  return [...new Set(value.map((entry) => entry.trim()).filter(Boolean))];
+}
+
+function emailDomain(value: string | null) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  const separator = normalized.lastIndexOf("@");
+  if (separator <= 0 || separator === normalized.length - 1) return null;
+  const domain = normalized.slice(separator + 1);
+  return domain.includes(" ") ? null : domain;
 }
 
 function finiteNumberOrNull(value: unknown): value is number | null {
@@ -263,6 +392,19 @@ function goldInputError(message: string): never {
   throw new QuoteValidationError(message, [message], 422);
 }
 
+export function combineRequestSegmentationGoldActor(authenticatedActor: string, operatorName: string) {
+  const authenticated = authenticatedActor.trim();
+  const operator = operatorName.trim();
+  if (!authenticated || operator.length < 3 || operator.length > 160) {
+    goldInputError("Authentifizierte Ops-Identitaet und Bearbeitername sind fuer Gold erforderlich.");
+  }
+  const combined = `${authenticated}:${operator}`;
+  if (combined.length > 320) {
+    goldInputError("Authentifizierte Ops-Identitaet und Bearbeitername duerfen zusammen maximal 320 Zeichen lang sein.");
+  }
+  return combined;
+}
+
 function normalizeContextTags(value: string[] | null | undefined) {
   const normalized = [...new Set((value || []).map((tag) => tag.trim()).filter(Boolean))].sort();
   if (normalized.length > 10) goldInputError("Maximal 10 Kontext-Tags sind fuer Gold zulaessig.");
@@ -284,18 +426,16 @@ function normalizedOrganizationScale(value: string | null | undefined) {
 }
 
 function normalizeEvidenceUrls(value: string[] | null | undefined) {
-  const normalized = [...new Set((value || []).map((url) => url.trim()).filter(Boolean))].sort();
-  if (normalized.length > 12) goldInputError("Maximal 12 Evidence-URLs sind fuer Gold zulaessig.");
-  for (const entry of normalized) {
+  const candidates = [...new Set((value || []).map((url) => url.trim()).filter(Boolean))].sort();
+  if (candidates.length > 12) goldInputError("Maximal 12 Evidence-URLs sind fuer Gold zulaessig.");
+  const normalized: string[] = [];
+  for (const entry of candidates) {
     if (entry.length > 2048) goldInputError("Eine Evidence-URL darf maximal 2048 Zeichen lang sein.");
-    try {
-      const parsed = new URL(entry);
-      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("invalid_protocol");
-    } catch {
-      goldInputError("Evidence-URLs muessen vollstaendige HTTP- oder HTTPS-Links sein.");
-    }
+    const safeUrl = safeExternalSegmentationEvidenceUrl(entry);
+    if (!safeUrl) goldInputError("Evidence-URLs muessen externe HTTP- oder HTTPS-Links ohne Zugangsdaten sein.");
+    normalized.push(safeUrl);
   }
-  return normalized;
+  return [...new Set(normalized)].sort();
 }
 
 function validTimestamp(value: unknown): value is string {
@@ -337,6 +477,66 @@ async function resolveMasterRequestIdentity(publicRequestId: string) {
   const resolvedPublicRequestId = nonEmptyString(rows[0]?.request_id);
   if (!masterRequestId || resolvedPublicRequestId !== normalized) reviewContractError(rows[0]);
   return { masterRequestId, publicRequestId: resolvedPublicRequestId };
+}
+
+function blindReviewContractError(): never {
+  throw new SupabaseRestError(
+    "Die kuratierten Fakten fuer das blinde Gold-Review entsprechen nicht dem erwarteten DB-Vertrag.",
+    502,
+    { code: "blind_review_contract_invalid" },
+  );
+}
+
+async function loadRequestSegmentationBlindFacts(
+  identity: { masterRequestId: string; publicRequestId: string },
+  expectedCustomerType: RequestSegmentationReviewContext["goldEligibility"]["normalizedCustomerType"],
+) {
+  const requestRows = await supabaseRequest<BlindMasterRequestRow[]>("master_requests", undefined, {
+    select: "id,request_id,customer_id,title,description,size,color,application,delivery_time,customer_type,country",
+    id: `eq.${identity.masterRequestId}`,
+    limit: 2,
+  });
+  if (requestRows.length !== 1) blindReviewContractError();
+  const requestRow = requestRows[0];
+  const customerId = exactUuid(requestRow?.customer_id);
+  if (
+    exactUuid(requestRow?.id) !== identity.masterRequestId
+    || nonEmptyString(requestRow?.request_id) !== identity.publicRequestId
+    || !customerId
+  ) blindReviewContractError();
+
+  const customerRows = await supabaseRequest<BlindMasterCustomerRow[]>("master_customers", undefined, {
+    select: "id,email,first_name,last_name,company,company_name,name",
+    id: `eq.${customerId}`,
+    limit: 2,
+  });
+  if (customerRows.length !== 1) blindReviewContractError();
+  const customerRow = customerRows[0];
+  if (exactUuid(customerRow?.id) !== customerId) blindReviewContractError();
+
+  const firstName = optionalTrimmedString(customerRow.first_name);
+  const lastName = optionalTrimmedString(customerRow.last_name);
+  const fallbackName = optionalTrimmedString(customerRow.name);
+  const email = optionalTrimmedString(customerRow.email);
+  const customerType = normalizedBlindCustomerType(requestRow.customer_type);
+  if (customerType !== expectedCustomerType) blindReviewContractError();
+
+  return {
+    requestId: identity.publicRequestId,
+    contactName: [firstName, lastName].filter(Boolean).join(" ") || fallbackName,
+    company: optionalTrimmedString(customerRow.company)
+      || optionalTrimmedString(customerRow.company_name),
+    email,
+    emailDomain: emailDomain(email),
+    customerType,
+    title: optionalTrimmedString(requestRow.title),
+    description: optionalTrimmedString(requestRow.description),
+    application: optionalTrimmedString(requestRow.application),
+    requestedSize: optionalTrimmedString(requestRow.size),
+    colors: normalizedBlindColors(requestRow.color),
+    deliveryTime: optionalTrimmedString(requestRow.delivery_time),
+    country: optionalTrimmedString(requestRow.country),
+  } satisfies RequestSegmentationBlindFacts;
 }
 
 export function validateRequestSegmentationReviewContext(
@@ -489,12 +689,42 @@ export function validateRequestSegmentationReviewContext(
   };
 }
 
-export async function getRequestSegmentationReviewContext(publicRequestId: string) {
-  const identity = await resolveMasterRequestIdentity(publicRequestId);
+async function getRequestSegmentationReviewContextForIdentity(
+  identity: { masterRequestId: string; publicRequestId: string },
+) {
   const result = await supabaseRpc<unknown>("neontrip_get_request_segmentation_review_context", {
     p_request_id: identity.masterRequestId,
   });
   return validateRequestSegmentationReviewContext(result, identity);
+}
+
+export async function getRequestSegmentationReviewContext(publicRequestId: string) {
+  const identity = await resolveMasterRequestIdentity(publicRequestId);
+  return getRequestSegmentationReviewContextForIdentity(identity);
+}
+
+export async function getRequestSegmentationBlindReviewContext(publicRequestId: string) {
+  const identity = await resolveMasterRequestIdentity(publicRequestId);
+  const contextBeforeFacts = await getRequestSegmentationReviewContextForIdentity(identity);
+  const blindReviewFacts = await loadRequestSegmentationBlindFacts(
+    identity,
+    contextBeforeFacts.goldEligibility.normalizedCustomerType,
+  );
+  const contextAfterFacts = await getRequestSegmentationReviewContextForIdentity(identity);
+  if (contextBeforeFacts.currentInputHash !== contextAfterFacts.currentInputHash) {
+    throw new QuoteValidationError(
+      "Die Anfrage hat sich waehrend des blinden Reviews geaendert. Bitte Review neu laden.",
+      ["Inkonsistente Fakten wurden nicht an den Browser ausgegeben."],
+      409,
+    );
+  }
+  if (blindReviewFacts.customerType !== contextAfterFacts.goldEligibility.normalizedCustomerType) {
+    blindReviewContractError();
+  }
+  return {
+    ...contextAfterFacts,
+    blindReviewFacts,
+  } satisfies RequestSegmentationBlindReviewContext;
 }
 
 function adjudicationContractError(result: unknown): never {
