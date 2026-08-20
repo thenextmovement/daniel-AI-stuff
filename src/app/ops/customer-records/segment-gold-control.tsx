@@ -125,7 +125,6 @@ export function isGoldUiSubmissionReady(input: {
   selectedOptionReady: boolean;
   evidenceReady: boolean;
   organizationScaleReady: boolean;
-  firstPartyEligibilityReady: boolean;
   actorReady: boolean;
   reasonReady: boolean;
   confirmed: boolean;
@@ -137,7 +136,6 @@ export function isGoldUiSubmissionReady(input: {
     && input.selectedOptionReady
     && input.evidenceReady
     && input.organizationScaleReady
-    && input.firstPartyEligibilityReady
     && input.actorReady
     && input.reasonReady
     && input.confirmed
@@ -310,20 +308,19 @@ export function SegmentGoldAdjudicationControl({
         : selectedOption.code === "NT-6"
           ? organizationScale === "enterprise"
           : true;
-  const firstPartyEligibilityReady = !selectedOption
-    ? false
-    : selectedOption.code === "NT-8"
-      ? context?.goldEligibility.nt8FirstPartyEligible === true
-      : selectedOption.code === "NT-9"
-        ? context?.goldEligibility.nt9FirstPartyEligible === true
-        : true;
+  const customerTypeDisagreement = Boolean(
+    selectedOption
+    && (
+      (selectedOption.code === "NT-8" && context?.goldEligibility.nt8FirstPartyEligible !== true)
+      || (selectedOption.code === "NT-9" && context?.goldEligibility.nt9FirstPartyEligible !== true)
+    ),
+  );
   const canSubmit = isGoldUiSubmissionReady({
     context,
     currentGold,
     selectedOptionReady: Boolean(selectedOption),
     evidenceReady,
     organizationScaleReady,
-    firstPartyEligibilityReady,
     actorReady,
     reasonReady: reason.trim().length >= 20 && reason.trim().length <= 4000,
     confirmed,
@@ -365,7 +362,7 @@ export function SegmentGoldAdjudicationControl({
                     ["Firma", context.blindReviewFacts.company],
                     ["E-Mail", context.blindReviewFacts.email],
                     ["E-Mail-Domain", context.blindReviewFacts.emailDomain],
-                    ["First-Party-Kundentyp", context.blindReviewFacts.customerType],
+                    ["Gespeicherter DB-Kundentyp", context.blindReviewFacts.customerType],
                     ["Anfragetitel", context.blindReviewFacts.title],
                     ["Anwendung", context.blindReviewFacts.application],
                     ["Wunschgröße", context.blindReviewFacts.requestedSize],
@@ -468,11 +465,10 @@ export function SegmentGoldAdjudicationControl({
                           <option key={option.code} value={option.code}>{option.code} · {option.label}</option>
                         ))}
                       </select>
-                      {selectedOption?.code === "NT-8" && !context.goldEligibility.nt8FirstPartyEligible ? (
-                        <span className="mt-1 block text-[11px] text-amber-200">NT-8 ist gesperrt: Der gelockte DB-Kundentyp ist nicht Privat.</span>
-                      ) : null}
-                      {selectedOption?.code === "NT-9" && !context.goldEligibility.nt9FirstPartyEligible ? (
-                        <span className="mt-1 block text-[11px] text-amber-200">NT-9 ist gesperrt: Der gelockte DB-Kundentyp ist nicht gewerblich/B2B.</span>
+                      {customerTypeDisagreement ? (
+                        <span className="mt-1 block text-[11px] leading-4 text-amber-200">
+                          Abweichung zum gespeicherten DB-Kundentyp. Das ist für eine menschliche Gold-Bewertung zulässig, muss aber in der Begründung fachlich erklärt werden. Der Kundendatensatz wird dadurch nicht geändert.
+                        </span>
                       ) : null}
                     </label>
                     <label className="text-xs font-semibold text-white/75">
@@ -527,7 +523,7 @@ export function SegmentGoldAdjudicationControl({
                       {selectedOption?.code === "NT-8"
                         ? !evidenceUrlCountReady
                           ? "Maximal 12 Evidence-URLs sind zulässig."
-                          : evidenceUrlsValid ? "Für Privatkunde nur bei DB-bestätigter Privat-Auswahl optional; sonst blockiert die DB. Eingetragene URLs müssen gültig und maximal 2048 Zeichen lang sein." : "Mindestens eine URL ist ungültig oder länger als 2048 Zeichen."
+                          : evidenceUrlsValid ? "Für einen menschlich geprüften Privatkunden optional. Eine Abweichung zum DB-Kundentyp muss in der Begründung erklärt werden; der Kundendatensatz bleibt unverändert. Eingetragene URLs müssen gültig und maximal 2048 Zeichen lang sein." : "Mindestens eine URL ist ungültig oder länger als 2048 Zeichen."
                         : !parsedEvidenceUrls.length
                           ? "Für jedes Business-Gold ist mindestens eine gültige Evidence-URL Pflicht."
                           : !evidenceUrlCountReady

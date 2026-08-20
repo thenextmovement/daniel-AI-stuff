@@ -1,6 +1,6 @@
 # Request Segmentation
 
-Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; Phase 4 stellt einen strikt blinden Vier-Fall-Prozesspilot bereit; den tatsaechlichen Gold-, Policy- und n8n-Live-Stand immer neu verifizieren)
+Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; Phase 4 stellt einen strikt blinden Vier-Fall-Prozesspilot bereit; menschliches Gold darf einen gespeicherten Kundentyp mit Begruendung korrigieren, ohne den Kundendatensatz zu mutieren; den tatsaechlichen Gold-, Policy- und n8n-Live-Stand immer neu verifizieren)
 
 Diese Doku beschreibt, wie neue Kundenanfragen bei NEONTRIP segmentiert werden, wo das Ergebnis sichtbar ist und wie ein Segment manuell bestaetigt oder korrigiert wird.
 
@@ -86,7 +86,7 @@ Waehren des gestuften Rollouts bleibt die Manual-RPC-Signatur unveraendert. Der 
 
 Nur dann validiert der RPC gegen die acht CX8-Definitionen und setzt `master_requests.segment_taxonomy_version` atomar. Markerlose alte Clients duerfen nur solange v1 aktiv ist den bisherigen 18-Code-Vertrag nutzen. Nach dem Flip schlagen markerlose Writes fail-closed fehl. Historische manuelle Rows ohne CX8-Taxonomie bleiben Anzeige, aber autorisieren keine v2-Automation, bis ein Mensch sie explizit erneut bestaetigt.
 
-Ein Manual-Override erzeugt nie Gold. Gold entsteht ausschliesslich ueber `neontrip_adjudicate_request_segmentation_gold` fuer den aktuell gelockten Request-/Customer-Input-Hash. Es ist insert-once: identischer Retry ist idempotent, abweichender Retry ist ein Konflikt; UPDATE und DELETE sind gesperrt. Non-`NT-8` braucht mindestens eine gueltige externe Evidence-URL. Fuer gate-faehiges Gold gelten zusaetzlich: `NT-8` immer `privat` und Scale `NULL`, `NT-9` immer `gewerblich|b2b`, `NT-5` Scale non-null, `NT-6` Scale exakt `enterprise`. Kanonische Limits: Actor 3..320, Reason 20..4000, hoechstens zehn Context-Tags und zwoelf Evidence-URLs mit je maximal 2048 Zeichen.
+Ein Manual-Override erzeugt nie Gold. Gold entsteht ausschliesslich ueber `neontrip_adjudicate_request_segmentation_gold` fuer den aktuell gelockten Request-/Customer-Input-Hash. Es ist insert-once: identischer Retry ist idempotent, abweichender Retry ist ein Konflikt; UPDATE und DELETE sind gesperrt. Non-`NT-8` braucht mindestens eine gueltige externe Evidence-URL. Fuer gate-faehiges Gold gelten zusaetzlich: `NT-8` hat Scale `NULL`, `NT-5` Scale non-null und `NT-6` Scale exakt `enterprise`. Der gespeicherte `customer_type` bleibt sichtbare Evidence, ist aber kein Vetorecht gegen eine abweichende menschliche Gold-Adjudikation. Eine solche Abweichung muss fachlich begruendet werden und aendert weder `customer_type` noch das operative Segment. Die strengeren First-Party-Regeln fuer KI-Akzeptanz und Automation bleiben davon unberuehrt. Kanonische Limits: Actor 3..320, Reason 20..4000, hoechstens zehn Context-Tags und zwoelf Evidence-URLs mit je maximal 2048 Zeichen.
 
 Der service-role-only Review-Vertrag `neontrip_get_request_segmentation_review_context` liefert den gelockten aktuellen Hash, nur den exakten CX8-v3-Vorschlag, das aktuelle immutable Gold und `gold_eligibility`; er mischt keine globale latest-v1-Klassifikation hinein.
 
@@ -115,7 +115,7 @@ Der kanonische Portalvertrag fuer Gold ist die isolierte Ops-Seite `/ops/custome
 1. Der Operator prueft ausschliesslich das serverseitig kuratierte Whitelist-Paket aus aktuellen Anfrage-, Kontakt-, Firmen- und First-Party-Feldern sowie eigene externe Evidence ohne Modellhilfe. Die isolierte Seite ruft die allgemeine Kundenakten-API nicht auf; das Ops-Layout mountet dort weder Task-Notifier noch Copilot.
 2. Die GET-Route entfernt `latestClassification` serverseitig, solange fuer den exakten aktuellen Input noch kein Gold existiert. Sie liefert ausserdem keine operativen oder historischen Segment-/S-/Status-/Confidence-/Source-/Taxonomie-Felder. Die fuer die Auswahl zwingend benoetigten aktiven Codes und Labels werden serverseitig aus der kanonischen Registry auf `{code,label}` reduziert; der Blind-Client importiert die breite Registry nicht. GET und POST antworten wegen der autorisierten PII mit `Cache-Control: private, no-store`. Browser-UI oder DevTools duerfen daher weder den v3-Vorschlag noch benachbarte Legacy- oder Operations-Segmentdaten verraten.
 3. Segment, Context-Tags, Organisationsgroesse und Evidence-URLs starten leer; es gibt keine Modell-Vorbefuellung.
-4. Die bekannten NT-8-/NT-9-First-Party-Regeln, Organisationsgroessenregeln, URL-Limits, Reason-Laenge und Stale-Hash-Sperre bleiben unveraendert wirksam. Evidence-URLs muessen externe HTTP(S)-Ziele ohne URL-Zugangsdaten sein; localhost, private/link-local IPv4-Ziele und IP-literal IPv6-Ziele werden nicht gespeichert oder klickbar gemacht.
+4. Der gespeicherte DB-Kundentyp bleibt im Blindpaket sichtbar. Passt er nicht zur menschlichen `NT-8`-/`NT-9`-Auswahl, zeigt das Portal eine deutliche Warnung und die Begruendung muss die fachliche Abweichung erklaeren; die Auswahl bleibt zulaessig. Organisationsgroessenregeln, URL-Limits, Reason-Laenge und Stale-Hash-Sperre bleiben unveraendert wirksam. Evidence-URLs muessen externe HTTP(S)-Ziele ohne URL-Zugangsdaten sein; localhost, private/link-local IPv4-Ziele und IP-literal IPv6-Ziele werden nicht gespeichert oder klickbar gemacht.
 5. Der gespeicherte Actor bindet die serverseitig aufgeloeste Ops-Identitaet aus `resolveOpsRequestActor` an den im Portal eingegebenen Operatornamen. Ist die kombinierte Identitaet laenger als 320 Zeichen, wird der Write abgelehnt; keine der beiden Identitaeten wird abgeschnitten. Der rohe Clientname allein ist keine Audit-Identitaet.
 6. Erst nachdem unveraenderliches Gold fuer denselben Input existiert und die v3-Klassifikation `inputHashCurrent=true` hat, darf der Vergleich erscheinen: Modellsegment, Status, Confidence, Reason-Codes, Risk-Flags, Evidence-Provenance, Mapping-Integritaet, Context/Scale und ausschliesslich sichere klickbare HTTP(S)-Evidence-Links. Ein stale Modellergebnis bleibt auch nach Gold ausgeblendet.
 
@@ -184,6 +184,17 @@ Verbindlicher Ablauf:
    Gold-Labels mit den exakten current-hash-v3-Ergebnissen vergleichen. Der
    Reviewer sieht bis dahin keinen fallbezogenen Modellvergleich.
 
+Bekannter Intake-Fund waehrend Fall zwei: Die produktive Landingpage erhob
+keinen Kundentyp, waehrend ihr Intake-Workflow dennoch pauschal `B2B` schrieb.
+Dieser Wert ist keine First-Party-Aussage. Er darf weder durch eine
+Datenkorrektur am einzelnen Pilotfall in `privat` umgeschrieben noch durch ein
+absichtlich falsches Gold-Segment umgangen werden. Kennt der Reviewer die
+private Nutzung fachlich, darf er `NT-8` waehlen und die Abweichung begruenden;
+das immutable Gold bleibt reine Evaluation. Fuer neue Landingpage-Anfragen muss
+der synthetische B2B-Default entfallen; ohne tatsaechlich erhobene Auswahl wird
+der Kundentyp neutral gespeichert und die KI bleibt bei fehlender positiver
+Evidence fail-closed.
+
 Phase 4 fuehrt keinen weiteren historischen Backfill aus. Jeder echte
 Gold-Write bleibt insert-once, mutiert niemals `master_requests` und darf nur
 den bereits kanonischen evaluation-only Enqueue ausloesen. Die aktive Policy
@@ -194,6 +205,7 @@ Sampling-/Assignment-Vertrag; der Vier-Fall-Pilot ist kein Ersatz dafuer.
 
 ## Rollback
 
+- Die Gold-only-Kundentyp-Reparatur wird mit `supabase/rollbacks/20260820093126_allow_human_gold_customer_type_disagreement_rollback.sql` zurueckgenommen. Sie stellt ausschliesslich den vorherigen First-Party-Veto-Body und dieselben Function-ACLs wieder her; bestehendes immutable Gold wird weder geloescht noch geaendert.
 - Vor jeglicher v2-Runtime darf ein exakter Schema-Restore ueber `supabase/rollbacks/20260819183219_request_segmentation_phase2_full_pre_runtime_rollback.sql` nur erfolgen, wenn versionierte Jobs, Klassifikationen, Gold, Master-Authority und Approvals jeweils `0` Rows haben, v1 allein aktiv und v2 inaktiv ist. Das Artefakt enthaelt die exakt am 2026-08-19 live erfassten Phase-1-Funktionsdefinitionen/ACLs und stellt die beiden alten Unique-Constraints wieder her. Der PII-freie Prestate liegt in `supabase/security-backups/request-segmentation-phase2-prechange-20260819.sql`.
 - Nach der ersten v2-Runtime ist nur der nicht-destruktive operative Rollback `supabase/rollbacks/20260819193419_request_segmentation_phase2_operational_rollback.sql` zulaessig. Exakte Reihenfolge: bereits laufende `processing`-v2-Jobs drainen (das SQL bricht sonst fail-closed ab), dann mit diesem SQL atomar v2 inaktiv/v1 aktiv schalten, danach einen Claim mit dem exakten v3-Taxonomie-/Classifier-/Prompt-Triple ausfuehren und das leere Ergebnis `[]` verifizieren; erst danach den n8n-Reverse auf v1 publishen. Pending/failed CX8-Jobs bleiben auditierbar suspendiert; additive Spalten sowie alle v3-/Gold-Auditdaten bleiben erhalten und werden nie geloescht, um alte Unique-Constraints zu erzwingen.
 - Hauptmigration und Held-Aktivierung wurden im Phase-2-Rollout angewendet. Keines der beiden Rollback-Artefakte wurde angewendet; seit der ersten v2-Runtime ist ausschliesslich der nicht-destruktive operative Rollback zulaessig.

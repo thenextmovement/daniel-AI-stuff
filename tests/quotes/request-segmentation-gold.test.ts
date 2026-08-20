@@ -588,6 +588,9 @@ test("Gold control is reachable only through the isolated authenticated blind-re
   assert.match(opsGlobalOverlays, /if \([\s\S]{0,180}BLIND_GOLD_REVIEW_PATH[\s\S]{0,180}return null/);
   assert.match(goldUi, /const \[expanded, setExpanded\] = useState\(startExpanded\)/);
   assert.match(goldUi, /context\?\.latestClassification\?\.inputHashCurrent === true/);
+  assert.match(goldUi, /Abweichung zum gespeicherten DB-Kundentyp/);
+  assert.match(goldUi, /Das ist für eine menschliche Gold-Bewertung zulässig/);
+  assert.doesNotMatch(goldUi, /NT-8 ist gesperrt|NT-9 ist gesperrt/);
   assert.match(goldUi, /referrerPolicy="no-referrer"/);
   assert.match(goldUi, /pilotMode \? "&mode=pilot-review" : ""/);
   assert.match(goldUi, /pilotMode \? \{ pilotVersion \} : \{\}/);
@@ -627,6 +630,9 @@ test("Phase-4 runbook keeps the four-case pilot blind, serial and non-activating
   assert.match(documentation, /keinen weiteren historischen Backfill/);
   assert.match(documentation, /Follow-up, Pricing, WhatsApp, E-Mail, Mahnung/);
   assert.match(documentation, /Vier-Fall-Pilot ist kein Ersatz/);
+  assert.match(documentation, /Intake-Workflow dennoch pauschal `B2B` schrieb/);
+  assert.match(documentation, /darf er `NT-8` waehlen und die Abweichung begruenden/);
+  assert.match(documentation, /aendert weder `customer_type` noch das operative Segment/);
   assert.match(evaluationEnqueue, /updated_at = now\(\)/);
   assert.doesNotMatch(evaluationEnqueue, /created_at\s*=/);
 });
@@ -650,7 +656,6 @@ test("Gold UI permits fully manual adjudication for null or stale latest classif
     selectedOptionReady: true,
     evidenceReady: true,
     organizationScaleReady: true,
-    firstPartyEligibilityReady: true,
     actorReady: true,
     reasonReady: true,
     confirmed: true,
@@ -917,33 +922,6 @@ test("stale review hashes and invalid Gold input fail before the adjudication RP
   });
   assert.equal(adjudicationCalls, 0);
 
-  await withSupabaseFetch((async (input) => {
-    const url = String(input);
-    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
-    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) {
-      return Response.json(reviewResult({
-        gold_eligibility: {
-          ...reviewResult().gold_eligibility,
-          normalized_customer_type: "privat",
-          nt8_first_party_eligible: true,
-          nt9_first_party_eligible: false,
-        },
-      }));
-    }
-    if (url.includes("/rpc/neontrip_adjudicate_request_segmentation_gold")) adjudicationCalls += 1;
-    return Response.json({});
-  }) as typeof fetch, async () => {
-    await assert.rejects(adjudicateRequestSegmentationGold({
-      publicRequestId,
-      inputHash,
-      segment: "NT-9",
-      actor: "Daniel",
-      reason: "Diese direkte Business-Einordnung wurde vollständig geprüft.",
-      evidenceUrls: ["https://example.org/about"],
-    }), /gewerblichem oder B2B-Kundentyp/);
-  });
-  assert.equal(adjudicationCalls, 0);
-
   let reads = 0;
   await withSupabaseFetch((async () => {
     reads += 1;
@@ -974,24 +952,70 @@ test("stale review hashes and invalid Gold input fail before the adjudication RP
   assert.equal(reads, 0);
 });
 
-test("Gold eligibility blocks incompatible customer type and organization scale before adjudication", async () => {
+test("Human Gold may disagree with stored customer type while deterministic scale rules stay enforced", async () => {
   let adjudicationCalls = 0;
   await withSupabaseFetch((async (input) => {
     const url = String(input);
     if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
     if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) return Response.json(reviewResult());
-    if (url.includes("/rpc/neontrip_adjudicate_request_segmentation_gold")) adjudicationCalls += 1;
+    if (url.includes("/rpc/neontrip_adjudicate_request_segmentation_gold")) {
+      adjudicationCalls += 1;
+      return Response.json(adjudicationResult({
+        labeled_segment: "NT-8",
+        labeled_s_kategorie: "S3",
+        context_tags: [],
+        organization_scale: null,
+      }));
+    }
     return Response.json({});
   }) as typeof fetch, async () => {
-    await assert.rejects(adjudicateRequestSegmentationGold({
+    const result = await adjudicateRequestSegmentationGold({
       publicRequestId,
       inputHash,
       segment: "NT-8",
       actor: "Daniel",
       reason: "Diese private Einordnung wurde fachlich vollständig geprüft.",
-    }), /DB-bestaetigtem Kundentyp Privat/);
+    });
+    assert.equal(result.created, true);
   });
-  assert.equal(adjudicationCalls, 0);
+  assert.equal(adjudicationCalls, 1);
+
+  let nt9Calls = 0;
+  await withSupabaseFetch((async (input) => {
+    const url = String(input);
+    if (url.includes("/master_requests?")) return Response.json([{ id: masterRequestId, request_id: publicRequestId }]);
+    if (url.includes("/rpc/neontrip_get_request_segmentation_review_context")) {
+      return Response.json(reviewResult({
+        gold_eligibility: {
+          ...reviewResult().gold_eligibility,
+          normalized_customer_type: "privat",
+          nt8_first_party_eligible: true,
+          nt9_first_party_eligible: false,
+        },
+      }));
+    }
+    if (url.includes("/rpc/neontrip_adjudicate_request_segmentation_gold")) {
+      nt9Calls += 1;
+      return Response.json(adjudicationResult({
+        labeled_segment: "NT-9",
+        labeled_s_kategorie: "S3",
+        context_tags: [],
+        organization_scale: null,
+      }));
+    }
+    return Response.json({});
+  }) as typeof fetch, async () => {
+    const result = await adjudicateRequestSegmentationGold({
+      publicRequestId,
+      inputHash,
+      segment: "NT-9",
+      actor: "Daniel",
+      reason: "Diese direkte Business-Einordnung wurde vollständig geprüft.",
+      evidenceUrls: ["https://example.org/about"],
+    });
+    assert.equal(result.created, true);
+  });
+  assert.equal(nt9Calls, 1);
 
   let reads = 0;
   await withSupabaseFetch((async () => {

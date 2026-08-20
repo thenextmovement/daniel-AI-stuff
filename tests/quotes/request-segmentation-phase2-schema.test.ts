@@ -23,16 +23,30 @@ const fullRollbackPath = resolve(
   process.cwd(),
   "supabase/rollbacks/20260819183219_request_segmentation_phase2_full_pre_runtime_rollback.sql",
 );
+const humanGoldDisagreementPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260820093126_allow_human_gold_customer_type_disagreement.sql",
+);
+const humanGoldDisagreementRollbackPath = resolve(
+  process.cwd(),
+  "supabase/rollbacks/20260820093126_allow_human_gold_customer_type_disagreement_rollback.sql",
+);
 
 const main = readFileSync(mainPath, "utf8");
 const activation = readFileSync(activationPath, "utf8");
+const humanGoldDisagreement = readFileSync(humanGoldDisagreementPath, "utf8");
+const humanGoldDisagreementRollback = readFileSync(humanGoldDisagreementRollbackPath, "utf8");
+
+function functionBodyFrom(source: string, name: string) {
+  const start = source.search(new RegExp(`create(?: or replace)? function public\\.${name}\\b`, "i"));
+  assert.ok(start >= 0, `${name} missing`);
+  const end = source.indexOf("$function$;", start);
+  assert.ok(end > start, `${name} body terminator missing`);
+  return source.slice(start, end + "$function$;".length);
+}
 
 function functionBody(name: string) {
-  const start = main.search(new RegExp(`create(?: or replace)? function public\\.${name}\\b`, "i"));
-  assert.ok(start >= 0, `${name} missing`);
-  const end = main.indexOf("$function$;", start);
-  assert.ok(end > start, `${name} body terminator missing`);
-  return main.slice(start, end + "$function$;".length);
+  return functionBodyFrom(main, name);
 }
 
 test("main migration is atomic and stages CX8 inactive", () => {
@@ -168,16 +182,15 @@ test("normal and evaluation enqueue metadata cannot retain the wrong projection 
 
 test("Gold is locked, insert-once, evidence-bound and taxonomy-consistent", () => {
   const lock = functionBody("neontrip_lock_request_segmentation_input_hash");
-  const gold = functionBody("neontrip_adjudicate_request_segmentation_gold");
+  const gold = functionBodyFrom(humanGoldDisagreement, "neontrip_adjudicate_request_segmentation_gold");
   assert.match(lock, /from public\.master_requests[\s\S]*?for share[\s\S]*?from public\.master_customers[\s\S]*?for share[\s\S]*?neontrip_compute_request_segment_input_hash/i);
   assert.match(gold, /neontrip_lock_request_segmentation_input_hash\(p_request_id\)/i);
   assert.match(gold, /on conflict \(request_id, input_hash, taxonomy_version\) do nothing/i);
   assert.match(gold, /gold_adjudication_conflict_requires_explicit_superseding_revision/i);
   assert.match(main, /before update or delete on public\.request_segmentation_gold_adjudications/i);
   assert.match(gold, /cardinality\(v_evidence_urls\) = 0 and p_segment <> 'NT-8'/i);
-  assert.match(gold, /p_segment = 'NT-8' and v_customer_type <> 'privat'/i);
   assert.match(gold, /p_segment = 'NT-8' and p_organization_scale is not null/i);
-  assert.match(gold, /p_segment = 'NT-9' and v_customer_type not in \('gewerblich', 'b2b'\)/i);
+  assert.doesNotMatch(gold, /\bv_customer_type\b|gold_private_first_party_evidence_required|gold_direct_business_first_party_evidence_required/i);
   assert.match(gold, /p_segment = 'NT-5' and p_organization_scale is null/i);
   assert.match(gold, /p_segment = 'NT-6' and p_organization_scale is distinct from 'enterprise'/i);
   assert.match(gold, /length\(v_actor\) > 320[\s\S]*?length\(v_reason\) > 4000/i);
@@ -186,6 +199,13 @@ test("Gold is locked, insert-once, evidence-bound and taxonomy-consistent", () =
   assert.match(gold, /length\(btrim\(url\)\) > 2048[\s\S]*?cardinality\(v_evidence_urls\) > 12/i);
   assert.match(main, /request_segmentation_gold_adjudications_context_tags_check[\s\S]*?is_canonical\(context_tags, 10, 80\)/i);
   assert.match(main, /request_segmentation_gold_adjudications_evidence_urls_check[\s\S]*?is_canonical\(evidence_urls, 12, 2048\)/i);
+  assert.match(humanGoldDisagreement, /^--[\s\S]*?\nbegin;[\s\S]*\ncommit;\s*$/i);
+  assert.match(humanGoldDisagreement, /revoke all on function public\.neontrip_adjudicate_request_segmentation_gold[\s\S]*?from public, anon, authenticated[\s\S]*?grant execute[\s\S]*?to service_role/i);
+  assert.doesNotMatch(humanGoldDisagreement, /update\s+public\.master_requests|segment_policy_rules|request_segmentation_v2_production_readiness/i);
+  assert.match(humanGoldDisagreementRollback, /^--[\s\S]*?\nbegin;[\s\S]*\ncommit;\s*$/i);
+  assert.match(humanGoldDisagreementRollback, /v_customer_type text[\s\S]*?gold_private_first_party_evidence_required[\s\S]*?gold_direct_business_first_party_evidence_required/i);
+  assert.match(humanGoldDisagreementRollback, /revoke all on function public\.neontrip_adjudicate_request_segmentation_gold[\s\S]*?from public, anon, authenticated[\s\S]*?grant execute[\s\S]*?to service_role/i);
+  assert.doesNotMatch(humanGoldDisagreementRollback, /delete\s+from\s+public\.request_segmentation_gold_adjudications|update\s+public\.master_requests/i);
 });
 
 test("quality metrics use exact version/hash joins and true precision, recall and coverage", () => {

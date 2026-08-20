@@ -961,13 +961,6 @@ export async function adjudicateRequestSegmentationGold(input: RequestSegmentati
       409,
     );
   }
-  if (option.segment === "NT-8" && !reviewContext.goldEligibility.nt8FirstPartyEligible) {
-    goldInputError("NT-8 Gold ist nur bei DB-bestaetigtem Kundentyp Privat zulaessig.");
-  }
-  if (option.segment === "NT-9" && !reviewContext.goldEligibility.nt9FirstPartyEligible) {
-    goldInputError("NT-9 Gold ist nur bei DB-bestaetigtem gewerblichem oder B2B-Kundentyp zulaessig.");
-  }
-
   try {
     const result = await supabaseRpc<unknown>("neontrip_adjudicate_request_segmentation_gold", {
       p_request_id: reviewContext.masterRequestId,
@@ -995,12 +988,6 @@ export async function adjudicateRequestSegmentationGold(input: RequestSegmentati
       }
       if (details.includes("gold_adjudication_conflict_requires_explicit_superseding_revision")) {
         throw new QuoteValidationError("Fuer diesen Input existiert bereits abweichendes, unveraenderliches Gold.", [], 409);
-      }
-      if (details.includes("gold_private_first_party_evidence_required")) {
-        throw new QuoteValidationError("NT-8 Gold wurde gesperrt: Der aktuelle DB-Kundentyp ist nicht Privat.", [], 409);
-      }
-      if (details.includes("gold_direct_business_first_party_evidence_required")) {
-        throw new QuoteValidationError("NT-9 Gold wurde gesperrt: Der aktuelle DB-Kundentyp ist nicht gewerblich/B2B.", [], 409);
       }
       if (details.includes("gold_private_organization_scale_must_be_null")) {
         throw new QuoteValidationError("NT-8 Gold erfordert eine leere Organisationsgroesse.", [], 409);
