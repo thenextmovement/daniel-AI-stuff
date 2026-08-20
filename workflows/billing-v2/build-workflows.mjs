@@ -13,7 +13,7 @@ function node(id, name, type, position, parameters, extra = {}) {
 }
 
 const prepareCode = String.raw`
-const claimed = $json.claimed;
+const claimed = ($json.body ?? $json).claimed;
 if (!claimed?.job || !claimed?.billingCase) return [{json:{hasJob:false}}];
 const job = claimed.job;
 const billingCase = claimed.billingCase;
