@@ -1,0 +1,92 @@
+{
+  "artifact_version": "neontrip_n8n_treatment_search_filter_compat_validation_v1",
+  "generated_at_utc": "2026-08-20T20:05:36.582Z",
+  "incident": {
+    "execution_id": "5241957",
+    "error": "Parameter 'filters' not supported with model 'gpt-4o-mini-2024-07-18'",
+    "claimed_jobs": 1,
+    "classification_count": 0,
+    "cache_count": 0,
+    "reversed_before_next_tick": true,
+    "post_reverse_execution_id": "5241980",
+    "post_reverse_claim_items": 0
+  },
+  "delta": {
+    "removed_request_path": "researchRequestBody.tools[0].filters",
+    "deterministic_site_query_unchanged": true,
+    "returned_source_domain_validation_unchanged": true,
+    "workflow_versions_unchanged": true,
+    "credentials_unchanged": true,
+    "db_contract_unchanged": true
+  },
+  "prestate": {
+    "version_id": "22463d9f-e467-45a7-b16e-5892cbbdae31",
+    "active_version_id": "22463d9f-e467-45a7-b16e-5892cbbdae31",
+    "version_counter": 130,
+    "node_count": 20,
+    "connection_source_count": 17,
+    "graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485"
+  },
+  "candidate": {
+    "node_count": 23,
+    "connection_source_count": 20,
+    "graph_sha256": "288f0d3f1a80dd86000eef0eb26269a64509965016402cf5071e79ece2dd79a5"
+  },
+  "tests": {
+    "focused": {
+      "passed": 14,
+      "total": 14
+    },
+    "validates_out_of_domain_source_rejected": true,
+    "validates_freemail_no_search": true,
+    "validates_special_requires_web_evidence": true,
+    "validate_only_forward": {
+      "valid": true,
+      "operations": 9,
+      "applied": false
+    },
+    "validate_only_roundtrip": {
+      "valid": true,
+      "operations": 18,
+      "applied": false
+    },
+    "offline_candidate_validation": {
+      "valid": true,
+      "nodes": 23,
+      "enabled_nodes": 14,
+      "valid_connections": 23,
+      "invalid_connections": 0,
+      "errors": 0,
+      "unchanged_warnings": 11
+    },
+    "neighbor_treatment_functional": {
+      "passed": 12,
+      "total_functional": 12,
+      "artifact_assertion": "inconclusive_only_because_committed_artifact_contains_an_absolute_prior_worktree_path"
+    },
+    "full_quotes_local": {
+      "status": "dependency_unavailable",
+      "reason": "clean_worktree_has_no_node_modules_or_tsx",
+      "code_failure_observed": false
+    }
+  },
+  "hashes": {
+    "draft_backup": "42fb6679e04a6c9d69e7b139c025c5425296154ee7b9ab28906f5e743571eb53",
+    "active_backup": "35518946e6f71fcae234bd5d7b10c8485a76706cd70fae72f4eb06aa070b974c",
+    "manifest": "b64487622d0c98210dc2aa9fbf5bb999471b36ee81d3aff8b3fa70ed909a5eca",
+    "forward": "ef1bee72b421903438f8e118a21946fd4aeb61d212868b2b9b19bd32cdb47e5c",
+    "reverse": "7f662a4326e0d803181a247149fb1d3b6dc01d8a4e3c4f46430e1288e13b4010",
+    "full_diff": "ae2725ad1406e65314ae0fbab659d73b6729cd1112862c8255c00e50c6db3009",
+    "expected_diff": "92397d208a99fa6064c208b1719ff8cc128fb502573c5bcafa05421c5ee43bfa",
+    "source": "52057590ddf9eb6c6ce140692ec943c48e44942e00d6129617d3a4f0d1c7f241",
+    "test": "021a59763cb9dcc445d29beeb2c388d0bf60fc1b0b1da7f297fb17f3b78e7ae2",
+    "generator": "bca21c59197db3e3d39a0174ff907ab820b95ec18e5203e90fa63268657e9818"
+  },
+  "safety": {
+    "live_apply_performed": false,
+    "manual_run": false,
+    "manual_claim": false,
+    "manual_retry": false,
+    "customer_action": false
+  }
+}
