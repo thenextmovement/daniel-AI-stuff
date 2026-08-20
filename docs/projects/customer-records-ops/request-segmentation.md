@@ -1,6 +1,6 @@
 # Request Segmentation
 
-Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; Phase 4 stellt einen strikt blinden Vier-Fall-Prozesspilot bereit; Phase 6 ist nur als inaktiver, privacy-sicherer Gold-Re-Evaluationsvertrag mit gehaltenem Vier-Job-Staging vorbereitet; menschliches Gold darf einen gespeicherten Kundentyp mit Begruendung korrigieren, ohne den Kundendatensatz zu mutieren; den tatsaechlichen Gold-, Policy- und n8n-Live-Stand immer neu verifizieren)
+Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert; Phase 4 stellt einen strikt blinden Vier-Fall-Prozesspilot bereit; Phase 6 bleibt historische Research-Evaluation; die vorbereitete Treatment-Focus-Evaluation vereinfacht das fachliche Ziel auf Standardbehandlung versus besondere Behandlung und bleibt vollstaendig evaluation-only; menschliches Gold darf einen gespeicherten Kundentyp mit Begruendung korrigieren, ohne den Kundendatensatz zu mutieren; den tatsaechlichen Gold-, Policy- und n8n-Live-Stand immer neu verifizieren)
 
 Diese Doku beschreibt, wie neue Kundenanfragen bei NEONTRIP segmentiert werden, wo das Ergebnis sichtbar ist und wie ein Segment manuell bestaetigt oder korrigiert wird.
 
@@ -419,6 +419,81 @@ Klassifikationen oder Goldzeilen, sondern entzieht nur die drei v5-RPC-
 Ausfuehrungsrechte und verifiziert History-Hashes. Eine Wiederfreigabe braucht
 einen neuen, explizit geprueften Grant-/Graph-Schritt; das Rollback-Artefakt
 aktiviert nichts automatisch.
+
+## Treatment-Focus-Evaluation: Standard versus besondere Behandlung
+
+Der neue Kandidat bildet den tatsaechlichen Betriebszweck direkt ab. Die acht
+CX8-Codes bleiben fuer Auswertung und Kontext erhalten; die primaere
+Entscheidung ist aber nur:
+
+- `standard`: Privatkunden, Gruender, kleine Unternehmen, Restaurants und
+  andere normale gewerbliche Anfragen. Sie duerfen spaeter den normalen
+  Angebots- und Follow-up-Prozess verwenden.
+- `special`: oeffentliche beziehungsweise institutionelle Kunden (`NT-10`),
+  Franchise/Multi-Site (`NT-5`), Enterprise (`NT-6`) oder ein anderweitig
+  belastbar als `large|enterprise` belegter Fall. Dieser Marker ist fuer einen
+  spaeteren zurueckhaltenderen Follow-up- und formelleren Angebotsprozess
+  gedacht.
+
+Diese Evaluation aktiviert noch keinen dieser spaeteren Prozesse. Policy und
+Gate des Kandidaten bleiben inaktiv, alle acht Regeln bleiben inert und die
+vier Pilotjobs sind `evaluation_only=true` sowie
+`master_projection_authorized=false`. Record darf weder `master_requests` noch
+Research-Cache, Trello, E-Mail, WhatsApp, Angebot, Preis oder Follow-up aendern.
+
+### Einfache Entscheidungsregeln
+
+- Freemail beziehungsweise Shared Provider loest keine Websuche aus.
+- Eindeutig private Nutzung im minimierten Anfrageinhalt darf `NT-8` mit
+  `treatment_tier=standard` belegen. Freemail allein ist kein Beweis.
+- Eindeutig gewerbliche Nutzung trotz Freemail darf mit dem passenden
+  Business-Segment und `treatment_tier=standard` bewertet werden. Der Beleg
+  kommt aus Titel, Beschreibung oder Anwendungszweck, nicht aus der Maildomain.
+- Ist die Nutzung im Text unklar, bleibt der Fall `needs_review`; es gibt
+  keinen Privat- oder Business-Fallback.
+- Bei einer gueltigen Nicht-Freemail-Firmendomain ist nur eine exakt auf diese
+  Domain beziehungsweise deren Subdomains beschraenkte Recherche erlaubt.
+  Firmenname, Personenname oder voller Anfragekontext werden nie als
+  Suchanfrage verwendet.
+- Ein Standardfall darf ohne Webquelle akzeptiert werden, wenn der minimierte
+  First-Party-Anfragetext den exakten Segmentbeleg traegt.
+- Jede `special`-Entscheidung braucht eine passende, an denselben Search-Call
+  gebundene externe URL. Fehlt sie, endet der Fall fail-closed in
+  `needs_review`.
+
+### Versionierter Pilotvertrag
+
+```text
+taxonomy_version  = nt_taxonomy_v2_20260819_cx8
+classifier        = segment_classifier_v6_20260820_treatment_focus
+prompt            = segment_prompt_v6_20260820_treatment_focus
+policy            = nt_policy_v5_20260820_treatment_focus_shadow (inactive)
+quality_gate       = nt_quality_gate_v5_20260820_treatment_focus (inactive)
+research          = segment_research_v2_20260820_domain_filter
+treatment          = treatment_focus_v1_20260820_standard_vs_special
+validator          = n8n_cx8_validator_v3
+worker             = n8n-request-segmenter-v6
+source             = gold_re_evaluation_phase7_treatment
+```
+
+Die Base-Migration
+`supabase/migrations/20260820190414_prepare_request_segmentation_treatment_focus_evaluation.sql`
+legt nur diesen inaktiven Vertrag, service-role-only Claim/Payload/Record und
+diagnostische `request_segmentation_v5_*`-Views an. Sie staged keinen Job und
+flippt keine Policy. Die neue 20-Argument-Record-Overload ergaenzt
+`p_treatment_contract`; die bestehenden 18- und 19-Argument-Funktionen muessen
+weiterhin aufloesbar bleiben.
+
+Erst nach DB-Compile, PostgREST-Readback, vollstaendigem n8n-v6-Readback und
+einem natuerlichen leeren v6-Claim darf
+`supabase/rollouts/held/20260820193000_stage_request_segmentation_treatment_focus_gold.sql`
+genau vier aktuelle immutable-Gold-Jobs anlegen. Ausschliesslich der
+natuerliche Scheduler verarbeitet sie mit `p_limit=1`. Beim ersten technischen
+oder Vertragsfehler wird der v6-Graph sofort auf den vollstaendig gesicherten
+v3-Graph zurueckgedreht; es gibt keinen manuellen Run, Retry oder Reset.
+Spaetestens nach vier terminalen Jobs wird ebenfalls auf v3 zurueckgedreht und
+ein natuerlicher v2-Claim sowie unveraenderte Master-/Cache-/Kundenaktionswerte
+werden belegt.
 
 ## Rollback
 

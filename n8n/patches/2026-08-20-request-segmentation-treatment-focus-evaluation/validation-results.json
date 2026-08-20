@@ -1,0 +1,157 @@
+{
+  "artifact_version": "neontrip_n8n_treatment_focus_evaluation_validation_v1",
+  "validated_at_utc": "2026-08-20T19:41:28Z",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "contract": {
+    "taxonomy_version": "nt_taxonomy_v2_20260819_cx8",
+    "classifier_version": "segment_classifier_v6_20260820_treatment_focus",
+    "prompt_version": "segment_prompt_v6_20260820_treatment_focus",
+    "policy_version": "nt_policy_v5_20260820_treatment_focus_shadow",
+    "quality_gate_version": "nt_quality_gate_v5_20260820_treatment_focus",
+    "research_contract": "segment_research_v2_20260820_domain_filter",
+    "treatment_contract": "treatment_focus_v1_20260820_standard_vs_special",
+    "validator_version": "n8n_cx8_validator_v3",
+    "worker": "n8n-request-segmenter-v6",
+    "source": "gold_re_evaluation_phase7_treatment"
+  },
+  "decision_contract": {
+    "primary_outcomes": [
+      "standard",
+      "special"
+    ],
+    "special_segments": [
+      "NT-10",
+      "NT-5",
+      "NT-6"
+    ],
+    "special_scales": [
+      "large",
+      "enterprise"
+    ],
+    "freemail_research_allowed": false,
+    "company_name_search_allowed": false,
+    "business_domain_filter_required": true,
+    "standard_request_evidence_allowed": true,
+    "special_external_evidence_required": true,
+    "ambiguous_outcome": "needs_review"
+  },
+  "prestate": {
+    "draft_version_id": "8e783830-6a38-4dae-aa32-2daf49d1387a",
+    "active_version_id": "8e783830-6a38-4dae-aa32-2daf49d1387a",
+    "version_counter": 128,
+    "active": true,
+    "is_archived": false,
+    "node_count": 20,
+    "connection_source_count": 17,
+    "draft_active_graphs_equal": true,
+    "graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485"
+  },
+  "production_db_preflight": {
+    "checked_at_utc": "2026-08-20T19:40:25.531368Z",
+    "active_policy_versions": [
+      "nt_policy_v2_20260819_cx8_shadow"
+    ],
+    "active_quality_gate_versions": [
+      "nt_quality_gate_v2_20260819_cx8"
+    ],
+    "current_gold": 4,
+    "v2_processing": 0,
+    "candidate_policy_count": 0,
+    "candidate_gate_count": 0,
+    "candidate_jobs": 0,
+    "candidate_classifications": 0,
+    "candidate_cache": 0,
+    "record_18_argument_overload": true,
+    "record_19_argument_overload": true,
+    "record_20_argument_overload": false
+  },
+  "tests": {
+    "treatment_n8n": {
+      "tests": 13,
+      "passed": 13,
+      "failed": 0
+    },
+    "focused_sql_schema": {
+      "tests": 44,
+      "passed": 44,
+      "failed": 0
+    },
+    "phase2_schema": {
+      "tests": 17,
+      "passed": 17,
+      "failed": 0
+    },
+    "phase3_phase6_n8n_neighbors": {
+      "tests": 60,
+      "passed": 60,
+      "failed": 0
+    },
+    "full_quotes": {
+      "tests": 923,
+      "passed": 923,
+      "failed": 0
+    },
+    "typescript": "passed",
+    "next_build": "passed",
+    "sql_parser": {
+      "migration_statements": 71,
+      "held_statements": 19,
+      "pre_runtime_rollback_statements": 31,
+      "operational_rollback_statements": 16,
+      "snapshot_statements": 12,
+      "failed": 0
+    }
+  },
+  "n8n_validate_only": {
+    "forward": {
+      "valid": true,
+      "operations": 9,
+      "applied": false
+    },
+    "forward_plus_reverse": {
+      "valid": true,
+      "operations": 18,
+      "applied": false
+    },
+    "minimal_pre_post_unchanged": true
+  },
+  "candidate": {
+    "node_count": 23,
+    "connection_source_count": 20,
+    "graph_sha256": "c254c6b2558a301ea7dca9407c28129e00359444d65e5c7985f177815ae91ec5",
+    "forward_operation_count": 9,
+    "reverse_operation_count": 9
+  },
+  "hashes": {
+    "draft_backup_sha256": "c7756bbe7194719a98b0b8c3fc22f2d9f1c6f819709beec38ef7222c06cd303b",
+    "active_backup_sha256": "f5154b6eb162cbe3062c0e02e2af7a5b36b32676a4d0d18c2f2650a5f1fbf462",
+    "manifest_sha256": "44dc08b80b43ad633ffeed0a8ad4cad00e3791a0ea3c310e356ab8d9ad76caa4",
+    "forward_patch_sha256": "18274c980c435df29eb41ce3123f81d8ff4bac749fe9ec3056a74bb55b95897b",
+    "reverse_patch_sha256": "ae37d95727df250f4a6b77b030787da7feb52533e69de00414d9ffaaf7930ba9",
+    "full_diff_sha256": "726b73e55af12bbe1a7b4202a2bfa0f3ff548fc483c8442208426e790aa69335",
+    "expected_diff_sha256": "7cf8afff83d2fa3d456d4f11a41363cce10048f95c411ba9af80410416bc62dc",
+    "source_sha256": "a15d37c88cc075d0e21461ae5b9ca00bd92f1e99b7301ee4c7d373811c9f9069",
+    "test_sha256": "d0e1a645e0450bb73a1d42f89fa41bcdebbd6e608a66b5d4cf7327c6137fa89",
+    "generator_sha256": "330641b13fd1c902f71a0e762f2d778eb90e27dc0a6f592e856645aec587aaf5",
+    "readme_sha256": "cdb6fe03dcb51816334c455a07d4a1e9cfb38e865a7b6a5cd94db86fb8555493",
+    "db_migration_sha256": "b562ff0604c731419cdd8a46eaa7de4379438ecb66877fbad624c6a7f8cf7ba8",
+    "db_held_sha256": "0a1d293f6436e2b28405145536a7d82b39567ef131bdc8ff498f7a5b53fafa87",
+    "db_pre_runtime_rollback_sha256": "5e3fa4ac1cb5640860e94b391a8bc0516375960176668a405f6c381660a5cc36",
+    "db_operational_rollback_sha256": "811fc8e647eb5d66f55e1d112e915cdcc240bba47a573e9b10a012de884238dd",
+    "db_snapshot_sha256": "dd8e14bb1537cf70c8e3bdd3ce89aea2d60558754b680c8263e9f6e4a03f884b",
+    "db_schema_test_sha256": "8b28540e12ddcb5757e13685aee104ccd8a2ac095384369f460eb0105d1872ee",
+    "documentation_sha256": "0c641dd4d4eae7e73cb36512afced32ce0e07ed3b74d1ca4fa0adbdc73468272"
+  },
+  "safety": {
+    "base_migration_applied": false,
+    "held_staging_applied": false,
+    "live_n8n_write_performed": false,
+    "publish_performed": false,
+    "activation_changed": false,
+    "workflow_execution_triggered": false,
+    "manual_claim_performed": false,
+    "job_retry_performed": false,
+    "openai_request_performed": false,
+    "customer_action_performed": false
+  }
+}
