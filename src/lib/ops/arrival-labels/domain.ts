@@ -194,7 +194,7 @@ export type TrelloAutomationGate =
 
 const OFFER_TOKEN = "[A-Za-z0-9_-]{8,128}";
 const OFFER_URL = new RegExp(`^https://angebote[.]neontrip[.]de/offer/(${OFFER_TOKEN})$`);
-const PDF_URL = new RegExp(`^https://angebote[.]neontrip[.]de/offer/(${OFFER_TOKEN})/pdf$`);
+const PDF_URL = new RegExp(`^https://angebote[.]neontrip[.]de/(?:offer|api/public/offers)/(${OFFER_TOKEN})/pdf$`);
 const OFFER_ID = new RegExp(`^${OFFER_TOKEN}$`);
 const OFFER_NUMBER = /^A\/N [0-9]{1,12}$/;
 const MONEY = "[0-9]+(?:[.,][0-9]{1,2})?";
@@ -626,7 +626,8 @@ function parseStandardOfferMetadataNote(note: string | null | undefined) {
       offerUrlId = offerUrl;
       continue;
     }
-    const pdfUrl = line.match(/^PDF Snapshot:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128})\/pdf)$/i)?.[2] || null;
+    const pdfSnapshotUrl = line.match(/^PDF Snapshot:\s*(\S+)$/i)?.[1] || "";
+    const pdfUrl = pdfSnapshotUrl.match(PDF_URL)?.[1] || null;
     if (pdfUrl && !pdfUrlId) {
       pdfUrlId = pdfUrl;
       continue;

@@ -533,6 +533,12 @@ test("only the exact NEONTRIP offer note and attribute schema passes the Shopify
     { key: "Invoice Mail Intended", value: "yes_private_email" },
   ];
   assert.equal(assessShopifyAutomationGate({ ...standardOrder, note, customAttributes }).blocked, false);
+  const legacyPdfUrl = `https://angebote.neontrip.de/api/public/offers/${publicToken}/pdf`;
+  const legacyNote = note.replace(`https://angebote.neontrip.de/offer/${publicToken}/pdf`, legacyPdfUrl);
+  const legacyAttributes = customAttributes.map((attribute) => attribute.key === "NEONTRIP PDF Snapshot"
+    ? { ...attribute, value: legacyPdfUrl }
+    : attribute);
+  assert.equal(assessShopifyAutomationGate({ ...standardOrder, note: legacyNote, customAttributes: legacyAttributes }).blocked, false);
   const mismatchedPdfToken = assessShopifyAutomationGate({
     ...standardOrder,
     note,
