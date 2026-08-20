@@ -33,26 +33,26 @@ test("Easybill adapter uses supported document and VAT mappings", () => {
   assert.match(source, /buyer_reference:projectNumber/);
   assert.match(source, /Projektnummer:/);
   assert.match(source, /billingCase\.customer_email/);
-  assert.match(source, /emailPayload:\{to:invoiceEmail/);
-  assert.match(source, /Auftragsbestätigung/);
   assert.match(source, /billing_portal_url_missing/);
-  assert.match(source, /Änderungen ausschließlich zu Ihren Rechnungsdaten/);
-  assert.match(source, /Änderungen im Rechnungsportal ändern weder den Auftrag/);
+  assert.doesNotMatch(source, /number:String\(item\.id/);
 });
 
 test("all Easybill mutations have an explicit error completion path", () => {
-  for (const name of ["Easybill Find Customer", "Easybill Create Customer", "Easybill Update Existing Customer", "Easybill Find Document", "Easybill Create Document", "Easybill Finalize Document", "Easybill Load Finalized Document", "Easybill Send Document Email"]) {
+  for (const name of ["Easybill Find Customer", "Easybill Create Customer", "Easybill Update Existing Customer", "Easybill Find Document", "Easybill Create Document", "Easybill Finalize Document", "Easybill Load Finalized Document"]) {
     assert.equal(byName.get(name).onError, "continueErrorOutput");
     assert.match(JSON.stringify(workflow.connections[name]), /Prepare Failed Completion/);
   }
   assert.match(byName.get("Raise Urgent Billing Error").parameters.jsCode, /Fehler Rechnung Shopify\/Easybill/);
 });
 
-test("billing documents are sent once to the invoice email after finalization", () => {
-  assert.match(JSON.stringify(byName.get("Easybill Send Document Email")), /documents\/.*\/send\/email/);
-  assert.match(JSON.stringify(byName.get("Easybill Send Document Email")), /emailPayload/);
-  assert.match(byName.get("Prepare Document Email").parameters.jsCode, /last_postbox_id/);
-  assert.match(JSON.stringify(workflow.connections["Document Email Already Sent"]), /Prepare Successful Completion/);
+test("billing documents are finalized without automatic customer email", () => {
+  const source = JSON.stringify(workflow);
+  assert.equal(byName.has("Easybill Send Document Email"), false);
+  assert.doesNotMatch(source, /\/send\/email/);
+  assert.match(byName.get("Prepare Document Completion").parameters.jsCode, /last_postbox_id/);
+  assert.match(byName.get("Prepare Successful Completion").parameters.jsCode, /customerEmailSuppressed:true/);
+  assert.match(byName.get("Prepare Successful Completion").parameters.jsCode, /sent:Boolean\(ctx\.emailWasAlreadySent\)/);
+  assert.match(JSON.stringify(workflow.connections["Prepare Document Completion"]), /Prepare Successful Completion/);
   assert.match(JSON.stringify(workflow.connections["Existing Document Is Draft"]), /Easybill Finalize Document/);
 });
 
