@@ -1,0 +1,106 @@
+{
+  "validated_at_utc": "2026-08-20T07:34:27Z",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "prepared_only": false,
+  "applied_at_utc": "2026-08-20T07:46:21.374Z",
+  "prestate": {
+    "active": true,
+    "is_archived": false,
+    "draft_version_id": "f2ae5824-6056-4d10-9e4a-0009c91261cf",
+    "active_version_id": "f2ae5824-6056-4d10-9e4a-0009c91261cf",
+    "version_counter": 113,
+    "node_count": 20,
+    "connection_source_count": 17,
+    "draft_active_graphs_equal": true,
+    "draft_expected_phase2_graph_equal": true,
+    "active_expected_phase2_graph_equal": true,
+    "graph_sha256": "156675859a4ba9cc6a1c39624512217482e931b2bed18c1b7dd62db9d416abc0"
+  },
+  "offline": {
+    "phase2_and_phase3_tests": {
+      "tests": 34,
+      "passed": 34,
+      "failed": 0
+    },
+    "focused_phase3_tests": {
+      "tests": 5,
+      "passed": 5,
+      "failed": 0
+    },
+    "forward_operation_count": 1,
+    "roundtrip_operation_count": 2,
+    "changed_field_count": 1,
+    "exact_reverse_restores_full_draft": true
+  },
+  "patch_hashes": {
+    "validator_before_sha256": "5564c60fff894c7adf29f1f38e22beed9b276b7ee13a140bc9d1d7ee9bfa1c88",
+    "validator_after_sha256": "79bdc5e7bc231661ff5427a3f3e4a3509870320382dca8b666e099ba15539ea5",
+    "forward_patch_sha256": "af8269721007998e7aebb0f5e9d40523141f7b6b17bb1a5add78fb1179ca01f9",
+    "reverse_patch_sha256": "dbe596c2fa91a12ed1e49867cf0fa2a52f211acc2ab22400940e03efe816f8a1",
+    "forward_validate_only_sha256": "01b3993d384c13a99ddd72f98cec9a59cb6e261daf5dcb667c459e0a0766b931",
+    "roundtrip_validate_only_sha256": "f20434125c0ef30c7fcf89f4a1cd4861105311d117d65c542c7ad93d33fbdf74"
+  },
+  "n8n_validate_only": {
+    "forward": {
+      "success": true,
+      "valid": true,
+      "operations_to_apply": 1,
+      "applied": false
+    },
+    "forward_plus_reverse": {
+      "success": true,
+      "valid": true,
+      "operations_to_apply": 2,
+      "applied": false
+    }
+  },
+  "post_validate_only_readback": {
+    "draft_version_id": "f2ae5824-6056-4d10-9e4a-0009c91261cf",
+    "active_version_id": "f2ae5824-6056-4d10-9e4a-0009c91261cf",
+    "version_counter": 113,
+    "active": true,
+    "graph_unchanged": true,
+    "draft_active_graphs_equal": true
+  },
+  "post_apply_readback": {
+    "draft_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+    "active_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
+    "version_counter": 114,
+    "active": true,
+    "node_count": 20,
+    "connection_source_count": 17,
+    "draft_active_graphs_equal": true,
+    "exact_reviewed_one_field_target": true,
+    "reverse_validate_only": true,
+    "runtime_validation_valid": true,
+    "runtime_validation_errors": 0,
+    "unchanged_baseline_warnings": 11
+  },
+  "natural_shadow_pilot": {
+    "execution_id": "5210710",
+    "execution_mode": "trigger",
+    "execution_status": "success",
+    "duration_ms": 3491,
+    "job_status": "needs_review",
+    "attempts": 1,
+    "classification_status": "needs_review",
+    "classification_segment": null,
+    "evaluation_only": true,
+    "master_projection_authorized": false,
+    "master_hash_matches_baseline": true,
+    "cx8_cache_count": 0,
+    "followup_allowed": false,
+    "pricing_allowed": false,
+    "customer_action": false
+  },
+  "live_side_effects": {
+    "workflow_write": true,
+    "publish": true,
+    "activation_change": false,
+    "manual_execution": false,
+    "retry": false,
+    "enqueue": true,
+    "backfill": true,
+    "customer_action": false
+  }
+}

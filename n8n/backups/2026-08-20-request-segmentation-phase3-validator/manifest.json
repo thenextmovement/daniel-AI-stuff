@@ -1,0 +1,27 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "workflow_name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+  "captured_at_utc": "2026-08-20T07:26:56Z",
+  "active": true,
+  "is_archived": false,
+  "draft_version_id": "f2ae5824-6056-4d10-9e4a-0009c91261cf",
+  "active_version_id": "f2ae5824-6056-4d10-9e4a-0009c91261cf",
+  "version_counter": 113,
+  "node_count": 20,
+  "connection_source_count": 17,
+  "draft_active_graphs_equal": true,
+  "draft_expected_phase2_graph_equal": true,
+  "active_expected_phase2_graph_equal": true,
+  "files": {
+    "draft": "ELpwCfdWOCRZ22gy.draft-before.json",
+    "active": "ELpwCfdWOCRZ22gy.published-active-before.json"
+  },
+  "hashes": {
+    "draft_file_sha256": "d2be7857e8765c658c2502aecf9e17a7288b3acffcea954bda31863af5b2db33",
+    "active_file_sha256": "3982be6928422b43ca01e417ea770da9b5bab0151977c415627340b75f277e81",
+    "draft_graph_sha256": "156675859a4ba9cc6a1c39624512217482e931b2bed18c1b7dd62db9d416abc0",
+    "active_graph_sha256": "156675859a4ba9cc6a1c39624512217482e931b2bed18c1b7dd62db9d416abc0",
+    "expected_phase2_graph_sha256": "156675859a4ba9cc6a1c39624512217482e931b2bed18c1b7dd62db9d416abc0",
+    "validator_before_sha256": "5564c60fff894c7adf29f1f38e22beed9b276b7ee13a140bc9d1d7ee9bfa1c88"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "operation_count": 1,
+  "changed_field_count": 1,
+  "fields": [
+    {
+      "node_id": "validate-output",
+      "field_path": "parameters.jsCode",
+      "existed_before": true,
+      "before_sha256": "5564c60fff894c7adf29f1f38e22beed9b276b7ee13a140bc9d1d7ee9bfa1c88",
+      "after_sha256": "79bdc5e7bc231661ff5427a3f3e4a3509870320382dca8b666e099ba15539ea5"
+    }
+  ]
+}
