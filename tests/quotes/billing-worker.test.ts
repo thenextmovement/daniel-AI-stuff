@@ -6,6 +6,8 @@ import { isBillingWorkerAuthorized } from "@/lib/ops/billing/internal-auth";
 
 const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260819183000_create_billing_job_worker.sql"), "utf8");
 const rollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260819183000_create_billing_job_worker_rollback.sql"), "utf8");
+const digestRepair = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260820152000_fix_billing_job_complete_digest_search_path.sql"), "utf8");
+const digestRepairRollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260820152000_fix_billing_job_complete_digest_search_path_rollback.sql"), "utf8");
 const internalAuth = fs.readFileSync(path.join(process.cwd(), "src/lib/ops/billing/internal-auth.ts"), "utf8");
 
 test("billing worker claims one leased job and blocks after bounded retries", () => {
@@ -16,6 +18,9 @@ test("billing worker claims one leased job and blocks after bounded retries", ()
   assert.match(migration, /then 'BLOCKED' else 'FAILED'/);
   assert.match(migration, /Fehler Rechnung Shopify\/Easybill/);
   assert.match(migration, /document_number,status,easybill_document_id/);
+  assert.match(migration, /extensions\.digest\(v_job\.payload::text,'sha256'\)/);
+  assert.match(digestRepair, /set search_path = public, extensions/);
+  assert.match(digestRepairRollback, /set search_path = public;/);
   assert.match(rollback, /drop function if exists public\.billing_job_claim/);
 });
 
