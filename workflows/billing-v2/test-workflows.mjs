@@ -30,6 +30,10 @@ test("Easybill adapter uses supported document and VAT mappings", () => {
   assert.match(source, /Projektnummer:/);
   assert.match(source, /billingCase\.customer_email/);
   assert.match(source, /emailPayload:\{to:invoiceEmail/);
+  assert.match(source, /Auftragsbestätigung/);
+  assert.match(source, /billing_portal_url_missing/);
+  assert.match(source, /Änderungen ausschließlich zu Ihren Rechnungsdaten/);
+  assert.match(source, /Änderungen im Rechnungsportal ändern weder den Auftrag/);
 });
 
 test("all Easybill mutations have an explicit error completion path", () => {
