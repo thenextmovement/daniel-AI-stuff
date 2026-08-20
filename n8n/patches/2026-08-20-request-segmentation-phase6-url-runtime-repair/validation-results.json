@@ -1,0 +1,134 @@
+{
+  "artifact_version": "neontrip_n8n_phase6_url_runtime_repair_validation_v1",
+  "validated_at_utc": "2026-08-20T16:05:49Z",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "contract": {
+    "taxonomy_version": "nt_taxonomy_v2_20260819_cx8",
+    "classifier_version": "segment_classifier_v5_20260820_cx8",
+    "prompt_version": "segment_prompt_v5_20260820_cx8",
+    "research_contract": "segment_research_v1_20260820_cx8",
+    "validator_version": "n8n_cx8_validator_v2"
+  },
+  "runtime_root_cause": {
+    "failed_execution_id": "5234509",
+    "provider_response_completed": true,
+    "exact_query_bound": true,
+    "web_search_call_count": 1,
+    "action_source_count": 1,
+    "url_citation_count": 5,
+    "all_references_same_allowed_subdomain_url": true,
+    "cause": "n8n Code sandbox has no global URL constructor; caught ReferenceError made valid sources normalize to null",
+    "technical_failure_path_observed": true,
+    "reverse_before_following_tick": true
+  },
+  "offline_url_runtime_suite": {
+    "command": "node --test n8n/patches/2026-08-20-request-segmentation-phase6-url-runtime-repair/url-runtime-repair.test.mjs",
+    "tests": 34,
+    "passed": 34,
+    "failed": 0,
+    "covers": [
+      "all prior twenty-six provenance recovery tests",
+      "VM execution with global URL explicitly undefined",
+      "one byte-identical helper block in Prepare and Validator",
+      "zero new URL, require or import runtime dependencies",
+      "observed one-source plus five-duplicate-citations provider shape",
+      "HTTP scheme, DNS host, port, fragment, path and query normalization",
+      "credentials, malformed percent, whitespace, backslash, quote and Unicode rejection",
+      "DNS label, TLD, localhost, local, IP, IPv6 and numeric bypass rejection",
+      "DB-identical single leading-www strip for raw source DNS validation while preserving valid www hosts",
+      "already DB-normalized expected-domain validation without a second www strip",
+      "domain scope compares exact one-strip source dbHostname against the already-normalized expected domain",
+      "exact and subdomain allowlist boundary",
+      "semantic missing-sources terminal review",
+      "twenty-source cap with invalid item twenty-one still rejected",
+      "only Prepare and Validator code differs from committed provenance recovery"
+    ]
+  },
+  "neighbor_regressions": {
+    "phase3_and_committed_provenance_recovery": {
+      "tests": 31,
+      "passed": 31,
+      "failed": 0
+    },
+    "phase5_and_original_phase6_functional_tests": {
+      "passed": 29,
+      "failed": 0,
+      "excluded_historical_absolute_path_assertions": 2
+    }
+  },
+  "offline_candidate_validation": {
+    "valid": true,
+    "total_nodes": 23,
+    "enabled_nodes": 14,
+    "trigger_nodes": 1,
+    "valid_connections": 23,
+    "invalid_connections": 0,
+    "expressions_validated": 8,
+    "errors": 0,
+    "warnings": 11,
+    "warning_scope": "Existing disabled Trello branch and existing Payload Ready Gate error-output warning."
+  },
+  "runtime_dependency_scan": {
+    "prepare_new_url_count": 0,
+    "validator_new_url_count": 0,
+    "prepare_require_count": 0,
+    "validator_require_count": 0,
+    "prepare_import_count": 0,
+    "validator_import_count": 0,
+    "prepare_helper_count": 1,
+    "validator_helper_count": 1,
+    "helper_blocks_byte_identical": true
+  },
+  "n8n_validate_only": {
+    "forward": {
+      "valid": true,
+      "operations": 9,
+      "applied": false
+    },
+    "forward_plus_reverse": {
+      "valid": true,
+      "operations": 18,
+      "applied": false
+    }
+  },
+  "post_validate_only_live_readback": {
+    "draft_exact_unchanged": true,
+    "published_active_exact_unchanged": true,
+    "draft_active_graphs_equal": true,
+    "before_after_graph_equal": true,
+    "draft_version_id": "3d1fb779-adb1-46d3-b199-b342a8800513",
+    "active_version_id": "3d1fb779-adb1-46d3-b199-b342a8800513",
+    "version_counter": 124,
+    "active": true,
+    "is_archived": false,
+    "node_count": 20,
+    "connection_source_count": 17
+  },
+  "hashes": {
+    "draft_backup_sha256": "93ef238703d6fc63bd8acec5c01a55b61951cd2cef981d770969ebd455b1bf36",
+    "active_backup_sha256": "33bfd774494435e009308c113d63cc464792c1ce8cf065f49f9ebd6aa2c3d6dc",
+    "manifest_sha256": "1754d8dbbaa076d7257fc23a1fc055fe52ea0f147a184de7e257631a86f96275",
+    "forward_patch_sha256": "a4f5784c5851acfa285cfb73f3c05eec70792d4d807d5f73dbca9c632a2d2b06",
+    "reverse_patch_sha256": "9ba708898aca0ad0a9aa7534e87d467141d87cb0c08b917df2d5c92ddb829203",
+    "full_diff_sha256": "8312e059b2442c1b0d207fa83e1b289003e11203b74bce74d74d880ee157ac4d",
+    "expected_diff_sha256": "7d115ccf735da567977309aaab988e650dbb0d28653c14e5a63417905ff6ad1d",
+    "runtime_helper_sha256": "4147d9631f59d5fe0f35987945604061f8929219dd0e4db4dd9a04b90e61ebd5",
+    "prepare_candidate_code_sha256": "538ed892c845c36f25231f6fbcfc7782aa640764a150970ea046e214bf23bf7c",
+    "validator_candidate_code_sha256": "c42f40ce9a2c99184abe99e3a7b08b103ee39e623f287a32cc857341fa99ea77",
+    "source_sha256": "7370e966542820b0168782fdf235d0402e8da3643c1ed8dd87ba9fee9743b30b",
+    "test_sha256": "22e5724b81b1f6316c0d286aa9ebf8d8ff179a788af1725cfa7544472f9e2b66",
+    "generator_sha256": "df3eaac334cda947f71d083d518a2f11351bff1ba1ebfaa546196c0a8af04869",
+    "readme_sha256": "a90dc2c9c4cd66337a2e14044c1890f69e87abea27b36ecf19ee527990349998"
+  },
+  "safety": {
+    "committed_provenance_recovery_folder_modified": false,
+    "live_write_performed": false,
+    "publish_performed": false,
+    "activation_changed": false,
+    "workflow_execution_triggered": false,
+    "job_retry_performed": false,
+    "database_mutation_performed": false,
+    "openai_request_performed": false,
+    "customer_action_performed": false
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "forward_operation_count": 9,
+  "reverse_operation_count": 9,
+  "expected": {
+    "target_node_count": 23,
+    "target_connection_source_count": 20,
+    "added_node_ids": [
+      "phase6-research-required",
+      "phase6-company-research",
+      "phase6-prepare-strict-classification"
+    ],
+    "updated_node_ids": [
+      "claim-jobs",
+      "get-payload",
+      "build-prompt",
+      "openai-classifier",
+      "validate-output"
+    ],
+    "exact_candidate_connections_sha256": "2de63e09e6a4d0c6a9100e05a7312202bfbe12c8b7d88635e06fc5e1a9955eaf"
+  },
+  "allowed_existing_node_fields": [
+    {
+      "node_id": "claim-jobs",
+      "field_paths": [
+        "parameters.url",
+        "parameters.jsonBody",
+        "retryOnFail",
+        "maxTries"
+      ],
+      "before_sha256": "a6c011eaf1e61d3b7a330d88517e440c9d30cd301b6649cf85f643337b1b3904",
+      "after_sha256": "061de314302d052d13f643384a8f94236ea67de9c37edcd84c85dd1192a8f1f5"
+    },
+    {
+      "node_id": "get-payload",
+      "field_paths": [
+        "parameters.url"
+      ],
+      "before_sha256": "bd0058daf5721f11dc18c62997502243b10acf6765876a023f2b9905d84b2ef6",
+      "after_sha256": "8923a9e08e7a92135aa3b7fad9cf4e7d2ae29f6135b9412b32a4ae6f92b7bde4"
+    },
+    {
+      "node_id": "build-prompt",
+      "field_paths": [
+        "parameters"
+      ],
+      "before_sha256": "d61b6930391f1b7229c5767130f9de2846560b8fed333208a857bd3092c2a3f0",
+      "after_sha256": "18dd3674ed930a569ab0c28d4d0c4a6b21988f7b7b9a2c8e317f0878aeb38b0b"
+    },
+    {
+      "node_id": "openai-classifier",
+      "field_paths": [
+        "type",
+        "typeVersion",
+        "parameters"
+      ],
+      "before_sha256": "e966ff9a194ee9341ee6f57a8a5560fa552385cc0fe9db62dd101bff79828606",
+      "after_sha256": "144f650cfb091b874aed768bf7f50bd5f34e82571be8bd656cb7f688f268055d"
+    },
+    {
+      "node_id": "validate-output",
+      "field_paths": [
+        "parameters"
+      ],
+      "before_sha256": "e53570abdc7d4eed73f5e22a98966bb446354a66fab8366a492fc1700d0eb00f",
+      "after_sha256": "196b744bbfd22c7e827f286e306f1b6bf47bc12e12c080aa3ef1c756099b50e6"
+    }
+  ],
+  "settings_unchanged": true,
+  "activation_unchanged": true,
+  "every_other_existing_node_field_unchanged": true
+}
