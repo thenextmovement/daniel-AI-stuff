@@ -1,8 +1,8 @@
 # NEONTRIP Phase 5: deterministic external research patch
 
-This directory contains a prepared, unapplied patch for active NEONTRIP workflow `ELpwCfdWOCRZ22gy`. It does not contain or concern RIESENOBJEKTE.
+This directory contains a prepared, unapplied runtime-repair patch for active NEONTRIP workflow `ELpwCfdWOCRZ22gy`. It is pinned to the exact restored pre-v4 graph. It does not contain or concern RIESENOBJEKTE.
 
-No live workflow write, publication, activation change, manual execution, retry, OpenAI request, customer communication, pricing action, Trello write, or other customer-facing action was performed.
+Preparing and validating this repaired artifact performed no live workflow write, publication, activation change, manual execution, retry, OpenAI request, customer communication, pricing action, Trello write, or other customer-facing action. The prior v4 publication that exposed the runtime failure was rolled back before this artifact was prepared.
 
 ## Decision
 
@@ -25,6 +25,14 @@ OpenAI documents that `tool_choice: "auto"` lets the model decide whether to sea
 
 - required: `tools=[{type:"web_search", ...}]`, `tool_choice="required"`
 - not required: `tools=[]`, `tool_choice="none"`
+
+The first natural v4 attempt then exposed a separate n8n runtime boundary: executions `5225368` and `5225393` reached the Build node, but the HTTP Request node rejected the previous multiline object-building `jsonBody` expression with `invalid syntax` before any OpenAI request. The workflow was restored to the exact pre-v4 graph.
+
+The bounded runtime repair now builds the complete `responsesRequestBody` object in the existing Code node, where it is ordinary JavaScript. The HTTP node performs only this proven property handoff:
+
+    ={{ JSON.stringify($json.responsesRequestBody) }}
+
+Offline regression proves that this Build-owned body is exactly equivalent to the intended prior body for both research branches. The complex multiline HTTP expression is retained only as a test fixture and cannot return in the forward patch.
 
 References:
 
@@ -60,7 +68,7 @@ The prompt-construction source is byte-identical before and after the version-pi
 Only six fields on four existing nodes change:
 
 1. `claim-jobs.parameters.jsonBody`: v4 classifier and v4 lock owner.
-2. `build-prompt.parameters.jsCode`: classifier v4, gate v3, policy v3.
+2. `build-prompt.parameters.jsCode`: classifier v4, gate v3, policy v3, plus construction of the exact Responses request body in normal JavaScript.
 3. `openai-classifier.type`: OpenAI node to `n8n-nodes-base.httpRequest`.
 4. `openai-classifier.typeVersion`: `4.4`.
 5. `openai-classifier.parameters`: POST `https://api.openai.com/v1/responses` with the deterministic tool branch.
@@ -68,11 +76,11 @@ Only six fields on four existing nodes change:
 
 The classifier node keeps the same id, name, position, connections, existing `openAiApi` credential reference, retry settings, wait time, and error routing. No trigger, topology, connection, credential, activation, setting, disabled node, RPC shape, taxonomy, or other node field changes.
 
-The HTTP Request node returns the raw JSON body from `/v1/responses`. The existing Validator already traverses `output[].content[].text` and binds evidence URLs only to `output[]` items with `type="web_search_call"`.
+The HTTP Request node serializes only `$json.responsesRequestBody` and returns the raw JSON body from `/v1/responses`. The existing Validator already traverses `output[].content[].text` and binds evidence URLs only to `output[]` items with `type="web_search_call"`.
 
 ## Version and data implications
 
-The inactive Phase-5 base database contract must be present before this n8n patch can be applied. The held activation SQL must not run before the n8n v4 graph is published and read back. During the safe cutover, the candidate policy remains inactive, so the v4 Claim returns no work until the held flip is deliberately released.
+The inactive Phase-5 base database contract must be present before this n8n patch can be applied. After the failed first attempt, the database was returned to v2 active / v4 inactive while all five v4 jobs were preserved unchanged. The recovery resume SQL must not run before the repaired n8n v4 graph is published and read back. During this safe recovery cutover, the candidate policy remains inactive, so the v4 Claim returns no work until the resume flip is deliberately released.
 
 Because cache validation binds taxonomy + classifier + prompt:
 
@@ -89,8 +97,8 @@ The workflow stays shadow-only. Follow-up, pricing, payment, collection, and any
 
 - workflow: `ELpwCfdWOCRZ22gy`
 - active / non-archived: yes / yes
-- draft and active version: `80101742-c095-4a69-827f-aeaab6bc71ca`
-- version counter: `114`
+- draft and active version: `9880b37e-4c81-4ae9-87b2-fc667d33cf8c`
+- version counter: `116`
 - nodes / connection sources: `20 / 17`
 - draft and published-active graphs: identical
 - graph SHA-256: `4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485`
@@ -115,25 +123,33 @@ Focused tests:
 
     node --test n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs
 
-Result: 6 passed, 0 failed.
+Result: 8 passed, 0 failed.
 
 Phase-3 Validator plus Phase-5 tests:
 
     node --test       n8n/patches/2026-08-20-request-segmentation-phase3-validator/validator-fix.test.mjs       n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs
 
-Result: 11 passed, 0 failed.
+Result: 13 passed, 0 failed.
+
+Phase-2, Phase-3, and Phase-5 tests:
+
+    node --test       n8n/patches/2026-08-19-request-segmentation-phase2-cx8/cx8-contract.test.mjs       n8n/patches/2026-08-20-request-segmentation-phase3-validator/validator-fix.test.mjs       n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs
+
+Result: 42 passed, 0 failed.
 
 The tests prove:
 
 - required research creates only a web-search tool plus `tool_choice=required`;
 - no required research creates no tools plus `tool_choice=none`;
+- the Build node owns the exact complete Responses body and the HTTP node uses only the simple property handoff;
+- the two observed `invalid syntax` failures are pinned and the former complex expression cannot be reintroduced;
 - a synthetic raw Responses root with an actual `web_search_call` reaches `accepted` through the unchanged provenance logic;
 - claimed external evidence without a corresponding tool call stays `needs_review`;
 - prompt construction and strict schema remain unchanged;
 - only the six approved fields change;
 - the exact reverse restores the full pinned workflow.
 
-The HTTP Request node validates with 0 errors and 0 warnings. The complete candidate workflow validates with 0 errors. It retains 11 pre-existing warnings and adds one static expression warning that says `jsonBody` may be missing a `$json` prefix; the expression uses `$json`, evaluates successfully in the offline harness, and the node-level validator reports no warning.
+The HTTP Request node validates with 0 errors and 0 warnings. The complete candidate workflow validates with 0 errors and retains exactly the 11 pre-existing warnings, adding none.
 
 n8n `validateOnly` accepted:
 
@@ -141,21 +157,21 @@ n8n `validateOnly` accepted:
 - reverse: 4 operations, valid, not applied;
 - forward plus exact reverse: 8 operations, valid, not applied.
 
-A complete live readback afterward is byte-for-object identical to the pre-validation readback and remains on version/counter `80101742... / 114`.
+A complete live readback afterward is byte-for-object identical to the pre-validation readback and remains on version/counter `9880b37e... / 116`.
 
 ## Review and rollout gate
 
 The canonical cutover order is strict:
 
-1. Apply only the Phase-5 base database migration. It installs the v4/gate-v3/policy-v3 contract as an inactive candidate and must not enqueue or release work.
-2. Deploy and verify the Ops dual-contract reader so the review UI can read both the current and candidate contracts while the candidate remains inactive.
+1. Verify the already applied Phase-5 base database contract: v2 policy/gate active, v4/gate-v3 candidate inactive, exactly eight inert candidate rules, and the exact preserved five-job recovery state. Do not reapply the base migration.
+2. Verify the already deployed Ops dual-contract reader at its approved production commit. Do not redeploy it as part of the database/n8n recovery.
 3. Re-fetch the n8n full draft and published-active state. Require the exact prepared version, counter, graph hash, active state, and node hashes; re-run the offline tests and `validateOnly`.
 4. Publish only the four prepared n8n `updateNode` operations atomically while the candidate policy is still inactive.
 5. Re-fetch and compare the complete graph against the calculated v4 candidate, then validate the active workflow. The v4 Claim must still receive no work at this point.
-6. Only after the n8n v4 publish/readback succeeds, release the held activation SQL. That step flips the candidate policy and creates exactly the four approved evaluation-only, master-projection-blocked jobs.
-7. Let the scheduled workflow process those four jobs naturally. Require an actual `web_search_call` for each required branch and no tool call for the non-required branch.
+6. Only after the repaired n8n v4 publish/readback succeeds, apply `supabase/rollouts/held/20260820111828_resume_request_segmentation_phase5_forced_research_shadow.sql`. It flips only the four active policy/gate flags and requires the exact preserved recovery state: four Gold evaluation jobs plus one naturally created ingress job. It must not create, reset, delete, unlock, or otherwise mutate a job row.
+7. Let the scheduled workflow process those five existing jobs naturally. Require an actual `web_search_call` for every research-required branch and no tool call for every non-required branch. Stop at the first contract or runtime deviation.
 
-The held activation SQL running before step 4 is a hard stop. Likewise, do not publish n8n v4 unless the inactive base contract and Ops dual-contract reader are already verified.
+The recovery resume SQL running before the repaired n8n v4 publish and full readback is a hard stop. Likewise, do not publish n8n v4 unless the exact five-job rollback state, inactive candidate contract, and Ops dual-contract reader are verified.
 
 The current active workflow publishes writes immediately. A stale prestate or any unrelated live change is a hard stop.
 

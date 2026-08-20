@@ -82,13 +82,13 @@ function assertPreparedPrestate(draft, active, manifest, rawDraft, rawActive) {
       || draft.isArchived === true || active.isArchived === true) {
     throw new Error("Pinned workflow is not active and non-archived.");
   }
-  if (manifest.draft_version_id !== "80101742-c095-4a69-827f-aeaab6bc71ca"
+  if (manifest.draft_version_id !== "9880b37e-4c81-4ae9-87b2-fc667d33cf8c"
       || manifest.active_version_id !== manifest.draft_version_id
       || draft.versionId !== manifest.draft_version_id
       || draft.activeVersionId !== manifest.active_version_id
       || active.activeVersionId !== manifest.active_version_id
-      || draft.versionCounter !== 114
-      || manifest.version_counter !== 114) {
+      || draft.versionCounter !== 116
+      || manifest.version_counter !== 116) {
     throw new Error("Pinned workflow version, active version, or counter changed.");
   }
   if (sha256(rawDraft) !== manifest.hashes.draft_file_sha256
@@ -205,7 +205,7 @@ export function createPatchBundle() {
     "Prepare the NEONTRIP Phase-5 CX8 classifier to deterministically require web search only when the pinned research policy requires it.";
 
   return {
-    artifact_version: "neontrip_n8n_phase5_forced_research_v1",
+    artifact_version: "neontrip_n8n_phase5_forced_research_v2",
     workflow_id: WORKFLOW_ID,
     prepared_against: {
       draft_path: draftPath,
@@ -354,7 +354,65 @@ export function applyOperationsInMemory(workflow, operations) {
   return result;
 }
 
+function operationValue(operations, nodeId, fieldPath) {
+  const operation = operations.find((item) => item.nodeId === nodeId);
+  if (!operation || !(fieldPath in operation.updates)) {
+    throw new Error(`Missing ${nodeId}.${fieldPath} in generated operations.`);
+  }
+  return operation.updates[fieldPath];
+}
+
+export function createArtifactFiles() {
+  const bundle = createPatchBundle();
+  const fullFields = bundle.expected_diff.map((field) => ({
+    node_id: field.node_id,
+    field_path: field.field_path,
+    before: operationValue(bundle.reverse.operations, field.node_id, field.field_path),
+    after: operationValue(bundle.forward.operations, field.node_id, field.field_path)
+  }));
+  return {
+    "forward-patch.json": {
+      artifact_version: bundle.artifact_version,
+      prepared_against: bundle.prepared_against,
+      patch: bundle.forward,
+      expected_diff: bundle.expected_diff,
+      safety: bundle.safety
+    },
+    "reverse-patch.json": {
+      artifact_version: bundle.artifact_version,
+      restores_prepared_version: bundle.prepared_against,
+      patch: bundle.reverse,
+      safety: bundle.safety
+    },
+    "full-diff.json": {
+      workflow_id: bundle.workflow_id,
+      prepared_against: bundle.prepared_against,
+      changed_node_count: new Set(fullFields.map((field) => field.node_id)).size,
+      changed_field_count: fullFields.length,
+      fields: fullFields,
+      preserved: bundle.preserved
+    },
+    "expected-diff.json": {
+      workflow_id: bundle.workflow_id,
+      operation_count: bundle.forward.operations.length,
+      changed_field_count: bundle.expected_diff.length,
+      fields: bundle.expected_diff,
+      preserved: bundle.preserved
+    }
+  };
+}
+
+function writeArtifactFiles() {
+  for (const [filename, artifact] of Object.entries(createArtifactFiles())) {
+    fs.writeFileSync(path.join(PATCH_DIR, filename), JSON.stringify(artifact, null, 2) + "\n");
+  }
+}
+
 if (process.argv[1]
     && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-  process.stdout.write(JSON.stringify(createPatchBundle(), null, 2) + "\n");
+  if (process.argv.includes("--write-artifacts")) {
+    writeArtifactFiles();
+  } else {
+    process.stdout.write(JSON.stringify(createPatchBundle(), null, 2) + "\n");
+  }
 }

@@ -67,7 +67,7 @@ export const CLAIM_PARAMETERS_AFTER = {
   )
 };
 
-export const BUILD_CODE_AFTER = [
+const VERSIONED_BUILD_CODE = [
   [POLICY_VERSION_BEFORE, POLICY_VERSION_AFTER, "Build policy version"],
   [CLASSIFIER_VERSION_BEFORE, CLASSIFIER_VERSION_AFTER, "Build classifier version"],
   [QUALITY_GATE_VERSION_BEFORE, QUALITY_GATE_VERSION_AFTER, "Build quality-gate version"]
@@ -92,7 +92,7 @@ const schemaLiteral = JSON.stringify(STRICT_OUTPUT_SCHEMA);
 const descriptionLiteral = JSON.stringify(OLD_TEXT_OPTIONS.description);
 const nameLiteral = JSON.stringify(OLD_TEXT_OPTIONS.name);
 
-export const RESPONSES_JSON_BODY_EXPRESSION = [
+export const LEGACY_COMPLEX_RESPONSES_JSON_BODY_EXPRESSION = [
   "={{ JSON.stringify({",
   "  model: 'gpt-4o-mini',",
   "  input: [",
@@ -118,6 +118,59 @@ export const RESPONSES_JSON_BODY_EXPRESSION = [
   "  }",
   "}) }}"
 ].join("\n");
+
+const RESPONSES_REQUEST_BODY_CODE = [
+  "  const responsesRequestBody = {",
+  "    model: \"gpt-4o-mini\",",
+  "    input: [",
+  "      { role: \"system\", content: systemPrompt },",
+  "      { role: \"user\", content: userPrompt }",
+  "    ],",
+  "    tools: researchPolicy.external_research_required === true",
+  "      ? [{ type: \"web_search\", search_context_size: \"medium\", user_location: { type: \"approximate\", country: \"DE\" } }]",
+  "      : [],",
+  "    tool_choice: researchPolicy.external_research_required === true ? \"required\" : \"none\",",
+  "    temperature: 0.1,",
+  "    max_output_tokens: 1400,",
+  "    include: [\"web_search_call.action.sources\"],",
+  "    store: true,",
+  "    text: {",
+  "      format: {",
+  "        type: \"json_schema\",",
+  "        name: " + nameLiteral + ",",
+  "        description: " + descriptionLiteral + ",",
+  "        strict: true,",
+  "        schema: " + schemaLiteral,
+  "      }",
+  "    }",
+  "  };"
+].join("\n");
+
+const BUILD_RETURN_MARKER = "\n\n  return [{";
+const BUILD_RETURN_WITH_BODY = [
+  "",
+  "",
+  RESPONSES_REQUEST_BODY_CODE,
+  "",
+  "  return [{"
+].join("\n");
+
+const BUILD_WITH_REQUEST_BODY = replaceExactly(
+  VERSIONED_BUILD_CODE,
+  BUILD_RETURN_MARKER,
+  BUILD_RETURN_WITH_BODY,
+  "Build request-body insertion point"
+);
+
+export const BUILD_CODE_AFTER = replaceExactly(
+  BUILD_WITH_REQUEST_BODY,
+  "      userPrompt\n",
+  "      userPrompt,\n      responsesRequestBody\n",
+  "Build request-body output"
+);
+
+export const RESPONSES_JSON_BODY_EXPRESSION =
+  "={{ JSON.stringify($json.responsesRequestBody) }}";
 
 export const CLASSIFIER_PARAMETERS_AFTER = {
   method: "POST",
@@ -153,9 +206,17 @@ export function evaluateResponsesJsonBody(source) {
   return JSON.parse(evaluate(source));
 }
 
+export function evaluateLegacyResponsesJsonBody(source) {
+  const expression = LEGACY_COMPLEX_RESPONSES_JSON_BODY_EXPRESSION.slice(3, -2).trim();
+  const evaluate = new Function("$json", "return " + expression + ";");
+  return JSON.parse(evaluate(source));
+}
+
 export function promptConstructionSource(code) {
   const start = code.indexOf("  const systemPrompt = [");
-  const end = code.indexOf("\n  return [{", start);
+  const requestBodyStart = code.indexOf("\n  const responsesRequestBody =", start);
+  const returnStart = code.indexOf("\n  return [{", start);
+  const end = requestBodyStart >= 0 ? requestBodyStart : returnStart;
   if (start < 0 || end < 0) throw new Error("Build source is missing prompt construction.");
   return code.slice(start, end);
 }

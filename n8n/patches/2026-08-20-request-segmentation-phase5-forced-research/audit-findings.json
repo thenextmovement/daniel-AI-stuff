@@ -1,13 +1,13 @@
 {
-  "scope": "NEONTRIP only; read-only audit of the active request segmenter and four completed Gold-pilot executions",
+  "scope": "NEONTRIP only; read-only audit of the request segmenter, four completed Gold-pilot executions, and two natural Phase-5 runtime failures",
   "workflow": {
     "id": "ELpwCfdWOCRZ22gy",
     "name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
     "active": true,
     "is_archived": false,
-    "draft_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
-    "active_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
-    "version_counter": 114,
+    "draft_version_id": "9880b37e-4c81-4ae9-87b2-fc667d33cf8c",
+    "active_version_id": "9880b37e-4c81-4ae9-87b2-fc667d33cf8c",
+    "version_counter": 116,
     "draft_active_graphs_equal": true
   },
   "active_classifier_node": {
@@ -99,10 +99,28 @@
       "validator_status": "needs_review"
     }
   ],
+  "sanitized_runtime_failure_evidence": [
+    {
+      "execution_id": "5225368",
+      "build_node_status": "success",
+      "failure_node": "OpenAI Structured Segment Classifier",
+      "error_code": "n8n_node_error",
+      "error_message": "invalid syntax",
+      "openai_request_reached": false
+    },
+    {
+      "execution_id": "5225393",
+      "build_node_status": "success",
+      "failure_node": "OpenAI Structured Segment Classifier",
+      "error_code": "n8n_node_error",
+      "error_message": "invalid syntax",
+      "openai_request_reached": false
+    }
+  ],
   "decision": {
     "prompt_only_reliable": false,
     "current_openai_node_can_force_search": false,
-    "smallest_supported_patch": "Replace the existing classifier node in place with HTTP Request v4.4 to POST /v1/responses using the same openAiApi credential. Branch only the request-body tools and tool_choice fields from researchPolicy.external_research_required.",
+    "smallest_supported_patch": "Keep the in-place HTTP Request v4.4 classifier and same openAiApi credential, construct the exact Responses body in the preceding normal-JavaScript Build node, and reduce the HTTP jsonBody expression to JSON.stringify($json.responsesRequestBody).",
     "required_branch": {
       "tools": [
         {

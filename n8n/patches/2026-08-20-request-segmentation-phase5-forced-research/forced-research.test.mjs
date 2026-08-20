@@ -11,26 +11,161 @@ import {
   CLASSIFIER_NODE_BEFORE,
   CLASSIFIER_PARAMETERS_AFTER,
   CLASSIFIER_VERSION_AFTER,
+  LEGACY_COMPLEX_RESPONSES_JSON_BODY_EXPRESSION,
   POLICY_VERSION_AFTER,
   PROMPT_VERSION,
   QUALITY_GATE_VERSION_AFTER,
+  RESPONSES_JSON_BODY_EXPRESSION,
   STRICT_OUTPUT_SCHEMA,
   TAXONOMY_VERSION,
   VALIDATOR_CODE_AFTER,
   VALIDATOR_VERSION,
+  evaluateLegacyResponsesJsonBody,
   evaluateResponsesJsonBody,
   promptConstructionSource
 } from "./forced-research-source.mjs";
 import {
   applyOperationsInMemory,
+  createArtifactFiles,
   createPatchBundle,
   loadPreparedPrestate,
   WORKFLOW_ID
 } from "./workflow-patch.mjs";
+import {
+  CONTEXT_TAGS,
+  CX8_SEGMENTS,
+  ORGANIZATION_SCALES,
+  SEGMENT_EVIDENCE_CODES
+} from "../2026-08-19-request-segmentation-phase2-cx8/cx8-contract-source.mjs";
 
 const JOB_ID = "11111111-1111-4111-8111-111111111111";
 const REQUEST_ID = "22222222-2222-4222-8222-222222222222";
 const SOURCE_URL = "https://example.com/services";
+
+function definitionFor(segment) {
+  return {
+    ...segment,
+    description: `Synthetic complete definition for ${segment.segment} with enough detail.`,
+    inclusion_criteria: [`Positive criterion for ${segment.segment}.`],
+    required_evidence: [`Required evidence for ${segment.segment}.`],
+    required_evidence_code: SEGMENT_EVIDENCE_CODES[segment.segment],
+    exclusion_criteria: [`Exclusion criterion for ${segment.segment}.`],
+    tie_breaker: `Synthetic deterministic tie breaker for ${segment.segment} with enough detail.`
+  };
+}
+
+function buildPayload(researchRequired) {
+  const definitions = CX8_SEGMENTS.map(definitionFor);
+  const company = researchRequired ? "Synthetic Company" : "";
+  const emailDomain = researchRequired ? "synthetic.example" : "gmail.com";
+  return {
+    contract: {
+      taxonomy_version: TAXONOMY_VERSION,
+      policy_version: POLICY_VERSION_AFTER,
+      policy_mode: "shadow",
+      classifier_version: CLASSIFIER_VERSION_AFTER,
+      prompt_version: PROMPT_VERSION,
+      quality_gate_version: QUALITY_GATE_VERSION_AFTER,
+      decision_unit: "requesting_or_contracting_entity",
+      default_outcome: "needs_review",
+      fallback_segment: null,
+      shadow_only: true
+    },
+    job: {
+      id: JOB_ID,
+      request_id: REQUEST_ID,
+      input_hash: "synthetic-input-hash-no-pii",
+      attempts: 1,
+      taxonomy_version: TAXONOMY_VERSION,
+      classifier_version: CLASSIFIER_VERSION_AFTER,
+      prompt_version: PROMPT_VERSION
+    },
+    request: {
+      id: REQUEST_ID,
+      request_id: "NT-SYNTHETIC-REQUEST",
+      title: "Synthetic request",
+      description: "Synthetic offline request.",
+      customer_type: researchRequired ? "b2b" : "privat",
+      application: "Synthetic application",
+      country: "DE",
+      landing_page_url: "https://neontrip.example/anfrage",
+      utm_source: "offline-test",
+      created_at: "2026-08-20T10:00:00.000Z"
+    },
+    customer: {
+      email: `qa@${emailDomain}`,
+      first_name: "Synthetic",
+      last_name: "Customer",
+      name: "Synthetic Customer",
+      company_name: company,
+      company,
+      phone: null,
+      original_phone: null,
+      city: "Teststadt",
+      country: "DE"
+    },
+    domain_facts: {
+      email_domain: emailDomain,
+      is_valid_dns_host: true,
+      is_freemail: !researchRequired,
+      is_shared_provider: !researchRequired,
+      email_domain_cache_allowed: researchRequired
+    },
+    research_cache: [],
+    related_history: [],
+    taxonomy: {
+      version: TAXONOMY_VERSION,
+      lifecycle_status: "shadow",
+      decision_unit: "requesting_or_contracting_entity",
+      default_outcome: "needs_review",
+      definitions,
+      tie_break_order: CX8_SEGMENTS.map((item) => item.segment)
+    },
+    segment_definitions: definitions,
+    context_definitions: CONTEXT_TAGS.map((contextTag) => ({
+      context_tag: contextTag,
+      label: `Label ${contextTag}`,
+      description: `Synthetic context definition for ${contextTag}.`
+    })),
+    organization_scale_values: [...ORGANIZATION_SCALES],
+    quality_gate: {
+      version: QUALITY_GATE_VERSION_AFTER,
+      min_unique_gold_total: 300,
+      min_gold_per_segment: 25,
+      min_precision_per_predicted_class: 0.90,
+      min_recall_per_actual_class: 0.85,
+      min_accepted_coverage: 0.80,
+      critical_segments: ["NT-8", "NT-10"],
+      min_critical_precision: 0.95,
+      required_mapping_integrity: 1,
+      max_provenance_violations: 0,
+      manual_activation_required: true
+    },
+    active_policy: {
+      version: POLICY_VERSION_AFTER,
+      mode: "shadow",
+      taxonomy_version: TAXONOMY_VERSION,
+      classifier_version: CLASSIFIER_VERSION_AFTER,
+      prompt_version: PROMPT_VERSION,
+      rules: CX8_SEGMENTS.map((item) => ({
+        segment: item.segment,
+        s_kategorie: item.default_s_kategorie,
+        min_confidence: item.review_threshold,
+        needs_human_review: false,
+        automation_enabled: false
+      }))
+    }
+  };
+}
+
+function runBuild(researchRequired) {
+  const run = new Function("$input", "$", BUILD_CODE_AFTER);
+  const result = run(
+    { first: () => ({ json: buildPayload(researchRequired) }) },
+    () => { throw new Error("Build node must not read another node."); }
+  );
+  return result[0].json;
+}
 
 function sourceFixture(researchRequired = true) {
   return {
@@ -176,11 +311,12 @@ function changedLeafPaths(before, after, prefix = "") {
 }
 
 test("research-required request body offers only web_search and forces a tool call", () => {
-  const body = evaluateResponsesJsonBody(sourceFixture(true));
+  const source = runBuild(true);
+  const body = evaluateResponsesJsonBody(source);
   assert.equal(body.model, "gpt-4o-mini");
   assert.deepEqual(body.input, [
-    { role: "system", content: "synthetic-system-prompt" },
-    { role: "user", content: "synthetic-user-prompt" }
+    { role: "system", content: source.systemPrompt },
+    { role: "user", content: source.userPrompt }
   ]);
   assert.deepEqual(body.tools, [{
     type: "web_search",
@@ -199,9 +335,49 @@ test("research-required request body offers only web_search and forces a tool ca
 });
 
 test("research-not-required request body disables all tools deterministically", () => {
-  const body = evaluateResponsesJsonBody(sourceFixture(false));
+  const body = evaluateResponsesJsonBody(runBuild(false));
   assert.deepEqual(body.tools, []);
   assert.equal(body.tool_choice, "none");
+});
+
+test("Build owns the exact Responses payload and the HTTP expression is a simple handoff", () => {
+  const requiredSource = runBuild(true);
+  const notRequiredSource = runBuild(false);
+  assert.equal(
+    RESPONSES_JSON_BODY_EXPRESSION,
+    "={{ JSON.stringify($json.responsesRequestBody) }}"
+  );
+  assert.equal(RESPONSES_JSON_BODY_EXPRESSION.includes("=>"), false);
+  assert.equal(RESPONSES_JSON_BODY_EXPRESSION.includes("?"), false);
+  assert.equal(RESPONSES_JSON_BODY_EXPRESSION.includes("schema:"), false);
+  assert.deepEqual(
+    evaluateResponsesJsonBody(requiredSource),
+    evaluateLegacyResponsesJsonBody(requiredSource)
+  );
+  assert.deepEqual(
+    evaluateResponsesJsonBody(notRequiredSource),
+    evaluateLegacyResponsesJsonBody(notRequiredSource)
+  );
+  assert.deepEqual(requiredSource.responsesRequestBody.text.format.schema, STRICT_OUTPUT_SCHEMA);
+});
+
+test("observed invalid-syntax regression cannot reintroduce the complex HTTP expression", () => {
+  const audit = JSON.parse(fs.readFileSync(new URL("./audit-findings.json", import.meta.url), "utf8"));
+  assert.deepEqual(
+    audit.sanitized_runtime_failure_evidence.map((item) => ({
+      execution_id: item.execution_id,
+      node: item.failure_node,
+      error: item.error_message
+    })),
+    [
+      { execution_id: "5225368", node: "OpenAI Structured Segment Classifier", error: "invalid syntax" },
+      { execution_id: "5225393", node: "OpenAI Structured Segment Classifier", error: "invalid syntax" }
+    ]
+  );
+  assert.ok(LEGACY_COMPLEX_RESPONSES_JSON_BODY_EXPRESSION.includes("JSON.stringify({"));
+  assert.ok(LEGACY_COMPLEX_RESPONSES_JSON_BODY_EXPRESSION.includes("tool_choice:"));
+  assert.ok(LEGACY_COMPLEX_RESPONSES_JSON_BODY_EXPRESSION.split("\n").length > 20);
+  assert.notEqual(RESPONSES_JSON_BODY_EXPRESSION, LEGACY_COMPLEX_RESPONSES_JSON_BODY_EXPRESSION);
 });
 
 test("raw Responses root with an actual web_search_call passes the existing provenance validator", () => {
@@ -250,6 +426,10 @@ test("version pins change while taxonomy, prompt construction, schema, and valid
     JSON.parse(CLASSIFIER_NODE_BEFORE.parameters.options.textFormat.textOptions.schema),
     STRICT_OUTPUT_SCHEMA
   );
+  assert.equal(
+    JSON.stringify(runBuild(true).responsesRequestBody.text.format.schema),
+    CLASSIFIER_NODE_BEFORE.parameters.options.textFormat.textOptions.schema
+  );
   assert.equal(CLASSIFIER_PARAMETERS_AFTER.url, "https://api.openai.com/v1/responses");
   assert.equal(CLASSIFIER_PARAMETERS_AFTER.authentication, "predefinedCredentialType");
   assert.equal(CLASSIFIER_PARAMETERS_AFTER.nodeCredentialType, "openAiApi");
@@ -258,6 +438,13 @@ test("version pins change while taxonomy, prompt construction, schema, and valid
 test("patch changes exactly six approved fields and the reverse restores the full workflow", () => {
   const { draft, active } = loadPreparedPrestate();
   const bundle = createPatchBundle();
+  const generatedArtifacts = createArtifactFiles();
+  for (const [filename, generated] of Object.entries(generatedArtifacts)) {
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(new URL(`./${filename}`, import.meta.url), "utf8")),
+      generated
+    );
+  }
   assert.equal(bundle.workflow_id, WORKFLOW_ID);
   assert.equal(bundle.forward.operations.length, 4);
   assert.equal(bundle.reverse.operations.length, 4);

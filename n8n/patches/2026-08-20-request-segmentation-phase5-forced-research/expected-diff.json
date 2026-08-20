@@ -15,7 +15,7 @@
       "field_path": "parameters.jsCode",
       "existed_before": true,
       "before_sha256": "4f4a24ff3425151116593410a6765c68dc1a708bf46829279b93ec60bbf19f32",
-      "after_sha256": "d5ec6bff0f2fbf54f16dd4db9fa8a0e04797be42faf44921fd7d303d819c8953"
+      "after_sha256": "b55449965897f0bf41a36848677984af13ea361f01abd08bb912e0c4050eecb8"
     },
     {
       "node_id": "openai-classifier",
@@ -36,7 +36,7 @@
       "field_path": "parameters",
       "existed_before": true,
       "before_sha256": "b64ec37fdff0e651199163efe8a30f21bbe79ac7bae08eb4c804a385bf12a651",
-      "after_sha256": "3ac802db0f6c80d3e50ffac1ed03c252dbd0710e2ce7fc207691d246f47cbf86"
+      "after_sha256": "30d106ba63ddf1ec5384051645d337dd997d53d2abbd4992e86d74d5976978e6"
     },
     {
       "node_id": "validate-output",

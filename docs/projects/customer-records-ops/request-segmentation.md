@@ -264,6 +264,37 @@ fuer diese vier Auswertungen blockiert. Eine spaetere Produktionsaktivierung
 bleibt an 300/25-Gold, alle technischen Gates und eine getrennte manuelle
 Freigabe gebunden.
 
+Nach einem bereits ausgefuehrten nicht-destruktiven operativen Rollback darf
+das urspruengliche Held-Artefakt nicht erneut laufen: Seine Pristine-Lane-
+Vorbedingung ist absichtlich nicht mehr erfuellt. Fuer den belegten
+Recovery-Zustand existiert deshalb das separate, weiterhin gehaltene Artefakt
+`supabase/rollouts/held/20260820111828_resume_request_segmentation_phase5_forced_research_shadow.sql`.
+Es akzeptiert ausschliesslich genau fuenf vorhandene `pending`-v4-Jobs ohne
+Klassifikation oder v4-Cache: vier aktuelle Pilot-Gold-Jobs mit
+`evaluation_only=true`/`master_projection_authorized=false` (dreimal
+`attempts=1`, einmal `attempts=0`) und genau einen normalen Ingress mit
+`evaluation_only=false`/`master_projection_authorized=true` und
+`attempts=0`. Alle fuenf Jobs muessen unlocked und ohne verknuepfte
+Klassifikation sein. Die drei bereits versuchten Gold-Jobs muessen exakt den
+belegten Fehler `n8n_node_error`/`invalid syntax` tragen; beide noch nicht
+versuchten Jobs duerfen keine Fehlerfelder haben. Der normale Source-Wert wird
+aus `request_segmentation_jobs.source` geprueft; seine Metadaten muessen den
+exakten Candidate-Policy-/Gate-Vertrag tragen. Das SQL staged keinen Job, setzt
+weder Versuch noch Zeitstempel zurueck und hasht alle fuenf Jobzeilen vor/nach
+dem ausschliesslichen Policy-/Gate-Flip.
+
+Recovery-Runbook: Zuerst bleibt v2 aktiv, waehrend der reparierte exakte
+n8n-v4-Graph publiziert und vollstaendig zurueckgelesen wird. Danach muessen
+alle claimbaren/laufenden v3-Jobs drainiert und die oben beschriebene
+Fuenf-Job-Komposition erneut read-only belegt sein. Erst dann darf das
+Resume-Artefakt atomar Policy v2 und Quality Gate v2 deaktivieren sowie Policy
+v3 und Quality Gate v3 aktivieren. Die
+fuenf Jobs werden anschliessend ausschliesslich durch den natuerlichen
+Scheduler verarbeitet; kein manueller Run und kein Retry/Reset ist Teil dieses
+Cutovers. Policy/Gate, Jobzustand, Klassifikationen, Cache, Master-Projektion
+und Kundenaktionen werden danach erneut aus ihren autoritativen Quellen
+verifiziert.
+
 ## Rollback
 
 - Vor erster v4-Runtime entfernt
@@ -278,6 +309,13 @@ Freigabe gebunden.
   wieder aktiv schalten. Jobs, Klassifikationen, Views und immutable Gold
   bleiben Audit-Historie. Anschliessend muss der noch gepinnte v4-Claim leer
   sein, bevor der separat gepruefte n8n-Reverse publiziert wird.
+- Nach diesem operativen Rollback darf nur der oben dokumentierte, eng auf den
+  belegten Fuenf-Job-Zustand begrenzte Resume-Cutover verwendet werden. Weicht
+  Jobanzahl, Status, Attempts-Verteilung, Gold-Bindung, normaler Ingress,
+  Klassifikations-/Cache-Zustand oder globale Aktivitaet ab, bricht er
+  fail-closed ab. Fuer einen erneuten Abbruch bleibt derselbe
+  nicht-destruktive operative Rollback kanonisch; Runtime-Historie wird nicht
+  geloescht oder zurueckgesetzt.
 - Die Gold-only-Kundentyp-Reparatur wird mit `supabase/rollbacks/20260820093126_allow_human_gold_customer_type_disagreement_rollback.sql` zurueckgenommen. Sie stellt ausschliesslich den vorherigen First-Party-Veto-Body und dieselben Function-ACLs wieder her; bestehendes immutable Gold wird weder geloescht noch geaendert.
 - Vor jeglicher v2-Runtime darf ein exakter Schema-Restore ueber `supabase/rollbacks/20260819183219_request_segmentation_phase2_full_pre_runtime_rollback.sql` nur erfolgen, wenn versionierte Jobs, Klassifikationen, Gold, Master-Authority und Approvals jeweils `0` Rows haben, v1 allein aktiv und v2 inaktiv ist. Das Artefakt enthaelt die exakt am 2026-08-19 live erfassten Phase-1-Funktionsdefinitionen/ACLs und stellt die beiden alten Unique-Constraints wieder her. Der PII-freie Prestate liegt in `supabase/security-backups/request-segmentation-phase2-prechange-20260819.sql`.
 - Nach der ersten v2-Runtime ist nur der nicht-destruktive operative Rollback `supabase/rollbacks/20260819193419_request_segmentation_phase2_operational_rollback.sql` zulaessig. Exakte Reihenfolge: bereits laufende `processing`-v2-Jobs drainen (das SQL bricht sonst fail-closed ab), dann mit diesem SQL atomar v2 inaktiv/v1 aktiv schalten, danach einen Claim mit dem exakten v3-Taxonomie-/Classifier-/Prompt-Triple ausfuehren und das leere Ergebnis `[]` verifizieren; erst danach den n8n-Reverse auf v1 publishen. Pending/failed CX8-Jobs bleiben auditierbar suspendiert; additive Spalten sowie alle v3-/Gold-Auditdaten bleiben erhalten und werden nie geloescht, um alte Unique-Constraints zu erzwingen.

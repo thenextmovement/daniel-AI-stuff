@@ -1,5 +1,5 @@
 {
-  "artifact": "neontrip_n8n_phase5_forced_research_v1",
+  "artifact": "neontrip_n8n_phase5_forced_research_v2",
   "prepared_only": true,
   "live_write_performed": false,
   "publish_performed": false,
@@ -35,29 +35,32 @@
       "invalid_connections": 0,
       "expressions_validated": 6,
       "errors": 0,
-      "warnings": 12
+      "warnings": 11
     },
     "pre_existing_warnings_preserved": 11,
-    "new_warning": {
-      "node": "OpenAI Structured Segment Classifier",
-      "message": "Expression warning: jsonBody: Possible missing $ prefix for variable (e.g., use $json instead of json)",
-      "assessment": "Static heuristic false positive; the expression uses $json, evaluates in the offline harness, and the HTTP Request node validates with zero warnings."
-    }
+    "new_warnings": 0
   },
   "offline_tests": {
     "focused_phase5": {
       "command": "node --test n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs",
-      "passed": 6,
+      "passed": 8,
       "failed": 0
     },
     "phase3_plus_phase5": {
       "command": "node --test n8n/patches/2026-08-20-request-segmentation-phase3-validator/validator-fix.test.mjs n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs",
-      "passed": 11,
+      "passed": 13,
+      "failed": 0
+    },
+    "phase2_plus_phase3_plus_phase5": {
+      "command": "node --test n8n/patches/2026-08-19-request-segmentation-phase2-cx8/cx8-contract.test.mjs n8n/patches/2026-08-20-request-segmentation-phase3-validator/validator-fix.test.mjs n8n/patches/2026-08-20-request-segmentation-phase5-forced-research/forced-research.test.mjs",
+      "passed": 42,
       "failed": 0
     },
     "proofs": [
       "required=true yields only web_search plus tool_choice required",
       "required=false yields tools empty plus tool_choice none",
+      "Build constructs the exact complete Responses body in normal JavaScript and the HTTP node performs only a simple JSON.stringify property handoff",
+      "the two observed invalid-syntax runtime failures are pinned and the prior multiline expression cannot be reintroduced",
       "raw Responses root containing an actual web_search_call is accepted by the existing validator",
       "claimed external evidence without a web_search_call remains needs_review",
       "taxonomy, prompt construction, strict schema, model, temperature, max output tokens, include, and store are preserved",
@@ -86,10 +89,10 @@
     }
   },
   "post_validate_only_live_readback": {
-    "draft_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
-    "active_version_id": "80101742-c095-4a69-827f-aeaab6bc71ca",
-    "version_counter": 114,
-    "updated_at": "2026-08-20T07:46:21.374Z",
+    "draft_version_id": "9880b37e-4c81-4ae9-87b2-fc667d33cf8c",
+    "active_version_id": "9880b37e-4c81-4ae9-87b2-fc667d33cf8c",
+    "version_counter": 116,
+    "updated_at": "2026-08-20T11:14:30.050Z",
     "full_readback_exactly_unchanged": true,
     "active_readback_exactly_unchanged": true,
     "nodes_exactly_unchanged": true,
